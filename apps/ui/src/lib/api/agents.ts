@@ -1,9 +1,7 @@
 import { apiClient } from "./client";
 import type {
   Agent,
-  AgentVersion,
   CreateAgentRequest,
-  CreateAgentVersionRequest,
   UpdateAgentRequest,
 } from "./types";
 
@@ -29,30 +27,6 @@ export async function updateAgent(
 ): Promise<Agent> {
   return apiClient<Agent>(`/v1/agents/${agentId}`, {
     method: "PATCH",
-    body: JSON.stringify(data),
-  });
-}
-
-// Agent Versions
-export async function getAgentVersions(
-  agentId: string
-): Promise<AgentVersion[]> {
-  return apiClient<AgentVersion[]>(`/v1/agents/${agentId}/versions`);
-}
-
-export async function getAgentVersion(
-  agentId: string,
-  version: number
-): Promise<AgentVersion> {
-  return apiClient<AgentVersion>(`/v1/agents/${agentId}/versions/${version}`);
-}
-
-export async function createAgentVersion(
-  agentId: string,
-  data: CreateAgentVersionRequest
-): Promise<AgentVersion> {
-  return apiClient<AgentVersion>(`/v1/agents/${agentId}/versions`, {
-    method: "POST",
     body: JSON.stringify(data),
   });
 }

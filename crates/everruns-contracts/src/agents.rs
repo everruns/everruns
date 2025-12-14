@@ -13,6 +13,7 @@ pub struct Agent {
     pub name: String,
     pub description: Option<String>,
     pub default_model_id: String,
+    pub definition: serde_json::Value,
     pub status: AgentStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -47,16 +48,7 @@ impl std::str::FromStr for AgentStatus {
     }
 }
 
-/// AgentVersion is an immutable snapshot of an agent's configuration
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct AgentVersion {
-    pub agent_id: Uuid,
-    pub version: i32,
-    pub definition: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-}
-
-/// Typed agent version definition (stored as JSON in database)
+/// Typed agent definition (stored as JSON in database)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentDefinition {
     /// System prompt for the agent
