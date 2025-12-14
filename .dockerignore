@@ -1,0 +1,38 @@
+# Build artifacts
+target/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# CI/CD
+.github/
+
+# Documentation
+*.md
+!README.md
+
+# Node.js (UI)
+apps/ui/node_modules/
+apps/ui/.next/
+apps/ui/.turbo/
+
+# Test artifacts
+*.log
+coverage/
+
+# Local development
+harness/
+scripts/
+.env*
+*.local
+
+# Docker (avoid recursive context)
+Dockerfile*
+docker-compose*.yml
