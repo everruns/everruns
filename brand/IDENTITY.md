@@ -10,38 +10,27 @@
 
 ---
 
-## Logo: Interlocking Rings
+## Logo
 
-Three interlocking circles arranged in a triangular formation — like Olympic rings, but with 3. Represents an unbreakable chain of **Durability × Scalability × Reliability**.
+Three interlocking rings (Borromean rings pattern) — an unbreakable chain representing **Durability × Scalability × Reliability**.
 
-```
-    ◯
-   ◯ ◯
-```
+### Files
+- `logo.svg` — Color version (navy + gold)
+- `logo-mono.svg` — Black & white version
 
-### Generation Prompts
-
-**Color Version:**
-```
-Logo of three interlocking circles in triangular formation,
-like Olympic rings but 3 circles,
-navy blue (#0057B8) and golden yellow (#FFD700) gradient,
-minimalist geometric style, tech startup logo,
-vector art, clean lines, professional, no text
-```
-
-**Black & White Version:**
-```
-Logo of three interlocking circles in triangular formation,
-like Olympic rings but 3 circles,
-pure black on white background,
-minimalist geometric style, tech startup logo,
-vector art, clean lines, professional, no text
-```
+### Usage
+- **Color version**: Marketing, website, social media
+- **Mono version**: Documentation, favicons, dark backgrounds
 
 ---
 
 ## Color Palette
+
+### Logo Colors
+| Name | Hex | Usage |
+|------|-----|-------|
+| Navy | `#0A1F44` | Two upper rings |
+| Gold | `#D4A84B` | Bottom ring |
 
 ### App Interface (Grayscale)
 | Name | Hex | Usage |
@@ -53,11 +42,11 @@ vector art, clean lines, professional, no text
 | Smoke | `#F5F5F5` | Light backgrounds |
 | White | `#FFFFFF` | Primary background |
 
-### Accent (Ukrainian-inspired)
+### Accent
 | Name | Hex | Usage |
 |------|-----|-------|
-| Azure | `#0057B8` | Links, actions, logo |
-| Gold | `#FFD700` | Success states, logo |
+| Navy | `#0A1F44` | Links, actions |
+| Gold | `#D4A84B` | Success states, highlights |
 
 ---
 

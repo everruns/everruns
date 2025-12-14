@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180">
+  <defs>
+    <linearGradient id="blueToGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A1F44"/>
+      <stop offset="100%" stop-color="#D4A84B"/>
+    </linearGradient>
+    <linearGradient id="goldToBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D4A84B"/>
+      <stop offset="100%" stop-color="#0A1F44"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Bottom gold circle (behind left blue) -->
+  <circle cx="100" cy="115" r="45" fill="none" stroke="#D4A84B" stroke-width="8"/>
+
+  <!-- Left blue circle -->
+  <circle cx="70" cy="65" r="45" fill="none" stroke="#0A1F44" stroke-width="8"/>
+
+  <!-- Gold circle front segment (over left blue, under right blue) -->
+  <path d="M 55 115 A 45 45 0 0 1 100 70" fill="none" stroke="#D4A84B" stroke-width="8"/>
+
+  <!-- Right blue circle (behind gold at bottom) -->
+  <circle cx="130" cy="65" r="45" fill="none" stroke="#0A1F44" stroke-width="8"/>
+
+  <!-- Gold circle top-right segment (over right blue) -->
+  <path d="M 100 70 A 45 45 0 0 1 145 115" fill="none" stroke="#D4A84B" stroke-width="8"/>
+
+  <!-- Right blue front segment (over left blue) -->
+  <path d="M 130 110 A 45 45 0 0 1 85 65" fill="none" stroke="#0A1F44" stroke-width="8"/>
+
+  <!-- Left blue top segment (over gold) -->
+  <path d="M 70 20 A 45 45 0 0 1 115 65" fill="none" stroke="#0A1F44" stroke-width="8"/>
+</svg>
