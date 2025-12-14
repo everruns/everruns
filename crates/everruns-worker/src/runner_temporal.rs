@@ -11,8 +11,8 @@
 // Future Enhancement:
 // When the Rust Temporal SDK is production-ready, this can be upgraded to use
 // native Temporal activities with automatic retry and heartbeat support.
-
-#![cfg(feature = "temporal")]
+//
+// Note: This module is conditionally compiled via #[cfg(feature = "temporal")] in lib.rs
 
 use anyhow::Result;
 use async_trait::async_trait;
