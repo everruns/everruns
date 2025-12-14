@@ -9,7 +9,7 @@ use axum::{
 };
 use everruns_contracts::{events::AgUiEvent, Run, RunStatus};
 use everruns_storage::{models::CreateRun, Database};
-use everruns_worker::WorkflowExecutor;
+use everruns_worker::AgentRunner;
 use futures::{
     stream::{self, Stream},
     StreamExt,
@@ -23,7 +23,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
-    pub executor: Arc<WorkflowExecutor>,
+    pub runner: Arc<dyn AgentRunner>,
 }
 
 /// Request to create a run
@@ -143,17 +143,17 @@ pub async fn create_run(
         finished_at: row.finished_at,
     };
 
-    // Start the workflow execution
+    // Start the workflow execution using the configured runner
     state
-        .executor
-        .start_workflow(row.id, row.agent_id, row.thread_id)
+        .runner
+        .start_run(row.id, row.agent_id, row.thread_id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to start workflow: {}", e);
+            tracing::error!("Failed to start run: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    tracing::info!(run_id = %row.id, "Workflow started for run");
+    tracing::info!(run_id = %row.id, "Run started");
 
     Ok((StatusCode::CREATED, Json(run)))
 }
@@ -228,13 +228,13 @@ pub async fn cancel_run(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Cancel the workflow
-    state.executor.cancel_workflow(run_id).await.map_err(|e| {
-        tracing::error!("Failed to cancel workflow: {}", e);
+    // Cancel the run using the configured runner
+    state.runner.cancel_run(run_id).await.map_err(|e| {
+        tracing::error!("Failed to cancel run: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    tracing::info!(run_id = %run_id, "Workflow cancelled");
+    tracing::info!(run_id = %run_id, "Run cancelled");
 
     Ok(StatusCode::OK)
 }
