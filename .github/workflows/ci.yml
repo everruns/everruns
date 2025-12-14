@@ -213,7 +213,7 @@ jobs:
           echo "Creating agent..."
           AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
             -H 'Content-Type: application/json' \
-            -d '{"name":"CI Test Agent","default_model_id":"gpt-5.1"}')
+            -d '{"name":"CI Test Agent","default_model_id":"gpt-5.1","definition":{"system_prompt":"Test"}}')
           AGENT_ID=$(echo "$AGENT" | jq -r '.id')
           echo "Agent ID: $AGENT_ID"
 
@@ -223,16 +223,10 @@ jobs:
           THREAD_ID=$(echo "$THREAD" | jq -r '.id')
           echo "Thread ID: $THREAD_ID"
 
-          echo "Creating agent version..."
-          VERSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/versions" \
-            -H 'Content-Type: application/json' \
-            -d '{"definition":{"system":"Test"}}')
-          echo "Version: $(echo "$VERSION" | jq -r '.version')"
-
           echo "Creating run..."
           RUN=$(curl -s -X POST http://localhost:9000/v1/runs \
             -H 'Content-Type: application/json' \
-            -d "{\"agent_id\":\"$AGENT_ID\",\"agent_version\":1,\"thread_id\":\"$THREAD_ID\"}")
+            -d "{\"agent_id\":\"$AGENT_ID\",\"thread_id\":\"$THREAD_ID\"}")
           RUN_ID=$(echo "$RUN" | jq -r '.id')
           echo "Run ID: $RUN_ID"
 
