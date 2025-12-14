@@ -14,8 +14,10 @@
 
 Three interlocking rings (Borromean rings pattern) — an unbreakable chain representing **Durability × Scalability × Reliability**.
 
+Each ring has a gradient from **navy on the outside to gold towards the center** — symbolizing how the three qualities converge into one unified platform.
+
 ### Files
-- `logo.svg` — Color version (navy + gold)
+- `logo.svg` — Color version with gradients
 - `logo-mono.svg` — Black & white version
 
 ### Usage
