@@ -2,7 +2,9 @@ name: Docker Publish
 
 on:
   push:
-    branches: [main, 'claude/**']
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 env:
   REGISTRY: ghcr.io
@@ -41,17 +43,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Determine SHA
+        id: sha
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            echo "sha_short=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          fi
+
       - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_BASE }}/${{ matrix.image_name }}
           tags: |
-            # On main: tag as 'latest' and with short SHA
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix=,format=short
-            # Also add full SHA for traceability
-            type=sha,prefix=,format=long
+            # On main push: tag as 'latest'
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            # Always tag with short and full SHA
+            type=raw,value=${{ steps.sha.outputs.sha_short }}
+            type=raw,value=${{ steps.sha.outputs.sha }}
 
       - name: Build and push ${{ matrix.target }}
         uses: docker/build-push-action@v5
