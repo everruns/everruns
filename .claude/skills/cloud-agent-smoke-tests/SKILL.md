@@ -13,42 +13,98 @@ The Cloud Agent environment provides:
 
 Docker and container runtimes are **NOT available**.
 
-## Options for Running Smoke Tests
-
-### Option 1: Local PostgreSQL (Recommended)
-
-The environment has PostgreSQL 16 installed. We can initialize and run a local cluster:
+## Quick Start
 
 ```bash
-# Run the all-in-one script
+# All-in-one: sets up PostgreSQL + Temporal, runs migrations, starts API, runs smoke tests
 ./scripts/cloud-agent-smoke-test.sh
 ```
 
-**Manual Steps:**
+This script handles everything automatically and cleans up on exit.
 
-1. Initialize PostgreSQL cluster as postgres user:
+## Architecture
+
+The smoke test setup runs three services:
+
+1. **PostgreSQL 16** - Local cluster initialized in `/tmp/pgdata`
+2. **Temporal Dev Server** - Uses Temporal CLI with in-memory SQLite
+3. **Everruns API** - Rust server on port 9000
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Cloud Agent Environment                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │  PostgreSQL  │    │   Temporal   │    │  Everruns    │  │
+│  │    (16)      │    │  Dev Server  │    │    API       │  │
+│  │              │    │              │    │              │  │
+│  │ /tmp/pgdata  │    │ :7233        │    │ :9000        │  │
+│  │   (socket)   │    │ (in-memory)  │    │              │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Options for Running Smoke Tests
+
+### Option 1: Local Setup (Recommended)
+
+Uses local PostgreSQL cluster and Temporal CLI dev server:
+
+```bash
+./scripts/cloud-agent-smoke-test.sh
+```
+
+**What it does:**
+1. Checks for PostgreSQL binaries
+2. Downloads Temporal CLI if not present
+3. Starts Temporal dev server (in-memory SQLite backend)
+4. Initializes PostgreSQL cluster as `postgres` user
+5. Creates database and installs UUIDv7 polyfill
+6. Runs migrations
+7. Builds and starts the API
+8. Executes smoke tests
+9. Cleans up all services on exit
+
+### Option 2: Manual Setup
+
+**Step 1: Install Temporal CLI**
+```bash
+curl -sL "https://temporal.download/cli/archive/latest?platform=linux&arch=amd64" -o /tmp/temporal.tar.gz
+tar -xzf /tmp/temporal.tar.gz -C /tmp
+mv /tmp/temporal /usr/local/bin/temporal
+chmod +x /usr/local/bin/temporal
+temporal --version
+```
+
+**Step 2: Start Temporal**
+```bash
+temporal server start-dev --headless &
+# Verify: nc -z localhost 7233
+```
+
+**Step 3: Initialize PostgreSQL**
 ```bash
 PGDATA="/tmp/pgdata"
 rm -rf "$PGDATA"
 mkdir -p "$PGDATA"
 chown postgres:postgres "$PGDATA"
+
 su - postgres -c "initdb -D $PGDATA --auth=trust"
 su - postgres -c "echo \"unix_socket_directories = '$PGDATA'\" >> $PGDATA/postgresql.conf"
-```
-
-2. Start PostgreSQL:
-```bash
 su - postgres -c "pg_ctl -D $PGDATA -l $PGDATA/pg.log start"
 ```
 
-3. Create database:
+**Step 4: Create Database**
 ```bash
 su - postgres -c "psql -h $PGDATA -c \"CREATE USER everruns WITH PASSWORD 'everruns';\""
 su - postgres -c "psql -h $PGDATA -c \"CREATE DATABASE everruns OWNER everruns;\""
 ```
 
-4. Install UUIDv7 polyfill (PostgreSQL < 18):
+**Step 5: Install UUIDv7 Polyfill**
 ```sql
+-- Connect to everruns database
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE OR REPLACE FUNCTION uuidv7() RETURNS uuid AS $$
@@ -72,99 +128,55 @@ END;
 $$ LANGUAGE plpgsql VOLATILE;
 ```
 
-5. Run migrations and API:
+**Step 6: Run Migrations & API**
 ```bash
 export DATABASE_URL="postgres://everruns:everruns@%2Ftmp%2Fpgdata/everruns"
+export TEMPORAL_ADDRESS="localhost:7233"
 sqlx migrate run --source crates/everruns-storage/migrations
 cargo run -p everruns-api &
 ```
 
-6. Run smoke tests:
+**Step 7: Run Smoke Tests**
 ```bash
 ./scripts/smoke-test.sh
 ```
 
-### Option 2: Remote PostgreSQL via SSH Tunnel
+### Option 3: Remote Services via SSH Tunnel
 
-If you have a VM with PostgreSQL:
+If you have a VM with PostgreSQL and Temporal:
 
 ```bash
-# Create SSH tunnel (from another terminal or use -f for background)
-ssh -L 5432:localhost:5432 user@your-vm.example.com
+# Create SSH tunnels
+ssh -L 5432:localhost:5432 -L 7233:localhost:7233 user@your-vm.example.com
 
-# Use standard DATABASE_URL
+# Use standard URLs
 export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
+export TEMPORAL_ADDRESS="localhost:7233"
 ```
-
-**Setup on VM:**
-```bash
-# On the VM
-docker run -d --name pg \
-  -e POSTGRES_USER=everruns \
-  -e POSTGRES_PASSWORD=everruns \
-  -e POSTGRES_DB=everruns \
-  -p 5432:5432 \
-  postgres:18-alpine
-```
-
-### Option 3: Cloud-Hosted PostgreSQL
-
-Use managed PostgreSQL services:
-
-- **Neon**: Free tier available, instant provisioning
-- **Supabase**: Free tier with PostgreSQL 15
-- **Railway**: Easy setup, pay-as-you-go
-- **Render**: Free PostgreSQL with 90-day limit
-
-Example with Neon:
-```bash
-export DATABASE_URL="postgres://user:password@ep-xxx.us-east-2.aws.neon.tech/everruns?sslmode=require"
-```
-
-**Note:** Network access may be restricted in some Cloud Agent environments.
 
 ### Option 4: GitHub Actions CI
 
-Trigger smoke tests via GitHub Actions:
+Trigger the existing CI workflow which includes smoke tests:
 
 ```bash
-# Trigger workflow (requires gh CLI)
+# Push to trigger CI
+git push origin <branch>
+
+# Or manually trigger (if workflow_dispatch enabled)
 gh workflow run ci.yml
-
-# Check status
-gh run list --workflow=ci.yml
-gh run watch <run-id>
+gh run watch
 ```
-
-The CI workflow already includes a `smoke-test` job that:
-1. Spins up PostgreSQL as a service
-2. Builds the API
-3. Runs all smoke tests
-
-### Option 5: Hybrid Testing
-
-For comprehensive testing:
-
-1. **Unit tests**: Run locally without database
-```bash
-cargo test --lib
-```
-
-2. **API tests**: Run with local PostgreSQL (Option 1)
-```bash
-./scripts/cloud-agent-smoke-test.sh
-```
-
-3. **Full integration**: Use GitHub Actions (Option 4)
 
 ## Environment Requirements
 
-### Required (for local PostgreSQL)
+### Required
 - PostgreSQL 16+ binaries (`/usr/lib/postgresql/16/bin/`)
 - `postgres` system user
 - Root access (for `su - postgres`)
 - Rust toolchain
 - sqlx-cli
+- curl, tar (for Temporal CLI download)
+- nc (netcat, for port checking)
 
 ### Checking Environment
 ```bash
@@ -174,10 +186,15 @@ dpkg -l | grep postgresql
 
 # Check Rust
 cargo --version
-rustc --version
+
+# Check network tools
+which curl nc tar
 
 # Check sqlx
 which sqlx || cargo install sqlx-cli --no-default-features --features postgres
+
+# Check Temporal CLI
+which temporal || echo "Will be downloaded automatically"
 ```
 
 ## Troubleshooting
@@ -189,7 +206,7 @@ su - postgres -c "initdb ..."
 ```
 
 ### "function uuidv7() does not exist"
-PostgreSQL 16 doesn't have native UUIDv7. Install the polyfill function (see above).
+PostgreSQL 16 doesn't have native UUIDv7. Install the polyfill function.
 
 ### "Permission denied" for log file
 Create the log file with correct ownership:
@@ -205,24 +222,53 @@ export DATABASE_URL="postgres://everruns:everruns@%2Ftmp%2Fpgdata/everruns"
 # Note: %2F is URL-encoded /
 ```
 
+### Temporal CLI download fails
+Check network access or download manually from:
+https://temporal.io/download
+
 ### Run status shows "failed"
 This is expected without `OPENAI_API_KEY`. The workflow can't execute LLM calls.
 The smoke test still validates all API operations work correctly.
 
-## Comparison Matrix
-
-| Option | Setup Time | Reliability | Network Required | Best For |
-|--------|------------|-------------|------------------|----------|
-| Local PostgreSQL | 2 min | High | No | Quick validation |
-| SSH Tunnel | 5 min | Medium | Yes | Existing VMs |
-| Cloud PostgreSQL | 10 min | High | Yes | Persistent testing |
-| GitHub Actions | 0 min | High | Yes | CI/CD integration |
-
-## Quick Start
-
+### Temporal connection refused
+Check if Temporal is running:
 ```bash
-# Fastest path to running smoke tests in Cloud Agent:
-./scripts/cloud-agent-smoke-test.sh
+nc -z localhost 7233 && echo "Temporal is running" || echo "Temporal not running"
 ```
 
-This script handles all setup automatically and cleans up on exit.
+Start it with:
+```bash
+temporal server start-dev --headless &
+```
+
+## Comparison Matrix
+
+| Option | PostgreSQL | Temporal | Setup Time | Network |
+|--------|------------|----------|------------|---------|
+| Local Setup | Local cluster | CLI dev server | ~2 min | No |
+| SSH Tunnel | Remote | Remote | ~5 min | Yes |
+| GitHub Actions | CI service | CI service | ~0 min | Yes |
+
+## Files Created
+
+- `/tmp/pgdata/` - PostgreSQL data directory
+- `/tmp/pgdata/pg.log` - PostgreSQL log
+- `/tmp/temporal.log` - Temporal server log
+- `/tmp/api.log` - API server log
+- `/usr/local/bin/temporal` - Temporal CLI binary
+
+All files are cleaned up automatically when the script exits (except Temporal CLI binary).
+
+## Temporal Dev Server Details
+
+The Temporal CLI includes a development server that:
+- Uses in-memory SQLite (no external database needed)
+- Runs on port 7233 (gRPC) by default
+- Includes a built-in UI (disabled with `--headless`)
+- Perfect for testing and development
+
+To use with UI (for debugging):
+```bash
+temporal server start-dev
+# UI available at http://localhost:8233
+```

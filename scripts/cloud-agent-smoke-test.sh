@@ -1,6 +1,6 @@
 #!/bin/bash
 # Cloud Agent Smoke Test Script
-# This script sets up PostgreSQL locally and runs smoke tests
+# This script sets up PostgreSQL and Temporal locally and runs smoke tests
 # without requiring Docker. Designed for Cloud Agent environments.
 
 set -e
@@ -10,7 +10,10 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 PGDATA="/tmp/pgdata"
 LOGFILE="$PGDATA/pg.log"
 PG_BIN="/usr/lib/postgresql/16/bin"
+TEMPORAL_BIN="/usr/local/bin/temporal"
+TEMPORAL_LOG="/tmp/temporal.log"
 API_PID=""
+TEMPORAL_PID=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -39,6 +42,12 @@ cleanup() {
         log_info "Stopped API server"
     fi
 
+    # Stop Temporal server
+    if [ -n "$TEMPORAL_PID" ]; then
+        kill "$TEMPORAL_PID" 2>/dev/null || true
+        log_info "Stopped Temporal server"
+    fi
+
     # Stop PostgreSQL
     if [ -d "$PGDATA" ]; then
         su - postgres -c "export PATH=$PG_BIN:\$PATH && pg_ctl -D $PGDATA stop -m fast" 2>/dev/null || true
@@ -64,6 +73,49 @@ check_postgres() {
         exit 1
     fi
     log_info "PostgreSQL found at $PG_BIN"
+}
+
+# Install Temporal CLI if not present
+install_temporal() {
+    if [ -f "$TEMPORAL_BIN" ]; then
+        log_info "Temporal CLI already installed"
+        return 0
+    fi
+
+    log_info "Installing Temporal CLI..."
+
+    # Download Temporal CLI binary for Linux x86_64
+    curl -sL "https://temporal.download/cli/archive/latest?platform=linux&arch=amd64" -o /tmp/temporal.tar.gz
+
+    # Extract and install
+    tar -xzf /tmp/temporal.tar.gz -C /tmp
+    mv /tmp/temporal "$TEMPORAL_BIN"
+    chmod +x "$TEMPORAL_BIN"
+    rm -f /tmp/temporal.tar.gz
+
+    log_info "Temporal CLI installed: $($TEMPORAL_BIN --version)"
+}
+
+# Start Temporal dev server
+start_temporal() {
+    log_info "Starting Temporal dev server..."
+
+    # Start Temporal dev server in background (uses in-memory SQLite)
+    "$TEMPORAL_BIN" server start-dev --headless > "$TEMPORAL_LOG" 2>&1 &
+    TEMPORAL_PID=$!
+
+    # Wait for Temporal to be ready
+    for i in {1..30}; do
+        if nc -z localhost 7233 2>/dev/null; then
+            log_info "Temporal is ready on localhost:7233"
+            return 0
+        fi
+        sleep 1
+    done
+
+    log_error "Temporal failed to start"
+    cat "$TEMPORAL_LOG"
+    exit 1
 }
 
 # Initialize PostgreSQL cluster
@@ -179,6 +231,7 @@ start_api() {
 
     cd "$PROJECT_ROOT"
     export DATABASE_URL="postgres://everruns:everruns@%2Ftmp%2Fpgdata/everruns"
+    export TEMPORAL_ADDRESS="localhost:7233"
 
     # Build API
     cargo build -p everruns-api > /dev/null 2>&1
@@ -214,11 +267,14 @@ run_smoke_tests() {
 main() {
     echo "==============================================="
     echo "  Cloud Agent Smoke Test Setup"
+    echo "  (PostgreSQL + Temporal, no Docker)"
     echo "==============================================="
     echo ""
 
     check_root
     check_postgres
+    install_temporal
+    start_temporal
     init_postgres
     start_postgres
     setup_database
@@ -236,6 +292,12 @@ main() {
 
     echo ""
     log_info "All smoke tests completed successfully!"
+    echo ""
+    echo "Services running:"
+    echo "  - PostgreSQL: /tmp/pgdata (socket)"
+    echo "  - Temporal:   localhost:7233"
+    echo "  - API:        http://localhost:9000"
+    echo ""
 }
 
 main "$@"
