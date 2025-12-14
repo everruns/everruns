@@ -238,7 +238,6 @@ fi
 
 echo "📊 Summary:"
 echo "   Agent: $AGENT_ID"
-echo "   Version: $VERSION_NUM"
 echo "   Thread: $THREAD_ID"
 echo "   Message: $MESSAGE_ID"
 echo "   Run: $RUN_ID ($(echo $RUN_STATUS | jq -r '.status'))"
