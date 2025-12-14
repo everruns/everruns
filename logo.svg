@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1024"
+     height="768"
+     viewBox="0 0 512 384">
+
+  <defs>
+    <!-- GOLD target point: (256, 220) -->
+
+    <!-- Top ring -->
+    <linearGradient id="gTop" gradientUnits="userSpaceOnUse"
+      x1="256" y1="30"
+      x2="256" y2="220">
+      <stop offset="0.00" stop-color="#0A1636"/>
+      <stop offset="0.70" stop-color="#0A1636"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
+    </linearGradient>
+
+    <!-- Bottom-left ring -->
+    <linearGradient id="gLeft" gradientUnits="userSpaceOnUse"
+      x1="70" y1="310"
+      x2="256" y2="220">
+      <stop offset="0.00" stop-color="#081C3F"/>
+      <stop offset="0.70" stop-color="#081C3F"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
+    </linearGradient>
+
+    <!-- Bottom-right ring -->
+    <linearGradient id="gRight" gradientUnits="userSpaceOnUse"
+      x1="442" y1="310"
+      x2="256" y2="220">
+      <stop offset="0.00" stop-color="#0B1233"/>
+      <stop offset="0.70" stop-color="#0B1233"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rings -->
+  <g fill="none"
+     stroke-width="18"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <!-- Top -->
+    <circle cx="256" cy="150" r="120" stroke="url(#gTop)"/>
+
+    <!-- Bottom-left -->
+    <circle cx="186" cy="245" r="120" stroke="url(#gLeft)"/>
+
+    <!-- Bottom-right -->
+    <circle cx="326" cy="245" r="120" stroke="url(#gRight)"/>
+
+  </g>
+</svg>
