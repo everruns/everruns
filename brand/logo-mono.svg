@@ -1,22 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180">
-  <!-- Bottom circle (behind left) -->
-  <circle cx="100" cy="115" r="45" fill="none" stroke="#0A0A0A" stroke-width="8"/>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1024"
+     height="768"
+     viewBox="0 0 512 384">
 
-  <!-- Left circle -->
-  <circle cx="70" cy="65" r="45" fill="none" stroke="#0A0A0A" stroke-width="8"/>
+  <!-- Rings -->
+  <g fill="none"
+     stroke="#0A0A0A"
+     stroke-width="18"
+     stroke-linecap="round"
+     stroke-linejoin="round">
 
-  <!-- Bottom circle front segment (over left, under right) -->
-  <path d="M 55 115 A 45 45 0 0 1 100 70" fill="none" stroke="#0A0A0A" stroke-width="8"/>
+    <!-- Top -->
+    <circle cx="256" cy="150" r="120"/>
 
-  <!-- Right circle (behind bottom at bottom-right) -->
-  <circle cx="130" cy="65" r="45" fill="none" stroke="#0A0A0A" stroke-width="8"/>
+    <!-- Bottom-left -->
+    <circle cx="186" cy="245" r="120"/>
 
-  <!-- Bottom circle top-right segment (over right) -->
-  <path d="M 100 70 A 45 45 0 0 1 145 115" fill="none" stroke="#0A0A0A" stroke-width="8"/>
+    <!-- Bottom-right -->
+    <circle cx="326" cy="245" r="120"/>
 
-  <!-- Right front segment (over left) -->
-  <path d="M 130 110 A 45 45 0 0 1 85 65" fill="none" stroke="#0A0A0A" stroke-width="8"/>
-
-  <!-- Left top segment (over bottom) -->
-  <path d="M 70 20 A 45 45 0 0 1 115 65" fill="none" stroke="#0A0A0A" stroke-width="8"/>
+  </g>
 </svg>

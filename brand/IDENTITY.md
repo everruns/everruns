@@ -31,8 +31,11 @@ Each ring has a gradient from **navy on the outside to gold towards the center**
 ### Logo Colors
 | Name | Hex | Usage |
 |------|-----|-------|
-| Navy | `#0A1F44` | Two upper rings |
-| Gold | `#D4A84B` | Bottom ring |
+| Navy (top) | `#0A1636` | Top ring outer |
+| Navy (left) | `#081C3F` | Bottom-left ring outer |
+| Navy (right) | `#0B1233` | Bottom-right ring outer |
+| Gold | `#D4A43A` | Center convergence point |
+| Background | `#F6F4EF` | Logo background (optional) |
 
 ### App Interface (Grayscale)
 | Name | Hex | Usage |
@@ -47,8 +50,8 @@ Each ring has a gradient from **navy on the outside to gold towards the center**
 ### Accent
 | Name | Hex | Usage |
 |------|-----|-------|
-| Navy | `#0A1F44` | Links, actions |
-| Gold | `#D4A84B` | Success states, highlights |
+| Navy | `#0A1636` | Links, actions |
+| Gold | `#D4A43A` | Success states, highlights |
 
 ---
 

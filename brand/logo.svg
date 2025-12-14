@@ -1,45 +1,56 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180">
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1024"
+     height="768"
+     viewBox="0 0 512 384">
+
   <defs>
-    <!-- Gradient for top-left circle: from top-left corner towards center -->
-    <linearGradient id="gradTopLeft" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0A1F44"/>
-      <stop offset="60%" stop-color="#0A1F44"/>
-      <stop offset="100%" stop-color="#D4A84B"/>
+    <!-- GOLD target point: (256, 220) -->
+
+    <!-- Top ring -->
+    <linearGradient id="gTop" gradientUnits="userSpaceOnUse"
+      x1="256" y1="30"
+      x2="256" y2="220">
+      <stop offset="0.00" stop-color="#0A1636"/>
+      <stop offset="0.70" stop-color="#0A1636"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
     </linearGradient>
 
-    <!-- Gradient for top-right circle: from top-right corner towards center -->
-    <linearGradient id="gradTopRight" x1="100%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#0A1F44"/>
-      <stop offset="60%" stop-color="#0A1F44"/>
-      <stop offset="100%" stop-color="#D4A84B"/>
+    <!-- Bottom-left ring -->
+    <linearGradient id="gLeft" gradientUnits="userSpaceOnUse"
+      x1="70" y1="310"
+      x2="256" y2="220">
+      <stop offset="0.00" stop-color="#081C3F"/>
+      <stop offset="0.70" stop-color="#081C3F"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
     </linearGradient>
 
-    <!-- Gradient for bottom circle: from bottom-left towards center-right -->
-    <linearGradient id="gradBottom" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#0A1F44"/>
-      <stop offset="60%" stop-color="#0A1F44"/>
-      <stop offset="100%" stop-color="#D4A84B"/>
+    <!-- Bottom-right ring -->
+    <linearGradient id="gRight" gradientUnits="userSpaceOnUse"
+      x1="442" y1="310"
+      x2="256" y2="220">
+      <stop offset="0.00" stop-color="#0B1233"/>
+      <stop offset="0.70" stop-color="#0B1233"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
     </linearGradient>
   </defs>
 
-  <!-- Bottom circle - base layer -->
-  <circle cx="100" cy="115" r="45" fill="none" stroke="url(#gradBottom)" stroke-width="8"/>
+  <!-- Optional background (remove for transparent) -->
+  <rect width="512" height="384" fill="#F6F4EF"/>
 
-  <!-- Left circle - full -->
-  <circle cx="70" cy="65" r="45" fill="none" stroke="url(#gradTopLeft)" stroke-width="8"/>
+  <!-- Rings -->
+  <g fill="none"
+     stroke-width="18"
+     stroke-linecap="round"
+     stroke-linejoin="round">
 
-  <!-- Bottom circle - segment over left circle -->
-  <path d="M 55 115 A 45 45 0 0 1 100 70" fill="none" stroke="url(#gradBottom)" stroke-width="8"/>
+    <!-- Top -->
+    <circle cx="256" cy="150" r="120" stroke="url(#gTop)"/>
 
-  <!-- Right circle - full -->
-  <circle cx="130" cy="65" r="45" fill="none" stroke="url(#gradTopRight)" stroke-width="8"/>
+    <!-- Bottom-left -->
+    <circle cx="186" cy="245" r="120" stroke="url(#gLeft)"/>
 
-  <!-- Bottom circle - segment over right circle -->
-  <path d="M 100 70 A 45 45 0 0 1 145 115" fill="none" stroke="url(#gradBottom)" stroke-width="8"/>
+    <!-- Bottom-right -->
+    <circle cx="326" cy="245" r="120" stroke="url(#gRight)"/>
 
-  <!-- Right circle - segment over left circle -->
-  <path d="M 130 110 A 45 45 0 0 1 85 65" fill="none" stroke="url(#gradTopRight)" stroke-width="8"/>
-
-  <!-- Left circle - segment over bottom circle -->
-  <path d="M 70 20 A 45 45 0 0 1 115 65" fill="none" stroke="url(#gradTopLeft)" stroke-width="8"/>
+  </g>
 </svg>
