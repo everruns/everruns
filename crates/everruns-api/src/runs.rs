@@ -30,7 +30,6 @@ pub struct AppState {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateRunRequest {
     pub agent_id: Uuid,
-    pub agent_version: i32,
     pub thread_id: Uuid,
 }
 
@@ -98,7 +97,6 @@ pub async fn list_runs(
         .map(|row| Run {
             id: row.id,
             agent_id: row.agent_id,
-            agent_version: row.agent_version,
             thread_id: row.thread_id,
             status: row.status.parse().unwrap_or(RunStatus::Pending),
             created_at: row.created_at,
@@ -127,7 +125,6 @@ pub async fn create_run(
 ) -> Result<(StatusCode, Json<Run>), StatusCode> {
     let input = CreateRun {
         agent_id: req.agent_id,
-        agent_version: req.agent_version,
         thread_id: req.thread_id,
     };
 
@@ -139,7 +136,6 @@ pub async fn create_run(
     let run = Run {
         id: row.id,
         agent_id: row.agent_id,
-        agent_version: row.agent_version,
         thread_id: row.thread_id,
         status: row.status.parse().unwrap_or(RunStatus::Pending),
         created_at: row.created_at,
@@ -150,7 +146,7 @@ pub async fn create_run(
     // Start the workflow execution
     state
         .executor
-        .start_workflow(row.id, row.agent_id, row.agent_version, row.thread_id)
+        .start_workflow(row.id, row.agent_id, row.thread_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to start workflow: {}", e);
@@ -193,7 +189,6 @@ pub async fn get_run(
     let run = Run {
         id: row.id,
         agent_id: row.agent_id,
-        agent_version: row.agent_version,
         thread_id: row.thread_id,
         status: row.status.parse().unwrap_or(RunStatus::Pending),
         created_at: row.created_at,

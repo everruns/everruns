@@ -31,7 +31,6 @@ pub struct AppState {
 #[derive(Debug, Deserialize)]
 pub struct AgUiParams {
     pub agent_id: Uuid,
-    pub agent_version: i32,
     pub thread_id: Option<Uuid>,
 }
 
@@ -67,7 +66,6 @@ pub async fn handle_ag_ui_request(
 ) -> Result<Response, StatusCode> {
     tracing::info!(
         agent_id = %params.agent_id,
-        agent_version = params.agent_version,
         message_count = body.messages.len(),
         "Received AG-UI request"
     );
@@ -108,7 +106,6 @@ pub async fn handle_ag_ui_request(
         .db
         .create_run(everruns_storage::models::CreateRun {
             agent_id: params.agent_id,
-            agent_version: params.agent_version,
             thread_id,
         })
         .await
@@ -123,7 +120,7 @@ pub async fn handle_ag_ui_request(
     let executor = state.executor.clone();
     tokio::spawn(async move {
         if let Err(e) = executor
-            .start_workflow(run_id, params.agent_id, params.agent_version, thread_id)
+            .start_workflow(run_id, params.agent_id, thread_id)
             .await
         {
             tracing::error!(run_id = %run_id, error = %e, "Workflow execution failed");

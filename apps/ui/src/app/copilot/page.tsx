@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useAgents, useAgentVersions } from "@/hooks/use-agents";
+import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentSelector } from "@/components/chat/agent-selector";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,8 +34,6 @@ export default function CopilotPage() {
   // Agent selection
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
-  const { data: versions = [] } = useAgentVersions(selectedAgentId || "");
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -44,13 +42,6 @@ export default function CopilotPage() {
   const [streamingContent, setStreamingContent] = useState("");
   const [threadId, setThreadId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Set default version when versions load
-  useEffect(() => {
-    if (versions.length > 0 && !selectedVersion) {
-      setSelectedVersion(versions[0].version);
-    }
-  }, [versions, selectedVersion]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -62,14 +53,13 @@ export default function CopilotPage() {
   // Handle agent selection
   const handleAgentChange = useCallback((agentId: string) => {
     setSelectedAgentId(agentId);
-    setSelectedVersion(null);
     setMessages([]);
     setThreadId(null);
   }, []);
 
   // Handle sending a message
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !selectedAgentId || !selectedVersion || isStreaming) return;
+    if (!input.trim() || !selectedAgentId || isStreaming) return;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -86,7 +76,6 @@ export default function CopilotPage() {
       // Build the AG-UI endpoint URL
       const params = new URLSearchParams({
         agent_id: selectedAgentId,
-        agent_version: selectedVersion.toString(),
       });
       if (threadId) {
         params.set("thread_id", threadId);
@@ -192,10 +181,10 @@ export default function CopilotPage() {
       console.error("Failed to send message:", error);
       setIsStreaming(false);
     }
-  }, [input, selectedAgentId, selectedVersion, messages, threadId, isStreaming]);
+  }, [input, selectedAgentId, messages, threadId, isStreaming]);
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
-  const canChat = selectedAgentId && selectedVersion && versions.length > 0;
+  const canChat = !!selectedAgentId;
 
   return (
     <>
@@ -212,7 +201,7 @@ export default function CopilotPage() {
                 <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium mb-2">No agents available</h3>
                 <p className="text-muted-foreground mb-4">
-                  Create an agent with at least one version to start chatting.
+                  Create an agent to start chatting.
                 </p>
                 <Link href="/agents/new">
                   <Button>
@@ -228,11 +217,8 @@ export default function CopilotPage() {
             {/* Agent Selector */}
             <AgentSelector
               agents={agents.filter((a) => a.status === "active")}
-              versions={versions}
               selectedAgentId={selectedAgentId}
-              selectedVersion={selectedVersion}
               onAgentChange={handleAgentChange}
-              onVersionChange={setSelectedVersion}
               disabled={isStreaming}
             />
 
@@ -243,9 +229,7 @@ export default function CopilotPage() {
                   <Bot className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium mb-2">Select an agent to start</h3>
                   <p className="text-muted-foreground">
-                    {selectedAgentId && versions.length === 0
-                      ? "This agent has no versions. Create a version first."
-                      : "Choose an agent from the dropdown above"}
+                    Choose an agent from the dropdown above
                   </p>
                 </div>
               </div>

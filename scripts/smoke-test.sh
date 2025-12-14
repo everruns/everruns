@@ -40,7 +40,11 @@ AGENT=$(curl -s -X POST "$API_URL/v1/agents" \
   -d "{
     \"name\": \"Test Agent\",
     \"description\": \"Created by test script\",
-    \"default_model_id\": \"gpt-5.1\"
+    \"default_model_id\": \"gpt-5.1\",
+    \"definition\": {
+      \"system_prompt\": \"You are a helpful assistant\",
+      \"temperature\": 0.7
+    }
   }")
 
 AGENT_ID=$(echo $AGENT | jq -r '.id')
@@ -66,29 +70,15 @@ UPDATED=$(curl -s -X PATCH "$API_URL/v1/agents/$AGENT_ID" \
 echo "   New name: $(echo $UPDATED | jq -r '.name')"
 echo ""
 
-# Test 5: Create agent version
-echo "5️⃣  Creating agent version..."
-VERSION=$(curl -s -X POST "$API_URL/v1/agents/$AGENT_ID/versions" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"definition\": {
-      \"system_prompt\": \"You are a helpful assistant\",
-      \"temperature\": 0.7
-    }
-  }")
-VERSION_NUM=$(echo $VERSION | jq -r '.version')
-echo "   Version: $VERSION_NUM"
-echo ""
-
-# Test 6: List agents
-echo "6️⃣  Listing agents..."
+# Test 5: List agents
+echo "5️⃣  Listing agents..."
 AGENTS=$(curl -s "$API_URL/v1/agents")
 COUNT=$(echo $AGENTS | jq '. | length')
 echo "   Found $COUNT agent(s)"
 echo ""
 
-# Test 7: Create thread
-echo "7️⃣  Creating thread..."
+# Test 6: Create thread
+echo "6️⃣  Creating thread..."
 THREAD=$(curl -s -X POST "$API_URL/v1/threads" \
   -H "Content-Type: application/json" \
   -d "{}")
@@ -96,8 +86,8 @@ THREAD_ID=$(echo $THREAD | jq -r '.id')
 echo "   Thread ID: $THREAD_ID"
 echo ""
 
-# Test 8: Add message
-echo "8️⃣  Adding message to thread..."
+# Test 7: Add message
+echo "7️⃣  Adding message to thread..."
 MESSAGE=$(curl -s -X POST "$API_URL/v1/threads/$THREAD_ID/messages" \
   -H "Content-Type: application/json" \
   -d "{
@@ -109,13 +99,12 @@ echo "   Message ID: $MESSAGE_ID"
 echo "   Content: $(echo $MESSAGE | jq -r '.content')"
 echo ""
 
-# Test 9: Create run
-echo "9️⃣  Creating run..."
+# Test 8: Create run
+echo "8️⃣  Creating run..."
 RUN=$(curl -s -X POST "$API_URL/v1/runs" \
   -H "Content-Type: application/json" \
   -d "{
     \"agent_id\": \"$AGENT_ID\",
-    \"agent_version\": $VERSION_NUM,
     \"thread_id\": \"$THREAD_ID\"
   }")
 RUN_ID=$(echo $RUN | jq -r '.id')
@@ -249,7 +238,6 @@ fi
 
 echo "📊 Summary:"
 echo "   Agent: $AGENT_ID"
-echo "   Version: $VERSION_NUM"
 echo "   Thread: $THREAD_ID"
 echo "   Message: $MESSAGE_ID"
 echo "   Run: $RUN_ID ($(echo $RUN_STATUS | jq -r '.status'))"

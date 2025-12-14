@@ -15,19 +15,10 @@ Represents an AI assistant configuration.
 | `name` | string | Display name |
 | `description` | string? | Optional description |
 | `default_model_id` | string | Default LLM model identifier |
+| `definition` | JSON | Agent configuration (system prompt, LLM settings) |
 | `status` | enum | `active` or `archived` |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
-
-### AgentVersion
-Immutable snapshot of agent configuration at a point in time.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `agent_id` | UUID v7 | Parent agent reference |
-| `version` | integer | Auto-incrementing version number (1, 2, 3...) |
-| `definition` | JSON | Agent configuration (system prompt, LLM settings) |
-| `created_at` | timestamp | Creation time |
 
 Definition schema:
 ```json
@@ -66,7 +57,6 @@ A single execution of an agent on a thread.
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
 | `agent_id` | UUID v7 | Agent reference |
-| `agent_version` | integer | Version number used |
 | `thread_id` | UUID v7 | Thread reference |
 | `status` | enum | `pending`, `running`, `completed`, `failed`, `cancelled` |
 | `created_at` | timestamp | Creation time |
