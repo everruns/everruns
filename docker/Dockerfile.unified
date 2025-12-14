@@ -1,0 +1,101 @@
+# syntax=docker/dockerfile:1.4
+#
+# Unified multi-target Dockerfile for everruns services
+# Builds both api and worker in a single build with shared dependency cache
+#
+# Usage:
+#   docker build --target api -f docker/Dockerfile.unified -t everruns-api .
+#   docker build --target worker -f docker/Dockerfile.unified -t everruns-worker .
+
+# ============================================================================
+# Stage 1: Chef - Prepare cargo-chef for dependency caching
+# ============================================================================
+FROM rust:1.83-slim AS chef
+
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install cargo-chef --locked
+
+WORKDIR /app
+
+# ============================================================================
+# Stage 2: Planner - Analyze dependencies (shared between all targets)
+# ============================================================================
+FROM chef AS planner
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates crates
+
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ============================================================================
+# Stage 3: Dependencies - Build all dependencies (highly cacheable)
+# ============================================================================
+FROM chef AS deps
+
+# Copy recipe and build dependencies first (this layer is cached!)
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# ============================================================================
+# Stage 4a: Build API binary
+# ============================================================================
+FROM deps AS builder-api
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates crates
+
+RUN cargo build --release -p everruns-api
+
+# ============================================================================
+# Stage 4b: Build Worker binary
+# ============================================================================
+FROM deps AS builder-worker
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates crates
+
+RUN cargo build --release -p everruns-worker
+
+# ============================================================================
+# Stage 5a: API Runtime image
+# ============================================================================
+FROM debian:bookworm-slim AS api
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder-api /app/target/release/everruns-api /app/everruns-api
+
+EXPOSE 9000
+
+ENV RUST_LOG=info
+ENV HOST=0.0.0.0
+ENV PORT=9000
+
+CMD ["/app/everruns-api"]
+
+# ============================================================================
+# Stage 5b: Worker Runtime image
+# ============================================================================
+FROM debian:bookworm-slim AS worker
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder-worker /app/target/release/everruns-worker /app/everruns-worker
+
+ENV RUST_LOG=info
+
+CMD ["/app/everruns-worker"]

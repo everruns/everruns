@@ -9,6 +9,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Shared cache key prefix for better cache reuse across jobs
+  CACHE_VERSION: v1
 
 jobs:
   format:
@@ -37,29 +39,17 @@ jobs:
         with:
           components: clippy
 
-      - name: Cache cargo registry
+      - name: Cache cargo
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-git-
-
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-target-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-target-clippy-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-clippy-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -91,34 +81,32 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry
+      - name: Cache cargo
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-registry-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-test-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
 
-      - name: Cache cargo index
+      - name: Cache sqlx-cli
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-git-
+          path: ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-sqlx-cli-0.8
 
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-target-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-target-test-
+      - name: Install sqlx-cli
+        run: |
+          if [ ! -f ~/.cargo/bin/sqlx ]; then
+            cargo install sqlx-cli --no-default-features --features postgres
+          fi
 
       - name: Run migrations
-        run: |
-          cargo install sqlx-cli --no-default-features --features postgres
-          sqlx migrate run --source crates/everruns-storage/migrations
+        run: sqlx migrate run --source crates/everruns-storage/migrations
 
       - name: Run tests
         run: cargo test --all-features
@@ -133,29 +121,17 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry
+      - name: Cache cargo
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-git-
-
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-target-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-target-build-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-build-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
 
       - name: Build
         run: cargo build --all-features --release
@@ -190,34 +166,32 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Cache cargo registry
+      - name: Cache cargo
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-smoke-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-registry-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-smoke-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
 
-      - name: Cache cargo index
+      - name: Cache sqlx-cli
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-git-
+          path: ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-sqlx-cli-0.8
 
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-target-smoke-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-target-smoke-
+      - name: Install sqlx-cli
+        run: |
+          if [ ! -f ~/.cargo/bin/sqlx ]; then
+            cargo install sqlx-cli --no-default-features --features postgres
+          fi
 
       - name: Run migrations
-        run: |
-          cargo install sqlx-cli --no-default-features --features postgres
-          sqlx migrate run --source crates/everruns-storage/migrations
+        run: sqlx migrate run --source crates/everruns-storage/migrations
 
       - name: Build API
         run: cargo build -p everruns-api
@@ -305,9 +279,20 @@ jobs:
       - name: Type check
         run: npm run build
 
+  # Docker builds using matrix for parallel execution
   docker-build:
-    name: Docker Build Check
+    name: Docker Build (${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: api
+            dockerfile: docker/Dockerfile.unified
+            image: everruns-api
+          - target: worker
+            dockerfile: docker/Dockerfile.unified
+            image: everruns-worker
 
     steps:
       - uses: actions/checkout@v4
@@ -315,22 +300,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build API Docker image
+      - name: Build ${{ matrix.target }} Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: crates/everruns-api/Dockerfile
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
           push: false
-          tags: everruns-api:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build Worker Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: crates/everruns-worker/Dockerfile
-          push: false
-          tags: everruns-worker:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ matrix.image }}:ci
+          # Use shared cache scope for better layer reuse between api and worker
+          cache-from: type=gha,scope=docker-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.target }}
