@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
@@ -27,7 +28,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex h-16 items-center border-b px-6">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <Bot className="h-8 w-8 text-primary" />
+          <Image src="/logo.svg" alt="Everruns" width={32} height={32} />
           <span className="text-xl font-bold">Everruns</span>
         </Link>
       </div>
