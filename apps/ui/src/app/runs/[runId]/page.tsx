@@ -329,7 +329,7 @@ export default function RunDetailPage() {
             <div>
               <CardTitle className="font-mono text-lg">{run.id}</CardTitle>
               <CardDescription>
-                Agent: {agent?.name || run.agent_id} v{run.agent_version}
+                Agent: {agent?.name || run.agent_id}
               </CardDescription>
             </div>
             <RunStatusBadge status={run.status as RunStatus} size="lg" />

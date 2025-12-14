@@ -16,25 +16,17 @@ use crate::providers::{openai::OpenAiProvider, ChatMessage, LlmConfig, MessageRo
 pub struct AgentRunWorkflow {
     run_id: Uuid,
     agent_id: Uuid,
-    agent_version: i32,
     thread_id: Uuid,
     db: Database,
     persist_activity: PersistEventActivity,
 }
 
 impl AgentRunWorkflow {
-    pub async fn new(
-        run_id: Uuid,
-        agent_id: Uuid,
-        agent_version: i32,
-        thread_id: Uuid,
-        db: Database,
-    ) -> Result<Self> {
+    pub async fn new(run_id: Uuid, agent_id: Uuid, thread_id: Uuid, db: Database) -> Result<Self> {
         let persist_activity = PersistEventActivity::new(db.clone());
         Ok(Self {
             run_id,
             agent_id,
-            agent_version,
             thread_id,
             db,
             persist_activity,
@@ -61,14 +53,7 @@ impl AgentRunWorkflow {
             .persist_event(self.run_id, started_event)
             .await?;
 
-        // Load agent version to get configuration
-        let agent_version = self
-            .db
-            .get_agent_version(self.agent_id, self.agent_version)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Agent version not found"))?;
-
-        // Load agent for default model
+        // Load agent to get configuration
         let agent = self
             .db
             .get_agent(self.agent_id)
@@ -76,7 +61,7 @@ impl AgentRunWorkflow {
             .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
         // Parse agent definition for LLM config
-        let definition = &agent_version.definition;
+        let definition = &agent.definition;
         let system_prompt = definition
             .get("system")
             .and_then(|v| v.as_str())

@@ -155,9 +155,6 @@ export default function RunsPage() {
                         >
                           {getAgentName(run.agent_id)}
                         </Link>
-                        <span className="text-muted-foreground text-xs ml-1">
-                          v{run.agent_version}
-                        </span>
                       </TableCell>
                       <TableCell>
                         <RunStatusBadge status={run.status as RunStatus} />

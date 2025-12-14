@@ -8,16 +8,10 @@ export interface Agent {
   name: string;
   description: string | null;
   default_model_id: string;
+  definition: AgentDefinition;
   status: AgentStatus;
   created_at: string;
   updated_at: string;
-}
-
-export interface AgentVersion {
-  agent_id: string;
-  version: number;
-  definition: AgentDefinition;
-  created_at: string;
 }
 
 export interface AgentDefinition {
@@ -88,7 +82,6 @@ export type RunStatus =
 export interface Run {
   id: string;
   agent_id: string;
-  agent_version: number;
   thread_id: string;
   status: RunStatus;
   created_at: string;
@@ -147,17 +140,15 @@ export interface CreateAgentRequest {
   name: string;
   description?: string;
   default_model_id: string;
+  definition: AgentDefinition;
 }
 
 export interface UpdateAgentRequest {
   name?: string;
   description?: string;
   default_model_id?: string;
+  definition?: AgentDefinition;
   status?: AgentStatus;
-}
-
-export interface CreateAgentVersionRequest {
-  definition: AgentDefinition;
 }
 
 export interface CreateThreadRequest {
@@ -172,7 +163,6 @@ export interface CreateMessageRequest {
 
 export interface CreateRunRequest {
   agent_id: string;
-  agent_version: number;
   thread_id: string;
 }
 

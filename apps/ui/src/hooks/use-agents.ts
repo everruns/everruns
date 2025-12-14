@@ -6,14 +6,8 @@ import {
   getAgent,
   createAgent,
   updateAgent,
-  getAgentVersions,
-  createAgentVersion,
 } from "@/lib/api/agents";
-import type {
-  CreateAgentRequest,
-  UpdateAgentRequest,
-  CreateAgentVersionRequest,
-} from "@/lib/api/types";
+import type { CreateAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
 
 export function useAgents() {
   return useQuery({
@@ -48,28 +42,6 @@ export function useUpdateAgent(agentId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
       queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
-    },
-  });
-}
-
-export function useAgentVersions(agentId: string) {
-  return useQuery({
-    queryKey: ["agents", agentId, "versions"],
-    queryFn: () => getAgentVersions(agentId),
-    enabled: !!agentId,
-    staleTime: 60000, // 1 minute
-  });
-}
-
-export function useCreateAgentVersion(agentId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (data: CreateAgentVersionRequest) =>
-      createAgentVersion(agentId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["agents", agentId, "versions"],
-      });
     },
   });
 }

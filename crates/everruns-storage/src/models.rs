@@ -30,17 +30,10 @@ pub struct AgentRow {
     pub name: String,
     pub description: Option<String>,
     pub default_model_id: String,
+    pub definition: sqlx::types::JsonValue,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct AgentVersionRow {
-    pub agent_id: Uuid,
-    pub version: i32,
-    pub definition: sqlx::types::JsonValue,
-    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -63,7 +56,6 @@ pub struct MessageRow {
 pub struct RunRow {
     pub id: Uuid,
     pub agent_id: Uuid,
-    pub agent_version: i32,
     pub thread_id: Uuid,
     pub status: String,
     pub temporal_workflow_id: Option<String>,
@@ -115,6 +107,7 @@ pub struct CreateAgent {
     pub name: String,
     pub description: Option<String>,
     pub default_model_id: String,
+    pub definition: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -122,13 +115,8 @@ pub struct UpdateAgent {
     pub name: Option<String>,
     pub description: Option<String>,
     pub default_model_id: Option<String>,
+    pub definition: Option<serde_json::Value>,
     pub status: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateAgentVersion {
-    pub agent_id: Uuid,
-    pub definition: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -145,7 +133,6 @@ pub struct CreateMessage {
 #[derive(Debug, Clone)]
 pub struct CreateRun {
     pub agent_id: Uuid,
-    pub agent_version: i32,
     pub thread_id: Uuid,
 }
 

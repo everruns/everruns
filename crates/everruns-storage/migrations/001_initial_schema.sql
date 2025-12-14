@@ -34,23 +34,13 @@ CREATE TABLE agents (
     name TEXT NOT NULL,
     description TEXT,
     default_model_id TEXT NOT NULL,
+    definition JSONB NOT NULL DEFAULT '{}'::jsonb,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_agents_status ON agents(status);
-
--- Agent versions table (immutable)
-CREATE TABLE agent_versions (
-    agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    version INTEGER NOT NULL,
-    definition JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (agent_id, version)
-);
-
-CREATE INDEX idx_agent_versions_created_at ON agent_versions(created_at);
 
 -- Threads table
 CREATE TABLE threads (
@@ -77,7 +67,6 @@ CREATE INDEX idx_messages_created_at ON messages(created_at);
 CREATE TABLE runs (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    agent_version INTEGER NOT NULL,
     thread_id UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
     -- Internal Temporal workflow ID (never exposed in API)
@@ -85,8 +74,7 @@ CREATE TABLE runs (
     temporal_run_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     started_at TIMESTAMPTZ,
-    finished_at TIMESTAMPTZ,
-    FOREIGN KEY (agent_id, agent_version) REFERENCES agent_versions(agent_id, version)
+    finished_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_runs_agent_id ON runs(agent_id);

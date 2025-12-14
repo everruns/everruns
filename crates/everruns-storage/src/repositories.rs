@@ -55,16 +55,19 @@ impl Database {
 
     // Agents
     pub async fn create_agent(&self, input: CreateAgent) -> Result<AgentRow> {
+        let definition_json = serde_json::to_value(&input.definition)?;
+
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (name, description, default_model_id, status)
-            VALUES ($1, $2, $3, 'active')
-            RETURNING id, name, description, default_model_id, status, created_at, updated_at
+            INSERT INTO agents (name, description, default_model_id, definition, status)
+            VALUES ($1, $2, $3, $4, 'active')
+            RETURNING id, name, description, default_model_id, definition, status, created_at, updated_at
             "#,
         )
         .bind(input.name)
         .bind(input.description)
         .bind(input.default_model_id)
+        .bind(definition_json)
         .fetch_one(&self.pool)
         .await?;
 
@@ -74,7 +77,7 @@ impl Database {
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, name, description, default_model_id, status, created_at, updated_at
+            SELECT id, name, description, default_model_id, definition, status, created_at, updated_at
             FROM agents
             WHERE id = $1
             "#,
@@ -89,7 +92,7 @@ impl Database {
     pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
         let rows = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, name, description, default_model_id, status, created_at, updated_at
+            SELECT id, name, description, default_model_id, definition, status, created_at, updated_at
             FROM agents
             ORDER BY created_at DESC
             "#,
@@ -101,6 +104,11 @@ impl Database {
     }
 
     pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
+        let definition_json = input
+            .definition
+            .map(|d| serde_json::to_value(&d))
+            .transpose()?;
+
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
             UPDATE agents
@@ -108,90 +116,23 @@ impl Database {
                 name = COALESCE($2, name),
                 description = COALESCE($3, description),
                 default_model_id = COALESCE($4, default_model_id),
-                status = COALESCE($5, status),
+                definition = COALESCE($5, definition),
+                status = COALESCE($6, status),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, description, default_model_id, status, created_at, updated_at
+            RETURNING id, name, description, default_model_id, definition, status, created_at, updated_at
             "#,
         )
         .bind(id)
         .bind(input.name)
         .bind(input.description)
         .bind(input.default_model_id)
+        .bind(definition_json)
         .bind(input.status)
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
-    }
-
-    // Agent versions
-    pub async fn create_agent_version(&self, input: CreateAgentVersion) -> Result<AgentVersionRow> {
-        // Get next version number
-        let next_version: Option<i32> = sqlx::query_scalar(
-            r#"
-            SELECT COALESCE(MAX(version), 0) + 1
-            FROM agent_versions
-            WHERE agent_id = $1
-            "#,
-        )
-        .bind(input.agent_id)
-        .fetch_one(&self.pool)
-        .await?;
-
-        let next_version = next_version.unwrap_or(1);
-        let definition_json = serde_json::to_value(&input.definition)?;
-
-        let row = sqlx::query_as::<_, AgentVersionRow>(
-            r#"
-            INSERT INTO agent_versions (agent_id, version, definition)
-            VALUES ($1, $2, $3)
-            RETURNING agent_id, version, definition, created_at
-            "#,
-        )
-        .bind(input.agent_id)
-        .bind(next_version)
-        .bind(definition_json)
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
-    pub async fn get_agent_version(
-        &self,
-        agent_id: Uuid,
-        version: i32,
-    ) -> Result<Option<AgentVersionRow>> {
-        let row = sqlx::query_as::<_, AgentVersionRow>(
-            r#"
-            SELECT agent_id, version, definition, created_at
-            FROM agent_versions
-            WHERE agent_id = $1 AND version = $2
-            "#,
-        )
-        .bind(agent_id)
-        .bind(version)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
-    pub async fn list_agent_versions(&self, agent_id: Uuid) -> Result<Vec<AgentVersionRow>> {
-        let rows = sqlx::query_as::<_, AgentVersionRow>(
-            r#"
-            SELECT agent_id, version, definition, created_at
-            FROM agent_versions
-            WHERE agent_id = $1
-            ORDER BY version DESC
-            "#,
-        )
-        .bind(agent_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
     }
 
     // Threads
@@ -264,13 +205,12 @@ impl Database {
     pub async fn create_run(&self, input: CreateRun) -> Result<RunRow> {
         let row = sqlx::query_as::<_, RunRow>(
             r#"
-            INSERT INTO runs (agent_id, agent_version, thread_id, status)
-            VALUES ($1, $2, $3, 'pending')
-            RETURNING id, agent_id, agent_version, thread_id, status, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
+            INSERT INTO runs (agent_id, thread_id, status)
+            VALUES ($1, $2, 'pending')
+            RETURNING id, agent_id, thread_id, status, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
             "#,
         )
         .bind(input.agent_id)
-        .bind(input.agent_version)
         .bind(input.thread_id)
         .fetch_one(&self.pool)
         .await?;
@@ -281,7 +221,7 @@ impl Database {
     pub async fn get_run(&self, id: Uuid) -> Result<Option<RunRow>> {
         let row = sqlx::query_as::<_, RunRow>(
             r#"
-            SELECT id, agent_id, agent_version, thread_id, status, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
+            SELECT id, agent_id, thread_id, status, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
             FROM runs
             WHERE id = $1
             "#,
@@ -303,7 +243,7 @@ impl Database {
     ) -> Result<Vec<RunRow>> {
         let rows = sqlx::query_as::<_, RunRow>(
             r#"
-            SELECT id, agent_id, agent_version, thread_id, status, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
+            SELECT id, agent_id, thread_id, status, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
             FROM runs
             WHERE ($1::text IS NULL OR status = $1)
               AND ($2::uuid IS NULL OR agent_id = $2)
@@ -332,7 +272,7 @@ impl Database {
                 started_at = COALESCE($5, started_at),
                 finished_at = COALESCE($6, finished_at)
             WHERE id = $1
-            RETURNING id, agent_id, agent_version, thread_id, status, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
+            RETURNING id, agent_id, thread_id, status, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
             "#,
         )
         .bind(id)

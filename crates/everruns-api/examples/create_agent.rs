@@ -6,7 +6,7 @@
 // 2. Run migrations: ./scripts/dev.sh migrate
 // 3. Start the API: ./scripts/dev.sh api (in another terminal)
 
-use everruns_contracts::{Agent, AgentVersion};
+use everruns_contracts::Agent;
 use serde_json::json;
 
 const API_BASE_URL: &str = "http://localhost:9000";
@@ -22,7 +22,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .json(&json!({
             "name": "My First Agent",
             "description": "A helpful AI assistant",
-            "default_model_id": "gpt-5.1"
+            "default_model_id": "gpt-5.1",
+            "definition": {
+                "system_prompt": "You are a helpful AI assistant. Be concise and friendly.",
+                "temperature": 0.7,
+                "max_tokens": 2000,
+                "tools": []
+            }
         }))
         .send()
         .await?;
@@ -39,37 +45,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Name: {}", agent.name);
     println!("   Status: {:?}", agent.status);
     println!("   Created at: {}", agent.created_at);
-
-    // Step 2: Create an agent version
-    println!("\n📦 Creating agent version...");
-    let version_response = client
-        .post(format!("{}/v1/agents/{}/versions", API_BASE_URL, agent.id))
-        .json(&json!({
-            "definition": {
-                "system_prompt": "You are a helpful AI assistant. Be concise and friendly.",
-                "temperature": 0.7,
-                "max_tokens": 2000,
-                "tools": []
-            }
-        }))
-        .send()
-        .await?;
-
-    if !version_response.status().is_success() {
-        eprintln!("❌ Failed to create version: {}", version_response.status());
-        return Ok(());
-    }
-
-    let version: AgentVersion = version_response.json().await?;
-    println!("✅ Created agent version:");
-    println!("   Version: {}", version.version);
-    println!("   Agent ID: {}", version.agent_id);
     println!(
         "   Definition: {}",
-        serde_json::to_string_pretty(&version.definition)?
+        serde_json::to_string_pretty(&agent.definition)?
     );
 
-    // Step 3: Retrieve the agent
+    // Step 2: Retrieve the agent
     println!("\n🔍 Retrieving agent...");
     let get_response = client
         .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
@@ -85,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         retrieved_agent.description.unwrap_or_default()
     );
 
-    // Step 4: List all agents
+    // Step 3: List all agents
     println!("\n📋 Listing all agents...");
     let list_response = client
         .get(format!("{}/v1/agents", API_BASE_URL))

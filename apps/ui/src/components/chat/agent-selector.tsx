@@ -8,25 +8,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Bot } from "lucide-react";
-import type { Agent, AgentVersion } from "@/lib/api/types";
+import type { Agent } from "@/lib/api/types";
 
 interface AgentSelectorProps {
   agents: Agent[];
-  versions: AgentVersion[];
   selectedAgentId: string | null;
-  selectedVersion: number | null;
   onAgentChange: (agentId: string) => void;
-  onVersionChange: (version: number) => void;
   disabled?: boolean;
 }
 
 export function AgentSelector({
   agents,
-  versions,
   selectedAgentId,
-  selectedVersion,
   onAgentChange,
-  onVersionChange,
   disabled,
 }: AgentSelectorProps) {
   return (
@@ -52,25 +46,6 @@ export function AgentSelector({
             ))}
           </SelectContent>
         </Select>
-
-        {selectedAgentId && versions.length > 0 && (
-          <Select
-            value={selectedVersion?.toString() || ""}
-            onValueChange={(v) => onVersionChange(parseInt(v))}
-            disabled={disabled}
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Version" />
-            </SelectTrigger>
-            <SelectContent>
-              {versions.map((version) => (
-                <SelectItem key={version.version} value={version.version.toString()}>
-                  v{version.version}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
       </div>
     </div>
   );

@@ -38,7 +38,6 @@ pub struct Message {
 pub struct Run {
     pub id: Uuid,
     pub agent_id: Uuid,
-    pub agent_version: i32,
     pub thread_id: Uuid,
     pub status: RunStatus,
     pub created_at: DateTime<Utc>,

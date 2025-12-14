@@ -26,14 +26,6 @@ All endpoints are prefixed with `/v1/`.
 | PATCH | `/v1/agents/{id}` | Update agent |
 | DELETE | `/v1/agents/{id}` | Delete agent (soft delete) |
 
-### Agent Versions
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/agents/{id}/versions` | Create new version |
-| GET | `/v1/agents/{id}/versions` | List versions |
-| GET | `/v1/agents/{id}/versions/{version}` | Get specific version |
-
 ### Threads
 
 | Method | Path | Description |
@@ -62,7 +54,7 @@ All endpoints are prefixed with `/v1/`.
 |--------|------|-------------|
 | POST | `/v1/ag-ui` | AG-UI protocol endpoint for CopilotKit |
 
-Query parameters: `agent_id`, `agent_version`, `thread_id` (optional)
+Query parameters: `agent_id`, `thread_id` (optional)
 
 ### Response Formats
 

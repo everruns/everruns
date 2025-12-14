@@ -6,9 +6,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{Agent, AgentStatus, AgentVersion};
+use everruns_contracts::{Agent, AgentStatus};
 use everruns_storage::{
-    models::{CreateAgent, CreateAgentVersion, UpdateAgent},
+    models::{CreateAgent, UpdateAgent},
     Database,
 };
 use serde::Deserialize;
@@ -28,6 +28,7 @@ pub struct CreateAgentRequest {
     pub name: String,
     pub description: Option<String>,
     pub default_model_id: String,
+    pub definition: serde_json::Value,
 }
 
 /// Request to update an agent
@@ -36,13 +37,8 @@ pub struct UpdateAgentRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub default_model_id: Option<String>,
+    pub definition: Option<serde_json::Value>,
     pub status: Option<AgentStatus>,
-}
-
-/// Request to create an agent version
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateAgentVersionRequest {
-    pub definition: serde_json::Value,
 }
 
 /// Create agent routes
@@ -50,14 +46,6 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/agents", post(create_agent).get(list_agents))
         .route("/v1/agents/:agent_id", get(get_agent).patch(update_agent))
-        .route(
-            "/v1/agents/:agent_id/versions",
-            post(create_agent_version).get(list_agent_versions),
-        )
-        .route(
-            "/v1/agents/:agent_id/versions/:version",
-            get(get_agent_version),
-        )
         .with_state(state)
 }
 
@@ -80,6 +68,7 @@ pub async fn create_agent(
         name: req.name,
         description: req.description,
         default_model_id: req.default_model_id,
+        definition: req.definition,
     };
 
     let row = state.db.create_agent(input).await.map_err(|e| {
@@ -92,6 +81,7 @@ pub async fn create_agent(
         name: row.name,
         description: row.description,
         default_model_id: row.default_model_id,
+        definition: row.definition,
         status: row.status.parse().unwrap_or(AgentStatus::Active),
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -123,6 +113,7 @@ pub async fn list_agents(State(state): State<AppState>) -> Result<Json<Vec<Agent
             name: row.name,
             description: row.description,
             default_model_id: row.default_model_id,
+            definition: row.definition,
             status: row.status.parse().unwrap_or(AgentStatus::Active),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -165,6 +156,7 @@ pub async fn get_agent(
         name: row.name,
         description: row.description,
         default_model_id: row.default_model_id,
+        definition: row.definition,
         status: row.status.parse().unwrap_or(AgentStatus::Active),
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -197,6 +189,7 @@ pub async fn update_agent(
         name: req.name,
         description: req.description,
         default_model_id: req.default_model_id,
+        definition: req.definition,
         status: req.status.map(|s| s.to_string()),
     };
 
@@ -215,123 +208,11 @@ pub async fn update_agent(
         name: row.name,
         description: row.description,
         default_model_id: row.default_model_id,
+        definition: row.definition,
         status: row.status.parse().unwrap_or(AgentStatus::Active),
         created_at: row.created_at,
         updated_at: row.updated_at,
     };
 
     Ok(Json(agent))
-}
-
-/// POST /v1/agents/:agent_id/versions - Publish a new immutable version
-#[utoipa::path(
-    post,
-    path = "/v1/agents/{agent_id}/versions",
-    params(
-        ("agent_id" = Uuid, Path, description = "Agent ID")
-    ),
-    request_body = CreateAgentVersionRequest,
-    responses(
-        (status = 201, description = "Agent version created successfully", body = AgentVersion),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "agents"
-)]
-pub async fn create_agent_version(
-    State(state): State<AppState>,
-    Path(agent_id): Path<Uuid>,
-    Json(req): Json<CreateAgentVersionRequest>,
-) -> Result<(StatusCode, Json<AgentVersion>), StatusCode> {
-    let input = CreateAgentVersion {
-        agent_id,
-        definition: req.definition,
-    };
-
-    let row = state.db.create_agent_version(input).await.map_err(|e| {
-        tracing::error!("Failed to create agent version: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    let version = AgentVersion {
-        agent_id: row.agent_id,
-        version: row.version,
-        definition: row.definition,
-        created_at: row.created_at,
-    };
-
-    Ok((StatusCode::CREATED, Json(version)))
-}
-
-/// GET /v1/agents/:agent_id/versions
-#[utoipa::path(
-    get,
-    path = "/v1/agents/{agent_id}/versions",
-    params(
-        ("agent_id" = Uuid, Path, description = "Agent ID")
-    ),
-    responses(
-        (status = 200, description = "List of agent versions", body = Vec<AgentVersion>),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "agents"
-)]
-pub async fn list_agent_versions(
-    State(state): State<AppState>,
-    Path(agent_id): Path<Uuid>,
-) -> Result<Json<Vec<AgentVersion>>, StatusCode> {
-    let rows = state.db.list_agent_versions(agent_id).await.map_err(|e| {
-        tracing::error!("Failed to list agent versions: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    let versions: Vec<AgentVersion> = rows
-        .into_iter()
-        .map(|row| AgentVersion {
-            agent_id: row.agent_id,
-            version: row.version,
-            definition: row.definition,
-            created_at: row.created_at,
-        })
-        .collect();
-
-    Ok(Json(versions))
-}
-
-/// GET /v1/agents/:agent_id/versions/:version
-#[utoipa::path(
-    get,
-    path = "/v1/agents/{agent_id}/versions/{version}",
-    params(
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("version" = i32, Path, description = "Version number")
-    ),
-    responses(
-        (status = 200, description = "Agent version found", body = AgentVersion),
-        (status = 404, description = "Agent version not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "agents"
-)]
-pub async fn get_agent_version(
-    State(state): State<AppState>,
-    Path((agent_id, version)): Path<(Uuid, i32)>,
-) -> Result<Json<AgentVersion>, StatusCode> {
-    let row = state
-        .db
-        .get_agent_version(agent_id, version)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get agent version: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    let version = AgentVersion {
-        agent_id: row.agent_id,
-        version: row.version,
-        definition: row.definition,
-        created_at: row.created_at,
-    };
-
-    Ok(Json(version))
 }

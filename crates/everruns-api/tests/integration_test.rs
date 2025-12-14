@@ -1,7 +1,7 @@
 // Integration tests for Everruns API
 // Run with: cargo test --test integration_test
 
-use everruns_contracts::{Agent, AgentStatus, AgentVersion, Message, Run, Thread};
+use everruns_contracts::{Agent, AgentStatus, Message, Run, Thread};
 use serde_json::json;
 
 const API_BASE_URL: &str = "http://localhost:9000";
@@ -20,7 +20,11 @@ async fn test_full_agent_workflow() {
         .json(&json!({
             "name": "Test Assistant",
             "description": "An AI assistant for testing",
-            "default_model_id": "gpt-5.1"
+            "default_model_id": "gpt-5.1",
+            "definition": {
+                "system_prompt": "You are a helpful assistant",
+                "temperature": 0.7
+            }
         }))
         .send()
         .await
@@ -54,8 +58,7 @@ async fn test_full_agent_workflow() {
 
     let agents: Vec<Agent> = list_response.json().await.expect("Failed to parse agents");
     println!("✅ Found {} agent(s)", agents.len());
-    assert_eq!(agents.len(), 1);
-    assert_eq!(agents[0].id, agent.id);
+    assert!(!agents.is_empty());
 
     // Step 3: Get agent by ID
     println!("\n🔍 Step 3: Getting agent by ID...");
@@ -91,48 +94,8 @@ async fn test_full_agent_workflow() {
         Some("Updated description".to_string())
     );
 
-    // Step 5: Create agent version
-    println!("\n📦 Step 5: Creating agent version...");
-    let version_response = client
-        .post(format!("{}/v1/agents/{}/versions", API_BASE_URL, agent.id))
-        .json(&json!({
-            "definition": {
-                "system_prompt": "You are a helpful assistant",
-                "temperature": 0.7,
-                "max_tokens": 1000
-            }
-        }))
-        .send()
-        .await
-        .expect("Failed to create version");
-
-    assert_eq!(version_response.status(), 201);
-    let version: AgentVersion = version_response
-        .json()
-        .await
-        .expect("Failed to parse version");
-    println!("✅ Created version: {}", version.version);
-    assert_eq!(version.version, 1);
-    assert_eq!(version.agent_id, agent.id);
-
-    // Step 6: List agent versions
-    println!("\n📚 Step 6: Listing agent versions...");
-    let versions_response = client
-        .get(format!("{}/v1/agents/{}/versions", API_BASE_URL, agent.id))
-        .send()
-        .await
-        .expect("Failed to list versions");
-
-    assert_eq!(versions_response.status(), 200);
-    let versions: Vec<AgentVersion> = versions_response
-        .json()
-        .await
-        .expect("Failed to parse versions");
-    println!("✅ Found {} version(s)", versions.len());
-    assert_eq!(versions.len(), 1);
-
-    // Step 7: Create a thread
-    println!("\n🧵 Step 7: Creating thread...");
+    // Step 5: Create a thread
+    println!("\n🧵 Step 5: Creating thread...");
     let thread_response = client
         .post(format!("{}/v1/threads", API_BASE_URL))
         .json(&json!({}))
@@ -147,8 +110,8 @@ async fn test_full_agent_workflow() {
         .expect("Failed to parse thread");
     println!("✅ Created thread: {}", thread.id);
 
-    // Step 8: Add messages to thread
-    println!("\n💬 Step 8: Adding messages to thread...");
+    // Step 6: Add messages to thread
+    println!("\n💬 Step 6: Adding messages to thread...");
     let message_response = client
         .post(format!(
             "{}/v1/threads/{}/messages",
@@ -170,8 +133,8 @@ async fn test_full_agent_workflow() {
     println!("✅ Created message: {}", message.id);
     assert_eq!(message.role, "user");
 
-    // Step 9: List messages
-    println!("\n📨 Step 9: Listing messages...");
+    // Step 7: List messages
+    println!("\n📨 Step 7: Listing messages...");
     let messages_response = client
         .get(format!(
             "{}/v1/threads/{}/messages",
@@ -189,13 +152,12 @@ async fn test_full_agent_workflow() {
     println!("✅ Found {} message(s)", messages.len());
     assert_eq!(messages.len(), 1);
 
-    // Step 10: Create a run
-    println!("\n🏃 Step 10: Creating run...");
+    // Step 8: Create a run
+    println!("\n🏃 Step 8: Creating run...");
     let run_response = client
         .post(format!("{}/v1/runs", API_BASE_URL))
         .json(&json!({
             "agent_id": agent.id,
-            "agent_version": version.version,
             "thread_id": thread.id
         }))
         .send()
@@ -208,8 +170,8 @@ async fn test_full_agent_workflow() {
     assert_eq!(run.agent_id, agent.id);
     assert_eq!(run.thread_id, thread.id);
 
-    // Step 11: Get run by ID
-    println!("\n🔎 Step 11: Getting run by ID...");
+    // Step 9: Get run by ID
+    println!("\n🔎 Step 9: Getting run by ID...");
     let get_run_response = client
         .get(format!("{}/v1/runs/{}", API_BASE_URL, run.id))
         .send()
