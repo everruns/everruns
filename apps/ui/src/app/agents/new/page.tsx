@@ -20,6 +20,7 @@ export default function NewAgentPage() {
     name: "",
     description: "",
     default_model_id: "gpt-5.1",
+    system_prompt: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,6 +31,9 @@ export default function NewAgentPage() {
         name: formData.name,
         description: formData.description || undefined,
         default_model_id: formData.default_model_id,
+        definition: {
+          system_prompt: formData.system_prompt || undefined,
+        },
       });
       router.push(`/agents/${agent.id}`);
     } catch (error) {
@@ -93,6 +97,20 @@ export default function NewAgentPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   The model ID to use for this agent (e.g., gpt-5.1, gpt-4o)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="system_prompt">System Prompt</Label>
+                <Textarea
+                  id="system_prompt"
+                  placeholder="You are a helpful assistant..."
+                  value={formData.system_prompt}
+                  onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Instructions that define how the agent behaves
                 </p>
               </div>
 

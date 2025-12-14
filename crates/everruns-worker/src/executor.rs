@@ -45,9 +45,7 @@ impl WorkflowExecutor {
             "Starting workflow execution"
         );
 
-        let workflow =
-            AgentRunWorkflow::new(run_id, agent_id, thread_id, self.db.clone())
-                .await?;
+        let workflow = AgentRunWorkflow::new(run_id, agent_id, thread_id, self.db.clone()).await?;
 
         let cancel_signals = self.cancel_signals.clone();
         let active_workflows = self.active_workflows.clone();

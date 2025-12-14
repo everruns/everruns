@@ -104,7 +104,10 @@ impl Database {
     }
 
     pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
-        let definition_json = input.definition.map(|d| serde_json::to_value(&d)).transpose()?;
+        let definition_json = input
+            .definition
+            .map(|d| serde_json::to_value(&d))
+            .transpose()?;
 
         let row = sqlx::query_as::<_, AgentRow>(
             r#"

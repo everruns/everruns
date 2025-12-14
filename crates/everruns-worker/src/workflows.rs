@@ -22,12 +22,7 @@ pub struct AgentRunWorkflow {
 }
 
 impl AgentRunWorkflow {
-    pub async fn new(
-        run_id: Uuid,
-        agent_id: Uuid,
-        thread_id: Uuid,
-        db: Database,
-    ) -> Result<Self> {
+    pub async fn new(run_id: Uuid, agent_id: Uuid, thread_id: Uuid, db: Database) -> Result<Self> {
         let persist_activity = PersistEventActivity::new(db.clone());
         Ok(Self {
             run_id,
