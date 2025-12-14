@@ -1,0 +1,29 @@
+[package]
+name = "everruns-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+sqlx.workspace = true
+
+everruns-contracts = { path = "../everruns-contracts" }
+everruns-storage = { path = "../everruns-storage" }
+
+# For M4: Using simple async runtime to simulate workflow execution
+# Will upgrade to full Temporal SDK in later milestone
+chrono.workspace = true
+async-trait = "0.1.89"
+futures = "0.3.31"
+reqwest = { version = "0.12.25", features = ["json", "stream"] }
+eventsource-stream = "0.2.3"
+sha2 = "0.10"
+hex = "0.4"

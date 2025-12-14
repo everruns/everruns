@@ -1,0 +1,38 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+
+# Node (for dashboard)
+node_modules/
+.next/
+dist/
+build/
+
+# AI
+.claude/*.local.json
+
+# Tools
+.sqlx
