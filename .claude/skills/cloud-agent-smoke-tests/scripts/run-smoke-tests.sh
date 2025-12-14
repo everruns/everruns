@@ -2,16 +2,17 @@
 # Cloud Agent Smoke Test - Main Entry Point
 # Sets up PostgreSQL + Temporal locally and runs smoke tests without Docker
 #
-# Usage: ./.claude/skills/cloud-agent-smoke-tests/run.sh
+# Usage: ./.claude/skills/cloud-agent-smoke-tests/scripts/run-smoke-tests.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/scripts/common.sh"
-source "$SCRIPT_DIR/scripts/setup-postgres.sh"
-source "$SCRIPT_DIR/scripts/setup-temporal.sh"
+source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/setup-postgres.sh"
+source "$SCRIPT_DIR/setup-temporal.sh"
 
-PROJECT_ROOT="$(get_project_root)"
+# Project root is 4 levels up from scripts folder
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 API_PID=""
 TEMPORAL_PID=""
 

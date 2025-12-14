@@ -96,7 +96,7 @@ For environments without Docker (like Cloud Agent), use the skill script:
 
 ```bash
 # All-in-one: sets up PostgreSQL + Temporal, runs migrations, starts API, runs smoke tests
-./.claude/skills/cloud-agent-smoke-tests/run.sh
+./.claude/skills/cloud-agent-smoke-tests/scripts/run-smoke-tests.sh
 ```
 
 See `.claude/skills/cloud-agent-smoke-tests/SKILL.md` for details and troubleshooting.

@@ -17,7 +17,7 @@ Docker and container runtimes are **NOT available**.
 
 ```bash
 # All-in-one: sets up PostgreSQL + Temporal, runs migrations, starts API, runs smoke tests
-./.claude/skills/cloud-agent-smoke-tests/run.sh
+./.claude/skills/cloud-agent-smoke-tests/scripts/run-smoke-tests.sh
 ```
 
 This script handles everything automatically and cleans up on exit.
@@ -53,7 +53,7 @@ The smoke test setup runs three services:
 Uses local PostgreSQL cluster and Temporal CLI dev server:
 
 ```bash
-./.claude/skills/cloud-agent-smoke-tests/run.sh
+./.claude/skills/cloud-agent-smoke-tests/scripts/run-smoke-tests.sh
 ```
 
 **What it does:**
@@ -251,15 +251,14 @@ temporal server start-dev --headless &
 
 ## Skill Files
 
-This skill contains:
 ```
 cloud-agent-smoke-tests/
-├── SKILL.md                    # This documentation
-├── run.sh                      # Main entry point
+├── SKILL.md                        # This documentation
 └── scripts/
-    ├── common.sh               # Shared utilities (logging, config)
-    ├── setup-postgres.sh       # PostgreSQL setup functions
-    └── setup-temporal.sh       # Temporal setup functions
+    ├── run-smoke-tests.sh          # Main entry point (orchestration)
+    ├── common.sh                   # Shared utilities (logging, config)
+    ├── setup-postgres.sh           # PostgreSQL setup functions
+    └── setup-temporal.sh           # Temporal setup functions
 ```
 
 Individual scripts can be sourced separately for custom setups.
