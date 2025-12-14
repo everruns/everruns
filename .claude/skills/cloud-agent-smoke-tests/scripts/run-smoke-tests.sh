@@ -108,7 +108,6 @@ main() {
     init_postgres
     start_postgres
     setup_database
-    install_uuidv7
 
     # Setup application
     run_migrations

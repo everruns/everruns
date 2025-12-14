@@ -17,7 +17,7 @@ scripts/run-smoke-tests.sh
 ## Helper Scripts
 
 - `scripts/run-smoke-tests.sh` - Main entry point, orchestrates full smoke test
-- `scripts/setup-postgres.sh` - PostgreSQL cluster setup (prefers PostgreSQL 17, falls back to 16 with UUIDv7 polyfill)
+- `scripts/setup-postgres.sh` - PostgreSQL 18 cluster setup (auto-installs from PGDG if needed)
 - `scripts/setup-temporal.sh` - Temporal dev server setup
 - `scripts/common.sh` - Shared utilities and configuration
 
@@ -26,7 +26,7 @@ scripts/run-smoke-tests.sh
 - `OPENAI_API_KEY` environment variable
 - Root access (for PostgreSQL setup)
 - Rust toolchain with sqlx-cli
-- PostgreSQL 16+ binaries (17 preferred, auto-installs if network available)
+- Internet access (to install PostgreSQL 18 and Temporal CLI)
 
 ## Troubleshooting
 
@@ -34,4 +34,4 @@ scripts/run-smoke-tests.sh
 
 **"cannot be run as root"**: Script handles this by running initdb as postgres user.
 
-**PostgreSQL 17 installation fails**: Script falls back to PostgreSQL 16 with UUIDv7 polyfill.
+**PostgreSQL installation fails**: Ensure internet access to apt.postgresql.org is available.
