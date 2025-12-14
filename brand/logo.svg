@@ -3,18 +3,21 @@
     <!-- Gradient for top-left circle (toward center-right) -->
     <linearGradient id="gradTopLeft" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#0A1F44"/>
+      <stop offset="60%" stop-color="#0A1F44"/>
       <stop offset="100%" stop-color="#D4A84B"/>
     </linearGradient>
 
     <!-- Gradient for top-right circle (toward center-left) -->
     <linearGradient id="gradTopRight" x1="100%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#0A1F44"/>
+      <stop offset="60%" stop-color="#0A1F44"/>
       <stop offset="100%" stop-color="#D4A84B"/>
     </linearGradient>
 
     <!-- Gradient for bottom circle (toward center-top) -->
     <linearGradient id="gradBottom" x1="50%" y1="100%" x2="50%" y2="0%">
       <stop offset="0%" stop-color="#0A1F44"/>
+      <stop offset="60%" stop-color="#0A1F44"/>
       <stop offset="100%" stop-color="#D4A84B"/>
     </linearGradient>
   </defs>
