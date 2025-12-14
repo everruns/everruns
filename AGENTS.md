@@ -92,22 +92,11 @@ cargo run --example create_agent
 
 ### Cloud Agent testing (no Docker)
 
-For environments without Docker (like Cloud Agent), use the dedicated script:
+For environments without Docker (like Cloud Agent), use the skill script:
 
 ```bash
 # All-in-one: sets up PostgreSQL + Temporal, runs migrations, starts API, runs smoke tests
-./scripts/cloud-agent-smoke-test.sh
+./.claude/skills/cloud-agent-smoke-tests/run.sh
 ```
 
-This script:
-1. Downloads and installs Temporal CLI (if not present)
-2. Starts Temporal dev server (uses in-memory SQLite)
-3. Initializes a local PostgreSQL 16 cluster
-4. Creates the everruns database and user
-5. Installs UUIDv7 polyfill (PostgreSQL < 18 compatibility)
-6. Runs migrations
-7. Builds and starts the API
-8. Executes smoke tests
-9. Cleans up on exit
-
-See `.claude/skills/cloud-agent-smoke-tests/SKILL.md` for detailed options and troubleshooting.
+See `.claude/skills/cloud-agent-smoke-tests/SKILL.md` for details and troubleshooting.

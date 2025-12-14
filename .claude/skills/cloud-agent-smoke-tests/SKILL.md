@@ -17,7 +17,7 @@ Docker and container runtimes are **NOT available**.
 
 ```bash
 # All-in-one: sets up PostgreSQL + Temporal, runs migrations, starts API, runs smoke tests
-./scripts/cloud-agent-smoke-test.sh
+./.claude/skills/cloud-agent-smoke-tests/run.sh
 ```
 
 This script handles everything automatically and cleans up on exit.
@@ -53,7 +53,7 @@ The smoke test setup runs three services:
 Uses local PostgreSQL cluster and Temporal CLI dev server:
 
 ```bash
-./scripts/cloud-agent-smoke-test.sh
+./.claude/skills/cloud-agent-smoke-tests/run.sh
 ```
 
 **What it does:**
@@ -249,7 +249,13 @@ temporal server start-dev --headless &
 | SSH Tunnel | Remote | Remote | ~5 min | Yes |
 | GitHub Actions | CI service | CI service | ~0 min | Yes |
 
-## Files Created
+## Skill Files
+
+This skill contains:
+- `SKILL.md` - This documentation
+- `run.sh` - Main executable script
+
+## Runtime Files Created
 
 - `/tmp/pgdata/` - PostgreSQL data directory
 - `/tmp/pgdata/pg.log` - PostgreSQL log
@@ -257,7 +263,7 @@ temporal server start-dev --headless &
 - `/tmp/api.log` - API server log
 - `/usr/local/bin/temporal` - Temporal CLI binary
 
-All files are cleaned up automatically when the script exits (except Temporal CLI binary).
+All runtime files are cleaned up automatically when the script exits (except Temporal CLI binary).
 
 ## Temporal Dev Server Details
 
