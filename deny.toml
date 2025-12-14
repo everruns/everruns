@@ -1,0 +1,42 @@
+# cargo-deny configuration for license checking
+
+[licenses]
+# Allow these license types
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+]
+
+# We don't explicitly deny licenses, instead we use an allowlist approach
+# Any license not in the 'allow' list will be denied automatically
+
+# Review unclear/dual licenses
+confidence-threshold = 0.8
+
+# Allow specific exceptions (add as needed)
+exceptions = []
+
+# Clarify specific dependencies if needed
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 }
+]
+
+[bans]
+# Warn on multiple versions of the same crate
+multiple-versions = "warn"
+# Deny specific crates (security or legal issues)
+deny = []
+
+[sources]
+# Ensure all dependencies come from crates.io or known Git repos
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -1,0 +1,75 @@
+# Tool Execution Specification
+
+## Abstract
+
+Everruns agents can invoke tools during execution. This specification defines tool types, execution policies, and the tool calling loop behavior.
+
+## Requirements
+
+### Tool Types
+
+#### Webhook Tools
+External HTTP endpoints called by the agent:
+- `url`: Target endpoint URL
+- `method`: HTTP method (POST)
+- `headers`: Custom headers
+- `timeout_secs`: Request timeout
+- `max_retries`: Retry count on failure
+
+#### Built-in Tools (Future)
+System-provided tools like `http_get`, `http_post`, `file_read`. Not implemented in current version.
+
+### Tool Definition Schema
+
+```json
+{
+  "type": "webhook",
+  "name": "tool_name",
+  "description": "What the tool does",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "param1": {
+        "type": "string",
+        "description": "Parameter description"
+      }
+    },
+    "required": ["param1"]
+  },
+  "url": "https://api.example.com/endpoint",
+  "method": "POST",
+  "headers": {},
+  "timeout_secs": 30,
+  "max_retries": 3,
+  "policy": "auto"
+}
+```
+
+### Tool Policies
+
+- `auto`: Execute immediately without approval
+- `requires_approval`: Pause and wait for user approval (HITL - future)
+
+### Execution Flow
+
+1. LLM returns tool calls in response
+2. For each tool call:
+   - Emit `ToolCallStart` event
+   - Execute tool (parallel if multiple)
+   - Emit `ToolCallResult` event
+3. Add tool results to message history
+4. Call LLM again with results
+5. Repeat until LLM returns final response (max 5 iterations)
+
+### Webhook Execution
+
+1. **Request Signing**: HMAC-SHA256 signature in `X-Webhook-Signature` header
+2. **Retry Logic**: Exponential backoff on transient failures
+3. **Timeout**: Configurable per-tool, default 30 seconds
+4. **Error Handling**: Non-2xx responses recorded as tool errors
+
+### Security
+
+1. **URL Validation**: Only HTTPS URLs in production
+2. **Secret Management**: Webhook secrets stored securely
+3. **Rate Limiting**: Per-agent rate limits (future)
