@@ -8,6 +8,7 @@ FROM rust:1.92-slim AS chef
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN cargo install cargo-chef --locked
