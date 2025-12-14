@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  CARGO_DENY_VERSION: "0.16"
+
 jobs:
   check-licenses:
     name: Check Dependency Licenses
@@ -16,8 +19,27 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-deny-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-deny-registry-
+
+      - name: Cache cargo-deny binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: ${{ runner.os }}-cargo-deny-${{ env.CARGO_DENY_VERSION }}
+
       - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
+        run: |
+          if [ ! -f ~/.cargo/bin/cargo-deny ]; then
+            cargo install cargo-deny --locked
+          fi
 
       - name: Check licenses
         run: cargo deny check licenses
