@@ -97,8 +97,11 @@ main() {
     echo "==============================================="
     echo ""
 
-    # Setup infrastructure
+    # Pre-flight checks
+    check_openai_key
     check_root
+
+    # Setup infrastructure
     check_postgres
     install_temporal
     TEMPORAL_PID=$(start_temporal)
