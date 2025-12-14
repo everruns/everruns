@@ -28,6 +28,7 @@ Specification format: Abstract and Requirements sections.
 `.claude/skills/` contains development skills and guides:
 - `smoke-tests/` - Comprehensive API and system smoke testing
 - `ui-smoke-tests/` - UI testing with Chrome DevTools
+- `cloud-agent-smoke-tests/` - Running smoke tests without Docker (Cloud Agent environments)
 
 ### Local dev expectations
 
@@ -88,3 +89,23 @@ cargo run --example create_agent
 - API docs: http://localhost:9000/swagger-ui/
 - UI: http://localhost:3000
 - Health check: `curl http://localhost:9000/health`
+
+### Cloud Agent testing (no Docker)
+
+For environments without Docker (like Cloud Agent), use the dedicated script:
+
+```bash
+# All-in-one: initializes local PostgreSQL, runs migrations, starts API, runs smoke tests
+./scripts/cloud-agent-smoke-test.sh
+```
+
+This script:
+1. Initializes a local PostgreSQL 16 cluster
+2. Creates the everruns database and user
+3. Installs UUIDv7 polyfill (PostgreSQL < 18 compatibility)
+4. Runs migrations
+5. Builds and starts the API
+6. Executes smoke tests
+7. Cleans up on exit
+
+See `.claude/skills/cloud-agent-smoke-tests/SKILL.md` for detailed options and troubleshooting.
