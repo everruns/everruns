@@ -252,8 +252,17 @@ temporal server start-dev --headless &
 ## Skill Files
 
 This skill contains:
-- `SKILL.md` - This documentation
-- `run.sh` - Main executable script
+```
+cloud-agent-smoke-tests/
+├── SKILL.md                    # This documentation
+├── run.sh                      # Main entry point
+└── scripts/
+    ├── common.sh               # Shared utilities (logging, config)
+    ├── setup-postgres.sh       # PostgreSQL setup functions
+    └── setup-temporal.sh       # Temporal setup functions
+```
+
+Individual scripts can be sourced separately for custom setups.
 
 ## Runtime Files Created
 
