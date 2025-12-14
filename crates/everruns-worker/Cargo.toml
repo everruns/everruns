@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+# Temporal feature flag - when enabled, uses Temporal SDK for durable workflow execution
+# Currently uses a client-based approach that submits to Temporal server
+temporal = []
+
 [dependencies]
 tokio.workspace = true
 serde.workspace = true
@@ -18,8 +24,6 @@ sqlx.workspace = true
 everruns-contracts = { path = "../everruns-contracts" }
 everruns-storage = { path = "../everruns-storage" }
 
-# For M4: Using simple async runtime to simulate workflow execution
-# Will upgrade to full Temporal SDK in later milestone
 chrono.workspace = true
 async-trait = "0.1.89"
 futures = "0.3.31"
@@ -27,3 +31,9 @@ reqwest = { version = "0.12.25", features = ["json", "stream"] }
 eventsource-stream = "0.2.3"
 sha2 = "0.10"
 hex = "0.4"
+url = "2.5"
+tonic = { version = "0.12", optional = true }
+
+# Note: Temporal SDK dependencies will be added when the Rust SDK is more stable
+# For now, we use a gRPC-based client implementation
+# Future: squads-temporal-sdk or official temporal-sdk when available

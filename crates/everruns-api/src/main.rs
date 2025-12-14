@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use axum::{routing::get, Json, Router};
 use everruns_contracts::*;
 use everruns_storage::Database;
-use everruns_worker::WorkflowExecutor;
+use everruns_worker::{create_runner, RunnerConfig, RunnerMode};
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
@@ -105,9 +105,31 @@ async fn main() -> Result<()> {
         .context("Failed to connect to database")?;
     tracing::info!("Connected to database");
 
-    // Create workflow executor (M4: in-process execution)
-    let executor = Arc::new(WorkflowExecutor::new(db.clone()));
-    tracing::info!("Workflow executor initialized");
+    // Load runner configuration from environment
+    let runner_config = RunnerConfig::from_env();
+    tracing::info!(
+        mode = ?runner_config.mode,
+        "Agent runner mode configured"
+    );
+
+    // Create the agent runner based on configuration
+    let runner = create_runner(&runner_config, db.clone())
+        .await
+        .context("Failed to create agent runner")?;
+
+    match runner_config.mode {
+        RunnerMode::InProcess => {
+            tracing::info!("Using in-process agent runner (default)");
+        }
+        RunnerMode::Temporal => {
+            tracing::info!(
+                address = %runner_config.temporal_address(),
+                namespace = %runner_config.temporal_namespace(),
+                task_queue = %runner_config.temporal_task_queue(),
+                "Using Temporal agent runner"
+            );
+        }
+    }
 
     // Create app state
     let state = AppState { db: Arc::new(db) };
@@ -121,11 +143,11 @@ async fn main() -> Result<()> {
     };
     let runs_state = runs::AppState {
         db: state.db.clone(),
-        executor: executor.clone(),
+        runner: runner.clone(),
     };
     let agui_state = agui::AppState {
         db: state.db.clone(),
-        executor: executor.clone(),
+        runner: runner.clone(),
     };
 
     // Build router

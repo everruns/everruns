@@ -44,6 +44,22 @@ Specification format: Abstract and Requirements sections.
 
 - CI is implemented using Github Actions, status is avaiable via `gh` tool
 
+### Pre-PR checklist
+
+Before creating a pull request, ensure:
+
+1. **Formatting**: Run `cargo fmt` to format all code
+2. **Linting**: Run `cargo clippy -- -D warnings` and fix all warnings
+3. **Tests**: Run `cargo test` to ensure all tests pass
+4. **Smoke tests**: Run smoke tests to verify the system works end-to-end
+
+```bash
+# Quick pre-PR check
+cargo fmt && cargo clippy -- -D warnings && cargo test
+```
+
+CI will fail if formatting, linting, or tests fail. Always run these locally before pushing.
+
 ## Testing the system
 
 The best way to verify the system is working is to run the **smoke test script**, which tests the full workflow including agent creation, threads, messages, runs, workflow execution, and optionally the UI:
