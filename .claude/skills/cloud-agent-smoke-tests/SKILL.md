@@ -10,18 +10,15 @@ Run smoke tests in Cloud Agent environments where Docker is not available.
 ## Usage
 
 ```bash
-./.claude/skills/cloud-agent-smoke-tests/scripts/run-smoke-tests.sh
+scripts/run-smoke-tests.sh
 ```
 
-The script automatically:
-1. Downloads Temporal CLI (if not present)
-2. Starts Temporal dev server
-3. Initializes PostgreSQL cluster
-4. Creates database with UUIDv7 polyfill
-5. Runs migrations
-6. Starts the API server
-7. Executes smoke tests
-8. Cleans up on exit
+## Helper Scripts
+
+- `scripts/run-smoke-tests.sh` - Main entry point, orchestrates full smoke test
+- `scripts/setup-postgres.sh` - PostgreSQL cluster setup functions
+- `scripts/setup-temporal.sh` - Temporal dev server setup functions
+- `scripts/common.sh` - Shared utilities and configuration
 
 ## Requirements
 
