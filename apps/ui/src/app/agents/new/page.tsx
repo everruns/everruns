@@ -55,7 +55,7 @@ export default function NewAgentPage() {
           <CardHeader>
             <CardTitle>New Agent</CardTitle>
             <CardDescription>
-              Create a new AI agent. You can add versions with specific configurations after creation.
+              Create a new AI agent with a specific configuration.
             </CardDescription>
           </CardHeader>
           <CardContent>

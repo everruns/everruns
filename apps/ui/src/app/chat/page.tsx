@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useAgents, useAgentVersions } from "@/hooks/use-agents";
+import { useAgents } from "@/hooks/use-agents";
 import { useCreateThread, useMessages, useCreateMessage } from "@/hooks/use-threads";
 import { useCreateRun, useRun } from "@/hooks/use-runs";
 import { useSSEEvents, aggregateTextMessages, aggregateToolCalls } from "@/hooks/use-sse-events";
@@ -13,16 +13,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Bot, Plus, ExternalLink } from "lucide-react";
+import { Bot, Plus } from "lucide-react";
 import Link from "next/link";
-import type { AgUiEvent } from "@/lib/api/types";
 
 export default function ChatPage() {
   // Agent selection
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
-  const { data: versions = [] } = useAgentVersions(selectedAgentId || "");
 
   // Thread state
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -36,7 +33,7 @@ export default function ChatPage() {
   const createRun = useCreateRun();
 
   // SSE events for current run
-  const { events, isConnected } = useSSEEvents({
+  const { events } = useSSEEvents({
     runId: currentRunId || "",
     enabled: !!currentRunId && currentRun?.status === "running",
   });
@@ -46,13 +43,6 @@ export default function ChatPage() {
   const streamingToolCalls = aggregateToolCalls(events);
   const isStreaming = !!currentRunId && currentRun?.status === "running";
   const isWaiting = createThread.isPending || createMessage.isPending || createRun.isPending;
-
-  // Set default version when versions load
-  useEffect(() => {
-    if (versions.length > 0 && !selectedVersion) {
-      setSelectedVersion(versions[0].version);
-    }
-  }, [versions, selectedVersion]);
 
   // Clear current run when it finishes
   useEffect(() => {
@@ -68,7 +58,6 @@ export default function ChatPage() {
   // Handle agent selection
   const handleAgentChange = useCallback((agentId: string) => {
     setSelectedAgentId(agentId);
-    setSelectedVersion(null);
     // Reset conversation when agent changes
     setThreadId(null);
     setCurrentRunId(null);
@@ -77,7 +66,7 @@ export default function ChatPage() {
   // Handle sending a message
   const handleSendMessage = useCallback(
     async (content: string) => {
-      if (!selectedAgentId || !selectedVersion) return;
+      if (!selectedAgentId) return;
 
       try {
         // Create thread if needed
@@ -97,7 +86,6 @@ export default function ChatPage() {
         // Create run
         const run = await createRun.mutateAsync({
           agent_id: selectedAgentId,
-          agent_version: selectedVersion,
           thread_id: tid,
         });
 
@@ -106,7 +94,7 @@ export default function ChatPage() {
         console.error("Failed to send message:", error);
       }
     },
-    [selectedAgentId, selectedVersion, threadId, createThread, createMessage, createRun]
+    [selectedAgentId, threadId, createThread, createMessage, createRun]
   );
 
   // Handle new conversation
@@ -116,7 +104,7 @@ export default function ChatPage() {
   }, []);
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
-  const canChat = selectedAgentId && selectedVersion && versions.length > 0;
+  const canChat = !!selectedAgentId;
 
   return (
     <>
@@ -143,7 +131,7 @@ export default function ChatPage() {
                 <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium mb-2">No agents available</h3>
                 <p className="text-muted-foreground mb-4">
-                  Create an agent with at least one version to start chatting.
+                  Create an agent to start chatting.
                 </p>
                 <Link href="/agents/new">
                   <Button>
@@ -159,11 +147,8 @@ export default function ChatPage() {
             {/* Agent Selector */}
             <AgentSelector
               agents={agents.filter((a) => a.status === "active")}
-              versions={versions}
               selectedAgentId={selectedAgentId}
-              selectedVersion={selectedVersion}
               onAgentChange={handleAgentChange}
-              onVersionChange={setSelectedVersion}
               disabled={isStreaming}
             />
 
@@ -174,18 +159,8 @@ export default function ChatPage() {
                   <Bot className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium mb-2">Select an agent to start</h3>
                   <p className="text-muted-foreground">
-                    {selectedAgentId && versions.length === 0
-                      ? "This agent has no versions. Create a version first."
-                      : "Choose an agent from the dropdown above"}
+                    Choose an agent from the dropdown above
                   </p>
-                  {selectedAgentId && versions.length === 0 && (
-                    <Link href={`/agents/${selectedAgentId}`}>
-                      <Button variant="link">
-                        Create agent version
-                        <ExternalLink className="h-4 w-4 ml-1" />
-                      </Button>
-                    </Link>
-                  )}
                 </div>
               </div>
             ) : (
