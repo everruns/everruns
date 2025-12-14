@@ -34,9 +34,6 @@
     </linearGradient>
   </defs>
 
-  <!-- Optional background (remove for transparent) -->
-  <rect width="512" height="384" fill="#F6F4EF"/>
-
   <!-- Rings -->
   <g fill="none"
      stroke-width="18"

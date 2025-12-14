@@ -17,8 +17,8 @@ Three interlocking rings (Borromean rings pattern) — an unbreakable chain repr
 Each ring has a gradient from **navy on the outside to gold towards the center** — symbolizing how the three qualities converge into one unified platform.
 
 ### Files
-- `logo.svg` — Color version with gradients
-- `logo-mono.svg` — Black & white version
+- `/logo.svg` — Color version with gradients
+- `/logo-mono.svg` — Black & white version
 
 ### Usage
 - **Color version**: Marketing, website, social media
@@ -35,7 +35,6 @@ Each ring has a gradient from **navy on the outside to gold towards the center**
 | Navy (left) | `#081C3F` | Bottom-left ring outer |
 | Navy (right) | `#0B1233` | Bottom-right ring outer |
 | Gold | `#D4A43A` | Center convergence point |
-| Background | `#F6F4EF` | Logo background (optional) |
 
 ### App Interface (Grayscale)
 | Name | Hex | Usage |
