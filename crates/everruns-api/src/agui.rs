@@ -14,7 +14,7 @@ use everruns_storage::{
     models::{CreateMessage, CreateThread},
     Database,
 };
-use everruns_worker::WorkflowExecutor;
+use everruns_worker::{WorkflowInput, WorkflowRunner};
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, sync::Arc, time::Duration};
@@ -24,7 +24,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
-    pub executor: Arc<WorkflowExecutor>,
+    pub runner: Arc<dyn WorkflowRunner>,
 }
 
 /// AG-UI query parameters
@@ -117,12 +117,14 @@ pub async fn handle_ag_ui_request(
     let run_id = run.id;
 
     // Start workflow execution in background
-    let executor = state.executor.clone();
+    let runner = state.runner.clone();
+    let input = WorkflowInput {
+        run_id,
+        agent_id: params.agent_id,
+        thread_id,
+    };
     tokio::spawn(async move {
-        if let Err(e) = executor
-            .start_workflow(run_id, params.agent_id, thread_id)
-            .await
-        {
+        if let Err(e) = runner.start_workflow(input).await {
             tracing::error!(run_id = %run_id, error = %e, "Workflow execution failed");
         }
     });

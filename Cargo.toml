@@ -53,8 +53,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = { version = "5.2", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
 
-# Temporal SDK
-# TODO: Add squads-temporal-sdk once available
+# Async traits
+async-trait = "0.1"
 
 [profile.dev]
 opt-level = 0

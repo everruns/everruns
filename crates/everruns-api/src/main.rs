@@ -1,5 +1,6 @@
 // Everruns API server
 // Decision: Auth will be added later via OAuth (dashboard login)
+// Decision: Workflow runner is configurable via WORKFLOW_RUNNER env var ("inmemory" or "temporal")
 
 mod agents;
 mod agui;
@@ -10,7 +11,7 @@ use anyhow::{Context, Result};
 use axum::{routing::get, Json, Router};
 use everruns_contracts::*;
 use everruns_storage::Database;
-use everruns_worker::WorkflowExecutor;
+use everruns_worker::{create_runner, RunnerConfig};
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
@@ -105,9 +106,14 @@ async fn main() -> Result<()> {
         .context("Failed to connect to database")?;
     tracing::info!("Connected to database");
 
-    // Create workflow executor (M4: in-process execution)
-    let executor = Arc::new(WorkflowExecutor::new(db.clone()));
-    tracing::info!("Workflow executor initialized");
+    // Create workflow runner based on configuration
+    let runner_config = RunnerConfig::from_env().context("Invalid runner configuration")?;
+    tracing::info!(runner_type = ?runner_config.runner_type, "Runner configuration loaded");
+
+    let runner = create_runner(&runner_config, db.clone())
+        .await
+        .context("Failed to create workflow runner")?;
+    tracing::info!("Workflow runner initialized");
 
     // Create app state
     let state = AppState { db: Arc::new(db) };
@@ -121,11 +127,11 @@ async fn main() -> Result<()> {
     };
     let runs_state = runs::AppState {
         db: state.db.clone(),
-        executor: executor.clone(),
+        runner: runner.clone(),
     };
     let agui_state = agui::AppState {
         db: state.db.clone(),
-        executor: executor.clone(),
+        runner: runner.clone(),
     };
 
     // Build router
