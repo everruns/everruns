@@ -1,41 +1,59 @@
-# Build stage
-FROM rust:1.83-slim AS builder
+# syntax=docker/dockerfile:1.4
 
-WORKDIR /app
+# ============================================================================
+# Stage 1: Chef - Prepare cargo-chef for dependency caching
+# ============================================================================
+FROM rust:1.92-slim AS chef
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
-COPY rust-toolchain.toml ./
-COPY crates/everruns-api crates/everruns-api
-COPY crates/everruns-contracts crates/everruns-contracts
-COPY crates/everruns-storage crates/everruns-storage
-COPY crates/everruns-worker crates/everruns-worker
-
-# Build release binary
-RUN cargo build --release -p everruns-worker
-
-# Runtime stage
-FROM debian:bookworm-slim
+RUN cargo install cargo-chef --locked
 
 WORKDIR /app
 
-# Install runtime dependencies
+# ============================================================================
+# Stage 2: Planner - Analyze dependencies
+# ============================================================================
+FROM chef AS planner
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates crates
+
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ============================================================================
+# Stage 3: Builder - Build dependencies (cached) then application
+# ============================================================================
+FROM chef AS builder
+
+# Copy recipe and build dependencies first (cached layer)
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Copy source and build application
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates crates
+
+RUN cargo build --release -p everruns-worker
+
+# ============================================================================
+# Stage 4: Runtime - Minimal production image
+# ============================================================================
+FROM debian:bookworm-slim AS runtime
+
+WORKDIR /app
+
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binary from builder
 COPY --from=builder /app/target/release/everruns-worker /app/everruns-worker
 
-# Set environment variables
 ENV RUST_LOG=info
 
-# Run the binary
 CMD ["/app/everruns-worker"]

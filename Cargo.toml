@@ -62,5 +62,15 @@ debug = true
 
 [profile.release]
 opt-level = 3
-lto = true
-codegen-units = 1
+# Use thin LTO for faster builds while retaining most optimization benefits
+# Full LTO (`lto = true`) provides ~5-10% smaller binaries but 2-5x slower link times
+lto = "thin"
+codegen-units = 16
+
+# CI-optimized profile: faster builds, still optimized
+[profile.release-ci]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+debug = false
+strip = true
