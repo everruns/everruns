@@ -1,7 +1,7 @@
 use anyhow::Result;
+#[cfg(feature = "temporal")]
 use everruns_storage::repositories::Database;
-use everruns_worker::WorkflowExecutor;
-use std::sync::Arc;
+use everruns_worker::{RunnerConfig, RunnerMode};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -16,25 +16,51 @@ async fn main() -> Result<()> {
 
     tracing::info!("everrun-worker starting...");
 
-    // Get database URL from environment
-    let database_url =
-        std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable required");
+    // Load runner configuration
+    let config = RunnerConfig::from_env();
+    tracing::info!(mode = ?config.mode, "Runner mode configured");
 
-    // Initialize database connection
-    let db = Database::from_url(&database_url).await?;
-    tracing::info!("Database connection established");
+    match config.mode {
+        RunnerMode::InProcess => {
+            // In-process mode: Worker is passive, workflows triggered by API
+            // Database connection not needed - API handles execution
+            tracing::info!("Worker running in passive mode (in-process execution handled by API)");
+            tracing::info!("Worker ready, waiting for shutdown signal...");
+            tokio::signal::ctrl_c().await?;
+        }
+        RunnerMode::Temporal => {
+            // Temporal mode: Worker with step checkpointing for durability
+            #[cfg(feature = "temporal")]
+            {
+                // Get database URL from environment
+                let database_url = std::env::var("DATABASE_URL")
+                    .expect("DATABASE_URL environment variable required");
 
-    // Create workflow executor
-    let _executor = Arc::new(WorkflowExecutor::new(db));
-    tracing::info!("Workflow executor initialized");
+                // Initialize database connection for Temporal worker
+                let db = Database::from_url(&database_url).await?;
+                tracing::info!("Database connection established");
 
-    // M4: Worker is passive - workflows are triggered by API
-    // M5+: Will add active components (queue polling, scheduled runs, etc.)
+                tracing::info!(
+                    address = %config.temporal_address(),
+                    namespace = %config.temporal_namespace(),
+                    task_queue = %config.temporal_task_queue(),
+                    "Starting Temporal worker with checkpointing"
+                );
 
-    // Keep the worker running
-    tracing::info!("Worker ready to execute workflows");
-    tokio::signal::ctrl_c().await?;
-    tracing::info!("Shutdown signal received");
+                // Run the temporal worker (keeps running until shutdown)
+                everruns_worker::runner_temporal::run_temporal_worker(&config, db).await?;
+            }
 
+            #[cfg(not(feature = "temporal"))]
+            {
+                anyhow::bail!(
+                    "Temporal mode requested but 'temporal' feature is not enabled. \
+                    Compile with: cargo build --features temporal"
+                );
+            }
+        }
+    }
+
+    tracing::info!("Worker shutdown complete");
     Ok(())
 }
