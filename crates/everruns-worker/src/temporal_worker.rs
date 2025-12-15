@@ -194,6 +194,23 @@ async fn poll_and_process_workflow_task(
         "Received workflow task"
     );
 
+    // Check if this is only a RemoveFromCache job - if so, just remove and don't complete
+    let is_only_eviction = task.jobs.len() == 1
+        && task.jobs.first().is_some_and(|j| {
+            matches!(
+                j.variant,
+                Some(wf_activation_job::Variant::RemoveFromCache(_))
+            )
+        });
+
+    if is_only_eviction {
+        debug!(run_id = %task.run_id, "Handling eviction-only task");
+        let mut workflows_guard = workflows.lock().await;
+        workflows_guard.remove(&task.run_id);
+        // Don't send completion for eviction-only tasks
+        return Ok(());
+    }
+
     // Process workflow activation
     let commands = process_workflow_activation(&task, workflows).await?;
 
@@ -308,8 +325,9 @@ async fn process_workflow_activation(
             }
 
             Some(wf_activation_job::Variant::RemoveFromCache(_)) => {
-                debug!(run_id = %task.run_id, "Removing workflow from cache");
-                workflows_guard.remove(&task.run_id);
+                // RemoveFromCache is handled at the task level for eviction-only tasks
+                // For mixed tasks, we defer removal until after processing
+                debug!(run_id = %task.run_id, "RemoveFromCache job received (deferring removal)");
             }
 
             other => {
