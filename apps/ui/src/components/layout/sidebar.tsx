@@ -9,7 +9,6 @@ import {
   Bot,
   Play,
   MessageSquare,
-  Sparkles,
 } from "lucide-react";
 
 const navigation = [
@@ -17,7 +16,6 @@ const navigation = [
   { name: "Agents", href: "/agents", icon: Bot },
   { name: "Runs", href: "/runs", icon: Play },
   { name: "Chat", href: "/chat", icon: MessageSquare },
-  { name: "CopilotKit", href: "/copilot", icon: Sparkles },
 ];
 
 export function Sidebar() {
