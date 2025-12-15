@@ -29,6 +29,10 @@ jobs:
           - target: worker
             dockerfile: docker/Dockerfile.unified
             image_name: everruns-worker
+          - target: runner
+            dockerfile: apps/ui/Dockerfile
+            image_name: everruns-ui
+            context: apps/ui
 
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +73,7 @@ jobs:
       - name: Build and push ${{ matrix.target }}
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ${{ matrix.context || '.' }}
           file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
           push: true
