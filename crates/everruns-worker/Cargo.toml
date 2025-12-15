@@ -4,11 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[features]
-# Temporal is enabled by default for durable workflow execution
-default = ["temporal"]
-temporal = []
-
 [dependencies]
 tokio.workspace = true
 serde.workspace = true

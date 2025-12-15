@@ -3,7 +3,6 @@ pub mod executor;
 pub mod providers;
 pub mod runner;
 pub mod runner_inprocess;
-#[cfg(feature = "temporal")]
 pub mod runner_temporal;
 pub mod tools;
 pub mod workflows;
