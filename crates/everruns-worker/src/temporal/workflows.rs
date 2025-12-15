@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::temporal_types::*;
+use super::types::*;
 
 /// Maximum number of tool iterations before forcing completion
 const MAX_TOOL_ITERATIONS: u8 = 10;

@@ -23,13 +23,15 @@ use crate::providers::openai::OpenAiProvider;
 use crate::providers::{
     ChatMessage, LlmConfig, LlmProvider, LlmStreamEvent, MessageRole as ProviderMessageRole,
 };
-use crate::temporal_types::*;
+
+use super::types::*;
 
 /// Activity context for heartbeat reporting
 /// In the real Temporal SDK, this would be provided by the runtime
 pub struct ActivityContext {
     /// Task token for this activity (used for heartbeats)
-    pub task_token: Vec<u8>,
+    #[allow(dead_code)]
+    task_token: Vec<u8>,
     /// Function to report heartbeat progress
     heartbeat_fn: Option<Box<dyn Fn(String) + Send + Sync>>,
 }
@@ -43,6 +45,7 @@ impl ActivityContext {
     }
 
     /// Set the heartbeat function
+    #[allow(dead_code)]
     pub fn with_heartbeat<F>(mut self, f: F) -> Self
     where
         F: Fn(String) + Send + Sync + 'static,

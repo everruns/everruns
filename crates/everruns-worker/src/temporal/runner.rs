@@ -6,8 +6,6 @@
 // - Worker polls Temporal task queues and executes activities
 // - Each activity (load_agent, call_llm, execute_tools) is idempotent
 // - Events are persisted to database for SSE streaming to clients
-//
-// Note: This module is conditionally compiled via #[cfg(feature = "temporal")] in lib.rs
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -18,9 +16,10 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::runner::{AgentRunner, RunnerConfig};
-use crate::temporal_client::TemporalClient;
-use crate::temporal_types::AgentRunWorkflowInput;
-use crate::temporal_worker::TemporalWorker;
+
+use super::client::TemporalClient;
+use super::types::AgentRunWorkflowInput;
+use super::worker::TemporalWorker;
 
 /// Temporal-based agent runner using true Temporal workflows
 ///

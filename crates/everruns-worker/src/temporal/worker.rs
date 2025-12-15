@@ -29,14 +29,15 @@ use tokio::sync::{watch, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::activities_temporal::{
+use crate::runner::RunnerConfig;
+
+use super::activities::{
     call_llm_activity, execute_tools_activity, load_agent_activity, load_messages_activity,
     persist_event_activity, save_message_activity, update_status_activity, ActivityContext,
 };
-use crate::runner::RunnerConfig;
-use crate::temporal_client::TemporalWorkerCore;
-use crate::temporal_types::*;
-use crate::workflows_temporal::{AgentRunWorkflow, WorkflowAction};
+use super::client::TemporalWorkerCore;
+use super::types::*;
+use super::workflows::{AgentRunWorkflow, WorkflowAction};
 
 /// Temporal worker that processes workflow and activity tasks
 pub struct TemporalWorker {
