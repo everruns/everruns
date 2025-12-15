@@ -1,0 +1,23 @@
+# Everruns AWS Production Configuration
+# Copy this file to terraform.tfvars and fill in the values
+# WARNING: terraform.tfvars contains secrets - do NOT commit to git!
+
+# Environment settings
+environment = "production"
+region      = "us-east-1"
+
+# Domain configuration
+domain_name = "poc.everruns.com"
+
+# Docker image tag to deploy
+# Use "latest" for most recent, or specific commit SHA for pinned versions
+image_tag = "latest"
+
+# OpenAI API key (required for LLM functionality)
+# Get from: https://platform.openai.com/api-keys
+openai_api_key = "sk-..."
+
+# GitHub Personal Access Token for pulling images from ghcr.io
+# Required scope: read:packages
+# Create at: https://github.com/settings/tokens
+github_token = "ghp_..."
