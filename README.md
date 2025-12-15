@@ -41,7 +41,7 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 ```
 
 Services available at:
-- **UI**: http://localhost:3000
+- **UI**: http://localhost:9100
 - **API**: http://localhost:9000
 - **API Docs**: http://localhost:9000/swagger-ui/
 - **Temporal UI**: http://localhost:8080
@@ -62,14 +62,14 @@ Services available at:
 
 ### Create an Agent
 
-1. Open http://localhost:3000/agents
+1. Open http://localhost:9100/agents
 2. Click "New Agent"
 3. Enter name and select model (e.g., `gpt-5.1`)
 4. Create a version with a system prompt
 
 ### Chat with an Agent
 
-1. Open http://localhost:3000/chat
+1. Open http://localhost:9100/chat
 2. Select your agent
 3. Send a message and watch the response stream
 

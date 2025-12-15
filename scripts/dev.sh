@@ -157,7 +157,7 @@ case "$command" in
     echo ""
     echo "   🌐 API:         http://localhost:9000"
     echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-    echo "   🖥️  UI:          http://localhost:3000"
+    echo "   🖥️  UI:          http://localhost:9100"
     echo "   ⏱️  Temporal UI: http://localhost:8080"
     echo ""
     echo "💡 To stop all services: ./scripts/dev.sh stop-all"
