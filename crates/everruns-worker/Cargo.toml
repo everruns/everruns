@@ -5,9 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = []
-# Temporal feature flag - when enabled, uses Temporal SDK for durable workflow execution
-# Currently uses a client-based approach that submits to Temporal server
+# Temporal is enabled by default for durable workflow execution
+default = ["temporal"]
 temporal = []
 
 [dependencies]

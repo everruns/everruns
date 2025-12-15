@@ -30,18 +30,15 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ============================================================================
 FROM chef AS builder
 
-# Build arg for cargo features (default: temporal for durable workflow execution)
-ARG CARGO_FEATURES=temporal
-
 # Copy recipe and build dependencies first (cached layer)
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json --features "${CARGO_FEATURES}"
+RUN cargo chef cook --release --recipe-path recipe.json
 
 # Copy source and build application
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-RUN cargo build --release -p everruns-worker --features "${CARGO_FEATURES}"
+RUN cargo build --release -p everruns-worker
 
 # ============================================================================
 # Stage 4: Runtime - Minimal production image

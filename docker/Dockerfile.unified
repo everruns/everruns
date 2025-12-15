@@ -6,10 +6,6 @@
 # Usage:
 #   docker build --target api -f docker/Dockerfile.unified -t everruns-api .
 #   docker build --target worker -f docker/Dockerfile.unified -t everruns-worker .
-#
-# Build args:
-#   CARGO_FEATURES - Cargo features to enable (default: temporal)
-#   Example: docker build --build-arg CARGO_FEATURES=temporal --target api ...
 
 # ============================================================================
 # Stage 1: Chef - Prepare cargo-chef for dependency caching
@@ -41,38 +37,29 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ============================================================================
 FROM chef AS deps
 
-# Build arg for cargo features (default: temporal for durable workflow execution)
-ARG CARGO_FEATURES=temporal
-
 # Copy recipe and build dependencies first (this layer is cached!)
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json --features "${CARGO_FEATURES}"
+RUN cargo chef cook --release --recipe-path recipe.json
 
 # ============================================================================
 # Stage 4a: Build API binary
 # ============================================================================
 FROM deps AS builder-api
 
-# Build arg for cargo features (default: temporal for durable workflow execution)
-ARG CARGO_FEATURES=temporal
-
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-RUN cargo build --release -p everruns-api --features "${CARGO_FEATURES}"
+RUN cargo build --release -p everruns-api
 
 # ============================================================================
 # Stage 4b: Build Worker binary
 # ============================================================================
 FROM deps AS builder-worker
 
-# Build arg for cargo features (default: temporal for durable workflow execution)
-ARG CARGO_FEATURES=temporal
-
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-RUN cargo build --release -p everruns-worker --features "${CARGO_FEATURES}"
+RUN cargo build --release -p everruns-worker
 
 # ============================================================================
 # Stage 5a: API Runtime image
