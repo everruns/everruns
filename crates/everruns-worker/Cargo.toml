@@ -4,6 +4,18 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+# Temporal feature flag - when enabled, uses Temporal SDK for durable workflow execution
+# with true Temporal server integration (workflow/activity polling)
+temporal = [
+    "dep:temporal-sdk-core",
+    "dep:temporal-sdk-core-protos",
+    "dep:prost",
+    "dep:prost-types",
+    "dep:tonic",
+]
+
 [dependencies]
 tokio.workspace = true
 serde.workspace = true
@@ -26,8 +38,10 @@ eventsource-stream = "0.2.3"
 sha2 = "0.10"
 hex = "0.4"
 url = "2.5"
-tonic = { version = "0.12", optional = true }
 
-# Note: Temporal SDK dependencies will be added when the Rust SDK is more stable
-# For now, we use a gRPC-based client implementation
-# Future: squads-temporal-sdk or official temporal-sdk when available
+# Temporal SDK dependencies (optional, feature-gated)
+temporal-sdk-core = { workspace = true, optional = true }
+temporal-sdk-core-protos = { workspace = true, optional = true }
+prost = { workspace = true, optional = true }
+prost-types = { workspace = true, optional = true }
+tonic = { version = "0.12", optional = true }

@@ -74,13 +74,13 @@ case "$command" in
     ;;
 
   api)
-    echo "🌐 Starting API server..."
-    cargo run -p everruns-api
+    echo "🌐 Starting API server (Temporal mode)..."
+    AGENT_RUNNER_MODE=temporal cargo run -p everruns-api --features temporal
     ;;
 
   worker)
-    echo "⚙️  Starting worker..."
-    cargo run -p everruns-worker
+    echo "⚙️  Starting worker (Temporal mode)..."
+    AGENT_RUNNER_MODE=temporal cargo run -p everruns-worker --features temporal
     ;;
 
   ui)
@@ -129,9 +129,9 @@ case "$command" in
     sqlx migrate run --source crates/everruns-storage/migrations
     echo "   ✅ Migrations complete"
 
-    # Start API in background
-    echo "4️⃣  Starting API server..."
-    cargo run -p everruns-api &
+    # Start API in background (with temporal feature and mode enabled)
+    echo "4️⃣  Starting API server (Temporal mode)..."
+    AGENT_RUNNER_MODE=temporal cargo run -p everruns-api --features temporal &
     API_PID=$!
     sleep 3
 
@@ -142,8 +142,15 @@ case "$command" in
       echo "   ⚠️  API may still be starting..."
     fi
 
+    # Start Worker in background (with temporal feature and mode enabled)
+    echo "5️⃣  Starting Temporal worker..."
+    AGENT_RUNNER_MODE=temporal cargo run -p everruns-worker --features temporal &
+    WORKER_PID=$!
+    sleep 2
+    echo "   ✅ Worker is starting (PID: $WORKER_PID)"
+
     # Start UI in background
-    echo "5️⃣  Starting UI server..."
+    echo "6️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
@@ -157,7 +164,8 @@ case "$command" in
     echo ""
     echo "   🌐 API:         http://localhost:9000"
     echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-    echo "   🖥️  UI:          http://localhost:9100"
+    echo "   ⚙️  Worker:      running (Temporal workflows)"
+    echo "   🖥️  UI:          http://localhost:3000"
     echo "   ⏱️  Temporal UI: http://localhost:8080"
     echo ""
     echo "💡 To stop all services: ./scripts/dev.sh stop-all"
@@ -172,6 +180,7 @@ case "$command" in
 
     # Kill any running cargo/node processes for this project
     pkill -f "everruns-api" 2>/dev/null || true
+    pkill -f "everruns-worker" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
 
     # Stop Docker services
