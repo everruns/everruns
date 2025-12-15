@@ -5,10 +5,10 @@ set -euo pipefail
 # Usage: ./scripts/test-api.sh [--with-ui]
 #
 # Options:
-#   --with-ui    Also test the UI at localhost:3000
+#   --with-ui    Also test the UI at localhost:9100
 
 API_URL="http://localhost:9000"
-UI_URL="http://localhost:3000"
+UI_URL="http://localhost:9100"
 TEST_UI=false
 
 # Parse arguments

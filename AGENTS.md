@@ -103,7 +103,7 @@ cargo run --example create_agent
 
 **Manual testing**:
 - API docs: http://localhost:9000/swagger-ui/
-- UI: http://localhost:3000
+- UI: http://localhost:9100
 - Health check: `curl http://localhost:9000/health`
 
 ### Cloud Agent testing (no Docker)

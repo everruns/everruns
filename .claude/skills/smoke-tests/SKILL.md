@@ -618,7 +618,7 @@ cd apps/ui && npm run dev
 Expected output:
 ```
 ▲ Next.js 16.x
-- Local: http://localhost:3000
+- Local: http://localhost:9100
 ```
 
 ### Verify UI Pages
@@ -627,15 +627,15 @@ With API running, open in browser:
 
 | Page | URL | Expected |
 |------|-----|----------|
-| Dashboard | http://localhost:3000/dashboard | Stats, recent runs, agents list |
-| Agents | http://localhost:3000/agents | Agent cards grid |
-| Create Agent | http://localhost:3000/agents/new | Form to create agent |
-| Runs | http://localhost:3000/runs | Run table with filters |
-| Chat | http://localhost:3000/chat | Agent selector, chat interface |
+| Dashboard | http://localhost:9100/dashboard | Stats, recent runs, agents list |
+| Agents | http://localhost:9100/agents | Agent cards grid |
+| Create Agent | http://localhost:9100/agents/new | Form to create agent |
+| Runs | http://localhost:9100/runs | Run table with filters |
+| Chat | http://localhost:9100/chat | Agent selector, chat interface |
 
 ### End-to-End UI Test
 
-1. Open http://localhost:3000
+1. Open http://localhost:9100
 2. Navigate to Agents → Create new agent
 3. Fill in name, select model, click Create
 4. Click "New Version" → Add system prompt → Create
