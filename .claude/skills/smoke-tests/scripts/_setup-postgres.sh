@@ -1,15 +1,15 @@
 #!/bin/bash
-# PostgreSQL setup for Cloud Agent smoke tests
+# PostgreSQL setup for smoke tests (no-Docker mode)
 # Sets up a local PostgreSQL 18 cluster without Docker
 #
 # This script can be:
-# - Sourced by run-smoke-tests.sh (common.sh must be sourced first)
-# - Executed directly (will source common.sh itself)
+# - Sourced by run-no-docker.sh (_utils.sh must be sourced first)
+# - Executed directly (will source _utils.sh itself)
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    # Running directly - source common.sh
+    # Running directly - source _utils.sh
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    source "$SCRIPT_DIR/common.sh"
+    source "$SCRIPT_DIR/_utils.sh"
     set -e
 fi
 
@@ -30,13 +30,13 @@ install_postgres() {
     systemctl stop postgresql@$PG_VERSION-main 2>/dev/null || true
     systemctl disable postgresql@$PG_VERSION-main 2>/dev/null || true
 
-    log_info "PostgreSQL $PG_VERSION installed"
+    check_pass "PostgreSQL install - version $PG_VERSION installed"
 }
 
 # Check if PostgreSQL is installed, install if not
 check_postgres() {
     if [ -f "$PG_BIN/initdb" ]; then
-        log_info "PostgreSQL $PG_VERSION found at $PG_BIN"
+        check_pass "PostgreSQL install - found at $PG_BIN"
         return 0
     fi
 
@@ -44,7 +44,7 @@ check_postgres() {
     install_postgres
 
     if [ ! -f "$PG_BIN/initdb" ]; then
-        log_error "Failed to install PostgreSQL $PG_VERSION"
+        check_fail "PostgreSQL install" "failed to install PostgreSQL $PG_VERSION"
         exit 1
     fi
 }
@@ -64,7 +64,7 @@ init_postgres() {
     # Configure socket directory
     su - postgres -c "echo \"unix_socket_directories = '$PGDATA'\" >> $PGDATA/postgresql.conf"
 
-    log_info "PostgreSQL cluster initialized"
+    check_pass "PostgreSQL cluster - initialized at $PGDATA"
 }
 
 # Start PostgreSQL
@@ -81,13 +81,13 @@ start_postgres() {
     # Wait for startup
     for i in {1..10}; do
         if pg_isready -h "$PGDATA" > /dev/null 2>&1; then
-            log_info "PostgreSQL is ready"
+            check_pass "PostgreSQL cluster - started and ready"
             return 0
         fi
         sleep 1
     done
 
-    log_error "PostgreSQL failed to start"
+    check_fail "PostgreSQL cluster" "failed to start (see $PG_LOGFILE)"
     cat "$PG_LOGFILE"
     exit 1
 }
@@ -109,7 +109,7 @@ setup_database() {
     su - postgres -c "export PATH=$PG_BIN:\$PATH && psql -h $PGDATA -c \"CREATE DATABASE everruns OWNER everruns;\"" > /dev/null 2>&1
     su - postgres -c "export PATH=$PG_BIN:\$PATH && psql -h $PGDATA -c \"GRANT ALL PRIVILEGES ON DATABASE everruns TO everruns;\"" > /dev/null 2>&1
 
-    log_info "Database 'everruns' created"
+    check_pass "Database setup - database 'everruns' created"
 }
 
 # Full PostgreSQL setup

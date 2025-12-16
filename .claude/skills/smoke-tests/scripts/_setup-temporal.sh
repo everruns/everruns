@@ -1,22 +1,22 @@
 #!/bin/bash
-# Temporal setup for Cloud Agent smoke tests
+# Temporal setup for smoke tests (no-Docker mode)
 # Installs and starts Temporal dev server without Docker
 #
 # This script can be:
-# - Sourced by run.sh (common.sh must be sourced first)
-# - Executed directly (will source common.sh itself)
+# - Sourced by run-no-docker.sh (_utils.sh must be sourced first)
+# - Executed directly (will source _utils.sh itself)
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    # Running directly - source common.sh
+    # Running directly - source _utils.sh
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    source "$SCRIPT_DIR/common.sh"
+    source "$SCRIPT_DIR/_utils.sh"
     set -e
 fi
 
 # Install Temporal CLI if not present
 install_temporal() {
     if [ -f "$TEMPORAL_BIN" ]; then
-        log_info "Temporal CLI already installed: $($TEMPORAL_BIN --version)"
+        check_pass "Temporal install - $($TEMPORAL_BIN --version)"
         return 0
     fi
 
@@ -31,7 +31,7 @@ install_temporal() {
     chmod +x "$TEMPORAL_BIN"
     rm -f /tmp/temporal.tar.gz
 
-    log_info "Temporal CLI installed: $($TEMPORAL_BIN --version)"
+    check_pass "Temporal install - $($TEMPORAL_BIN --version)"
 }
 
 # Start Temporal dev server
@@ -47,13 +47,13 @@ start_temporal() {
     # Wait for Temporal to be ready
     for i in {1..30}; do
         if nc -z localhost 7233 2>/dev/null; then
-            log_info "Temporal is ready on localhost:7233"
+            check_pass "Temporal server - started on localhost:7233"
             return 0
         fi
         sleep 1
     done
 
-    log_error "Temporal failed to start"
+    check_fail "Temporal server" "failed to start (see $TEMPORAL_LOG)"
     cat "$TEMPORAL_LOG"
     exit 1
 }
