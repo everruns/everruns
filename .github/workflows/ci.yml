@@ -303,7 +303,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check & build
         run: npm run build
 
   # Docker builds using matrix for parallel execution
