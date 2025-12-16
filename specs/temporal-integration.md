@@ -130,30 +130,10 @@ TEMPORAL_NAMESPACE=default          # Temporal namespace
 TEMPORAL_TASK_QUEUE=everruns-agent-runs  # Task queue name
 ```
 
-## Feature Gating
-
-Temporal integration is behind a feature flag:
-
-```toml
-# Cargo.toml
-[features]
-temporal = [
-    "dep:temporal-sdk-core",
-    "dep:temporal-sdk-core-protos",
-    ...
-]
-```
-
-Build with temporal support:
-```bash
-cargo build --features temporal
-```
-
 ## In-Process Mode (Default)
 
 When `AGENT_RUNNER_MODE=inprocess` (default), execution happens in the API process:
 
-- No Temporal dependency required
 - Workflows are tokio tasks
 - Same activity logic reused
 - Good for development and single-process deployment

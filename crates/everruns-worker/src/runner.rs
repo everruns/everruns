@@ -108,19 +108,8 @@ pub async fn create_runner(
                 "Creating Temporal agent runner"
             );
 
-            #[cfg(feature = "temporal")]
-            {
-                let runner = crate::temporal::TemporalRunner::new(config.clone(), db).await?;
-                Ok(Arc::new(runner))
-            }
-
-            #[cfg(not(feature = "temporal"))]
-            {
-                anyhow::bail!(
-                    "Temporal runner requested but 'temporal' feature is not enabled. \
-                    Compile with: cargo build --features temporal"
-                )
-            }
+            let runner = crate::temporal::TemporalRunner::new(config.clone(), db).await?;
+            Ok(Arc::new(runner))
         }
     }
 }
