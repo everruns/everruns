@@ -1,34 +1,122 @@
 // TypeScript types mirroring Rust contracts from everruns-contracts
+// M2: Updated to Harness/Session/Event model
 
-// Agent types
-export type AgentStatus = "active" | "disabled";
+// ============================================
+// Harness types (M2)
+// ============================================
 
-export interface Agent {
+export type HarnessStatus = "active" | "archived";
+
+export interface Harness {
   id: string;
-  name: string;
+  slug: string;
+  display_name: string;
   description: string | null;
-  default_model_id: string;
-  definition: AgentDefinition;
-  status: AgentStatus;
+  system_prompt: string;
+  default_model_id: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  tags: string[];
+  status: HarnessStatus;
   created_at: string;
   updated_at: string;
 }
 
-export interface AgentDefinition {
+export interface CreateHarnessRequest {
+  slug: string;
+  display_name: string;
+  description?: string;
+  system_prompt: string;
+  default_model_id?: string;
+  temperature?: number;
+  max_tokens?: number;
+  tags?: string[];
+}
+
+export interface UpdateHarnessRequest {
+  slug?: string;
+  display_name?: string;
+  description?: string;
   system_prompt?: string;
+  default_model_id?: string;
   temperature?: number;
   max_tokens?: number;
-  tools?: ToolDefinition[];
+  tags?: string[];
+  status?: HarnessStatus;
 }
 
-export interface LlmConfig {
-  model?: string;
-  temperature?: number;
-  max_tokens?: number;
-  top_p?: number;
+// ============================================
+// Session types (M2)
+// ============================================
+
+export interface Session {
+  id: string;
+  harness_id: string;
+  title: string | null;
+  tags: string[];
+  model_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
+export interface CreateSessionRequest {
+  title?: string;
+  tags?: string[];
+  model_id?: string;
+}
+
+export interface UpdateSessionRequest {
+  title?: string;
+  tags?: string[];
+  model_id?: string;
+}
+
+// ============================================
+// Event types (M2)
+// ============================================
+
+export interface Event {
+  id: string;
+  session_id: string;
+  sequence: number;
+  event_type: string;
+  data: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CreateEventRequest {
+  event_type: string;
+  data: Record<string, unknown>;
+}
+
+// Message data structure in event
+export interface MessageContent {
+  type: string;
+  text: string;
+}
+
+export interface MessageData {
+  role: string;
+  content: MessageContent[];
+}
+
+export interface MessageEventData {
+  message: MessageData;
+}
+
+// ============================================
+// List response wrapper
+// ============================================
+
+export interface ListResponse<T> {
+  data: T[];
+}
+
+// ============================================
 // Tool types
+// ============================================
+
 export type ToolPolicy = "auto" | "requires_approval";
 
 export type ToolDefinition = WebhookTool | BuiltinTool;
@@ -56,122 +144,20 @@ export interface BuiltinTool {
   policy?: ToolPolicy;
 }
 
-// Thread types
-export interface Thread {
-  id: string;
-  created_at: string;
-}
-
-export interface Message {
-  id: string;
-  thread_id: string;
-  role: string;
-  content: string;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
-}
-
-// Run types
-export type RunStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export interface Run {
-  id: string;
-  agent_id: string;
-  thread_id: string;
-  status: RunStatus;
-  created_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-}
-
-// AG-UI Event types
-export type AgUiEvent =
-  | { type: "RUN_STARTED"; run_id: string; timestamp: string }
-  | { type: "RUN_FINISHED"; run_id: string; timestamp: string }
-  | { type: "RUN_ERROR"; run_id: string; error: string; timestamp: string }
-  | {
-      type: "STEP_STARTED";
-      step_id: string;
-      step_name: string;
-      timestamp: string;
-    }
-  | { type: "STEP_FINISHED"; step_id: string; timestamp: string }
-  | {
-      type: "TEXT_MESSAGE_START";
-      message_id: string;
-      role: string;
-      timestamp: string;
-    }
-  | {
-      type: "TEXT_MESSAGE_CHUNK";
-      message_id: string;
-      chunk: string;
-      timestamp: string;
-    }
-  | { type: "TEXT_MESSAGE_END"; message_id: string; timestamp: string }
-  | {
-      type: "TOOL_CALL_START";
-      tool_call_id: string;
-      tool_name: string;
-      arguments: Record<string, unknown>;
-      timestamp: string;
-    }
-  | {
-      type: "TOOL_CALL_RESULT";
-      tool_call_id: string;
-      result: Record<string, unknown> | null;
-      error: string | null;
-      timestamp: string;
-    }
-  | {
-      type: "CUSTOM";
-      kind: string;
-      data: Record<string, unknown>;
-      timestamp: string;
-    };
-
-// API Request types
-export interface CreateAgentRequest {
-  name: string;
-  description?: string;
-  default_model_id: string;
-  definition: AgentDefinition;
-}
-
-export interface UpdateAgentRequest {
-  name?: string;
-  description?: string;
-  default_model_id?: string;
-  definition?: AgentDefinition;
-  status?: AgentStatus;
-}
-
-// Empty request body - threads are created without parameters
-export type CreateThreadRequest = Record<string, never>;
-
-export interface CreateMessageRequest {
-  role: string;
-  content: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface CreateRunRequest {
-  agent_id: string;
-  thread_id: string;
-}
-
+// ============================================
 // Health check
+// ============================================
+
 export interface HealthResponse {
   status: string;
   version: string;
+  runner_mode: string;
 }
 
+// ============================================
 // LLM Provider types
+// ============================================
+
 export type LlmProviderType =
   | "openai"
   | "anthropic"

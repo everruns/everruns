@@ -1,53 +1,50 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bot, Play, CheckCircle, XCircle } from "lucide-react";
-import type { Agent, Run } from "@/lib/api/types";
+import { Boxes, MessageSquare, CheckCircle, Clock } from "lucide-react";
+import type { Harness, Session } from "@/lib/api/types";
 
 interface StatsCardsProps {
-  agents: Agent[];
-  runs: Run[];
+  harnesses: Harness[];
+  sessions: Session[];
 }
 
-export function StatsCards({ agents, runs }: StatsCardsProps) {
-  const activeAgents = agents.filter((a) => a.status === "active").length;
-  const activeRuns = runs.filter(
-    (r) => r.status === "pending" || r.status === "running"
-  ).length;
-  const completedRuns = runs.filter((r) => r.status === "completed").length;
-  const failedRuns = runs.filter((r) => r.status === "failed").length;
-  const totalRuns = runs.length;
-  const successRate =
-    totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0;
+export function StatsCards({ harnesses, sessions }: StatsCardsProps) {
+  const activeHarnesses = harnesses.filter((h) => h.status === "active").length;
+  const activeSessions = sessions.filter((s) => !s.finished_at).length;
+  const completedSessions = sessions.filter((s) => s.finished_at).length;
+  const totalSessions = sessions.length;
+  const completionRate =
+    totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
 
   const stats = [
     {
-      title: "Total Agents",
-      value: agents.length,
-      description: `${activeAgents} active`,
-      icon: Bot,
+      title: "Total Harnesses",
+      value: harnesses.length,
+      description: `${activeHarnesses} active`,
+      icon: Boxes,
       color: "text-blue-600",
     },
     {
-      title: "Active Runs",
-      value: activeRuns,
-      description: "Currently executing",
-      icon: Play,
+      title: "Active Sessions",
+      value: activeSessions,
+      description: "Currently running",
+      icon: MessageSquare,
       color: "text-yellow-600",
     },
     {
-      title: "Success Rate",
-      value: `${successRate}%`,
-      description: `${completedRuns} completed`,
+      title: "Completion Rate",
+      value: `${completionRate}%`,
+      description: `${completedSessions} completed`,
       icon: CheckCircle,
       color: "text-green-600",
     },
     {
-      title: "Failed Runs",
-      value: failedRuns,
-      description: "Needs attention",
-      icon: XCircle,
-      color: "text-red-600",
+      title: "Pending",
+      value: sessions.filter((s) => !s.started_at).length,
+      description: "Not yet started",
+      icon: Clock,
+      color: "text-gray-600",
     },
   ];
 

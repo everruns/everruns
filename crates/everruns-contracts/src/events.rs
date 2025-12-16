@@ -321,3 +321,53 @@ impl AgUiEvent {
 // HITL-specific custom event kinds
 pub const HITL_REQUEST: &str = "hitl.request";
 pub const HITL_DECISION: &str = "hitl.decision";
+
+// M2 Session lifecycle event types (stored in database)
+pub const EVENT_SESSION_STARTED: &str = "session.started";
+pub const EVENT_SESSION_FINISHED: &str = "session.finished";
+pub const EVENT_SESSION_ERROR: &str = "session.error";
+pub const EVENT_MESSAGE_USER: &str = "message.user";
+pub const EVENT_MESSAGE_ASSISTANT: &str = "message.assistant";
+pub const EVENT_MESSAGE_SYSTEM: &str = "message.system";
+pub const EVENT_TEXT_START: &str = "text.start";
+pub const EVENT_TEXT_DELTA: &str = "text.delta";
+pub const EVENT_TEXT_END: &str = "text.end";
+pub const EVENT_TOOL_CALL_START: &str = "tool.call.start";
+pub const EVENT_TOOL_CALL_ARGS: &str = "tool.call.args";
+pub const EVENT_TOOL_CALL_END: &str = "tool.call.end";
+pub const EVENT_TOOL_RESULT: &str = "tool.result";
+pub const EVENT_STATE_SNAPSHOT: &str = "state.snapshot";
+pub const EVENT_STATE_DELTA: &str = "state.delta";
+
+// M2 Session-based helper functions
+impl AgUiEvent {
+    /// Create a session started event (maps to RunStarted for AG-UI compatibility)
+    pub fn session_started(session_id: impl Into<String>) -> Self {
+        let session_id = session_id.into();
+        AgUiEvent::RunStarted(RunStartedEvent {
+            thread_id: session_id.clone(),
+            run_id: session_id,
+            timestamp: Some(Utc::now().timestamp_millis()),
+        })
+    }
+
+    /// Create a session finished event (maps to RunFinished for AG-UI compatibility)
+    pub fn session_finished(session_id: impl Into<String>) -> Self {
+        let session_id = session_id.into();
+        AgUiEvent::RunFinished(RunFinishedEvent {
+            thread_id: session_id.clone(),
+            run_id: session_id,
+            result: None,
+            timestamp: Some(Utc::now().timestamp_millis()),
+        })
+    }
+
+    /// Create a session error event (maps to RunError for AG-UI compatibility)
+    pub fn session_error(message: impl Into<String>) -> Self {
+        AgUiEvent::RunError(RunErrorEvent {
+            message: message.into(),
+            code: None,
+            timestamp: Some(Utc::now().timestamp_millis()),
+        })
+    }
+}

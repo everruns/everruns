@@ -32,55 +32,45 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("Runs")).toBeInTheDocument();
-    expect(screen.getByText("Chat")).toBeInTheDocument();
+    expect(screen.getByText("Harnesses")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
   it("renders correct navigation links", () => {
     render(<Sidebar />);
 
-    // Use exact text matching to avoid matching "Everruns" for "Runs"
     const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
-    const agentsLink = screen.getByRole("link", { name: "Agents" });
-    const runsLink = screen.getByRole("link", { name: "Runs" });
-    const chatLink = screen.getByRole("link", { name: "Chat" });
+    const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
+    const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(dashboardLink).toHaveAttribute("href", "/dashboard");
-    expect(agentsLink).toHaveAttribute("href", "/agents");
-    expect(runsLink).toHaveAttribute("href", "/runs");
-    expect(chatLink).toHaveAttribute("href", "/chat");
+    expect(harnessesLink).toHaveAttribute("href", "/harnesses");
+    expect(settingsLink).toHaveAttribute("href", "/settings");
   });
 
-  it("does not render CopilotKit navigation item", () => {
+  it("does not render legacy navigation items", () => {
     render(<Sidebar />);
 
-    expect(screen.queryByText("CopilotKit")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /copilotkit/i })).not.toBeInTheDocument();
-  });
-
-  it("does not have /copilot link", () => {
-    render(<Sidebar />);
-
-    const links = screen.getAllByRole("link");
-    const copilotLink = links.find(link => link.getAttribute("href") === "/copilot");
-    expect(copilotLink).toBeUndefined();
+    expect(screen.queryByText("Agents")).not.toBeInTheDocument();
+    expect(screen.queryByText("Runs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Chat")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /agents/i })).not.toBeInTheDocument();
   });
 
   it("highlights the active navigation item", () => {
-    mockPathname.mockReturnValue("/chat");
+    mockPathname.mockReturnValue("/harnesses");
     render(<Sidebar />);
 
-    const chatLink = screen.getByRole("link", { name: /chat/i });
-    expect(chatLink).toHaveClass("bg-primary");
+    const harnessesLink = screen.getByRole("link", { name: /harnesses/i });
+    expect(harnessesLink).toHaveClass("bg-primary");
   });
 
   it("highlights navigation for nested routes", () => {
-    mockPathname.mockReturnValue("/agents/123");
+    mockPathname.mockReturnValue("/harnesses/123/sessions/456");
     render(<Sidebar />);
 
-    const agentsLink = screen.getByRole("link", { name: /agents/i });
-    expect(agentsLink).toHaveClass("bg-primary");
+    const harnessesLink = screen.getByRole("link", { name: /harnesses/i });
+    expect(harnessesLink).toHaveClass("bg-primary");
   });
 
   it("renders version in footer", () => {
@@ -89,18 +79,18 @@ describe("Sidebar", () => {
     expect(screen.getByText("Everruns v0.1.0")).toBeInTheDocument();
   });
 
-  it("has exactly 4 navigation items", () => {
+  it("has exactly 3 navigation items", () => {
     render(<Sidebar />);
 
     // Get nav links (excluding logo link)
     const navLinks = screen.getAllByRole("link").filter(
       link => link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard")
     );
-    // Filter to only nav items (Dashboard, Agents, Runs, Chat)
-    const navItems = ["Dashboard", "Agents", "Runs", "Chat"];
+    // Filter to only nav items (Dashboard, Harnesses, Settings)
+    const navItems = ["Dashboard", "Harnesses", "Settings"];
     const foundNavLinks = navLinks.filter(link =>
       navItems.some(item => link.textContent?.includes(item))
     );
-    expect(foundNavLinks).toHaveLength(4);
+    expect(foundNavLinks).toHaveLength(3);
   });
 });

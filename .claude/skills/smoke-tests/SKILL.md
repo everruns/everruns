@@ -25,80 +25,90 @@ Run these tests in order. Each test builds on the previous one.
 ```bash
 curl -s http://localhost:9000/health | jq
 ```
-Expected: `{"status": "ok", "version": "...", "runner_mode": "temporal"}`
+Expected: `{"status": "ok", "version": "...", "runner_mode": "..."}`
 
-#### 2. Create Agent
+#### 2. Create Harness
 ```bash
-AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
+HARNESS=$(curl -s -X POST http://localhost:9000/v1/harnesses \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Test Agent",
-    "description": "Created by smoke test",
-    "default_model_id": "gpt-5.1"
+    "slug": "test-harness",
+    "display_name": "Test Harness",
+    "system_prompt": "You are a helpful assistant created for smoke testing.",
+    "description": "Created by smoke test"
   }')
-AGENT_ID=$(echo $AGENT | jq -r '.id')
-echo "Agent ID: $AGENT_ID"
+HARNESS_ID=$(echo $HARNESS | jq -r '.id')
+echo "Harness ID: $HARNESS_ID"
 ```
 Expected: Valid UUID returned
 
-#### 3. Get Agent
+#### 3. Get Harness
 ```bash
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID" | jq
+curl -s "http://localhost:9000/v1/harnesses/$HARNESS_ID" | jq
 ```
-Expected: Agent object with matching ID
+Expected: Harness object with matching ID
 
-#### 4. Update Agent
+#### 4. Update Harness
 ```bash
-curl -s -X PATCH "http://localhost:9000/v1/agents/$AGENT_ID" \
+curl -s -X PATCH "http://localhost:9000/v1/harnesses/$HARNESS_ID" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Updated Test Agent"}' | jq
+  -d '{"display_name": "Updated Test Harness"}' | jq
 ```
-Expected: Updated agent with new name
+Expected: Updated harness with new display_name
 
-#### 5. List Agents
+#### 5. List Harnesses
 ```bash
-curl -s http://localhost:9000/v1/agents | jq 'length'
+curl -s http://localhost:9000/v1/harnesses | jq '.data | length'
 ```
-Expected: At least 1 agent
+Expected: At least 1 harness
 
-#### 6. Create Thread
+#### 6. Create Session
 ```bash
-THREAD=$(curl -s -X POST http://localhost:9000/v1/threads \
+SESSION=$(curl -s -X POST "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions" \
   -H "Content-Type: application/json" \
-  -d '{}')
-THREAD_ID=$(echo $THREAD | jq -r '.id')
-echo "Thread ID: $THREAD_ID"
+  -d '{"title": "Test Session"}')
+SESSION_ID=$(echo $SESSION | jq -r '.id')
+echo "Session ID: $SESSION_ID"
 ```
 Expected: Valid UUID returned
 
-#### 7. Add Message
+#### 7. Get Session
 ```bash
-MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/threads/$THREAD_ID/messages" \
+curl -s "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions/$SESSION_ID" | jq
+```
+Expected: Session object with matching ID
+
+#### 8. Send User Message (Create Event)
+```bash
+EVENT=$(curl -s -X POST "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions/$SESSION_ID/events" \
   -H "Content-Type: application/json" \
-  -d '{"role": "user", "content": "Hello, world!"}')
-MESSAGE_ID=$(echo $MESSAGE | jq -r '.id')
-echo "Message ID: $MESSAGE_ID"
+  -d '{
+    "event_type": "message.user",
+    "data": {
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "Hello, world!"}]
+      }
+    }
+  }')
+EVENT_ID=$(echo $EVENT | jq -r '.id')
+echo "Event ID: $EVENT_ID"
 ```
-Expected: Valid UUID returned
+Expected: Valid UUID returned, event_type "message.user"
 
-#### 8. Create Run
+#### 9. List Messages
 ```bash
-RUN=$(curl -s -X POST http://localhost:9000/v1/runs \
-  -H "Content-Type: application/json" \
-  -d "{\"agent_id\": \"$AGENT_ID\", \"thread_id\": \"$THREAD_ID\"}")
-RUN_ID=$(echo $RUN | jq -r '.id')
-echo "Run ID: $RUN_ID"
+curl -s "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions/$SESSION_ID/messages" | jq '.data | length'
 ```
-Expected: Valid UUID, status "pending"
+Expected: At least 1 message
 
-#### 9. Check Run Status
+#### 10. List Sessions
 ```bash
-sleep 2
-curl -s "http://localhost:9000/v1/runs/$RUN_ID" | jq '.status'
+curl -s "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions" | jq '.data | length'
 ```
-Expected: "running", "completed", or "failed" (not "pending")
+Expected: At least 1 session
 
-#### 10. OpenAPI Spec
+#### 11. OpenAPI Spec
 ```bash
 curl -s http://localhost:9000/api-doc/openapi.json | jq '.info.title'
 ```
@@ -120,39 +130,27 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/dashboard
 ```
 Expected: 200
 
-#### 3. Agents Page
+#### 3. Harnesses Page
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/agents
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/harnesses
 ```
 Expected: 200
 
-#### 4. Runs Page
+#### 4. New Harness Page
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/runs
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/harnesses/new
 ```
 Expected: 200
 
-#### 5. Chat Page
+#### 5. Harness Detail Page
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/chat
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/harnesses/$HARNESS_ID"
 ```
 Expected: 200
 
-#### 6. Agent Detail Page
+#### 6. Session Detail Page
 ```bash
-curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/agents/$AGENT_ID"
-```
-Expected: 200
-
-#### 7. Run Detail Page
-```bash
-curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/runs/$RUN_ID"
-```
-Expected: 200
-
-#### 8. Thread Detail Page
-```bash
-curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/threads/$THREAD_ID"
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/harnesses/$HARNESS_ID/sessions/$SESSION_ID"
 ```
 Expected: 200
 

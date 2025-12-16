@@ -6,17 +6,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  Bot,
-  Play,
-  MessageSquare,
+  Boxes,
   Settings,
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Agents", href: "/agents", icon: Bot },
-  { name: "Runs", href: "/runs", icon: Play },
-  { name: "Chat", href: "/chat", icon: MessageSquare },
+  { name: "Harnesses", href: "/harnesses", icon: Boxes },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

@@ -4,50 +4,50 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bot, Plus } from "lucide-react";
-import type { Agent } from "@/lib/api/types";
+import { Boxes, Plus } from "lucide-react";
+import type { Harness } from "@/lib/api/types";
 
-interface AgentListWidgetProps {
-  agents: Agent[];
+interface HarnessListWidgetProps {
+  harnesses: Harness[];
 }
 
-export function AgentListWidget({ agents }: AgentListWidgetProps) {
-  const activeAgents = agents.filter((a) => a.status === "active").slice(0, 5);
+export function HarnessListWidget({ harnesses }: HarnessListWidgetProps) {
+  const activeHarnesses = harnesses.filter((h) => h.status === "active").slice(0, 5);
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Active Agents</CardTitle>
-        <Link href="/agents/new">
+        <CardTitle>Active Harnesses</CardTitle>
+        <Link href="/harnesses/new">
           <Button variant="outline" size="sm">
             <Plus className="h-4 w-4 mr-1" />
-            New Agent
+            New Harness
           </Button>
         </Link>
       </CardHeader>
       <CardContent>
-        {activeAgents.length === 0 ? (
+        {activeHarnesses.length === 0 ? (
           <div className="text-center py-8">
-            <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground">No agents yet.</p>
-            <Link href="/agents/new">
-              <Button variant="link">Create your first agent</Button>
+            <Boxes className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+            <p className="text-muted-foreground">No harnesses yet.</p>
+            <Link href="/harnesses/new">
+              <Button variant="link">Create your first harness</Button>
             </Link>
           </div>
         ) : (
           <div className="space-y-3">
-            {activeAgents.map((agent) => (
+            {activeHarnesses.map((harness) => (
               <Link
-                key={agent.id}
-                href={`/agents/${agent.id}`}
+                key={harness.id}
+                href={`/harnesses/${harness.id}`}
                 className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <Bot className="h-5 w-5 text-muted-foreground" />
+                  <Boxes className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <p className="font-medium">{agent.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {agent.default_model_id}
+                    <p className="font-medium">{harness.display_name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {harness.slug}
                     </p>
                   </div>
                 </div>
@@ -59,10 +59,10 @@ export function AgentListWidget({ agents }: AgentListWidgetProps) {
                 </Badge>
               </Link>
             ))}
-            {agents.length > 5 && (
-              <Link href="/agents">
+            {harnesses.length > 5 && (
+              <Link href="/harnesses">
                 <Button variant="ghost" className="w-full">
-                  View all {agents.length} agents
+                  View all {harnesses.length} harnesses
                 </Button>
               </Link>
             )}
