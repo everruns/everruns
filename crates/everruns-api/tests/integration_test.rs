@@ -1,103 +1,103 @@
 // Integration tests for Everruns API (M2)
 // Run with: cargo test --test integration_test
 
-use everruns_contracts::{Event, Harness, LlmModel, LlmProvider, Session};
+use everruns_contracts::{Agent, Event, LlmModel, LlmProvider, Message, Session};
 use serde_json::json;
 
 const API_BASE_URL: &str = "http://localhost:9000";
 
 #[tokio::test]
 #[ignore] // Run with: cargo test --test integration_test -- --ignored
-async fn test_full_harness_session_workflow() {
+async fn test_full_agent_session_workflow() {
     let client = reqwest::Client::new();
 
-    println!("Testing full harness/session workflow...");
+    println!("Testing full agent/session workflow...");
 
-    // Step 1: Create a harness
-    println!("\nStep 1: Creating harness...");
-    let create_harness_response = client
-        .post(format!("{}/v1/harnesses", API_BASE_URL))
+    // Step 1: Create an agent
+    println!("\nStep 1: Creating agent...");
+    let create_agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "slug": "test-harness",
-            "display_name": "Test Harness",
-            "description": "A harness for testing",
+            "slug": "test-agent",
+            "name": "Test Agent",
+            "description": "An agent for testing",
             "system_prompt": "You are a helpful assistant"
         }))
         .send()
         .await
-        .expect("Failed to create harness");
+        .expect("Failed to create agent");
 
     assert_eq!(
-        create_harness_response.status(),
+        create_agent_response.status(),
         201,
         "Expected 201 Created, got {}",
-        create_harness_response.status()
+        create_agent_response.status()
     );
 
-    let harness: Harness = create_harness_response
+    let agent: Agent = create_agent_response
         .json()
         .await
-        .expect("Failed to parse harness response");
+        .expect("Failed to parse agent response");
 
-    println!("Created harness: {}", harness.id);
-    assert_eq!(harness.display_name, "Test Harness");
-    assert_eq!(harness.status.to_string(), "active");
+    println!("Created agent: {}", agent.id);
+    assert_eq!(agent.name, "Test Agent");
+    assert_eq!(agent.status.to_string(), "active");
 
-    // Step 2: List harnesses
-    println!("\nStep 2: Listing harnesses...");
+    // Step 2: List agents
+    println!("\nStep 2: Listing agents...");
     let list_response = client
-        .get(format!("{}/v1/harnesses", API_BASE_URL))
+        .get(format!("{}/v1/agents", API_BASE_URL))
         .send()
         .await
-        .expect("Failed to list harnesses");
+        .expect("Failed to list agents");
 
     assert_eq!(list_response.status(), 200);
 
     let response: serde_json::Value = list_response.json().await.expect("Failed to parse");
-    let harnesses: Vec<Harness> =
-        serde_json::from_value(response["data"].clone()).expect("Failed to parse harnesses");
-    println!("Found {} harness(es)", harnesses.len());
-    assert!(!harnesses.is_empty());
+    let agents: Vec<Agent> =
+        serde_json::from_value(response["data"].clone()).expect("Failed to parse agents");
+    println!("Found {} agent(s)", agents.len());
+    assert!(!agents.is_empty());
 
-    // Step 3: Get harness by ID
-    println!("\nStep 3: Getting harness by ID...");
+    // Step 3: Get agent by ID
+    println!("\nStep 3: Getting agent by ID...");
     let get_response = client
-        .get(format!("{}/v1/harnesses/{}", API_BASE_URL, harness.id))
+        .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
         .send()
         .await
-        .expect("Failed to get harness");
+        .expect("Failed to get agent");
 
     assert_eq!(get_response.status(), 200);
-    let fetched_harness: Harness = get_response.json().await.expect("Failed to parse harness");
-    println!("Fetched harness: {}", fetched_harness.display_name);
-    assert_eq!(fetched_harness.id, harness.id);
+    let fetched_agent: Agent = get_response.json().await.expect("Failed to parse agent");
+    println!("Fetched agent: {}", fetched_agent.name);
+    assert_eq!(fetched_agent.id, agent.id);
 
-    // Step 4: Update harness
-    println!("\nStep 4: Updating harness...");
+    // Step 4: Update agent
+    println!("\nStep 4: Updating agent...");
     let update_response = client
-        .patch(format!("{}/v1/harnesses/{}", API_BASE_URL, harness.id))
+        .patch(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
         .json(&json!({
-            "display_name": "Updated Test Harness",
+            "name": "Updated Test Agent",
             "description": "Updated description"
         }))
         .send()
         .await
-        .expect("Failed to update harness");
+        .expect("Failed to update agent");
 
     assert_eq!(update_response.status(), 200);
-    let updated_harness: Harness = update_response
+    let updated_agent: Agent = update_response
         .json()
         .await
-        .expect("Failed to parse harness");
-    println!("Updated harness: {}", updated_harness.display_name);
-    assert_eq!(updated_harness.display_name, "Updated Test Harness");
+        .expect("Failed to parse agent");
+    println!("Updated agent: {}", updated_agent.name);
+    assert_eq!(updated_agent.name, "Updated Test Agent");
 
     // Step 5: Create a session
     println!("\nStep 5: Creating session...");
     let session_response = client
         .post(format!(
-            "{}/v1/harnesses/{}/sessions",
-            API_BASE_URL, harness.id
+            "{}/v1/agents/{}/sessions",
+            API_BASE_URL, agent.id
         ))
         .json(&json!({
             "title": "Test Session"
@@ -112,39 +112,34 @@ async fn test_full_harness_session_workflow() {
         .await
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
-    assert_eq!(session.harness_id, harness.id);
+    assert_eq!(session.agent_id, agent.id);
 
-    // Step 6: Add event (user message)
-    println!("\nStep 6: Adding user message event...");
-    let event_response = client
+    // Step 6: Add message (user message)
+    println!("\nStep 6: Adding user message...");
+    let message_response = client
         .post(format!(
-            "{}/v1/harnesses/{}/sessions/{}/events",
-            API_BASE_URL, harness.id, session.id
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
         ))
         .json(&json!({
-            "event_type": "message.user",
-            "data": {
-                "message": {
-                    "role": "user",
-                    "content": [{"type": "text", "text": "Hello!"}]
-                }
-            }
+            "role": "user",
+            "content": {"text": "Hello!"}
         }))
         .send()
         .await
-        .expect("Failed to create event");
+        .expect("Failed to create message");
 
-    assert_eq!(event_response.status(), 201);
-    let event: Event = event_response.json().await.expect("Failed to parse event");
-    println!("Created event: {}", event.id);
-    assert_eq!(event.event_type, "message.user");
+    assert_eq!(message_response.status(), 201);
+    let message: Message = message_response.json().await.expect("Failed to parse message");
+    println!("Created message: {}", message.id);
+    assert_eq!(message.role.to_string(), "user");
 
     // Step 7: List messages
     println!("\nStep 7: Listing messages...");
     let messages_response = client
         .get(format!(
-            "{}/v1/harnesses/{}/sessions/{}/messages",
-            API_BASE_URL, harness.id, session.id
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
         ))
         .send()
         .await
@@ -152,7 +147,7 @@ async fn test_full_harness_session_workflow() {
 
     assert_eq!(messages_response.status(), 200);
     let response: serde_json::Value = messages_response.json().await.expect("Failed to parse");
-    let messages: Vec<Event> =
+    let messages: Vec<Message> =
         serde_json::from_value(response["data"].clone()).expect("Failed to parse messages");
     println!("Found {} message(s)", messages.len());
     assert_eq!(messages.len(), 1);
@@ -161,8 +156,8 @@ async fn test_full_harness_session_workflow() {
     println!("\nStep 8: Getting session...");
     let get_session_response = client
         .get(format!(
-            "{}/v1/harnesses/{}/sessions/{}",
-            API_BASE_URL, harness.id, session.id
+            "{}/v1/agents/{}/sessions/{}",
+            API_BASE_URL, agent.id, session.id
         ))
         .send()
         .await
@@ -175,6 +170,26 @@ async fn test_full_harness_session_workflow() {
         .expect("Failed to parse session");
     println!("Fetched session: {}", fetched_session.id);
     assert_eq!(fetched_session.id, session.id);
+
+    // Step 9: Create event (for SSE notifications)
+    println!("\nStep 9: Creating event...");
+    let event_response = client
+        .post(format!(
+            "{}/v1/agents/{}/sessions/{}/events",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .json(&json!({
+            "event_type": "status.update",
+            "data": {"status": "processing"}
+        }))
+        .send()
+        .await
+        .expect("Failed to create event");
+
+    assert_eq!(event_response.status(), 201);
+    let event: Event = event_response.json().await.expect("Failed to parse event");
+    println!("Created event: {}", event.id);
+    assert_eq!(event.event_type, "status.update");
 
     println!("\nAll tests passed!");
 }

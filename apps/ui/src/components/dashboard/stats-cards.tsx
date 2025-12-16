@@ -2,32 +2,32 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Boxes, MessageSquare, CheckCircle, Clock } from "lucide-react";
-import type { Harness, Session } from "@/lib/api/types";
+import type { Agent, Session } from "@/lib/api/types";
 
 interface StatsCardsProps {
-  harnesses: Harness[];
+  agents: Agent[];
   sessions: Session[];
 }
 
-export function StatsCards({ harnesses, sessions }: StatsCardsProps) {
-  const activeHarnesses = harnesses.filter((h) => h.status === "active").length;
-  const activeSessions = sessions.filter((s) => !s.finished_at).length;
-  const completedSessions = sessions.filter((s) => s.finished_at).length;
+export function StatsCards({ agents, sessions }: StatsCardsProps) {
+  const activeAgents = agents.filter((a) => a.status === "active").length;
+  const runningSessions = sessions.filter((s) => s.status === "running").length;
+  const completedSessions = sessions.filter((s) => s.status === "completed").length;
   const totalSessions = sessions.length;
   const completionRate =
     totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
 
   const stats = [
     {
-      title: "Total Harnesses",
-      value: harnesses.length,
-      description: `${activeHarnesses} active`,
+      title: "Total Agents",
+      value: agents.length,
+      description: `${activeAgents} active`,
       icon: Boxes,
       color: "text-blue-600",
     },
     {
-      title: "Active Sessions",
-      value: activeSessions,
+      title: "Running Sessions",
+      value: runningSessions,
       description: "Currently running",
       icon: MessageSquare,
       color: "text-yellow-600",
@@ -41,7 +41,7 @@ export function StatsCards({ harnesses, sessions }: StatsCardsProps) {
     },
     {
       title: "Pending",
-      value: sessions.filter((s) => !s.started_at).length,
+      value: sessions.filter((s) => s.status === "pending").length,
       description: "Not yet started",
       icon: Clock,
       color: "text-gray-600",

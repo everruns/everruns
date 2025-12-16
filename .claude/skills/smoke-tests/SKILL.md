@@ -27,44 +27,44 @@ curl -s http://localhost:9000/health | jq
 ```
 Expected: `{"status": "ok", "version": "...", "runner_mode": "..."}`
 
-#### 2. Create Harness
+#### 2. Create Agent
 ```bash
-HARNESS=$(curl -s -X POST http://localhost:9000/v1/harnesses \
+AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
-    "slug": "test-harness",
-    "display_name": "Test Harness",
+    "slug": "test-agent",
+    "name": "Test Agent",
     "system_prompt": "You are a helpful assistant created for smoke testing.",
     "description": "Created by smoke test"
   }')
-HARNESS_ID=$(echo $HARNESS | jq -r '.id')
-echo "Harness ID: $HARNESS_ID"
+AGENT_ID=$(echo $AGENT | jq -r '.id')
+echo "Agent ID: $AGENT_ID"
 ```
 Expected: Valid UUID returned
 
-#### 3. Get Harness
+#### 3. Get Agent
 ```bash
-curl -s "http://localhost:9000/v1/harnesses/$HARNESS_ID" | jq
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID" | jq
 ```
-Expected: Harness object with matching ID
+Expected: Agent object with matching ID
 
-#### 4. Update Harness
+#### 4. Update Agent
 ```bash
-curl -s -X PATCH "http://localhost:9000/v1/harnesses/$HARNESS_ID" \
+curl -s -X PATCH "http://localhost:9000/v1/agents/$AGENT_ID" \
   -H "Content-Type: application/json" \
-  -d '{"display_name": "Updated Test Harness"}' | jq
+  -d '{"name": "Updated Test Agent"}' | jq
 ```
-Expected: Updated harness with new display_name
+Expected: Updated agent with new name
 
-#### 5. List Harnesses
+#### 5. List Agents
 ```bash
-curl -s http://localhost:9000/v1/harnesses | jq '.data | length'
+curl -s http://localhost:9000/v1/agents | jq '.data | length'
 ```
-Expected: At least 1 harness
+Expected: At least 1 agent
 
 #### 6. Create Session
 ```bash
-SESSION=$(curl -s -X POST "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions" \
+SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions" \
   -H "Content-Type: application/json" \
   -d '{"title": "Test Session"}')
 SESSION_ID=$(echo $SESSION | jq -r '.id')
@@ -74,37 +74,32 @@ Expected: Valid UUID returned
 
 #### 7. Get Session
 ```bash
-curl -s "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions/$SESSION_ID" | jq
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID" | jq
 ```
 Expected: Session object with matching ID
 
-#### 8. Send User Message (Create Event)
+#### 8. Send User Message (Create Message)
 ```bash
-EVENT=$(curl -s -X POST "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions/$SESSION_ID/events" \
+MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
   -H "Content-Type: application/json" \
   -d '{
-    "event_type": "message.user",
-    "data": {
-      "message": {
-        "role": "user",
-        "content": [{"type": "text", "text": "Hello, world!"}]
-      }
-    }
+    "role": "user",
+    "content": {"text": "Hello, world!"}
   }')
-EVENT_ID=$(echo $EVENT | jq -r '.id')
-echo "Event ID: $EVENT_ID"
+MESSAGE_ID=$(echo $MESSAGE | jq -r '.id')
+echo "Message ID: $MESSAGE_ID"
 ```
-Expected: Valid UUID returned, event_type "message.user"
+Expected: Valid UUID returned, role "user"
 
 #### 9. List Messages
 ```bash
-curl -s "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions/$SESSION_ID/messages" | jq '.data | length'
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data | length'
 ```
 Expected: At least 1 message
 
 #### 10. List Sessions
 ```bash
-curl -s "http://localhost:9000/v1/harnesses/$HARNESS_ID/sessions" | jq '.data | length'
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions" | jq '.data | length'
 ```
 Expected: At least 1 session
 
@@ -130,27 +125,27 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/dashboard
 ```
 Expected: 200
 
-#### 3. Harnesses Page
+#### 3. Agents Page
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/harnesses
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/agents
 ```
 Expected: 200
 
-#### 4. New Harness Page
+#### 4. New Agent Page
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/harnesses/new
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/agents/new
 ```
 Expected: 200
 
-#### 5. Harness Detail Page
+#### 5. Agent Detail Page
 ```bash
-curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/harnesses/$HARNESS_ID"
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/agents/$AGENT_ID"
 ```
 Expected: 200
 
 #### 6. Session Detail Page
 ```bash
-curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/harnesses/$HARNESS_ID/sessions/$SESSION_ID"
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/agents/$AGENT_ID/sessions/$SESSION_ID"
 ```
 Expected: 200
 

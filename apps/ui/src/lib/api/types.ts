@@ -1,60 +1,66 @@
 // TypeScript types mirroring Rust contracts from everruns-contracts
-// M2: Updated to Harness/Session/Event model
+// M2: Agent/Session/Messages model with Events as SSE notifications
 
 // ============================================
-// Harness types (M2)
+// Agent types (M2)
 // ============================================
 
-export type HarnessStatus = "active" | "archived";
+export type AgentStatus = "active" | "archived";
 
-export interface Harness {
+export interface Agent {
   id: string;
   slug: string;
-  display_name: string;
+  name: string;
   description: string | null;
   system_prompt: string;
   default_model_id: string | null;
   temperature: number | null;
   max_tokens: number | null;
+  tools: unknown;
   tags: string[];
-  status: HarnessStatus;
+  status: AgentStatus;
   created_at: string;
   updated_at: string;
 }
 
-export interface CreateHarnessRequest {
+export interface CreateAgentRequest {
   slug: string;
-  display_name: string;
+  name: string;
   description?: string;
   system_prompt: string;
   default_model_id?: string;
   temperature?: number;
   max_tokens?: number;
+  tools?: unknown;
   tags?: string[];
 }
 
-export interface UpdateHarnessRequest {
+export interface UpdateAgentRequest {
   slug?: string;
-  display_name?: string;
+  name?: string;
   description?: string;
   system_prompt?: string;
   default_model_id?: string;
   temperature?: number;
   max_tokens?: number;
+  tools?: unknown;
   tags?: string[];
-  status?: HarnessStatus;
+  status?: AgentStatus;
 }
 
 // ============================================
 // Session types (M2)
 // ============================================
 
+export type SessionStatus = "pending" | "running" | "completed" | "failed";
+
 export interface Session {
   id: string;
-  harness_id: string;
+  agent_id: string;
   title: string | null;
   tags: string[];
   model_id: string | null;
+  status: SessionStatus;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -73,7 +79,29 @@ export interface UpdateSessionRequest {
 }
 
 // ============================================
-// Event types (M2)
+// Message types (M2) - PRIMARY data
+// ============================================
+
+export type MessageRole = "user" | "assistant" | "tool_call" | "tool_result" | "system";
+
+export interface Message {
+  id: string;
+  session_id: string;
+  sequence: number;
+  role: MessageRole;
+  content: Record<string, unknown>;
+  tool_call_id: string | null;
+  created_at: string;
+}
+
+export interface CreateMessageRequest {
+  role: MessageRole;
+  content: Record<string, unknown>;
+  tool_call_id?: string;
+}
+
+// ============================================
+// Event types (M2) - SSE notifications
 // ============================================
 
 export interface Event {
@@ -88,21 +116,6 @@ export interface Event {
 export interface CreateEventRequest {
   event_type: string;
   data: Record<string, unknown>;
-}
-
-// Message data structure in event
-export interface MessageContent {
-  type: string;
-  text: string;
-}
-
-export interface MessageData {
-  role: string;
-  content: MessageContent[];
-}
-
-export interface MessageEventData {
-  message: MessageData;
 }
 
 // ============================================

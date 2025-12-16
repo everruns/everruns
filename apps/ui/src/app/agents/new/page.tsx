@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateHarness } from "@/hooks";
+import { useCreateAgent } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,13 +11,13 @@ import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
-export default function NewHarnessPage() {
+export default function NewAgentPage() {
   const router = useRouter();
-  const createHarness = useCreateHarness();
+  const createAgent = useCreateAgent();
 
   const [formData, setFormData] = useState({
     slug: "",
-    display_name: "",
+    name: "",
     description: "",
     system_prompt: "",
     temperature: "",
@@ -29,9 +29,9 @@ export default function NewHarnessPage() {
     e.preventDefault();
 
     try {
-      const harness = await createHarness.mutateAsync({
+      const agent = await createAgent.mutateAsync({
         slug: formData.slug,
-        display_name: formData.display_name,
+        name: formData.name,
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
         temperature: formData.temperature
@@ -45,25 +45,25 @@ export default function NewHarnessPage() {
           : [],
       });
 
-      router.push(`/harnesses/${harness.id}`);
+      router.push(`/agents/${agent.id}`);
     } catch (error) {
-      console.error("Failed to create harness:", error);
+      console.error("Failed to create agent:", error);
     }
   };
 
   return (
     <div className="container mx-auto p-6 max-w-2xl">
       <Link
-        href="/harnesses"
+        href="/agents"
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Harnesses
+        Back to Agents
       </Link>
 
       <Card>
         <CardHeader>
-          <CardTitle>Create New Harness</CardTitle>
+          <CardTitle>Create New Agent</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -72,7 +72,7 @@ export default function NewHarnessPage() {
                 <Label htmlFor="slug">Slug</Label>
                 <Input
                   id="slug"
-                  placeholder="my-harness"
+                  placeholder="my-agent"
                   value={formData.slug}
                   onChange={(e) =>
                     setFormData({ ...formData, slug: e.target.value })
@@ -80,18 +80,18 @@ export default function NewHarnessPage() {
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  Unique identifier for the harness
+                  Unique identifier for the agent
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="display_name">Display Name</Label>
+                <Label htmlFor="name">Name</Label>
                 <Input
-                  id="display_name"
-                  placeholder="My Harness"
-                  value={formData.display_name}
+                  id="name"
+                  placeholder="My Agent"
+                  value={formData.name}
                   onChange={(e) =>
-                    setFormData({ ...formData, display_name: e.target.value })
+                    setFormData({ ...formData, name: e.target.value })
                   }
                   required
                 />
@@ -102,7 +102,7 @@ export default function NewHarnessPage() {
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
-                placeholder="Describe what this harness does..."
+                placeholder="Describe what this agent does..."
                 value={formData.description}
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
@@ -176,17 +176,17 @@ export default function NewHarnessPage() {
             </div>
 
             <div className="flex gap-4">
-              <Button type="submit" disabled={createHarness.isPending}>
-                {createHarness.isPending ? "Creating..." : "Create Harness"}
+              <Button type="submit" disabled={createAgent.isPending}>
+                {createAgent.isPending ? "Creating..." : "Create Agent"}
               </Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Cancel
               </Button>
             </div>
 
-            {createHarness.error && (
+            {createAgent.error && (
               <p className="text-sm text-destructive">
-                Error: {createHarness.error.message}
+                Error: {createAgent.error.message}
               </p>
             )}
           </form>

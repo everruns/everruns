@@ -1,6 +1,6 @@
 "use client";
 
-import { useHarnesses, useDeleteHarness } from "@/hooks";
+import { useAgents, useDeleteAgent } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,13 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Trash2 } from "lucide-react";
 
-export default function HarnessesPage() {
-  const { data: harnesses, isLoading, error } = useHarnesses();
-  const deleteHarness = useDeleteHarness();
+export default function AgentsPage() {
+  const { data: agents, isLoading, error } = useAgents();
+  const deleteAgent = useDeleteAgent();
 
-  const handleDelete = async (harnessId: string) => {
-    if (confirm("Are you sure you want to archive this harness?")) {
-      await deleteHarness.mutateAsync(harnessId);
+  const handleDelete = async (agentId: string) => {
+    if (confirm("Are you sure you want to archive this agent?")) {
+      await deleteAgent.mutateAsync(agentId);
     }
   };
 
@@ -22,7 +22,7 @@ export default function HarnessesPage() {
     return (
       <div className="container mx-auto p-6">
         <div className="text-red-500">
-          Error loading harnesses: {error.message}
+          Error loading agents: {error.message}
         </div>
       </div>
     );
@@ -31,11 +31,11 @@ export default function HarnessesPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Harnesses</h1>
-        <Link href="/harnesses/new">
+        <h1 className="text-2xl font-bold">Agents</h1>
+        <Link href="/agents/new">
           <Button>
             <Plus className="w-4 h-4 mr-2" />
-            New Harness
+            New Agent
           </Button>
         </Link>
       </div>
@@ -54,45 +54,45 @@ export default function HarnessesPage() {
             </Card>
           ))}
         </div>
-      ) : harnesses?.length === 0 ? (
+      ) : agents?.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">No harnesses yet</p>
-          <Link href="/harnesses/new">
+          <p className="text-muted-foreground mb-4">No agents yet</p>
+          <Link href="/agents/new">
             <Button>
               <Plus className="w-4 h-4 mr-2" />
-              Create your first harness
+              Create your first agent
             </Button>
           </Link>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {harnesses?.map((harness) => (
-            <Card key={harness.id} className="hover:shadow-md transition-shadow">
+          {agents?.map((agent) => (
+            <Card key={agent.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-start justify-between space-y-0">
                 <div>
                   <CardTitle className="text-lg">
                     <Link
-                      href={`/harnesses/${harness.id}`}
+                      href={`/agents/${agent.id}`}
                       className="hover:underline"
                     >
-                      {harness.display_name}
+                      {agent.name}
                     </Link>
                   </CardTitle>
                   <p className="text-sm text-muted-foreground font-mono">
-                    {harness.slug}
+                    {agent.slug}
                   </p>
                 </div>
-                <Badge variant={harness.status === "active" ? "default" : "secondary"}>
-                  {harness.status}
+                <Badge variant={agent.status === "active" ? "default" : "secondary"}>
+                  {agent.status}
                 </Badge>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                  {harness.description || "No description"}
+                  {agent.description || "No description"}
                 </p>
-                {harness.tags.length > 0 && (
+                {agent.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-4">
-                    {harness.tags.map((tag) => (
+                    {agent.tags.map((tag) => (
                       <Badge key={tag} variant="outline" className="text-xs">
                         {tag}
                       </Badge>
@@ -101,14 +101,14 @@ export default function HarnessesPage() {
                 )}
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">
-                    Created {new Date(harness.created_at).toLocaleDateString()}
+                    Created {new Date(agent.created_at).toLocaleDateString()}
                   </span>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="text-destructive hover:text-destructive"
-                    onClick={() => handleDelete(harness.id)}
-                    disabled={deleteHarness.isPending}
+                    onClick={() => handleDelete(agent.id)}
+                    disabled={deleteAgent.isPending}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>

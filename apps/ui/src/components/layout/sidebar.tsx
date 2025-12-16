@@ -12,7 +12,7 @@ import {
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Harnesses", href: "/harnesses", icon: Boxes },
+  { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

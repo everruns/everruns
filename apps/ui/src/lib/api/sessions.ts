@@ -1,104 +1,111 @@
-// Session API functions (M2)
+// Session and Message API functions (M2)
+// Messages are PRIMARY data, Events are SSE notifications
 
 import { api } from "./client";
 import type {
   Session,
-  Event,
+  Message,
   CreateSessionRequest,
   UpdateSessionRequest,
-  CreateEventRequest,
+  CreateMessageRequest,
   ListResponse,
 } from "./types";
 
+// ============================================
+// Session CRUD
+// ============================================
+
 export async function createSession(
-  harnessId: string,
+  agentId: string,
   request: CreateSessionRequest = {}
 ): Promise<Session> {
   const response = await api.post<Session>(
-    `/v1/harnesses/${harnessId}/sessions`,
+    `/v1/agents/${agentId}/sessions`,
     request
   );
   return response.data;
 }
 
-export async function listSessions(harnessId: string): Promise<Session[]> {
+export async function listSessions(agentId: string): Promise<Session[]> {
   const response = await api.get<ListResponse<Session>>(
-    `/v1/harnesses/${harnessId}/sessions`
+    `/v1/agents/${agentId}/sessions`
   );
   return response.data.data;
 }
 
 export async function getSession(
-  harnessId: string,
+  agentId: string,
   sessionId: string
 ): Promise<Session> {
   const response = await api.get<Session>(
-    `/v1/harnesses/${harnessId}/sessions/${sessionId}`
+    `/v1/agents/${agentId}/sessions/${sessionId}`
   );
   return response.data;
 }
 
 export async function updateSession(
-  harnessId: string,
+  agentId: string,
   sessionId: string,
   request: UpdateSessionRequest
 ): Promise<Session> {
   const response = await api.patch<Session>(
-    `/v1/harnesses/${harnessId}/sessions/${sessionId}`,
+    `/v1/agents/${agentId}/sessions/${sessionId}`,
     request
   );
   return response.data;
 }
 
 export async function deleteSession(
-  harnessId: string,
+  agentId: string,
   sessionId: string
 ): Promise<void> {
-  await api.delete(`/v1/harnesses/${harnessId}/sessions/${sessionId}`);
+  await api.delete(`/v1/agents/${agentId}/sessions/${sessionId}`);
 }
 
-// Event functions
-export async function createEvent(
-  harnessId: string,
+// ============================================
+// Messages (PRIMARY data)
+// ============================================
+
+export async function createMessage(
+  agentId: string,
   sessionId: string,
-  request: CreateEventRequest
-): Promise<Event> {
-  const response = await api.post<Event>(
-    `/v1/harnesses/${harnessId}/sessions/${sessionId}/events`,
+  request: CreateMessageRequest
+): Promise<Message> {
+  const response = await api.post<Message>(
+    `/v1/agents/${agentId}/sessions/${sessionId}/messages`,
     request
   );
   return response.data;
 }
 
 export async function listMessages(
-  harnessId: string,
+  agentId: string,
   sessionId: string
-): Promise<Event[]> {
-  const response = await api.get<ListResponse<Event>>(
-    `/v1/harnesses/${harnessId}/sessions/${sessionId}/messages`
+): Promise<Message[]> {
+  const response = await api.get<ListResponse<Message>>(
+    `/v1/agents/${agentId}/sessions/${sessionId}/messages`
   );
   return response.data.data;
 }
 
-// SSE event stream URL builder
-export function getEventStreamUrl(harnessId: string, sessionId: string): string {
-  const baseUrl = api.defaults.baseURL || "";
-  return `${baseUrl}/v1/harnesses/${harnessId}/sessions/${sessionId}/events`;
-}
-
-// Send a user message to a session
+// Send a user message to a session (triggers workflow)
 export async function sendUserMessage(
-  harnessId: string,
+  agentId: string,
   sessionId: string,
   content: string
-): Promise<Event> {
-  return createEvent(harnessId, sessionId, {
-    event_type: "message.user",
-    data: {
-      message: {
-        role: "user",
-        content: [{ type: "text", text: content }],
-      },
-    },
+): Promise<Message> {
+  return createMessage(agentId, sessionId, {
+    role: "user",
+    content: { text: content },
   });
+}
+
+// ============================================
+// Events (SSE notifications)
+// ============================================
+
+// SSE event stream URL builder
+export function getEventStreamUrl(agentId: string, sessionId: string): string {
+  const baseUrl = api.defaults.baseURL || "";
+  return `${baseUrl}/v1/agents/${agentId}/sessions/${sessionId}/events`;
 }

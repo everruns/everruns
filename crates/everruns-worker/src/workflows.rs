@@ -1,9 +1,10 @@
 // Session workflow for agentic loop execution (M2)
+// Uses Agent/Session/Messages model with Events as SSE notifications
 
 use anyhow::Result;
 use chrono::Utc;
 use everruns_contracts::events::AgUiEvent;
-use everruns_storage::models::UpdateSession;
+use everruns_storage::models::{CreateMessage, UpdateSession};
 use everruns_storage::repositories::Database;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -12,20 +13,19 @@ use crate::activities::{LlmCallActivity, PersistEventActivity, ToolExecutionActi
 use crate::providers::{openai::OpenAiProvider, ChatMessage, LlmConfig, MessageRole};
 
 /// Session workflow orchestrating LLM calls and tool execution
-/// In M2, this replaces the old AgentRunWorkflow but keeps the same internal logic
 pub struct SessionWorkflow {
     session_id: Uuid,
-    harness_id: Uuid,
+    agent_id: Uuid,
     db: Database,
     persist_activity: PersistEventActivity,
 }
 
 impl SessionWorkflow {
-    pub async fn new(session_id: Uuid, harness_id: Uuid, db: Database) -> Result<Self> {
+    pub async fn new(session_id: Uuid, agent_id: Uuid, db: Database) -> Result<Self> {
         let persist_activity = PersistEventActivity::new(db.clone());
         Ok(Self {
             session_id,
-            harness_id,
+            agent_id,
             db,
             persist_activity,
         })
@@ -35,102 +35,91 @@ impl SessionWorkflow {
     pub async fn execute(&self) -> Result<()> {
         info!(
             session_id = %self.session_id,
-            harness_id = %self.harness_id,
+            agent_id = %self.agent_id,
             "Starting session workflow"
         );
 
-        // Update session started_at
-        self.update_session(Some(Utc::now()), None).await?;
+        // Update session status to running and set started_at
+        self.update_session_status("running", Some(Utc::now()), None)
+            .await?;
 
-        // Emit SESSION_STARTED event
+        // Emit SESSION_STARTED event (SSE notification)
         let started_event = AgUiEvent::session_started(self.session_id.to_string());
         self.persist_activity
             .persist_event(self.session_id, started_event)
             .await?;
 
-        // Load harness to get configuration
-        let harness = self
+        // Load agent to get configuration
+        let agent = self
             .db
-            .get_harness(self.harness_id)
+            .get_agent(self.agent_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
-        // Build LLM config from harness settings
-        let model = harness
+        // Build LLM config from agent settings
+        let model = agent
             .default_model_id
             .map(|id| id.to_string())
             .unwrap_or_else(|| "gpt-4o".to_string());
 
         let llm_config = LlmConfig {
             model,
-            temperature: harness.temperature,
-            max_tokens: harness.max_tokens.map(|t| t as u32),
-            system_prompt: Some(harness.system_prompt.clone()),
-            tools: Vec::new(), // TODO: Parse tools from harness
+            temperature: agent.temperature,
+            max_tokens: agent.max_tokens.map(|t| t as u32),
+            system_prompt: Some(agent.system_prompt.clone()),
+            tools: Vec::new(), // TODO: Parse tools from agent
         };
 
-        // Load message events from session
-        let message_events = self.db.list_message_events(self.session_id).await?;
+        // Load messages from session (PRIMARY data)
+        let messages_rows = self.db.list_messages(self.session_id).await?;
 
-        if message_events.is_empty() {
+        if messages_rows.is_empty() {
             warn!(
                 session_id = %self.session_id,
                 "No messages in session, skipping LLM call"
             );
         } else {
-            // Convert message events to ChatMessage format
+            // Convert messages to ChatMessage format
             let mut messages: Vec<ChatMessage> = Vec::new();
 
             // Add system prompt as first message
-            if !harness.system_prompt.is_empty() {
+            if !agent.system_prompt.is_empty() {
                 messages.push(ChatMessage {
                     role: MessageRole::System,
-                    content: harness.system_prompt.clone(),
+                    content: agent.system_prompt.clone(),
                     tool_calls: None,
                     tool_call_id: None,
                 });
             }
 
-            // Add messages from events
-            for event in &message_events {
-                // Parse event data to extract message content
-                if let Some(data) = event.data.as_object() {
-                    let role = match event.event_type.as_str() {
-                        "message.user" => MessageRole::User,
-                        "message.assistant" => MessageRole::Assistant,
-                        "message.system" => MessageRole::System,
-                        _ => continue,
-                    };
+            // Add messages from database
+            for msg in &messages_rows {
+                let role = match msg.role.as_str() {
+                    "user" => MessageRole::User,
+                    "assistant" => MessageRole::Assistant,
+                    "system" => MessageRole::System,
+                    "tool_call" => continue, // Tool calls are handled separately
+                    "tool_result" => MessageRole::Tool,
+                    _ => continue,
+                };
 
-                    // Try to get content from message.content[0].text or message.content
-                    let content = if let Some(message) = data.get("message") {
-                        if let Some(content_arr) = message.get("content").and_then(|c| c.as_array())
-                        {
-                            content_arr
-                                .iter()
-                                .filter_map(|c| c.get("text").and_then(|t| t.as_str()))
-                                .collect::<Vec<_>>()
-                                .join("")
-                        } else if let Some(content_str) =
-                            message.get("content").and_then(|c| c.as_str())
-                        {
-                            content_str.to_string()
-                        } else {
-                            continue;
-                        }
-                    } else if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
-                        content.to_string()
-                    } else {
-                        continue;
-                    };
+                // Extract content from JSON
+                let content = if let Some(text) = msg.content.get("text").and_then(|t| t.as_str()) {
+                    text.to_string()
+                } else if let Some(content_str) = msg.content.as_str() {
+                    content_str.to_string()
+                } else if let Some(result) = msg.content.get("result") {
+                    serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string())
+                } else {
+                    continue;
+                };
 
-                    messages.push(ChatMessage {
-                        role,
-                        content,
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
+                messages.push(ChatMessage {
+                    role,
+                    content,
+                    tool_calls: None,
+                    tool_call_id: msg.tool_call_id.clone(),
+                });
             }
 
             info!(
@@ -169,13 +158,22 @@ impl SessionWorkflow {
                     )
                     .await?;
 
-                // Add assistant response text to conversation if any
+                // If we got a response, persist it as an assistant Message
                 if !result.text.is_empty() {
                     info!(
                         session_id = %self.session_id,
                         response_length = result.text.len(),
                         "Got assistant response"
                     );
+
+                    // Store assistant response as Message (PRIMARY data)
+                    let create_msg = CreateMessage {
+                        session_id: self.session_id,
+                        role: "assistant".to_string(),
+                        content: serde_json::json!({ "text": result.text.clone() }),
+                        tool_call_id: None,
+                    };
+                    self.db.create_message(create_msg).await?;
 
                     current_messages.push(ChatMessage {
                         role: MessageRole::Assistant,
@@ -193,6 +191,21 @@ impl SessionWorkflow {
                         "Executing tool calls"
                     );
 
+                    // Store tool calls as Messages (PRIMARY data)
+                    for tool_call in &tool_calls {
+                        let create_msg = CreateMessage {
+                            session_id: self.session_id,
+                            role: "tool_call".to_string(),
+                            content: serde_json::json!({
+                                "id": tool_call.id,
+                                "name": tool_call.name,
+                                "arguments": tool_call.arguments
+                            }),
+                            tool_call_id: Some(tool_call.id.clone()),
+                        };
+                        self.db.create_message(create_msg).await?;
+                    }
+
                     // Execute tools in parallel
                     let tool_results = tool_activity
                         .execute_tool_calls_parallel(
@@ -202,7 +215,7 @@ impl SessionWorkflow {
                         )
                         .await?;
 
-                    // Add tool results to conversation as Tool messages
+                    // Store tool results as Messages (PRIMARY data) and add to conversation
                     for (tool_call, tool_result) in tool_calls.iter().zip(tool_results.iter()) {
                         let result_content = if let Some(result) = &tool_result.result {
                             serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string())
@@ -211,6 +224,18 @@ impl SessionWorkflow {
                         } else {
                             "{}".to_string()
                         };
+
+                        // Store tool result as Message
+                        let create_msg = CreateMessage {
+                            session_id: self.session_id,
+                            role: "tool_result".to_string(),
+                            content: serde_json::json!({
+                                "result": tool_result.result,
+                                "error": tool_result.error
+                            }),
+                            tool_call_id: Some(tool_call.id.clone()),
+                        };
+                        self.db.create_message(create_msg).await?;
 
                         current_messages.push(ChatMessage {
                             role: MessageRole::Tool,
@@ -229,14 +254,15 @@ impl SessionWorkflow {
             }
         }
 
-        // Emit SESSION_FINISHED event
+        // Emit SESSION_FINISHED event (SSE notification)
         let finished_event = AgUiEvent::session_finished(self.session_id.to_string());
         self.persist_activity
             .persist_event(self.session_id, finished_event)
             .await?;
 
-        // Update session finished_at
-        self.update_session(None, Some(Utc::now())).await?;
+        // Update session status to completed and set finished_at
+        self.update_session_status("completed", None, Some(Utc::now()))
+            .await?;
 
         info!(
             session_id = %self.session_id,
@@ -250,8 +276,9 @@ impl SessionWorkflow {
     pub async fn cancel(&self) -> Result<()> {
         info!(session_id = %self.session_id, "Cancelling session workflow");
 
-        // Update session finished_at
-        self.update_session(None, Some(Utc::now())).await?;
+        // Update session status to failed and set finished_at
+        self.update_session_status("failed", None, Some(Utc::now()))
+            .await?;
 
         Ok(())
     }
@@ -264,25 +291,28 @@ impl SessionWorkflow {
             "Session workflow failed"
         );
 
-        // Emit SESSION_ERROR event
+        // Emit SESSION_ERROR event (SSE notification)
         let error_event = AgUiEvent::session_error(error.to_string());
         self.persist_activity
             .persist_event(self.session_id, error_event)
             .await?;
 
-        // Update session finished_at
-        self.update_session(None, Some(Utc::now())).await?;
+        // Update session status to failed and set finished_at
+        self.update_session_status("failed", None, Some(Utc::now()))
+            .await?;
 
         Ok(())
     }
 
-    /// Update the session timestamps
-    async fn update_session(
+    /// Update the session timestamps and status
+    async fn update_session_status(
         &self,
+        status: &str,
         started_at: Option<chrono::DateTime<Utc>>,
         finished_at: Option<chrono::DateTime<Utc>>,
     ) -> Result<()> {
         let input = UpdateSession {
+            status: Some(status.to_string()),
             started_at,
             finished_at,
             ..Default::default()
@@ -298,7 +328,7 @@ pub type AgentRunWorkflow = SessionWorkflow;
 
 impl AgentRunWorkflow {
     /// Legacy compatibility constructor
-    /// In M2, run_id maps to session_id, agent_id maps to harness_id
+    /// In M2, run_id maps to session_id, agent_id remains agent_id
     pub async fn legacy_new(
         run_id: Uuid,
         agent_id: Uuid,

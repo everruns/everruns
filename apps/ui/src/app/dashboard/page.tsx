@@ -1,9 +1,9 @@
 "use client";
 
-import { useHarnesses } from "@/hooks";
+import { useAgents } from "@/hooks";
 import { Header } from "@/components/layout/header";
 import { StatsCards } from "@/components/dashboard/stats-cards";
-import { HarnessListWidget } from "@/components/dashboard/harness-list-widget";
+import { AgentListWidget } from "@/components/dashboard/agent-list-widget";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -11,9 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Plus, Boxes } from "lucide-react";
 
 export default function DashboardPage() {
-  const { data: harnesses = [], isLoading: harnessesLoading } = useHarnesses();
+  const { data: agents = [], isLoading: agentsLoading } = useAgents();
 
-  if (harnessesLoading) {
+  if (agentsLoading) {
     return (
       <>
         <Header title="Dashboard" />
@@ -39,30 +39,30 @@ export default function DashboardPage() {
     <>
       <Header title="Dashboard" />
       <div className="p-6 space-y-6">
-        <StatsCards harnesses={harnesses} sessions={sessions} />
+        <StatsCards agents={agents} sessions={sessions} />
         <div className="grid gap-6 md:grid-cols-2">
-          <HarnessListWidget harnesses={harnesses} />
+          <AgentListWidget agents={agents} />
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Link href="/harnesses/new" className="block">
+              <Link href="/agents/new" className="block">
                 <Button variant="outline" className="w-full justify-start">
                   <Plus className="h-4 w-4 mr-2" />
-                  Create New Harness
+                  Create New Agent
                 </Button>
               </Link>
-              <Link href="/harnesses" className="block">
+              <Link href="/agents" className="block">
                 <Button variant="outline" className="w-full justify-start">
                   <Boxes className="h-4 w-4 mr-2" />
-                  Browse All Harnesses
+                  Browse All Agents
                 </Button>
               </Link>
-              {harnesses.length > 0 && (
+              {agents.length > 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Select a harness to view its sessions and start conversations.
+                  Select an agent to view its sessions and start conversations.
                 </p>
               )}
             </CardContent>

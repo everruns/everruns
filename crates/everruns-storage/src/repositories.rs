@@ -1,5 +1,5 @@
 // Repository layer for database operations
-// M2: Replaced Agent/Thread/Run/Message with Harness/Session/Event model
+// M2 Revised: Agent/Session/Messages/Events model
 
 use anyhow::Result;
 use sqlx::PgPool;
@@ -44,24 +44,25 @@ impl Database {
     }
 
     // ============================================
-    // Harnesses (M2)
+    // Agents (configuration for agentic loop)
     // ============================================
 
-    pub async fn create_harness(&self, input: CreateHarness) -> Result<HarnessRow> {
-        let row = sqlx::query_as::<_, HarnessRow>(
+    pub async fn create_agent(&self, input: CreateAgent) -> Result<AgentRow> {
+        let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO harnesses (slug, display_name, description, system_prompt, default_model_id, temperature, max_tokens, tags, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
-            RETURNING id, slug, display_name, description, system_prompt, default_model_id, temperature, max_tokens, tags, status, created_at, updated_at
+            INSERT INTO agents (slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+            RETURNING id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
             "#,
         )
         .bind(&input.slug)
-        .bind(&input.display_name)
+        .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
         .bind(input.temperature)
         .bind(input.max_tokens)
+        .bind(&input.tools)
         .bind(&input.tags)
         .fetch_one(&self.pool)
         .await?;
@@ -69,11 +70,11 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_harness(&self, id: Uuid) -> Result<Option<HarnessRow>> {
-        let row = sqlx::query_as::<_, HarnessRow>(
+    pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
+        let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, slug, display_name, description, system_prompt, default_model_id, temperature, max_tokens, tags, status, created_at, updated_at
-            FROM harnesses
+            SELECT id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
+            FROM agents
             WHERE id = $1
             "#,
         )
@@ -84,11 +85,11 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_harness_by_slug(&self, slug: &str) -> Result<Option<HarnessRow>> {
-        let row = sqlx::query_as::<_, HarnessRow>(
+    pub async fn get_agent_by_slug(&self, slug: &str) -> Result<Option<AgentRow>> {
+        let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, slug, display_name, description, system_prompt, default_model_id, temperature, max_tokens, tags, status, created_at, updated_at
-            FROM harnesses
+            SELECT id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
+            FROM agents
             WHERE slug = $1
             "#,
         )
@@ -99,11 +100,11 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_harnesses(&self) -> Result<Vec<HarnessRow>> {
-        let rows = sqlx::query_as::<_, HarnessRow>(
+    pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
+        let rows = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, slug, display_name, description, system_prompt, default_model_id, temperature, max_tokens, tags, status, created_at, updated_at
-            FROM harnesses
+            SELECT id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
+            FROM agents
             WHERE status = 'active'
             ORDER BY created_at DESC
             "#,
@@ -114,37 +115,35 @@ impl Database {
         Ok(rows)
     }
 
-    pub async fn update_harness(
-        &self,
-        id: Uuid,
-        input: UpdateHarness,
-    ) -> Result<Option<HarnessRow>> {
-        let row = sqlx::query_as::<_, HarnessRow>(
+    pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
+        let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            UPDATE harnesses
+            UPDATE agents
             SET
                 slug = COALESCE($2, slug),
-                display_name = COALESCE($3, display_name),
+                name = COALESCE($3, name),
                 description = COALESCE($4, description),
                 system_prompt = COALESCE($5, system_prompt),
                 default_model_id = COALESCE($6, default_model_id),
                 temperature = COALESCE($7, temperature),
                 max_tokens = COALESCE($8, max_tokens),
-                tags = COALESCE($9, tags),
-                status = COALESCE($10, status),
+                tools = COALESCE($9, tools),
+                tags = COALESCE($10, tags),
+                status = COALESCE($11, status),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, slug, display_name, description, system_prompt, default_model_id, temperature, max_tokens, tags, status, created_at, updated_at
+            RETURNING id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
             "#,
         )
         .bind(id)
         .bind(&input.slug)
-        .bind(&input.display_name)
+        .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
         .bind(input.temperature)
         .bind(input.max_tokens)
+        .bind(&input.tools)
         .bind(&input.tags)
         .bind(&input.status)
         .fetch_optional(&self.pool)
@@ -153,11 +152,11 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_harness(&self, id: Uuid) -> Result<bool> {
+    pub async fn delete_agent(&self, id: Uuid) -> Result<bool> {
         // Archive instead of hard delete
         let result = sqlx::query(
             r#"
-            UPDATE harnesses
+            UPDATE agents
             SET status = 'archived', updated_at = NOW()
             WHERE id = $1 AND status = 'active'
             "#,
@@ -170,18 +169,18 @@ impl Database {
     }
 
     // ============================================
-    // Sessions (M2)
+    // Sessions (instance of agentic loop)
     // ============================================
 
     pub async fn create_session(&self, input: CreateSession) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO agent_sessions (harness_id, title, tags, model_id)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, harness_id, title, tags, model_id, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
+            INSERT INTO sessions (agent_id, title, tags, model_id, status)
+            VALUES ($1, $2, $3, $4, 'pending')
+            RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
             "#,
         )
-        .bind(input.harness_id)
+        .bind(input.agent_id)
         .bind(&input.title)
         .bind(&input.tags)
         .bind(input.model_id)
@@ -194,8 +193,8 @@ impl Database {
     pub async fn get_session(&self, id: Uuid) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, harness_id, title, tags, model_id, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
-            FROM agent_sessions
+            SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
+            FROM sessions
             WHERE id = $1
             "#,
         )
@@ -206,16 +205,16 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_sessions(&self, harness_id: Uuid) -> Result<Vec<SessionRow>> {
+    pub async fn list_sessions(&self, agent_id: Uuid) -> Result<Vec<SessionRow>> {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, harness_id, title, tags, model_id, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
-            FROM agent_sessions
-            WHERE harness_id = $1
+            SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
+            FROM sessions
+            WHERE agent_id = $1
             ORDER BY created_at DESC
             "#,
         )
-        .bind(harness_id)
+        .bind(agent_id)
         .fetch_all(&self.pool)
         .await?;
 
@@ -229,25 +228,23 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            UPDATE agent_sessions
+            UPDATE sessions
             SET
                 title = COALESCE($2, title),
                 tags = COALESCE($3, tags),
                 model_id = COALESCE($4, model_id),
-                temporal_workflow_id = COALESCE($5, temporal_workflow_id),
-                temporal_run_id = COALESCE($6, temporal_run_id),
-                started_at = COALESCE($7, started_at),
-                finished_at = COALESCE($8, finished_at)
+                status = COALESCE($5, status),
+                started_at = COALESCE($6, started_at),
+                finished_at = COALESCE($7, finished_at)
             WHERE id = $1
-            RETURNING id, harness_id, title, tags, model_id, temporal_workflow_id, temporal_run_id, created_at, started_at, finished_at
+            RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
             "#,
         )
         .bind(id)
         .bind(&input.title)
         .bind(&input.tags)
         .bind(input.model_id)
-        .bind(&input.temporal_workflow_id)
-        .bind(&input.temporal_run_id)
+        .bind(&input.status)
         .bind(input.started_at)
         .bind(input.finished_at)
         .fetch_optional(&self.pool)
@@ -257,7 +254,7 @@ impl Database {
     }
 
     pub async fn delete_session(&self, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM agent_sessions WHERE id = $1")
+        let result = sqlx::query("DELETE FROM sessions WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -266,15 +263,91 @@ impl Database {
     }
 
     // ============================================
-    // Events (M2)
+    // Messages (PRIMARY conversation data)
+    // ============================================
+
+    pub async fn create_message(&self, input: CreateMessage) -> Result<MessageRow> {
+        // Get next sequence number for this session
+        let row = sqlx::query_as::<_, MessageRow>(
+            r#"
+            INSERT INTO messages (session_id, sequence, role, content, tool_call_id)
+            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM messages WHERE session_id = $1), 1), $2, $3, $4)
+            RETURNING id, session_id, sequence, role, content, tool_call_id, created_at
+            "#,
+        )
+        .bind(input.session_id)
+        .bind(&input.role)
+        .bind(&input.content)
+        .bind(&input.tool_call_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_message(&self, id: Uuid) -> Result<Option<MessageRow>> {
+        let row = sqlx::query_as::<_, MessageRow>(
+            r#"
+            SELECT id, session_id, sequence, role, content, tool_call_id, created_at
+            FROM messages
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_messages(&self, session_id: Uuid) -> Result<Vec<MessageRow>> {
+        let rows = sqlx::query_as::<_, MessageRow>(
+            r#"
+            SELECT id, session_id, sequence, role, content, tool_call_id, created_at
+            FROM messages
+            WHERE session_id = $1
+            ORDER BY sequence ASC
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// List messages by role
+    pub async fn list_messages_by_role(
+        &self,
+        session_id: Uuid,
+        role: &str,
+    ) -> Result<Vec<MessageRow>> {
+        let rows = sqlx::query_as::<_, MessageRow>(
+            r#"
+            SELECT id, session_id, sequence, role, content, tool_call_id, created_at
+            FROM messages
+            WHERE session_id = $1 AND role = $2
+            ORDER BY sequence ASC
+            "#,
+        )
+        .bind(session_id)
+        .bind(role)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    // ============================================
+    // Events (SSE notification stream for UI)
     // ============================================
 
     pub async fn create_event(&self, input: CreateEvent) -> Result<EventRow> {
         // Get next sequence number for this session
         let row = sqlx::query_as::<_, EventRow>(
             r#"
-            INSERT INTO session_events (session_id, sequence, event_type, data)
-            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM session_events WHERE session_id = $1), 1), $2, $3)
+            INSERT INTO events (session_id, sequence, event_type, data)
+            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM events WHERE session_id = $1), 1), $2, $3)
             RETURNING id, session_id, sequence, event_type, data, created_at
             "#,
         )
@@ -296,7 +369,7 @@ impl Database {
             sqlx::query_as::<_, EventRow>(
                 r#"
                 SELECT id, session_id, sequence, event_type, data, created_at
-                FROM session_events
+                FROM events
                 WHERE session_id = $1 AND sequence > $2
                 ORDER BY sequence ASC
                 "#,
@@ -309,7 +382,7 @@ impl Database {
             sqlx::query_as::<_, EventRow>(
                 r#"
                 SELECT id, session_id, sequence, event_type, data, created_at
-                FROM session_events
+                FROM events
                 WHERE session_id = $1
                 ORDER BY sequence ASC
                 "#,
@@ -318,64 +391,6 @@ impl Database {
             .fetch_all(&self.pool)
             .await?
         };
-
-        Ok(rows)
-    }
-
-    /// List only message events for a session (message.user, message.assistant, message.system)
-    pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
-        let rows = sqlx::query_as::<_, EventRow>(
-            r#"
-            SELECT id, session_id, sequence, event_type, data, created_at
-            FROM session_events
-            WHERE session_id = $1 AND event_type LIKE 'message.%'
-            ORDER BY sequence ASC
-            "#,
-        )
-        .bind(session_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
-    }
-
-    // ============================================
-    // Session Actions (M2)
-    // ============================================
-
-    pub async fn create_session_action(
-        &self,
-        input: CreateSessionAction,
-    ) -> Result<SessionActionRow> {
-        let row = sqlx::query_as::<_, SessionActionRow>(
-            r#"
-            INSERT INTO session_actions (session_id, kind, payload, by_user_id)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, session_id, kind, payload, by_user_id, created_at
-            "#,
-        )
-        .bind(input.session_id)
-        .bind(&input.kind)
-        .bind(&input.payload)
-        .bind(input.by_user_id)
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
-    pub async fn list_session_actions(&self, session_id: Uuid) -> Result<Vec<SessionActionRow>> {
-        let rows = sqlx::query_as::<_, SessionActionRow>(
-            r#"
-            SELECT id, session_id, kind, payload, by_user_id, created_at
-            FROM session_actions
-            WHERE session_id = $1
-            ORDER BY created_at ASC
-            "#,
-        )
-        .bind(session_id)
-        .fetch_all(&self.pool)
-        .await?;
 
         Ok(rows)
     }
@@ -620,7 +635,7 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Get model by model_id string (for resolving harness model references)
+    /// Get model by model_id string (for resolving agent model references)
     pub async fn get_llm_model_by_model_id(
         &self,
         model_id: &str,

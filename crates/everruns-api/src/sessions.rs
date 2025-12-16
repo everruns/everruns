@@ -1,4 +1,5 @@
-// Session CRUD and Events HTTP routes (M2)
+// Session CRUD, Messages, and Events HTTP routes (M2)
+// Messages are PRIMARY data store, Events are SSE notifications
 
 use axum::{
     extract::{Path, State},
@@ -8,10 +9,11 @@ use axum::{
     Json, Router,
 };
 use everruns_contracts::{
-    CreateEventRequest, CreateSessionRequest, Event, ListResponse, Session, UpdateSessionRequest,
+    CreateMessageRequest, CreateSessionRequest, ListResponse, Message, Session,
+    UpdateSessionRequest,
 };
 use everruns_storage::{
-    models::{CreateEvent, CreateSession, UpdateSession},
+    models::{CreateEvent, CreateMessage, CreateSession, UpdateSession},
     Database,
 };
 use everruns_worker::AgentRunner;
@@ -22,12 +24,13 @@ use futures::{
 use std::{convert::Infallible, sync::Arc, time::Duration};
 use uuid::Uuid;
 
-use crate::services::{EventService, SessionService};
+use crate::services::{EventService, MessageService, SessionService};
 
 /// App state for sessions routes
 #[derive(Clone)]
 pub struct AppState {
     pub session_service: Arc<SessionService>,
+    pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
     pub runner: Arc<dyn AgentRunner>,
     pub db: Arc<Database>,
@@ -37,6 +40,7 @@ impl AppState {
     pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
+            message_service: Arc::new(MessageService::new(db.clone())),
             event_service: Arc::new(EventService::new(db.clone())),
             runner,
             db,
@@ -44,38 +48,39 @@ impl AppState {
     }
 }
 
-/// Create session routes (nested under harnesses)
+/// Create session routes (nested under agents)
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        // Session CRUD under harness
+        // Session CRUD under agent
         .route(
-            "/v1/harnesses/{harness_id}/sessions",
+            "/v1/agents/{agent_id}/sessions",
             post(create_session).get(list_sessions),
         )
         .route(
-            "/v1/harnesses/{harness_id}/sessions/{session_id}",
+            "/v1/agents/{agent_id}/sessions/{session_id}",
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
         )
-        // Events under session
+        // Messages under session (PRIMARY data)
         .route(
-            "/v1/harnesses/{harness_id}/sessions/{session_id}/events",
-            post(create_event).get(stream_events),
+            "/v1/agents/{agent_id}/sessions/{session_id}/messages",
+            post(create_message).get(list_messages),
         )
+        // Events under session (SSE notifications)
         .route(
-            "/v1/harnesses/{harness_id}/sessions/{session_id}/messages",
-            get(list_messages),
+            "/v1/agents/{agent_id}/sessions/{session_id}/events",
+            get(stream_events),
         )
         .with_state(state)
 }
 
-/// POST /v1/harnesses/{harness_id}/sessions - Create a new session
+/// POST /v1/agents/{agent_id}/sessions - Create a new session
 #[utoipa::path(
     post,
-    path = "/v1/harnesses/{harness_id}/sessions",
+    path = "/v1/agents/{agent_id}/sessions",
     params(
-        ("harness_id" = Uuid, Path, description = "Harness ID")
+        ("agent_id" = Uuid, Path, description = "Agent ID")
     ),
     request_body = CreateSessionRequest,
     responses(
@@ -86,11 +91,11 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn create_session(
     State(state): State<AppState>,
-    Path(harness_id): Path<Uuid>,
+    Path(agent_id): Path<Uuid>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), StatusCode> {
     let input = CreateSession {
-        harness_id,
+        agent_id,
         title: req.title,
         tags: req.tags,
         model_id: req.model_id,
@@ -104,12 +109,12 @@ pub async fn create_session(
     Ok((StatusCode::CREATED, Json(session)))
 }
 
-/// GET /v1/harnesses/{harness_id}/sessions - List sessions in harness
+/// GET /v1/agents/{agent_id}/sessions - List sessions in agent
 #[utoipa::path(
     get,
-    path = "/v1/harnesses/{harness_id}/sessions",
+    path = "/v1/agents/{agent_id}/sessions",
     params(
-        ("harness_id" = Uuid, Path, description = "Harness ID")
+        ("agent_id" = Uuid, Path, description = "Agent ID")
     ),
     responses(
         (status = 200, description = "List of sessions", body = ListResponse<Session>),
@@ -119,9 +124,9 @@ pub async fn create_session(
 )]
 pub async fn list_sessions(
     State(state): State<AppState>,
-    Path(harness_id): Path<Uuid>,
+    Path(agent_id): Path<Uuid>,
 ) -> Result<Json<ListResponse<Session>>, StatusCode> {
-    let sessions = state.session_service.list(harness_id).await.map_err(|e| {
+    let sessions = state.session_service.list(agent_id).await.map_err(|e| {
         tracing::error!("Failed to list sessions: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -129,12 +134,12 @@ pub async fn list_sessions(
     Ok(Json(ListResponse::new(sessions)))
 }
 
-/// GET /v1/harnesses/{harness_id}/sessions/{session_id} - Get session
+/// GET /v1/agents/{agent_id}/sessions/{session_id} - Get session
 #[utoipa::path(
     get,
-    path = "/v1/harnesses/{harness_id}/sessions/{session_id}",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}",
     params(
-        ("harness_id" = Uuid, Path, description = "Harness ID"),
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
     responses(
@@ -146,7 +151,7 @@ pub async fn list_sessions(
 )]
 pub async fn get_session(
     State(state): State<AppState>,
-    Path((_harness_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Session>, StatusCode> {
     let session = state
         .session_service
@@ -161,12 +166,12 @@ pub async fn get_session(
     Ok(Json(session))
 }
 
-/// PATCH /v1/harnesses/{harness_id}/sessions/{session_id} - Update session
+/// PATCH /v1/agents/{agent_id}/sessions/{session_id} - Update session
 #[utoipa::path(
     patch,
-    path = "/v1/harnesses/{harness_id}/sessions/{session_id}",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}",
     params(
-        ("harness_id" = Uuid, Path, description = "Harness ID"),
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
     request_body = UpdateSessionRequest,
@@ -179,13 +184,12 @@ pub async fn get_session(
 )]
 pub async fn update_session(
     State(state): State<AppState>,
-    Path((_harness_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateSessionRequest>,
 ) -> Result<Json<Session>, StatusCode> {
     let input = UpdateSession {
         title: req.title,
         tags: req.tags,
-        model_id: req.model_id,
         ..Default::default()
     };
 
@@ -202,12 +206,12 @@ pub async fn update_session(
     Ok(Json(session))
 }
 
-/// DELETE /v1/harnesses/{harness_id}/sessions/{session_id} - Delete session
+/// DELETE /v1/agents/{agent_id}/sessions/{session_id} - Delete session
 #[utoipa::path(
     delete,
-    path = "/v1/harnesses/{harness_id}/sessions/{session_id}",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}",
     params(
-        ("harness_id" = Uuid, Path, description = "Harness ID"),
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
     responses(
@@ -219,7 +223,7 @@ pub async fn update_session(
 )]
 pub async fn delete_session(
     State(state): State<AppState>,
-    Path((_harness_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, StatusCode> {
     let deleted = state
         .session_service
@@ -237,61 +241,113 @@ pub async fn delete_session(
     }
 }
 
-/// POST /v1/harnesses/{harness_id}/sessions/{session_id}/events - Add event (user message)
+/// POST /v1/agents/{agent_id}/sessions/{session_id}/messages - Create message (user message triggers workflow)
 #[utoipa::path(
     post,
-    path = "/v1/harnesses/{harness_id}/sessions/{session_id}/events",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/messages",
     params(
-        ("harness_id" = Uuid, Path, description = "Harness ID"),
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
-    request_body = CreateEventRequest,
+    request_body = CreateMessageRequest,
     responses(
-        (status = 201, description = "Event created successfully", body = Event),
+        (status = 201, description = "Message created successfully", body = Message),
         (status = 500, description = "Internal server error")
     ),
-    tag = "events"
+    tag = "messages"
 )]
-pub async fn create_event(
+pub async fn create_message(
     State(state): State<AppState>,
-    Path((harness_id, session_id)): Path<(Uuid, Uuid)>,
-    Json(req): Json<CreateEventRequest>,
-) -> Result<(StatusCode, Json<Event>), StatusCode> {
-    let input = CreateEvent {
+    Path((agent_id, session_id)): Path<(Uuid, Uuid)>,
+    Json(req): Json<CreateMessageRequest>,
+) -> Result<(StatusCode, Json<Message>), StatusCode> {
+    let input = CreateMessage {
         session_id,
-        event_type: req.event_type.clone(),
-        data: req.data,
+        role: req.role.to_string(),
+        content: req.content,
+        tool_call_id: req.tool_call_id,
     };
 
-    let event = state.event_service.create(input).await.map_err(|e| {
-        tracing::error!("Failed to create event: {}", e);
+    let message = state.message_service.create(input).await.map_err(|e| {
+        tracing::error!("Failed to create message: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
     // If this is a user message, start the session workflow
-    if req.event_type == "message.user" {
+    if message.role == everruns_contracts::MessageRole::User {
+        // Emit a user message event for SSE
+        let event_input = CreateEvent {
+            session_id,
+            event_type: "message.user".to_string(),
+            data: serde_json::json!({
+                "message_id": message.id,
+                "content": message.content
+            }),
+        };
+        if let Err(e) = state.event_service.create(event_input).await {
+            tracing::warn!("Failed to emit user message event: {}", e);
+        }
+
         // Start the workflow execution
         if let Err(e) = state
             .runner
-            .start_run(session_id, harness_id, session_id)
+            .start_run(session_id, agent_id, session_id)
             .await
         {
             tracing::error!("Failed to start session workflow: {}", e);
-            // Don't fail the request, event is already persisted
+            // Don't fail the request, message is already persisted
         } else {
             tracing::info!(session_id = %session_id, "Session workflow started");
         }
     }
 
-    Ok((StatusCode::CREATED, Json(event)))
+    Ok((StatusCode::CREATED, Json(message)))
 }
 
-/// GET /v1/harnesses/{harness_id}/sessions/{session_id}/events - Stream events (SSE)
+/// GET /v1/agents/{agent_id}/sessions/{session_id}/messages - List messages (PRIMARY data)
 #[utoipa::path(
     get,
-    path = "/v1/harnesses/{harness_id}/sessions/{session_id}/events",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/messages",
     params(
-        ("harness_id" = Uuid, Path, description = "Harness ID"),
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("session_id" = Uuid, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "List of messages", body = ListResponse<Message>),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "messages"
+)]
+pub async fn list_messages(
+    State(state): State<AppState>,
+    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ListResponse<Message>>, StatusCode> {
+    // Verify session exists
+    let _session = state
+        .session_service
+        .get(session_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get session: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let messages = state.message_service.list(session_id).await.map_err(|e| {
+        tracing::error!("Failed to list messages: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(ListResponse::new(messages)))
+}
+
+/// GET /v1/agents/{agent_id}/sessions/{session_id}/events - Stream events (SSE notifications)
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/events",
+    params(
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
     responses(
@@ -303,7 +359,7 @@ pub async fn create_event(
 )]
 pub async fn stream_events(
     State(state): State<AppState>,
-    Path((_harness_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
     // Verify session exists
     let _session = state
@@ -361,46 +417,4 @@ pub async fn stream_events(
     .flatten();
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
-}
-
-/// GET /v1/harnesses/{harness_id}/sessions/{session_id}/messages - Get message events only
-#[utoipa::path(
-    get,
-    path = "/v1/harnesses/{harness_id}/sessions/{session_id}/messages",
-    params(
-        ("harness_id" = Uuid, Path, description = "Harness ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
-    ),
-    responses(
-        (status = 200, description = "List of message events", body = ListResponse<Event>),
-        (status = 404, description = "Session not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "events"
-)]
-pub async fn list_messages(
-    State(state): State<AppState>,
-    Path((_harness_id, session_id)): Path<(Uuid, Uuid)>,
-) -> Result<Json<ListResponse<Event>>, StatusCode> {
-    // Verify session exists
-    let _session = state
-        .session_service
-        .get(session_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    let events = state
-        .event_service
-        .list_messages(session_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list message events: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    Ok(Json(ListResponse::new(events)))
 }

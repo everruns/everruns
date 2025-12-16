@@ -1,7 +1,7 @@
 // Session activities for workflow execution (M2)
 
 use anyhow::Result;
-use everruns_contracts::events::{AgUiEvent, MessageRole};
+use everruns_contracts::events::{AgUiEvent, AgUiMessageRole};
 use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
 use everruns_storage::repositories::Database;
 use futures::StreamExt;
@@ -54,11 +54,11 @@ impl PersistEventActivity {
 
         let event_data = serde_json::to_value(&event)?;
 
-        // Insert into session_events table with auto-incrementing sequence
+        // Insert into events table with auto-incrementing sequence
         sqlx::query(
             r#"
-            INSERT INTO session_events (session_id, sequence, event_type, data)
-            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM session_events WHERE session_id = $1), 1), $2, $3)
+            INSERT INTO events (session_id, sequence, event_type, data)
+            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM events WHERE session_id = $1), 1), $2, $3)
             "#,
         )
         .bind(session_id)
@@ -115,7 +115,7 @@ impl<P: LlmProvider> LlmCallActivity<P> {
 
         // Emit TEXT_MESSAGE_START event
         let message_id = Uuid::now_v7().to_string();
-        let start_event = AgUiEvent::text_message_start(&message_id, MessageRole::Assistant);
+        let start_event = AgUiEvent::text_message_start(&message_id, AgUiMessageRole::Assistant);
         self.persist_activity
             .persist_event(session_id, start_event)
             .await?;

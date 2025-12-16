@@ -1,21 +1,58 @@
-// Session DTOs for public API (M2)
+// Session DTOs (instance of agentic loop execution)
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-/// Session represents an instance of agentic loop execution
-/// Multiple sessions can exist concurrently for a single harness
+/// Session status
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+}
+
+impl std::fmt::Display for SessionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionStatus::Pending => write!(f, "pending"),
+            SessionStatus::Running => write!(f, "running"),
+            SessionStatus::Completed => write!(f, "completed"),
+            SessionStatus::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+impl From<&str> for SessionStatus {
+    fn from(s: &str) -> Self {
+        match s {
+            "running" => SessionStatus::Running,
+            "completed" => SessionStatus::Completed,
+            "failed" => SessionStatus::Failed,
+            _ => SessionStatus::Pending,
+        }
+    }
+}
+
+/// Session - instance of agentic loop execution
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Session {
     pub id: Uuid,
-    pub harness_id: Uuid,
+    pub agent_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<Uuid>,
+    pub status: SessionStatus,
     pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<DateTime<Utc>>,
 }
 
@@ -37,56 +74,4 @@ pub struct UpdateSessionRequest {
     pub title: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
-    #[serde(default)]
-    pub model_id: Option<Uuid>,
-}
-
-/// Event in a session
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct Event {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub sequence: i32,
-    pub event_type: String,
-    pub data: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-}
-
-/// Request to create an event (add a message to session)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateEventRequest {
-    pub event_type: String,
-    pub data: serde_json::Value,
-}
-
-/// Message content in an event
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct MessageContent {
-    #[serde(rename = "type")]
-    pub content_type: String,
-    pub text: String,
-}
-
-/// Message structure in event data
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct MessageData {
-    pub role: String,
-    pub content: Vec<MessageContent>,
-}
-
-/// Event data wrapper for message events
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct MessageEventData {
-    pub message: MessageData,
-}
-
-/// Session action
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct SessionAction {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub kind: String,
-    pub payload: serde_json::Value,
-    pub by_user_id: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
 }

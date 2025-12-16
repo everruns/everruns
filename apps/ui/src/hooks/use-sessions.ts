@@ -1,4 +1,4 @@
-// Session hooks (M2)
+// Session and Message hooks (M2)
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,22 +12,22 @@ import {
 } from "@/lib/api/sessions";
 import type { CreateSessionRequest, UpdateSessionRequest } from "@/lib/api/types";
 
-export function useSessions(harnessId: string | undefined) {
+export function useSessions(agentId: string | undefined) {
   return useQuery({
-    queryKey: ["sessions", harnessId],
-    queryFn: () => listSessions(harnessId!),
-    enabled: !!harnessId,
+    queryKey: ["sessions", agentId],
+    queryFn: () => listSessions(agentId!),
+    enabled: !!agentId,
   });
 }
 
 export function useSession(
-  harnessId: string | undefined,
+  agentId: string | undefined,
   sessionId: string | undefined
 ) {
   return useQuery({
-    queryKey: ["session", harnessId, sessionId],
-    queryFn: () => getSession(harnessId!, sessionId!),
-    enabled: !!harnessId && !!sessionId,
+    queryKey: ["session", agentId, sessionId],
+    queryFn: () => getSession(agentId!, sessionId!),
+    enabled: !!agentId && !!sessionId,
   });
 }
 
@@ -36,14 +36,14 @@ export function useCreateSession() {
 
   return useMutation({
     mutationFn: ({
-      harnessId,
+      agentId,
       request,
     }: {
-      harnessId: string;
+      agentId: string;
       request?: CreateSessionRequest;
-    }) => createSession(harnessId, request),
-    onSuccess: (_, { harnessId }) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions", harnessId] });
+    }) => createSession(agentId, request),
+    onSuccess: (_, { agentId }) => {
+      queryClient.invalidateQueries({ queryKey: ["sessions", agentId] });
     },
   });
 }
@@ -53,18 +53,18 @@ export function useUpdateSession() {
 
   return useMutation({
     mutationFn: ({
-      harnessId,
+      agentId,
       sessionId,
       request,
     }: {
-      harnessId: string;
+      agentId: string;
       sessionId: string;
       request: UpdateSessionRequest;
-    }) => updateSession(harnessId, sessionId, request),
-    onSuccess: (_, { harnessId, sessionId }) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions", harnessId] });
+    }) => updateSession(agentId, sessionId, request),
+    onSuccess: (_, { agentId, sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: ["sessions", agentId] });
       queryClient.invalidateQueries({
-        queryKey: ["session", harnessId, sessionId],
+        queryKey: ["session", agentId, sessionId],
       });
     },
   });
@@ -75,14 +75,14 @@ export function useDeleteSession() {
 
   return useMutation({
     mutationFn: ({
-      harnessId,
+      agentId,
       sessionId,
     }: {
-      harnessId: string;
+      agentId: string;
       sessionId: string;
-    }) => deleteSession(harnessId, sessionId),
-    onSuccess: (_, { harnessId }) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions", harnessId] });
+    }) => deleteSession(agentId, sessionId),
+    onSuccess: (_, { agentId }) => {
+      queryClient.invalidateQueries({ queryKey: ["sessions", agentId] });
     },
   });
 }
@@ -92,29 +92,29 @@ export function useSendMessage() {
 
   return useMutation({
     mutationFn: ({
-      harnessId,
+      agentId,
       sessionId,
       content,
     }: {
-      harnessId: string;
+      agentId: string;
       sessionId: string;
       content: string;
-    }) => sendUserMessage(harnessId, sessionId, content),
-    onSuccess: (_, { harnessId, sessionId }) => {
+    }) => sendUserMessage(agentId, sessionId, content),
+    onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({
-        queryKey: ["messages", harnessId, sessionId],
+        queryKey: ["messages", agentId, sessionId],
       });
     },
   });
 }
 
 export function useMessages(
-  harnessId: string | undefined,
+  agentId: string | undefined,
   sessionId: string | undefined
 ) {
   return useQuery({
-    queryKey: ["messages", harnessId, sessionId],
-    queryFn: () => listMessages(harnessId!, sessionId!),
-    enabled: !!harnessId && !!sessionId,
+    queryKey: ["messages", agentId, sessionId],
+    queryFn: () => listMessages(agentId!, sessionId!),
+    enabled: !!agentId && !!sessionId,
   });
 }

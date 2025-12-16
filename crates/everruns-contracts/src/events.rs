@@ -90,7 +90,7 @@ pub struct StepFinishedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct TextMessageStartEvent {
     pub message_id: String,
-    pub role: MessageRole,
+    pub role: AgUiMessageRole,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<i64>,
 }
@@ -112,9 +112,10 @@ pub struct TextMessageEndEvent {
     pub timestamp: Option<i64>,
 }
 
+/// AG-UI protocol message role (for SSE events)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum MessageRole {
+pub enum AgUiMessageRole {
     Developer,
     System,
     Assistant,
@@ -159,7 +160,7 @@ pub struct ToolCallResultEvent {
     pub tool_call_id: String,
     pub content: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<MessageRole>,
+    pub role: Option<AgUiMessageRole>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<i64>,
 }
@@ -203,7 +204,7 @@ pub struct MessagesSnapshotEvent {
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotMessage {
     pub id: String,
-    pub role: MessageRole,
+    pub role: AgUiMessageRole,
     pub content: String,
 }
 
@@ -245,7 +246,7 @@ impl AgUiEvent {
         })
     }
 
-    pub fn text_message_start(message_id: impl Into<String>, role: MessageRole) -> Self {
+    pub fn text_message_start(message_id: impl Into<String>, role: AgUiMessageRole) -> Self {
         AgUiEvent::TextMessageStart(TextMessageStartEvent {
             message_id: message_id.into(),
             role,
@@ -304,7 +305,7 @@ impl AgUiEvent {
             message_id: message_id.into(),
             tool_call_id: tool_call_id.into(),
             content,
-            role: Some(MessageRole::Tool),
+            role: Some(AgUiMessageRole::Tool),
             timestamp: Some(Utc::now().timestamp_millis()),
         })
     }
@@ -370,4 +371,30 @@ impl AgUiEvent {
             timestamp: Some(Utc::now().timestamp_millis()),
         })
     }
+}
+
+// ============================================
+// Event DTOs for REST API
+// ============================================
+
+use chrono::DateTime;
+use utoipa::ToSchema;
+use uuid::Uuid;
+
+/// Event - SSE notification record stored in database
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Event {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub sequence: i32,
+    pub event_type: String,
+    pub data: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request to create an event (mainly for internal use)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateEventRequest {
+    pub event_type: String,
+    pub data: serde_json::Value,
 }

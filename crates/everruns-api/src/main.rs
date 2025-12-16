@@ -1,8 +1,8 @@
 // Everruns API server
 // Decision: Auth will be added later via OAuth (dashboard login)
-// M2: Replaced Agent/Thread/Run with Harness/Session/Event model
+// M2: Agent/Session/Messages model with Events as SSE notifications
 
-mod harnesses;
+mod agents;
 mod llm_models;
 mod llm_providers;
 mod services;
@@ -52,20 +52,20 @@ struct HealthState {
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        harnesses::create_harness,
-        harnesses::list_harnesses,
-        harnesses::get_harness,
-        harnesses::get_harness_by_slug,
-        harnesses::update_harness,
-        harnesses::delete_harness,
+        agents::create_agent,
+        agents::list_agents,
+        agents::get_agent,
+        agents::get_agent_by_slug,
+        agents::update_agent,
+        agents::delete_agent,
         sessions::create_session,
         sessions::list_sessions,
         sessions::get_session,
         sessions::update_session,
         sessions::delete_session,
-        sessions::create_event,
-        sessions::stream_events,
+        sessions::create_message,
         sessions::list_messages,
+        sessions::stream_events,
         llm_providers::create_provider,
         llm_providers::list_providers,
         llm_providers::get_provider,
@@ -80,13 +80,14 @@ struct HealthState {
     ),
     components(
         schemas(
-            Harness, HarnessStatus,
-            Session, Event,
-            CreateHarnessRequest, UpdateHarnessRequest,
+            Agent, AgentStatus,
+            Session, SessionStatus, Message, MessageRole, Event,
+            CreateAgentRequest, UpdateAgentRequest,
             CreateSessionRequest, UpdateSessionRequest,
-            CreateEventRequest,
-            ListResponse<Harness>,
+            CreateMessageRequest,
+            ListResponse<Agent>,
             ListResponse<Session>,
+            ListResponse<Message>,
             ListResponse<Event>,
             LlmProvider, LlmProviderType, LlmProviderStatus,
             LlmModel, LlmModelWithProvider, LlmModelStatus,
@@ -97,16 +98,17 @@ struct HealthState {
         )
     ),
     tags(
-        (name = "harnesses", description = "Harness management endpoints"),
+        (name = "agents", description = "Agent management endpoints"),
         (name = "sessions", description = "Session management endpoints"),
-        (name = "events", description = "Event management and streaming endpoints"),
+        (name = "messages", description = "Message management endpoints"),
+        (name = "events", description = "Event streaming endpoints (SSE)"),
         (name = "llm-providers", description = "LLM Provider management endpoints"),
         (name = "llm-models", description = "LLM Model management endpoints")
     ),
     info(
         title = "Everruns API",
         version = "0.2.0",
-        description = "API for managing AI harnesses, sessions, and events",
+        description = "API for managing AI agents, sessions, messages, and events",
         license(name = "MIT", url = "https://opensource.org/licenses/MIT")
     )
 )]
@@ -175,7 +177,7 @@ async fn main() -> Result<()> {
     };
 
     // Create module-specific states
-    let harnesses_state = harnesses::AppState::new(db.clone());
+    let agents_state = agents::AppState::new(db.clone());
     let sessions_state = sessions::AppState::new(db.clone(), runner.clone());
     let llm_providers_state = llm_providers::AppState {
         db: db.clone(),
@@ -192,7 +194,7 @@ async fn main() -> Result<()> {
     // than /v1/llm-providers/{id}
     let app = Router::new()
         .route("/health", get(health).with_state(health_state))
-        .merge(harnesses::routes(harnesses_state))
+        .merge(agents::routes(agents_state))
         .merge(sessions::routes(sessions_state))
         .merge(llm_models::routes(llm_models_state))
         .merge(llm_providers::routes(llm_providers_state))
