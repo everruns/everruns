@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAgent, useUpdateAgent } from "@/hooks/use-agents";
@@ -29,12 +29,14 @@ export default function EditAgentPage() {
   const { data: agent, isLoading, error } = useAgent(agentId);
   const updateAgent = useUpdateAgent(agentId);
 
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    default_model_id: "",
-    status: "active" as AgentStatus,
-  });
+  const initialFormData = useMemo(() => ({
+    name: agent?.name || "",
+    description: agent?.description || "",
+    default_model_id: agent?.default_model_id || "",
+    status: (agent?.status || "active") as AgentStatus,
+  }), [agent]);
+
+  const [formData, setFormData] = useState(initialFormData);
 
   // Sync form data when agent loads - valid pattern for external data sync
   useEffect(() => {
@@ -72,13 +74,13 @@ export default function EditAgentPage() {
         <div className="p-6 max-w-2xl">
           <Card>
             <CardHeader>
-              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-8 w-48" />
               <Skeleton className="h-4 w-64" />
             </CardHeader>
-            <CardContent className="space-y-6">
-              {[...Array(4)].map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
+            <CardContent className="space-y-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-10 w-full" />
             </CardContent>
           </Card>
         </div>
@@ -90,7 +92,7 @@ export default function EditAgentPage() {
     return (
       <>
         <Header
-          title="Agent Not Found"
+          title="Edit Agent"
           action={
             <Link href="/agents">
               <Button variant="ghost">
@@ -148,16 +150,17 @@ export default function EditAgentPage() {
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
+                  placeholder="Optional description for your agent"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="model">Default Model</Label>
+                <Label htmlFor="model">Model ID</Label>
                 <Input
                   id="model"
                   value={formData.default_model_id}
                   onChange={(e) => setFormData({ ...formData, default_model_id: e.target.value })}
+                  placeholder="gpt-4"
                   required
                 />
               </div>
@@ -166,12 +169,10 @@ export default function EditAgentPage() {
                 <Label htmlFor="status">Status</Label>
                 <Select
                   value={formData.status}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, status: value as AgentStatus })
-                  }
+                  onValueChange={(value) => setFormData({ ...formData, status: value as AgentStatus })}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active">Active</SelectItem>
@@ -180,13 +181,7 @@ export default function EditAgentPage() {
                 </Select>
               </div>
 
-              {updateAgent.error && (
-                <div className="bg-destructive/10 text-destructive p-3 rounded-lg text-sm">
-                  Failed to update agent: {updateAgent.error.message}
-                </div>
-              )}
-
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <Button type="submit" disabled={updateAgent.isPending}>
                   {updateAgent.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Save Changes

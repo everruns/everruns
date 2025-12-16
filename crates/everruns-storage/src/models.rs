@@ -159,3 +159,89 @@ pub struct CreateRunEvent {
     pub event_type: String,
     pub event_data: serde_json::Value,
 }
+
+// LLM Provider types
+
+#[derive(Debug, Clone, FromRow)]
+pub struct LlmProviderRow {
+    pub id: Uuid,
+    pub name: String,
+    pub provider_type: String,
+    pub base_url: Option<String>,
+    pub api_key_encrypted: Option<Vec<u8>>,
+    pub api_key_set: bool,
+    pub is_default: bool,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct LlmModelRow {
+    pub id: Uuid,
+    pub provider_id: Uuid,
+    pub model_id: String,
+    pub display_name: String,
+    pub capabilities: sqlx::types::JsonValue,
+    pub context_window: Option<i32>,
+    pub is_default: bool,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Model with provider info joined
+#[derive(Debug, Clone, FromRow)]
+pub struct LlmModelWithProviderRow {
+    pub id: Uuid,
+    pub provider_id: Uuid,
+    pub model_id: String,
+    pub display_name: String,
+    pub capabilities: sqlx::types::JsonValue,
+    pub context_window: Option<i32>,
+    pub is_default: bool,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub provider_name: String,
+    pub provider_type: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateLlmProvider {
+    pub name: String,
+    pub provider_type: String,
+    pub base_url: Option<String>,
+    pub api_key_encrypted: Option<Vec<u8>>,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateLlmProvider {
+    pub name: Option<String>,
+    pub provider_type: Option<String>,
+    pub base_url: Option<String>,
+    pub api_key_encrypted: Option<Vec<u8>>,
+    pub is_default: Option<bool>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateLlmModel {
+    pub provider_id: Uuid,
+    pub model_id: String,
+    pub display_name: String,
+    pub capabilities: Vec<String>,
+    pub context_window: Option<i32>,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateLlmModel {
+    pub model_id: Option<String>,
+    pub display_name: Option<String>,
+    pub capabilities: Option<Vec<String>>,
+    pub context_window: Option<i32>,
+    pub is_default: Option<bool>,
+    pub status: Option<String>,
+}
