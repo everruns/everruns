@@ -1,15 +1,19 @@
--- M2 Revised: Agent/Session/Messages/Events Model
--- This migration corrects the data model:
+-- M2: Agent/Session/Messages/Events Model
+-- This migration implements the correct data model:
 --   - Messages are the PRIMARY data store (user, assistant, tool_call, tool_result)
 --   - Events are SSE notifications for real-time UI updates (NOT primary data)
 
 -- ============================================
--- Drop M2 tables (from migration 003)
+-- Drop old tables (from initial schema and any previous attempts)
 -- ============================================
 DROP TABLE IF EXISTS session_actions CASCADE;
 DROP TABLE IF EXISTS session_events CASCADE;
 DROP TABLE IF EXISTS agent_sessions CASCADE;
 DROP TABLE IF EXISTS harnesses CASCADE;
+DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS events CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS agents CASCADE;
 
 -- ============================================
 -- New tables for Agent/Session/Messages/Events model
