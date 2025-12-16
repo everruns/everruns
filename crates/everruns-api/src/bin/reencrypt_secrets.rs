@@ -309,7 +309,7 @@ async fn process_table(
         offset += batch_size;
 
         // Progress log every 1000 records
-        if processed % 1000 == 0 {
+        if processed.is_multiple_of(1000) {
             tracing::info!(
                 "Progress: {} processed, {} need re-encryption",
                 processed,
