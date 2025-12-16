@@ -53,6 +53,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = { version = "5.2", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
 
+# Encryption
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.22"
+
 # Temporal SDK (used when AGENT_RUNNER_MODE=temporal)
 temporal-sdk-core = "0.1.0-alpha.1"
 temporal-sdk-core-protos = "0.1.0-alpha.1"
