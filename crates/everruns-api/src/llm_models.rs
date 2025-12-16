@@ -324,12 +324,12 @@ pub async fn delete_model(
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/llm-providers/{provider_id}/models",
+            "/v1/llm-providers/:provider_id/models",
             post(create_model).get(list_provider_models),
         )
         .route("/v1/llm-models", get(list_all_models))
         .route(
-            "/v1/llm-models/{id}",
+            "/v1/llm-models/:id",
             get(get_model).patch(update_model).delete(delete_model),
         )
         .with_state(state)
