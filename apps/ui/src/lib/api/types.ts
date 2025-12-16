@@ -151,10 +151,8 @@ export interface UpdateAgentRequest {
   status?: AgentStatus;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface CreateThreadRequest {
-  // Empty for now - will be extended with metadata, etc.
-}
+// Empty request body - threads are created without parameters
+export type CreateThreadRequest = Record<string, never>;
 
 export interface CreateMessageRequest {
   role: string;
@@ -171,4 +169,79 @@ export interface CreateRunRequest {
 export interface HealthResponse {
   status: string;
   version: string;
+}
+
+// LLM Provider types
+export type LlmProviderType =
+  | "openai"
+  | "anthropic"
+  | "azure_openai"
+  | "ollama"
+  | "custom";
+
+export type LlmProviderStatus = "active" | "disabled";
+export type LlmModelStatus = "active" | "disabled";
+
+export interface LlmProvider {
+  id: string;
+  name: string;
+  provider_type: LlmProviderType;
+  base_url?: string;
+  api_key_set: boolean;
+  is_default: boolean;
+  status: LlmProviderStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LlmModel {
+  id: string;
+  provider_id: string;
+  model_id: string;
+  display_name: string;
+  capabilities: string[];
+  context_window?: number;
+  is_default: boolean;
+  status: LlmModelStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LlmModelWithProvider extends LlmModel {
+  provider_name: string;
+  provider_type: LlmProviderType;
+}
+
+export interface CreateLlmProviderRequest {
+  name: string;
+  provider_type: LlmProviderType;
+  base_url?: string;
+  api_key?: string;
+  is_default?: boolean;
+}
+
+export interface UpdateLlmProviderRequest {
+  name?: string;
+  provider_type?: LlmProviderType;
+  base_url?: string;
+  api_key?: string;
+  is_default?: boolean;
+  status?: LlmProviderStatus;
+}
+
+export interface CreateLlmModelRequest {
+  model_id: string;
+  display_name: string;
+  capabilities?: string[];
+  context_window?: number;
+  is_default?: boolean;
+}
+
+export interface UpdateLlmModelRequest {
+  model_id?: string;
+  display_name?: string;
+  capabilities?: string[];
+  context_window?: number;
+  is_default?: boolean;
+  status?: LlmModelStatus;
 }
