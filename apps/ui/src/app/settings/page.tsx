@@ -28,7 +28,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   useLlmProviders,
@@ -46,7 +45,6 @@ import {
   Key,
   Star,
   Cpu,
-  Edit,
 } from "lucide-react";
 import type {
   LlmProvider,
