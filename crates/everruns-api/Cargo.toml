@@ -3,6 +3,15 @@ name = "everruns-api"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+default-run = "everruns-api"
+
+[[bin]]
+name = "everruns-api"
+path = "src/main.rs"
+
+[[bin]]
+name = "reencrypt-secrets"
+path = "src/bin/reencrypt_secrets.rs"
 
 [dependencies]
 axum.workspace = true
@@ -21,6 +30,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 utoipa.workspace = true
 utoipa-swagger-ui.workspace = true
+sqlx.workspace = true
+chrono.workspace = true
+dotenvy.workspace = true
 
 everruns-contracts = { path = "../everruns-contracts" }
 everruns-storage = { path = "../everruns-storage" }
