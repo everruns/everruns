@@ -56,20 +56,14 @@ Represents configuration for an agentic loop. A harness can have many concurrent
 | `description` | string? | Optional description |
 | `system_prompt` | string | System prompt for the LLM |
 | `default_model_id` | UUID v7 | Reference to llm_models table |
-| `config` | JSON | Additional configuration (temperature, max_tokens, etc.) |
+| `temperature` | float? | LLM temperature (default: provider default) |
+| `max_tokens` | integer? | Max tokens for response (default: provider default) |
+| `tags` | string[] | Tags for organization/filtering |
 | `status` | enum | `active`, `archived` |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
 
-**Config schema:**
-```json
-{
-  "temperature": 0.7,
-  "max_tokens": 4096,
-  "tools": [],        // Future: tool configurations
-  "budgets": {}       // Future: token/cost budgets
-}
-```
+Future fields (added as explicit columns when needed): `tools`, `budgets`, etc.
 
 ### Session
 
@@ -79,27 +73,14 @@ Represents an instance of agentic loop execution. Multiple sessions can exist co
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
 | `harness_id` | UUID v7 | Parent harness reference |
-| `status` | enum | `pending`, `active`, `completed`, `failed`, `cancelled` |
+| `title` | string? | Session title (user-provided or auto-generated) |
+| `tags` | string[] | Tags for organization/filtering |
 | `model_id` | UUID v7? | Override model (null = use harness default) |
-| `metadata` | JSON | Session metadata (title, tags, etc.) |
 | `created_at` | timestamp | Creation time |
 | `started_at` | timestamp? | First event time |
 | `finished_at` | timestamp? | Completion time |
 
-**Metadata schema:**
-```json
-{
-  "title": "Debug login issue",    // Auto-generated or user-provided
-  "tags": ["debugging", "auth"]    // Optional tags
-}
-```
-
-**Status transitions:**
-```
-pending → active → completed
-                 → failed
-                 → cancelled
-```
+Note: Session has no explicit status field. Session state is derived from events (e.g., presence of `session.finished` or `session.error` events).
 
 ### Event
 
@@ -188,7 +169,9 @@ CREATE TABLE harnesses (
     description TEXT,
     system_prompt TEXT NOT NULL,
     default_model_id UUID REFERENCES llm_models(id),
-    config JSONB NOT NULL DEFAULT '{}',
+    temperature REAL,
+    max_tokens INTEGER,
+    tags TEXT[] NOT NULL DEFAULT '{}',
     status VARCHAR(50) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -196,14 +179,15 @@ CREATE TABLE harnesses (
 
 CREATE INDEX idx_harnesses_slug ON harnesses(slug);
 CREATE INDEX idx_harnesses_status ON harnesses(status);
+CREATE INDEX idx_harnesses_tags ON harnesses USING GIN(tags);
 
 -- Sessions table (replaces threads + runs)
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     harness_id UUID NOT NULL REFERENCES harnesses(id),
-    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    title VARCHAR(255),
+    tags TEXT[] NOT NULL DEFAULT '{}',
     model_id UUID REFERENCES llm_models(id),
-    metadata JSONB NOT NULL DEFAULT '{}',
     -- Temporal workflow tracking (if using Temporal runner)
     temporal_workflow_id VARCHAR(255),
     temporal_run_id VARCHAR(255),
@@ -213,8 +197,8 @@ CREATE TABLE sessions (
 );
 
 CREATE INDEX idx_sessions_harness_id ON sessions(harness_id);
-CREATE INDEX idx_sessions_status ON sessions(status);
 CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
+CREATE INDEX idx_sessions_tags ON sessions USING GIN(tags);
 CREATE UNIQUE INDEX idx_sessions_temporal_workflow_id
     ON sessions(temporal_workflow_id) WHERE temporal_workflow_id IS NOT NULL;
 
@@ -284,7 +268,7 @@ Single-item responses return the object directly (no wrapper).
 - `POST /v1/harnesses/{harness_id}/sessions` - Create session in harness
 - `GET /v1/harnesses/{harness_id}/sessions` - List sessions in harness → `{ data: [...] }`
 - `GET /v1/harnesses/{harness_id}/sessions/{session_id}` - Get session
-- `PATCH /v1/harnesses/{harness_id}/sessions/{session_id}` - Update session (cancel, etc.)
+- `PATCH /v1/harnesses/{harness_id}/sessions/{session_id}` - Update session (title, tags)
 - `DELETE /v1/harnesses/{harness_id}/sessions/{session_id}` - Delete session
 
 **Event Management:**
@@ -312,6 +296,11 @@ Response:
       "slug": "code-assistant",
       "display_name": "Code Assistant",
       "description": "Helps with coding tasks",
+      "system_prompt": "You are a helpful...",
+      "default_model_id": "uuid",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "tags": ["coding", "general"],
       "status": "active",
       "created_at": "2024-01-01T00:00:00Z",
       "updated_at": "2024-01-01T00:00:00Z"
@@ -329,9 +318,9 @@ POST /v1/harnesses
   "description": "Helps with coding tasks",
   "system_prompt": "You are a helpful coding assistant...",
   "default_model_id": "uuid",
-  "config": {
-    "temperature": 0.7
-  }
+  "temperature": 0.7,
+  "max_tokens": 4096,
+  "tags": ["coding", "general"]
 }
 ```
 
@@ -339,9 +328,28 @@ POST /v1/harnesses
 ```json
 POST /v1/harnesses/{harness_id}/sessions
 {
-  "metadata": {
-    "title": "Debug login issue"
-  }
+  "title": "Debug login issue",
+  "tags": ["debugging", "auth"]
+}
+```
+
+**List Sessions:**
+```json
+GET /v1/harnesses/{harness_id}/sessions
+Response:
+{
+  "data": [
+    {
+      "id": "uuid",
+      "harness_id": "uuid",
+      "title": "Debug login issue",
+      "tags": ["debugging", "auth"],
+      "model_id": null,
+      "created_at": "2024-01-01T00:00:00Z",
+      "started_at": "2024-01-01T00:00:01Z",
+      "finished_at": null
+    }
+  ]
 }
 ```
 
@@ -528,6 +536,8 @@ Introduce a services layer between API handlers and storage to encapsulate busin
 | Backward compatibility? | Nice-to-have, not required |
 | API version? | Stay on v1 |
 | Services layer? | Yes, in everruns-api (Option A) |
+| JSON config/metadata fields? | No, use explicit columns (temperature, max_tokens, title, tags) |
+| Session status field? | No, derive state from events |
 
 ## Success Criteria
 
