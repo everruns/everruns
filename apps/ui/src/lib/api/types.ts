@@ -151,8 +151,9 @@ export interface UpdateAgentRequest {
   status?: AgentStatus;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface CreateThreadRequest {
-  // Empty for now
+  // Empty for now - will be extended with metadata, etc.
 }
 
 export interface CreateMessageRequest {

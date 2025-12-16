@@ -46,9 +46,11 @@ export default function RunsPage() {
     return new Date(dateStr).toLocaleString();
   };
 
+  // Calculate duration - uses Date.now() for running tasks to show live duration
   const formatDuration = (startedAt: string | null, finishedAt: string | null) => {
     if (!startedAt) return "-";
     const start = new Date(startedAt).getTime();
+    // eslint-disable-next-line react-hooks/purity
     const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
     const seconds = Math.floor((end - start) / 1000);
 

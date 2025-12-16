@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Bot, User, Wrench, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Message, AgUiEvent } from "@/lib/api/types";
+import type { Message } from "@/lib/api/types";
 import type { AggregatedMessage, AggregatedToolCall } from "@/hooks/use-sse-events";
 
 interface ChatMessagesProps {

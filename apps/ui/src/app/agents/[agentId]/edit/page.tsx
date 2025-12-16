@@ -36,8 +36,10 @@ export default function EditAgentPage() {
     status: "active" as AgentStatus,
   });
 
+  // Sync form data when agent loads - valid pattern for external data sync
   useEffect(() => {
     if (agent) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormData({
         name: agent.name,
         description: agent.description || "",
@@ -125,7 +127,7 @@ export default function EditAgentPage() {
           <CardHeader>
             <CardTitle>Edit {agent.name}</CardTitle>
             <CardDescription>
-              Update the agent's configuration and settings.
+              Update the agent&apos;s configuration and settings.
             </CardDescription>
           </CardHeader>
           <CardContent>
