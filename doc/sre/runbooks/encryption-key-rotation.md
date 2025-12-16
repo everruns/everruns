@@ -58,11 +58,7 @@ Use the `reencrypt-secrets` CLI tool to migrate all data to the new key.
 First, run in dry-run mode to see what would be re-encrypted:
 
 ```bash
-# From the project root
-cargo run --bin reencrypt-secrets -- --dry-run
-
-# Or with a release build
-./target/release/reencrypt-secrets --dry-run
+reencrypt-secrets --dry-run
 ```
 
 Example output:
@@ -81,10 +77,7 @@ Once satisfied with the dry run, execute the actual re-encryption:
 
 ```bash
 # Re-encrypt all tables
-cargo run --bin reencrypt-secrets
-
-# Or with specific options
-cargo run --bin reencrypt-secrets -- --batch-size 50 --table llm_providers
+reencrypt-secrets --batch-size 50
 ```
 
 #### CLI Options
@@ -105,7 +98,7 @@ OPTIONS:
 Confirm all data has been migrated by running another dry run:
 
 ```bash
-cargo run --bin reencrypt-secrets -- --dry-run
+reencrypt-secrets --dry-run
 ```
 
 Expected output:
@@ -169,7 +162,7 @@ If a key is suspected compromised:
 1. **Immediately** generate new key and deploy with both keys
 2. Run re-encryption CLI with **highest priority**:
    ```bash
-   cargo run --release --bin reencrypt-secrets
+   reencrypt-secrets
    ```
 3. Remove compromised key as soon as all data is migrated
 4. Rotate any credentials that may have been exposed
@@ -181,28 +174,3 @@ If a key is suspected compromised:
 - Rotate keys on a regular schedule (e.g., annually)
 - Keep previous key archived for disaster recovery (separate secure storage)
 - Never commit keys to source control
-
-## Adding New Encrypted Fields
-
-When adding a new encrypted column to the database:
-
-1. **Use the naming convention**: Column name must end with `_encrypted`
-2. **Register in `ENCRYPTED_COLUMNS`**: Add entry in `crates/everruns-storage/src/encryption.rs`:
-
-```rust
-pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
-    EncryptedColumn {
-        table: "llm_providers",
-        column: "api_key_encrypted",
-        id_column: "id",
-    },
-    // Add new columns here
-    EncryptedColumn {
-        table: "new_table",
-        column: "secret_encrypted",
-        id_column: "id",
-    },
-];
-```
-
-**Important**: A test (`test_all_encrypted_columns_registered`) automatically scans migrations for `*_encrypted` columns and verifies they're all registered. If you add an encrypted column but forget to register it, CI will fail.
