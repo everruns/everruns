@@ -25,7 +25,7 @@ This milestone clarifies the data model to properly separate **Messages** (prima
 
 | Entity | Purpose |
 |--------|---------|
-| **Agent** | Configuration for agentic loop (system prompt, model, tools) |
+| **Agent** | Configuration for agentic loop (system prompt, model) |
 | **Session** | Instance of execution (one agent can have many sessions) |
 | **Message** | Primary conversation data (user, assistant, tool_call, tool_result) |
 | **Event** | SSE notification stream for UI (step.generating, step.generated, etc.) |
@@ -48,14 +48,10 @@ Configuration for an agentic loop. An agent can have many concurrent sessions.
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
-| `slug` | string | URL-safe identifier (e.g., `code-assistant`) |
 | `name` | string | Display name |
 | `description` | string? | Optional description |
 | `system_prompt` | string | System prompt for the LLM |
 | `default_model_id` | UUID? | Reference to llm_models table |
-| `temperature` | float? | LLM temperature |
-| `max_tokens` | integer? | Max tokens for response |
-| `tools` | JSON | Tool definitions |
 | `tags` | string[] | Tags for organization |
 | `status` | enum | `active`, `archived` |
 | `created_at` | timestamp | Creation time |
@@ -180,16 +176,12 @@ User: "How much is 2+2?"
 -- Agents table
 CREATE TABLE agents (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    slug VARCHAR(255) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     system_prompt TEXT NOT NULL,
     default_model_id UUID REFERENCES llm_models(id),
-    temperature REAL,
-    max_tokens INTEGER,
-    tools JSONB NOT NULL DEFAULT '[]',
     tags TEXT[] NOT NULL DEFAULT '{}',
-    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

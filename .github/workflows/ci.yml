@@ -222,7 +222,7 @@ jobs:
           echo "Creating agent..."
           AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
             -H 'Content-Type: application/json' \
-            -d '{"slug":"ci-test-agent","name":"CI Test Agent","system_prompt":"You are a helpful assistant"}')
+            -d '{"name":"CI Test Agent","system_prompt":"You are a helpful assistant"}')
           echo "Agent response: $AGENT"
           AGENT_ID=$(echo "$AGENT" | jq -r '.id')
           echo "Agent ID: $AGENT_ID"

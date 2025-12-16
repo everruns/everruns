@@ -47,7 +47,7 @@ export function AgentListWidget({ agents }: AgentListWidgetProps) {
                   <div>
                     <p className="font-medium">{agent.name}</p>
                     <p className="text-xs text-muted-foreground font-mono">
-                      {agent.slug}
+                      {agent.id.slice(0, 8)}...
                     </p>
                   </div>
                 </div>

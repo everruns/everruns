@@ -75,7 +75,7 @@ export default function AgentDetailPage({
             </Badge>
           </h1>
           <p className="text-muted-foreground font-mono text-sm">
-            {agent.slug}
+            ID: {agent.id.slice(0, 8)}...
           </p>
         </div>
         <Button onClick={handleNewSession} disabled={createSession.isPending}>

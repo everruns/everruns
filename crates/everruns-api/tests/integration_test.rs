@@ -18,7 +18,6 @@ async fn test_full_agent_session_workflow() {
     let create_agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "slug": "test-agent",
             "name": "Test Agent",
             "description": "An agent for testing",
             "system_prompt": "You are a helpful assistant"

@@ -79,7 +79,7 @@ export default function AgentsPage() {
                     </Link>
                   </CardTitle>
                   <p className="text-sm text-muted-foreground font-mono">
-                    {agent.slug}
+                    {agent.id.slice(0, 8)}...
                   </p>
                 </div>
                 <Badge variant={agent.status === "active" ? "default" : "secondary"}>

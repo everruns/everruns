@@ -50,7 +50,6 @@ pub struct CreateAuthSession {
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentRow {
     pub id: Uuid,
-    pub slug: String,
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
@@ -63,7 +62,6 @@ pub struct AgentRow {
 
 #[derive(Debug, Clone)]
 pub struct CreateAgent {
-    pub slug: String,
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
@@ -73,7 +71,6 @@ pub struct CreateAgent {
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateAgent {
-    pub slug: Option<String>,
     pub name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,

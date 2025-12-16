@@ -25,11 +25,6 @@ export async function getAgent(agentId: string): Promise<Agent> {
   return response.data;
 }
 
-export async function getAgentBySlug(slug: string): Promise<Agent> {
-  const response = await api.get<Agent>(`/v1/agents/slug/${slug}`);
-  return response.data;
-}
-
 export async function updateAgent(
   agentId: string,
   request: UpdateAgentRequest

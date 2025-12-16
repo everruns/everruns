@@ -16,7 +16,6 @@ export default function NewAgentPage() {
   const createAgent = useCreateAgent();
 
   const [formData, setFormData] = useState({
-    slug: "",
     name: "",
     description: "",
     system_prompt: "",
@@ -28,7 +27,6 @@ export default function NewAgentPage() {
 
     try {
       const agent = await createAgent.mutateAsync({
-        slug: formData.slug,
         name: formData.name,
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
@@ -59,35 +57,17 @@ export default function NewAgentPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="slug">Slug</Label>
-                <Input
-                  id="slug"
-                  placeholder="my-agent"
-                  value={formData.slug}
-                  onChange={(e) =>
-                    setFormData({ ...formData, slug: e.target.value })
-                  }
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Unique identifier for the agent
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  placeholder="My Agent"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  required
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                placeholder="My Agent"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                required
+              />
             </div>
 
             <div className="space-y-2">

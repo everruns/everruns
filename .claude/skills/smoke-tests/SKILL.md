@@ -32,7 +32,6 @@ Expected: `{"status": "ok", "version": "...", "runner_mode": "..."}`
 AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
-    "slug": "test-agent",
     "name": "Test Agent",
     "system_prompt": "You are a helpful assistant created for smoke testing.",
     "description": "Created by smoke test"

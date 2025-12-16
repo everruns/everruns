@@ -22,7 +22,6 @@ DROP TABLE IF EXISTS agents CASCADE;
 -- Agents table (configuration for agentic loop)
 CREATE TABLE agents (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    slug VARCHAR(255) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     system_prompt TEXT NOT NULL,
@@ -33,7 +32,6 @@ CREATE TABLE agents (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_agents_slug ON agents(slug);
 CREATE INDEX idx_agents_status ON agents(status);
 CREATE INDEX idx_agents_tags ON agents USING GIN(tags);
 

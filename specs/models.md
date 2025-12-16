@@ -13,14 +13,10 @@ Configuration for an agentic loop. An agent can have many concurrent sessions.
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
-| `slug` | string | URL-safe identifier (e.g., `code-assistant`). Unique. |
 | `name` | string | Display name |
 | `description` | string? | Optional description |
 | `system_prompt` | string | System prompt for the LLM |
 | `default_model_id` | UUID? | Reference to llm_models table |
-| `temperature` | float? | LLM temperature |
-| `max_tokens` | integer? | Max tokens for response |
-| `tools` | JSON | Tool definitions array |
 | `tags` | string[] | Tags for organization/filtering |
 | `status` | enum | `active` or `archived` |
 | `created_at` | timestamp | Creation time |

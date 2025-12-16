@@ -20,12 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let create_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "slug": "my-first-agent",
             "name": "My First Agent",
             "description": "A helpful AI assistant",
-            "system_prompt": "You are a helpful AI assistant. Be concise and friendly.",
-            "temperature": 0.7,
-            "max_tokens": 2000
+            "system_prompt": "You are a helpful AI assistant. Be concise and friendly."
         }))
         .send()
         .await?;
@@ -39,7 +36,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent: Agent = create_response.json().await?;
     println!("Created agent:");
     println!("   ID: {}", agent.id);
-    println!("   Slug: {}", agent.slug);
     println!("   Name: {}", agent.name);
     println!("   Status: {:?}", agent.status);
     println!("   Created at: {}", agent.created_at);

@@ -55,7 +55,6 @@ struct HealthState {
         agents::create_agent,
         agents::list_agents,
         agents::get_agent,
-        agents::get_agent_by_slug,
         agents::update_agent,
         agents::delete_agent,
         sessions::create_session,

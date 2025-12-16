@@ -35,7 +35,6 @@ impl From<&str> for AgentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Agent {
     pub id: Uuid,
-    pub slug: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -52,7 +51,6 @@ pub struct Agent {
 /// Request to create a new agent
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateAgentRequest {
-    pub slug: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -66,8 +64,6 @@ pub struct CreateAgentRequest {
 /// Request to update an agent
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UpdateAgentRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub slug: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

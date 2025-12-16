@@ -9,7 +9,6 @@ export type AgentStatus = "active" | "archived";
 
 export interface Agent {
   id: string;
-  slug: string;
   name: string;
   description: string | null;
   system_prompt: string;
@@ -21,7 +20,6 @@ export interface Agent {
 }
 
 export interface CreateAgentRequest {
-  slug: string;
   name: string;
   description?: string;
   system_prompt: string;
@@ -30,7 +28,6 @@ export interface CreateAgentRequest {
 }
 
 export interface UpdateAgentRequest {
-  slug?: string;
   name?: string;
   description?: string;
   system_prompt?: string;

@@ -50,12 +50,11 @@ impl Database {
     pub async fn create_agent(&self, input: CreateAgent) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (slug, name, description, system_prompt, default_model_id, tags, status)
-            VALUES ($1, $2, $3, $4, $5, $6, 'active')
-            RETURNING id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            INSERT INTO agents (name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, 'active')
+            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             "#,
         )
-        .bind(&input.slug)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
@@ -70,7 +69,7 @@ impl Database {
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             FROM agents
             WHERE id = $1
             "#,
@@ -82,25 +81,10 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_agent_by_slug(&self, slug: &str) -> Result<Option<AgentRow>> {
-        let row = sqlx::query_as::<_, AgentRow>(
-            r#"
-            SELECT id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
-            FROM agents
-            WHERE slug = $1
-            "#,
-        )
-        .bind(slug)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
     pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
         let rows = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             FROM agents
             WHERE status = 'active'
             ORDER BY created_at DESC
@@ -117,20 +101,18 @@ impl Database {
             r#"
             UPDATE agents
             SET
-                slug = COALESCE($2, slug),
-                name = COALESCE($3, name),
-                description = COALESCE($4, description),
-                system_prompt = COALESCE($5, system_prompt),
-                default_model_id = COALESCE($6, default_model_id),
-                tags = COALESCE($7, tags),
-                status = COALESCE($8, status),
+                name = COALESCE($2, name),
+                description = COALESCE($3, description),
+                system_prompt = COALESCE($4, system_prompt),
+                default_model_id = COALESCE($5, default_model_id),
+                tags = COALESCE($6, tags),
+                status = COALESCE($7, status),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             "#,
         )
         .bind(id)
-        .bind(&input.slug)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)

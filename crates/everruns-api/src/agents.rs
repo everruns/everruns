@@ -38,7 +38,6 @@ pub fn routes(state: AppState) -> Router {
             "/v1/agents/{agent_id}",
             get(get_agent).patch(update_agent).delete(delete_agent),
         )
-        .route("/v1/agents/slug/{slug}", get(get_agent_by_slug))
         .with_state(state)
 }
 
@@ -58,7 +57,6 @@ pub async fn create_agent(
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), StatusCode> {
     let input = CreateAgent {
-        slug: req.slug,
         name: req.name,
         description: req.description,
         system_prompt: req.system_prompt,
@@ -126,37 +124,6 @@ pub async fn get_agent(
     Ok(Json(agent))
 }
 
-/// GET /v1/agents/slug/{slug} - Get agent by slug
-#[utoipa::path(
-    get,
-    path = "/v1/agents/slug/{slug}",
-    params(
-        ("slug" = String, Path, description = "Agent slug")
-    ),
-    responses(
-        (status = 200, description = "Agent found", body = Agent),
-        (status = 404, description = "Agent not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "agents"
-)]
-pub async fn get_agent_by_slug(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-) -> Result<Json<Agent>, StatusCode> {
-    let agent = state
-        .service
-        .get_by_slug(&slug)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get agent by slug: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    Ok(Json(agent))
-}
-
 /// PATCH /v1/agents/{agent_id} - Update agent
 #[utoipa::path(
     patch,
@@ -178,7 +145,6 @@ pub async fn update_agent(
     Json(req): Json<UpdateAgentRequest>,
 ) -> Result<Json<Agent>, StatusCode> {
     let input = UpdateAgent {
-        slug: req.slug,
         name: req.name,
         description: req.description,
         system_prompt: req.system_prompt,
