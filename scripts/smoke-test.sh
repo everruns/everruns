@@ -31,6 +31,8 @@ echo "1️⃣  Testing health endpoint..."
 HEALTH=$(curl -s "$API_URL/health")
 echo "   Status: $(echo $HEALTH | jq -r '.status')"
 echo "   Version: $(echo $HEALTH | jq -r '.version')"
+RUNNER_MODE=$(echo $HEALTH | jq -r '.runner_mode // "unknown"')
+echo "   Runner mode: $RUNNER_MODE"
 echo ""
 
 # Test 2: Create agent
@@ -117,9 +119,19 @@ echo "⏳ Waiting for workflow to complete..."
 sleep 2
 
 # Check run status
-echo "🔍 Checking final run status..."
+echo "9️⃣  Checking final run status..."
 RUN_STATUS=$(curl -s "$API_URL/v1/runs/$RUN_ID")
-echo "   Status: $(echo $RUN_STATUS | jq -r '.status')"
+FINAL_STATUS=$(echo $RUN_STATUS | jq -r '.status')
+echo "   Status: $FINAL_STATUS"
+# Verify workflow actually executed (status changed from pending)
+if [ "$FINAL_STATUS" = "pending" ]; then
+  echo "   ⚠️  Warning: Run is still pending - workflow may not have executed"
+  echo "   This could indicate a problem with the $RUNNER_MODE runner"
+elif [ "$FINAL_STATUS" = "running" ] || [ "$FINAL_STATUS" = "completed" ] || [ "$FINAL_STATUS" = "failed" ]; then
+  echo "   ✅ Workflow executed (status: $FINAL_STATUS)"
+else
+  echo "   ❓ Unknown status: $FINAL_STATUS"
+fi
 echo ""
 
 # Test 10: OpenAPI spec
@@ -237,6 +249,7 @@ if [ "$TEST_UI" = true ]; then
 fi
 
 echo "📊 Summary:"
+echo "   Runner mode: $RUNNER_MODE"
 echo "   Agent: $AGENT_ID"
 echo "   Thread: $THREAD_ID"
 echo "   Message: $MESSAGE_ID"

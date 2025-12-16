@@ -29,22 +29,33 @@ async fn main() -> Result<()> {
         }
         RunnerMode::Temporal => {
             // Temporal mode: Worker with step checkpointing for durability
-            let database_url =
-                std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable required");
+            #[cfg(feature = "temporal")]
+            {
+                let database_url = std::env::var("DATABASE_URL")
+                    .expect("DATABASE_URL environment variable required");
 
-            // Initialize database connection for Temporal worker
-            let db = Database::from_url(&database_url).await?;
-            tracing::info!("Database connection established");
+                // Initialize database connection for Temporal worker
+                let db = Database::from_url(&database_url).await?;
+                tracing::info!("Database connection established");
 
-            tracing::info!(
-                address = %config.temporal_address(),
-                namespace = %config.temporal_namespace(),
-                task_queue = %config.temporal_task_queue(),
-                "Starting Temporal worker with checkpointing"
-            );
+                tracing::info!(
+                    address = %config.temporal_address(),
+                    namespace = %config.temporal_namespace(),
+                    task_queue = %config.temporal_task_queue(),
+                    "Starting Temporal worker with checkpointing"
+                );
 
-            // Run the temporal worker (keeps running until shutdown)
-            everruns_worker::runner_temporal::run_temporal_worker(&config, db).await?;
+                // Run the temporal worker (keeps running until shutdown)
+                everruns_worker::temporal::run_temporal_worker(&config, db).await?;
+            }
+
+            #[cfg(not(feature = "temporal"))]
+            {
+                anyhow::bail!(
+                    "Temporal mode requested but 'temporal' feature is not enabled. \
+                    Compile with: cargo build --features temporal"
+                );
+            }
         }
     }
 

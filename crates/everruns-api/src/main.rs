@@ -7,7 +7,7 @@ mod runs;
 mod threads;
 
 use anyhow::{Context, Result};
-use axum::{routing::get, Json, Router};
+use axum::{extract::State, routing::get, Json, Router};
 use everruns_contracts::*;
 use everruns_storage::Database;
 use everruns_worker::{create_runner, RunnerConfig, RunnerMode};
@@ -29,13 +29,21 @@ pub struct AppState {
 struct HealthResponse {
     status: &'static str,
     version: &'static str,
+    runner_mode: String,
 }
 
-async fn health() -> Json<HealthResponse> {
+async fn health(State(state): State<HealthState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
+        runner_mode: state.runner_mode.clone(),
     })
+}
+
+/// State for health endpoint
+#[derive(Clone)]
+struct HealthState {
+    runner_mode: String,
 }
 
 /// OpenAPI documentation
@@ -149,10 +157,13 @@ async fn main() -> Result<()> {
         db: state.db.clone(),
         runner: runner.clone(),
     };
+    let health_state = HealthState {
+        runner_mode: format!("{:?}", runner_config.mode),
+    };
 
     // Build router
     let app = Router::new()
-        .route("/health", get(health))
+        .route("/health", get(health).with_state(health_state))
         .merge(agents::routes(agents_state))
         .merge(threads::routes(threads_state))
         .merge(runs::routes(runs_state))
