@@ -196,6 +196,7 @@ case "$command" in
     ;;
 
   init)
+    subcommand="${2:-}"
     echo "🔧 Installing development dependencies..."
     if ! command -v sqlx &> /dev/null; then
       echo "  Installing sqlx-cli..."
@@ -210,6 +211,23 @@ case "$command" in
       echo "  cargo-deny already installed"
     fi
     echo "✅ Development dependencies ready!"
+
+    # Handle 'init all' to also set up UI
+    if [ "$subcommand" = "all" ]; then
+      echo ""
+      echo "🖥️  Setting up UI..."
+      if ! command -v npm &> /dev/null; then
+        echo "  ⚠️  npm not found! Please install Node.js/npm to use the UI."
+        echo "     You can install it from: https://nodejs.org/"
+        exit 1
+      else
+        echo "  ✅ npm found: $(npm --version)"
+      fi
+      echo "  📦 Installing UI dependencies..."
+      cd apps/ui
+      npm install
+      echo "✅ UI setup complete!"
+    fi
     ;;
 
   clean)
@@ -228,6 +246,7 @@ Usage: $0 <command>
 
 Commands:
   init        Install development dependencies (sqlx-cli, cargo-deny)
+  init all    Install all dependencies including UI (npm install)
   start       Start Docker services (Postgres, Temporal)
   stop        Stop Docker services
   start-all   Start everything (Docker, migrations, API, UI)
@@ -247,7 +266,8 @@ Commands:
   help        Show this help message
 
 Examples:
-  $0 init            # First-time setup (install tools)
+  $0 init            # First-time setup (install Rust tools)
+  $0 init all        # First-time setup (install all dependencies including UI)
   $0 start-all       # Start everything and run
   $0 stop-all        # Stop everything
 EOF
