@@ -3,7 +3,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, patch, post},
+    routing::{get, post},
     Json, Router,
 };
 use everruns_contracts::{LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType};
@@ -323,14 +323,14 @@ pub async fn delete_model(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/llm-providers/{provider_id}/models", post(create_model))
         .route(
             "/v1/llm-providers/{provider_id}/models",
-            get(list_provider_models),
+            post(create_model).get(list_provider_models),
         )
         .route("/v1/llm-models", get(list_all_models))
-        .route("/v1/llm-models/{id}", get(get_model))
-        .route("/v1/llm-models/{id}", patch(update_model))
-        .route("/v1/llm-models/{id}", delete(delete_model))
+        .route(
+            "/v1/llm-models/{id}",
+            get(get_model).patch(update_model).delete(delete_model),
+        )
         .with_state(state)
 }

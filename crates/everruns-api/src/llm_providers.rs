@@ -3,7 +3,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, patch, post},
+    routing::{get, post},
     Json, Router,
 };
 use everruns_contracts::{LlmProvider, LlmProviderStatus, LlmProviderType};
@@ -306,10 +306,13 @@ pub async fn delete_provider(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/llm-providers", post(create_provider))
-        .route("/v1/llm-providers", get(list_providers))
-        .route("/v1/llm-providers/{id}", get(get_provider))
-        .route("/v1/llm-providers/{id}", patch(update_provider))
-        .route("/v1/llm-providers/{id}", delete(delete_provider))
+        .route(
+            "/v1/llm-providers",
+            post(create_provider).get(list_providers),
+        )
+        .route(
+            "/v1/llm-providers/{id}",
+            get(get_provider).patch(update_provider).delete(delete_provider),
+        )
         .with_state(state)
 }
