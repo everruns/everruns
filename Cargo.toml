@@ -45,6 +45,9 @@ chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 thiserror = "2.0"
 
+# Environment
+dotenvy = "0.15"
+
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -52,6 +55,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # OpenAPI documentation
 utoipa = { version = "5.2", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
+
+# Encryption
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.22"
 
 # Temporal SDK (used when AGENT_RUNNER_MODE=temporal)
 temporal-sdk-core = "0.1.0-alpha.1"
