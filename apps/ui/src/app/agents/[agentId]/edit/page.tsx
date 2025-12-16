@@ -164,8 +164,8 @@ export default function EditAgentPage() {
                 <Label htmlFor="status">Status</Label>
                 <Select
                   value={formData.status}
-                  onValueChange={(value: AgentStatus) =>
-                    setFormData({ ...formData, status: value })
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, status: value as AgentStatus })
                   }
                 >
                   <SelectTrigger>
