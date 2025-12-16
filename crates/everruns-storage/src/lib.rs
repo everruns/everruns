@@ -4,6 +4,9 @@ pub mod encryption;
 pub mod models;
 pub mod repositories;
 
-pub use encryption::{generate_encryption_key, EncryptedPayload, EncryptionService};
+pub use encryption::{
+    generate_encryption_key, EncryptedColumn, EncryptedPayload, EncryptionService,
+    ENCRYPTED_COLUMNS,
+};
 pub use models::*;
 pub use repositories::*;

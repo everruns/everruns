@@ -182,25 +182,27 @@ If a key is suspected compromised:
 - Keep previous key archived for disaster recovery (separate secure storage)
 - Never commit keys to source control
 
-## Adding New Encrypted Tables
+## Adding New Encrypted Fields
 
-When adding encryption to a new table, update the `get_encrypted_tables()` function in `crates/everruns-api/src/bin/reencrypt_secrets.rs`:
+When adding a new encrypted column to the database:
+
+1. **Use the naming convention**: Column name must end with `_encrypted`
+2. **Register in `ENCRYPTED_COLUMNS`**: Add entry in `crates/everruns-storage/src/encryption.rs`:
 
 ```rust
-fn get_encrypted_tables(filter: &Option<String>) -> Vec<EncryptedTable> {
-    let all_tables = vec![
-        EncryptedTable {
-            name: "llm_providers",
-            id_column: "id",
-            encrypted_columns: &["api_key_encrypted"],
-        },
-        // Add new tables here
-        EncryptedTable {
-            name: "new_table",
-            id_column: "id",
-            encrypted_columns: &["secret_field"],
-        },
-    ];
-    // ...
-}
+pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
+    EncryptedColumn {
+        table: "llm_providers",
+        column: "api_key_encrypted",
+        id_column: "id",
+    },
+    // Add new columns here
+    EncryptedColumn {
+        table: "new_table",
+        column: "secret_encrypted",
+        id_column: "id",
+    },
+];
 ```
+
+**Important**: A test (`test_all_encrypted_columns_registered`) automatically scans migrations for `*_encrypted` columns and verifies they're all registered. If you add an encrypted column but forget to register it, CI will fail.

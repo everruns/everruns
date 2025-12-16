@@ -304,9 +304,39 @@ pub fn generate_encryption_key(key_id: &str) -> String {
     format!("{}:{}", key_id, BASE64.encode(key))
 }
 
+/// Metadata for an encrypted database column.
+/// Used by the re-encryption CLI and coverage tests.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncryptedColumn {
+    pub table: &'static str,
+    pub column: &'static str,
+    pub id_column: &'static str,
+}
+
+/// Registry of all encrypted columns in the database.
+///
+/// **IMPORTANT**: When adding a new encrypted column to the schema:
+/// 1. Add the column with suffix `_encrypted` (convention enforced by tests)
+/// 2. Add an entry here
+/// 3. The test `test_all_encrypted_columns_registered` will fail if you forget
+///
+/// This list is used by:
+/// - `reencrypt-secrets` CLI tool for key rotation
+/// - Tests to ensure all encrypted columns are properly registered
+pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
+    // Add encrypted columns here as they're created.
+    // Example:
+    // EncryptedColumn {
+    //     table: "llm_providers",
+    //     column: "api_key_encrypted",
+    //     id_column: "id",
+    // },
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     fn test_key(id: &str) -> String {
         generate_encryption_key(id)
@@ -484,5 +514,166 @@ mod tests {
         // Both should be valid
         assert!(EncryptionService::new(&key1, &[]).is_ok());
         assert!(EncryptionService::new(&key2, &[]).is_ok());
+    }
+
+    /// Parse migration files to find all columns ending with `_encrypted`.
+    /// Returns set of (table_name, column_name) tuples.
+    fn find_encrypted_columns_in_migrations() -> HashSet<(String, String)> {
+        use std::fs;
+        use std::path::Path;
+
+        let mut found = HashSet::new();
+
+        // Find migrations directory (relative to crate root)
+        let migrations_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+
+        if !migrations_dir.exists() {
+            return found;
+        }
+
+        // Read all .sql files
+        let entries = fs::read_dir(&migrations_dir).expect("Failed to read migrations directory");
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "sql") {
+                let content = fs::read_to_string(&path).expect("Failed to read migration file");
+                // Parse CREATE TABLE statements
+                parse_encrypted_columns(&content, &mut found);
+            }
+        }
+
+        found
+    }
+
+    /// Simple parser to extract encrypted columns from SQL.
+    /// Looks for column definitions ending with `_encrypted` in CREATE TABLE statements.
+    fn parse_encrypted_columns(sql: &str, found: &mut HashSet<(String, String)>) {
+        let mut current_table: Option<String> = None;
+        let mut in_create_table = false;
+        let mut paren_depth = 0;
+
+        for line in sql.lines() {
+            let line_lower = line.to_lowercase();
+            let trimmed = line_lower.trim();
+
+            // Detect CREATE TABLE
+            if trimmed.starts_with("create table") {
+                in_create_table = true;
+                // Extract table name
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                if parts.len() >= 3 {
+                    let table_name = parts[2].trim_end_matches('(').to_string();
+                    current_table = Some(table_name);
+                }
+            }
+
+            if in_create_table {
+                paren_depth += line.chars().filter(|c| *c == '(').count();
+                paren_depth =
+                    paren_depth.saturating_sub(line.chars().filter(|c| *c == ')').count());
+
+                // Look for column definitions with _encrypted suffix
+                // Pattern: column_name TYPE ... (where column_name ends with _encrypted)
+                let words: Vec<&str> = trimmed.split_whitespace().collect();
+                if !words.is_empty() {
+                    let first_word = words[0].trim_start_matches('(').trim_end_matches(',');
+                    if first_word.ends_with("_encrypted") {
+                        if let Some(ref table) = current_table {
+                            found.insert((table.clone(), first_word.to_string()));
+                        }
+                    }
+                }
+
+                // End of CREATE TABLE
+                if paren_depth == 0 && trimmed.contains(')') {
+                    in_create_table = false;
+                    current_table = None;
+                }
+            }
+        }
+    }
+
+    /// This test ensures all encrypted columns in migrations are registered
+    /// in ENCRYPTED_COLUMNS. It will FAIL if you add a new `*_encrypted` column
+    /// to a migration but forget to register it.
+    #[test]
+    fn test_all_encrypted_columns_registered() {
+        let columns_in_migrations = find_encrypted_columns_in_migrations();
+
+        // Build set of registered columns
+        let registered: HashSet<(String, String)> = ENCRYPTED_COLUMNS
+            .iter()
+            .map(|ec| (ec.table.to_string(), ec.column.to_string()))
+            .collect();
+
+        // Find unregistered columns
+        let unregistered: Vec<_> = columns_in_migrations.difference(&registered).collect();
+
+        if !unregistered.is_empty() {
+            panic!(
+                "Found encrypted columns in migrations that are not registered in ENCRYPTED_COLUMNS!\n\
+                 Unregistered columns: {:?}\n\n\
+                 To fix this, add entries to ENCRYPTED_COLUMNS in encryption.rs:\n\
+                 {}",
+                unregistered,
+                unregistered
+                    .iter()
+                    .map(|(table, column)| format!(
+                        "EncryptedColumn {{ table: \"{}\", column: \"{}\", id_column: \"id\" }},",
+                        table, column
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+
+        // Also check for registered columns that don't exist in migrations
+        // (helps catch typos or removed columns)
+        let orphaned: Vec<_> = registered.difference(&columns_in_migrations).collect();
+
+        if !orphaned.is_empty() {
+            panic!(
+                "Found registered columns that don't exist in migrations!\n\
+                 Orphaned entries: {:?}\n\n\
+                 These columns are in ENCRYPTED_COLUMNS but not found in any migration.\n\
+                 Either add the column to migrations or remove the entry from ENCRYPTED_COLUMNS.",
+                orphaned
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_encrypted_columns() {
+        let mut found = HashSet::new();
+
+        let sql = r#"
+            CREATE TABLE llm_providers (
+                id UUID PRIMARY KEY DEFAULT uuidv7(),
+                name TEXT NOT NULL,
+                api_key_encrypted BYTEA,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE other_table (
+                id UUID PRIMARY KEY,
+                secret_encrypted BYTEA NOT NULL,
+                plaintext_value TEXT
+            );
+        "#;
+
+        parse_encrypted_columns(sql, &mut found);
+
+        assert!(
+            found.contains(&("llm_providers".to_string(), "api_key_encrypted".to_string())),
+            "Expected llm_providers.api_key_encrypted, found: {:?}",
+            found
+        );
+        assert!(
+            found.contains(&("other_table".to_string(), "secret_encrypted".to_string())),
+            "Expected other_table.secret_encrypted, found: {:?}",
+            found
+        );
+        assert_eq!(found.len(), 2, "Expected 2 columns, found: {:?}", found);
     }
 }

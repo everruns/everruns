@@ -2,7 +2,7 @@
 // Run with: cargo run --bin reencrypt-secrets -- --help
 
 use anyhow::{Context, Result};
-use everruns_storage::EncryptionService;
+use everruns_storage::{EncryptionService, ENCRYPTED_COLUMNS};
 use sqlx::PgPool;
 use std::env;
 
@@ -173,25 +173,25 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Table metadata for encrypted fields
+/// Table metadata for encrypted fields (derived from ENCRYPTED_COLUMNS registry)
 struct EncryptedTable {
     name: &'static str,
     id_column: &'static str,
-    encrypted_columns: &'static [&'static str],
+    column: &'static str,
 }
 
-/// Returns list of tables with encrypted fields.
-/// Add new tables here as encryption is added to them.
+/// Returns list of tables with encrypted fields from the central registry.
+/// The registry is defined in everruns_storage::ENCRYPTED_COLUMNS.
+/// A test in encryption.rs ensures all encrypted columns in migrations are registered.
 fn get_encrypted_tables(filter: &Option<String>) -> Vec<EncryptedTable> {
-    let all_tables = vec![
-        // Add tables with encrypted fields here as they're created.
-        // Example:
-        // EncryptedTable {
-        //     name: "llm_providers",
-        //     id_column: "id",
-        //     encrypted_columns: &["api_key_encrypted"],
-        // },
-    ];
+    let all_tables: Vec<EncryptedTable> = ENCRYPTED_COLUMNS
+        .iter()
+        .map(|ec| EncryptedTable {
+            name: ec.table,
+            id_column: ec.id_column,
+            column: ec.column,
+        })
+        .collect();
 
     if let Some(table_name) = filter {
         all_tables
@@ -216,16 +216,10 @@ async fn process_table(
     let mut offset = 0i64;
 
     loop {
-        // Build column list for SELECT
-        let columns: Vec<&str> = std::iter::once(table.id_column)
-            .chain(table.encrypted_columns.iter().copied())
-            .collect();
-        let columns_str = columns.join(", ");
-
         // Fetch batch
         let query = format!(
-            "SELECT {} FROM {} ORDER BY {} LIMIT {} OFFSET {}",
-            columns_str, table.name, table.id_column, batch_size, offset
+            "SELECT {}, {} FROM {} ORDER BY {} LIMIT {} OFFSET {}",
+            table.id_column, table.column, table.name, table.id_column, batch_size, offset
         );
 
         let rows: Vec<(uuid::Uuid, Option<Vec<u8>>)> = sqlx::query_as(&query)
@@ -253,7 +247,7 @@ async fn process_table(
                             tracing::info!(
                                 "Would re-encrypt {}.{} (id={}, current_key={})",
                                 table.name,
-                                table.encrypted_columns[0],
+                                table.column,
                                 id,
                                 key_id
                             );
@@ -264,7 +258,7 @@ async fn process_table(
                                     // Update record
                                     let update_query = format!(
                                         "UPDATE {} SET {} = $1 WHERE {} = $2",
-                                        table.name, table.encrypted_columns[0], table.id_column
+                                        table.name, table.column, table.id_column
                                     );
                                     sqlx::query(&update_query)
                                         .bind(&new_data)
@@ -276,7 +270,7 @@ async fn process_table(
                                     tracing::info!(
                                         "Re-encrypted {}.{} (id={}, {} -> {})",
                                         table.name,
-                                        table.encrypted_columns[0],
+                                        table.column,
                                         id,
                                         key_id,
                                         encryption.primary_key_id()
@@ -289,7 +283,7 @@ async fn process_table(
                                     tracing::error!(
                                         "Failed to re-encrypt {}.{} (id={}): {}",
                                         table.name,
-                                        table.encrypted_columns[0],
+                                        table.column,
                                         id,
                                         e
                                     );
@@ -303,7 +297,7 @@ async fn process_table(
                         tracing::warn!(
                             "Failed to check key for {}.{} (id={}): {}",
                             table.name,
-                            table.encrypted_columns[0],
+                            table.column,
                             id,
                             e
                         );
