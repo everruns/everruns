@@ -101,9 +101,9 @@ Smoke tests output results in a structured format:
 | Script | Description |
 |--------|-------------|
 | `scripts/run-no-docker.sh` | Main entry point for no-Docker smoke tests |
-| `scripts/setup-postgres.sh` | PostgreSQL 18 cluster setup |
-| `scripts/setup-temporal.sh` | Temporal dev server setup |
-| `scripts/common.sh` | Shared utilities and configuration |
+| `scripts/_setup-postgres.sh` | PostgreSQL 18 cluster setup (internal) |
+| `scripts/_setup-temporal.sh` | Temporal dev server setup (internal) |
+| `scripts/_utils.sh` | Shared utilities and configuration (internal) |
 
 ## Manual Testing
 

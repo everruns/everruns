@@ -3,13 +3,13 @@
 # Installs and starts Temporal dev server without Docker
 #
 # This script can be:
-# - Sourced by run-no-docker.sh (common.sh must be sourced first)
-# - Executed directly (will source common.sh itself)
+# - Sourced by run-no-docker.sh (_utils.sh must be sourced first)
+# - Executed directly (will source _utils.sh itself)
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    # Running directly - source common.sh
+    # Running directly - source _utils.sh
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    source "$SCRIPT_DIR/common.sh"
+    source "$SCRIPT_DIR/_utils.sh"
     set -e
 fi
 

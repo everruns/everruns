@@ -7,9 +7,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common.sh"
-source "$SCRIPT_DIR/setup-postgres.sh"
-source "$SCRIPT_DIR/setup-temporal.sh"
+source "$SCRIPT_DIR/_utils.sh"
+source "$SCRIPT_DIR/_setup-postgres.sh"
+source "$SCRIPT_DIR/_setup-temporal.sh"
 
 # Project root is 4 levels up from scripts folder
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
