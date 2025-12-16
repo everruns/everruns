@@ -6,8 +6,6 @@ pub mod runner_inprocess;
 pub mod tools;
 pub mod workflows;
 
-// Temporal-specific module (feature-gated)
-#[cfg(feature = "temporal")]
 pub mod temporal;
 
 // Re-export main types

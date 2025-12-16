@@ -4,10 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[features]
-default = []
-temporal = ["everruns-worker/temporal"]
-
 [dependencies]
 axum.workspace = true
 axum-extra.workspace = true
