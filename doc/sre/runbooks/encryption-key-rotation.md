@@ -15,6 +15,7 @@ Everruns uses envelope encryption with versioned keys. Key rotation is a multi-p
 - Access to environment configuration (secrets manager or deployment config)
 - Database read/write access (for re-encryption job)
 - Ability to deploy application updates
+- The `reencrypt-secrets` CLI tool (included in the API crate)
 
 ## Rotation Procedure
 
@@ -50,70 +51,69 @@ Deploy the application with both keys configured. At this point:
 
 ### Phase 3: Re-encrypt Existing Data
 
-Run the re-encryption job to migrate all data to the new key.
+Use the `reencrypt-secrets` CLI tool to migrate all data to the new key.
 
-#### Option A: Manual SQL Script
+#### Step 1: Dry Run (Preview Changes)
 
-```sql
--- Example: Re-encrypt llm_providers API keys
--- This is a template - actual implementation depends on your schema
+First, run in dry-run mode to see what would be re-encrypted:
 
--- 1. Find records with old key
-SELECT id, api_key_encrypted
-FROM llm_providers
-WHERE api_key_encrypted::text LIKE '%"key_id":"kek-v1"%';
+```bash
+# From the project root
+cargo run --bin reencrypt-secrets -- --dry-run
 
--- 2. Use application code to decrypt/re-encrypt each record
--- (Cannot be done in pure SQL - requires application decryption logic)
+# Or with a release build
+./target/release/reencrypt-secrets --dry-run
 ```
 
-#### Option B: Background Job (Recommended)
+Example output:
+```
+2024-01-15T10:00:00Z INFO Encryption service initialized. Primary key: kek-v2
+2024-01-15T10:00:00Z INFO Available keys: ["kek-v2", "kek-v1"]
+2024-01-15T10:00:00Z INFO Connected to database
+2024-01-15T10:00:00Z INFO Processing table: llm_providers
+2024-01-15T10:00:01Z INFO Would re-encrypt llm_providers.api_key_encrypted (id=..., current_key=kek-v1)
+2024-01-15T10:00:01Z INFO DRY RUN: Would re-encrypt 42 of 100 records
+```
 
-Implement a background job that:
+#### Step 2: Execute Re-encryption
 
-1. Queries for records where `key_id` in encrypted payload != current primary key
-2. Decrypts with appropriate key
-3. Re-encrypts with primary key
-4. Updates record
-5. Processes in batches to avoid load spikes
+Once satisfied with the dry run, execute the actual re-encryption:
 
-Example pseudocode:
+```bash
+# Re-encrypt all tables
+cargo run --bin reencrypt-secrets
 
-```rust
-async fn reencrypt_all_providers(
-    pool: &PgPool,
-    encryption: &EncryptionService,
-) -> Result<u32> {
-    let mut count = 0;
+# Or with specific options
+cargo run --bin reencrypt-secrets -- --batch-size 50 --table llm_providers
+```
 
-    // Fetch all encrypted records
-    let records = sqlx::query!("SELECT id, api_key_encrypted FROM llm_providers")
-        .fetch_all(pool)
-        .await?;
+#### CLI Options
 
-    for record in records {
-        if let Some(encrypted) = record.api_key_encrypted {
-            // Check if needs re-encryption
-            if let Some(new_encrypted) = encryption.reencrypt(&encrypted)? {
-                sqlx::query!(
-                    "UPDATE llm_providers SET api_key_encrypted = $1 WHERE id = $2",
-                    new_encrypted,
-                    record.id
-                )
-                .execute(pool)
-                .await?;
-                count += 1;
-            }
-        }
-    }
+```
+USAGE:
+    reencrypt-secrets [OPTIONS]
 
-    Ok(count)
-}
+OPTIONS:
+    -n, --dry-run           Show what would be changed without making changes
+    -b, --batch-size <N>    Process N records at a time (default: 100)
+    -t, --table <NAME>      Only process specified table (default: all)
+    -h, --help              Show this help message
 ```
 
 ### Phase 4: Verify Migration
 
-Confirm all data has been migrated:
+Confirm all data has been migrated by running another dry run:
+
+```bash
+cargo run --bin reencrypt-secrets -- --dry-run
+```
+
+Expected output:
+```
+2024-01-15T11:00:00Z INFO DRY RUN: Would re-encrypt 0 of 100 records
+```
+
+You can also verify directly in the database:
 
 ```sql
 -- Check for any remaining records with old key
@@ -143,7 +143,7 @@ If issues occur during rotation:
 
 ### During Phase 2-3 (Both Keys Active)
 
-No rollback needed - both keys work. Simply pause the re-encryption job if causing issues.
+No rollback needed - both keys work. Simply stop the re-encryption CLI if causing issues.
 
 ### After Phase 5 (Old Key Removed)
 
@@ -151,15 +151,15 @@ If old key was removed but some data wasn't migrated:
 
 1. Re-add the old key as `SECRETS_ENCRYPTION_KEY_PREVIOUS`
 2. Deploy
-3. Complete the re-encryption job
+3. Run the re-encryption CLI again
 4. Verify again before removing
 
 ## Monitoring
 
 During rotation, monitor:
 
-- **API Error Rates**: Watch for decryption failures
-- **Re-encryption Progress**: Track percentage of records migrated
+- **CLI Progress Output**: The tool logs progress every 1000 records
+- **API Error Rates**: Watch for decryption failures in application logs
 - **Database Load**: Ensure re-encryption isn't causing performance issues
 
 ## Emergency: Compromised Key
@@ -167,7 +167,10 @@ During rotation, monitor:
 If a key is suspected compromised:
 
 1. **Immediately** generate new key and deploy with both keys
-2. Run re-encryption job with **highest priority**
+2. Run re-encryption CLI with **highest priority**:
+   ```bash
+   cargo run --release --bin reencrypt-secrets
+   ```
 3. Remove compromised key as soon as all data is migrated
 4. Rotate any credentials that may have been exposed
 
@@ -178,3 +181,26 @@ If a key is suspected compromised:
 - Rotate keys on a regular schedule (e.g., annually)
 - Keep previous key archived for disaster recovery (separate secure storage)
 - Never commit keys to source control
+
+## Adding New Encrypted Tables
+
+When adding encryption to a new table, update the `get_encrypted_tables()` function in `crates/everruns-api/src/bin/reencrypt_secrets.rs`:
+
+```rust
+fn get_encrypted_tables(filter: &Option<String>) -> Vec<EncryptedTable> {
+    let all_tables = vec![
+        EncryptedTable {
+            name: "llm_providers",
+            id_column: "id",
+            encrypted_columns: &["api_key_encrypted"],
+        },
+        // Add new tables here
+        EncryptedTable {
+            name: "new_table",
+            id_column: "id",
+            encrypted_columns: &["secret_field"],
+        },
+    ];
+    // ...
+}
+```
