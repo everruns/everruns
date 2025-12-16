@@ -11,8 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import Link from "next/link";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9000";
+import { getApiBaseUrl } from "@/lib/api/client";
 
 interface ChatMessage {
   id: string;
@@ -81,7 +80,7 @@ export default function ChatPage() {
         params.set("thread_id", threadId);
       }
 
-      const url = `${API_BASE}/v1/ag-ui?${params}`;
+      const url = `${getApiBaseUrl()}/v1/ag-ui?${params}`;
 
       // Send request with messages
       const response = await fetch(url, {
