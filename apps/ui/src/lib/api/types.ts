@@ -151,10 +151,8 @@ export interface UpdateAgentRequest {
   status?: AgentStatus;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface CreateThreadRequest {
-  // Empty for now - will be extended with metadata, etc.
-}
+// Empty request body - threads are created without parameters
+export type CreateThreadRequest = Record<string, never>;
 
 export interface CreateMessageRequest {
   role: string;
