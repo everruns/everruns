@@ -7,130 +7,179 @@ description: Run API and UI smoke tests to verify the Everruns system works corr
 
 Comprehensive smoke testing for API, UI, database, and system integration.
 
-## Quick Start
+## Prerequisites
 
-### With Docker (default)
+Start the development environment before running tests:
 
 ```bash
-# Start services, run migrations, start API
 ./scripts/dev.sh start-all
-
-# In another terminal, run smoke tests
-./.claude/skills/smoke-tests/scripts/smoke-test.sh           # API tests only
-./.claude/skills/smoke-tests/scripts/smoke-test.sh --with-ui # API + UI tests
 ```
 
-### Without Docker (Cloud Agent / CI environments)
+## Test Checklist
 
-```bash
-# All-in-one: sets up PostgreSQL + Temporal locally, runs migrations, starts API, runs smoke tests
-./.claude/skills/smoke-tests/scripts/run-no-docker.sh
-```
-
-## Test Checks
-
-The smoke tests verify the following checks. Each check outputs `[ ]` (pending), `[x]` (passed), or `[!]` (failed with details).
+Run these tests in order. Each test builds on the previous one.
 
 ### API Tests
 
-| Check | Description |
-|-------|-------------|
-| Health endpoint | GET /health returns status "ok" |
-| Create agent | POST /v1/agents creates agent with valid UUID |
-| Get agent | GET /v1/agents/:id returns the agent |
-| Update agent | PATCH /v1/agents/:id updates agent fields |
-| List agents | GET /v1/agents returns agent list |
-| Create thread | POST /v1/threads creates thread with valid UUID |
-| Add message | POST /v1/threads/:id/messages adds message to thread |
-| Create run | POST /v1/runs creates run and triggers workflow |
-| Run status | GET /v1/runs/:id shows status transition (pending -> running -> completed/error) |
-| OpenAPI spec | GET /api-doc/openapi.json returns valid spec |
-
-### UI Tests (with --with-ui flag)
-
-| Check | Description |
-|-------|-------------|
-| UI availability | Root URL responds with 200/307 |
-| Dashboard page | /dashboard loads correctly |
-| Agents page | /agents loads correctly |
-| Runs page | /runs loads correctly |
-| Chat page | /chat loads correctly |
-| Agent detail | /agents/:id loads for created agent |
-| Run detail | /runs/:id loads for created run |
-| Thread detail | /threads/:id loads for created thread |
-
-### Infrastructure Tests (no-Docker mode only)
-
-| Check | Description |
-|-------|-------------|
-| PostgreSQL install | PostgreSQL 18 installed from PGDG |
-| PostgreSQL cluster | Cluster initialized and started |
-| Database setup | Database and user created |
-| Temporal install | Temporal CLI installed |
-| Temporal server | Dev server started on port 7233 |
-| Migrations | SQLx migrations applied |
-| API startup | API server started on port 9000 |
-
-## Output Format
-
-Smoke tests output results in a structured format:
-
+#### 1. Health Check
+```bash
+curl -s http://localhost:9000/health | jq
 ```
-[x] Health endpoint - status: ok, version: 0.1.0
-[x] Create agent - id: 550e8400-e29b-41d4-a716-446655440000
-[x] Get agent - name: Test Agent
-[!] Run status - FAILED: expected completed, got error (timeout after 30s)
+Expected: `{"status": "ok", "version": "...", "runner_mode": "temporal"}`
+
+#### 2. Create Agent
+```bash
+AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test Agent",
+    "description": "Created by smoke test",
+    "default_model_id": "gpt-5.1"
+  }')
+AGENT_ID=$(echo $AGENT | jq -r '.id')
+echo "Agent ID: $AGENT_ID"
+```
+Expected: Valid UUID returned
+
+#### 3. Get Agent
+```bash
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID" | jq
+```
+Expected: Agent object with matching ID
+
+#### 4. Update Agent
+```bash
+curl -s -X PATCH "http://localhost:9000/v1/agents/$AGENT_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Updated Test Agent"}' | jq
+```
+Expected: Updated agent with new name
+
+#### 5. List Agents
+```bash
+curl -s http://localhost:9000/v1/agents | jq 'length'
+```
+Expected: At least 1 agent
+
+#### 6. Create Thread
+```bash
+THREAD=$(curl -s -X POST http://localhost:9000/v1/threads \
+  -H "Content-Type: application/json" \
+  -d '{}')
+THREAD_ID=$(echo $THREAD | jq -r '.id')
+echo "Thread ID: $THREAD_ID"
+```
+Expected: Valid UUID returned
+
+#### 7. Add Message
+```bash
+MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/threads/$THREAD_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "user", "content": "Hello, world!"}')
+MESSAGE_ID=$(echo $MESSAGE | jq -r '.id')
+echo "Message ID: $MESSAGE_ID"
+```
+Expected: Valid UUID returned
+
+#### 8. Create Run
+```bash
+RUN=$(curl -s -X POST http://localhost:9000/v1/runs \
+  -H "Content-Type: application/json" \
+  -d "{\"agent_id\": \"$AGENT_ID\", \"thread_id\": \"$THREAD_ID\"}")
+RUN_ID=$(echo $RUN | jq -r '.id')
+echo "Run ID: $RUN_ID"
+```
+Expected: Valid UUID, status "pending"
+
+#### 9. Check Run Status
+```bash
+sleep 2
+curl -s "http://localhost:9000/v1/runs/$RUN_ID" | jq '.status'
+```
+Expected: "running", "completed", or "failed" (not "pending")
+
+#### 10. OpenAPI Spec
+```bash
+curl -s http://localhost:9000/api-doc/openapi.json | jq '.info.title'
+```
+Expected: "Everruns API"
+
+### UI Tests
+
+Run these after API tests pass. Requires UI running (`./scripts/dev.sh ui`).
+
+#### 1. UI Availability
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100
+```
+Expected: 200 or 307
+
+#### 2. Dashboard Page
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/dashboard
+```
+Expected: 200
+
+#### 3. Agents Page
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/agents
+```
+Expected: 200
+
+#### 4. Runs Page
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/runs
+```
+Expected: 200
+
+#### 5. Chat Page
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:9100/chat
+```
+Expected: 200
+
+#### 6. Agent Detail Page
+```bash
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/agents/$AGENT_ID"
+```
+Expected: 200
+
+#### 7. Run Detail Page
+```bash
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/runs/$RUN_ID"
+```
+Expected: 200
+
+#### 8. Thread Detail Page
+```bash
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/threads/$THREAD_ID"
+```
+Expected: 200
+
+## No-Docker Mode
+
+For environments without Docker (Cloud Agent, CI):
+
+```bash
+./.claude/skills/smoke-tests/scripts/run-no-docker.sh
 ```
 
-## Environment Requirements
+This script:
+1. Installs PostgreSQL 18 from PGDG repository
+2. Installs Temporal CLI
+3. Starts local PostgreSQL cluster and Temporal dev server
+4. Runs database migrations
+5. Starts API server
+6. Runs the test checklist above
 
-### Docker Mode (default)
-- Docker and Docker Compose
-- Rust toolchain (see rust-toolchain.toml)
-- jq for JSON parsing
-- Node.js 18+ and npm (for UI tests)
-
-### No-Docker Mode
-- Root access (for PostgreSQL setup)
-- Rust toolchain with sqlx-cli
-- Internet access (for PostgreSQL and Temporal CLI installation)
-- OPENAI_API_KEY environment variable
-
-## Scripts
+### Scripts
 
 | Script | Description |
 |--------|-------------|
-| `scripts/smoke-test.sh` | Main smoke test script (API + optional UI tests) |
 | `scripts/run-no-docker.sh` | Entry point for no-Docker environments |
 | `scripts/_setup-postgres.sh` | PostgreSQL 18 cluster setup (internal) |
 | `scripts/_setup-temporal.sh` | Temporal dev server setup (internal) |
 | `scripts/_utils.sh` | Shared utilities and configuration (internal) |
-
-## Manual Testing
-
-### API Endpoints
-
-```bash
-# Health check
-curl http://localhost:9000/health | jq
-
-# Create agent
-curl -X POST http://localhost:9000/v1/agents \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "Test Agent", "default_model_id": "gpt-5.1"}' | jq
-
-# View Swagger UI
-open http://localhost:9000/swagger-ui/
-```
-
-### UI Pages
-
-| Page | URL |
-|------|-----|
-| Dashboard | http://localhost:9100/dashboard |
-| Agents | http://localhost:9100/agents |
-| Runs | http://localhost:9100/runs |
-| Chat | http://localhost:9100/chat |
 
 ## Troubleshooting
 
@@ -166,27 +215,4 @@ export OPENAI_API_KEY=your-key
 **"must be run as root"**: The PostgreSQL setup requires root access:
 ```bash
 sudo ./.claude/skills/smoke-tests/scripts/run-no-docker.sh
-```
-
-**PostgreSQL installation fails**: Ensure internet access to apt.postgresql.org.
-
-## CI/CD Integration
-
-For CI pipelines without Docker:
-
-```yaml
-- name: Run smoke tests
-  run: |
-    export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-    sudo ./.claude/skills/smoke-tests/scripts/run-no-docker.sh
-```
-
-For Docker-based CI:
-
-```yaml
-- name: Start services
-  run: ./scripts/dev.sh start-all
-
-- name: Run smoke tests
-  run: ./.claude/skills/smoke-tests/scripts/smoke-test.sh --with-ui
 ```

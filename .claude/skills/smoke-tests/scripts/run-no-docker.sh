@@ -81,14 +81,6 @@ start_api() {
     exit 1
 }
 
-# Run smoke tests
-run_smoke_tests() {
-    log_info "Running smoke tests..."
-
-    cd "$PROJECT_ROOT"
-    bash "$SCRIPT_DIR/smoke-test.sh"
-}
-
 # Main execution
 main() {
     echo "==============================================="
@@ -123,20 +115,22 @@ main() {
 
     echo ""
     echo "==============================================="
-    echo "  Running Smoke Tests"
+    echo "  Environment Ready"
     echo "==============================================="
-    echo ""
-
-    run_smoke_tests
-
-    echo ""
-    check_pass "All smoke tests completed successfully!"
     echo ""
     echo "Services running:"
     echo "  - PostgreSQL: $PGDATA (socket)"
     echo "  - Temporal:   localhost:7233"
     echo "  - API:        http://localhost:9000"
     echo ""
+    echo "Run smoke tests using the checklist in:"
+    echo "  .claude/skills/smoke-tests/SKILL.md"
+    echo ""
+    echo "Press Ctrl+C to stop all services."
+    echo ""
+
+    # Keep running until interrupted
+    wait
 }
 
 main "$@"

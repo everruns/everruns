@@ -74,9 +74,7 @@ The best way to verify the system is working is to run the **smoke test script**
 ./scripts/dev.sh api        # Start API (in one terminal)
 ./scripts/dev.sh ui         # Start UI (in another terminal)
 
-# Run smoke tests (in another terminal)
-./.claude/skills/smoke-tests/scripts/smoke-test.sh           # API tests only
-./.claude/skills/smoke-tests/scripts/smoke-test.sh --with-ui # API + UI tests
+# Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
 ```
 
 Expected output:
@@ -106,13 +104,3 @@ cargo run --example create_agent
 - UI: http://localhost:9100
 - Health check: `curl http://localhost:9000/health`
 
-### Cloud Agent testing (no Docker)
-
-For environments without Docker (like Cloud Agent), use the no-Docker smoke test script:
-
-```bash
-# All-in-one: sets up PostgreSQL + Temporal, runs migrations, starts API, runs smoke tests
-./.claude/skills/smoke-tests/scripts/run-no-docker.sh
-```
-
-See `.claude/skills/smoke-tests/SKILL.md` for details and troubleshooting.
