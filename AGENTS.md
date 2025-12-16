@@ -91,13 +91,18 @@ docs: update API documentation
 refactor(db): simplify connection pooling
 ```
 
-**Enforcement:**
-- Commit messages are validated using [commitlint](https://commitlint.js.org/) with config in `commitlint.config.js`
-- Install hooks: `npm install` at repo root, then commit messages are automatically checked
+**Validation (optional):**
+```bash
+# Validate a commit message
+echo "feat: add new feature" | npx commitlint
+
+# Validate last commit
+npx commitlint --from HEAD~1 --to HEAD
+```
 
 ### Pull request conventions
 
-Follow [Semantic Pull Requests](https://github.com/zeke/semantic-pull-requests) - PR titles must follow Conventional Commits format.
+PR titles should follow Conventional Commits format. Use the PR template (`.github/pull_request_template.md`) for descriptions.
 
 **PR Description Template:**
 
