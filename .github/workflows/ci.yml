@@ -172,8 +172,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install jq and protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y jq protobuf-compiler
 
       - name: Cache cargo
         uses: actions/cache@v4
