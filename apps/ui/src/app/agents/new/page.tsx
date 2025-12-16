@@ -20,8 +20,6 @@ export default function NewAgentPage() {
     name: "",
     description: "",
     system_prompt: "",
-    temperature: "",
-    max_tokens: "",
     tags: "",
   });
 
@@ -34,12 +32,6 @@ export default function NewAgentPage() {
         name: formData.name,
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
-        temperature: formData.temperature
-          ? parseFloat(formData.temperature)
-          : undefined,
-        max_tokens: formData.max_tokens
-          ? parseInt(formData.max_tokens)
-          : undefined,
         tags: formData.tags
           ? formData.tags.split(",").map((t) => t.trim())
           : [],
@@ -126,38 +118,6 @@ export default function NewAgentPage() {
               <p className="text-xs text-muted-foreground">
                 Instructions for the AI model
               </p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="temperature">Temperature</Label>
-                <Input
-                  id="temperature"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="2"
-                  placeholder="0.7"
-                  value={formData.temperature}
-                  onChange={(e) =>
-                    setFormData({ ...formData, temperature: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="max_tokens">Max Tokens</Label>
-                <Input
-                  id="max_tokens"
-                  type="number"
-                  min="1"
-                  placeholder="4096"
-                  value={formData.max_tokens}
-                  onChange={(e) =>
-                    setFormData({ ...formData, max_tokens: e.target.value })
-                  }
-                />
-              </div>
             </div>
 
             <div className="space-y-2">

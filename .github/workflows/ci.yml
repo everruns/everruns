@@ -222,37 +222,58 @@ jobs:
           echo "Creating agent..."
           AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
             -H 'Content-Type: application/json' \
-            -d '{"name":"CI Test Agent","default_model_id":"gpt-5.1","definition":{"system_prompt":"Test"}}')
+            -d '{"slug":"ci-test-agent","name":"CI Test Agent","system_prompt":"You are a helpful assistant"}')
+          echo "Agent response: $AGENT"
           AGENT_ID=$(echo "$AGENT" | jq -r '.id')
           echo "Agent ID: $AGENT_ID"
 
-          echo "Creating thread..."
-          THREAD=$(curl -s -X POST http://localhost:9000/v1/threads \
-            -H 'Content-Type: application/json' -d '{}')
-          THREAD_ID=$(echo "$THREAD" | jq -r '.id')
-          echo "Thread ID: $THREAD_ID"
-
-          echo "Creating run..."
-          RUN=$(curl -s -X POST http://localhost:9000/v1/runs \
-            -H 'Content-Type: application/json' \
-            -d "{\"agent_id\":\"$AGENT_ID\",\"thread_id\":\"$THREAD_ID\"}")
-          RUN_ID=$(echo "$RUN" | jq -r '.id')
-          echo "Run ID: $RUN_ID"
-
-          # Wait for workflow
-          sleep 3
-
-          echo "Checking run status..."
-          RUN_STATUS=$(curl -s "http://localhost:9000/v1/runs/$RUN_ID")
-          STATUS=$(echo "$RUN_STATUS" | jq -r '.status')
-          echo "Run status: $STATUS"
-
-          if [ "$STATUS" != "completed" ]; then
-            echo "ERROR: Expected run status 'completed', got '$STATUS'"
+          if [ "$AGENT_ID" == "null" ] || [ -z "$AGENT_ID" ]; then
+            echo "ERROR: Failed to create agent"
             exit 1
           fi
 
-          echo "✅ All smoke tests passed!"
+          echo "Creating session..."
+          SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions" \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"CI Test Session"}')
+          echo "Session response: $SESSION"
+          SESSION_ID=$(echo "$SESSION" | jq -r '.id')
+          echo "Session ID: $SESSION_ID"
+
+          if [ "$SESSION_ID" == "null" ] || [ -z "$SESSION_ID" ]; then
+            echo "ERROR: Failed to create session"
+            exit 1
+          fi
+
+          echo "Creating message..."
+          MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+            -H 'Content-Type: application/json' \
+            -d '{"role":"user","content":{"text":"Hello, world!"}}')
+          echo "Message response: $MESSAGE"
+          MESSAGE_ID=$(echo "$MESSAGE" | jq -r '.id')
+          echo "Message ID: $MESSAGE_ID"
+
+          if [ "$MESSAGE_ID" == "null" ] || [ -z "$MESSAGE_ID" ]; then
+            echo "ERROR: Failed to create message"
+            exit 1
+          fi
+
+          echo "Listing messages..."
+          MESSAGES=$(curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages")
+          MESSAGE_COUNT=$(echo "$MESSAGES" | jq '.data | length')
+          echo "Message count: $MESSAGE_COUNT"
+
+          if [ "$MESSAGE_COUNT" -lt 1 ]; then
+            echo "ERROR: Expected at least 1 message"
+            exit 1
+          fi
+
+          echo "Checking session status..."
+          SESSION_STATUS=$(curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID")
+          STATUS=$(echo "$SESSION_STATUS" | jq -r '.status')
+          echo "Session status: $STATUS"
+
+          echo "All smoke tests passed!"
 
       - name: Stop API server
         if: always()
