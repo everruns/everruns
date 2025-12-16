@@ -107,6 +107,29 @@ case "$command" in
     echo "🚀 Starting complete Everruns development environment..."
     echo ""
 
+    # Track child PIDs for cleanup
+    CHILD_PIDS=()
+
+    # Cleanup function to kill child processes on exit
+    cleanup() {
+      echo ""
+      echo "🛑 Stopping services..."
+      for pid in "${CHILD_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+          kill "$pid" 2>/dev/null || true
+        fi
+      done
+      # Also kill by name in case PIDs were replaced
+      pkill -f "everruns-api" 2>/dev/null || true
+      pkill -f "everruns-worker" 2>/dev/null || true
+      pkill -f "next dev" 2>/dev/null || true
+      echo "✅ Services stopped (Docker still running)"
+      exit 0
+    }
+
+    # Set up signal handler for Ctrl+C
+    trap cleanup SIGINT SIGTERM
+
     # Start Docker services
     echo "1️⃣  Starting Docker services..."
     cd "$PROJECT_ROOT/harness"
@@ -133,6 +156,7 @@ case "$command" in
     echo "4️⃣  Starting API server (Temporal mode)..."
     AGENT_RUNNER_MODE=temporal cargo run -p everruns-api &
     API_PID=$!
+    CHILD_PIDS+=("$API_PID")
     sleep 3
 
     # Check if API is running
@@ -146,6 +170,7 @@ case "$command" in
     echo "5️⃣  Starting Temporal worker..."
     AGENT_RUNNER_MODE=temporal cargo run -p everruns-worker &
     WORKER_PID=$!
+    CHILD_PIDS+=("$WORKER_PID")
     sleep 2
     echo "   ✅ Worker is starting (PID: $WORKER_PID)"
 
@@ -154,6 +179,7 @@ case "$command" in
     cd apps/ui
     npm run dev &
     UI_PID=$!
+    CHILD_PIDS+=("$UI_PID")
     cd "$PROJECT_ROOT"
     sleep 5
     echo "   ✅ UI is starting (PID: $UI_PID)"
@@ -168,7 +194,7 @@ case "$command" in
     echo "   🖥️  UI:          http://localhost:9100"
     echo "   ⏱️  Temporal UI: http://localhost:8080"
     echo ""
-    echo "💡 To stop all services: ./scripts/dev.sh stop-all"
+    echo "💡 Press Ctrl+C to stop services (Docker will keep running)"
     echo ""
 
     # Wait for processes
