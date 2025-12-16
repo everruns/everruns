@@ -324,13 +324,12 @@ pub struct EncryptedColumn {
 /// - `reencrypt-secrets` CLI tool for key rotation
 /// - Tests to ensure all encrypted columns are properly registered
 pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
-    // Add encrypted columns here as they're created.
-    // Example:
-    // EncryptedColumn {
-    //     table: "llm_providers",
-    //     column: "api_key_encrypted",
-    //     id_column: "id",
-    // },
+    // LLM Provider API keys are encrypted at rest
+    EncryptedColumn {
+        table: "llm_providers",
+        column: "api_key_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]

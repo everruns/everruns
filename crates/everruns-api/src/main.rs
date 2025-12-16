@@ -3,13 +3,15 @@
 
 mod agents;
 mod agui;
+mod llm_models;
+mod llm_providers;
 mod runs;
 mod threads;
 
 use anyhow::{Context, Result};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_contracts::*;
-use everruns_storage::Database;
+use everruns_storage::{Database, EncryptionService};
 use everruns_worker::{create_runner, RunnerConfig, RunnerMode};
 use serde::Serialize;
 use std::sync::Arc;
@@ -62,6 +64,17 @@ struct HealthState {
         runs::create_run,
         runs::get_run,
         runs::cancel_run,
+        llm_providers::create_provider,
+        llm_providers::list_providers,
+        llm_providers::get_provider,
+        llm_providers::update_provider,
+        llm_providers::delete_provider,
+        llm_models::create_model,
+        llm_models::list_provider_models,
+        llm_models::list_all_models,
+        llm_models::get_model,
+        llm_models::update_model,
+        llm_models::delete_model,
     ),
     components(
         schemas(
@@ -70,18 +83,26 @@ struct HealthState {
             Run, RunStatus,
             Action, ActionKind,
             User,
+            LlmProvider, LlmProviderType, LlmProviderStatus,
+            LlmModel, LlmModelWithProvider, LlmModelStatus,
             agents::CreateAgentRequest,
             agents::UpdateAgentRequest,
             threads::CreateThreadRequest,
             threads::CreateMessageRequest,
             runs::CreateRunRequest,
             runs::ListRunsParams,
+            llm_providers::CreateLlmProviderRequest,
+            llm_providers::UpdateLlmProviderRequest,
+            llm_models::CreateLlmModelRequest,
+            llm_models::UpdateLlmModelRequest,
         )
     ),
     tags(
         (name = "agents", description = "Agent management endpoints"),
         (name = "threads", description = "Thread and message management endpoints"),
-        (name = "runs", description = "Run execution endpoints")
+        (name = "runs", description = "Run execution endpoints"),
+        (name = "llm-providers", description = "LLM Provider management endpoints"),
+        (name = "llm-models", description = "LLM Model management endpoints")
     ),
     info(
         title = "Everruns API",
@@ -142,6 +163,18 @@ async fn main() -> Result<()> {
     // Create app state
     let state = AppState { db: Arc::new(db) };
 
+    // Initialize encryption service for API keys (optional - gracefully degrade if not configured)
+    let encryption = match EncryptionService::from_env() {
+        Ok(svc) => {
+            tracing::info!("Encryption service initialized for API key storage");
+            Some(Arc::new(svc))
+        }
+        Err(e) => {
+            tracing::warn!("Encryption service not configured (SECRETS_ENCRYPTION_KEY not set): {}. API key storage disabled.", e);
+            None
+        }
+    };
+
     // Create module-specific states
     let agents_state = agents::AppState {
         db: state.db.clone(),
@@ -157,6 +190,13 @@ async fn main() -> Result<()> {
         db: state.db.clone(),
         runner: runner.clone(),
     };
+    let llm_providers_state = llm_providers::AppState {
+        db: state.db.clone(),
+        encryption: encryption.clone(),
+    };
+    let llm_models_state = llm_models::AppState {
+        db: state.db.clone(),
+    };
     let health_state = HealthState {
         runner_mode: format!("{:?}", runner_config.mode),
     };
@@ -168,6 +208,8 @@ async fn main() -> Result<()> {
         .merge(threads::routes(threads_state))
         .merge(runs::routes(runs_state))
         .merge(agui::routes(agui_state))
+        .merge(llm_providers::routes(llm_providers_state))
+        .merge(llm_models::routes(llm_models_state))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
             CorsLayer::new()
