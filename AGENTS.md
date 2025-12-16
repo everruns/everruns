@@ -60,6 +60,71 @@ cargo fmt && cargo clippy -- -D warnings && cargo test
 
 CI will fail if formatting, linting, or tests fail. Always run these locally before pushing.
 
+### Commit message conventions
+
+Follow [Conventional Commits](https://www.conventionalcommits.org) for all commit messages:
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+**Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style (formatting, semicolons, etc.)
+- `refactor`: Code refactoring without feature/fix
+- `perf`: Performance improvements
+- `test`: Adding or updating tests
+- `chore`: Build process, dependencies, tooling
+- `ci`: CI configuration changes
+
+**Examples:**
+```
+feat(api): add agent versioning endpoint
+fix(workflow): handle timeout in run execution
+docs: update API documentation
+refactor(db): simplify connection pooling
+```
+
+**Validation (optional):**
+```bash
+# Validate a commit message
+echo "feat: add new feature" | npx commitlint
+
+# Validate last commit
+npx commitlint --from HEAD~1 --to HEAD
+```
+
+### Pull request conventions
+
+PR titles should follow Conventional Commits format. Use the PR template (`.github/pull_request_template.md`) for descriptions.
+
+**PR Description Template:**
+
+```markdown
+## What
+Clear description of the change.
+
+## Why
+Problem or motivation.
+
+## How
+High-level approach.
+
+## Risk
+- Low / Medium / High
+- What can break
+
+## Checklist
+- [ ] Tests added or updated
+- [ ] Backward compatibility considered
+```
+
 ## Testing the system
 
 The best way to verify the system is working is to run the **smoke test script**, which tests the full workflow including agent creation, threads, messages, runs, workflow execution, and optionally the UI:
