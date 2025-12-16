@@ -1,5 +1,10 @@
+// API base URL configuration:
+// - In production: defaults to "/api" (same-origin, requires reverse proxy)
+// - In development: defaults to "http://localhost:9000"
+// - Can be overridden via NEXT_PUBLIC_API_BASE_URL environment variable
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9000";
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:9000");
 
 export class ApiError extends Error {
   constructor(
