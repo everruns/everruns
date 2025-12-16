@@ -202,14 +202,17 @@ async fn main() -> Result<()> {
     };
 
     // Build router
+    // Note: llm_models routes must be merged BEFORE llm_providers
+    // because /v1/llm-providers/{provider_id}/models is more specific
+    // than /v1/llm-providers/{id}
     let app = Router::new()
         .route("/health", get(health).with_state(health_state))
         .merge(agents::routes(agents_state))
         .merge(threads::routes(threads_state))
         .merge(runs::routes(runs_state))
         .merge(agui::routes(agui_state))
-        .merge(llm_providers::routes(llm_providers_state))
         .merge(llm_models::routes(llm_models_state))
+        .merge(llm_providers::routes(llm_providers_state))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
             CorsLayer::new()

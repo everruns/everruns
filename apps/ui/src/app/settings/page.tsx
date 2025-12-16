@@ -417,7 +417,11 @@ function AddModelDialog({
             <Label htmlFor="provider">Provider</Label>
             <Select value={providerId} onValueChange={setProviderId}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select provider" />
+                <span className={!providerId ? "text-muted-foreground" : ""}>
+                  {providerId
+                    ? providers.find((p) => p.id === providerId)?.name
+                    : "Select provider"}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 {providers.map((p) => (
