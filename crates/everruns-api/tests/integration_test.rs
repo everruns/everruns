@@ -1,7 +1,7 @@
 // Integration tests for Everruns API
 // Run with: cargo test --test integration_test
 
-use everruns_contracts::{Agent, AgentStatus, Message, Run, Thread, LlmProvider, LlmModel};
+use everruns_contracts::{Agent, AgentStatus, LlmModel, LlmProvider, Message, Run, Thread};
 use serde_json::json;
 
 const API_BASE_URL: &str = "http://localhost:9000";
@@ -284,19 +284,14 @@ async fn test_llm_provider_and_model_workflow() {
         .expect("Failed to get provider");
 
     assert_eq!(get_response.status(), 200);
-    let fetched_provider: LlmProvider = get_response
-        .json()
-        .await
-        .expect("Failed to parse provider");
+    let fetched_provider: LlmProvider =
+        get_response.json().await.expect("Failed to parse provider");
     println!("✅ Fetched provider: {}", fetched_provider.name);
     assert_eq!(fetched_provider.id, provider.id);
 
     // Step 4: Create a model for the provider
     println!("\n🤖 Step 4: Creating model for provider...");
-    let model_url = format!(
-        "{}/v1/llm-providers/{}/models",
-        API_BASE_URL, provider.id
-    );
+    let model_url = format!("{}/v1/llm-providers/{}/models", API_BASE_URL, provider.id);
     println!("POST {}", model_url);
 
     let create_model_response = client

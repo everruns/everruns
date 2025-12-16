@@ -312,7 +312,9 @@ pub fn routes(state: AppState) -> Router {
         )
         .route(
             "/v1/llm-providers/:id",
-            get(get_provider).patch(update_provider).delete(delete_provider),
+            get(get_provider)
+                .patch(update_provider)
+                .delete(delete_provider),
         )
         .with_state(state)
 }
