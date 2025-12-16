@@ -1,15 +1,15 @@
 #!/bin/bash
-# Cloud Agent Smoke Test - Main Entry Point
+# Smoke Tests - No-Docker Mode
 # Sets up PostgreSQL + Temporal locally and runs smoke tests without Docker
 #
-# Usage: ./.claude/skills/cloud-agent-smoke-tests/scripts/run-smoke-tests.sh
+# Usage: ./.claude/skills/smoke-tests/scripts/run-no-docker.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common.sh"
-source "$SCRIPT_DIR/setup-postgres.sh"
-source "$SCRIPT_DIR/setup-temporal.sh"
+source "$SCRIPT_DIR/_utils.sh"
+source "$SCRIPT_DIR/_setup-postgres.sh"
+source "$SCRIPT_DIR/_setup-temporal.sh"
 
 # Project root is 4 levels up from scripts folder
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -48,7 +48,7 @@ run_migrations() {
     fi
 
     sqlx migrate run --source crates/everruns-storage/migrations > /dev/null 2>&1
-    log_info "Migrations applied"
+    check_pass "Migrations - applied successfully"
 }
 
 # Build and start API
@@ -70,36 +70,32 @@ start_api() {
     log_info "Waiting for API to start..."
     for i in {1..30}; do
         if curl -s http://localhost:9000/health > /dev/null 2>&1; then
-            log_info "API is ready on http://localhost:9000"
+            check_pass "API startup - ready on http://localhost:9000"
             return 0
         fi
         sleep 1
     done
 
-    log_error "API failed to start"
+    check_fail "API startup" "failed to start (see $API_LOG)"
     cat "$API_LOG"
     exit 1
-}
-
-# Run smoke tests
-run_smoke_tests() {
-    log_info "Running smoke tests..."
-
-    cd "$PROJECT_ROOT"
-    bash scripts/smoke-test.sh
 }
 
 # Main execution
 main() {
     echo "==============================================="
-    echo "  Cloud Agent Smoke Test"
-    echo "  (PostgreSQL + Temporal, no Docker)"
+    echo "  Smoke Tests (No-Docker Mode)"
+    echo "  PostgreSQL + Temporal local setup"
     echo "==============================================="
     echo ""
 
     # Pre-flight checks
     check_openai_key
     check_root
+
+    echo ""
+    echo "--- Infrastructure Setup ---"
+    echo ""
 
     # Setup infrastructure
     check_postgres
@@ -109,26 +105,32 @@ main() {
     start_postgres
     setup_database
 
+    echo ""
+    echo "--- Application Setup ---"
+    echo ""
+
     # Setup application
     run_migrations
     start_api
 
     echo ""
     echo "==============================================="
-    echo "  Running Smoke Tests"
+    echo "  Environment Ready"
     echo "==============================================="
-    echo ""
-
-    run_smoke_tests
-
-    echo ""
-    log_info "All smoke tests completed successfully!"
     echo ""
     echo "Services running:"
     echo "  - PostgreSQL: $PGDATA (socket)"
     echo "  - Temporal:   localhost:7233"
     echo "  - API:        http://localhost:9000"
     echo ""
+    echo "Run smoke tests using the checklist in:"
+    echo "  .claude/skills/smoke-tests/SKILL.md"
+    echo ""
+    echo "Press Ctrl+C to stop all services."
+    echo ""
+
+    # Keep running until interrupted
+    wait
 }
 
 main "$@"

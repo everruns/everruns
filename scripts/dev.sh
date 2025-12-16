@@ -190,11 +190,6 @@ case "$command" in
     echo "✅ All services stopped!"
     ;;
 
-  smoke-test)
-    echo "🧪 Running smoke tests..."
-    "$SCRIPT_DIR/smoke-test.sh" "$@"
-    ;;
-
   logs)
     cd harness
     docker compose logs -f
@@ -247,7 +242,6 @@ Commands:
   ui          Start the UI development server
   ui-build    Build the UI for production
   ui-install  Install UI dependencies
-  smoke-test  Run smoke tests (use --with-ui for UI tests)
   logs        View Docker service logs
   clean       Clean build artifacts and Docker volumes
   help        Show this help message
@@ -255,8 +249,6 @@ Commands:
 Examples:
   $0 init            # First-time setup (install tools)
   $0 start-all       # Start everything and run
-  $0 smoke-test      # Run API smoke tests
-  $0 smoke-test --with-ui  # Run API + UI smoke tests
   $0 stop-all        # Stop everything
 EOF
     ;;

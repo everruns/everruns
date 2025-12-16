@@ -25,10 +25,10 @@ Specification format: Abstract and Requirements sections.
 
 ### Skills
 
-`.claude/skills/` contains development skills and guides:
-- `smoke-tests/` - Comprehensive API and system smoke testing
-- `ui-smoke-tests/` - UI testing with Chrome DevTools
-- `cloud-agent-smoke-tests/` - Running smoke tests without Docker (Cloud Agent environments)
+`.claude/skills/` contains development skills following the [Agent Skills Specification](https://github.com/anthropics/skills/blob/main/spec/agent-skills-spec.md).
+
+Available skills:
+- `smoke-tests/` - API and UI smoke testing with support for Docker and no-Docker environments
 
 ### Local dev expectations
 
@@ -74,9 +74,7 @@ The best way to verify the system is working is to run the **smoke test script**
 ./scripts/dev.sh api        # Start API (in one terminal)
 ./scripts/dev.sh ui         # Start UI (in another terminal)
 
-# Run smoke tests (in another terminal)
-./scripts/dev.sh smoke-test           # API tests only
-./scripts/dev.sh smoke-test --with-ui # API + UI tests
+# Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
 ```
 
 Expected output:
@@ -106,13 +104,3 @@ cargo run --example create_agent
 - UI: http://localhost:9100
 - Health check: `curl http://localhost:9000/health`
 
-### Cloud Agent testing (no Docker)
-
-For environments without Docker (like Cloud Agent), use the skill script:
-
-```bash
-# All-in-one: sets up PostgreSQL + Temporal, runs migrations, starts API, runs smoke tests
-./.claude/skills/cloud-agent-smoke-tests/scripts/run-smoke-tests.sh
-```
-
-See `.claude/skills/cloud-agent-smoke-tests/SKILL.md` for details and troubleshooting.

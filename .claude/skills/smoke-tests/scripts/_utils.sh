@@ -1,5 +1,5 @@
 #!/bin/bash
-# Common utilities for Cloud Agent smoke tests
+# Common utilities for smoke tests (no-Docker mode)
 
 # Configuration
 export PGDATA="/tmp/pgdata"
@@ -15,6 +15,19 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# Checkbox output format
+check_pass() {
+    echo -e "${GREEN}[x]${NC} $1"
+}
+
+check_fail() {
+    echo -e "${RED}[!]${NC} $1 - FAILED: $2"
+}
+
+check_pending() {
+    echo -e "[ ] $1"
+}
 
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -46,8 +59,8 @@ check_openai_key() {
     log_info "OPENAI_API_KEY is set"
 }
 
-# Get project root (3 levels up from scripts folder)
+# Get project root (relative to skill scripts folder)
 get_project_root() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
-    echo "$(cd "$script_dir/../../.." && pwd)"
+    echo "$(cd "$script_dir/../../../.." && pwd)"
 }
