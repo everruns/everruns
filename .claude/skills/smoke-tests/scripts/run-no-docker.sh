@@ -86,7 +86,7 @@ run_smoke_tests() {
     log_info "Running smoke tests..."
 
     cd "$PROJECT_ROOT"
-    bash scripts/smoke-test.sh
+    bash "$SCRIPT_DIR/smoke-test.sh"
 }
 
 # Main execution

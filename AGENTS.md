@@ -75,8 +75,8 @@ The best way to verify the system is working is to run the **smoke test script**
 ./scripts/dev.sh ui         # Start UI (in another terminal)
 
 # Run smoke tests (in another terminal)
-./scripts/dev.sh smoke-test           # API tests only
-./scripts/dev.sh smoke-test --with-ui # API + UI tests
+./.claude/skills/smoke-tests/scripts/smoke-test.sh           # API tests only
+./.claude/skills/smoke-tests/scripts/smoke-test.sh --with-ui # API + UI tests
 ```
 
 Expected output:

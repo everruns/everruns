@@ -16,8 +16,8 @@ Comprehensive smoke testing for API, UI, database, and system integration.
 ./scripts/dev.sh start-all
 
 # In another terminal, run smoke tests
-./scripts/dev.sh smoke-test           # API tests only
-./scripts/dev.sh smoke-test --with-ui # API + UI tests
+./.claude/skills/smoke-tests/scripts/smoke-test.sh           # API tests only
+./.claude/skills/smoke-tests/scripts/smoke-test.sh --with-ui # API + UI tests
 ```
 
 ### Without Docker (Cloud Agent / CI environments)
@@ -100,7 +100,8 @@ Smoke tests output results in a structured format:
 
 | Script | Description |
 |--------|-------------|
-| `scripts/run-no-docker.sh` | Main entry point for no-Docker smoke tests |
+| `scripts/smoke-test.sh` | Main smoke test script (API + optional UI tests) |
+| `scripts/run-no-docker.sh` | Entry point for no-Docker environments |
 | `scripts/_setup-postgres.sh` | PostgreSQL 18 cluster setup (internal) |
 | `scripts/_setup-temporal.sh` | Temporal dev server setup (internal) |
 | `scripts/_utils.sh` | Shared utilities and configuration (internal) |
@@ -187,5 +188,5 @@ For Docker-based CI:
   run: ./scripts/dev.sh start-all
 
 - name: Run smoke tests
-  run: ./scripts/dev.sh smoke-test --with-ui
+  run: ./.claude/skills/smoke-tests/scripts/smoke-test.sh --with-ui
 ```
