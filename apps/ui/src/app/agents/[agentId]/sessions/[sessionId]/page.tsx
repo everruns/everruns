@@ -1,8 +1,7 @@
 "use client";
 
 import { use, useState, useRef, useEffect } from "react";
-import { useSession, useMessages, useSendMessage } from "@/hooks";
-import { useHarness } from "@/hooks";
+import { useAgent, useSession, useMessages, useSendMessage } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,21 +9,21 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Send, User, Bot, Loader2 } from "lucide-react";
-import type { Event, MessageEventData } from "@/lib/api/types";
+import type { Message } from "@/lib/api/types";
 
 export default function SessionDetailPage({
   params,
 }: {
-  params: Promise<{ harnessId: string; sessionId: string }>;
+  params: Promise<{ agentId: string; sessionId: string }>;
 }) {
-  const { harnessId, sessionId } = use(params);
-  const { data: harness } = useHarness(harnessId);
+  const { agentId, sessionId } = use(params);
+  const { data: agent } = useAgent(agentId);
   const { data: session, isLoading: sessionLoading } = useSession(
-    harnessId,
+    agentId,
     sessionId
   );
   const { data: messages, isLoading: messagesLoading } = useMessages(
-    harnessId,
+    agentId,
     sessionId
   );
   const sendMessage = useSendMessage();
@@ -43,7 +42,7 @@ export default function SessionDetailPage({
 
     try {
       await sendMessage.mutateAsync({
-        harnessId,
+        agentId,
         sessionId,
         content: inputValue.trim(),
       });
@@ -60,18 +59,16 @@ export default function SessionDetailPage({
     }
   };
 
-  // Extract message content from event data
-  const getMessageContent = (event: Event): string => {
-    const data = event.data as MessageEventData;
-    if (data?.message?.content) {
-      return data.message.content.map((c) => c.text).join("");
+  // Extract message content
+  const getMessageContent = (message: Message): string => {
+    if (typeof message.content === "object" && message.content !== null) {
+      const content = message.content as Record<string, unknown>;
+      if (content.text) return String(content.text);
+      if (Array.isArray(content)) {
+        return content.map((c: { text?: string }) => c.text || "").join("");
+      }
     }
-    return JSON.stringify(event.data);
-  };
-
-  const getMessageRole = (event: Event): string => {
-    const data = event.data as MessageEventData;
-    return data?.message?.role || "unknown";
+    return JSON.stringify(message.content);
   };
 
   if (sessionLoading) {
@@ -89,10 +86,10 @@ export default function SessionDetailPage({
       <div className="container mx-auto p-6">
         <div className="text-red-500">Session not found</div>
         <Link
-          href={`/harnesses/${harnessId}`}
+          href={`/agents/${agentId}`}
           className="text-blue-500 hover:underline"
         >
-          Back to harness
+          Back to agent
         </Link>
       </div>
     );
@@ -103,11 +100,11 @@ export default function SessionDetailPage({
       {/* Header */}
       <div className="border-b p-4">
         <Link
-          href={`/harnesses/${harnessId}`}
+          href={`/agents/${agentId}`}
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-2"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to {harness?.display_name || "Harness"}
+          Back to {agent?.name || "Agent"}
         </Link>
 
         <div className="flex items-center justify-between">
@@ -120,11 +117,18 @@ export default function SessionDetailPage({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {session.finished_at && <Badge variant="outline">Completed</Badge>}
-            {!session.finished_at && session.started_at && (
+            {session.status === "completed" && (
+              <Badge variant="outline">Completed</Badge>
+            )}
+            {session.status === "running" && (
               <Badge variant="default">Running</Badge>
             )}
-            {!session.started_at && <Badge variant="secondary">Pending</Badge>}
+            {session.status === "pending" && (
+              <Badge variant="secondary">Pending</Badge>
+            )}
+            {session.status === "failed" && (
+              <Badge variant="destructive">Failed</Badge>
+            )}
           </div>
         </div>
       </div>
@@ -144,14 +148,13 @@ export default function SessionDetailPage({
             <p className="text-sm">Send a message to start the conversation</p>
           </div>
         ) : (
-          messages?.map((event) => {
-            const role = getMessageRole(event);
-            const isUser = role === "user";
-            const isAssistant = role === "assistant";
+          messages?.map((message) => {
+            const isUser = message.role === "user";
+            const isAssistant = message.role === "assistant";
 
             return (
               <div
-                key={event.id}
+                key={message.id}
                 className={`flex ${isUser ? "justify-end" : "justify-start"}`}
               >
                 <Card
@@ -168,10 +171,10 @@ export default function SessionDetailPage({
                       )}
                       <div className="space-y-1">
                         <p className="text-xs font-medium opacity-70">
-                          {isUser ? "You" : isAssistant ? "Assistant" : role}
+                          {isUser ? "You" : isAssistant ? "Assistant" : message.role}
                         </p>
                         <p className="text-sm whitespace-pre-wrap">
-                          {getMessageContent(event)}
+                          {getMessageContent(message)}
                         </p>
                       </div>
                       {isUser && (
@@ -196,7 +199,7 @@ export default function SessionDetailPage({
             onKeyDown={handleKeyDown}
             placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
             className="flex-1 min-h-[60px] max-h-[200px] resize-none"
-            disabled={sendMessage.isPending || !!session.finished_at}
+            disabled={sendMessage.isPending || session.status === "completed" || session.status === "failed"}
           />
           <Button
             type="submit"
@@ -205,7 +208,8 @@ export default function SessionDetailPage({
             disabled={
               !inputValue.trim() ||
               sendMessage.isPending ||
-              !!session.finished_at
+              session.status === "completed" ||
+              session.status === "failed"
             }
           >
             {sendMessage.isPending ? (
@@ -215,7 +219,7 @@ export default function SessionDetailPage({
             )}
           </Button>
         </form>
-        {session.finished_at && (
+        {(session.status === "completed" || session.status === "failed") && (
           <p className="text-xs text-muted-foreground text-center mt-2">
             This session has ended. Start a new session to continue chatting.
           </p>

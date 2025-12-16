@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { useHarness, useSessions, useCreateSession } from "@/hooks";
+import { useAgent, useSessions, useCreateSession } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -10,30 +10,30 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Plus, MessageSquare } from "lucide-react";
 
-export default function HarnessDetailPage({
+export default function AgentDetailPage({
   params,
 }: {
-  params: Promise<{ harnessId: string }>;
+  params: Promise<{ agentId: string }>;
 }) {
-  const { harnessId } = use(params);
+  const { agentId } = use(params);
   const router = useRouter();
-  const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
-  const { data: sessions, isLoading: sessionsLoading } = useSessions(harnessId);
+  const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  const { data: sessions, isLoading: sessionsLoading } = useSessions(agentId);
   const createSession = useCreateSession();
 
   const handleNewSession = async () => {
     try {
       const session = await createSession.mutateAsync({
-        harnessId,
+        agentId,
         request: {},
       });
-      router.push(`/harnesses/${harnessId}/sessions/${session.id}`);
+      router.push(`/agents/${agentId}/sessions/${session.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
     }
   };
 
-  if (harnessLoading) {
+  if (agentLoading) {
     return (
       <div className="container mx-auto p-6">
         <Skeleton className="h-8 w-1/3 mb-4" />
@@ -43,12 +43,12 @@ export default function HarnessDetailPage({
     );
   }
 
-  if (!harness) {
+  if (!agent) {
     return (
       <div className="container mx-auto p-6">
-        <div className="text-red-500">Harness not found</div>
-        <Link href="/harnesses" className="text-blue-500 hover:underline">
-          Back to harnesses
+        <div className="text-red-500">Agent not found</div>
+        <Link href="/agents" className="text-blue-500 hover:underline">
+          Back to agents
         </Link>
       </div>
     );
@@ -57,25 +57,25 @@ export default function HarnessDetailPage({
   return (
     <div className="container mx-auto p-6">
       <Link
-        href="/harnesses"
+        href="/agents"
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Harnesses
+        Back to Agents
       </Link>
 
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            {harness.display_name}
+            {agent.name}
             <Badge
-              variant={harness.status === "active" ? "default" : "secondary"}
+              variant={agent.status === "active" ? "default" : "secondary"}
             >
-              {harness.status}
+              {agent.status}
             </Badge>
           </h1>
           <p className="text-muted-foreground font-mono text-sm">
-            {harness.slug}
+            {agent.slug}
           </p>
         </div>
         <Button onClick={handleNewSession} disabled={createSession.isPending}>
@@ -92,7 +92,7 @@ export default function HarnessDetailPage({
             </CardHeader>
             <CardContent>
               <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md">
-                {harness.system_prompt}
+                {agent.system_prompt}
               </pre>
             </CardContent>
           </Card>
@@ -116,7 +116,7 @@ export default function HarnessDetailPage({
                   {sessions?.map((session) => (
                     <Link
                       key={session.id}
-                      href={`/harnesses/${harnessId}/sessions/${session.id}`}
+                      href={`/agents/${agentId}/sessions/${session.id}`}
                       className="flex items-center justify-between p-3 rounded-md border hover:bg-muted transition-colors"
                     >
                       <div className="flex items-center gap-3">
@@ -147,38 +147,20 @@ export default function HarnessDetailPage({
               <CardTitle>Configuration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {harness.description && (
+              {agent.description && (
                 <div>
                   <p className="text-sm font-medium">Description</p>
                   <p className="text-sm text-muted-foreground">
-                    {harness.description}
+                    {agent.description}
                   </p>
                 </div>
               )}
 
-              {harness.temperature !== null && (
-                <div>
-                  <p className="text-sm font-medium">Temperature</p>
-                  <p className="text-sm text-muted-foreground">
-                    {harness.temperature}
-                  </p>
-                </div>
-              )}
-
-              {harness.max_tokens !== null && (
-                <div>
-                  <p className="text-sm font-medium">Max Tokens</p>
-                  <p className="text-sm text-muted-foreground">
-                    {harness.max_tokens}
-                  </p>
-                </div>
-              )}
-
-              {harness.tags.length > 0 && (
+              {agent.tags.length > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-2">Tags</p>
                   <div className="flex flex-wrap gap-1">
-                    {harness.tags.map((tag) => (
+                    {agent.tags.map((tag) => (
                       <Badge key={tag} variant="outline">
                         {tag}
                       </Badge>
@@ -190,14 +172,14 @@ export default function HarnessDetailPage({
               <div>
                 <p className="text-sm font-medium">Created</p>
                 <p className="text-sm text-muted-foreground">
-                  {new Date(harness.created_at).toLocaleString()}
+                  {new Date(agent.created_at).toLocaleString()}
                 </p>
               </div>
 
               <div>
                 <p className="text-sm font-medium">Updated</p>
                 <p className="text-sm text-muted-foreground">
-                  {new Date(harness.updated_at).toLocaleString()}
+                  {new Date(agent.updated_at).toLocaleString()}
                 </p>
               </div>
             </CardContent>
