@@ -3,6 +3,7 @@ name = "everruns-api"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+default-run = "everruns-api"
 
 [[bin]]
 name = "everruns-api"
