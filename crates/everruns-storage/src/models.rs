@@ -55,9 +55,6 @@ pub struct AgentRow {
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<Uuid>,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<i32>,
-    pub tools: sqlx::types::JsonValue,
     pub tags: Vec<String>,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -71,9 +68,6 @@ pub struct CreateAgent {
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<Uuid>,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<i32>,
-    pub tools: serde_json::Value,
     pub tags: Vec<String>,
 }
 
@@ -84,9 +78,6 @@ pub struct UpdateAgent {
     pub description: Option<String>,
     pub system_prompt: Option<String>,
     pub default_model_id: Option<Uuid>,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<i32>,
-    pub tools: Option<serde_json::Value>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
 }

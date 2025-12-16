@@ -64,10 +64,10 @@ impl SessionWorkflow {
 
         let llm_config = LlmConfig {
             model,
-            temperature: agent.temperature,
-            max_tokens: agent.max_tokens.map(|t| t as u32),
+            temperature: None, // TODO: Add to session or use default
+            max_tokens: None,  // TODO: Add to session or use default
             system_prompt: Some(agent.system_prompt.clone()),
-            tools: Vec::new(), // TODO: Parse tools from agent
+            tools: Vec::new(), // TODO: Parse tools from session
         };
 
         // Load messages from session (PRIMARY data)

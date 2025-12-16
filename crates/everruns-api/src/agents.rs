@@ -63,9 +63,6 @@ pub async fn create_agent(
         description: req.description,
         system_prompt: req.system_prompt,
         default_model_id: req.default_model_id,
-        temperature: req.temperature,
-        max_tokens: req.max_tokens,
-        tools: req.tools,
         tags: req.tags,
     };
 
@@ -186,9 +183,6 @@ pub async fn update_agent(
         description: req.description,
         system_prompt: req.system_prompt,
         default_model_id: req.default_model_id,
-        temperature: req.temperature,
-        max_tokens: req.max_tokens,
-        tools: req.tools,
         tags: req.tags,
         status: req.status.map(|s| s.to_string()),
     };

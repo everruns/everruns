@@ -14,9 +14,6 @@ export interface Agent {
   description: string | null;
   system_prompt: string;
   default_model_id: string | null;
-  temperature: number | null;
-  max_tokens: number | null;
-  tools: unknown;
   tags: string[];
   status: AgentStatus;
   created_at: string;
@@ -29,9 +26,6 @@ export interface CreateAgentRequest {
   description?: string;
   system_prompt: string;
   default_model_id?: string;
-  temperature?: number;
-  max_tokens?: number;
-  tools?: unknown;
   tags?: string[];
 }
 
@@ -41,9 +35,6 @@ export interface UpdateAgentRequest {
   description?: string;
   system_prompt?: string;
   default_model_id?: string;
-  temperature?: number;
-  max_tokens?: number;
-  tools?: unknown;
   tags?: string[];
   status?: AgentStatus;
 }

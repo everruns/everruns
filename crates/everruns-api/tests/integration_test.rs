@@ -85,20 +85,14 @@ async fn test_full_agent_session_workflow() {
         .expect("Failed to update agent");
 
     assert_eq!(update_response.status(), 200);
-    let updated_agent: Agent = update_response
-        .json()
-        .await
-        .expect("Failed to parse agent");
+    let updated_agent: Agent = update_response.json().await.expect("Failed to parse agent");
     println!("Updated agent: {}", updated_agent.name);
     assert_eq!(updated_agent.name, "Updated Test Agent");
 
     // Step 5: Create a session
     println!("\nStep 5: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/agents/{}/sessions",
-            API_BASE_URL, agent.id
-        ))
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
         .json(&json!({
             "title": "Test Session"
         }))
@@ -130,7 +124,10 @@ async fn test_full_agent_session_workflow() {
         .expect("Failed to create message");
 
     assert_eq!(message_response.status(), 201);
-    let message: Message = message_response.json().await.expect("Failed to parse message");
+    let message: Message = message_response
+        .json()
+        .await
+        .expect("Failed to parse message");
     println!("Created message: {}", message.id);
     assert_eq!(message.role.to_string(), "user");
 

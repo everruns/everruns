@@ -50,9 +50,9 @@ impl Database {
     pub async fn create_agent(&self, input: CreateAgent) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
-            RETURNING id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
+            INSERT INTO agents (slug, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'active')
+            RETURNING id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             "#,
         )
         .bind(&input.slug)
@@ -60,9 +60,6 @@ impl Database {
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
-        .bind(input.temperature)
-        .bind(input.max_tokens)
-        .bind(&input.tools)
         .bind(&input.tags)
         .fetch_one(&self.pool)
         .await?;
@@ -73,7 +70,7 @@ impl Database {
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
+            SELECT id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             FROM agents
             WHERE id = $1
             "#,
@@ -88,7 +85,7 @@ impl Database {
     pub async fn get_agent_by_slug(&self, slug: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
+            SELECT id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             FROM agents
             WHERE slug = $1
             "#,
@@ -103,7 +100,7 @@ impl Database {
     pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
         let rows = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
+            SELECT id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             FROM agents
             WHERE status = 'active'
             ORDER BY created_at DESC
@@ -125,14 +122,11 @@ impl Database {
                 description = COALESCE($4, description),
                 system_prompt = COALESCE($5, system_prompt),
                 default_model_id = COALESCE($6, default_model_id),
-                temperature = COALESCE($7, temperature),
-                max_tokens = COALESCE($8, max_tokens),
-                tools = COALESCE($9, tools),
-                tags = COALESCE($10, tags),
-                status = COALESCE($11, status),
+                tags = COALESCE($7, tags),
+                status = COALESCE($8, status),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, slug, name, description, system_prompt, default_model_id, temperature, max_tokens, tools, tags, status, created_at, updated_at
+            RETURNING id, slug, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -141,9 +135,6 @@ impl Database {
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
-        .bind(input.temperature)
-        .bind(input.max_tokens)
-        .bind(&input.tools)
         .bind(&input.tags)
         .bind(&input.status)
         .fetch_optional(&self.pool)

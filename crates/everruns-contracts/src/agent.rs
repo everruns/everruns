@@ -42,12 +42,6 @@ pub struct Agent {
     pub system_prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_model_id: Option<Uuid>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<i32>,
-    #[serde(default)]
-    pub tools: serde_json::Value,
     #[serde(default)]
     pub tags: Vec<String>,
     pub status: AgentStatus,
@@ -65,12 +59,6 @@ pub struct CreateAgentRequest {
     pub system_prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_model_id: Option<Uuid>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<i32>,
-    #[serde(default)]
-    pub tools: serde_json::Value,
     #[serde(default)]
     pub tags: Vec<String>,
 }
@@ -88,12 +76,6 @@ pub struct UpdateAgentRequest {
     pub system_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_model_id: Option<Uuid>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
