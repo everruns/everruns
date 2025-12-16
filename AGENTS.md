@@ -20,6 +20,7 @@ Available specs:
 - `specs/apis.md` - HTTP API endpoints
 - `specs/ag-ui-protocol.md` - AG-UI protocol integration
 - `specs/tool-execution.md` - Tool types and execution flow
+- `specs/business.md` - Business use cases and value propositions
 
 Specification format: Abstract and Requirements sections.
 
