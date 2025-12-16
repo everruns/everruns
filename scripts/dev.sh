@@ -196,38 +196,41 @@ case "$command" in
     ;;
 
   init)
-    subcommand="${2:-}"
-    echo "🔧 Installing development dependencies..."
+    echo "🔧 Installing all development dependencies..."
+    echo ""
+
+    # Rust tools
+    echo "📦 Rust tools:"
     if ! command -v sqlx &> /dev/null; then
       echo "  Installing sqlx-cli..."
       cargo install sqlx-cli --no-default-features --features postgres
     else
-      echo "  sqlx-cli already installed"
+      echo "  ✅ sqlx-cli already installed"
     fi
     if ! command -v cargo-deny &> /dev/null; then
       echo "  Installing cargo-deny..."
       cargo install cargo-deny --locked
     else
-      echo "  cargo-deny already installed"
+      echo "  ✅ cargo-deny already installed"
     fi
-    echo "✅ Development dependencies ready!"
 
-    # Handle 'init all' to also set up UI
-    if [ "$subcommand" = "all" ]; then
-      echo ""
-      echo "🖥️  Setting up UI..."
-      if ! command -v npm &> /dev/null; then
-        echo "  ⚠️  npm not found! Please install Node.js/npm to use the UI."
-        echo "     You can install it from: https://nodejs.org/"
-        exit 1
-      else
-        echo "  ✅ npm found: $(npm --version)"
-      fi
-      echo "  📦 Installing UI dependencies..."
-      cd apps/ui
-      npm install
-      echo "✅ UI setup complete!"
+    # UI dependencies
+    echo ""
+    echo "🖥️  UI setup:"
+    if ! command -v npm &> /dev/null; then
+      echo "  ⚠️  npm not found! Please install Node.js/npm to use the UI."
+      echo "     You can install it from: https://nodejs.org/"
+      exit 1
+    else
+      echo "  ✅ npm found: $(npm --version)"
     fi
+    echo "  📦 Installing UI dependencies..."
+    cd apps/ui
+    npm install
+    cd "$PROJECT_ROOT"
+
+    echo ""
+    echo "✅ All development dependencies ready!"
     ;;
 
   clean)
@@ -245,8 +248,7 @@ Everrun Development Helper
 Usage: $0 <command>
 
 Commands:
-  init        Install development dependencies (sqlx-cli, cargo-deny)
-  init all    Install all dependencies including UI (npm install)
+  init        Install all development dependencies (Rust tools + UI)
   start       Start Docker services (Postgres, Temporal)
   stop        Stop Docker services
   start-all   Start everything (Docker, migrations, API, UI)
@@ -266,8 +268,7 @@ Commands:
   help        Show this help message
 
 Examples:
-  $0 init            # First-time setup (install Rust tools)
-  $0 init all        # First-time setup (install all dependencies including UI)
+  $0 init            # First-time setup (install all dependencies)
   $0 start-all       # Start everything and run
   $0 stop-all        # Stop everything
 EOF

@@ -32,9 +32,8 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 ### Start Everything
 
 ```bash
-# Install tools (first time only)
+# Install all dependencies (first time only)
 ./scripts/dev.sh init
-./scripts/dev.sh ui-install
 
 # Start all services
 ./scripts/dev.sh start-all
