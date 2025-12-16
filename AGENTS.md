@@ -65,6 +65,9 @@ CI will fail if formatting, linting, or tests fail. Always run these locally bef
 The best way to verify the system is working is to run the **smoke test script**, which tests the full workflow including agent creation, threads, messages, runs, workflow execution, and optionally the UI:
 
 ```bash
+# First-time setup (installs Rust tools + UI dependencies)
+./scripts/dev.sh init
+
 # Option 1: Start everything at once
 ./scripts/dev.sh start-all
 
