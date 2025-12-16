@@ -32,7 +32,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Harnesses")).toBeInTheDocument();
+    expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
@@ -40,37 +40,37 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
-    const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
+    const agentsLink = screen.getByRole("link", { name: "Agents" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(dashboardLink).toHaveAttribute("href", "/dashboard");
-    expect(harnessesLink).toHaveAttribute("href", "/harnesses");
+    expect(agentsLink).toHaveAttribute("href", "/agents");
     expect(settingsLink).toHaveAttribute("href", "/settings");
   });
 
   it("does not render legacy navigation items", () => {
     render(<Sidebar />);
 
-    expect(screen.queryByText("Agents")).not.toBeInTheDocument();
+    expect(screen.queryByText("Harnesses")).not.toBeInTheDocument();
     expect(screen.queryByText("Runs")).not.toBeInTheDocument();
     expect(screen.queryByText("Chat")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /agents/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /harnesses/i })).not.toBeInTheDocument();
   });
 
   it("highlights the active navigation item", () => {
-    mockPathname.mockReturnValue("/harnesses");
+    mockPathname.mockReturnValue("/agents");
     render(<Sidebar />);
 
-    const harnessesLink = screen.getByRole("link", { name: /harnesses/i });
-    expect(harnessesLink).toHaveClass("bg-primary");
+    const agentsLink = screen.getByRole("link", { name: /agents/i });
+    expect(agentsLink).toHaveClass("bg-primary");
   });
 
   it("highlights navigation for nested routes", () => {
-    mockPathname.mockReturnValue("/harnesses/123/sessions/456");
+    mockPathname.mockReturnValue("/agents/123/sessions/456");
     render(<Sidebar />);
 
-    const harnessesLink = screen.getByRole("link", { name: /harnesses/i });
-    expect(harnessesLink).toHaveClass("bg-primary");
+    const agentsLink = screen.getByRole("link", { name: /agents/i });
+    expect(agentsLink).toHaveClass("bg-primary");
   });
 
   it("renders version in footer", () => {
@@ -86,8 +86,8 @@ describe("Sidebar", () => {
     const navLinks = screen.getAllByRole("link").filter(
       link => link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard")
     );
-    // Filter to only nav items (Dashboard, Harnesses, Settings)
-    const navItems = ["Dashboard", "Harnesses", "Settings"];
+    // Filter to only nav items (Dashboard, Agents, Settings)
+    const navItems = ["Dashboard", "Agents", "Settings"];
     const foundNavLinks = navLinks.filter(link =>
       navItems.some(item => link.textContent?.includes(item))
     );

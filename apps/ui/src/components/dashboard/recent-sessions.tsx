@@ -11,16 +11,16 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Session, Harness } from "@/lib/api/types";
+import type { Session, Agent } from "@/lib/api/types";
 
 interface RecentSessionsProps {
   sessions: Session[];
-  harnesses: Harness[];
+  agents: Agent[];
 }
 
-export function RecentSessions({ sessions, harnesses }: RecentSessionsProps) {
+export function RecentSessions({ sessions, agents }: RecentSessionsProps) {
   const recentSessions = sessions.slice(0, 10);
-  const harnessMap = new Map(harnesses.map((h) => [h.id, h]));
+  const agentMap = new Map(agents.map((a) => [a.id, a]));
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleString();
@@ -36,13 +36,16 @@ export function RecentSessions({ sessions, harnesses }: RecentSessionsProps) {
   };
 
   const getStatusBadge = (session: Session) => {
-    if (session.finished_at) {
-      return <Badge variant="outline" className="bg-green-100 text-green-800">Completed</Badge>;
+    switch (session.status) {
+      case "completed":
+        return <Badge variant="outline" className="bg-green-100 text-green-800">Completed</Badge>;
+      case "running":
+        return <Badge variant="default">Running</Badge>;
+      case "failed":
+        return <Badge variant="destructive">Failed</Badge>;
+      default:
+        return <Badge variant="secondary">Pending</Badge>;
     }
-    if (session.started_at) {
-      return <Badge variant="default">Running</Badge>;
-    }
-    return <Badge variant="secondary">Pending</Badge>;
   };
 
   return (
@@ -53,14 +56,14 @@ export function RecentSessions({ sessions, harnesses }: RecentSessionsProps) {
       <CardContent>
         {recentSessions.length === 0 ? (
           <p className="text-center text-muted-foreground py-8">
-            No sessions yet. Create a harness and start a session to begin.
+            No sessions yet. Create an agent and start a session to begin.
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Session</TableHead>
-                <TableHead>Harness</TableHead>
+                <TableHead>Agent</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Started</TableHead>
                 <TableHead>Duration</TableHead>
@@ -68,12 +71,12 @@ export function RecentSessions({ sessions, harnesses }: RecentSessionsProps) {
             </TableHeader>
             <TableBody>
               {recentSessions.map((session) => {
-                const harness = harnessMap.get(session.harness_id);
+                const agent = agentMap.get(session.agent_id);
                 return (
                   <TableRow key={session.id}>
                     <TableCell>
                       <Link
-                        href={`/harnesses/${session.harness_id}/sessions/${session.id}`}
+                        href={`/agents/${session.agent_id}/sessions/${session.id}`}
                         className="font-mono text-sm hover:underline"
                       >
                         {session.title || session.id.slice(0, 8) + "..."}
@@ -81,10 +84,10 @@ export function RecentSessions({ sessions, harnesses }: RecentSessionsProps) {
                     </TableCell>
                     <TableCell>
                       <Link
-                        href={`/harnesses/${session.harness_id}`}
+                        href={`/agents/${session.agent_id}`}
                         className="hover:underline"
                       >
-                        {harness?.display_name || "Unknown"}
+                        {agent?.name || "Unknown"}
                       </Link>
                     </TableCell>
                     <TableCell>
