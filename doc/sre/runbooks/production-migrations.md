@@ -1,17 +1,16 @@
 # Production Database Migrations Runbook
 
-This runbook describes how to run database migrations in production ECS environments.
+This runbook describes how to run database migrations in production environments.
 
 ## Overview
 
-Database migrations should be run **before** deploying new application code that depends on schema changes. The admin container provides a safe way to run migrations as a one-off ECS task.
+Database migrations should be run **before** deploying new application code that depends on schema changes. The admin container provides a safe way to run migrations as a one-off task.
 
 ## Prerequisites
 
-- AWS CLI configured with appropriate credentials
-- Access to the ECS cluster
-- The `everruns-admin` task definition registered
+- Access to run containers in your production environment
 - Network access to the production database
+- The `everruns-admin` container image
 
 ## Migration Strategy
 
@@ -40,14 +39,9 @@ Database migrations should be run **before** deploying new application code that
 Before running migrations, check which migrations have been applied:
 
 ```bash
-# Set environment variables
-export ECS_CLUSTER="everruns"
-export ECS_SUBNETS="subnet-xxx,subnet-yyy"
-export ECS_SECURITY_GROUP="sg-zzz"
-export AWS_REGION="us-east-1"
-
-# Check migration status
-./infrastructure/ecs/run-admin-task.sh migrate-info
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    everruns-admin migrate-info
 ```
 
 Expected output shows applied and pending migrations:
@@ -62,10 +56,7 @@ Expected output shows applied and pending migrations:
 Before applying, review the migration SQL:
 
 ```bash
-# List migration files
 ls -la crates/everruns-storage/migrations/
-
-# Review specific migration
 cat crates/everruns-storage/migrations/003_new_feature.sql
 ```
 
@@ -80,7 +71,9 @@ cat crates/everruns-storage/migrations/003_new_feature.sql
 Execute the pending migrations:
 
 ```bash
-./infrastructure/ecs/run-admin-task.sh migrate
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    everruns-admin migrate
 ```
 
 The task will:
@@ -94,7 +87,9 @@ The task will:
 Confirm migrations were applied:
 
 ```bash
-./infrastructure/ecs/run-admin-task.sh migrate-info
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    everruns-admin migrate-info
 ```
 
 All migrations should show as `installed`.
@@ -102,25 +97,6 @@ All migrations should show as `installed`.
 ### Step 5: Deploy Application
 
 Once migrations are verified, proceed with the application deployment.
-
-## Running Locally (Docker)
-
-For testing migrations locally before production:
-
-```bash
-# Build admin container
-docker build --target admin -f docker/Dockerfile.unified -t everruns-admin .
-
-# Check status
-docker run --rm \
-    -e DATABASE_URL="postgres://user:pass@host:5432/everruns" \
-    everruns-admin migrate-info
-
-# Run migrations
-docker run --rm \
-    -e DATABASE_URL="postgres://user:pass@host:5432/everruns" \
-    everruns-admin migrate
-```
 
 ## Rollback Procedure
 
@@ -161,29 +137,21 @@ INSERT INTO _sqlx_migrations (version, description, installed_on, success, check
 VALUES (20240201000000, '003_new_feature', NOW(), true, '...');
 ```
 
-### Task Fails to Start
+### Container Fails to Start
 
 Common issues:
 
-1. **Secrets not found**: Verify secret ARNs in task definition
-2. **Network issues**: Check security group allows database access
-3. **IAM permissions**: Verify execution role can access secrets
-
-```bash
-# Check task failure reason
-aws ecs describe-tasks \
-    --cluster everruns \
-    --tasks <task-arn> \
-    --query 'tasks[0].stoppedReason'
-```
+1. **Database not reachable**: Check network connectivity and credentials
+2. **Invalid DATABASE_URL**: Verify connection string format
+3. **Missing secrets**: Ensure environment variables are set
 
 ### Database Connection Timeout
 
 If migrations timeout:
 
-1. Check security group rules
-2. Verify database is accessible from the subnets
-3. Check database credentials in Secrets Manager
+1. Check network rules allow database access
+2. Verify database is accessible from the container environment
+3. Check database credentials
 
 ## Emergency: Production Database Issues
 
@@ -197,26 +165,6 @@ If migrations cause production issues:
 4. **Execute the fix** using admin container
 5. **Verify application health**
 6. **Post-incident review**
-
-## CI/CD Integration
-
-For automated deployments, integrate migration check:
-
-```yaml
-# Example GitHub Actions step
-- name: Run Migrations
-  run: |
-    ./infrastructure/ecs/run-admin-task.sh migrate
-  env:
-    ECS_CLUSTER: everruns
-    ECS_SUBNETS: ${{ secrets.ECS_SUBNETS }}
-    ECS_SECURITY_GROUP: ${{ secrets.ECS_SECURITY_GROUP }}
-    AWS_REGION: us-east-1
-
-- name: Deploy Application
-  needs: [run-migrations]
-  # ... deployment steps
-```
 
 ## Best Practices
 

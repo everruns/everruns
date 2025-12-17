@@ -12,12 +12,10 @@ Everruns uses envelope encryption with versioned keys. Key rotation is a multi-p
 
 ## Prerequisites
 
-- Access to AWS Secrets Manager (or deployment config)
-- Access to ECS cluster for running admin tasks
+- Access to secrets management (environment config or secrets manager)
+- Ability to run the admin container in production
 - Ability to deploy application updates
 - The `reencrypt-secrets` CLI tool (available in the admin container)
-
-**Related:** See [ECS Admin Tasks Runbook](./ecs-admin-tasks.md) for general admin task procedures.
 
 ## Rotation Procedure
 
@@ -55,46 +53,16 @@ Deploy the application with both keys configured. At this point:
 
 Use the `reencrypt-secrets` CLI tool to migrate all data to the new key.
 
-#### Running in ECS (Production)
-
-For production environments, use the admin container via ECS:
-
-```bash
-# Set up ECS environment
-export ECS_CLUSTER="everruns"
-export ECS_SUBNETS="subnet-xxx,subnet-yyy"
-export ECS_SECURITY_GROUP="sg-zzz"
-export AWS_REGION="us-east-1"
-
-# Dry run
-./infrastructure/ecs/run-admin-task.sh reencrypt --dry-run
-
-# Execute re-encryption
-./infrastructure/ecs/run-admin-task.sh reencrypt --batch-size 50
-```
-
-#### Running Locally (Docker)
-
-For local or development environments:
-
-```bash
-docker run --rm \
-    -e DATABASE_URL="postgres://..." \
-    -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
-    -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
-    everruns-admin reencrypt --dry-run
-```
-
 #### Step 1: Dry Run (Preview Changes)
 
 First, run in dry-run mode to see what would be re-encrypted:
 
 ```bash
-# ECS
-./infrastructure/ecs/run-admin-task.sh reencrypt --dry-run
-
-# Or locally
-reencrypt-secrets --dry-run
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
+    -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
+    everruns-admin reencrypt --dry-run
 ```
 
 Example output:
@@ -112,11 +80,11 @@ Example output:
 Once satisfied with the dry run, execute the actual re-encryption:
 
 ```bash
-# ECS (production)
-./infrastructure/ecs/run-admin-task.sh reencrypt --batch-size 50
-
-# Local
-reencrypt-secrets --batch-size 50
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
+    -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
+    everruns-admin reencrypt --batch-size 50
 ```
 
 #### CLI Options
@@ -137,11 +105,11 @@ OPTIONS:
 Confirm all data has been migrated by running another dry run:
 
 ```bash
-# ECS
-./infrastructure/ecs/run-admin-task.sh reencrypt --dry-run
-
-# Local
-reencrypt-secrets --dry-run
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
+    -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
+    everruns-admin reencrypt --dry-run
 ```
 
 Expected output:
@@ -205,7 +173,11 @@ If a key is suspected compromised:
 1. **Immediately** generate new key and deploy with both keys
 2. Run re-encryption CLI with **highest priority**:
    ```bash
-   reencrypt-secrets
+   docker run --rm \
+       -e DATABASE_URL="$DATABASE_URL" \
+       -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
+       -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
+       everruns-admin reencrypt
    ```
 3. Remove compromised key as soon as all data is migrated
 4. Rotate any credentials that may have been exposed
