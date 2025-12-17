@@ -8,6 +8,9 @@
 // - Can run fully in-process or decomposed into steps (for Temporal integration)
 // - Emits AG-UI compatible events for SSE streaming
 // - Configuration via AgentConfig (can be built from Agent entity or created directly)
+// - Tools are defined via a Tool trait for flexibility (function-style tools)
+// - ToolRegistry implements ToolExecutor for easy tool management
+// - Error handling distinguishes between user-visible and internal errors
 
 pub mod config;
 pub mod error;
@@ -15,6 +18,7 @@ pub mod events;
 pub mod executor;
 pub mod message;
 pub mod step;
+pub mod tools;
 pub mod traits;
 
 // In-memory implementations for examples and testing
@@ -28,6 +32,12 @@ pub use executor::AgentLoop;
 pub use message::{ConversationMessage, MessageRole};
 pub use step::{LoopStep, StepKind, StepResult};
 pub use traits::{EventEmitter, LlmProvider, MessageStore, ToolExecutor};
+
+// Tool abstraction re-exports
+pub use tools::{
+    EchoTool, FailingTool, GetCurrentTime, Tool, ToolExecutionResult, ToolInternalError,
+    ToolRegistry, ToolRegistryBuilder,
+};
 
 // Re-export AG-UI events for compatibility
 pub use everruns_contracts::events::AgUiEvent;

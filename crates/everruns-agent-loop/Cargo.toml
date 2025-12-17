@@ -43,3 +43,7 @@ tracing-subscriber.workspace = true
 [[example]]
 name = "mock_demo"
 path = "examples/mock_demo.rs"
+
+[[example]]
+name = "tool_demo"
+path = "examples/tool_demo.rs"
