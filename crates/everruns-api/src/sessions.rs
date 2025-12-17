@@ -53,23 +53,23 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         // Session CRUD under agent
         .route(
-            "/v1/agents/{agent_id}/sessions",
+            "/v1/agents/:agent_id/sessions",
             post(create_session).get(list_sessions),
         )
         .route(
-            "/v1/agents/{agent_id}/sessions/{session_id}",
+            "/v1/agents/:agent_id/sessions/:session_id",
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
         )
         // Messages under session (PRIMARY data)
         .route(
-            "/v1/agents/{agent_id}/sessions/{session_id}/messages",
+            "/v1/agents/:agent_id/sessions/:session_id/messages",
             post(create_message).get(list_messages),
         )
         // Events under session (SSE notifications)
         .route(
-            "/v1/agents/{agent_id}/sessions/{session_id}/events",
+            "/v1/agents/:agent_id/sessions/:session_id/events",
             get(stream_events),
         )
         .with_state(state)

@@ -35,7 +35,7 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/agents", post(create_agent).get(list_agents))
         .route(
-            "/v1/agents/{agent_id}",
+            "/v1/agents/:agent_id",
             get(get_agent).patch(update_agent).delete(delete_agent),
         )
         .with_state(state)
