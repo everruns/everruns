@@ -119,7 +119,7 @@ RUN cargo build --release --bin reencrypt-secrets
 # Stage 5c: Admin Runtime image
 # ============================================================================
 # Admin container for running migrations, key rotation, and other admin tasks
-# in production ECS environments.
+# in production environments.
 #
 # Usage:
 #   docker build --target admin -f docker/Dockerfile.unified -t everruns-admin .

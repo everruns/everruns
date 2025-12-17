@@ -29,6 +29,9 @@ jobs:
           - target: worker
             dockerfile: docker/Dockerfile.unified
             image_name: everruns-worker
+          - target: admin
+            dockerfile: docker/Dockerfile.unified
+            image_name: everruns-admin
           - target: runner
             dockerfile: apps/ui/Dockerfile
             image_name: everruns-ui
