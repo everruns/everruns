@@ -207,12 +207,8 @@ async fn main() -> Result<()> {
     // Build main router with optional prefix for API routes
     let mut app = Router::new().route("/health", get(health).with_state(health_state));
 
-    // Apply API prefix if configured, otherwise merge directly
-    if api_prefix.is_empty() {
-        app = app.merge(api_routes);
-    } else {
-        app = app.nest(&api_prefix, api_routes);
-    }
+    // Apply API prefix if configured
+    app = app.merge(build_router_with_prefix(api_routes, &api_prefix));
 
     // Add Swagger UI and middleware
     let app = app
@@ -235,4 +231,79 @@ async fn main() -> Result<()> {
     axum::serve(listener, app).await.context("Server error")?;
 
     Ok(())
+}
+
+/// Build router with optional API prefix (extracted for testing)
+fn build_router_with_prefix<S: Clone + Send + Sync + 'static>(
+    api_routes: Router<S>,
+    api_prefix: &str,
+) -> Router<S> {
+    if api_prefix.is_empty() {
+        api_routes
+    } else {
+        Router::new().nest(api_prefix, api_routes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    fn test_routes() -> Router {
+        Router::new().route("/v1/test", get(|| async { "ok" }))
+    }
+
+    #[tokio::test]
+    async fn test_api_prefix_empty() {
+        let app = build_router_with_prefix(test_routes(), "");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"ok");
+    }
+
+    #[tokio::test]
+    async fn test_api_prefix_set() {
+        let app = build_router_with_prefix(test_routes(), "/api");
+
+        // Route should work with prefix
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+
+        // Route should NOT work without prefix
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 404);
+    }
 }
