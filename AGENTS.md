@@ -33,6 +33,10 @@ Available skills:
 ### Local dev expectations
 
 - A `harness/docker-compose.yml` brings up Temporal + Postgres + required dependencies
+- `protoc` (Protocol Buffers compiler) is required for building Temporal SDK dependencies
+  - Debian/Ubuntu: `apt-get install protobuf-compiler`
+  - macOS: `brew install protobuf`
+  - Or download from https://github.com/protocolbuffers/protobuf/releases
 
 ### Rust conventions
 
@@ -127,7 +131,7 @@ High-level approach.
 
 ## Testing the system
 
-The best way to verify the system is working is to run the **smoke test script**, which tests the full workflow including agent creation, threads, messages, runs, workflow execution, and optionally the UI:
+The best way to verify the system is working is to run the **smoke test script**, which tests the full workflow including agent creation, sessions, messages, workflow execution, and optionally the UI:
 
 ```bash
 # First-time setup (installs Rust tools + UI dependencies)
@@ -148,10 +152,8 @@ The best way to verify the system is working is to run the **smoke test script**
 Expected output:
 - ✅ Health check passes
 - ✅ Agent CRUD operations work
-- ✅ Agent versions can be created
-- ✅ Threads and messages work
-- ✅ Runs are created and workflows execute
-- ✅ Run status transitions: pending → running → completed
+- ✅ Sessions and messages work
+- ✅ Session status transitions: pending → running → pending (cycles)
 - ✅ OpenAPI spec is available
 - ✅ UI pages load correctly (with --with-ui)
 
