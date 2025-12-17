@@ -1,9 +1,9 @@
-// Temporal workflow implementations
+// Temporal workflow implementations (M2)
 // Decision: Workflows are state machines that produce commands in response to activations
 //
-// The agent run workflow orchestrates:
+// The session workflow orchestrates:
 // 1. Loading agent configuration
-// 2. Loading thread messages
+// 2. Loading session messages
 // 3. Calling LLM (may return tool calls)
 // 4. Executing tools if needed
 // 5. Iterating until done or max iterations reached
@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tracing::{info, warn};
 
 use super::types::*;
@@ -20,14 +21,14 @@ use super::types::*;
 /// Maximum number of tool iterations before forcing completion
 const MAX_TOOL_ITERATIONS: u8 = 10;
 
-/// Workflow state for agent run
+/// Workflow state for session execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentRunWorkflowState {
     /// Initial state - need to load agent config
     Starting,
     /// Loading agent configuration
     LoadingAgent { activity_seq: u32 },
-    /// Loading thread messages
+    /// Loading session messages
     LoadingMessages {
         activity_seq: u32,
         agent_config: LoadAgentOutput,
@@ -56,7 +57,7 @@ pub enum AgentRunWorkflowState {
         has_more_tools: bool,
         assistant_text: String,
     },
-    /// Updating run status
+    /// Updating session status
     UpdatingStatus {
         activity_seq: u32,
         final_status: String,
@@ -84,11 +85,11 @@ pub enum WorkflowAction {
     None,
 }
 
-/// Agent run workflow logic
+/// Session workflow logic (M2)
 #[derive(Debug)]
 pub struct AgentRunWorkflow {
     /// Workflow input
-    input: AgentRunWorkflowInput,
+    input: SessionWorkflowInput,
     /// Current state
     state: AgentRunWorkflowState,
     /// Activity sequence counter for generating unique IDs
@@ -106,7 +107,7 @@ pub enum ActivityResult {
 
 impl AgentRunWorkflow {
     /// Create a new workflow instance
-    pub fn new(input: AgentRunWorkflowInput) -> Self {
+    pub fn new(input: SessionWorkflowInput) -> Self {
         Self {
             input,
             state: AgentRunWorkflowState::Starting,
@@ -121,7 +122,7 @@ impl AgentRunWorkflow {
     }
 
     /// Get the workflow input
-    pub fn input(&self) -> &AgentRunWorkflowInput {
+    pub fn input(&self) -> &SessionWorkflowInput {
         &self.input
     }
 
@@ -139,9 +140,9 @@ impl AgentRunWorkflow {
     /// Process workflow start - called when workflow begins
     pub fn on_start(&mut self) -> Vec<WorkflowAction> {
         info!(
-            run_id = %self.input.run_id,
+            session_id = %self.input.session_id,
             agent_id = %self.input.agent_id,
-            "Starting agent run workflow"
+            "Starting session workflow"
         );
 
         // First, update status to running
@@ -149,7 +150,7 @@ impl AgentRunWorkflow {
         let seq = self.activity_seq;
 
         let input = UpdateStatusInput {
-            run_id: self.input.run_id,
+            session_id: self.input.session_id,
             status: "running".to_string(),
             started_at: Some(chrono::Utc::now()),
             finished_at: None,
@@ -226,7 +227,7 @@ impl AgentRunWorkflow {
                     activity_id,
                     activity_type: activity_names::LOAD_MESSAGES.to_string(),
                     input: serde_json::to_value(&LoadMessagesInput {
-                        thread_id: self.input.thread_id,
+                        session_id: self.input.session_id,
                     })
                     .unwrap(),
                 }]
@@ -328,11 +329,11 @@ impl AgentRunWorkflow {
                 // Check iteration limit
                 if iteration >= MAX_TOOL_ITERATIONS {
                     warn!(
-                        run_id = %self.input.run_id,
+                        session_id = %self.input.session_id,
                         iteration = iteration,
                         "Max tool iterations reached"
                     );
-                    return self.complete_workflow("completed".to_string());
+                    return self.complete_workflow("pending".to_string());
                 }
 
                 // Continue with another LLM call
@@ -347,15 +348,15 @@ impl AgentRunWorkflow {
                 let _iteration = *iteration;
                 let _has_more_tools = *has_more_tools;
 
-                // Message saved, complete the workflow
-                self.complete_workflow("completed".to_string())
+                // Message saved, complete the workflow (back to pending for M2)
+                self.complete_workflow("pending".to_string())
             }
 
             AgentRunWorkflowState::UpdatingStatus { final_status, .. } => {
                 let status = final_status.clone();
-                info!(run_id = %self.input.run_id, status = %status, "Workflow completing");
+                info!(session_id = %self.input.session_id, status = %status, "Workflow completing");
 
-                self.state = if status == "completed" {
+                self.state = if status == "pending" || status == "completed" {
                     AgentRunWorkflowState::Completed
                 } else {
                     AgentRunWorkflowState::Failed {
@@ -401,7 +402,7 @@ impl AgentRunWorkflow {
         let seq = self.activity_seq;
 
         let input = CallLlmInput {
-            run_id: self.input.run_id,
+            session_id: self.input.session_id,
             model_id: agent_config.model_id.clone(),
             messages: messages.clone(),
             system_prompt: agent_config.system_prompt.clone(),
@@ -435,8 +436,7 @@ impl AgentRunWorkflow {
         let seq = self.activity_seq;
 
         let input = ExecuteToolsInput {
-            run_id: self.input.run_id,
-            thread_id: self.input.thread_id,
+            session_id: self.input.session_id,
             tool_calls: tool_calls.clone(),
         };
 
@@ -467,9 +467,9 @@ impl AgentRunWorkflow {
         let seq = self.activity_seq;
 
         let input = SaveMessageInput {
-            thread_id: self.input.thread_id,
+            session_id: self.input.session_id,
             role: "assistant".to_string(),
-            content: assistant_text.clone(),
+            content: json!({ "text": assistant_text.clone() }),
         };
 
         self.state = AgentRunWorkflowState::SavingMessage {
@@ -494,10 +494,10 @@ impl AgentRunWorkflow {
         let seq = self.activity_seq;
 
         let input = UpdateStatusInput {
-            run_id: self.input.run_id,
+            session_id: self.input.session_id,
             status: status.clone(),
             started_at: None,
-            finished_at: Some(chrono::Utc::now()),
+            finished_at: None, // Don't set finished_at for M2 - sessions stay open
         };
 
         self.state = AgentRunWorkflowState::UpdatingStatus {
@@ -518,12 +518,12 @@ impl AgentRunWorkflow {
             error: error.to_string(),
         };
 
-        // Update run status to failed
+        // Update session status to failed
         let activity_id = self.next_activity_id("fail-status");
         let seq = self.activity_seq;
 
         let input = UpdateStatusInput {
-            run_id: self.input.run_id,
+            session_id: self.input.session_id,
             status: "failed".to_string(),
             started_at: None,
             finished_at: Some(chrono::Utc::now()),
@@ -547,11 +547,10 @@ mod tests {
     use super::*;
     use uuid::Uuid;
 
-    fn test_input() -> AgentRunWorkflowInput {
-        AgentRunWorkflowInput {
-            run_id: Uuid::now_v7(),
+    fn test_input() -> SessionWorkflowInput {
+        SessionWorkflowInput {
+            session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
-            thread_id: Uuid::now_v7(),
         }
     }
 

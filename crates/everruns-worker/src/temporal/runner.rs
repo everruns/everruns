@@ -1,4 +1,4 @@
-// Temporal-based agent runner
+// Temporal-based session runner (M2)
 // Decision: Use true Temporal workflows for durable, distributed execution
 //
 // Architecture:
@@ -9,7 +9,6 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_storage::models::UpdateRun;
 use everruns_storage::repositories::Database;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -18,10 +17,10 @@ use uuid::Uuid;
 use crate::runner::{AgentRunner, RunnerConfig};
 
 use super::client::TemporalClient;
-use super::types::AgentRunWorkflowInput;
+use super::types::SessionWorkflowInput;
 use super::worker::TemporalWorker;
 
-/// Temporal-based agent runner using true Temporal workflows
+/// Temporal-based session runner using true Temporal workflows
 ///
 /// This runner connects to a Temporal server and starts workflows.
 /// Actual execution happens in the worker process that polls for tasks.
@@ -55,37 +54,29 @@ impl TemporalRunner {
 
 #[async_trait]
 impl AgentRunner for TemporalRunner {
-    async fn start_run(&self, run_id: Uuid, agent_id: Uuid, thread_id: Uuid) -> Result<()> {
+    /// Start a session workflow
+    /// In M2: run_id = session_id, agent_id = agent_id, thread_id = session_id
+    async fn start_run(&self, session_id: Uuid, agent_id: Uuid, _thread_id: Uuid) -> Result<()> {
         info!(
-            run_id = %run_id,
+            session_id = %session_id,
             agent_id = %agent_id,
-            thread_id = %thread_id,
-            "Starting Temporal workflow"
+            "Starting Temporal workflow for session"
         );
 
         // Build workflow input
-        let input = AgentRunWorkflowInput {
-            run_id,
+        let input = SessionWorkflowInput {
+            session_id,
             agent_id,
-            thread_id,
         };
 
         // Start the workflow on Temporal server
-        let response = self.client.start_agent_run_workflow(&input).await?;
+        let response = self.client.start_session_workflow(&input).await?;
 
-        // Record Temporal workflow ID for observability
-        let workflow_id = TemporalClient::workflow_id_for_run(run_id);
-        let update = UpdateRun {
-            status: None,
-            temporal_workflow_id: Some(workflow_id.clone()),
-            temporal_run_id: Some(response.run_id.clone()),
-            started_at: None,
-            finished_at: None,
-        };
-        self.db.update_run(run_id, update).await?;
+        // Workflow ID is derived from session_id (session-{session_id})
+        let workflow_id = TemporalClient::workflow_id_for_session(session_id);
 
         info!(
-            run_id = %run_id,
+            session_id = %session_id,
             workflow_id = %workflow_id,
             temporal_run_id = %response.run_id,
             "Temporal workflow started successfully"
@@ -94,15 +85,15 @@ impl AgentRunner for TemporalRunner {
         Ok(())
     }
 
-    async fn cancel_run(&self, run_id: Uuid) -> Result<()> {
-        info!(run_id = %run_id, "Cancelling Temporal workflow");
+    async fn cancel_run(&self, session_id: Uuid) -> Result<()> {
+        info!(session_id = %session_id, "Cancelling Temporal workflow");
 
         // TODO: Implement workflow cancellation via Temporal API
         // For now, we'll use signal-based cancellation when supported
 
-        let workflow_id = TemporalClient::workflow_id_for_run(run_id);
+        let workflow_id = TemporalClient::workflow_id_for_session(session_id);
         info!(
-            run_id = %run_id,
+            session_id = %session_id,
             workflow_id = %workflow_id,
             "Workflow cancellation requested (not yet implemented)"
         );
@@ -110,10 +101,10 @@ impl AgentRunner for TemporalRunner {
         Ok(())
     }
 
-    async fn is_running(&self, run_id: Uuid) -> bool {
+    async fn is_running(&self, session_id: Uuid) -> bool {
         // Check with database since workflow state is persisted there
-        match self.db.get_run(run_id).await {
-            Ok(Some(run)) => run.status == "running",
+        match self.db.get_session(session_id).await {
+            Ok(Some(session)) => session.status == "running",
             _ => false,
         }
     }
@@ -157,9 +148,9 @@ mod tests {
 
     #[test]
     fn test_workflow_id_format() {
-        let run_id = Uuid::now_v7();
-        let workflow_id = TemporalClient::workflow_id_for_run(run_id);
-        assert!(workflow_id.starts_with("agent-run-"));
-        assert!(workflow_id.contains(&run_id.to_string()));
+        let session_id = Uuid::now_v7();
+        let workflow_id = TemporalClient::workflow_id_for_session(session_id);
+        assert!(workflow_id.starts_with("session-"));
+        assert!(workflow_id.contains(&session_id.to_string()));
     }
 }

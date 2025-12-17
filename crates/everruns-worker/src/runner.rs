@@ -108,12 +108,13 @@ pub async fn create_runner(
             Ok(Arc::new(runner))
         }
         RunnerMode::Temporal => {
-            // Temporal runner disabled during M2 migration
-            // Will be re-enabled when Temporal integration is updated for Harness/Session model
-            tracing::warn!(
-                "Temporal runner requested but disabled during M2 migration, using in-process runner"
+            tracing::info!(
+                address = %config.temporal_address(),
+                namespace = %config.temporal_namespace(),
+                task_queue = %config.temporal_task_queue(),
+                "Creating Temporal agent runner"
             );
-            let runner = crate::runner_inprocess::InProcessRunner::new(db);
+            let runner = crate::temporal::TemporalRunner::new(config.clone(), db).await?;
             Ok(Arc::new(runner))
         }
     }

@@ -138,14 +138,11 @@ export default function SessionDetailPage({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {session.status === "completed" && (
-              <Badge variant="outline">Completed</Badge>
-            )}
             {session.status === "running" && (
-              <Badge variant="default">Running</Badge>
+              <Badge variant="default">Processing...</Badge>
             )}
             {session.status === "pending" && (
-              <Badge variant="secondary">Pending</Badge>
+              <Badge variant="secondary">Ready</Badge>
             )}
             {session.status === "failed" && (
               <Badge variant="destructive">Failed</Badge>
@@ -220,7 +217,7 @@ export default function SessionDetailPage({
             onKeyDown={handleKeyDown}
             placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
             className="flex-1 min-h-[60px] max-h-[200px] resize-none"
-            disabled={sendMessage.isPending || session.status === "completed" || session.status === "failed"}
+            disabled={sendMessage.isPending || session.status === "failed"}
           />
           <Button
             type="submit"
@@ -229,7 +226,6 @@ export default function SessionDetailPage({
             disabled={
               !inputValue.trim() ||
               sendMessage.isPending ||
-              session.status === "completed" ||
               session.status === "failed"
             }
           >
@@ -240,9 +236,9 @@ export default function SessionDetailPage({
             )}
           </Button>
         </form>
-        {(session.status === "completed" || session.status === "failed") && (
+        {session.status === "failed" && (
           <p className="text-xs text-muted-foreground text-center mt-2">
-            This session has ended. Start a new session to continue chatting.
+            This session has failed. Start a new session to continue chatting.
           </p>
         )}
       </div>

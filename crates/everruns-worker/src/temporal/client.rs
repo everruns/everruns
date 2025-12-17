@@ -1,4 +1,4 @@
-// Temporal client wrapper for workflow management
+// Temporal client wrapper for workflow management (M2)
 // Decision: Wrap the temporal-sdk-core APIs behind a simple interface for our use case
 //
 // This module provides:
@@ -22,7 +22,7 @@ use temporal_sdk_core::{
 
 use crate::runner::RunnerConfig;
 
-use super::types::{workflow_names, AgentRunWorkflowInput};
+use super::types::{workflow_names, SessionWorkflowInput};
 
 /// Client for interacting with Temporal server
 /// Used by the API to start workflows
@@ -66,19 +66,18 @@ impl TemporalClient {
         })
     }
 
-    /// Start a new agent run workflow
-    pub async fn start_agent_run_workflow(
+    /// Start a new session workflow (M2)
+    pub async fn start_session_workflow(
         &self,
-        input: &AgentRunWorkflowInput,
+        input: &SessionWorkflowInput,
     ) -> Result<StartWorkflowExecutionResponse> {
-        let workflow_id = format!("agent-run-{}", input.run_id);
+        let workflow_id = Self::workflow_id_for_session(input.session_id);
 
         info!(
             workflow_id = %workflow_id,
-            run_id = %input.run_id,
+            session_id = %input.session_id,
             agent_id = %input.agent_id,
-            thread_id = %input.thread_id,
-            "Starting agent run workflow"
+            "Starting session workflow"
         );
 
         // Serialize workflow input
@@ -94,7 +93,7 @@ impl TemporalClient {
             namespace: self.config.temporal_namespace(),
             workflow_id: workflow_id.clone(),
             workflow_type: Some(WorkflowType {
-                name: workflow_names::AGENT_RUN.to_string(),
+                name: workflow_names::SESSION_WORKFLOW.to_string(),
             }),
             task_queue: Some(TaskQueue {
                 name: self.config.temporal_task_queue(),
@@ -126,9 +125,9 @@ impl TemporalClient {
         Ok(response)
     }
 
-    /// Get the workflow ID for a run
-    pub fn workflow_id_for_run(run_id: uuid::Uuid) -> String {
-        format!("agent-run-{}", run_id)
+    /// Get the workflow ID for a session
+    pub fn workflow_id_for_session(session_id: uuid::Uuid) -> String {
+        format!("session-{}", session_id)
     }
 
     /// Get the underlying gateway for advanced operations
@@ -203,9 +202,9 @@ mod tests {
 
     #[test]
     fn test_workflow_id_generation() {
-        let run_id = uuid::Uuid::now_v7();
-        let workflow_id = TemporalClient::workflow_id_for_run(run_id);
-        assert!(workflow_id.starts_with("agent-run-"));
-        assert!(workflow_id.contains(&run_id.to_string()));
+        let session_id = uuid::Uuid::now_v7();
+        let workflow_id = TemporalClient::workflow_id_for_session(session_id);
+        assert!(workflow_id.starts_with("session-"));
+        assert!(workflow_id.contains(&session_id.to_string()));
     }
 }
