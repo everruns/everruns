@@ -1,10 +1,11 @@
-"use client";
+// Agent hooks (M2)
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  getAgents,
-  getAgent,
   createAgent,
+  deleteAgent,
+  getAgent,
+  listAgents,
   updateAgent,
 } from "@/lib/api/agents";
 import type { CreateAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
@@ -12,36 +13,54 @@ import type { CreateAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
 export function useAgents() {
   return useQuery({
     queryKey: ["agents"],
-    queryFn: getAgents,
-    staleTime: 30000, // 30 seconds
+    queryFn: listAgents,
   });
 }
 
-export function useAgent(agentId: string) {
+export function useAgent(agentId: string | undefined) {
   return useQuery({
-    queryKey: ["agents", agentId],
-    queryFn: () => getAgent(agentId),
+    queryKey: ["agent", agentId],
+    queryFn: () => getAgent(agentId!),
     enabled: !!agentId,
   });
 }
 
 export function useCreateAgent() {
   const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: (data: CreateAgentRequest) => createAgent(data),
+    mutationFn: (request: CreateAgentRequest) => createAgent(request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
     },
   });
 }
 
-export function useUpdateAgent(agentId: string) {
+export function useUpdateAgent() {
   const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: (data: UpdateAgentRequest) => updateAgent(agentId, data),
+    mutationFn: ({
+      agentId,
+      request,
+    }: {
+      agentId: string;
+      request: UpdateAgentRequest;
+    }) => updateAgent(agentId, request),
+    onSuccess: (_, { agentId }) => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: ["agent", agentId] });
+    },
+  });
+}
+
+export function useDeleteAgent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (agentId: string) => deleteAgent(agentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
-      queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
     },
   });
 }

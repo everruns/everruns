@@ -1,12 +1,12 @@
 // Everruns API server
 // Decision: Auth will be added later via OAuth (dashboard login)
+// M2: Agent/Session/Messages model with Events as SSE notifications
 
 mod agents;
-mod agui;
 mod llm_models;
 mod llm_providers;
-mod runs;
-mod threads;
+mod services;
+mod sessions;
 
 use anyhow::{Context, Result};
 use axum::{extract::State, routing::get, Json, Router};
@@ -56,14 +56,15 @@ struct HealthState {
         agents::list_agents,
         agents::get_agent,
         agents::update_agent,
-        threads::create_thread,
-        threads::get_thread,
-        threads::create_message,
-        threads::list_messages,
-        runs::list_runs,
-        runs::create_run,
-        runs::get_run,
-        runs::cancel_run,
+        agents::delete_agent,
+        sessions::create_session,
+        sessions::list_sessions,
+        sessions::get_session,
+        sessions::update_session,
+        sessions::delete_session,
+        sessions::create_message,
+        sessions::list_messages,
+        sessions::stream_events,
         llm_providers::create_provider,
         llm_providers::list_providers,
         llm_providers::get_provider,
@@ -79,18 +80,16 @@ struct HealthState {
     components(
         schemas(
             Agent, AgentStatus,
-            Thread, Message,
-            Run, RunStatus,
-            Action, ActionKind,
-            User,
+            Session, SessionStatus, Message, MessageRole, Event,
+            CreateAgentRequest, UpdateAgentRequest,
+            CreateSessionRequest, UpdateSessionRequest,
+            CreateMessageRequest,
+            ListResponse<Agent>,
+            ListResponse<Session>,
+            ListResponse<Message>,
+            ListResponse<Event>,
             LlmProvider, LlmProviderType, LlmProviderStatus,
             LlmModel, LlmModelWithProvider, LlmModelStatus,
-            agents::CreateAgentRequest,
-            agents::UpdateAgentRequest,
-            threads::CreateThreadRequest,
-            threads::CreateMessageRequest,
-            runs::CreateRunRequest,
-            runs::ListRunsParams,
             llm_providers::CreateLlmProviderRequest,
             llm_providers::UpdateLlmProviderRequest,
             llm_models::CreateLlmModelRequest,
@@ -99,15 +98,16 @@ struct HealthState {
     ),
     tags(
         (name = "agents", description = "Agent management endpoints"),
-        (name = "threads", description = "Thread and message management endpoints"),
-        (name = "runs", description = "Run execution endpoints"),
+        (name = "sessions", description = "Session management endpoints"),
+        (name = "messages", description = "Message management endpoints"),
+        (name = "events", description = "Event streaming endpoints (SSE)"),
         (name = "llm-providers", description = "LLM Provider management endpoints"),
         (name = "llm-models", description = "LLM Model management endpoints")
     ),
     info(
         title = "Everruns API",
-        version = "0.1.0",
-        description = "API for managing AI agents, threads, and runs",
+        version = "0.2.0",
+        description = "API for managing AI agents, sessions, messages, and events",
         license(name = "MIT", url = "https://opensource.org/licenses/MIT")
     )
 )]
@@ -161,7 +161,7 @@ async fn main() -> Result<()> {
     }
 
     // Create app state
-    let state = AppState { db: Arc::new(db) };
+    let db = Arc::new(db);
 
     // Initialize encryption service for API keys (optional - gracefully degrade if not configured)
     let encryption = match EncryptionService::from_env() {
@@ -176,27 +176,13 @@ async fn main() -> Result<()> {
     };
 
     // Create module-specific states
-    let agents_state = agents::AppState {
-        db: state.db.clone(),
-    };
-    let threads_state = threads::AppState {
-        db: state.db.clone(),
-    };
-    let runs_state = runs::AppState {
-        db: state.db.clone(),
-        runner: runner.clone(),
-    };
-    let agui_state = agui::AppState {
-        db: state.db.clone(),
-        runner: runner.clone(),
-    };
+    let agents_state = agents::AppState::new(db.clone());
+    let sessions_state = sessions::AppState::new(db.clone(), runner.clone());
     let llm_providers_state = llm_providers::AppState {
-        db: state.db.clone(),
+        db: db.clone(),
         encryption: encryption.clone(),
     };
-    let llm_models_state = llm_models::AppState {
-        db: state.db.clone(),
-    };
+    let llm_models_state = llm_models::AppState { db: db.clone() };
     let health_state = HealthState {
         runner_mode: format!("{:?}", runner_config.mode),
     };
@@ -208,9 +194,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/health", get(health).with_state(health_state))
         .merge(agents::routes(agents_state))
-        .merge(threads::routes(threads_state))
-        .merge(runs::routes(runs_state))
-        .merge(agui::routes(agui_state))
+        .merge(sessions::routes(sessions_state))
         .merge(llm_models::routes(llm_models_state))
         .merge(llm_providers::routes(llm_providers_state))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))

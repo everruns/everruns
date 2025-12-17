@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bot, Plus } from "lucide-react";
+import { Boxes, Plus } from "lucide-react";
 import type { Agent } from "@/lib/api/types";
 
 interface AgentListWidgetProps {
@@ -28,7 +28,7 @@ export function AgentListWidget({ agents }: AgentListWidgetProps) {
       <CardContent>
         {activeAgents.length === 0 ? (
           <div className="text-center py-8">
-            <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+            <Boxes className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
             <p className="text-muted-foreground">No agents yet.</p>
             <Link href="/agents/new">
               <Button variant="link">Create your first agent</Button>
@@ -43,11 +43,11 @@ export function AgentListWidget({ agents }: AgentListWidgetProps) {
                 className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <Bot className="h-5 w-5 text-muted-foreground" />
+                  <Boxes className="h-5 w-5 text-muted-foreground" />
                   <div>
                     <p className="font-medium">{agent.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {agent.default_model_id}
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {agent.id.slice(0, 8)}...
                     </p>
                   </div>
                 </div>

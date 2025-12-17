@@ -1,20 +1,19 @@
 "use client";
 
-import { useAgents } from "@/hooks/use-agents";
-import { useRuns } from "@/hooks/use-runs";
+import { useAgents } from "@/hooks";
 import { Header } from "@/components/layout/header";
 import { StatsCards } from "@/components/dashboard/stats-cards";
-import { RecentRuns } from "@/components/dashboard/recent-runs";
 import { AgentListWidget } from "@/components/dashboard/agent-list-widget";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Plus, Boxes } from "lucide-react";
 
 export default function DashboardPage() {
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
-  const { data: runs = [], isLoading: runsLoading } = useRuns();
 
-  const isLoading = agentsLoading || runsLoading;
-
-  if (isLoading) {
+  if (agentsLoading) {
     return (
       <>
         <Header title="Dashboard" />
@@ -33,14 +32,41 @@ export default function DashboardPage() {
     );
   }
 
+  // For now, pass empty sessions array since we don't have a global sessions endpoint yet
+  const sessions: [] = [];
+
   return (
     <>
       <Header title="Dashboard" />
       <div className="p-6 space-y-6">
-        <StatsCards agents={agents} runs={runs} />
+        <StatsCards agents={agents} sessions={sessions} />
         <div className="grid gap-6 md:grid-cols-2">
-          <RecentRuns runs={runs} agents={agents} />
           <AgentListWidget agents={agents} />
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Link href="/agents/new" className="block">
+                <Button variant="outline" className="w-full justify-start">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create New Agent
+                </Button>
+              </Link>
+              <Link href="/agents" className="block">
+                <Button variant="outline" className="w-full justify-start">
+                  <Boxes className="h-4 w-4 mr-2" />
+                  Browse All Agents
+                </Button>
+              </Link>
+              {agents.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Select an agent to view its sessions and start conversations.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </>

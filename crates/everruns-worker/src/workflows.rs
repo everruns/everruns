@@ -1,10 +1,10 @@
-// Temporal workflows for durable agent execution
+// Session workflow for agentic loop execution (M2)
+// Uses Agent/Session/Messages model with Events as SSE notifications
 
 use anyhow::Result;
 use chrono::Utc;
 use everruns_contracts::events::AgUiEvent;
-use everruns_contracts::resources::RunStatus;
-use everruns_storage::models::{CreateMessage, UpdateRun};
+use everruns_storage::models::{CreateMessage, UpdateSession};
 use everruns_storage::repositories::Database;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -12,45 +12,41 @@ use uuid::Uuid;
 use crate::activities::{LlmCallActivity, PersistEventActivity, ToolExecutionActivity};
 use crate::providers::{openai::OpenAiProvider, ChatMessage, LlmConfig, MessageRole};
 
-/// Agent run workflow orchestrating LLM calls and tool execution
-pub struct AgentRunWorkflow {
-    run_id: Uuid,
+/// Session workflow orchestrating LLM calls and tool execution
+pub struct SessionWorkflow {
+    session_id: Uuid,
     agent_id: Uuid,
-    thread_id: Uuid,
     db: Database,
     persist_activity: PersistEventActivity,
 }
 
-impl AgentRunWorkflow {
-    pub async fn new(run_id: Uuid, agent_id: Uuid, thread_id: Uuid, db: Database) -> Result<Self> {
+impl SessionWorkflow {
+    pub async fn new(session_id: Uuid, agent_id: Uuid, db: Database) -> Result<Self> {
         let persist_activity = PersistEventActivity::new(db.clone());
         Ok(Self {
-            run_id,
+            session_id,
             agent_id,
-            thread_id,
             db,
             persist_activity,
         })
     }
 
-    /// Execute the workflow with real LLM calls (M5)
+    /// Execute the workflow with real LLM calls
     pub async fn execute(&self) -> Result<()> {
         info!(
-            run_id = %self.run_id,
+            session_id = %self.session_id,
             agent_id = %self.agent_id,
-            thread_id = %self.thread_id,
-            "Starting agent run workflow"
+            "Starting session workflow"
         );
 
-        // Update run status to running
-        self.update_run_status(RunStatus::Running, Some(Utc::now()), None)
+        // Update session status to running and set started_at
+        self.update_session_status("running", Some(Utc::now()), None)
             .await?;
 
-        // Emit RUN_STARTED event
-        let started_event =
-            AgUiEvent::run_started(self.thread_id.to_string(), self.run_id.to_string());
+        // Emit SESSION_STARTED event (SSE notification)
+        let started_event = AgUiEvent::session_started(self.session_id.to_string());
         self.persist_activity
-            .persist_event(self.run_id, started_event)
+            .persist_event(self.session_id, started_event)
             .await?;
 
         // Load agent to get configuration
@@ -60,68 +56,86 @@ impl AgentRunWorkflow {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
-        // Parse agent definition for LLM config
-        let definition = &agent.definition;
-        let system_prompt = definition
-            .get("system")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        // Build LLM config from agent settings
+        let model = agent
+            .default_model_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "gpt-4o".to_string());
 
         let llm_config = LlmConfig {
-            model: agent.default_model_id.clone(),
-            temperature: definition
-                .get("temperature")
-                .and_then(|v| v.as_f64())
-                .map(|f| f as f32),
-            max_tokens: definition
-                .get("max_tokens")
-                .and_then(|v| v.as_u64())
-                .map(|u| u as u32),
-            system_prompt,
-            tools: Vec::new(), // TODO M6: Parse tools from agent definition
+            model,
+            temperature: None, // TODO: Add to session or use default
+            max_tokens: None,  // TODO: Add to session or use default
+            system_prompt: Some(agent.system_prompt.clone()),
+            tools: Vec::new(), // TODO: Parse tools from session
         };
 
-        // Load thread messages
-        let message_rows = self.db.list_messages(self.thread_id).await?;
+        // Load messages from session (PRIMARY data)
+        let messages_rows = self.db.list_messages(self.session_id).await?;
 
-        if message_rows.is_empty() {
+        if messages_rows.is_empty() {
             warn!(
-                run_id = %self.run_id,
-                thread_id = %self.thread_id,
-                "No messages in thread, skipping LLM call"
+                session_id = %self.session_id,
+                "No messages in session, skipping LLM call"
             );
         } else {
-            // Convert to ChatMessage format
-            let messages: Vec<ChatMessage> = message_rows
-                .iter()
-                .map(|row| ChatMessage {
-                    role: match row.role.as_str() {
-                        "system" => MessageRole::System,
-                        "user" => MessageRole::User,
-                        "assistant" => MessageRole::Assistant,
-                        "tool" => MessageRole::Tool,
-                        _ => MessageRole::User, // Default to user
-                    },
-                    content: row.content.clone(),
-                    tool_calls: None, // TODO M6: Parse tool calls from message metadata
-                    tool_call_id: None, // TODO M6: Parse tool call ID from message metadata
-                })
-                .collect();
+            // Convert messages to ChatMessage format
+            let mut messages: Vec<ChatMessage> = Vec::new();
+
+            // Add system prompt as first message
+            if !agent.system_prompt.is_empty() {
+                messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: agent.system_prompt.clone(),
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+            }
+
+            // Add messages from database
+            for msg in &messages_rows {
+                let role = match msg.role.as_str() {
+                    "user" => MessageRole::User,
+                    "assistant" => MessageRole::Assistant,
+                    "system" => MessageRole::System,
+                    "tool_call" => continue, // Tool calls are handled separately
+                    "tool_result" => MessageRole::Tool,
+                    _ => continue,
+                };
+
+                // Extract content from JSON
+                let content = if let Some(text) = msg.content.get("text").and_then(|t| t.as_str()) {
+                    text.to_string()
+                } else if let Some(content_str) = msg.content.as_str() {
+                    content_str.to_string()
+                } else if let Some(result) = msg.content.get("result") {
+                    serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string())
+                } else {
+                    continue;
+                };
+
+                messages.push(ChatMessage {
+                    role,
+                    content,
+                    tool_calls: None,
+                    tool_call_id: msg.tool_call_id.clone(),
+                });
+            }
 
             info!(
-                run_id = %self.run_id,
+                session_id = %self.session_id,
                 message_count = messages.len(),
                 model = %llm_config.model,
                 "Calling LLM"
             );
 
-            // Call LLM (use OpenAI provider for M5)
+            // Call LLM (use OpenAI provider)
             let provider = OpenAiProvider::new()?;
             let llm_activity = LlmCallActivity::new(provider, self.db.clone());
             let tool_activity = ToolExecutionActivity::new(self.db.clone());
 
-            // Tool calling loop (M6): Call LLM → Execute tools → Loop back with results
-            const MAX_TOOL_ITERATIONS: usize = 5; // Prevent infinite loops
+            // Tool calling loop: Call LLM → Execute tools → Loop back with results
+            const MAX_TOOL_ITERATIONS: usize = 5;
             let mut iteration = 0;
             let mut current_messages = messages;
 
@@ -129,7 +143,7 @@ impl AgentRunWorkflow {
                 iteration += 1;
                 if iteration > MAX_TOOL_ITERATIONS {
                     warn!(
-                        run_id = %self.run_id,
+                        session_id = %self.session_id,
                         "Max tool calling iterations reached, stopping"
                     );
                     break;
@@ -137,26 +151,30 @@ impl AgentRunWorkflow {
 
                 // Call LLM
                 let result = llm_activity
-                    .call_and_stream(self.run_id, current_messages.clone(), llm_config.clone())
+                    .call_and_stream(
+                        self.session_id,
+                        current_messages.clone(),
+                        llm_config.clone(),
+                    )
                     .await?;
 
-                // Save assistant response text if any
+                // If we got a response, persist it as an assistant Message
                 if !result.text.is_empty() {
-                    let create_message = CreateMessage {
-                        thread_id: self.thread_id,
-                        role: "assistant".to_string(),
-                        content: result.text.clone(),
-                        metadata: None,
-                    };
-                    self.db.create_message(create_message).await?;
-
                     info!(
-                        run_id = %self.run_id,
+                        session_id = %self.session_id,
                         response_length = result.text.len(),
-                        "Saved assistant response"
+                        "Got assistant response"
                     );
 
-                    // Add assistant message to conversation
+                    // Store assistant response as Message (PRIMARY data)
+                    let create_msg = CreateMessage {
+                        session_id: self.session_id,
+                        role: "assistant".to_string(),
+                        content: serde_json::json!({ "text": result.text.clone() }),
+                        tool_call_id: None,
+                    };
+                    self.db.create_message(create_msg).await?;
+
                     current_messages.push(ChatMessage {
                         role: MessageRole::Assistant,
                         content: result.text.clone(),
@@ -168,17 +186,36 @@ impl AgentRunWorkflow {
                 // Check if there are tool calls to execute
                 if let Some(tool_calls) = result.tool_calls {
                     info!(
-                        run_id = %self.run_id,
+                        session_id = %self.session_id,
                         tool_count = tool_calls.len(),
                         "Executing tool calls"
                     );
 
+                    // Store tool calls as Messages (PRIMARY data)
+                    for tool_call in &tool_calls {
+                        let create_msg = CreateMessage {
+                            session_id: self.session_id,
+                            role: "tool_call".to_string(),
+                            content: serde_json::json!({
+                                "id": tool_call.id,
+                                "name": tool_call.name,
+                                "arguments": tool_call.arguments
+                            }),
+                            tool_call_id: Some(tool_call.id.clone()),
+                        };
+                        self.db.create_message(create_msg).await?;
+                    }
+
                     // Execute tools in parallel
                     let tool_results = tool_activity
-                        .execute_tool_calls_parallel(self.run_id, &tool_calls, &llm_config.tools)
+                        .execute_tool_calls_parallel(
+                            self.session_id,
+                            &tool_calls,
+                            &llm_config.tools,
+                        )
                         .await?;
 
-                    // Add tool results to conversation as Tool messages
+                    // Store tool results as Messages (PRIMARY data) and add to conversation
                     for (tool_call, tool_result) in tool_calls.iter().zip(tool_results.iter()) {
                         let result_content = if let Some(result) = &tool_result.result {
                             serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string())
@@ -187,6 +224,18 @@ impl AgentRunWorkflow {
                         } else {
                             "{}".to_string()
                         };
+
+                        // Store tool result as Message
+                        let create_msg = CreateMessage {
+                            session_id: self.session_id,
+                            role: "tool_result".to_string(),
+                            content: serde_json::json!({
+                                "result": tool_result.result,
+                                "error": tool_result.error
+                            }),
+                            tool_call_id: Some(tool_call.id.clone()),
+                        };
+                        self.db.create_message(create_msg).await?;
 
                         current_messages.push(ChatMessage {
                             role: MessageRole::Tool,
@@ -205,21 +254,19 @@ impl AgentRunWorkflow {
             }
         }
 
-        // Emit RUN_FINISHED event
-        let finished_event =
-            AgUiEvent::run_finished(self.thread_id.to_string(), self.run_id.to_string());
+        // Emit SESSION_FINISHED event (SSE notification)
+        let finished_event = AgUiEvent::session_finished(self.session_id.to_string());
         self.persist_activity
-            .persist_event(self.run_id, finished_event)
+            .persist_event(self.session_id, finished_event)
             .await?;
 
-        // Update run status to completed
-        let finished_at = Utc::now();
-        self.update_run_status(RunStatus::Completed, None, Some(finished_at))
+        // Update session status to completed and set finished_at
+        self.update_session_status("completed", None, Some(Utc::now()))
             .await?;
 
         info!(
-            run_id = %self.run_id,
-            "Agent run workflow completed successfully"
+            session_id = %self.session_id,
+            "Session workflow completed successfully"
         );
 
         Ok(())
@@ -227,11 +274,10 @@ impl AgentRunWorkflow {
 
     /// Handle workflow cancellation
     pub async fn cancel(&self) -> Result<()> {
-        info!(run_id = %self.run_id, "Cancelling agent run workflow");
+        info!(session_id = %self.session_id, "Cancelling session workflow");
 
-        // Update run status to cancelled
-        let finished_at = Utc::now();
-        self.update_run_status(RunStatus::Cancelled, None, Some(finished_at))
+        // Update session status to failed and set finished_at
+        self.update_session_status("failed", None, Some(Utc::now()))
             .await?;
 
         Ok(())
@@ -240,49 +286,55 @@ impl AgentRunWorkflow {
     /// Handle workflow errors
     pub async fn handle_error(&self, error: &anyhow::Error) -> Result<()> {
         error!(
-            run_id = %self.run_id,
+            session_id = %self.session_id,
             error = %error,
-            "Agent run workflow failed"
+            "Session workflow failed"
         );
 
-        // Emit RUN_ERROR event
-        let error_event = AgUiEvent::run_error(error.to_string());
+        // Emit SESSION_ERROR event (SSE notification)
+        let error_event = AgUiEvent::session_error(error.to_string());
         self.persist_activity
-            .persist_event(self.run_id, error_event)
+            .persist_event(self.session_id, error_event)
             .await?;
 
-        // Update run status to failed
-        let finished_at = Utc::now();
-        self.update_run_status(RunStatus::Failed, None, Some(finished_at))
+        // Update session status to failed and set finished_at
+        self.update_session_status("failed", None, Some(Utc::now()))
             .await?;
 
         Ok(())
     }
 
-    /// Update the run status in the database
-    async fn update_run_status(
+    /// Update the session timestamps and status
+    async fn update_session_status(
         &self,
-        status: RunStatus,
+        status: &str,
         started_at: Option<chrono::DateTime<Utc>>,
         finished_at: Option<chrono::DateTime<Utc>>,
     ) -> Result<()> {
-        let status_str = match status {
-            RunStatus::Pending => "pending",
-            RunStatus::Running => "running",
-            RunStatus::Completed => "completed",
-            RunStatus::Failed => "failed",
-            RunStatus::Cancelled => "cancelled",
-        };
-
-        let input = UpdateRun {
-            status: Some(status_str.to_string()),
-            temporal_workflow_id: None,
-            temporal_run_id: None,
+        let input = UpdateSession {
+            status: Some(status.to_string()),
             started_at,
             finished_at,
+            ..Default::default()
         };
 
-        self.db.update_run(self.run_id, input).await?;
+        self.db.update_session(self.session_id, input).await?;
         Ok(())
+    }
+}
+
+// Keep the old name as an alias for backwards compatibility during migration
+pub type AgentRunWorkflow = SessionWorkflow;
+
+impl AgentRunWorkflow {
+    /// Legacy compatibility constructor
+    /// In M2, run_id maps to session_id, agent_id remains agent_id
+    pub async fn legacy_new(
+        run_id: Uuid,
+        agent_id: Uuid,
+        _thread_id: Uuid,
+        db: Database,
+    ) -> Result<Self> {
+        SessionWorkflow::new(run_id, agent_id, db).await
     }
 }

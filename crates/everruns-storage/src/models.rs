@@ -4,6 +4,10 @@ use chrono::{DateTime, Utc};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+// ============================================
+// Auth models (for future auth implementation)
+// ============================================
+
 #[derive(Debug, Clone, FromRow)]
 pub struct UserRow {
     pub id: Uuid,
@@ -16,76 +20,13 @@ pub struct UserRow {
 }
 
 #[derive(Debug, Clone, FromRow)]
-pub struct SessionRow {
+pub struct AuthSessionRow {
     pub id: Uuid,
     pub user_id: Uuid,
     pub token: String,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
-
-#[derive(Debug, Clone, FromRow)]
-pub struct AgentRow {
-    pub id: Uuid,
-    pub name: String,
-    pub description: Option<String>,
-    pub default_model_id: String,
-    pub definition: sqlx::types::JsonValue,
-    pub status: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct ThreadRow {
-    pub id: Uuid,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct MessageRow {
-    pub id: Uuid,
-    pub thread_id: Uuid,
-    pub role: String,
-    pub content: String,
-    pub metadata: Option<sqlx::types::JsonValue>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct RunRow {
-    pub id: Uuid,
-    pub agent_id: Uuid,
-    pub thread_id: Uuid,
-    pub status: String,
-    pub temporal_workflow_id: Option<String>,
-    pub temporal_run_id: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub started_at: Option<DateTime<Utc>>,
-    pub finished_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct ActionRow {
-    pub id: Uuid,
-    pub run_id: Uuid,
-    pub kind: String,
-    pub payload: sqlx::types::JsonValue,
-    pub by_user_id: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct RunEventRow {
-    pub id: Uuid,
-    pub run_id: Uuid,
-    pub sequence_number: i64,
-    pub event_type: String,
-    pub event_data: sqlx::types::JsonValue,
-    pub created_at: DateTime<Utc>,
-}
-
-// Input structs for creates/updates
 
 #[derive(Debug, Clone)]
 pub struct CreateUser {
@@ -96,71 +37,130 @@ pub struct CreateUser {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateSession {
+pub struct CreateAuthSession {
     pub user_id: Uuid,
     pub token: String,
     pub expires_at: DateTime<Utc>,
+}
+
+// ============================================
+// Agent models (configuration for agentic loop)
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentRow {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub system_prompt: String,
+    pub default_model_id: Option<Uuid>,
+    pub tags: Vec<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateAgent {
     pub name: String,
     pub description: Option<String>,
-    pub default_model_id: String,
-    pub definition: serde_json::Value,
+    pub system_prompt: String,
+    pub default_model_id: Option<Uuid>,
+    pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct UpdateAgent {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub default_model_id: Option<String>,
-    pub definition: Option<serde_json::Value>,
+    pub system_prompt: Option<String>,
+    pub default_model_id: Option<Uuid>,
+    pub tags: Option<Vec<String>>,
     pub status: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct CreateThread {}
+// ============================================
+// Session models (instance of agentic loop)
+// ============================================
 
-#[derive(Debug, Clone)]
-pub struct CreateMessage {
-    pub thread_id: Uuid,
-    pub role: String,
-    pub content: String,
-    pub metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateRun {
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionRow {
+    pub id: Uuid,
     pub agent_id: Uuid,
-    pub thread_id: Uuid,
-}
-
-#[derive(Debug, Clone)]
-pub struct UpdateRun {
-    pub status: Option<String>,
-    pub temporal_workflow_id: Option<String>,
-    pub temporal_run_id: Option<String>,
+    pub title: Option<String>,
+    pub tags: Vec<String>,
+    pub model_id: Option<Uuid>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct CreateAction {
-    pub run_id: Uuid,
-    pub kind: String,
-    pub payload: serde_json::Value,
-    pub by_user_id: Option<Uuid>,
+#[derive(Debug, Clone, Default)]
+pub struct CreateSession {
+    pub agent_id: Uuid,
+    pub title: Option<String>,
+    pub tags: Vec<String>,
+    pub model_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateSession {
+    pub title: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub model_id: Option<Uuid>,
+    pub status: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
+}
+
+// ============================================
+// Message models (PRIMARY conversation data)
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct MessageRow {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub sequence: i32,
+    pub role: String,
+    pub content: sqlx::types::JsonValue,
+    pub tool_call_id: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateRunEvent {
-    pub run_id: Uuid,
+pub struct CreateMessage {
+    pub session_id: Uuid,
+    pub role: String,
+    pub content: serde_json::Value,
+    pub tool_call_id: Option<String>,
+}
+
+// ============================================
+// Event models (SSE notification stream)
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct EventRow {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub sequence: i32,
     pub event_type: String,
-    pub event_data: serde_json::Value,
+    pub data: sqlx::types::JsonValue,
+    pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateEvent {
+    pub session_id: Uuid,
+    pub event_type: String,
+    pub data: serde_json::Value,
+}
+
+// ============================================
 // LLM Provider types
+// ============================================
 
 #[derive(Debug, Clone, FromRow)]
 pub struct LlmProviderRow {

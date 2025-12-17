@@ -90,7 +90,7 @@ pub struct StepFinishedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct TextMessageStartEvent {
     pub message_id: String,
-    pub role: MessageRole,
+    pub role: AgUiMessageRole,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<i64>,
 }
@@ -112,9 +112,10 @@ pub struct TextMessageEndEvent {
     pub timestamp: Option<i64>,
 }
 
+/// AG-UI protocol message role (for SSE events)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum MessageRole {
+pub enum AgUiMessageRole {
     Developer,
     System,
     Assistant,
@@ -159,7 +160,7 @@ pub struct ToolCallResultEvent {
     pub tool_call_id: String,
     pub content: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<MessageRole>,
+    pub role: Option<AgUiMessageRole>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<i64>,
 }
@@ -203,7 +204,7 @@ pub struct MessagesSnapshotEvent {
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotMessage {
     pub id: String,
-    pub role: MessageRole,
+    pub role: AgUiMessageRole,
     pub content: String,
 }
 
@@ -245,7 +246,7 @@ impl AgUiEvent {
         })
     }
 
-    pub fn text_message_start(message_id: impl Into<String>, role: MessageRole) -> Self {
+    pub fn text_message_start(message_id: impl Into<String>, role: AgUiMessageRole) -> Self {
         AgUiEvent::TextMessageStart(TextMessageStartEvent {
             message_id: message_id.into(),
             role,
@@ -304,7 +305,7 @@ impl AgUiEvent {
             message_id: message_id.into(),
             tool_call_id: tool_call_id.into(),
             content,
-            role: Some(MessageRole::Tool),
+            role: Some(AgUiMessageRole::Tool),
             timestamp: Some(Utc::now().timestamp_millis()),
         })
     }
@@ -321,3 +322,79 @@ impl AgUiEvent {
 // HITL-specific custom event kinds
 pub const HITL_REQUEST: &str = "hitl.request";
 pub const HITL_DECISION: &str = "hitl.decision";
+
+// M2 Session lifecycle event types (stored in database)
+pub const EVENT_SESSION_STARTED: &str = "session.started";
+pub const EVENT_SESSION_FINISHED: &str = "session.finished";
+pub const EVENT_SESSION_ERROR: &str = "session.error";
+pub const EVENT_MESSAGE_USER: &str = "message.user";
+pub const EVENT_MESSAGE_ASSISTANT: &str = "message.assistant";
+pub const EVENT_MESSAGE_SYSTEM: &str = "message.system";
+pub const EVENT_TEXT_START: &str = "text.start";
+pub const EVENT_TEXT_DELTA: &str = "text.delta";
+pub const EVENT_TEXT_END: &str = "text.end";
+pub const EVENT_TOOL_CALL_START: &str = "tool.call.start";
+pub const EVENT_TOOL_CALL_ARGS: &str = "tool.call.args";
+pub const EVENT_TOOL_CALL_END: &str = "tool.call.end";
+pub const EVENT_TOOL_RESULT: &str = "tool.result";
+pub const EVENT_STATE_SNAPSHOT: &str = "state.snapshot";
+pub const EVENT_STATE_DELTA: &str = "state.delta";
+
+// M2 Session-based helper functions
+impl AgUiEvent {
+    /// Create a session started event (maps to RunStarted for AG-UI compatibility)
+    pub fn session_started(session_id: impl Into<String>) -> Self {
+        let session_id = session_id.into();
+        AgUiEvent::RunStarted(RunStartedEvent {
+            thread_id: session_id.clone(),
+            run_id: session_id,
+            timestamp: Some(Utc::now().timestamp_millis()),
+        })
+    }
+
+    /// Create a session finished event (maps to RunFinished for AG-UI compatibility)
+    pub fn session_finished(session_id: impl Into<String>) -> Self {
+        let session_id = session_id.into();
+        AgUiEvent::RunFinished(RunFinishedEvent {
+            thread_id: session_id.clone(),
+            run_id: session_id,
+            result: None,
+            timestamp: Some(Utc::now().timestamp_millis()),
+        })
+    }
+
+    /// Create a session error event (maps to RunError for AG-UI compatibility)
+    pub fn session_error(message: impl Into<String>) -> Self {
+        AgUiEvent::RunError(RunErrorEvent {
+            message: message.into(),
+            code: None,
+            timestamp: Some(Utc::now().timestamp_millis()),
+        })
+    }
+}
+
+// ============================================
+// Event DTOs for REST API
+// ============================================
+
+use chrono::DateTime;
+use utoipa::ToSchema;
+use uuid::Uuid;
+
+/// Event - SSE notification record stored in database
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Event {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub sequence: i32,
+    pub event_type: String,
+    pub data: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request to create an event (mainly for internal use)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateEventRequest {
+    pub event_type: String,
+    pub data: serde_json::Value,
+}

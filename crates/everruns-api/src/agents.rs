@@ -1,4 +1,4 @@
-// Agent CRUD HTTP routes
+// Agent CRUD HTTP routes (M2)
 
 use axum::{
     extract::{Path, State},
@@ -6,46 +6,38 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{Agent, AgentStatus};
+use everruns_contracts::{Agent, CreateAgentRequest, ListResponse, UpdateAgentRequest};
 use everruns_storage::{
     models::{CreateAgent, UpdateAgent},
     Database,
 };
-use serde::Deserialize;
 use std::sync::Arc;
-use utoipa::ToSchema;
 use uuid::Uuid;
 
-/// App state
+use crate::services::AgentService;
+
+/// App state for agents routes
 #[derive(Clone)]
 pub struct AppState {
-    pub db: Arc<Database>,
+    pub service: Arc<AgentService>,
 }
 
-/// Request to create an agent
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateAgentRequest {
-    pub name: String,
-    pub description: Option<String>,
-    pub default_model_id: String,
-    pub definition: serde_json::Value,
-}
-
-/// Request to update an agent
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateAgentRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub default_model_id: Option<String>,
-    pub definition: Option<serde_json::Value>,
-    pub status: Option<AgentStatus>,
+impl AppState {
+    pub fn new(db: Arc<Database>) -> Self {
+        Self {
+            service: Arc::new(AgentService::new(db)),
+        }
+    }
 }
 
 /// Create agent routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/agents", post(create_agent).get(list_agents))
-        .route("/v1/agents/:agent_id", get(get_agent).patch(update_agent))
+        .route(
+            "/v1/agents/:agent_id",
+            get(get_agent).patch(update_agent).delete(delete_agent),
+        )
         .with_state(state)
 }
 
@@ -67,63 +59,41 @@ pub async fn create_agent(
     let input = CreateAgent {
         name: req.name,
         description: req.description,
+        system_prompt: req.system_prompt,
         default_model_id: req.default_model_id,
-        definition: req.definition,
+        tags: req.tags,
     };
 
-    let row = state.db.create_agent(input).await.map_err(|e| {
+    let agent = state.service.create(input).await.map_err(|e| {
         tracing::error!("Failed to create agent: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let agent = Agent {
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        default_model_id: row.default_model_id,
-        definition: row.definition,
-        status: row.status.parse().unwrap_or(AgentStatus::Active),
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    };
-
     Ok((StatusCode::CREATED, Json(agent)))
 }
 
-/// GET /v1/agents
+/// GET /v1/agents - List all active agents
 #[utoipa::path(
     get,
     path = "/v1/agents",
     responses(
-        (status = 200, description = "List of agents", body = Vec<Agent>),
+        (status = 200, description = "List of agents", body = ListResponse<Agent>),
         (status = 500, description = "Internal server error")
     ),
     tag = "agents"
 )]
-pub async fn list_agents(State(state): State<AppState>) -> Result<Json<Vec<Agent>>, StatusCode> {
-    let rows = state.db.list_agents().await.map_err(|e| {
+pub async fn list_agents(
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse<Agent>>, StatusCode> {
+    let agents = state.service.list().await.map_err(|e| {
         tracing::error!("Failed to list agents: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let agents: Vec<Agent> = rows
-        .into_iter()
-        .map(|row| Agent {
-            id: row.id,
-            name: row.name,
-            description: row.description,
-            default_model_id: row.default_model_id,
-            definition: row.definition,
-            status: row.status.parse().unwrap_or(AgentStatus::Active),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        })
-        .collect();
-
-    Ok(Json(agents))
+    Ok(Json(ListResponse::new(agents)))
 }
 
-/// GET /v1/agents/:agent_id
+/// GET /v1/agents/{agent_id} - Get agent by ID
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}",
@@ -141,9 +111,9 @@ pub async fn get_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<Uuid>,
 ) -> Result<Json<Agent>, StatusCode> {
-    let row = state
-        .db
-        .get_agent(agent_id)
+    let agent = state
+        .service
+        .get(agent_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get agent: {}", e);
@@ -151,21 +121,10 @@ pub async fn get_agent(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let agent = Agent {
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        default_model_id: row.default_model_id,
-        definition: row.definition,
-        status: row.status.parse().unwrap_or(AgentStatus::Active),
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    };
-
     Ok(Json(agent))
 }
 
-/// PATCH /v1/agents/:agent_id
+/// PATCH /v1/agents/{agent_id} - Update agent
 #[utoipa::path(
     patch,
     path = "/v1/agents/{agent_id}",
@@ -188,14 +147,15 @@ pub async fn update_agent(
     let input = UpdateAgent {
         name: req.name,
         description: req.description,
+        system_prompt: req.system_prompt,
         default_model_id: req.default_model_id,
-        definition: req.definition,
+        tags: req.tags,
         status: req.status.map(|s| s.to_string()),
     };
 
-    let row = state
-        .db
-        .update_agent(agent_id, input)
+    let agent = state
+        .service
+        .update(agent_id, input)
         .await
         .map_err(|e| {
             tracing::error!("Failed to update agent: {}", e);
@@ -203,16 +163,35 @@ pub async fn update_agent(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let agent = Agent {
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        default_model_id: row.default_model_id,
-        definition: row.definition,
-        status: row.status.parse().unwrap_or(AgentStatus::Active),
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    };
-
     Ok(Json(agent))
+}
+
+/// DELETE /v1/agents/{agent_id} - Archive agent
+#[utoipa::path(
+    delete,
+    path = "/v1/agents/{agent_id}",
+    params(
+        ("agent_id" = Uuid, Path, description = "Agent ID")
+    ),
+    responses(
+        (status = 204, description = "Agent archived successfully"),
+        (status = 404, description = "Agent not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "agents"
+)]
+pub async fn delete_agent(
+    State(state): State<AppState>,
+    Path(agent_id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let deleted = state.service.delete(agent_id).await.map_err(|e| {
+        tracing::error!("Failed to delete agent: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }

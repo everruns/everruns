@@ -1,140 +1,123 @@
 "use client";
 
+import { useAgents, useDeleteAgent } from "@/hooks";
 import Link from "next/link";
-import { useAgents } from "@/hooks/use-agents";
-import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Bot, Settings } from "lucide-react";
-import type { Agent } from "@/lib/api/types";
-
-function AgentCard({ agent }: { agent: Agent }) {
-  return (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Bot className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <CardTitle className="text-lg">{agent.name}</CardTitle>
-            <CardDescription className="text-sm">
-              {agent.default_model_id}
-            </CardDescription>
-          </div>
-        </div>
-        <Badge
-          variant="outline"
-          className={
-            agent.status === "active"
-              ? "bg-green-100 text-green-800"
-              : "bg-gray-100 text-gray-800"
-          }
-        >
-          {agent.status}
-        </Badge>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground mb-4">
-          {agent.description || "No description provided"}
-        </p>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Created {new Date(agent.created_at).toLocaleDateString()}</span>
-          <div className="flex gap-2">
-            <Link href={`/agents/${agent.id}`}>
-              <Button variant="outline" size="sm">
-                View
-              </Button>
-            </Link>
-            <Link href={`/agents/${agent.id}/edit`}>
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentCardSkeleton() {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-9 w-9 rounded-lg" />
-          <div className="space-y-2">
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-4 w-24" />
-          </div>
-        </div>
-        <Skeleton className="h-5 w-16" />
-      </CardHeader>
-      <CardContent>
-        <Skeleton className="h-4 w-full mb-4" />
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-8 w-20" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+import { Plus, Trash2 } from "lucide-react";
 
 export default function AgentsPage() {
-  const { data: agents = [], isLoading, error } = useAgents();
+  const { data: agents, isLoading, error } = useAgents();
+  const deleteAgent = useDeleteAgent();
+
+  const handleDelete = async (agentId: string) => {
+    if (confirm("Are you sure you want to archive this agent?")) {
+      await deleteAgent.mutateAsync(agentId);
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="text-red-500">
+          Error loading agents: {error.message}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <Header
-        title="Agents"
-        action={
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Agents</h1>
+        <Link href="/agents/new">
+          <Button>
+            <Plus className="w-4 h-4 mr-2" />
+            New Agent
+          </Button>
+        </Link>
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-6 w-3/4" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : agents?.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground mb-4">No agents yet</p>
           <Link href="/agents/new">
             <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Agent
+              <Plus className="w-4 h-4 mr-2" />
+              Create your first agent
             </Button>
           </Link>
-        }
-      />
-      <div className="p-6">
-        {error && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-6">
-            Failed to load agents: {error.message}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(6)].map((_, i) => (
-              <AgentCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : agents.length === 0 ? (
-          <div className="text-center py-12">
-            <Bot className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No agents yet</h3>
-            <p className="text-muted-foreground mb-4">
-              Create your first agent to get started
-            </p>
-            <Link href="/agents/new">
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Agent
-              </Button>
-            </Link>
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {agents.map((agent) => (
-              <AgentCard key={agent.id} agent={agent} />
-            ))}
-          </div>
-        )}
-      </div>
-    </>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {agents?.map((agent) => (
+            <Card key={agent.id} className="hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                <div>
+                  <CardTitle className="text-lg">
+                    <Link
+                      href={`/agents/${agent.id}`}
+                      className="hover:underline"
+                    >
+                      {agent.name}
+                    </Link>
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground font-mono">
+                    {agent.id.slice(0, 8)}...
+                  </p>
+                </div>
+                <Badge variant={agent.status === "active" ? "default" : "secondary"}>
+                  {agent.status}
+                </Badge>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                  {agent.description || "No description"}
+                </p>
+                {agent.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {agent.tags.map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    Created {new Date(agent.created_at).toLocaleDateString()}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => handleDelete(agent.id)}
+                    disabled={deleteAgent.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
