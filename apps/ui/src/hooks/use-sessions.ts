@@ -22,12 +22,14 @@ export function useSessions(agentId: string | undefined) {
 
 export function useSession(
   agentId: string | undefined,
-  sessionId: string | undefined
+  sessionId: string | undefined,
+  options?: { refetchInterval?: number | false }
 ) {
   return useQuery({
     queryKey: ["session", agentId, sessionId],
     queryFn: () => getSession(agentId!, sessionId!),
     enabled: !!agentId && !!sessionId,
+    refetchInterval: options?.refetchInterval,
   });
 }
 
@@ -110,11 +112,13 @@ export function useSendMessage() {
 
 export function useMessages(
   agentId: string | undefined,
-  sessionId: string | undefined
+  sessionId: string | undefined,
+  options?: { refetchInterval?: number | false }
 ) {
   return useQuery({
     queryKey: ["messages", agentId, sessionId],
     queryFn: () => listMessages(agentId!, sessionId!),
     enabled: !!agentId && !!sessionId,
+    refetchInterval: options?.refetchInterval,
   });
 }

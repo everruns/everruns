@@ -1,15 +1,14 @@
 // Session activities for workflow execution (M2)
 
 use anyhow::Result;
-use everruns_contracts::events::{AgUiEvent, AgUiMessageRole};
+use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
 use everruns_storage::repositories::Database;
-use futures::StreamExt;
 use reqwest::Client;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::providers::{ChatMessage, LlmConfig, LlmProvider, LlmStreamEvent};
+use crate::providers::{ChatMessage, LlmConfig, LlmProvider};
 use crate::tools::{execute_tool, requires_approval};
 
 /// Result from LLM call including text and optional tool calls
@@ -92,9 +91,9 @@ impl<P: LlmProvider> LlmCallActivity<P> {
         }
     }
 
-    /// Call LLM with messages and stream response as AG-UI events
+    /// Call LLM with messages (non-streaming)
     /// Returns the assistant response text and any tool calls
-    pub async fn call_and_stream(
+    pub async fn call(
         &self,
         session_id: Uuid,
         messages: Vec<ChatMessage>,
@@ -107,74 +106,33 @@ impl<P: LlmProvider> LlmCallActivity<P> {
             "Starting LLM call"
         );
 
-        // Start streaming from provider
-        let mut stream = self
-            .provider
-            .chat_completion_stream(messages, &config)
-            .await?;
-
-        // Emit TEXT_MESSAGE_START event
-        let message_id = Uuid::now_v7().to_string();
-        let start_event = AgUiEvent::text_message_start(&message_id, AgUiMessageRole::Assistant);
+        // Emit step started event
+        let step_event = AgUiEvent::step_started("llm_call".to_string());
         self.persist_activity
-            .persist_event(session_id, start_event)
+            .persist_event(session_id, step_event)
             .await?;
 
-        // Accumulate response and emit chunks
-        let mut full_response = String::new();
-        let mut tool_calls: Option<Vec<ToolCall>> = None;
+        // Call LLM (non-streaming)
+        let result = self.provider.chat_completion(messages, &config).await?;
 
-        while let Some(event_result) = stream.next().await {
-            match event_result {
-                Ok(LlmStreamEvent::TextDelta(delta)) => {
-                    if !delta.is_empty() {
-                        full_response.push_str(&delta);
+        info!(
+            session_id = %session_id,
+            tokens = ?result.metadata.total_tokens,
+            finish_reason = ?result.metadata.finish_reason,
+            response_len = result.text.len(),
+            tool_calls = result.tool_calls.as_ref().map(|c| c.len()).unwrap_or(0),
+            "LLM call completed"
+        );
 
-                        // Emit TEXT_MESSAGE_CONTENT event (AG-UI uses delta, not chunk)
-                        let content_event = AgUiEvent::text_message_content(&message_id, &delta);
-                        self.persist_activity
-                            .persist_event(session_id, content_event)
-                            .await?;
-                    }
-                }
-                Ok(LlmStreamEvent::ToolCalls(calls)) => {
-                    info!(
-                        session_id = %session_id,
-                        tool_count = calls.len(),
-                        "Tool calls received from LLM"
-                    );
-                    tool_calls = Some(calls);
-                }
-                Ok(LlmStreamEvent::Done(metadata)) => {
-                    info!(
-                        session_id = %session_id,
-                        tokens = ?metadata.total_tokens,
-                        finish_reason = ?metadata.finish_reason,
-                        "LLM call completed"
-                    );
-
-                    // Emit TEXT_MESSAGE_END event
-                    let end_event = AgUiEvent::text_message_end(&message_id);
-                    self.persist_activity
-                        .persist_event(session_id, end_event)
-                        .await?;
-
-                    break;
-                }
-                Ok(LlmStreamEvent::Error(err)) => {
-                    error!(session_id = %session_id, error = %err, "LLM stream error");
-                    anyhow::bail!("LLM stream error: {}", err);
-                }
-                Err(e) => {
-                    error!(session_id = %session_id, error = %e, "Stream processing error");
-                    return Err(e);
-                }
-            }
-        }
+        // Emit step finished event
+        let step_finished_event = AgUiEvent::step_finished("llm_call".to_string());
+        self.persist_activity
+            .persist_event(session_id, step_finished_event)
+            .await?;
 
         Ok(LlmCallResult {
-            text: full_response,
-            tool_calls,
+            text: result.text,
+            tool_calls: result.tool_calls,
         })
     }
 }

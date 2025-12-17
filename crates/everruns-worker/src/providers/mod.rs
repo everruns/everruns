@@ -16,11 +16,30 @@ mod tests;
 /// Type alias for boxed async stream of LLM events
 pub type LlmStream = Pin<Box<dyn Stream<Item = Result<LlmStreamEvent>> + Send>>;
 
+/// Result from non-streaming chat completion
+#[derive(Debug, Clone)]
+pub struct ChatCompletionResult {
+    /// Response text content
+    pub text: String,
+    /// Tool calls (if any)
+    pub tool_calls: Option<Vec<ToolCall>>,
+    /// Completion metadata
+    pub metadata: CompletionMetadata,
+}
+
 /// Provider-agnostic LLM provider trait
 /// Implementations handle provider-specific API details
 #[async_trait::async_trait]
 pub trait LlmProvider: Send + Sync {
+    /// Non-streaming chat completion (returns full response)
+    async fn chat_completion(
+        &self,
+        messages: Vec<ChatMessage>,
+        config: &LlmConfig,
+    ) -> Result<ChatCompletionResult>;
+
     /// Stream chat completion with the given messages and configuration
+    /// Note: Streaming is disabled in M2, will be re-enabled later
     async fn chat_completion_stream(
         &self,
         messages: Vec<ChatMessage>,

@@ -149,9 +149,9 @@ impl SessionWorkflow {
                     break;
                 }
 
-                // Call LLM
+                // Call LLM (non-streaming)
                 let result = llm_activity
-                    .call_and_stream(
+                    .call(
                         self.session_id,
                         current_messages.clone(),
                         llm_config.clone(),

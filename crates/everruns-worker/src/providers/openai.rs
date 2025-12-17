@@ -1,7 +1,8 @@
 // OpenAI provider implementation using direct HTTP API
 
 use super::{
-    ChatMessage, CompletionMetadata, LlmConfig, LlmProvider, LlmStream, LlmStreamEvent, MessageRole,
+    ChatCompletionResult, ChatMessage, CompletionMetadata, LlmConfig, LlmProvider, LlmStream,
+    LlmStreamEvent, MessageRole,
 };
 use anyhow::{Context, Result};
 use eventsource_stream::Eventsource;
@@ -88,6 +89,113 @@ impl OpenAiProvider {
 
 #[async_trait::async_trait]
 impl LlmProvider for OpenAiProvider {
+    /// Non-streaming chat completion
+    async fn chat_completion(
+        &self,
+        messages: Vec<ChatMessage>,
+        config: &LlmConfig,
+    ) -> Result<ChatCompletionResult> {
+        // Convert messages to OpenAI format
+        let mut openai_messages: Vec<OpenAiMessage> =
+            messages.iter().map(Self::convert_message).collect();
+
+        // Add system prompt if provided in config and not in messages
+        if let Some(system_prompt) = &config.system_prompt {
+            if !messages
+                .iter()
+                .any(|m| matches!(m.role, MessageRole::System))
+            {
+                openai_messages.insert(
+                    0,
+                    OpenAiMessage {
+                        role: "system".to_string(),
+                        content: Some(system_prompt.clone()),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    },
+                );
+            }
+        }
+
+        // Build request body (non-streaming)
+        let tools = if config.tools.is_empty() {
+            None
+        } else {
+            Some(Self::convert_tools(&config.tools))
+        };
+
+        let request = OpenAiRequest {
+            model: config.model.clone(),
+            messages: openai_messages,
+            temperature: config.temperature,
+            max_tokens: config.max_tokens,
+            stream: false,
+            tools,
+        };
+
+        // Make request
+        let response = self
+            .client
+            .post(OPENAI_API_URL)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to send OpenAI request")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "OpenAI API request failed with status {}: {}",
+                status,
+                error_text
+            );
+        }
+
+        // Parse response
+        let response_json: OpenAiResponse = response
+            .json()
+            .await
+            .context("Failed to parse OpenAI response")?;
+
+        // Extract content from the first choice
+        let choice = response_json
+            .choices
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No choices in OpenAI response"))?;
+
+        let text = choice.message.content.clone().unwrap_or_default();
+
+        // Extract tool calls if any
+        let tool_calls = choice.message.tool_calls.as_ref().map(|calls| {
+            calls
+                .iter()
+                .map(|tc| ToolCall {
+                    id: tc.id.clone(),
+                    name: tc.function.name.clone(),
+                    arguments: serde_json::from_str(&tc.function.arguments).unwrap_or(json!({})),
+                })
+                .collect()
+        });
+
+        let metadata = CompletionMetadata {
+            total_tokens: response_json.usage.as_ref().map(|u| u.total_tokens),
+            prompt_tokens: response_json.usage.as_ref().map(|u| u.prompt_tokens),
+            completion_tokens: response_json.usage.as_ref().map(|u| u.completion_tokens),
+            model: response_json.model,
+            finish_reason: choice.finish_reason.clone(),
+        };
+
+        Ok(ChatCompletionResult {
+            text,
+            tool_calls,
+            metadata,
+        })
+    }
+
+    /// Streaming chat completion (kept for future use)
     async fn chat_completion_stream(
         &self,
         messages: Vec<ChatMessage>,
@@ -375,4 +483,27 @@ struct OpenAiStreamToolCall {
 struct OpenAiStreamFunction {
     name: Option<String>,
     arguments: Option<String>,
+}
+
+// Non-streaming response types
+
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAiResponse {
+    model: String,
+    choices: Vec<OpenAiChoice>,
+    usage: Option<OpenAiUsage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAiChoice {
+    message: OpenAiMessage,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAiUsage {
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    total_tokens: u32,
 }

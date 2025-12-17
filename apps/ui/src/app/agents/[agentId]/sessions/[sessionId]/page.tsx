@@ -18,15 +18,34 @@ export default function SessionDetailPage({
 }) {
   const { agentId, sessionId } = use(params);
   const { data: agent } = useAgent(agentId);
+
+  // Track if we should be polling (after sending a message while session is active)
+  const [isPolling, setIsPolling] = useState(false);
+
+  // Poll session status while polling is active
   const { data: session, isLoading: sessionLoading } = useSession(
     agentId,
-    sessionId
-  );
-  const { data: messages, isLoading: messagesLoading } = useMessages(
-    agentId,
-    sessionId
+    sessionId,
+    { refetchInterval: isPolling ? 1000 : false }
   );
   const sendMessage = useSendMessage();
+
+  // Determine if session is still processing
+  const isActive = session?.status === "running" || session?.status === "pending";
+
+  // Stop polling when session completes
+  useEffect(() => {
+    if (!isActive && isPolling) {
+      setIsPolling(false);
+    }
+  }, [isActive, isPolling]);
+
+  // Poll for messages while session is active
+  const { data: messages, isLoading: messagesLoading } = useMessages(
+    agentId,
+    sessionId,
+    { refetchInterval: isPolling ? 1000 : false }
+  );
 
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,6 +66,8 @@ export default function SessionDetailPage({
         content: inputValue.trim(),
       });
       setInputValue("");
+      // Start polling for the response
+      setIsPolling(true);
     } catch (error) {
       console.error("Failed to send message:", error);
     }
