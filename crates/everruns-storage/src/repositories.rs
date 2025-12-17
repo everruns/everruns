@@ -28,19 +28,251 @@ impl Database {
     }
 
     // ============================================
-    // Users (for future auth implementation)
+    // Users
     // ============================================
 
-    pub async fn create_user(&self, _input: CreateUser) -> Result<UserRow> {
-        todo!("Implement when auth is added")
+    pub async fn create_user(&self, input: CreateUser) -> Result<UserRow> {
+        let roles_json = serde_json::to_value(&input.roles)?;
+
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            INSERT INTO users (email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            "#,
+        )
+        .bind(&input.email)
+        .bind(&input.name)
+        .bind(&input.avatar_url)
+        .bind(&roles_json)
+        .bind(&input.password_hash)
+        .bind(input.email_verified)
+        .bind(&input.auth_provider)
+        .bind(&input.auth_provider_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
     }
 
-    pub async fn get_user_by_email(&self, _email: &str) -> Result<Option<UserRow>> {
-        todo!("Implement when auth is added")
+    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            FROM users
+            WHERE email = $1
+            "#,
+        )
+        .bind(email)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
     }
 
-    pub async fn get_user(&self, _id: Uuid) -> Result<Option<UserRow>> {
-        todo!("Implement when auth is added")
+    pub async fn get_user(&self, id: Uuid) -> Result<Option<UserRow>> {
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            FROM users
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_user_by_oauth(
+        &self,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<UserRow>> {
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            FROM users
+            WHERE auth_provider = $1 AND auth_provider_id = $2
+            "#,
+        )
+        .bind(provider)
+        .bind(provider_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
+        let roles_json = input.roles.map(|r| serde_json::to_value(&r)).transpose()?;
+
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            UPDATE users
+            SET
+                name = COALESCE($2, name),
+                avatar_url = COALESCE($3, avatar_url),
+                roles = COALESCE($4, roles),
+                password_hash = COALESCE($5, password_hash),
+                email_verified = COALESCE($6, email_verified),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(&input.name)
+        .bind(&input.avatar_url)
+        .bind(&roles_json)
+        .bind(&input.password_hash)
+        .bind(input.email_verified)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    // ============================================
+    // API Keys
+    // ============================================
+
+    pub async fn create_api_key(&self, input: CreateApiKey) -> Result<ApiKeyRow> {
+        let scopes_json = serde_json::to_value(&input.scopes)?;
+
+        let row = sqlx::query_as::<_, ApiKeyRow>(
+            r#"
+            INSERT INTO api_keys (user_id, name, key_hash, key_prefix, scopes, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at
+            "#,
+        )
+        .bind(input.user_id)
+        .bind(&input.name)
+        .bind(&input.key_hash)
+        .bind(&input.key_prefix)
+        .bind(&scopes_json)
+        .bind(input.expires_at)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRow>> {
+        let row = sqlx::query_as::<_, ApiKeyRow>(
+            r#"
+            SELECT id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at
+            FROM api_keys
+            WHERE key_hash = $1
+            "#,
+        )
+        .bind(key_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Result<Vec<ApiKeyRow>> {
+        let rows = sqlx::query_as::<_, ApiKeyRow>(
+            r#"
+            SELECT id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at
+            FROM api_keys
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn update_api_key_last_used(&self, id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE api_keys SET last_used_at = NOW() WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete_api_key(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2")
+            .bind(id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    // ============================================
+    // Refresh Tokens
+    // ============================================
+
+    pub async fn create_refresh_token(&self, input: CreateRefreshToken) -> Result<RefreshTokenRow> {
+        let row = sqlx::query_as::<_, RefreshTokenRow>(
+            r#"
+            INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+            VALUES ($1, $2, $3)
+            RETURNING id, user_id, token_hash, expires_at, created_at
+            "#,
+        )
+        .bind(input.user_id)
+        .bind(&input.token_hash)
+        .bind(input.expires_at)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<RefreshTokenRow>> {
+        let row = sqlx::query_as::<_, RefreshTokenRow>(
+            r#"
+            SELECT id, user_id, token_hash, expires_at, created_at
+            FROM refresh_tokens
+            WHERE token_hash = $1
+            "#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_refresh_token(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM refresh_tokens WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_expired_refresh_tokens(&self) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < NOW()")
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    pub async fn delete_user_refresh_tokens(&self, user_id: Uuid) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
     }
 
     // ============================================

@@ -1,8 +1,9 @@
 // Everruns API server
-// Decision: Auth will be added later via OAuth (dashboard login)
+// Decision: Flexible auth with support for no-auth, admin-only, and full auth modes
 // M2: Agent/Session/Messages model with Events as SSE notifications
 
 mod agents;
+mod auth;
 mod llm_models;
 mod llm_providers;
 mod services;
@@ -32,6 +33,7 @@ struct HealthResponse {
     status: &'static str,
     version: &'static str,
     runner_mode: String,
+    auth_mode: String,
 }
 
 async fn health(State(state): State<HealthState>) -> Json<HealthResponse> {
@@ -39,6 +41,7 @@ async fn health(State(state): State<HealthState>) -> Json<HealthResponse> {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
         runner_mode: state.runner_mode.clone(),
+        auth_mode: state.auth_mode.clone(),
     })
 }
 
@@ -46,6 +49,7 @@ async fn health(State(state): State<HealthState>) -> Json<HealthResponse> {
 #[derive(Clone)]
 struct HealthState {
     runner_mode: String,
+    auth_mode: String,
 }
 
 /// OpenAPI documentation
@@ -175,6 +179,18 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Load authentication configuration
+    let auth_config = auth::AuthConfig::from_env();
+    tracing::info!(
+        mode = ?auth_config.mode,
+        password_auth = auth_config.password_auth_enabled(),
+        oauth = auth_config.oauth_enabled(),
+        "Authentication configured"
+    );
+
+    // Create auth state
+    let auth_state = auth::AuthState::new(auth_config.clone(), db.clone());
+
     // Create module-specific states
     let agents_state = agents::AppState::new(db.clone());
     let sessions_state = sessions::AppState::new(db.clone(), runner.clone());
@@ -185,6 +201,7 @@ async fn main() -> Result<()> {
     let llm_models_state = llm_models::AppState { db: db.clone() };
     let health_state = HealthState {
         runner_mode: format!("{:?}", runner_config.mode),
+        auth_mode: format!("{:?}", auth_config.mode),
     };
 
     // Load API prefix from environment (default: empty)
@@ -204,8 +221,10 @@ async fn main() -> Result<()> {
         .merge(llm_models::routes(llm_models_state))
         .merge(llm_providers::routes(llm_providers_state));
 
-    // Build main router with optional prefix for API routes
-    let mut app = Router::new().route("/health", get(health).with_state(health_state));
+    // Build main router with health, auth (not prefixed), and prefixed API routes
+    let mut app = Router::new()
+        .route("/health", get(health).with_state(health_state))
+        .merge(auth::routes(auth_state));
 
     // Apply API prefix if configured
     app = app.merge(build_router_with_prefix(api_routes, &api_prefix));
