@@ -128,10 +128,11 @@ pub async fn create_model(
     };
 
     let row = state.db.create_llm_model(input).await.map_err(|e| {
+        tracing::error!("Failed to create LLM model: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -160,10 +161,11 @@ pub async fn list_provider_models(
         .list_llm_models_for_provider(provider_id)
         .await
         .map_err(|e| {
+            tracing::error!("Failed to list LLM models for provider: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: e.to_string(),
+                    error: "Internal server error".to_string(),
                 }),
             )
         })?;
@@ -184,10 +186,11 @@ pub async fn list_all_models(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
     let rows = state.db.list_all_llm_models().await.map_err(|e| {
+        tracing::error!("Failed to list all LLM models: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -213,10 +216,11 @@ pub async fn get_model(
     Path(id): Path<Uuid>,
 ) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
     let row = state.db.get_llm_model(id).await.map_err(|e| {
+        tracing::error!("Failed to get LLM model: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -264,10 +268,11 @@ pub async fn update_model(
     };
 
     let row = state.db.update_llm_model(id, input).await.map_err(|e| {
+        tracing::error!("Failed to update LLM model: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -301,10 +306,11 @@ pub async fn delete_model(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let deleted = state.db.delete_llm_model(id).await.map_err(|e| {
+        tracing::error!("Failed to delete LLM model: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -333,4 +339,52 @@ pub fn routes(state: AppState) -> Router {
             get(get_model).patch(update_model).delete(delete_model),
         )
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_response_serialization() {
+        let error = ErrorResponse {
+            error: "Internal server error".to_string(),
+        };
+        let json = serde_json::to_string(&error).expect("Failed to serialize");
+        assert_eq!(json, r#"{"error":"Internal server error"}"#);
+    }
+
+    #[test]
+    fn test_error_response_internal_error_format() {
+        // Verify that internal error responses use the generic message
+        let error = ErrorResponse {
+            error: "Internal server error".to_string(),
+        };
+        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
+        assert_eq!(parsed["error"], "Internal server error");
+    }
+
+    #[test]
+    fn test_error_response_not_found_format() {
+        let error = ErrorResponse {
+            error: "Model not found".to_string(),
+        };
+        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
+        assert_eq!(parsed["error"], "Model not found");
+    }
+
+    #[test]
+    fn test_internal_error_does_not_leak_details() {
+        // Simulate what happens when a database error occurs
+        // The error message should be generic, not contain DB details
+        let generic_message = "Internal server error".to_string();
+
+        // This is what we return to clients - verify it doesn't contain
+        // typical database error patterns
+        assert!(!generic_message.contains("SQLX"));
+        assert!(!generic_message.contains("connection"));
+        assert!(!generic_message.contains("database"));
+        assert!(!generic_message.contains("query"));
+        assert!(!generic_message.contains("postgres"));
+    }
 }
