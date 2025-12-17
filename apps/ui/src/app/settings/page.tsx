@@ -436,7 +436,7 @@ function AddModelDialog({
               id="model-id"
               value={modelId}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelId(e.target.value)}
-              placeholder="gpt-4o"
+              placeholder="gpt-5.2"
               required
             />
           </div>
