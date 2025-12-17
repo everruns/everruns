@@ -40,3 +40,4 @@ everruns-worker = { path = "../everruns-worker" }
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
+http-body-util = "0.1"

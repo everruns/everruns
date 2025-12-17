@@ -742,6 +742,7 @@ dependencies = [
  "everruns-storage",
  "everruns-worker",
  "futures",
+ "http-body-util",
  "reqwest",
  "serde",
  "serde_json",

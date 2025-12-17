@@ -187,16 +187,31 @@ async fn main() -> Result<()> {
         runner_mode: format!("{:?}", runner_config.mode),
     };
 
-    // Build router
+    // Load API prefix from environment (default: empty)
+    // Example: API_PREFIX="/api" results in routes like /api/v1/agents
+    let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
+    if !api_prefix.is_empty() {
+        tracing::info!(prefix = %api_prefix, "API prefix configured");
+    }
+
+    // Build API routes
     // Note: llm_models routes must be merged BEFORE llm_providers
     // because /v1/llm-providers/{provider_id}/models is more specific
     // than /v1/llm-providers/{id}
-    let app = Router::new()
-        .route("/health", get(health).with_state(health_state))
+    let api_routes = Router::new()
         .merge(agents::routes(agents_state))
         .merge(sessions::routes(sessions_state))
         .merge(llm_models::routes(llm_models_state))
-        .merge(llm_providers::routes(llm_providers_state))
+        .merge(llm_providers::routes(llm_providers_state));
+
+    // Build main router with optional prefix for API routes
+    let mut app = Router::new().route("/health", get(health).with_state(health_state));
+
+    // Apply API prefix if configured
+    app = app.merge(build_router_with_prefix(api_routes, &api_prefix));
+
+    // Add Swagger UI and middleware
+    let app = app
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
             CorsLayer::new()
@@ -216,4 +231,79 @@ async fn main() -> Result<()> {
     axum::serve(listener, app).await.context("Server error")?;
 
     Ok(())
+}
+
+/// Build router with optional API prefix (extracted for testing)
+fn build_router_with_prefix<S: Clone + Send + Sync + 'static>(
+    api_routes: Router<S>,
+    api_prefix: &str,
+) -> Router<S> {
+    if api_prefix.is_empty() {
+        api_routes
+    } else {
+        Router::new().nest(api_prefix, api_routes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{body::Body, http::Request};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    fn test_routes() -> Router {
+        Router::new().route("/v1/test", get(|| async { "ok" }))
+    }
+
+    #[tokio::test]
+    async fn test_api_prefix_empty() {
+        let app = build_router_with_prefix(test_routes(), "");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"ok");
+    }
+
+    #[tokio::test]
+    async fn test_api_prefix_set() {
+        let app = build_router_with_prefix(test_routes(), "/api");
+
+        // Route should work with prefix
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+
+        // Route should NOT work without prefix
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 404);
+    }
 }
