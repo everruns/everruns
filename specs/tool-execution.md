@@ -16,8 +16,41 @@ External HTTP endpoints called by the agent:
 - `timeout_secs`: Request timeout
 - `max_retries`: Retry count on failure
 
-#### Built-in Tools (Future)
-System-provided tools like `http_get`, `http_post`, `file_read`. Not implemented in current version.
+#### Built-in Tools
+System-provided tools implemented via the `Tool` trait in `everruns-agent-loop`.
+
+**Tool Trait Interface:**
+```rust
+#[async_trait]
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+    fn parameters_schema(&self) -> Value;
+    async fn execute(&self, arguments: Value) -> ToolExecutionResult;
+    fn policy(&self) -> ToolPolicy { ToolPolicy::Auto }
+}
+```
+
+**Error Handling Contract:**
+- `ToolExecutionResult::Success(Value)` - Successful result returned to LLM
+- `ToolExecutionResult::ToolError(String)` - User-visible error shown to LLM (e.g., "City not found")
+- `ToolExecutionResult::InternalError` - System error logged but hidden from LLM (security)
+
+**Provided Tools:**
+- `GetCurrentTime` - Returns current timestamp in various formats (iso8601, unix, human)
+- `EchoTool` - Echoes input (useful for testing)
+- `FailingTool` - Always fails (for error handling tests)
+
+**ToolRegistry:**
+Manages multiple tools and implements `ToolExecutor` trait for integration with `AgentLoop`:
+```rust
+let registry = ToolRegistry::builder()
+    .tool(GetCurrentTime)
+    .tool(MyCustomTool)
+    .build();
+
+let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
+```
 
 ### Tool Definition Schema
 
