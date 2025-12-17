@@ -51,14 +51,24 @@ Before creating a pull request, ensure:
 1. **Formatting**: Run `cargo fmt` to format all code
 2. **Linting**: Run `cargo clippy -- -D warnings` and fix all warnings
 3. **Tests**: Run `cargo test` to ensure all tests pass
-4. **Smoke tests**: Run smoke tests to verify the system works end-to-end
+4. **UI Build**: Run `npm run build` in `apps/ui/` to verify TypeScript and build
+5. **Smoke tests**: Run smoke tests to verify the system works end-to-end
 
 ```bash
-# Quick pre-PR check
+# Quick pre-PR check (Rust)
 cargo fmt && cargo clippy -- -D warnings && cargo test
+
+# Quick pre-PR check (UI)
+cd apps/ui && npm run build
 ```
 
-CI will fail if formatting, linting, or tests fail. Always run these locally before pushing.
+CI will fail if formatting, linting, tests, or UI build fail. Always run these locally before pushing.
+
+### UI conventions
+
+- Use **npm** for package management (CI uses `npm ci`)
+- After adding dependencies, ensure `package-lock.json` is updated via `npm install`
+- Run `npm run build` to verify TypeScript types and build before pushing
 
 ### Commit message conventions
 
