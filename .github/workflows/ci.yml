@@ -233,15 +233,18 @@ jobs:
           fi
 
           echo "Creating session..."
-          SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions" \
+          SESSION_HTTP=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions" \
             -H 'Content-Type: application/json' \
             -d '{"title":"CI Test Session"}')
+          SESSION_CODE=$(echo "$SESSION_HTTP" | grep "HTTP_CODE:" | cut -d: -f2)
+          SESSION=$(echo "$SESSION_HTTP" | sed '/HTTP_CODE:/d')
+          echo "Session HTTP code: $SESSION_CODE"
           echo "Session response: $SESSION"
           SESSION_ID=$(echo "$SESSION" | jq -r '.id')
           echo "Session ID: $SESSION_ID"
 
           if [ "$SESSION_ID" == "null" ] || [ -z "$SESSION_ID" ]; then
-            echo "ERROR: Failed to create session"
+            echo "ERROR: Failed to create session (HTTP $SESSION_CODE)"
             exit 1
           fi
 
