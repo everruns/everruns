@@ -44,6 +44,19 @@ Available skills:
 - Run `cargo fmt` and `cargo clippy -- -D warnings` for touched crates.
 - Prefer `axum`/`tower` for HTTP, `sqlx` for Postgres, `serde` for DTOs.
 
+### API error handling
+
+- **Never expose internal error details to API clients.** Database errors, connection failures, and other internal errors must return a generic `500 Internal Server Error` with message "Internal server error".
+- **Always log the full error server-side.** Use `tracing::error!()` to log the complete error details before returning the generic response.
+- Error messages returned to clients should only contain safe, user-facing information (e.g., "Not found", "Invalid request", "Internal server error").
+- Example pattern:
+  ```rust
+  let result = state.db.some_operation().await.map_err(|e| {
+      tracing::error!("Failed to perform operation: {}", e);
+      StatusCode::INTERNAL_SERVER_ERROR
+  })?;
+  ```
+
 ### CI expectations
 
 - CI is implemented using Github Actions, status is avaiable via `gh` tool
@@ -73,6 +86,36 @@ CI will fail if formatting, linting, tests, or UI build fail. Always run these l
 - Use **npm** for package management (CI uses `npm ci`)
 - After adding dependencies, ensure `package-lock.json` is updated via `npm install`
 - Run `npm run build` to verify TypeScript types and build before pushing
+
+### Testing conventions
+
+PRs should include appropriate tests for the changes being made:
+
+- **Unit tests**: Include inline `#[cfg(test)]` modules for:
+  - Data structure validation (serialization/deserialization)
+  - Error response formats
+  - Pure functions and transformations
+  - Business logic that doesn't require external dependencies
+
+- **Integration tests**: Add to `tests/integration_test.rs` for:
+  - New API endpoints
+  - Complex workflows spanning multiple services
+  - End-to-end functionality verification
+
+- **When to add tests**:
+  - New features: Always include tests
+  - Bug fixes: Add regression tests when feasible
+  - Refactoring: Ensure existing tests still pass; add tests if coverage gaps are found
+  - Security fixes: Include tests verifying the fix (e.g., error messages don't leak internal details)
+
+- **Running tests**:
+  ```bash
+  # Unit tests (no external dependencies)
+  cargo test
+
+  # Integration tests (requires API running)
+  cargo test --test integration_test -- --ignored
+  ```
 
 ### Commit message conventions
 
