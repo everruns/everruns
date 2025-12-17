@@ -187,16 +187,35 @@ async fn main() -> Result<()> {
         runner_mode: format!("{:?}", runner_config.mode),
     };
 
-    // Build router
+    // Load API prefix from environment (default: empty)
+    // Example: API_PREFIX="/api" results in routes like /api/v1/agents
+    let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
+    if !api_prefix.is_empty() {
+        tracing::info!(prefix = %api_prefix, "API prefix configured");
+    }
+
+    // Build API routes
     // Note: llm_models routes must be merged BEFORE llm_providers
     // because /v1/llm-providers/{provider_id}/models is more specific
     // than /v1/llm-providers/{id}
-    let app = Router::new()
-        .route("/health", get(health).with_state(health_state))
+    let api_routes = Router::new()
         .merge(agents::routes(agents_state))
         .merge(sessions::routes(sessions_state))
         .merge(llm_models::routes(llm_models_state))
-        .merge(llm_providers::routes(llm_providers_state))
+        .merge(llm_providers::routes(llm_providers_state));
+
+    // Build main router with optional prefix for API routes
+    let mut app = Router::new().route("/health", get(health).with_state(health_state));
+
+    // Apply API prefix if configured, otherwise merge directly
+    if api_prefix.is_empty() {
+        app = app.merge(api_routes);
+    } else {
+        app = app.nest(&api_prefix, api_routes);
+    }
+
+    // Add Swagger UI and middleware
+    let app = app
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
             CorsLayer::new()
