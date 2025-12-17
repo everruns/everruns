@@ -39,7 +39,9 @@ everruns-contracts = { path = "../everruns-contracts" }
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
+reqwest = { version = "0.12", features = ["json", "stream"] }
+eventsource-stream = "0.2"
 
 [[example]]
-name = "mock_demo"
-path = "examples/mock_demo.rs"
+name = "tool_calling"
+path = "examples/tool_calling.rs"

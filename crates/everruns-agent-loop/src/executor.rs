@@ -175,8 +175,14 @@ where
             // Call LLM
             let llm_result = self.call_llm(session_id, iteration, &messages).await?;
 
-            // Store assistant response as message
-            if !llm_result.text.is_empty() {
+            // Check if we have tool calls to execute
+            let has_tool_calls = llm_result
+                .tool_calls
+                .as_ref()
+                .is_some_and(|tc| !tc.is_empty());
+
+            // Store assistant response as message (even with empty text if there are tool_calls)
+            if !llm_result.text.is_empty() || has_tool_calls {
                 let assistant_msg = if let Some(ref tool_calls) = llm_result.tool_calls {
                     ConversationMessage::assistant_with_tools(&llm_result.text, tool_calls.clone())
                 } else {
@@ -187,14 +193,10 @@ where
                     .store(session_id, assistant_msg.clone())
                     .await?;
                 messages.push(assistant_msg);
-                final_response = Some(llm_result.text.clone());
+                if !llm_result.text.is_empty() {
+                    final_response = Some(llm_result.text.clone());
+                }
             }
-
-            // Check if we have tool calls to execute
-            let has_tool_calls = llm_result
-                .tool_calls
-                .as_ref()
-                .is_some_and(|tc| !tc.is_empty());
 
             // Emit LLM completed
             self.event_emitter
@@ -327,8 +329,13 @@ where
 
         let mut messages = input.messages;
 
-        // Add assistant response
-        if !llm_result.text.is_empty() {
+        let has_tool_calls = llm_result
+            .tool_calls
+            .as_ref()
+            .is_some_and(|tc| !tc.is_empty());
+
+        // Add assistant response (even with empty text if there are tool_calls)
+        if !llm_result.text.is_empty() || has_tool_calls {
             let assistant_msg = if let Some(ref tool_calls) = llm_result.tool_calls {
                 ConversationMessage::assistant_with_tools(&llm_result.text, tool_calls.clone())
             } else {
@@ -336,11 +343,6 @@ where
             };
             messages.push(assistant_msg);
         }
-
-        let has_tool_calls = llm_result
-            .tool_calls
-            .as_ref()
-            .is_some_and(|tc| !tc.is_empty());
 
         let step = step.complete(StepResult::LlmCallComplete {
             response_text: llm_result.text,
