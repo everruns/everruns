@@ -1,0 +1,45 @@
+{
+  "family": "everruns-admin",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+  "taskRoleArn": "${TASK_ROLE_ARN}",
+  "containerDefinitions": [
+    {
+      "name": "admin",
+      "image": "${ECR_REGISTRY}/everruns-admin:${IMAGE_TAG}",
+      "essential": true,
+      "command": ["help"],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/everruns-admin",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "admin"
+        }
+      },
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "${DATABASE_URL_SECRET_ARN}"
+        },
+        {
+          "name": "SECRETS_ENCRYPTION_KEY",
+          "valueFrom": "${ENCRYPTION_KEY_SECRET_ARN}"
+        },
+        {
+          "name": "SECRETS_ENCRYPTION_KEY_PREVIOUS",
+          "valueFrom": "${ENCRYPTION_KEY_PREVIOUS_SECRET_ARN}"
+        }
+      ],
+      "environment": [
+        {
+          "name": "RUST_LOG",
+          "value": "info"
+        }
+      ]
+    }
+  ]
+}
