@@ -12,6 +12,7 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 2. **Crate Separation**:
    - `everruns-api` - HTTP API server (axum), SSE streaming, health endpoints
    - `everruns-worker` - Temporal worker, workflows, activities, LLM providers
+   - `everruns-agent-loop` - DB-agnostic agentic loop abstraction (traits, executor, step decomposition)
    - `everruns-contracts` - DTOs, AG-UI events, OpenAPI schemas
    - `everruns-storage` - PostgreSQL (sqlx), migrations, repositories
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
@@ -32,6 +33,30 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 4. **Event Streaming**: AG-UI protocol over SSE for real-time event delivery via database-backed events
 
 See [specs/temporal-integration.md](temporal-integration.md) for detailed Temporal architecture.
+
+### Agent Loop Abstraction (`everruns-agent-loop`)
+
+The agentic loop is encapsulated in a DB-agnostic crate with pluggable backends:
+
+1. **Trait-Based Design**:
+   - `EventEmitter` - Emit events during loop execution
+   - `MessageStore` - Load/store conversation messages
+   - `LlmProvider` - Call LLM with streaming support
+   - `ToolExecutor` - Execute tool calls
+
+2. **Execution Modes**:
+   - **In-Process**: `AgentLoop::run()` - Complete loop execution in single process
+   - **Decomposed**: `AgentLoop::execute_step()` - Step-by-step execution for Temporal integration
+
+3. **Step Abstraction** (`step.rs`):
+   - `StepInput` / `StepOutput` - Input/output for each step
+   - `LoopStep` - Records for each step (setup, llm_call, tool_execution, finalize)
+   - Enables each LLM call and tool call to be a separate Temporal activity
+
+4. **In-Memory Implementations** (for testing/examples):
+   - `InMemoryMessageStore`, `InMemoryEventEmitter`
+   - `MockLlmProvider`, `MockToolExecutor`
+   - `InMemoryAgentLoopBuilder` for easy test setup
 
 ### API Design
 

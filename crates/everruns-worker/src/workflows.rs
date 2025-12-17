@@ -1,18 +1,23 @@
 // Session workflow for agentic loop execution (M2)
 // Uses Agent/Session/Messages model with Events as SSE notifications
+// Now uses everruns-agent-loop for the core loop logic
 
 use anyhow::Result;
 use chrono::Utc;
+use everruns_agent_loop::AgentConfig;
 use everruns_contracts::events::AgUiEvent;
-use everruns_storage::models::{CreateMessage, UpdateSession};
+use everruns_storage::models::UpdateSession;
 use everruns_storage::repositories::Database;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::activities::{LlmCallActivity, PersistEventActivity, ToolExecutionActivity};
-use crate::providers::{openai::OpenAiProvider, ChatMessage, LlmConfig, MessageRole};
+use crate::activities::PersistEventActivity;
+use crate::adapters::create_db_agent_loop;
 
 /// Session workflow orchestrating LLM calls and tool execution
+///
+/// This workflow now delegates the core agentic loop to everruns-agent-loop,
+/// while managing session lifecycle (status updates, error handling).
 pub struct SessionWorkflow {
     session_id: Uuid,
     agent_id: Uuid,
@@ -31,7 +36,7 @@ impl SessionWorkflow {
         })
     }
 
-    /// Execute the workflow with real LLM calls
+    /// Execute the workflow using the AgentLoop abstraction
     pub async fn execute(&self) -> Result<()> {
         info!(
             session_id = %self.session_id,
@@ -43,12 +48,6 @@ impl SessionWorkflow {
         self.update_session_status("running", Some(Utc::now()), None)
             .await?;
 
-        // Emit SESSION_STARTED event (SSE notification)
-        let started_event = AgUiEvent::session_started(self.session_id.to_string());
-        self.persist_activity
-            .persist_event(self.session_id, started_event)
-            .await?;
-
         // Load agent to get configuration
         let agent = self
             .db
@@ -56,213 +55,86 @@ impl SessionWorkflow {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
-        // Build LLM config from agent settings
+        // Build AgentConfig from agent settings
         let model = agent
             .default_model_id
             .map(|id| id.to_string())
-            .unwrap_or_else(|| "gpt-4o".to_string());
+            .unwrap_or_else(|| "gpt-5.2".to_string());
 
-        let llm_config = LlmConfig {
-            model,
-            temperature: None, // TODO: Add to session or use default
-            max_tokens: None,  // TODO: Add to session or use default
-            system_prompt: Some(agent.system_prompt.clone()),
-            tools: Vec::new(), // TODO: Parse tools from session
-        };
+        let config = AgentConfig::new(&agent.system_prompt, model)
+            .with_max_iterations(10)
+            .with_tools(Vec::new()); // TODO: Parse tools from agent/session
 
-        // Load messages from session (PRIMARY data)
-        let messages_rows = self.db.list_messages(self.session_id).await?;
-
-        if messages_rows.is_empty() {
+        // Check if there are messages to process
+        let message_count = self.db.list_messages(self.session_id).await?.len();
+        if message_count == 0 {
             warn!(
                 session_id = %self.session_id,
-                "No messages in session, skipping LLM call"
-            );
-        } else {
-            // Convert messages to ChatMessage format
-            let mut messages: Vec<ChatMessage> = Vec::new();
-
-            // Add system prompt as first message
-            if !agent.system_prompt.is_empty() {
-                messages.push(ChatMessage {
-                    role: MessageRole::System,
-                    content: agent.system_prompt.clone(),
-                    tool_calls: None,
-                    tool_call_id: None,
-                });
-            }
-
-            // Add messages from database
-            for msg in &messages_rows {
-                let role = match msg.role.as_str() {
-                    "user" => MessageRole::User,
-                    "assistant" => MessageRole::Assistant,
-                    "system" => MessageRole::System,
-                    "tool_call" => continue, // Tool calls are handled separately
-                    "tool_result" => MessageRole::Tool,
-                    _ => continue,
-                };
-
-                // Extract content from JSON
-                let content = if let Some(text) = msg.content.get("text").and_then(|t| t.as_str()) {
-                    text.to_string()
-                } else if let Some(content_str) = msg.content.as_str() {
-                    content_str.to_string()
-                } else if let Some(result) = msg.content.get("result") {
-                    serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string())
-                } else {
-                    continue;
-                };
-
-                messages.push(ChatMessage {
-                    role,
-                    content,
-                    tool_calls: None,
-                    tool_call_id: msg.tool_call_id.clone(),
-                });
-            }
-
-            info!(
-                session_id = %self.session_id,
-                message_count = messages.len(),
-                model = %llm_config.model,
-                "Calling LLM"
+                "No messages in session, skipping agent loop"
             );
 
-            // Call LLM (use OpenAI provider)
-            let provider = OpenAiProvider::new()?;
-            let llm_activity = LlmCallActivity::new(provider, self.db.clone());
-            let tool_activity = ToolExecutionActivity::new(self.db.clone());
+            // Emit session finished event even if no messages
+            let finished_event = AgUiEvent::session_finished(self.session_id.to_string());
+            self.persist_activity
+                .persist_event(self.session_id, finished_event)
+                .await?;
 
-            // Tool calling loop: Call LLM → Execute tools → Loop back with results
-            const MAX_TOOL_ITERATIONS: usize = 5;
-            let mut iteration = 0;
-            let mut current_messages = messages;
+            // Set session back to pending
+            self.update_session_status("pending", None, None).await?;
 
-            loop {
-                iteration += 1;
-                if iteration > MAX_TOOL_ITERATIONS {
-                    warn!(
-                        session_id = %self.session_id,
-                        "Max tool calling iterations reached, stopping"
-                    );
-                    break;
-                }
-
-                // Call LLM (non-streaming)
-                let result = llm_activity
-                    .call(
-                        self.session_id,
-                        current_messages.clone(),
-                        llm_config.clone(),
-                    )
-                    .await?;
-
-                // If we got a response, persist it as an assistant Message
-                if !result.text.is_empty() {
-                    info!(
-                        session_id = %self.session_id,
-                        response_length = result.text.len(),
-                        "Got assistant response"
-                    );
-
-                    // Store assistant response as Message (PRIMARY data)
-                    let create_msg = CreateMessage {
-                        session_id: self.session_id,
-                        role: "assistant".to_string(),
-                        content: serde_json::json!({ "text": result.text.clone() }),
-                        tool_call_id: None,
-                    };
-                    self.db.create_message(create_msg).await?;
-
-                    current_messages.push(ChatMessage {
-                        role: MessageRole::Assistant,
-                        content: result.text.clone(),
-                        tool_calls: result.tool_calls.clone(),
-                        tool_call_id: None,
-                    });
-                }
-
-                // Check if there are tool calls to execute
-                if let Some(tool_calls) = result.tool_calls {
-                    info!(
-                        session_id = %self.session_id,
-                        tool_count = tool_calls.len(),
-                        "Executing tool calls"
-                    );
-
-                    // Store tool calls as Messages (PRIMARY data)
-                    for tool_call in &tool_calls {
-                        let create_msg = CreateMessage {
-                            session_id: self.session_id,
-                            role: "tool_call".to_string(),
-                            content: serde_json::json!({
-                                "id": tool_call.id,
-                                "name": tool_call.name,
-                                "arguments": tool_call.arguments
-                            }),
-                            tool_call_id: Some(tool_call.id.clone()),
-                        };
-                        self.db.create_message(create_msg).await?;
-                    }
-
-                    // Execute tools in parallel
-                    let tool_results = tool_activity
-                        .execute_tool_calls_parallel(
-                            self.session_id,
-                            &tool_calls,
-                            &llm_config.tools,
-                        )
-                        .await?;
-
-                    // Store tool results as Messages (PRIMARY data) and add to conversation
-                    for (tool_call, tool_result) in tool_calls.iter().zip(tool_results.iter()) {
-                        let result_content = if let Some(result) = &tool_result.result {
-                            serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string())
-                        } else if let Some(error) = &tool_result.error {
-                            format!(r#"{{"error": "{}"}}"#, error)
-                        } else {
-                            "{}".to_string()
-                        };
-
-                        // Store tool result as Message
-                        let create_msg = CreateMessage {
-                            session_id: self.session_id,
-                            role: "tool_result".to_string(),
-                            content: serde_json::json!({
-                                "result": tool_result.result,
-                                "error": tool_result.error
-                            }),
-                            tool_call_id: Some(tool_call.id.clone()),
-                        };
-                        self.db.create_message(create_msg).await?;
-
-                        current_messages.push(ChatMessage {
-                            role: MessageRole::Tool,
-                            content: result_content,
-                            tool_calls: None,
-                            tool_call_id: Some(tool_call.id.clone()),
-                        });
-                    }
-
-                    // Continue loop to call LLM again with tool results
-                    continue;
-                }
-
-                // No tool calls, we're done
-                break;
-            }
+            return Ok(());
         }
 
-        // Emit SESSION_FINISHED event (SSE notification for this message cycle)
-        let finished_event = AgUiEvent::session_finished(self.session_id.to_string());
-        self.persist_activity
-            .persist_event(self.session_id, finished_event)
-            .await?;
+        info!(
+            session_id = %self.session_id,
+            message_count = message_count,
+            model = %config.model,
+            "Running agent loop"
+        );
 
-        // Set session back to pending (ready for more messages)
-        // Sessions work indefinitely - only "failed" is a terminal state
-        self.update_session_status("pending", None, None).await?;
+        // Create and run the agent loop with database-backed components
+        let agent_loop = create_db_agent_loop(config, self.db.clone())?;
+        let result = agent_loop.run(self.session_id).await;
+
+        match result {
+            Ok(loop_result) => {
+                info!(
+                    session_id = %self.session_id,
+                    iterations = loop_result.iterations,
+                    final_messages = loop_result.messages.len(),
+                    "Agent loop completed successfully"
+                );
+
+                // Set session back to pending (ready for more messages)
+                // Sessions work indefinitely - only "failed" is a terminal state
+                self.update_session_status("pending", None, None).await?;
+            }
+            Err(e) => {
+                // Handle specific error types
+                match &e {
+                    everruns_agent_loop::AgentLoopError::NoMessages => {
+                        warn!(session_id = %self.session_id, "No messages to process");
+                        self.update_session_status("pending", None, None).await?;
+                    }
+                    everruns_agent_loop::AgentLoopError::MaxIterationsReached(max) => {
+                        warn!(session_id = %self.session_id, max = max, "Max iterations reached");
+                        // Still set to pending - can continue with more messages
+                        self.update_session_status("pending", None, None).await?;
+                    }
+                    _ => {
+                        error!(session_id = %self.session_id, error = %e, "Agent loop failed");
+                        // Emit error event and set status to failed
+                        let error_event = AgUiEvent::session_error(e.to_string());
+                        self.persist_activity
+                            .persist_event(self.session_id, error_event)
+                            .await?;
+                        self.update_session_status("failed", None, Some(Utc::now()))
+                            .await?;
+                        return Err(e.into());
+                    }
+                }
+            }
+        }
 
         info!(
             session_id = %self.session_id,
@@ -336,5 +208,20 @@ impl AgentRunWorkflow {
         db: Database,
     ) -> Result<Self> {
         SessionWorkflow::new(run_id, agent_id, db).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Integration tests would require a database connection
+    // Unit tests for the workflow structure
+
+    #[test]
+    fn test_workflow_type_alias() {
+        // Verify the type alias works
+        fn _accepts_workflow(_w: AgentRunWorkflow) {}
+        fn _accepts_session(_w: SessionWorkflow) {}
     }
 }

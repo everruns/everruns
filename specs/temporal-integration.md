@@ -65,28 +65,36 @@ impl TemporalWorker {
 }
 ```
 
-### Workflow State Machine (`workflows_temporal.rs`)
+### Workflow State Machine (`workflows.rs`)
 
-The agent run workflow as a deterministic state machine.
+Two workflow implementations are available:
+
+#### Legacy Workflow (`AgentRunWorkflow`)
+The original workflow with batched tool execution.
+
+#### Step-Based Workflow (`StepBasedWorkflow`)
+Uses `everruns-agent-loop` step abstractions for maximum granularity.
 
 ```rust
-pub enum AgentRunWorkflowState {
+pub enum StepBasedWorkflowState {
     Starting,
-    LoadingAgent { activity_seq: u32 },
-    LoadingMessages { activity_seq: u32, agent_config: LoadAgentOutput },
-    CallingLlm { activity_seq: u32, agent_config: LoadAgentOutput, messages: Vec<MessageData>, iteration: u8 },
-    ExecutingTools { activity_seq: u32, agent_config: LoadAgentOutput, messages: Vec<MessageData>, tool_calls: Vec<ToolCallData>, iteration: u8 },
-    SavingMessage { ... },
+    Setup { activity_seq: u32 },
+    ExecutingLlm { activity_seq: u32, agent_config, messages, iteration },
+    ExecutingTool { activity_seq: u32, agent_config, messages, iteration, pending_tools, completed_results, current_tool_index },
+    Finalizing { activity_seq: u32, messages, iteration, final_response },
     UpdatingStatus { activity_seq: u32, final_status: String },
     Completed,
     Failed { error: String },
 }
 ```
 
-### Activities (`activities_temporal.rs`)
+Key difference: **Each tool call is a separate activity** (not batched), enabling individual retries and better observability.
+
+### Activities (`activities.rs`)
 
 Idempotent activity functions:
 
+#### Legacy Activities
 | Activity | Description | Heartbeat |
 |----------|-------------|-----------|
 | `load_agent` | Load agent configuration from database | No |
@@ -94,8 +102,16 @@ Idempotent activity functions:
 | `update_status` | Update run status in database | No |
 | `persist_event` | Persist AG-UI event to database | No |
 | `call_llm` | Call LLM and stream response | Yes (every 10 chunks) |
-| `execute_tools` | Execute tool calls | Yes (per tool) |
+| `execute_tools` | Execute tool calls (batched) | Yes (per tool) |
 | `save_message` | Save message to thread | No |
+
+#### Step-Based Activities (using `everruns-agent-loop`)
+| Activity | Description | Heartbeat |
+|----------|-------------|-----------|
+| `setup_step` | Load agent config + messages | Yes |
+| `execute_llm_step` | Single LLM call via `AgentLoop::execute_step()` | Yes |
+| `execute_single_tool` | Execute ONE tool call (not batched) | Yes |
+| `finalize_step` | Save final message, update status | Yes |
 
 ## Workflow Execution Flow
 

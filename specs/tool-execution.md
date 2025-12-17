@@ -55,11 +55,42 @@ System-provided tools like `http_get`, `http_post`, `file_read`. Not implemented
 1. LLM returns tool calls in response
 2. For each tool call:
    - Emit `ToolCallStart` event
-   - Execute tool (parallel if multiple)
+   - Execute tool
    - Emit `ToolCallResult` event
 3. Add tool results to message history
 4. Call LLM again with results
-5. Repeat until LLM returns final response (max 5 iterations)
+5. Repeat until LLM returns final response (max 10 iterations)
+
+### Step-Based Execution (Temporal Mode)
+
+In Temporal mode, each LLM call and each tool call is a **separate Temporal activity (node)**:
+
+```
+┌─────────────┐
+│ SetupStep   │ → Load agent config + messages
+└─────────────┘
+       ↓
+┌─────────────────┐
+│ ExecuteLlmStep  │ → Call LLM (iteration 1)
+└─────────────────┘
+       ↓ (if tool calls)
+┌───────────────────────┐   ┌───────────────────────┐
+│ ExecuteSingleTool #1  │ → │ ExecuteSingleTool #2  │ → ...
+└───────────────────────┘   └───────────────────────┘
+       ↓ (loop back)
+┌─────────────────┐
+│ ExecuteLlmStep  │ → Call LLM (iteration 2)
+└─────────────────┘
+       ↓ (no tools)
+┌──────────────┐
+│ FinalizeStep │ → Save final message, update status
+└──────────────┘
+```
+
+Benefits:
+- **Individual retries**: Failed tool can retry without re-running LLM
+- **Maximum observability**: Each step visible in Temporal UI
+- **Better debugging**: Isolate failures to specific steps
 
 ### Webhook Execution
 

@@ -266,8 +266,8 @@ async fn test_llm_provider_and_model_workflow() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "gpt-4o",
-            "display_name": "GPT-4o",
+            "model_id": "gpt-5.2",
+            "display_name": "GPT-5.2",
             "capabilities": ["chat", "vision"],
             "context_window": 128000,
             "is_default": true
@@ -285,7 +285,7 @@ async fn test_llm_provider_and_model_workflow() {
         serde_json::from_str(&model_response_text).expect("Failed to parse model response");
 
     println!("Created model: {} ({})", model.display_name, model.id);
-    assert_eq!(model.model_id, "gpt-4o");
+    assert_eq!(model.model_id, "gpt-5.2");
 
     // Cleanup
     println!("\nCleaning up...");

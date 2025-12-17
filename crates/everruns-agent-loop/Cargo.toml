@@ -1,0 +1,45 @@
+# Agent Loop Abstraction
+# Decision: Keep the loop logic DB-agnostic via traits (EventEmitter, MessageStore, ToolExecutor)
+# Decision: Use async_trait for trait definitions to support async operations
+# Decision: Re-export AG-UI events from everruns-contracts for consistency
+
+[package]
+name = "everruns-agent-loop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Agentic loop abstraction for Everruns - DB-agnostic, streamable, decomposable"
+
+[dependencies]
+# Core dependencies
+anyhow.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+
+# Async runtime
+tokio = { workspace = true, features = ["sync"] }
+tokio-stream.workspace = true
+futures.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# UUID and time
+uuid.workspace = true
+chrono.workspace = true
+
+# Tracing
+tracing.workspace = true
+
+# Internal dependencies
+everruns-contracts = { path = "../everruns-contracts" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tracing-subscriber.workspace = true
+
+[[example]]
+name = "mock_demo"
+path = "examples/mock_demo.rs"
