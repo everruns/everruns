@@ -1,5 +1,6 @@
 use anyhow::Result;
-use everruns_worker::{RunnerConfig, RunnerMode};
+use everruns_storage::repositories::Database;
+use everruns_worker::{temporal::TemporalWorker, RunnerConfig, RunnerMode};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -27,11 +28,33 @@ async fn main() -> Result<()> {
             tokio::signal::ctrl_c().await?;
         }
         RunnerMode::Temporal => {
-            // Temporal mode disabled during M2 migration to Harness/Session model
-            // Will be re-enabled when Temporal integration is updated
-            tracing::warn!("Temporal mode requested but disabled during M2 migration");
-            tracing::info!("Falling back to passive mode, waiting for shutdown signal...");
-            tokio::signal::ctrl_c().await?;
+            // Temporal mode: Start the Temporal worker to poll for tasks
+            tracing::info!(
+                task_queue = %config.temporal_task_queue(),
+                "Starting Temporal worker"
+            );
+
+            // Connect to database
+            let database_url = std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://everruns:everruns@localhost:5432/everruns".into());
+            let db = Database::from_url(&database_url).await?;
+
+            // Create and run the Temporal worker
+            let worker = TemporalWorker::new(config, db).await?;
+
+            // Run the worker (blocks until shutdown)
+            tokio::select! {
+                result = worker.run() => {
+                    if let Err(e) = result {
+                        tracing::error!(error = %e, "Worker error");
+                        return Err(e);
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    tracing::info!("Received shutdown signal");
+                    worker.shutdown();
+                }
+            }
         }
     }
 

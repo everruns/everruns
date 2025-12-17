@@ -5,10 +5,8 @@ pub mod runner_inprocess;
 pub mod tools;
 pub mod workflows;
 
-// Temporal module disabled during M2 migration to Harness/Session model
-// Will be re-enabled when Temporal integration is updated
-// pub mod temporal;
-// pub mod executor;
+// Temporal integration for durable workflow execution
+pub mod temporal;
 
 // Re-export main types
 pub use runner::{create_runner, AgentRunner, RunnerConfig, RunnerMode};

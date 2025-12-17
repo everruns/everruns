@@ -317,6 +317,20 @@ impl AgUiEvent {
             timestamp: Some(Utc::now().timestamp_millis()),
         })
     }
+
+    pub fn step_started(step_name: impl Into<String>) -> Self {
+        AgUiEvent::StepStarted(StepStartedEvent {
+            step_name: step_name.into(),
+            timestamp: Some(Utc::now().timestamp_millis()),
+        })
+    }
+
+    pub fn step_finished(step_name: impl Into<String>) -> Self {
+        AgUiEvent::StepFinished(StepFinishedEvent {
+            step_name: step_name.into(),
+            timestamp: Some(Utc::now().timestamp_millis()),
+        })
+    }
 }
 
 // HITL-specific custom event kinds

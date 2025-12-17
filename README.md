@@ -8,9 +8,17 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 
 ### Key Features
 
-- **Durable execution**: Agent runs survive restarts via Temporal workflows
-- **Real-time streaming**: AG-UI protocol compatible event stream
-- **Management UI**: Dashboard for agents, runs, and chat
+- **Durable execution**: Agent sessions survive restarts via Temporal workflows
+- **AG-UI protocol**: Compatible event stream for real-time UI updates
+- **Management UI**: Dashboard for agents, sessions, and chat
+- **Indefinite sessions**: Sessions can receive messages continuously without terminating
+
+### Data Model
+
+- **Agent**: Configuration for an agentic loop (system prompt, model, etc.)
+- **Session**: An instance of conversation with an agent
+- **Message**: User messages and assistant responses within a session
+- **Event**: Real-time notifications for UI updates (AG-UI protocol)
 
 ### Architecture
 
@@ -68,9 +76,9 @@ Services available at:
 
 ### Chat with an Agent
 
-1. Open http://localhost:9100/chat
-2. Select your agent
-3. Send a message and watch the response stream
+1. Open http://localhost:9100/agents
+2. Click on an agent, then "New Session"
+3. Send a message and see the response
 
 ### API Example
 
@@ -78,16 +86,23 @@ Services available at:
 # Create an agent
 curl -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Agent", "default_model_id": "gpt-5.1"}'
+  -d '{"name": "My Agent", "system_prompt": "You are a helpful assistant."}'
 
-# Create a thread and start a run
-curl -X POST http://localhost:9000/v1/threads -H "Content-Type: application/json" -d '{}'
-curl -X POST http://localhost:9000/v1/runs \
+# Create a session for the agent
+curl -X POST http://localhost:9000/v1/agents/{agent_id}/sessions \
   -H "Content-Type: application/json" \
-  -d '{"agent_id": "...", "agent_version": 1, "thread_id": "..."}'
+  -d '{"title": "My Chat"}'
 
-# Stream events
-curl http://localhost:9000/v1/runs/{run_id}/events
+# Send a message (triggers workflow execution)
+curl -X POST http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Hello, how are you?"}'
+
+# Get messages (poll for response)
+curl http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/messages
+
+# Stream events (real-time updates)
+curl http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/events
 ```
 
 ## Development

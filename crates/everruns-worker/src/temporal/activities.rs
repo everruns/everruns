@@ -1,7 +1,7 @@
-// Temporal activity implementations
+// Temporal activity implementations (M2)
 // Decision: Activities are standalone functions that can be registered with Temporal
 //
-// These activities handle the actual work of agent execution:
+// These activities handle the actual work of session execution:
 // - Loading data from database
 // - Calling LLMs (with streaming and heartbeats)
 // - Executing tools
@@ -10,19 +10,15 @@
 // All activities must be idempotent and handle their own error scenarios.
 
 use anyhow::{Context, Result};
-use everruns_contracts::events::{AgUiEvent, MessageRole};
-use everruns_contracts::tools::ToolCall;
-use everruns_storage::models::UpdateRun;
+use everruns_contracts::events::AgUiEvent;
+use everruns_storage::models::UpdateSession;
 use everruns_storage::repositories::Database;
-use futures::StreamExt;
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::activities::PersistEventActivity;
 use crate::providers::openai::OpenAiProvider;
-use crate::providers::{
-    ChatMessage, LlmConfig, LlmProvider, LlmStreamEvent, MessageRole as ProviderMessageRole,
-};
+use crate::providers::{ChatMessage, LlmConfig, LlmProvider, MessageRole as ProviderMessageRole};
 
 use super::types::*;
 
@@ -76,50 +72,53 @@ pub async fn load_agent_activity(
         .context("Database error loading agent")?
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", input.agent_id))?;
 
-    let definition = &agent.definition;
-
     Ok(LoadAgentOutput {
         agent_id: agent.id,
         name: agent.name,
-        model_id: agent.default_model_id,
-        system_prompt: definition
-            .get("system")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        temperature: definition
-            .get("temperature")
-            .and_then(|v| v.as_f64())
-            .map(|f| f as f32),
-        max_tokens: definition
-            .get("max_tokens")
-            .and_then(|v| v.as_u64())
-            .map(|u| u as u32),
+        model_id: agent
+            .default_model_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "gpt-4o".to_string()),
+        system_prompt: Some(agent.system_prompt),
+        temperature: None,
+        max_tokens: None,
     })
 }
 
-/// Load messages from a thread
+/// Load messages from a session
 pub async fn load_messages_activity(
     _ctx: &ActivityContext,
     db: &Database,
     input: LoadMessagesInput,
 ) -> Result<LoadMessagesOutput> {
-    info!(thread_id = %input.thread_id, "Loading thread messages");
+    info!(session_id = %input.session_id, "Loading session messages");
 
     let messages = db
-        .list_messages(input.thread_id)
+        .list_messages(input.session_id)
         .await
         .context("Database error loading messages")?;
 
     let message_data: Vec<MessageData> = messages
         .into_iter()
-        .map(|m| MessageData {
-            role: m.role,
-            content: m.content,
+        .filter_map(|m| {
+            // Extract text content from JSON
+            let content = if let Some(text) = m.content.get("text").and_then(|t| t.as_str()) {
+                text.to_string()
+            } else if let Some(content_str) = m.content.as_str() {
+                content_str.to_string()
+            } else {
+                return None;
+            };
+
+            Some(MessageData {
+                role: m.role,
+                content,
+            })
         })
         .collect();
 
     info!(
-        thread_id = %input.thread_id,
+        session_id = %input.session_id,
         message_count = message_data.len(),
         "Loaded messages"
     );
@@ -129,29 +128,28 @@ pub async fn load_messages_activity(
     })
 }
 
-/// Update run status in database
+/// Update session status in database
 pub async fn update_status_activity(
     _ctx: &ActivityContext,
     db: &Database,
     input: UpdateStatusInput,
 ) -> Result<()> {
     info!(
-        run_id = %input.run_id,
+        session_id = %input.session_id,
         status = %input.status,
-        "Updating run status"
+        "Updating session status"
     );
 
-    let update = UpdateRun {
+    let update = UpdateSession {
         status: Some(input.status.clone()),
-        temporal_workflow_id: None,
-        temporal_run_id: None,
         started_at: input.started_at,
         finished_at: input.finished_at,
+        ..Default::default()
     };
 
-    db.update_run(input.run_id, update)
+    db.update_session(input.session_id, update)
         .await
-        .context("Database error updating run status")?;
+        .context("Database error updating session status")?;
 
     Ok(())
 }
@@ -166,12 +164,14 @@ pub async fn persist_event_activity(
         .context("Failed to deserialize event data")?;
 
     let persist_activity = PersistEventActivity::new(db.clone());
-    persist_activity.persist_event(input.run_id, event).await?;
+    persist_activity
+        .persist_event(input.session_id, event)
+        .await?;
 
     Ok(())
 }
 
-/// Call LLM and stream response with event persistence
+/// Call LLM and return response (non-streaming for M2)
 /// This is a long-running activity that uses heartbeats
 pub async fn call_llm_activity(
     ctx: &ActivityContext,
@@ -179,11 +179,14 @@ pub async fn call_llm_activity(
     input: CallLlmInput,
 ) -> Result<CallLlmOutput> {
     info!(
-        run_id = %input.run_id,
+        session_id = %input.session_id,
         model = %input.model_id,
         message_count = input.messages.len(),
         "Starting LLM call activity"
     );
+
+    // Heartbeat to indicate we're starting
+    ctx.heartbeat("Starting LLM call");
 
     // Convert message data to ChatMessage format
     let messages: Vec<ChatMessage> = input
@@ -194,7 +197,7 @@ pub async fn call_llm_activity(
                 "system" => ProviderMessageRole::System,
                 "user" => ProviderMessageRole::User,
                 "assistant" => ProviderMessageRole::Assistant,
-                "tool" => ProviderMessageRole::Tool,
+                "tool" | "tool_result" => ProviderMessageRole::Tool,
                 _ => ProviderMessageRole::User,
             },
             content: m.content.clone(),
@@ -209,92 +212,37 @@ pub async fn call_llm_activity(
         temperature: input.temperature,
         max_tokens: input.max_tokens,
         system_prompt: input.system_prompt.clone(),
-        tools: Vec::new(), // Tools will be added from agent definition
+        tools: Vec::new(),
     };
 
     // Create provider
     let provider = OpenAiProvider::new().context("Failed to create OpenAI provider")?;
 
-    // Start streaming
-    let mut stream = provider
-        .chat_completion_stream(messages, &config)
+    // Heartbeat before LLM call
+    ctx.heartbeat("Calling LLM...");
+
+    // Non-streaming call
+    let result = provider
+        .chat_completion(messages, &config)
         .await
-        .context("Failed to start LLM stream")?;
+        .context("LLM call failed")?;
 
-    // Create persist activity
+    info!(
+        session_id = %input.session_id,
+        tokens = ?result.metadata.total_tokens,
+        finish_reason = ?result.metadata.finish_reason,
+        "LLM call completed"
+    );
+
+    // Emit step events
     let persist_activity = PersistEventActivity::new(db.clone());
-
-    // Emit TEXT_MESSAGE_START event
-    let message_id = Uuid::now_v7().to_string();
-    let start_event = AgUiEvent::text_message_start(&message_id, MessageRole::Assistant);
+    let step_event = AgUiEvent::step_finished("llm_call".to_string());
     persist_activity
-        .persist_event(input.run_id, start_event)
+        .persist_event(input.session_id, step_event)
         .await?;
 
-    // Accumulate response and emit chunks
-    let mut full_response = String::new();
-    let mut tool_calls: Option<Vec<ToolCall>> = None;
-    let mut chunk_count = 0;
-
-    while let Some(event_result) = stream.next().await {
-        match event_result {
-            Ok(LlmStreamEvent::TextDelta(delta)) => {
-                if !delta.is_empty() {
-                    full_response.push_str(&delta);
-                    chunk_count += 1;
-
-                    // Emit TEXT_MESSAGE_CONTENT event
-                    let content_event = AgUiEvent::text_message_content(&message_id, &delta);
-                    persist_activity
-                        .persist_event(input.run_id, content_event)
-                        .await?;
-
-                    // Heartbeat every 10 chunks to indicate progress
-                    if chunk_count % 10 == 0 {
-                        ctx.heartbeat(&format!(
-                            "Streaming LLM response: {} tokens",
-                            full_response.len()
-                        ));
-                    }
-                }
-            }
-            Ok(LlmStreamEvent::ToolCalls(calls)) => {
-                info!(
-                    run_id = %input.run_id,
-                    tool_count = calls.len(),
-                    "Tool calls received from LLM"
-                );
-                tool_calls = Some(calls);
-            }
-            Ok(LlmStreamEvent::Done(metadata)) => {
-                info!(
-                    run_id = %input.run_id,
-                    tokens = ?metadata.total_tokens,
-                    finish_reason = ?metadata.finish_reason,
-                    "LLM call completed"
-                );
-
-                // Emit TEXT_MESSAGE_END event
-                let end_event = AgUiEvent::text_message_end(&message_id);
-                persist_activity
-                    .persist_event(input.run_id, end_event)
-                    .await?;
-
-                break;
-            }
-            Ok(LlmStreamEvent::Error(err)) => {
-                error!(run_id = %input.run_id, error = %err, "LLM stream error");
-                return Err(anyhow::anyhow!("LLM stream error: {}", err));
-            }
-            Err(e) => {
-                error!(run_id = %input.run_id, error = %e, "Stream processing error");
-                return Err(e);
-            }
-        }
-    }
-
     // Convert tool calls to output format
-    let output_tool_calls = tool_calls.map(|calls| {
+    let output_tool_calls = result.tool_calls.map(|calls| {
         calls
             .into_iter()
             .map(|tc| ToolCallData {
@@ -306,7 +254,7 @@ pub async fn call_llm_activity(
     });
 
     Ok(CallLlmOutput {
-        text: full_response,
+        text: result.text,
         tool_calls: output_tool_calls,
     })
 }
@@ -318,7 +266,7 @@ pub async fn execute_tools_activity(
     input: ExecuteToolsInput,
 ) -> Result<ExecuteToolsOutput> {
     info!(
-        run_id = %input.run_id,
+        session_id = %input.session_id,
         tool_count = input.tool_calls.len(),
         "Executing tool calls"
     );
@@ -327,47 +275,40 @@ pub async fn execute_tools_activity(
     let mut results = Vec::new();
 
     for (i, tool_call_data) in input.tool_calls.iter().enumerate() {
-        // Convert to ToolCall
-        let tool_call = ToolCall {
-            id: tool_call_data.id.clone(),
-            name: tool_call_data.name.clone(),
-            arguments: serde_json::from_str(&tool_call_data.arguments).unwrap_or_default(),
-        };
-
         // Heartbeat progress
         ctx.heartbeat(&format!(
             "Executing tool {}/{}: {}",
             i + 1,
             input.tool_calls.len(),
-            tool_call.name
+            tool_call_data.name
         ));
 
         // Emit TOOL_CALL_START event
-        let start_event = AgUiEvent::tool_call_start(&tool_call.id, &tool_call.name);
+        let start_event = AgUiEvent::tool_call_start(&tool_call_data.id, &tool_call_data.name);
         persist_activity
-            .persist_event(input.run_id, start_event)
+            .persist_event(input.session_id, start_event)
             .await?;
 
         // Emit TOOL_CALL_ARGS event
-        let args_event = AgUiEvent::tool_call_args(&tool_call.id, tool_call_data.arguments.clone());
+        let args_event =
+            AgUiEvent::tool_call_args(&tool_call_data.id, tool_call_data.arguments.clone());
         persist_activity
-            .persist_event(input.run_id, args_event)
+            .persist_event(input.session_id, args_event)
             .await?;
 
         // Emit TOOL_CALL_END event
-        let end_event = AgUiEvent::tool_call_end(&tool_call.id);
+        let end_event = AgUiEvent::tool_call_end(&tool_call_data.id);
         persist_activity
-            .persist_event(input.run_id, end_event)
+            .persist_event(input.session_id, end_event)
             .await?;
 
-        // For now, we don't have tool definitions available in this context
-        // In a real implementation, we'd load them from the agent definition
         // For now, return a placeholder result
+        // In a real implementation, we'd execute the actual tool
         let result = ToolResultData {
-            tool_call_id: tool_call.id.clone(),
+            tool_call_id: tool_call_data.id.clone(),
             result: Some(serde_json::json!({
                 "status": "tool_execution_not_implemented",
-                "tool_name": tool_call.name
+                "tool_name": tool_call_data.name
             })),
             error: None,
         };
@@ -376,11 +317,11 @@ pub async fn execute_tools_activity(
         let result_message_id = Uuid::now_v7().to_string();
         let result_event = AgUiEvent::tool_call_result(
             &result_message_id,
-            &tool_call.id,
+            &tool_call_data.id,
             result.result.clone().unwrap_or_default(),
         );
         persist_activity
-            .persist_event(input.run_id, result_event)
+            .persist_event(input.session_id, result_event)
             .await?;
 
         results.push(result);
@@ -389,23 +330,23 @@ pub async fn execute_tools_activity(
     Ok(ExecuteToolsOutput { results })
 }
 
-/// Save a message to the thread
+/// Save a message to the session
 pub async fn save_message_activity(
     _ctx: &ActivityContext,
     db: &Database,
     input: SaveMessageInput,
 ) -> Result<()> {
     info!(
-        thread_id = %input.thread_id,
+        session_id = %input.session_id,
         role = %input.role,
-        "Saving message to thread"
+        "Saving message to session"
     );
 
     let create_msg = everruns_storage::models::CreateMessage {
-        thread_id: input.thread_id,
+        session_id: input.session_id,
         role: input.role,
         content: input.content,
-        metadata: None,
+        tool_call_id: None,
     };
 
     db.create_message(create_msg)

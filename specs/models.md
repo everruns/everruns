@@ -33,12 +33,14 @@ An instance of agentic loop execution. Multiple sessions can exist concurrently 
 | `title` | string? | Session title (user-provided or auto-generated) |
 | `tags` | string[] | Tags for organization/filtering |
 | `model_id` | UUID? | Override model (null = use agent default) |
-| `status` | enum | `pending`, `running`, `completed`, `failed` |
+| `status` | enum | `pending`, `running`, `failed` |
 | `created_at` | timestamp | Creation time |
 | `started_at` | timestamp? | Execution start time |
-| `finished_at` | timestamp? | Completion time |
+| `finished_at` | timestamp? | Completion time (only set on failure) |
 
-Status transitions: `pending` → `running` → `completed` | `failed`
+Status transitions: `pending` → `running` → `pending` (cycles indefinitely) | `failed`
+
+Sessions work indefinitely - after processing a message, status returns to `pending` (ready for more messages). Only `failed` is a terminal state.
 
 ### Message
 
@@ -126,18 +128,16 @@ User sends: "How much is 2+2?"
 3. LLM call starts
    → Emits Event(step.started)
 
-4. LLM streaming response
-   → Emits Event(step.generating, data: { delta: "The answer" })
-   → Emits Event(step.generating, data: { delta: " is 4" })
-
-5. LLM complete
+4. LLM responds (non-streaming for M2)
    → Creates Message(role=assistant, content: { text: "The answer is 4" })
-   → Emits Event(step.generated)
+   → Emits Event(step.finished)
    → Emits Event(message.created, data: { message_id: "..." })
 
-6. Session complete
-   → Updates Session(status=completed, finished_at=now())
-   → Emits Event(session.completed)
+5. Session cycle complete (ready for more messages)
+   → Updates Session(status=pending)
+   → Emits Event(session.finished)
+
+User can send another message to continue the conversation.
 ```
 
 ## Design Decisions

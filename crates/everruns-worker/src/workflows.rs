@@ -149,9 +149,9 @@ impl SessionWorkflow {
                     break;
                 }
 
-                // Call LLM
+                // Call LLM (non-streaming)
                 let result = llm_activity
-                    .call_and_stream(
+                    .call(
                         self.session_id,
                         current_messages.clone(),
                         llm_config.clone(),
@@ -254,19 +254,19 @@ impl SessionWorkflow {
             }
         }
 
-        // Emit SESSION_FINISHED event (SSE notification)
+        // Emit SESSION_FINISHED event (SSE notification for this message cycle)
         let finished_event = AgUiEvent::session_finished(self.session_id.to_string());
         self.persist_activity
             .persist_event(self.session_id, finished_event)
             .await?;
 
-        // Update session status to completed and set finished_at
-        self.update_session_status("completed", None, Some(Utc::now()))
-            .await?;
+        // Set session back to pending (ready for more messages)
+        // Sessions work indefinitely - only "failed" is a terminal state
+        self.update_session_status("pending", None, None).await?;
 
         info!(
             session_id = %self.session_id,
-            "Session workflow completed successfully"
+            "Session workflow cycle completed, ready for more messages"
         );
 
         Ok(())
