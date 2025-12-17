@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use everruns_agent_loop::{
     config::AgentConfig,
     memory::{InMemoryEventEmitter, InMemoryMessageStore},
-    message::ConversationMessage,
+    message::{ConversationMessage, MessageContent, MessageRole},
     tools::{Tool, ToolExecutionResult, ToolRegistry},
     AgentLoop,
 };
@@ -204,14 +204,62 @@ impl Tool for RandomFact {
 }
 
 // ============================================================================
+// Helper to print conversation steps
+// ============================================================================
+
+fn print_conversation_steps(messages: &[ConversationMessage]) {
+    println!("\n  Steps:");
+    for (i, msg) in messages.iter().enumerate() {
+        match msg.role {
+            MessageRole::User => {
+                println!("    {}. [User] {}", i + 1, msg.content.to_llm_string());
+            }
+            MessageRole::Assistant => {
+                let text = msg.content.to_llm_string();
+                if let Some(ref tool_calls) = msg.tool_calls {
+                    if !tool_calls.is_empty() {
+                        println!("    {}. [Assistant] Calling tool(s):", i + 1);
+                        for tc in tool_calls {
+                            println!("       → {}({})", tc.name, tc.arguments);
+                        }
+                        if !text.is_empty() {
+                            println!("       Text: {}", text);
+                        }
+                    } else if !text.is_empty() {
+                        println!("    {}. [Assistant] {}", i + 1, text);
+                    }
+                } else if !text.is_empty() {
+                    println!("    {}. [Assistant] {}", i + 1, text);
+                }
+            }
+            MessageRole::ToolCall => {
+                // Skip - already shown in assistant message
+            }
+            MessageRole::ToolResult => {
+                if let MessageContent::ToolResult { result, error } = &msg.content {
+                    if let Some(err) = error {
+                        println!("    {}. [Tool Result] Error: {}", i + 1, err);
+                    } else if let Some(res) = result {
+                        println!("    {}. [Tool Result] {}", i + 1, res);
+                    }
+                }
+            }
+            MessageRole::System => {
+                // Skip system messages
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Set up logging
+    // Set up logging (WARN level to reduce noise)
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(tracing::Level::WARN)
         .init();
 
     // Check for API key
@@ -268,8 +316,9 @@ async fn example_time_query() -> anyhow::Result<()> {
 
     let result = agent_loop.run(session_id).await?;
 
-    println!("Assistant: {}", result.final_response.unwrap_or_default());
-    println!("(Iterations: {})\n", result.iterations);
+    print_conversation_steps(&result.messages);
+    println!("\n  Final: {}", result.final_response.unwrap_or_default());
+    println!("  (Iterations: {})\n", result.iterations);
 
     Ok(())
 }
@@ -303,8 +352,9 @@ async fn example_calculation() -> anyhow::Result<()> {
 
     let result = agent_loop.run(session_id).await?;
 
-    println!("Assistant: {}", result.final_response.unwrap_or_default());
-    println!("(Iterations: {})\n", result.iterations);
+    print_conversation_steps(&result.messages);
+    println!("\n  Final: {}", result.final_response.unwrap_or_default());
+    println!("  (Iterations: {})\n", result.iterations);
 
     Ok(())
 }
@@ -345,8 +395,9 @@ async fn example_multi_tool() -> anyhow::Result<()> {
 
     let result = agent_loop.run(session_id).await?;
 
-    println!("Assistant: {}", result.final_response.unwrap_or_default());
-    println!("(Iterations: {})\n", result.iterations);
+    print_conversation_steps(&result.messages);
+    println!("\n  Final: {}", result.final_response.unwrap_or_default());
+    println!("  (Iterations: {})\n", result.iterations);
 
     Ok(())
 }
