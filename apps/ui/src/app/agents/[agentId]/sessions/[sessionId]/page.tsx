@@ -19,32 +19,33 @@ export default function SessionDetailPage({
   const { agentId, sessionId } = use(params);
   const { data: agent } = useAgent(agentId);
 
-  // Track if we should be polling (after sending a message while session is active)
-  const [isPolling, setIsPolling] = useState(false);
+  // Track if user has sent a message and is waiting for response
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
 
-  // Poll session status while polling is active
+  // First fetch session without polling to get initial status
   const { data: session, isLoading: sessionLoading } = useSession(
     agentId,
-    sessionId,
-    { refetchInterval: isPolling ? 1000 : false }
+    sessionId
   );
   const sendMessage = useSendMessage();
 
   // Determine if session is still processing
   const isActive = session?.status === "running" || session?.status === "pending";
 
-  // Stop polling when session completes
-  useEffect(() => {
-    if (!isActive && isPolling) {
-      setIsPolling(false);
-    }
-  }, [isActive, isPolling]);
+  // Derive whether we should poll - only when waiting AND session is active
+  const shouldPoll = isWaitingForResponse && isActive;
 
-  // Poll for messages while session is active
+  // Re-fetch session with polling when shouldPoll changes
+  // This uses the same query key, so it just updates the polling interval
+  useSession(agentId, sessionId, {
+    refetchInterval: shouldPoll ? 1000 : false,
+  });
+
+  // Poll for messages while waiting and session is active
   const { data: messages, isLoading: messagesLoading } = useMessages(
     agentId,
     sessionId,
-    { refetchInterval: isPolling ? 1000 : false }
+    { refetchInterval: shouldPoll ? 1000 : false }
   );
 
   const [inputValue, setInputValue] = useState("");
@@ -67,7 +68,7 @@ export default function SessionDetailPage({
       });
       setInputValue("");
       // Start polling for the response
-      setIsPolling(true);
+      setIsWaitingForResponse(true);
     } catch (error) {
       console.error("Failed to send message:", error);
     }
