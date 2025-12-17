@@ -92,10 +92,11 @@ pub async fn create_provider(
     let api_key_encrypted = if let Some(api_key) = &req.api_key {
         if let Some(encryption) = &state.encryption {
             Some(encryption.encrypt_string(api_key).map_err(|e| {
+                tracing::error!("Failed to encrypt API key: {}", e);
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(ErrorResponse {
-                        error: format!("Failed to encrypt API key: {}", e),
+                        error: "Internal server error".to_string(),
                     }),
                 )
             })?)
@@ -120,10 +121,11 @@ pub async fn create_provider(
     };
 
     let row = state.db.create_llm_provider(input).await.map_err(|e| {
+        tracing::error!("Failed to create LLM provider: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -144,10 +146,11 @@ pub async fn list_providers(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
     let rows = state.db.list_llm_providers().await.map_err(|e| {
+        tracing::error!("Failed to list LLM providers: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -173,10 +176,11 @@ pub async fn get_provider(
     Path(id): Path<Uuid>,
 ) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
     let row = state.db.get_llm_provider(id).await.map_err(|e| {
+        tracing::error!("Failed to get LLM provider: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -215,10 +219,11 @@ pub async fn update_provider(
     let api_key_encrypted = if let Some(api_key) = &req.api_key {
         if let Some(encryption) = &state.encryption {
             Some(encryption.encrypt_string(api_key).map_err(|e| {
+                tracing::error!("Failed to encrypt API key: {}", e);
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(ErrorResponse {
-                        error: format!("Failed to encrypt API key: {}", e),
+                        error: "Internal server error".to_string(),
                     }),
                 )
             })?)
@@ -247,10 +252,11 @@ pub async fn update_provider(
     };
 
     let row = state.db.update_llm_provider(id, input).await.map_err(|e| {
+        tracing::error!("Failed to update LLM provider: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;
@@ -284,10 +290,11 @@ pub async fn delete_provider(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let deleted = state.db.delete_llm_provider(id).await.map_err(|e| {
+        tracing::error!("Failed to delete LLM provider: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
-                error: e.to_string(),
+                error: "Internal server error".to_string(),
             }),
         )
     })?;

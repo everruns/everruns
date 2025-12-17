@@ -40,6 +40,19 @@ Available skills:
 - Run `cargo fmt` and `cargo clippy -- -D warnings` for touched crates.
 - Prefer `axum`/`tower` for HTTP, `sqlx` for Postgres, `serde` for DTOs.
 
+### API error handling
+
+- **Never expose internal error details to API clients.** Database errors, connection failures, and other internal errors must return a generic `500 Internal Server Error` with message "Internal server error".
+- **Always log the full error server-side.** Use `tracing::error!()` to log the complete error details before returning the generic response.
+- Error messages returned to clients should only contain safe, user-facing information (e.g., "Not found", "Invalid request", "Internal server error").
+- Example pattern:
+  ```rust
+  let result = state.db.some_operation().await.map_err(|e| {
+      tracing::error!("Failed to perform operation: {}", e);
+      StatusCode::INTERNAL_SERVER_ERROR
+  })?;
+  ```
+
 ### CI expectations
 
 - CI is implemented using Github Actions, status is avaiable via `gh` tool
