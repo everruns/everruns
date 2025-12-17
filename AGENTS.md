@@ -4,8 +4,8 @@ This repo is intended to be runnable locally and easy for coding agents to work 
 
 ### Principles
 
-- Keep decigions as comment on top of the file. Only important deciogns that could not be interfered from code.
-- Code should be easy tesable, smoke testable, runnable in local dev env.
+- Keep decisions as comments on top of the file. Only important decisions that could not be inferred from code.
+- Code should be easily testable, smoke testable, runnable in local dev env.
 - Treat Temporal as an internal implementation detail behind a small adapter boundary.
 - Prefer small, incremental PR-sized changes with a runnable state at each step.
 - Avoid adding dependencies with non-permissive licenses. If a dependency is non-permissive or unclear, stop and ask the repo owner.
@@ -59,7 +59,7 @@ Available skills:
 
 ### CI expectations
 
-- CI is implemented using Github Actions, status is avaiable via `gh` tool
+- CI is implemented using GitHub Actions, status is available via `gh` tool
 
 ### Pre-PR checklist
 
@@ -68,15 +68,16 @@ Before creating a pull request, ensure:
 1. **Formatting**: Run `cargo fmt` to format all code
 2. **Linting**: Run `cargo clippy -- -D warnings` and fix all warnings
 3. **Tests**: Run `cargo test` to ensure all tests pass
-4. **UI Build**: Run `npm run build` in `apps/ui/` to verify TypeScript and build
-5. **Smoke tests**: Run smoke tests to verify the system works end-to-end
+4. **UI Linting**: Run `npm run lint` in `apps/ui/` to check for ESLint issues
+5. **UI Build**: Run `npm run build` in `apps/ui/` to verify TypeScript and build
+6. **Smoke tests**: Run smoke tests to verify the system works end-to-end
 
 ```bash
 # Quick pre-PR check (Rust)
 cargo fmt && cargo clippy -- -D warnings && cargo test
 
 # Quick pre-PR check (UI)
-cd apps/ui && npm run build
+cd apps/ui && npm run lint && npm run build
 ```
 
 CI will fail if formatting, linting, tests, or UI build fail. Always run these locally before pushing.
@@ -85,6 +86,7 @@ CI will fail if formatting, linting, tests, or UI build fail. Always run these l
 
 - Use **npm** for package management (CI uses `npm ci`)
 - After adding dependencies, ensure `package-lock.json` is updated via `npm install`
+- Run `npm run lint` to check for ESLint issues
 - Run `npm run build` to verify TypeScript types and build before pushing
 
 ### Testing conventions
@@ -197,6 +199,7 @@ The best way to verify the system is working is to run the **smoke test script**
 ./scripts/dev.sh start      # Start Docker services
 ./scripts/dev.sh migrate    # Run migrations
 ./scripts/dev.sh api        # Start API (in one terminal)
+./scripts/dev.sh worker     # Start Temporal worker (in another terminal)
 ./scripts/dev.sh ui         # Start UI (in another terminal)
 
 # Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
@@ -208,7 +211,7 @@ Expected output:
 - ✅ Sessions and messages work
 - ✅ Session status transitions: pending → running → pending (cycles)
 - ✅ OpenAPI spec is available
-- ✅ UI pages load correctly (with --with-ui)
+- ✅ UI pages load correctly
 
 ### Alternative testing methods
 
