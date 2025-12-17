@@ -74,10 +74,12 @@ impl Tool for Calculator {
                         }
                         a / b
                     }
-                    _ => return ToolExecutionResult::tool_error(format!(
+                    _ => {
+                        return ToolExecutionResult::tool_error(format!(
                         "Unknown operation: {}. Valid operations: add, subtract, multiply, divide",
                         op
-                    )),
+                    ))
+                    }
                 };
 
                 ToolExecutionResult::success(json!({
