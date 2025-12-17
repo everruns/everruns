@@ -74,4 +74,4 @@ The admin container can be run as a one-off task in any container orchestration 
 - **Docker Compose**: Use `docker compose run`
 - **Nomad**: Use a batch job
 
-See [Production Migrations Runbook](../../doc/sre/runbooks/production-migrations.md) for detailed procedures.
+See [Production Migrations Runbook](./runbooks/production-migrations.md) for detailed procedures.
