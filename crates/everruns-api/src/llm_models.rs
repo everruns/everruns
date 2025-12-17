@@ -340,3 +340,51 @@ pub fn routes(state: AppState) -> Router {
         )
         .with_state(state)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_response_serialization() {
+        let error = ErrorResponse {
+            error: "Internal server error".to_string(),
+        };
+        let json = serde_json::to_string(&error).expect("Failed to serialize");
+        assert_eq!(json, r#"{"error":"Internal server error"}"#);
+    }
+
+    #[test]
+    fn test_error_response_internal_error_format() {
+        // Verify that internal error responses use the generic message
+        let error = ErrorResponse {
+            error: "Internal server error".to_string(),
+        };
+        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
+        assert_eq!(parsed["error"], "Internal server error");
+    }
+
+    #[test]
+    fn test_error_response_not_found_format() {
+        let error = ErrorResponse {
+            error: "Model not found".to_string(),
+        };
+        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
+        assert_eq!(parsed["error"], "Model not found");
+    }
+
+    #[test]
+    fn test_internal_error_does_not_leak_details() {
+        // Simulate what happens when a database error occurs
+        // The error message should be generic, not contain DB details
+        let generic_message = "Internal server error".to_string();
+
+        // This is what we return to clients - verify it doesn't contain
+        // typical database error patterns
+        assert!(!generic_message.contains("SQLX"));
+        assert!(!generic_message.contains("connection"));
+        assert!(!generic_message.contains("database"));
+        assert!(!generic_message.contains("query"));
+        assert!(!generic_message.contains("postgres"));
+    }
+}

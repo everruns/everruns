@@ -83,6 +83,36 @@ CI will fail if formatting, linting, tests, or UI build fail. Always run these l
 - After adding dependencies, ensure `package-lock.json` is updated via `npm install`
 - Run `npm run build` to verify TypeScript types and build before pushing
 
+### Testing conventions
+
+PRs should include appropriate tests for the changes being made:
+
+- **Unit tests**: Include inline `#[cfg(test)]` modules for:
+  - Data structure validation (serialization/deserialization)
+  - Error response formats
+  - Pure functions and transformations
+  - Business logic that doesn't require external dependencies
+
+- **Integration tests**: Add to `tests/integration_test.rs` for:
+  - New API endpoints
+  - Complex workflows spanning multiple services
+  - End-to-end functionality verification
+
+- **When to add tests**:
+  - New features: Always include tests
+  - Bug fixes: Add regression tests when feasible
+  - Refactoring: Ensure existing tests still pass; add tests if coverage gaps are found
+  - Security fixes: Include tests verifying the fix (e.g., error messages don't leak internal details)
+
+- **Running tests**:
+  ```bash
+  # Unit tests (no external dependencies)
+  cargo test
+
+  # Integration tests (requires API running)
+  cargo test --test integration_test -- --ignored
+  ```
+
 ### Commit message conventions
 
 Follow [Conventional Commits](https://www.conventionalcommits.org) for all commit messages:
