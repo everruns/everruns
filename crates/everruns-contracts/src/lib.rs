@@ -1,14 +1,19 @@
 // Public contracts for Everruns API
 // This crate defines DTOs, AG-UI event types, and JSON schemas
+// M2: Agent/Session/Messages model with Events as SSE notification channel
 
-pub mod agents;
+pub mod agent;
+pub mod common;
 pub mod events;
 pub mod llm;
-pub mod resources;
+pub mod message;
+pub mod session;
 pub mod tools;
 
-pub use agents::*;
+pub use agent::*;
+pub use common::*;
 pub use events::*;
 pub use llm::*;
-pub use resources::*;
+pub use message::*;
+pub use session::*;
 pub use tools::*;

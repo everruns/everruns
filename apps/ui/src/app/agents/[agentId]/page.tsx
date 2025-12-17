@@ -1,173 +1,191 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
+import { use } from "react";
+import { useAgent, useSessions, useCreateSession } from "@/hooks";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAgent } from "@/hooks/use-agents";
-import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Bot, Settings } from "lucide-react";
+import { ArrowLeft, Plus, MessageSquare } from "lucide-react";
 
-export default function AgentDetailPage() {
-  const params = useParams();
-  const agentId = params.agentId as string;
-  const [showDefinition, setShowDefinition] = useState(false);
+export default function AgentDetailPage({
+  params,
+}: {
+  params: Promise<{ agentId: string }>;
+}) {
+  const { agentId } = use(params);
+  const router = useRouter();
+  const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  const { data: sessions, isLoading: sessionsLoading } = useSessions(agentId);
+  const createSession = useCreateSession();
 
-  const {
-    data: agent,
-    isLoading: agentLoading,
-    error: agentError,
-  } = useAgent(agentId);
+  const handleNewSession = async () => {
+    try {
+      const session = await createSession.mutateAsync({
+        agentId,
+        request: {},
+      });
+      router.push(`/agents/${agentId}/sessions/${session.id}`);
+    } catch (error) {
+      console.error("Failed to create session:", error);
+    }
+  };
 
   if (agentLoading) {
     return (
-      <>
-        <Header title="Agent Details" />
-        <div className="p-6 space-y-6">
-          <Skeleton className="h-48" />
-          <Skeleton className="h-64" />
-        </div>
-      </>
+      <div className="container mx-auto p-6">
+        <Skeleton className="h-8 w-1/3 mb-4" />
+        <Skeleton className="h-4 w-2/3 mb-8" />
+        <Skeleton className="h-64 w-full" />
+      </div>
     );
   }
 
-  if (agentError || !agent) {
+  if (!agent) {
     return (
-      <>
-        <Header
-          title="Agent Not Found"
-          action={
-            <Link href="/agents">
-              <Button variant="ghost">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Agents
-              </Button>
-            </Link>
-          }
-        />
-        <div className="p-6">
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
-            {agentError?.message || "Agent not found"}
-          </div>
-        </div>
-      </>
+      <div className="container mx-auto p-6">
+        <div className="text-red-500">Agent not found</div>
+        <Link href="/agents" className="text-blue-500 hover:underline">
+          Back to agents
+        </Link>
+      </div>
     );
   }
 
   return (
-    <>
-      <Header
-        title={agent.name}
-        action={
-          <div className="flex gap-2">
-            <Link href="/agents">
-              <Button variant="ghost">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </Link>
-            <Link href={`/agents/${agentId}/edit`}>
-              <Button variant="outline">
-                <Settings className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
-            </Link>
-          </div>
-        }
-      />
-      <div className="p-6 space-y-6">
-        {/* Agent Info Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <Bot className="h-8 w-8 text-primary" />
-              </div>
-              <div>
-                <CardTitle className="text-2xl">{agent.name}</CardTitle>
-                <CardDescription className="mt-1">
-                  {agent.description || "No description"}
-                </CardDescription>
-              </div>
-            </div>
+    <div className="container mx-auto p-6">
+      <Link
+        href="/agents"
+        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
+      >
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Back to Agents
+      </Link>
+
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            {agent.name}
             <Badge
-              variant="outline"
-              className={
-                agent.status === "active"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-gray-100 text-gray-800"
-              }
+              variant={agent.status === "active" ? "default" : "secondary"}
             >
               {agent.status}
             </Badge>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Model</p>
-                <p className="font-medium">{agent.default_model_id}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Created</p>
-                <p className="font-medium">
-                  {new Date(agent.created_at).toLocaleDateString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Updated</p>
-                <p className="font-medium">
-                  {new Date(agent.updated_at).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Definition Section */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg">Definition</CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowDefinition(!showDefinition)}
-            >
-              {showDefinition ? "Hide" : "Show"} Details
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {agent.definition.system_prompt && (
-              <div className="mb-4">
-                <p className="text-sm text-muted-foreground mb-2">
-                  System Prompt
-                </p>
-                <p className="bg-muted p-3 rounded-lg text-sm whitespace-pre-wrap">
-                  {agent.definition.system_prompt}
-                </p>
-              </div>
-            )}
-            {showDefinition && (
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">
-                  Full Definition
-                </p>
-                <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-64">
-                  {JSON.stringify(agent.definition, null, 2)}
-                </pre>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </h1>
+          <p className="text-muted-foreground font-mono text-sm">
+            ID: {agent.id.slice(0, 8)}...
+          </p>
+        </div>
+        <Button onClick={handleNewSession} disabled={createSession.isPending}>
+          <Plus className="w-4 h-4 mr-2" />
+          {createSession.isPending ? "Creating..." : "New Session"}
+        </Button>
       </div>
-    </>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>System Prompt</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md">
+                {agent.system_prompt}
+              </pre>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Sessions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sessionsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ) : sessions?.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">
+                  No sessions yet. Start a new session to begin chatting.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {sessions?.map((session) => (
+                    <Link
+                      key={session.id}
+                      href={`/agents/${agentId}/sessions/${session.id}`}
+                      className="flex items-center justify-between p-3 rounded-md border hover:bg-muted transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium">
+                            {session.title || `Session ${session.id.slice(0, 8)}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(session.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      {session.finished_at && (
+                        <Badge variant="outline">Completed</Badge>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuration</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {agent.description && (
+                <div>
+                  <p className="text-sm font-medium">Description</p>
+                  <p className="text-sm text-muted-foreground">
+                    {agent.description}
+                  </p>
+                </div>
+              )}
+
+              {agent.tags.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Tags</p>
+                  <div className="flex flex-wrap gap-1">
+                    {agent.tags.map((tag) => (
+                      <Badge key={tag} variant="outline">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <p className="text-sm font-medium">Created</p>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(agent.created_at).toLocaleString()}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium">Updated</p>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(agent.updated_at).toLocaleString()}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
   );
 }

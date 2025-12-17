@@ -1,7 +1,7 @@
-// Temporal activities for agent execution
+// Session activities for workflow execution (M2)
 
 use anyhow::Result;
-use everruns_contracts::events::{AgUiEvent, MessageRole};
+use everruns_contracts::events::{AgUiEvent, AgUiMessageRole};
 use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
 use everruns_storage::repositories::Database;
 use futures::StreamExt;
@@ -21,7 +21,7 @@ pub struct LlmCallResult {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
-/// Activity to persist AG-UI events to the database
+/// Activity to persist AG-UI events to the session_events table
 pub struct PersistEventActivity {
     db: Database,
 }
@@ -31,44 +31,44 @@ impl PersistEventActivity {
         Self { db }
     }
 
-    /// Persist an event to the run_events table
-    pub async fn persist_event(&self, run_id: Uuid, event: AgUiEvent) -> Result<()> {
+    /// Persist an event to the session_events table
+    pub async fn persist_event(&self, session_id: Uuid, event: AgUiEvent) -> Result<()> {
         let event_type = match &event {
-            AgUiEvent::RunStarted(_) => "RunStarted",
-            AgUiEvent::RunFinished(_) => "RunFinished",
-            AgUiEvent::RunError(_) => "RunError",
-            AgUiEvent::StepStarted(_) => "StepStarted",
-            AgUiEvent::StepFinished(_) => "StepFinished",
-            AgUiEvent::TextMessageStart(_) => "TextMessageStart",
-            AgUiEvent::TextMessageContent(_) => "TextMessageContent",
-            AgUiEvent::TextMessageEnd(_) => "TextMessageEnd",
-            AgUiEvent::ToolCallStart(_) => "ToolCallStart",
-            AgUiEvent::ToolCallArgs(_) => "ToolCallArgs",
-            AgUiEvent::ToolCallEnd(_) => "ToolCallEnd",
-            AgUiEvent::ToolCallResult(_) => "ToolCallResult",
-            AgUiEvent::StateSnapshot(_) => "StateSnapshot",
-            AgUiEvent::StateDelta(_) => "StateDelta",
-            AgUiEvent::MessagesSnapshot(_) => "MessagesSnapshot",
-            AgUiEvent::Custom(_) => "Custom",
+            AgUiEvent::RunStarted(_) => "session.started",
+            AgUiEvent::RunFinished(_) => "session.finished",
+            AgUiEvent::RunError(_) => "session.error",
+            AgUiEvent::StepStarted(_) => "step.started",
+            AgUiEvent::StepFinished(_) => "step.finished",
+            AgUiEvent::TextMessageStart(_) => "text.start",
+            AgUiEvent::TextMessageContent(_) => "text.delta",
+            AgUiEvent::TextMessageEnd(_) => "text.end",
+            AgUiEvent::ToolCallStart(_) => "tool.call.start",
+            AgUiEvent::ToolCallArgs(_) => "tool.call.args",
+            AgUiEvent::ToolCallEnd(_) => "tool.call.end",
+            AgUiEvent::ToolCallResult(_) => "tool.result",
+            AgUiEvent::StateSnapshot(_) => "state.snapshot",
+            AgUiEvent::StateDelta(_) => "state.delta",
+            AgUiEvent::MessagesSnapshot(_) => "messages.snapshot",
+            AgUiEvent::Custom(_) => "custom",
         };
 
         let event_data = serde_json::to_value(&event)?;
 
-        // Insert into run_events table
+        // Insert into events table with auto-incrementing sequence
         sqlx::query(
             r#"
-            INSERT INTO run_events (run_id, event_type, event_data)
-            VALUES ($1, $2, $3)
+            INSERT INTO events (session_id, sequence, event_type, data)
+            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM events WHERE session_id = $1), 1), $2, $3)
             "#,
         )
-        .bind(run_id)
+        .bind(session_id)
         .bind(event_type)
         .bind(event_data)
         .execute(self.db.pool())
         .await?;
 
         info!(
-            run_id = %run_id,
+            session_id = %session_id,
             event_type = %event_type,
             "Persisted event"
         );
@@ -96,12 +96,12 @@ impl<P: LlmProvider> LlmCallActivity<P> {
     /// Returns the assistant response text and any tool calls
     pub async fn call_and_stream(
         &self,
-        run_id: Uuid,
+        session_id: Uuid,
         messages: Vec<ChatMessage>,
         config: LlmConfig,
     ) -> Result<LlmCallResult> {
         info!(
-            run_id = %run_id,
+            session_id = %session_id,
             model = %config.model,
             message_count = messages.len(),
             "Starting LLM call"
@@ -115,9 +115,9 @@ impl<P: LlmProvider> LlmCallActivity<P> {
 
         // Emit TEXT_MESSAGE_START event
         let message_id = Uuid::now_v7().to_string();
-        let start_event = AgUiEvent::text_message_start(&message_id, MessageRole::Assistant);
+        let start_event = AgUiEvent::text_message_start(&message_id, AgUiMessageRole::Assistant);
         self.persist_activity
-            .persist_event(run_id, start_event)
+            .persist_event(session_id, start_event)
             .await?;
 
         // Accumulate response and emit chunks
@@ -133,13 +133,13 @@ impl<P: LlmProvider> LlmCallActivity<P> {
                         // Emit TEXT_MESSAGE_CONTENT event (AG-UI uses delta, not chunk)
                         let content_event = AgUiEvent::text_message_content(&message_id, &delta);
                         self.persist_activity
-                            .persist_event(run_id, content_event)
+                            .persist_event(session_id, content_event)
                             .await?;
                     }
                 }
                 Ok(LlmStreamEvent::ToolCalls(calls)) => {
                     info!(
-                        run_id = %run_id,
+                        session_id = %session_id,
                         tool_count = calls.len(),
                         "Tool calls received from LLM"
                     );
@@ -147,7 +147,7 @@ impl<P: LlmProvider> LlmCallActivity<P> {
                 }
                 Ok(LlmStreamEvent::Done(metadata)) => {
                     info!(
-                        run_id = %run_id,
+                        session_id = %session_id,
                         tokens = ?metadata.total_tokens,
                         finish_reason = ?metadata.finish_reason,
                         "LLM call completed"
@@ -156,17 +156,17 @@ impl<P: LlmProvider> LlmCallActivity<P> {
                     // Emit TEXT_MESSAGE_END event
                     let end_event = AgUiEvent::text_message_end(&message_id);
                     self.persist_activity
-                        .persist_event(run_id, end_event)
+                        .persist_event(session_id, end_event)
                         .await?;
 
                     break;
                 }
                 Ok(LlmStreamEvent::Error(err)) => {
-                    error!(run_id = %run_id, error = %err, "LLM stream error");
+                    error!(session_id = %session_id, error = %err, "LLM stream error");
                     anyhow::bail!("LLM stream error: {}", err);
                 }
                 Err(e) => {
-                    error!(run_id = %run_id, error = %e, "Stream processing error");
+                    error!(session_id = %session_id, error = %e, "Stream processing error");
                     return Err(e);
                 }
             }
@@ -198,18 +198,18 @@ impl ToolExecutionActivity {
     /// Execute a single tool call and emit events
     pub async fn execute_tool_call(
         &self,
-        run_id: Uuid,
+        session_id: Uuid,
         tool_call: &ToolCall,
         tool_def: &ToolDefinition,
     ) -> Result<ToolResult> {
         // Check if tool requires approval
         if requires_approval(tool_def) {
             warn!(
-                run_id = %run_id,
+                session_id = %session_id,
                 tool_name = %tool_call.name,
                 "Tool requires approval (HITL not implemented yet)"
             );
-            // TODO M6+: Implement HITL approval flow
+            // TODO: Implement HITL approval flow
             // For now, reject tools that require approval
             return Ok(ToolResult {
                 tool_call_id: tool_call.id.clone(),
@@ -221,25 +221,25 @@ impl ToolExecutionActivity {
         // Emit TOOL_CALL_START event
         let start_event = AgUiEvent::tool_call_start(&tool_call.id, &tool_call.name);
         self.persist_activity
-            .persist_event(run_id, start_event)
+            .persist_event(session_id, start_event)
             .await?;
 
         // Emit TOOL_CALL_ARGS event with the arguments
         let args_json = serde_json::to_string(&tool_call.arguments).unwrap_or_default();
         let args_event = AgUiEvent::tool_call_args(&tool_call.id, args_json);
         self.persist_activity
-            .persist_event(run_id, args_event)
+            .persist_event(session_id, args_event)
             .await?;
 
         // Emit TOOL_CALL_END event
         let end_event = AgUiEvent::tool_call_end(&tool_call.id);
         self.persist_activity
-            .persist_event(run_id, end_event)
+            .persist_event(session_id, end_event)
             .await?;
 
         // Execute the tool
         info!(
-            run_id = %run_id,
+            session_id = %session_id,
             tool_call_id = %tool_call.id,
             tool_name = %tool_call.name,
             "Executing tool call"
@@ -252,11 +252,11 @@ impl ToolExecutionActivity {
         let content = result.result.clone().unwrap_or(serde_json::Value::Null);
         let result_event = AgUiEvent::tool_call_result(&result_message_id, &tool_call.id, content);
         self.persist_activity
-            .persist_event(run_id, result_event)
+            .persist_event(session_id, result_event)
             .await?;
 
         info!(
-            run_id = %run_id,
+            session_id = %session_id,
             tool_call_id = %tool_call.id,
             success = result.error.is_none(),
             "Tool call completed"
@@ -268,12 +268,12 @@ impl ToolExecutionActivity {
     /// Execute multiple tool calls in parallel
     pub async fn execute_tool_calls_parallel(
         &self,
-        run_id: Uuid,
+        session_id: Uuid,
         tool_calls: &[ToolCall],
         tool_defs: &[ToolDefinition],
     ) -> Result<Vec<ToolResult>> {
         info!(
-            run_id = %run_id,
+            session_id = %session_id,
             tool_count = tool_calls.len(),
             "Executing tool calls in parallel"
         );
@@ -298,7 +298,8 @@ impl ToolExecutionActivity {
                     anyhow::anyhow!("Tool definition not found for: {}", tool_call.name)
                 })?;
 
-                self.execute_tool_call(run_id, tool_call, tool_def).await
+                self.execute_tool_call(session_id, tool_call, tool_def)
+                    .await
             })
             .collect();
 

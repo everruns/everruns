@@ -1,53 +1,50 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bot, Play, CheckCircle, XCircle } from "lucide-react";
-import type { Agent, Run } from "@/lib/api/types";
+import { Boxes, MessageSquare, CheckCircle, Clock } from "lucide-react";
+import type { Agent, Session } from "@/lib/api/types";
 
 interface StatsCardsProps {
   agents: Agent[];
-  runs: Run[];
+  sessions: Session[];
 }
 
-export function StatsCards({ agents, runs }: StatsCardsProps) {
+export function StatsCards({ agents, sessions }: StatsCardsProps) {
   const activeAgents = agents.filter((a) => a.status === "active").length;
-  const activeRuns = runs.filter(
-    (r) => r.status === "pending" || r.status === "running"
-  ).length;
-  const completedRuns = runs.filter((r) => r.status === "completed").length;
-  const failedRuns = runs.filter((r) => r.status === "failed").length;
-  const totalRuns = runs.length;
-  const successRate =
-    totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0;
+  const runningSessions = sessions.filter((s) => s.status === "running").length;
+  const completedSessions = sessions.filter((s) => s.status === "completed").length;
+  const totalSessions = sessions.length;
+  const completionRate =
+    totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
 
   const stats = [
     {
       title: "Total Agents",
       value: agents.length,
       description: `${activeAgents} active`,
-      icon: Bot,
+      icon: Boxes,
       color: "text-blue-600",
     },
     {
-      title: "Active Runs",
-      value: activeRuns,
-      description: "Currently executing",
-      icon: Play,
+      title: "Running Sessions",
+      value: runningSessions,
+      description: "Currently running",
+      icon: MessageSquare,
       color: "text-yellow-600",
     },
     {
-      title: "Success Rate",
-      value: `${successRate}%`,
-      description: `${completedRuns} completed`,
+      title: "Completion Rate",
+      value: `${completionRate}%`,
+      description: `${completedSessions} completed`,
       icon: CheckCircle,
       color: "text-green-600",
     },
     {
-      title: "Failed Runs",
-      value: failedRuns,
-      description: "Needs attention",
-      icon: XCircle,
-      color: "text-red-600",
+      title: "Pending",
+      value: sessions.filter((s) => s.status === "pending").length,
+      description: "Not yet started",
+      icon: Clock,
+      color: "text-gray-600",
     },
   ];
 

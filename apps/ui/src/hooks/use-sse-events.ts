@@ -1,37 +1,138 @@
-"use client";
+// SSE Events hook for real-time streaming (M2)
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { getApiBaseUrl } from "@/lib/api/client";
-import type { AgUiEvent } from "@/lib/api/types";
+import { useEffect, useRef, useState, useCallback } from "react";
+
+export interface AggregatedMessage {
+  id: string;
+  role: string;
+  content: string;
+  isComplete: boolean;
+}
+
+export interface AggregatedToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  isComplete: boolean;
+  result?: unknown;
+  error?: string;
+}
 
 interface UseSSEEventsOptions {
-  runId: string;
+  agentId: string;
+  sessionId: string;
   enabled?: boolean;
-  onEvent?: (event: AgUiEvent) => void;
 }
 
 interface UseSSEEventsReturn {
-  events: AgUiEvent[];
+  messages: AggregatedMessage[];
+  toolCalls: AggregatedToolCall[];
   isConnected: boolean;
   error: Error | null;
-  disconnect: () => void;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000";
+
 export function useSSEEvents({
-  runId,
+  agentId,
+  sessionId,
   enabled = true,
-  onEvent,
 }: UseSSEEventsOptions): UseSSEEventsReturn {
-  const [events, setEvents] = useState<AgUiEvent[]>([]);
+  const [messages, setMessages] = useState<AggregatedMessage[]>([]);
+  const [toolCalls, setToolCalls] = useState<AggregatedToolCall[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  const connect = useCallback(() => {
-    if (!enabled || !runId) return;
+  const handleEvent = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
 
-    const url = `${getApiBaseUrl()}/v1/runs/${runId}/events`;
+      switch (event.type) {
+        case "step.generating":
+          // Streaming text delta
+          setMessages((prev) => {
+            const existing = prev.find((m) => m.id === data.message_id);
+            if (existing) {
+              return prev.map((m) =>
+                m.id === data.message_id
+                  ? { ...m, content: m.content + (data.delta || "") }
+                  : m
+              );
+            }
+            return [
+              ...prev,
+              {
+                id: data.message_id || `streaming-${Date.now()}`,
+                role: "assistant",
+                content: data.delta || "",
+                isComplete: false,
+              },
+            ];
+          });
+          break;
 
+        case "step.generated":
+          // Complete the streaming message
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === data.message_id ? { ...m, isComplete: true } : m
+            )
+          );
+          break;
+
+        case "tool.started":
+          setToolCalls((prev) => [
+            ...prev,
+            {
+              id: data.tool_call_id,
+              name: data.name,
+              arguments: data.arguments || {},
+              isComplete: false,
+            },
+          ]);
+          break;
+
+        case "tool.completed":
+          setToolCalls((prev) =>
+            prev.map((tc) =>
+              tc.id === data.tool_call_id
+                ? {
+                    ...tc,
+                    isComplete: true,
+                    result: data.result,
+                    error: data.error,
+                  }
+                : tc
+            )
+          );
+          break;
+
+        case "message.created":
+          // A message was persisted - could refresh messages list
+          break;
+
+        case "session.completed":
+        case "session.failed":
+          // Session ended
+          break;
+
+        default:
+          // Unknown event type
+          break;
+      }
+    } catch (e) {
+      console.error("Failed to parse SSE event:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !agentId || !sessionId) {
+      return;
+    }
+
+    const url = `${API_BASE}/v1/agents/${agentId}/sessions/${sessionId}/events`;
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
@@ -40,131 +141,44 @@ export function useSSEEvents({
       setError(null);
     };
 
-    eventSource.onerror = () => {
+    eventSource.onerror = (e) => {
       setIsConnected(false);
-      setError(new Error("SSE connection failed"));
+      setError(new Error("SSE connection error"));
+      console.error("SSE error:", e);
     };
 
-    // Handle specific event types
+    // Listen to specific event types
     const eventTypes = [
-      "RUN_STARTED",
-      "RUN_FINISHED",
-      "RUN_ERROR",
-      "TEXT_MESSAGE_START",
-      "TEXT_MESSAGE_CHUNK",
-      "TEXT_MESSAGE_END",
-      "TOOL_CALL_START",
-      "TOOL_CALL_RESULT",
-      "STEP_STARTED",
-      "STEP_FINISHED",
-      "CUSTOM",
+      "step.started",
+      "step.generating",
+      "step.generated",
+      "step.error",
+      "message.created",
+      "message.delta",
+      "tool.started",
+      "tool.completed",
+      "session.started",
+      "session.completed",
+      "session.failed",
     ];
 
     eventTypes.forEach((type) => {
-      eventSource.addEventListener(type, (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          const event: AgUiEvent = { type: type as AgUiEvent["type"], ...data };
-
-          setEvents((prev) => [...prev, event]);
-          onEvent?.(event);
-        } catch (err) {
-          console.error("Failed to parse SSE event:", err);
-        }
-      });
+      eventSource.addEventListener(type, handleEvent);
     });
 
-    return eventSource;
-  }, [runId, enabled, onEvent]);
-
-  useEffect(() => {
-    const eventSource = connect();
-
     return () => {
-      eventSource?.close();
+      eventTypes.forEach((type) => {
+        eventSource.removeEventListener(type, handleEvent);
+      });
+      eventSource.close();
+      eventSourceRef.current = null;
     };
-  }, [connect]);
-
-  const disconnect = useCallback(() => {
-    eventSourceRef.current?.close();
-    setIsConnected(false);
-  }, []);
+  }, [agentId, sessionId, enabled, handleEvent]);
 
   return {
-    events,
+    messages,
+    toolCalls,
     isConnected,
     error,
-    disconnect,
   };
-}
-
-// Utility to aggregate text messages from events
-export interface AggregatedMessage {
-  id: string;
-  role: string;
-  content: string;
-  isComplete: boolean;
-}
-
-export function aggregateTextMessages(events: AgUiEvent[]): AggregatedMessage[] {
-  const messages = new Map<string, AggregatedMessage>();
-
-  for (const event of events) {
-    if (event.type === "TEXT_MESSAGE_START") {
-      messages.set(event.message_id, {
-        id: event.message_id,
-        role: event.role,
-        content: "",
-        isComplete: false,
-      });
-    } else if (event.type === "TEXT_MESSAGE_CHUNK") {
-      const msg = messages.get(event.message_id);
-      if (msg) {
-        msg.content += event.chunk;
-      }
-    } else if (event.type === "TEXT_MESSAGE_END") {
-      const msg = messages.get(event.message_id);
-      if (msg) {
-        msg.isComplete = true;
-      }
-    }
-  }
-
-  return Array.from(messages.values());
-}
-
-// Utility to get tool calls from events
-export interface AggregatedToolCall {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-  result: Record<string, unknown> | null;
-  error: string | null;
-  isComplete: boolean;
-}
-
-export function aggregateToolCalls(events: AgUiEvent[]): AggregatedToolCall[] {
-  const toolCalls = new Map<string, AggregatedToolCall>();
-
-  for (const event of events) {
-    if (event.type === "TOOL_CALL_START") {
-      toolCalls.set(event.tool_call_id, {
-        id: event.tool_call_id,
-        name: event.tool_name,
-        arguments: event.arguments,
-        result: null,
-        error: null,
-        isComplete: false,
-      });
-    } else if (event.type === "TOOL_CALL_RESULT") {
-      const tc = toolCalls.get(event.tool_call_id);
-      if (tc) {
-        tc.result = event.result;
-        tc.error = event.error;
-        tc.isComplete = true;
-      }
-    }
-  }
-
-  return Array.from(toolCalls.values());
 }

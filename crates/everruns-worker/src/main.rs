@@ -1,5 +1,4 @@
 use anyhow::Result;
-use everruns_storage::repositories::Database;
 use everruns_worker::{RunnerConfig, RunnerMode};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -28,23 +27,11 @@ async fn main() -> Result<()> {
             tokio::signal::ctrl_c().await?;
         }
         RunnerMode::Temporal => {
-            // Temporal mode: Worker with step checkpointing for durability
-            let database_url =
-                std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable required");
-
-            // Initialize database connection for Temporal worker
-            let db = Database::from_url(&database_url).await?;
-            tracing::info!("Database connection established");
-
-            tracing::info!(
-                address = %config.temporal_address(),
-                namespace = %config.temporal_namespace(),
-                task_queue = %config.temporal_task_queue(),
-                "Starting Temporal worker with checkpointing"
-            );
-
-            // Run the temporal worker (keeps running until shutdown)
-            everruns_worker::temporal::run_temporal_worker(&config, db).await?;
+            // Temporal mode disabled during M2 migration to Harness/Session model
+            // Will be re-enabled when Temporal integration is updated
+            tracing::warn!("Temporal mode requested but disabled during M2 migration");
+            tracing::info!("Falling back to passive mode, waiting for shutdown signal...");
+            tokio::signal::ctrl_c().await?;
         }
     }
 

@@ -1,6 +1,8 @@
-// Agent runner abstraction
+// Agent runner abstraction (M2)
 // Decision: Use trait-based abstraction to allow switching between in-process and Temporal execution
 // This keeps the API layer agnostic to the execution backend
+//
+// M2 Note: run_id maps to session_id, agent_id maps to harness_id
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -23,10 +25,10 @@ pub struct RunnerConfig {
 /// Runner execution mode
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum RunnerMode {
-    /// Execute workflows in-process using tokio tasks (default, M4 behavior)
+    /// Execute workflows in-process using tokio tasks (default)
     #[default]
     InProcess,
-    /// Execute workflows via Temporal for durability
+    /// Execute workflows via Temporal for durability (disabled during M2)
     Temporal,
 }
 
@@ -74,9 +76,14 @@ impl RunnerConfig {
 
 /// Trait for agent workflow execution
 /// Implementations handle the actual execution of agent runs
+///
+/// M2 Note: Parameters map to session concepts:
+/// - run_id -> session_id
+/// - agent_id -> harness_id
+/// - thread_id -> session_id (same value, kept for backwards compatibility)
 #[async_trait]
 pub trait AgentRunner: Send + Sync {
-    /// Start a new workflow execution for the given run
+    /// Start a new workflow execution for the given session
     async fn start_run(&self, run_id: Uuid, agent_id: Uuid, thread_id: Uuid) -> Result<()>;
 
     /// Cancel a running workflow
@@ -101,14 +108,12 @@ pub async fn create_runner(
             Ok(Arc::new(runner))
         }
         RunnerMode::Temporal => {
-            tracing::info!(
-                address = %config.temporal_address(),
-                namespace = %config.temporal_namespace(),
-                task_queue = %config.temporal_task_queue(),
-                "Creating Temporal agent runner"
+            // Temporal runner disabled during M2 migration
+            // Will be re-enabled when Temporal integration is updated for Harness/Session model
+            tracing::warn!(
+                "Temporal runner requested but disabled during M2 migration, using in-process runner"
             );
-
-            let runner = crate::temporal::TemporalRunner::new(config.clone(), db).await?;
+            let runner = crate::runner_inprocess::InProcessRunner::new(db);
             Ok(Arc::new(runner))
         }
     }

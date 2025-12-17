@@ -81,7 +81,7 @@ function ToolCallBubble({ toolCall }: { toolCall: AggregatedToolCall }) {
         <pre className="text-xs bg-white p-2 rounded overflow-x-auto">
           {JSON.stringify(toolCall.arguments, null, 2)}
         </pre>
-        {toolCall.isComplete && toolCall.result && (
+        {toolCall.isComplete && toolCall.result !== undefined && (
           <>
             <Separator className="my-2" />
             <pre className="text-xs bg-white p-2 rounded overflow-x-auto max-h-32">
@@ -120,7 +120,13 @@ export function ChatMessages({
       <div className="space-y-4">
         {/* Existing messages from history */}
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} role={msg.role} content={msg.content} />
+          <MessageBubble
+            key={msg.id}
+            role={msg.role}
+            content={typeof msg.content === "object" && msg.content !== null && "text" in msg.content
+              ? String(msg.content.text)
+              : JSON.stringify(msg.content)}
+          />
         ))}
 
         {/* Streaming tool calls */}
