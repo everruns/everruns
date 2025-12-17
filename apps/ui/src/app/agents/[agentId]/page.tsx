@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { ArrowLeft, Plus, MessageSquare } from "lucide-react";
 
 export default function AgentDetailPage({
@@ -91,9 +92,7 @@ export default function AgentDetailPage({
               <CardTitle>System Prompt</CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md">
-                {agent.system_prompt}
-              </pre>
+              <MarkdownDisplay content={agent.system_prompt} />
             </CardContent>
           </Card>
 

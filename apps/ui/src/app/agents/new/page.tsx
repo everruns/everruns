@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PromptEditor } from "@/components/ui/prompt-editor";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -85,18 +86,17 @@ export default function NewAgentPage() {
 
             <div className="space-y-2">
               <Label htmlFor="system_prompt">System Prompt</Label>
-              <Textarea
+              <PromptEditor
                 id="system_prompt"
                 placeholder="You are a helpful assistant..."
                 value={formData.system_prompt}
-                onChange={(e) =>
-                  setFormData({ ...formData, system_prompt: e.target.value })
+                onChange={(value) =>
+                  setFormData({ ...formData, system_prompt: value })
                 }
-                rows={6}
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Instructions for the AI model
+                Instructions for the AI model (supports Markdown)
               </p>
             </div>
 
