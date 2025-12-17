@@ -1,28 +1,33 @@
-// Temporal workflow and activity type definitions
+// Temporal workflow and activity type definitions (M2)
 // Decision: Keep Temporal types in a dedicated module for clean separation
 //
 // These types define the inputs/outputs for workflows and activities in the
 // Temporal execution model. All types must be serializable for Temporal's
 // persistence layer.
+//
+// M2 model: Agent → Session → Messages (no separate Thread/Run concepts)
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Input for the AgentRun workflow
+/// Input for the Session workflow (M2)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentRunWorkflowInput {
-    pub run_id: Uuid,
+pub struct SessionWorkflowInput {
+    pub session_id: Uuid,
     pub agent_id: Uuid,
-    pub thread_id: Uuid,
 }
 
-/// Output for the AgentRun workflow
+/// Output for the Session workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentRunWorkflowOutput {
-    pub run_id: Uuid,
+pub struct SessionWorkflowOutput {
+    pub session_id: Uuid,
     pub status: String,
     pub iterations: u32,
 }
+
+/// Legacy alias for backwards compatibility
+pub type AgentRunWorkflowInput = SessionWorkflowInput;
+pub type AgentRunWorkflowOutput = SessionWorkflowOutput;
 
 /// Input for the LoadAgent activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +49,7 @@ pub struct LoadAgentOutput {
 /// Input for the LoadMessages activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadMessagesInput {
-    pub thread_id: Uuid,
+    pub session_id: Uuid,
 }
 
 /// A message in the conversation
@@ -63,7 +68,7 @@ pub struct LoadMessagesOutput {
 /// Input for the UpdateStatus activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateStatusInput {
-    pub run_id: Uuid,
+    pub session_id: Uuid,
     pub status: String,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
     pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -72,14 +77,14 @@ pub struct UpdateStatusInput {
 /// Input for the PersistEvent activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistEventInput {
-    pub run_id: Uuid,
+    pub session_id: Uuid,
     pub event_data: serde_json::Value,
 }
 
 /// Input for the CallLLM activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallLlmInput {
-    pub run_id: Uuid,
+    pub session_id: Uuid,
     pub messages: Vec<MessageData>,
     pub model_id: String,
     pub system_prompt: Option<String>,
@@ -105,8 +110,7 @@ pub struct CallLlmOutput {
 /// Input for the ExecuteTools activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecuteToolsInput {
-    pub run_id: Uuid,
-    pub thread_id: Uuid,
+    pub session_id: Uuid,
     pub tool_calls: Vec<ToolCallData>,
 }
 
@@ -127,9 +131,9 @@ pub struct ExecuteToolsOutput {
 /// Input for the SaveMessage activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SaveMessageInput {
-    pub thread_id: Uuid,
+    pub session_id: Uuid,
     pub role: String,
-    pub content: String,
+    pub content: serde_json::Value,
 }
 
 /// Constants for activity names (used for registration and invocation)
@@ -145,7 +149,9 @@ pub mod activity_names {
 
 /// Constants for workflow names
 pub mod workflow_names {
-    pub const AGENT_RUN: &str = "agent_run_workflow";
+    pub const SESSION_WORKFLOW: &str = "session_workflow";
+    /// Legacy alias
+    pub const AGENT_RUN: &str = "session_workflow";
 }
 
 /// Task queue name for agent runs

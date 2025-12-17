@@ -18,15 +18,34 @@ export default function SessionDetailPage({
 }) {
   const { agentId, sessionId } = use(params);
   const { data: agent } = useAgent(agentId);
+
+  // Track if we should be polling (after sending a message while session is active)
+  const [isPolling, setIsPolling] = useState(false);
+
+  // Poll session status while polling is active
   const { data: session, isLoading: sessionLoading } = useSession(
     agentId,
-    sessionId
-  );
-  const { data: messages, isLoading: messagesLoading } = useMessages(
-    agentId,
-    sessionId
+    sessionId,
+    { refetchInterval: isPolling ? 1000 : false }
   );
   const sendMessage = useSendMessage();
+
+  // Determine if session is still processing
+  const isActive = session?.status === "running" || session?.status === "pending";
+
+  // Stop polling when session completes
+  useEffect(() => {
+    if (!isActive && isPolling) {
+      setIsPolling(false);
+    }
+  }, [isActive, isPolling]);
+
+  // Poll for messages while session is active
+  const { data: messages, isLoading: messagesLoading } = useMessages(
+    agentId,
+    sessionId,
+    { refetchInterval: isPolling ? 1000 : false }
+  );
 
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,6 +66,8 @@ export default function SessionDetailPage({
         content: inputValue.trim(),
       });
       setInputValue("");
+      // Start polling for the response
+      setIsPolling(true);
     } catch (error) {
       console.error("Failed to send message:", error);
     }
@@ -117,14 +138,11 @@ export default function SessionDetailPage({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {session.status === "completed" && (
-              <Badge variant="outline">Completed</Badge>
-            )}
             {session.status === "running" && (
-              <Badge variant="default">Running</Badge>
+              <Badge variant="default">Processing...</Badge>
             )}
             {session.status === "pending" && (
-              <Badge variant="secondary">Pending</Badge>
+              <Badge variant="secondary">Ready</Badge>
             )}
             {session.status === "failed" && (
               <Badge variant="destructive">Failed</Badge>
@@ -199,7 +217,7 @@ export default function SessionDetailPage({
             onKeyDown={handleKeyDown}
             placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
             className="flex-1 min-h-[60px] max-h-[200px] resize-none"
-            disabled={sendMessage.isPending || session.status === "completed" || session.status === "failed"}
+            disabled={sendMessage.isPending || session.status === "failed"}
           />
           <Button
             type="submit"
@@ -208,7 +226,6 @@ export default function SessionDetailPage({
             disabled={
               !inputValue.trim() ||
               sendMessage.isPending ||
-              session.status === "completed" ||
               session.status === "failed"
             }
           >
@@ -219,9 +236,9 @@ export default function SessionDetailPage({
             )}
           </Button>
         </form>
-        {(session.status === "completed" || session.status === "failed") && (
+        {session.status === "failed" && (
           <p className="text-xs text-muted-foreground text-center mt-2">
-            This session has ended. Start a new session to continue chatting.
+            This session has failed. Start a new session to continue chatting.
           </p>
         )}
       </div>
