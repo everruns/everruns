@@ -1,17 +1,21 @@
 // Temporal workflow implementations (M2)
 // Decision: Workflows are state machines that produce commands in response to activations
+// Decision: Each LLM call and each tool execution is a separate Temporal activity (node)
 //
-// The session workflow orchestrates:
-// 1. Loading agent configuration
-// 2. Loading session messages
-// 3. Calling LLM (may return tool calls)
-// 4. Executing tools if needed
-// 5. Iterating until done or max iterations reached
+// The session workflow orchestrates using step.rs abstractions:
+// 1. SetupStep: Load agent configuration and messages
+// 2. ExecuteLlmStep: Call LLM (may return tool calls)
+// 3. ExecuteSingleTool: Execute each tool as separate activity
+// 4. Loop back to ExecuteLlmStep if more tool calls
+// 5. FinalizeStep: Save final message and update status
 //
 // All state is deterministic and replayable from Temporal history.
 
 use std::collections::HashMap;
 
+use everruns_agent_loop::message::ConversationMessage;
+use everruns_agent_loop::step::StepOutput;
+use everruns_contracts::tools::{ToolCall, ToolResult};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{info, warn};
@@ -611,5 +615,526 @@ mod tests {
         let workflow = AgentRunWorkflow::new(input);
 
         assert!(matches!(workflow.state(), AgentRunWorkflowState::Starting));
+    }
+
+    #[test]
+    fn test_step_workflow_start() {
+        let input = test_input();
+        let mut workflow = StepBasedWorkflow::new(input);
+
+        let actions = workflow.on_start();
+
+        // Should schedule setup step and update status
+        assert_eq!(actions.len(), 2);
+        assert!(actions.iter().any(|a| matches!(
+            a,
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::UPDATE_STATUS
+        )));
+        assert!(actions.iter().any(|a| matches!(
+            a,
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::SETUP_STEP
+        )));
+    }
+}
+
+// =============================================================================
+// Step-based workflow (using step.rs abstractions)
+// Each LLM call and each tool is a separate Temporal activity (node)
+// =============================================================================
+
+/// Workflow state for step-based session execution
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StepBasedWorkflowState {
+    /// Initial state
+    Starting,
+    /// Running setup step (load agent + messages)
+    Setup { activity_seq: u32 },
+    /// Executing LLM step
+    ExecutingLlm {
+        activity_seq: u32,
+        agent_config: LoadAgentOutput,
+        messages: Vec<ConversationMessage>,
+        iteration: usize,
+    },
+    /// Executing individual tool calls (one at a time)
+    ExecutingTool {
+        activity_seq: u32,
+        agent_config: LoadAgentOutput,
+        messages: Vec<ConversationMessage>,
+        iteration: usize,
+        pending_tools: Vec<ToolCall>,
+        completed_results: Vec<ToolResult>,
+        current_tool_index: usize,
+    },
+    /// Finalizing session
+    Finalizing {
+        activity_seq: u32,
+        messages: Vec<ConversationMessage>,
+        iteration: usize,
+        final_response: Option<String>,
+    },
+    /// Updating final status
+    UpdatingStatus {
+        activity_seq: u32,
+        final_status: String,
+    },
+    /// Workflow completed
+    Completed,
+    /// Workflow failed
+    Failed { error: String },
+}
+
+/// Step-based session workflow
+/// Uses step.rs abstractions with each LLM call and tool as separate Temporal nodes
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct StepBasedWorkflow {
+    /// Workflow input
+    input: SessionWorkflowInput,
+    /// Current state
+    state: StepBasedWorkflowState,
+    /// Activity sequence counter
+    activity_seq: u32,
+    /// Pending activity results
+    pending_results: HashMap<String, ActivityResult>,
+}
+
+#[allow(dead_code)]
+impl StepBasedWorkflow {
+    /// Create a new step-based workflow
+    pub fn new(input: SessionWorkflowInput) -> Self {
+        Self {
+            input,
+            state: StepBasedWorkflowState::Starting,
+            activity_seq: 0,
+            pending_results: HashMap::new(),
+        }
+    }
+
+    /// Get the current state
+    pub fn state(&self) -> &StepBasedWorkflowState {
+        &self.state
+    }
+
+    /// Get the workflow input
+    pub fn input(&self) -> &SessionWorkflowInput {
+        &self.input
+    }
+
+    /// Record an activity result
+    pub fn record_activity_result(&mut self, activity_id: String, result: ActivityResult) {
+        self.pending_results.insert(activity_id, result);
+    }
+
+    /// Generate a unique activity ID
+    fn next_activity_id(&mut self, activity_type: &str) -> String {
+        self.activity_seq += 1;
+        format!("{}-{}", activity_type, self.activity_seq)
+    }
+
+    /// Process workflow start
+    pub fn on_start(&mut self) -> Vec<WorkflowAction> {
+        info!(
+            session_id = %self.input.session_id,
+            agent_id = %self.input.agent_id,
+            "Starting step-based session workflow"
+        );
+
+        // Update status to running
+        let status_activity_id = self.next_activity_id("update-status");
+        let status_input = UpdateStatusInput {
+            session_id: self.input.session_id,
+            status: "running".to_string(),
+            started_at: Some(chrono::Utc::now()),
+            finished_at: None,
+        };
+
+        // Schedule setup step
+        let setup_activity_id = self.next_activity_id("setup-step");
+        let setup_seq = self.activity_seq;
+        let setup_input = SetupStepInput {
+            session_id: self.input.session_id,
+            agent_id: self.input.agent_id,
+        };
+
+        self.state = StepBasedWorkflowState::Setup {
+            activity_seq: setup_seq,
+        };
+
+        vec![
+            WorkflowAction::ScheduleActivity {
+                activity_id: status_activity_id,
+                activity_type: activity_names::UPDATE_STATUS.to_string(),
+                input: serde_json::to_value(&status_input).unwrap(),
+            },
+            WorkflowAction::ScheduleActivity {
+                activity_id: setup_activity_id,
+                activity_type: activity_names::SETUP_STEP.to_string(),
+                input: serde_json::to_value(&setup_input).unwrap(),
+            },
+        ]
+    }
+
+    /// Process activity completion
+    pub fn on_activity_completed(
+        &mut self,
+        activity_id: &str,
+        result: serde_json::Value,
+    ) -> Vec<WorkflowAction> {
+        info!(
+            activity_id = %activity_id,
+            state = ?std::mem::discriminant(&self.state),
+            "Step activity completed"
+        );
+
+        match &self.state {
+            StepBasedWorkflowState::Setup { .. } => {
+                // Ignore status update completion
+                if activity_id.starts_with("update-status") {
+                    return vec![];
+                }
+
+                // Parse setup output
+                let setup_output: SetupStepOutput = match serde_json::from_value(result) {
+                    Ok(output) => output,
+                    Err(e) => {
+                        return vec![
+                            self.fail_workflow(&format!("Failed to parse setup output: {}", e))
+                        ];
+                    }
+                };
+
+                // Proceed to LLM step
+                self.execute_llm_step(setup_output.agent_config, setup_output.messages, 1)
+            }
+
+            StepBasedWorkflowState::ExecutingLlm {
+                agent_config,
+                iteration,
+                ..
+            } => {
+                let agent_config = agent_config.clone();
+                let iteration = *iteration;
+
+                // Parse LLM step output
+                let llm_output: ExecuteLlmStepOutput = match serde_json::from_value(result) {
+                    Ok(output) => output,
+                    Err(e) => {
+                        return vec![
+                            self.fail_workflow(&format!("Failed to parse LLM output: {}", e))
+                        ];
+                    }
+                };
+
+                if llm_output.has_tool_calls {
+                    // Execute tools one by one
+                    self.execute_tools_sequentially(
+                        agent_config,
+                        llm_output.step_output.messages,
+                        iteration,
+                        llm_output.pending_tool_calls,
+                    )
+                } else {
+                    // No tools, finalize
+                    let final_response = self.extract_final_response(&llm_output.step_output);
+                    self.finalize(llm_output.step_output.messages, iteration, final_response)
+                }
+            }
+
+            StepBasedWorkflowState::ExecutingTool {
+                agent_config,
+                messages,
+                iteration,
+                pending_tools,
+                completed_results,
+                current_tool_index,
+                ..
+            } => {
+                let agent_config = agent_config.clone();
+                let mut messages = messages.clone();
+                let iteration = *iteration;
+                let pending_tools = pending_tools.clone();
+                let mut completed_results = completed_results.clone();
+                let current_tool_index = *current_tool_index;
+
+                // Parse tool output
+                let tool_output: ExecuteSingleToolOutput = match serde_json::from_value(result) {
+                    Ok(output) => output,
+                    Err(e) => {
+                        return vec![
+                            self.fail_workflow(&format!("Failed to parse tool output: {}", e))
+                        ];
+                    }
+                };
+
+                // Add tool result to completed list
+                completed_results.push(tool_output.result.clone());
+
+                // Add tool result message to conversation
+                let tool_call = &pending_tools[current_tool_index];
+                let result_msg = ConversationMessage::tool_result(
+                    &tool_call.id,
+                    tool_output.result.result,
+                    tool_output.result.error,
+                );
+                messages.push(result_msg);
+
+                let next_index = current_tool_index + 1;
+
+                if next_index < pending_tools.len() {
+                    // More tools to execute
+                    self.execute_next_tool(
+                        agent_config,
+                        messages,
+                        iteration,
+                        pending_tools,
+                        completed_results,
+                        next_index,
+                    )
+                } else {
+                    // All tools done, check iteration limit
+                    if iteration >= MAX_TOOL_ITERATIONS as usize {
+                        warn!(
+                            session_id = %self.input.session_id,
+                            iteration = iteration,
+                            "Max tool iterations reached"
+                        );
+                        self.finalize(messages, iteration, None)
+                    } else {
+                        // Call LLM again with tool results
+                        self.execute_llm_step(agent_config, messages, iteration + 1)
+                    }
+                }
+            }
+
+            StepBasedWorkflowState::Finalizing { .. } => {
+                // Finalize completed, update status
+                self.complete_workflow("pending".to_string())
+            }
+
+            StepBasedWorkflowState::UpdatingStatus { final_status, .. } => {
+                let status = final_status.clone();
+                info!(session_id = %self.input.session_id, status = %status, "Step workflow completing");
+
+                self.state = if status == "pending" || status == "completed" {
+                    StepBasedWorkflowState::Completed
+                } else {
+                    StepBasedWorkflowState::Failed {
+                        error: status.clone(),
+                    }
+                };
+
+                vec![WorkflowAction::CompleteWorkflow {
+                    result: Some(json!({ "status": status })),
+                }]
+            }
+
+            _ => {
+                warn!(
+                    activity_id = %activity_id,
+                    state = ?self.state,
+                    "Unexpected activity completion in state"
+                );
+                vec![]
+            }
+        }
+    }
+
+    /// Process activity failure
+    pub fn on_activity_failed(&mut self, activity_id: &str, error: &str) -> Vec<WorkflowAction> {
+        warn!(
+            activity_id = %activity_id,
+            error = %error,
+            "Step activity failed"
+        );
+
+        vec![self.fail_workflow(&format!("Activity {} failed: {}", activity_id, error))]
+    }
+
+    // =========================================================================
+    // Private helper methods
+    // =========================================================================
+
+    fn execute_llm_step(
+        &mut self,
+        agent_config: LoadAgentOutput,
+        messages: Vec<ConversationMessage>,
+        iteration: usize,
+    ) -> Vec<WorkflowAction> {
+        let activity_id = self.next_activity_id("execute-llm-step");
+        let seq = self.activity_seq;
+
+        let input = ExecuteLlmStepInput {
+            session_id: self.input.session_id,
+            agent_config: agent_config.clone(),
+            messages: messages.clone(),
+            iteration,
+        };
+
+        self.state = StepBasedWorkflowState::ExecutingLlm {
+            activity_seq: seq,
+            agent_config,
+            messages,
+            iteration,
+        };
+
+        vec![WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::EXECUTE_LLM_STEP.to_string(),
+            input: serde_json::to_value(&input).unwrap(),
+        }]
+    }
+
+    fn execute_tools_sequentially(
+        &mut self,
+        agent_config: LoadAgentOutput,
+        messages: Vec<ConversationMessage>,
+        iteration: usize,
+        pending_tools: Vec<ToolCall>,
+    ) -> Vec<WorkflowAction> {
+        if pending_tools.is_empty() {
+            return self.finalize(messages, iteration, None);
+        }
+
+        self.execute_next_tool(
+            agent_config,
+            messages,
+            iteration,
+            pending_tools,
+            Vec::new(),
+            0,
+        )
+    }
+
+    fn execute_next_tool(
+        &mut self,
+        agent_config: LoadAgentOutput,
+        messages: Vec<ConversationMessage>,
+        iteration: usize,
+        pending_tools: Vec<ToolCall>,
+        completed_results: Vec<ToolResult>,
+        tool_index: usize,
+    ) -> Vec<WorkflowAction> {
+        let tool_call = &pending_tools[tool_index];
+        let activity_id = self.next_activity_id(&format!("execute-tool-{}", tool_call.name));
+        let seq = self.activity_seq;
+
+        let input = ExecuteSingleToolInput {
+            session_id: self.input.session_id,
+            tool_call: tool_call.clone(),
+            tool_definition_json: None, // TODO: pass tool definitions from agent config
+        };
+
+        self.state = StepBasedWorkflowState::ExecutingTool {
+            activity_seq: seq,
+            agent_config,
+            messages,
+            iteration,
+            pending_tools,
+            completed_results,
+            current_tool_index: tool_index,
+        };
+
+        vec![WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::EXECUTE_SINGLE_TOOL.to_string(),
+            input: serde_json::to_value(&input).unwrap(),
+        }]
+    }
+
+    fn finalize(
+        &mut self,
+        messages: Vec<ConversationMessage>,
+        iteration: usize,
+        final_response: Option<String>,
+    ) -> Vec<WorkflowAction> {
+        let activity_id = self.next_activity_id("finalize-step");
+        let seq = self.activity_seq;
+
+        let input = FinalizeStepInput {
+            session_id: self.input.session_id,
+            final_messages: messages.clone(),
+            total_iterations: iteration,
+            final_response: final_response.clone(),
+        };
+
+        self.state = StepBasedWorkflowState::Finalizing {
+            activity_seq: seq,
+            messages,
+            iteration,
+            final_response,
+        };
+
+        vec![WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::FINALIZE_STEP.to_string(),
+            input: serde_json::to_value(&input).unwrap(),
+        }]
+    }
+
+    fn complete_workflow(&mut self, status: String) -> Vec<WorkflowAction> {
+        let activity_id = self.next_activity_id("final-status");
+        let seq = self.activity_seq;
+
+        let input = UpdateStatusInput {
+            session_id: self.input.session_id,
+            status: status.clone(),
+            started_at: None,
+            finished_at: None,
+        };
+
+        self.state = StepBasedWorkflowState::UpdatingStatus {
+            activity_seq: seq,
+            final_status: status,
+        };
+
+        vec![WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::UPDATE_STATUS.to_string(),
+            input: serde_json::to_value(&input).unwrap(),
+        }]
+    }
+
+    fn fail_workflow(&mut self, error: &str) -> WorkflowAction {
+        self.state = StepBasedWorkflowState::Failed {
+            error: error.to_string(),
+        };
+
+        let activity_id = self.next_activity_id("fail-status");
+        let seq = self.activity_seq;
+
+        let input = UpdateStatusInput {
+            session_id: self.input.session_id,
+            status: "failed".to_string(),
+            started_at: None,
+            finished_at: Some(chrono::Utc::now()),
+        };
+
+        self.state = StepBasedWorkflowState::UpdatingStatus {
+            activity_seq: seq,
+            final_status: "failed".to_string(),
+        };
+
+        WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::UPDATE_STATUS.to_string(),
+            input: serde_json::to_value(&input).unwrap(),
+        }
+    }
+
+    fn extract_final_response(&self, step_output: &StepOutput) -> Option<String> {
+        // Find the last assistant message
+        step_output
+            .messages
+            .iter()
+            .rev()
+            .find(|m| m.role == everruns_agent_loop::MessageRole::Assistant)
+            .and_then(|m| match &m.content {
+                everruns_agent_loop::message::MessageContent::Text(text) => Some(text.clone()),
+                _ => None,
+            })
     }
 }
