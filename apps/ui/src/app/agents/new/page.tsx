@@ -19,7 +19,6 @@ export default function NewAgentPage() {
     name: "",
     description: "",
     system_prompt: "",
-    tags: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,9 +29,6 @@ export default function NewAgentPage() {
         name: formData.name,
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
-        tags: formData.tags
-          ? formData.tags.split(",").map((t) => t.trim())
-          : [],
       });
 
       router.push(`/agents/${agent.id}`);
@@ -97,21 +93,6 @@ export default function NewAgentPage() {
               />
               <p className="text-xs text-muted-foreground">
                 Instructions for the AI model
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="tags">Tags</Label>
-              <Input
-                id="tags"
-                placeholder="tag1, tag2, tag3"
-                value={formData.tags}
-                onChange={(e) =>
-                  setFormData({ ...formData, tags: e.target.value })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Comma-separated list of tags
               </p>
             </div>
 
