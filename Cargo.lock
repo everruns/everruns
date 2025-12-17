@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -760,7 +760,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -771,7 +771,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-storage"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
