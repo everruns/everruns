@@ -1,8 +1,26 @@
+-- Everruns M2 Schema (v0.2.0)
 -- Decision: Use UUID v7 for time-ordered, sortable IDs (better for DB performance)
--- Decision: Multi-tenancy removed for MVP - will be added in future milestone
+-- Decision: Messages are PRIMARY data store, Events are SSE notifications only
+-- Decision: API keys encrypted with AES-256-GCM, key from SECRETS_ENCRYPTION_KEY env var
 -- PostgreSQL 18+ has native UUIDv7 support via uuidv7()
 
--- Users table (for future auth implementation)
+-- ============================================
+-- Utility Functions
+-- ============================================
+
+-- Updated_at trigger function
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================
+-- Users (for future auth implementation)
+-- ============================================
+
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     email TEXT NOT NULL,
@@ -15,113 +33,164 @@ CREATE TABLE users (
 
 CREATE UNIQUE INDEX idx_users_email ON users(email);
 
--- Sessions table (for future auth implementation)
-CREATE TABLE sessions (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token TEXT NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE UNIQUE INDEX idx_sessions_token ON sessions(token);
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
+-- ============================================
+-- LLM Providers
+-- ============================================
 
--- Agents table
-CREATE TABLE agents (
+CREATE TABLE llm_providers (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT NOT NULL,
-    description TEXT,
-    default_model_id TEXT NOT NULL,
-    definition JSONB NOT NULL DEFAULT '{}'::jsonb,
+    provider_type TEXT NOT NULL CHECK (provider_type IN ('openai', 'anthropic', 'azure_openai', 'ollama', 'custom')),
+    base_url TEXT,
+    -- Encrypted API key (AES-256-GCM): 12-byte nonce || ciphertext || 16-byte tag
+    api_key_encrypted BYTEA,
+    api_key_set BOOLEAN NOT NULL DEFAULT FALSE,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX idx_llm_providers_status ON llm_providers(status);
+CREATE INDEX idx_llm_providers_provider_type ON llm_providers(provider_type);
+-- Ensure only one default provider
+CREATE UNIQUE INDEX idx_llm_providers_default ON llm_providers(is_default) WHERE is_default = TRUE;
+
+CREATE TRIGGER update_llm_providers_updated_at BEFORE UPDATE ON llm_providers
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- LLM Models
+-- ============================================
+
+CREATE TABLE llm_models (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    provider_id UUID NOT NULL REFERENCES llm_providers(id) ON DELETE CASCADE,
+    model_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
+    context_window INTEGER,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_llm_models_provider_id ON llm_models(provider_id);
+CREATE INDEX idx_llm_models_status ON llm_models(status);
+-- Unique model_id per provider
+CREATE UNIQUE INDEX idx_llm_models_provider_model ON llm_models(provider_id, model_id);
+-- Ensure only one default model per provider
+CREATE UNIQUE INDEX idx_llm_models_provider_default ON llm_models(provider_id, is_default) WHERE is_default = TRUE;
+
+CREATE TRIGGER update_llm_models_updated_at BEFORE UPDATE ON llm_models
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- Agents (configuration for agentic loop)
+-- ============================================
+
+CREATE TABLE agents (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    system_prompt TEXT NOT NULL,
+    default_model_id UUID REFERENCES llm_models(id),
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_agents_status ON agents(status);
+CREATE INDEX idx_agents_tags ON agents USING GIN(tags);
 
--- Threads table
-CREATE TABLE threads (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+CREATE TRIGGER update_agents_updated_at BEFORE UPDATE ON agents
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE INDEX idx_threads_created_at ON threads(created_at);
+-- ============================================
+-- Sessions (instance of agentic loop execution)
+-- ============================================
 
--- Messages table
-CREATE TABLE messages (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    thread_id UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-    role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-    content TEXT NOT NULL,
-    metadata JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_messages_thread_id ON messages(thread_id);
-CREATE INDEX idx_messages_created_at ON messages(created_at);
-
--- Runs table
-CREATE TABLE runs (
+CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    thread_id UUID NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
-    -- Internal Temporal workflow ID (never exposed in API)
-    temporal_workflow_id TEXT,
-    temporal_run_id TEXT,
+    title VARCHAR(255),
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    model_id UUID REFERENCES llm_models(id),
+    status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_runs_agent_id ON runs(agent_id);
-CREATE INDEX idx_runs_thread_id ON runs(thread_id);
-CREATE INDEX idx_runs_status ON runs(status);
-CREATE INDEX idx_runs_created_at ON runs(created_at);
-CREATE UNIQUE INDEX idx_runs_temporal_workflow_id ON runs(temporal_workflow_id) WHERE temporal_workflow_id IS NOT NULL;
+CREATE INDEX idx_sessions_agent_id ON sessions(agent_id);
+CREATE INDEX idx_sessions_status ON sessions(status);
+CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
+CREATE INDEX idx_sessions_tags ON sessions USING GIN(tags);
 
--- Actions table (HITL and control)
-CREATE TABLE actions (
+-- ============================================
+-- Messages (PRIMARY conversation data)
+-- ============================================
+
+CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK (kind IN ('approve', 'deny', 'resume', 'cancel')),
-    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-    by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL,
+    role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'assistant', 'tool_call', 'tool_result', 'system')),
+    content JSONB NOT NULL,
+    tool_call_id VARCHAR(255), -- For tool_result, references the tool_call id
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(session_id, sequence)
 );
 
-CREATE INDEX idx_actions_run_id ON actions(run_id);
-CREATE INDEX idx_actions_created_at ON actions(created_at);
+CREATE INDEX idx_messages_session_id ON messages(session_id);
+CREATE INDEX idx_messages_session_sequence ON messages(session_id, sequence);
+CREATE INDEX idx_messages_role ON messages(role);
 
--- Run events table (AG-UI event stream)
-CREATE TABLE run_events (
+-- ============================================
+-- Events (SSE notification stream for UI)
+-- ============================================
+
+CREATE TABLE events (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-    sequence_number BIGSERIAL,
-    event_type TEXT NOT NULL,
-    event_data JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL,
+    event_type VARCHAR(100) NOT NULL,
+    data JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(session_id, sequence)
 );
 
-CREATE INDEX idx_run_events_run_id ON run_events(run_id);
-CREATE INDEX idx_run_events_sequence_number ON run_events(sequence_number);
-CREATE UNIQUE INDEX idx_run_events_run_sequence ON run_events(run_id, sequence_number);
+CREATE INDEX idx_events_session_id ON events(session_id);
+CREATE INDEX idx_events_session_sequence ON events(session_id, sequence);
+CREATE INDEX idx_events_event_type ON events(event_type);
 
--- Updated_at trigger function
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+-- ============================================
+-- Sequence functions for auto-increment within session
+-- ============================================
+
+-- Function to get next message sequence for a session
+CREATE OR REPLACE FUNCTION next_message_sequence(p_session_id UUID) RETURNS INTEGER AS $$
+DECLARE
+    next_seq INTEGER;
 BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
+    SELECT COALESCE(MAX(sequence), 0) + 1 INTO next_seq
+    FROM messages WHERE session_id = p_session_id;
+    RETURN next_seq;
 END;
 $$ LANGUAGE plpgsql;
 
--- Apply updated_at triggers
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_agents_updated_at BEFORE UPDATE ON agents
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Function to get next event sequence for a session
+CREATE OR REPLACE FUNCTION next_event_sequence(p_session_id UUID) RETURNS INTEGER AS $$
+DECLARE
+    next_seq INTEGER;
+BEGIN
+    SELECT COALESCE(MAX(sequence), 0) + 1 INTO next_seq
+    FROM events WHERE session_id = p_session_id;
+    RETURN next_seq;
+END;
+$$ LANGUAGE plpgsql;
