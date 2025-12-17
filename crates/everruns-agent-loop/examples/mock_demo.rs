@@ -1,9 +1,9 @@
-//! Simple Agent Loop Example
+//! Mock Demo - Agent Loop with Mocked LLM Provider
 //!
-//! This example demonstrates how to use the everruns-agent-loop crate
-//! with in-memory implementations for a standalone agent execution.
+//! This example demonstrates the agent loop using mocked components,
+//! perfect for testing and demos without needing an API key.
 //!
-//! Run with: cargo run --example simple_loop -p everruns-agent-loop
+//! Run with: cargo run --example mock_demo -p everruns-agent-loop
 
 use everruns_agent_loop::{
     config::AgentConfig,
@@ -20,7 +20,8 @@ async fn main() -> anyhow::Result<()> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    println!("=== Simple Agent Loop Example ===\n");
+    println!("=== Agent Loop Mock Demo ===");
+    println!("(No API key required - using mocked responses)\n");
 
     // Example 1: Basic conversation
     basic_conversation().await?;
@@ -28,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     // Example 2: Conversation with tool calls
     conversation_with_tools().await?;
 
-    println!("\n=== All examples completed! ===");
+    println!("\n=== Demo completed! ===");
     Ok(())
 }
 

@@ -41,5 +41,5 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 
 [[example]]
-name = "simple_loop"
-path = "examples/simple_loop.rs"
+name = "mock_demo"
+path = "examples/mock_demo.rs"
