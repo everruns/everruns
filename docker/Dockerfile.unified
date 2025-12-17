@@ -105,15 +105,16 @@ ENV RUST_LOG=info
 CMD ["/app/everruns-worker"]
 
 # ============================================================================
-# Stage 4c: Build Admin tools (reencrypt-secrets binary)
+# Stage 4c: Build Admin tools (reencrypt-secrets + sqlx-cli)
 # ============================================================================
 FROM deps AS builder-admin
 
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-# Build the reencrypt-secrets binary
-RUN cargo build --release --bin reencrypt-secrets
+# Build the reencrypt-secrets binary and install sqlx-cli
+RUN cargo build --release --bin reencrypt-secrets && \
+    cargo install sqlx-cli --no-default-features --features postgres --locked
 
 # ============================================================================
 # Stage 5c: Admin Runtime image
@@ -137,12 +138,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install sqlx-cli for migrations
-RUN curl -sSL https://github.com/launchbadge/sqlx/releases/download/v0.8.2/sqlx-cli-x86_64-unknown-linux-gnu.tar.gz \
-    | tar -xzf - -C /usr/local/bin
+# Copy sqlx-cli from builder
+COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 
 # Copy the reencrypt-secrets binary
 COPY --from=builder-admin /app/target/release/reencrypt-secrets /app/reencrypt-secrets
