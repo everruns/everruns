@@ -59,7 +59,7 @@ impl SessionWorkflow {
         let model = agent
             .default_model_id
             .map(|id| id.to_string())
-            .unwrap_or_else(|| "gpt-4o".to_string());
+            .unwrap_or_else(|| "gpt-5.2".to_string());
 
         let config = AgentConfig::new(&agent.system_prompt, model)
             .with_max_iterations(10)

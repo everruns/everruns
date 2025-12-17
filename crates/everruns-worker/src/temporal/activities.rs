@@ -78,7 +78,7 @@ pub async fn load_agent_activity(
         model_id: agent
             .default_model_id
             .map(|id| id.to_string())
-            .unwrap_or_else(|| "gpt-4o".to_string()),
+            .unwrap_or_else(|| "gpt-5.2".to_string()),
         system_prompt: Some(agent.system_prompt),
         temperature: None,
         max_tokens: None,

@@ -39,7 +39,7 @@ async fn basic_conversation() -> anyhow::Result<()> {
     // Create agent configuration
     let config = AgentConfig::new(
         "You are a helpful assistant that provides concise answers.",
-        "gpt-4o",
+        "gpt-5.2",
     );
 
     // Create mock LLM provider with predefined response
@@ -90,7 +90,7 @@ async fn conversation_with_tools() -> anyhow::Result<()> {
     // Create agent configuration with a tool
     let config = AgentConfig::new(
         "You are a helpful assistant with access to a weather tool.",
-        "gpt-4o",
+        "gpt-5.2",
     )
     .with_tools(vec![everruns_agent_loop::ToolDefinition::Builtin(
         everruns_contracts::tools::BuiltinTool {

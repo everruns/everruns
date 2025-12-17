@@ -13,7 +13,7 @@ pub struct AgentConfig {
     /// System prompt that defines the agent's behavior
     pub system_prompt: String,
 
-    /// Model identifier (e.g., "gpt-4o", "claude-3-opus")
+    /// Model identifier (e.g., "gpt-5.2", "claude-3-opus")
     pub model: String,
 
     /// Available tools for the agent
@@ -79,7 +79,7 @@ impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             system_prompt: "You are a helpful assistant.".to_string(),
-            model: "gpt-4o".to_string(),
+            model: "gpt-5.2".to_string(),
             tools: Vec::new(),
             max_iterations: default_max_iterations(),
             temperature: None,
