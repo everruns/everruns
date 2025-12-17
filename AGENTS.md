@@ -42,8 +42,8 @@ Available skills:
 
 When running in cloud-hosted agent environments (e.g., Claude Code on the web), the following secrets are available:
 
-- **OpenAI API Key**: Available for LLM-related operations
-- **GitHub Token**: Available for GitHub API operations (PRs, issues, repository access)
+- `OPENAI_API_KEY`: Available for LLM-related operations
+- `GITHUB_TOKEN`: Available for GitHub API operations (PRs, issues, repository access)
 
 These secrets are pre-configured in the environment and do not require manual setup.
 
