@@ -103,3 +103,57 @@ COPY --from=builder-worker /app/target/release/everruns-worker /app/everruns-wor
 ENV RUST_LOG=info
 
 CMD ["/app/everruns-worker"]
+
+# ============================================================================
+# Stage 4c: Build Admin tools (reencrypt-secrets + sqlx-cli)
+# ============================================================================
+FROM deps AS builder-admin
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates crates
+
+# Build the reencrypt-secrets binary and install sqlx-cli
+RUN cargo build --release --bin reencrypt-secrets && \
+    cargo install sqlx-cli --no-default-features --features postgres --locked
+
+# ============================================================================
+# Stage 5c: Admin Runtime image
+# ============================================================================
+# Admin container for running migrations, key rotation, and other admin tasks
+# in production environments.
+#
+# Usage:
+#   docker build --target admin -f docker/Dockerfile.unified -t everruns-admin .
+#
+# Run migrations:
+#   docker run --rm everruns-admin migrate
+#
+# Run key re-encryption:
+#   docker run --rm everruns-admin reencrypt --dry-run
+#
+FROM debian:bookworm-slim AS admin
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy sqlx-cli from builder
+COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
+
+# Copy the reencrypt-secrets binary
+COPY --from=builder-admin /app/target/release/reencrypt-secrets /app/reencrypt-secrets
+
+# Copy migrations
+COPY crates/everruns-storage/migrations /app/migrations
+
+# Copy entrypoint script
+COPY docker/admin-entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENV RUST_LOG=info
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["help"]

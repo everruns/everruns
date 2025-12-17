@@ -12,10 +12,10 @@ Everruns uses envelope encryption with versioned keys. Key rotation is a multi-p
 
 ## Prerequisites
 
-- Access to environment configuration (secrets manager or deployment config)
-- Database read/write access (for re-encryption job)
+- Access to secrets management (environment config or secrets manager)
+- Ability to run the admin container in production
 - Ability to deploy application updates
-- The `reencrypt-secrets` CLI tool (included in the API crate)
+- The `reencrypt-secrets` CLI tool (available in the admin container)
 
 ## Rotation Procedure
 
@@ -58,7 +58,11 @@ Use the `reencrypt-secrets` CLI tool to migrate all data to the new key.
 First, run in dry-run mode to see what would be re-encrypted:
 
 ```bash
-reencrypt-secrets --dry-run
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
+    -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
+    everruns-admin reencrypt --dry-run
 ```
 
 Example output:
@@ -76,8 +80,11 @@ Example output:
 Once satisfied with the dry run, execute the actual re-encryption:
 
 ```bash
-# Re-encrypt all tables
-reencrypt-secrets --batch-size 50
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
+    -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
+    everruns-admin reencrypt --batch-size 50
 ```
 
 #### CLI Options
@@ -98,7 +105,11 @@ OPTIONS:
 Confirm all data has been migrated by running another dry run:
 
 ```bash
-reencrypt-secrets --dry-run
+docker run --rm \
+    -e DATABASE_URL="$DATABASE_URL" \
+    -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
+    -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
+    everruns-admin reencrypt --dry-run
 ```
 
 Expected output:
@@ -162,7 +173,11 @@ If a key is suspected compromised:
 1. **Immediately** generate new key and deploy with both keys
 2. Run re-encryption CLI with **highest priority**:
    ```bash
-   reencrypt-secrets
+   docker run --rm \
+       -e DATABASE_URL="$DATABASE_URL" \
+       -e SECRETS_ENCRYPTION_KEY="kek-v2:..." \
+       -e SECRETS_ENCRYPTION_KEY_PREVIOUS="kek-v1:..." \
+       everruns-admin reencrypt
    ```
 3. Remove compromised key as soon as all data is migrated
 4. Rotate any credentials that may have been exposed
