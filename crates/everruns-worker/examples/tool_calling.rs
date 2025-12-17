@@ -1,12 +1,12 @@
-//! OpenAI Tool Calling Example - Agent Loop with Real OpenAI API and Tools
+//! Tool Calling Example - Agent Loop with Tool Trait
 //!
-//! This example demonstrates real tool calling using the OpenAI API.
-//! It uses the Tool trait abstraction and ToolRegistry for tool management.
+//! This example demonstrates tool calling using the Tool trait abstraction
+//! and ToolRegistry for tool management. Uses OpenAI as the LLM provider.
 //!
 //! Prerequisites:
 //! - Set OPENAI_API_KEY environment variable
 //!
-//! Run with: cargo run --example openai_tools -p everruns-worker
+//! Run with: cargo run -p everruns-worker --example tool_calling
 
 use async_trait::async_trait;
 use everruns_agent_loop::{

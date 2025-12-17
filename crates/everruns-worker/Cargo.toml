@@ -40,5 +40,5 @@ name = "openai_agent"
 path = "examples/openai_agent.rs"
 
 [[example]]
-name = "openai_tools"
-path = "examples/openai_tools.rs"
+name = "tool_calling"
+path = "examples/tool_calling.rs"
