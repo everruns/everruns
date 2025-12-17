@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This document defines the HTTP API endpoints for Everruns.
+This document defines the HTTP API endpoints for Everruns v0.2.0 (M2).
 
 ## Requirements
 
@@ -14,7 +14,7 @@ All endpoints are prefixed with `/v1/`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Server health check |
+| GET | `/health` | Server health check (includes version and runner mode) |
 
 ### Agents
 
@@ -24,37 +24,64 @@ All endpoints are prefixed with `/v1/`.
 | GET | `/v1/agents` | List agents (paginated) |
 | GET | `/v1/agents/{id}` | Get agent by ID |
 | PATCH | `/v1/agents/{id}` | Update agent |
-| DELETE | `/v1/agents/{id}` | Delete agent (soft delete) |
+| DELETE | `/v1/agents/{id}` | Archive agent (soft delete) |
 
-### Threads
+### Sessions
+
+Sessions are instances of agentic loop execution tied to an agent.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/threads` | Create thread |
-| GET | `/v1/threads/{id}` | Get thread with messages |
+| POST | `/v1/agents/{agent_id}/sessions` | Create session |
+| GET | `/v1/agents/{agent_id}/sessions` | List sessions (paginated) |
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}` | Get session |
+| PATCH | `/v1/agents/{agent_id}/sessions/{session_id}` | Update session |
+| DELETE | `/v1/agents/{agent_id}/sessions/{session_id}` | Delete session |
 
 ### Messages
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/threads/{id}/messages` | Add message to thread |
-
-### Runs
+Messages store all conversation content (user, assistant, tool calls, tool results).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/runs` | Create and start run |
-| GET | `/v1/runs/{id}` | Get run status |
-| POST | `/v1/runs/{id}/cancel` | Cancel running run |
-| GET | `/v1/runs/{id}/events` | Stream events (SSE) |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/messages` | Create message (triggers workflow) |
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}/messages` | List messages |
 
-### AG-UI Endpoint
+### Events
+
+Server-Sent Events (SSE) for real-time UI updates.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/ag-ui` | AG-UI protocol endpoint for CopilotKit |
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}/events` | Stream events (SSE) |
 
-Query parameters: `agent_id`, `thread_id` (optional)
+### LLM Providers
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/llm-providers` | Create LLM provider |
+| GET | `/v1/llm-providers` | List LLM providers |
+| GET | `/v1/llm-providers/{id}` | Get LLM provider |
+| PATCH | `/v1/llm-providers/{id}` | Update LLM provider |
+| DELETE | `/v1/llm-providers/{id}` | Delete LLM provider |
+
+### LLM Models
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/llm-providers/{provider_id}/models` | Create model for provider |
+| GET | `/v1/llm-providers/{provider_id}/models` | List provider models |
+| GET | `/v1/llm-models` | List all models |
+| GET | `/v1/llm-models/{id}` | Get model |
+| PATCH | `/v1/llm-models/{id}` | Update model |
+| DELETE | `/v1/llm-models/{id}` | Delete model |
+
+### API Documentation
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/swagger-ui/` | Swagger UI for OpenAPI docs |
+| GET | `/api-doc/openapi.json` | OpenAPI specification |
 
 ### Response Formats
 
