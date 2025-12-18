@@ -40,12 +40,18 @@ async function request<T>(
     throw new ApiError(response.status, response.statusText, errorMessage);
   }
 
-  // Handle empty responses (204 No Content)
+  // Handle empty responses (204 No Content or empty body)
   if (response.status === 204) {
     return { data: {} as T };
   }
 
-  const data = await response.json();
+  // Check if response has content before parsing JSON
+  const text = await response.text();
+  if (!text) {
+    return { data: {} as T };
+  }
+
+  const data = JSON.parse(text);
   return { data };
 }
 

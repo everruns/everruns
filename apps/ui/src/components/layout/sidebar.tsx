@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuPositioner,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuLabel,
@@ -106,16 +107,17 @@ export function Sidebar() {
             </DropdownMenuTrigger>
             <DropdownMenuPositioner side="top" align="start">
               <DropdownMenuContent className="w-56">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push("/settings")}>
-                  <User className="mr-2 h-4 w-4" />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/settings#api-keys")}>
-                  <Key className="mr-2 h-4 w-4" />
-                  API Keys
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => router.push("/settings")}>
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/settings#api-keys")}>
+                    <Key className="mr-2 h-4 w-4" />
+                    API Keys
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"

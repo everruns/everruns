@@ -18,6 +18,8 @@ API_PREFIX=/api
 
 **Notes:**
 - `/health`, `/swagger-ui`, and `/api-doc/openapi.json` are not affected by this prefix
+- All API routes including auth (`/v1/auth/*`) are affected by this prefix
+- OAuth callback URLs automatically include this prefix when using defaults
 - Use when running behind a reverse proxy or API gateway that expects a path prefix
 
 ## CORS_ALLOWED_ORIGINS
