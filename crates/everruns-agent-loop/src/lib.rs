@@ -11,7 +11,9 @@
 // - Tools are defined via a Tool trait for flexibility (function-style tools)
 // - ToolRegistry implements ToolExecutor for easy tool management
 // - Error handling distinguishes between user-visible and internal errors
+// - Capabilities provide modular functionality units for composing agent behavior
 
+pub mod capabilities;
 pub mod config;
 pub mod error;
 pub mod events;
@@ -37,6 +39,13 @@ pub use traits::{EventEmitter, LlmProvider, MessageStore, ToolExecutor};
 pub use tools::{
     EchoTool, FailingTool, GetCurrentTime, Tool, ToolExecutionResult, ToolInternalError,
     ToolRegistry, ToolRegistryBuilder,
+};
+
+// Capability re-exports
+pub use capabilities::{
+    apply_capabilities, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
+    CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, FileSystemCapability,
+    GetCurrentTimeTool, NoopCapability, ResearchCapability, SandboxCapability,
 };
 
 // Re-export AG-UI events for compatibility
