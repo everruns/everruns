@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
+import { CapabilitySelector } from "@/components/capabilities";
 import { ArrowLeft, Plus, MessageSquare } from "lucide-react";
 
 export default function AgentDetailPage({
@@ -141,6 +142,8 @@ export default function AgentDetailPage({
         </div>
 
         <div className="space-y-6">
+          <CapabilitySelector agentId={agentId} />
+
           <Card>
             <CardHeader>
               <CardTitle>Configuration</CardTitle>

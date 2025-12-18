@@ -94,6 +94,8 @@ pub enum BuiltinToolKind {
     ReadFile,
     /// Write file (future)
     WriteFile,
+    /// Get current time in various formats
+    CurrentTime,
 }
 
 /// Tool call from LLM response
