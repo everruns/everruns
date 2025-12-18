@@ -140,3 +140,80 @@ CREATE TABLE refresh_tokens (
 
 - `401 Unauthorized`: Missing or invalid credentials
 - `403 Forbidden`: Valid credentials but insufficient permissions
+
+## UI Integration
+
+### Configuration Discovery
+
+The UI fetches authentication configuration from `GET /api/auth/config` on startup:
+
+```typescript
+interface AuthConfigResponse {
+  mode: "none" | "admin" | "full";
+  password_auth_enabled: boolean;
+  oauth_providers: string[];  // ["google", "github"]
+  signup_enabled: boolean;
+}
+```
+
+### Conditional Rendering
+
+Based on `mode`:
+
+- **none**: Skip authentication entirely, show app directly
+- **admin/full**: Require login before accessing protected routes
+
+### UI Components
+
+| Component | Path | Description |
+|-----------|------|-------------|
+| Login Page | `/login` | Email/password form + OAuth buttons |
+| Register Page | `/register` | User registration (if `signup_enabled`) |
+| User Menu | Sidebar | Profile, API keys link, logout |
+| API Keys | `/settings#api-keys` | Create, list, delete API keys |
+
+### Authentication Flow
+
+1. App loads, fetches `/api/auth/config`
+2. If `mode === "none"`, render app without auth
+3. Otherwise, check if user is authenticated via `/api/auth/me`
+4. If not authenticated, redirect to `/login`
+5. After login, cookies are set automatically (HTTP-only)
+6. Subsequent requests include cookies via `credentials: "include"`
+
+### OAuth Flow
+
+1. User clicks OAuth button (e.g., "Continue with Google")
+2. Browser redirects to `GET /api/auth/oauth/{provider}`
+3. API redirects to provider's authorization page
+4. After user authorizes, provider redirects to callback
+5. API handles callback, sets cookies, redirects to `/`
+
+### Protected Routes
+
+All routes under `/(main)/*` are protected:
+- `/dashboard`
+- `/agents`
+- `/settings`
+
+Auth pages under `/(auth)/*` are public:
+- `/login`
+- `/register`
+
+### State Management
+
+Authentication state is managed via:
+
+1. **AuthProvider** - React Context providing auth state
+2. **React Query** - Caching auth config and user info
+3. **HTTP-only Cookies** - Secure token storage (managed by server)
+
+### API Client Configuration
+
+```typescript
+// All requests include credentials for cookie-based auth
+fetch(url, {
+  credentials: "include",
+  headers: { "Content-Type": "application/json" }
+});
+```

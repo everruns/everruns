@@ -156,6 +156,75 @@ export interface HealthResponse {
 }
 
 // ============================================
+// Authentication types
+// ============================================
+
+export type AuthMode = "none" | "admin" | "full";
+
+export interface AuthConfigResponse {
+  mode: AuthMode;
+  password_auth_enabled: boolean;
+  oauth_providers: string[];
+  signup_enabled: boolean;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  name: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token?: string;
+}
+
+export interface UserInfoResponse {
+  id: string;
+  email: string;
+  name: string;
+  roles: string[];
+  avatar_url?: string;
+}
+
+export interface ApiKeyResponse {
+  id: string;
+  name: string;
+  key: string;
+  key_prefix: string;
+  scopes: string[];
+  expires_at?: string;
+  created_at: string;
+}
+
+export interface ApiKeyListItem {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  expires_at?: string;
+  last_used_at?: string;
+  created_at: string;
+}
+
+export interface CreateApiKeyRequest {
+  name: string;
+  scopes?: string[];
+  expires_in_days?: number;
+}
+
+export interface RefreshTokenRequest {
+  refresh_token: string;
+}
+
+// ============================================
 // LLM Provider types
 // ============================================
 

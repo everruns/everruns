@@ -4,3 +4,4 @@ export * from "./client";
 export * from "./agents";
 export * from "./sessions";
 export * from "./llm-providers";
+export * from "./auth";
