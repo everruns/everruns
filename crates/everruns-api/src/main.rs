@@ -9,6 +9,7 @@ mod llm_models;
 mod llm_providers;
 mod services;
 mod sessions;
+mod users;
 
 use anyhow::{Context, Result};
 use axum::http::{header, HeaderValue, Method};
@@ -86,6 +87,7 @@ struct HealthState {
         capabilities::get_capability,
         capabilities::get_agent_capabilities,
         capabilities::set_agent_capabilities,
+        users::list_users,
     ),
     components(
         schemas(
@@ -108,6 +110,9 @@ struct HealthState {
             AgentCapability, UpdateAgentCapabilitiesRequest,
             ListResponse<Capability>,
             ListResponse<AgentCapability>,
+            users::User,
+            users::ListUsersQuery,
+            ListResponse<users::User>,
         )
     ),
     tags(
@@ -117,7 +122,8 @@ struct HealthState {
         (name = "events", description = "Event streaming endpoints (SSE)"),
         (name = "llm-providers", description = "LLM Provider management endpoints"),
         (name = "llm-models", description = "LLM Model management endpoints"),
-        (name = "capabilities", description = "Capability management endpoints")
+        (name = "capabilities", description = "Capability management endpoints"),
+        (name = "users", description = "User management endpoints")
     ),
     info(
         title = "Everruns API",
@@ -211,6 +217,10 @@ async fn main() -> Result<()> {
     };
     let llm_models_state = llm_models::AppState { db: db.clone() };
     let capabilities_state = capabilities::AppState::new(db.clone());
+    let users_state = users::UsersState {
+        db: db.clone(),
+        auth: auth_state.clone(),
+    };
     let health_state = HealthState {
         runner_mode: format!("{:?}", runner_config.mode),
         auth_mode: format!("{:?}", auth_config.mode),
@@ -248,6 +258,7 @@ async fn main() -> Result<()> {
         .merge(llm_models::routes(llm_models_state))
         .merge(llm_providers::routes(llm_providers_state))
         .merge(capabilities::routes(capabilities_state))
+        .merge(users::routes(users_state))
         .merge(auth::routes(auth_state));
 
     // Build main router with health (not prefixed) and prefixed API routes
