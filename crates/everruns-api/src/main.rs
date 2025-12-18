@@ -11,13 +11,14 @@ mod services;
 mod sessions;
 
 use anyhow::{Context, Result};
+use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_contracts::*;
 use everruns_storage::{Database, EncryptionService};
 use everruns_worker::{create_runner, RunnerConfig, RunnerMode};
 use serde::Serialize;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
@@ -222,6 +223,21 @@ async fn main() -> Result<()> {
         tracing::info!(prefix = %api_prefix, "API prefix configured");
     }
 
+    // Load CORS allowed origins from environment (optional)
+    // Only needed when UI is served from a different origin than the API
+    // Example: CORS_ALLOWED_ORIGINS="https://app.example.com,https://admin.example.com"
+    let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ALLOWED_ORIGINS")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.split(',').filter_map(|s| s.trim().parse().ok()).collect())
+        .unwrap_or_default();
+
+    if cors_origins.is_empty() {
+        tracing::info!("CORS not configured (same-origin requests only)");
+    } else {
+        tracing::info!(origins = ?cors_origins, "CORS origins configured");
+    }
+
     // Build API routes
     // Note: llm_models routes must be merged BEFORE llm_providers
     // because /v1/llm-providers/{provider_id}/models is more specific
@@ -241,16 +257,38 @@ async fn main() -> Result<()> {
     // Apply API prefix if configured
     app = app.merge(build_router_with_prefix(api_routes, &api_prefix));
 
-    // Add Swagger UI and middleware
-    let app = app
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
-        .layer(
+    // Add Swagger UI
+    let app =
+        app.merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()));
+
+    // Add CORS layer only if origins are configured
+    let app = if !cors_origins.is_empty() {
+        app.layer(
             CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
+                .allow_origin(AllowOrigin::list(cors_origins))
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::PATCH,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
+                .allow_headers([
+                    header::CONTENT_TYPE,
+                    header::AUTHORIZATION,
+                    header::ACCEPT,
+                    header::ORIGIN,
+                    header::CACHE_CONTROL,
+                ])
+                .allow_credentials(true),
         )
-        .layer(TraceLayer::new_for_http());
+    } else {
+        app
+    };
+
+    // Add tracing
+    let app = app.layer(TraceLayer::new_for_http());
 
     // Start server
     let addr = "0.0.0.0:9000";

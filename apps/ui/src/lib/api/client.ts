@@ -1,10 +1,8 @@
 // API base URL configuration:
-// - In production: defaults to "/api" (same-origin, requires reverse proxy)
-// - In development: defaults to "http://localhost:9000"
-// - Can be overridden via NEXT_PUBLIC_API_BASE_URL environment variable
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:9000");
+// All API requests use /api prefix which is either:
+// - Proxied by Next.js rewrites in development (strips /api, forwards to backend)
+// - Handled by reverse proxy in production (strips /api, forwards to backend)
+const API_BASE = "/api";
 
 export class ApiError extends Error {
   constructor(
@@ -90,5 +88,18 @@ export async function apiClient<T>(
 }
 
 export function getApiBaseUrl(): string {
+  return API_BASE;
+}
+
+/**
+ * Get the direct backend URL for operations that can't go through the proxy
+ * (e.g., OAuth redirects that need browser navigation to the backend)
+ */
+export function getBackendUrl(): string {
+  // In browser, use window.location to construct the proxy URL
+  // OAuth will go through /api/v1/auth/oauth which gets proxied
+  if (typeof window !== 'undefined') {
+    return window.location.origin + API_BASE;
+  }
   return API_BASE;
 }
