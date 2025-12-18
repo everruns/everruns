@@ -31,6 +31,21 @@ Specification format: Abstract and Requirements sections.
 Available skills:
 - `smoke-tests/` - API and UI smoke testing with support for Docker and no-Docker environments
 
+### Test Cases
+
+`test_cases/` contains manual test case documentation organized by feature. Each feature has its own folder with individual test case files.
+
+Test case format:
+- **Description**: What the test verifies
+- **Preconditions**: Required setup and environment configuration
+- **Test Data**: Input values in table format
+- **Steps**: Numbered actions to perform
+- **Expected Result**: Success criteria
+
+Naming convention: `TC###_short_description.md` (e.g., `TC001_success_login.md`)
+
+When adding new features, create corresponding test cases to document expected behavior and acceptance criteria.
+
 ### Public Documentation
 
 `docs/` contains public-facing user documentation. This documentation is intended for end users and operators of the system, not for internal development reference.
