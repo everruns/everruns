@@ -11,13 +11,13 @@ mod services;
 mod sessions;
 
 use anyhow::{Context, Result};
+use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_contracts::*;
 use everruns_storage::{Database, EncryptionService};
 use everruns_worker::{create_runner, RunnerConfig, RunnerMode};
 use serde::Serialize;
 use std::sync::Arc;
-use axum::http::{header, HeaderValue, Method};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -229,11 +229,7 @@ async fn main() -> Result<()> {
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ALLOWED_ORIGINS")
         .ok()
         .filter(|s| !s.is_empty())
-        .map(|s| {
-            s.split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect()
-        })
+        .map(|s| s.split(',').filter_map(|s| s.trim().parse().ok()).collect())
         .unwrap_or_default();
 
     if cors_origins.is_empty() {
@@ -262,7 +258,8 @@ async fn main() -> Result<()> {
     app = app.merge(build_router_with_prefix(api_routes, &api_prefix));
 
     // Add Swagger UI
-    let app = app.merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()));
+    let app =
+        app.merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()));
 
     // Add CORS layer only if origins are configured
     let app = if !cors_origins.is_empty() {

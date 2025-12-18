@@ -298,7 +298,10 @@ mod tests {
             ..Default::default()
         };
         assert!(config.is_enabled());
-        assert!(config.password_auth_enabled(), "Admin mode should have password auth enabled");
+        assert!(
+            config.password_auth_enabled(),
+            "Admin mode should have password auth enabled"
+        );
         assert!(!config.oauth_enabled(), "Admin mode should not have OAuth");
     }
 
@@ -310,7 +313,10 @@ mod tests {
             disable_password_auth: false,
             ..Default::default()
         };
-        assert!(config.password_auth_enabled(), "Full mode should have password auth by default");
+        assert!(
+            config.password_auth_enabled(),
+            "Full mode should have password auth by default"
+        );
 
         // Full mode with password auth disabled
         let config_disabled = AuthConfig {
@@ -318,7 +324,10 @@ mod tests {
             disable_password_auth: true,
             ..Default::default()
         };
-        assert!(!config_disabled.password_auth_enabled(), "Full mode with disable_password_auth should not have password auth");
+        assert!(
+            !config_disabled.password_auth_enabled(),
+            "Full mode with disable_password_auth should not have password auth"
+        );
     }
 
     #[test]
@@ -327,7 +336,10 @@ mod tests {
             mode: AuthMode::None,
             ..Default::default()
         };
-        assert!(!config.password_auth_enabled(), "None mode should not have password auth");
+        assert!(
+            !config.password_auth_enabled(),
+            "None mode should not have password auth"
+        );
     }
 
     #[test]
@@ -383,7 +395,10 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert!(config_with_admin.admin.is_some(), "Admin config should be set");
+        assert!(
+            config_with_admin.admin.is_some(),
+            "Admin config should be set"
+        );
         let admin = config_with_admin.admin.unwrap();
         assert_eq!(admin.email, "admin@example.com");
         assert_eq!(admin.password, "changeme");
