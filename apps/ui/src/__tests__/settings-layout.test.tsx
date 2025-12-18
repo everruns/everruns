@@ -38,6 +38,7 @@ describe("SettingsLayout", () => {
 
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
     expect(screen.getByText("API Keys")).toBeInTheDocument();
+    expect(screen.getByText("Members")).toBeInTheDocument();
   });
 
   it("renders correct navigation links", () => {
@@ -49,9 +50,11 @@ describe("SettingsLayout", () => {
 
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
     const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
+    const membersLink = screen.getByRole("link", { name: /Members/i });
 
     expect(providersLink).toHaveAttribute("href", "/settings/providers");
     expect(apiKeysLink).toHaveAttribute("href", "/settings/api-keys");
+    expect(membersLink).toHaveAttribute("href", "/settings/members");
   });
 
   it("highlights the active navigation item for providers", () => {
@@ -89,17 +92,19 @@ describe("SettingsLayout", () => {
     expect(screen.getByText("Test Child Content")).toBeInTheDocument();
   });
 
-  it("does not render Members navigation (no API exists)", () => {
+  it("highlights the active navigation item for members", () => {
+    mockPathname.mockReturnValue("/settings/members");
     render(
       <SettingsLayout>
         <div>Test Content</div>
       </SettingsLayout>
     );
 
-    expect(screen.queryByText("Members")).not.toBeInTheDocument();
+    const membersLink = screen.getByRole("link", { name: /Members/i });
+    expect(membersLink).toHaveClass("bg-primary");
   });
 
-  it("has exactly 2 navigation items", () => {
+  it("has exactly 3 navigation items", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
@@ -107,6 +112,6 @@ describe("SettingsLayout", () => {
     );
 
     const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(2);
+    expect(navLinks).toHaveLength(3);
   });
 });

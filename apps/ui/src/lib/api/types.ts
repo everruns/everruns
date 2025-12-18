@@ -327,3 +327,21 @@ export interface AgentCapability {
 export interface UpdateAgentCapabilitiesRequest {
   capabilities: CapabilityId[];
 }
+
+// ============================================
+// User types (for members management)
+// ============================================
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  roles: string[];
+  auth_provider?: string;
+  created_at: string;
+}
+
+export interface ListUsersQuery {
+  search?: string;
+}
