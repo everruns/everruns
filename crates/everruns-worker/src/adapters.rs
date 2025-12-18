@@ -7,16 +7,15 @@ use async_trait::async_trait;
 use everruns_agent_loop::{
     traits::{
         EventEmitter, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-        LlmProvider, LlmResponseStream, LlmStreamEvent, MessageStore, ToolExecutor,
+        LlmProvider, LlmResponseStream, LlmStreamEvent, MessageStore,
     },
-    AgentLoopError, ConversationMessage, LoopEvent, MessageRole, Result, ToolCall, ToolDefinition,
-    ToolResult,
+    AgentLoopError, ConversationMessage, LoopEvent, MessageRole, Result,
 };
 use everruns_contracts::events::AgUiEvent;
+use everruns_contracts::tools::ToolCall;
 use everruns_storage::models::CreateMessage;
 use everruns_storage::repositories::Database;
 use futures::StreamExt;
-use reqwest::Client;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -24,7 +23,7 @@ use crate::providers::{
     openai::OpenAiProvider, ChatMessage, LlmConfig, LlmProvider as WorkerLlmProvider,
     LlmStreamEvent as WorkerLlmStreamEvent, MessageRole as WorkerMessageRole,
 };
-use crate::tools::execute_tool;
+use crate::unified_tool_executor::UnifiedToolExecutor;
 
 // ============================================================================
 // DbEventEmitter - Persists events to database
@@ -344,51 +343,6 @@ impl LlmProvider for OpenAiLlmAdapter {
 }
 
 // ============================================================================
-// WebhookToolExecutor - Executes webhook tools
-// ============================================================================
-
-/// Tool executor that uses webhooks
-///
-/// Wraps the existing tool execution logic.
-pub struct WebhookToolExecutor {
-    client: Client,
-}
-
-impl WebhookToolExecutor {
-    pub fn new() -> Self {
-        Self {
-            client: Client::new(),
-        }
-    }
-}
-
-impl Default for WebhookToolExecutor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl ToolExecutor for WebhookToolExecutor {
-    async fn execute(&self, tool_call: &ToolCall, tool_def: &ToolDefinition) -> Result<ToolResult> {
-        // Convert to contracts types
-        let tc = everruns_contracts::tools::ToolCall {
-            id: tool_call.id.clone(),
-            name: tool_call.name.clone(),
-            arguments: tool_call.arguments.clone(),
-        };
-
-        let result = execute_tool(&tc, tool_def, &self.client).await;
-
-        Ok(ToolResult {
-            tool_call_id: result.tool_call_id,
-            result: result.result,
-            error: result.error,
-        })
-    }
-}
-
-// ============================================================================
 // Factory functions
 // ============================================================================
 
@@ -407,12 +361,22 @@ pub fn create_openai_adapter() -> Result<OpenAiLlmAdapter> {
     OpenAiLlmAdapter::new()
 }
 
-/// Create a webhook tool executor
-pub fn create_webhook_tool_executor() -> WebhookToolExecutor {
-    WebhookToolExecutor::new()
+/// Create a unified tool executor with default built-in tools
+pub fn create_unified_tool_executor() -> UnifiedToolExecutor {
+    UnifiedToolExecutor::with_default_tools()
+}
+
+/// Create a unified tool executor with a custom tool registry
+pub fn create_unified_tool_executor_with_registry(
+    registry: everruns_agent_loop::ToolRegistry,
+) -> UnifiedToolExecutor {
+    UnifiedToolExecutor::new(registry)
 }
 
 /// Create a fully configured AgentLoop with database backends
+///
+/// Uses the `UnifiedToolExecutor` which supports both built-in tools
+/// (via ToolRegistry) and webhook tools.
 pub fn create_db_agent_loop(
     config: everruns_agent_loop::AgentConfig,
     db: Database,
@@ -421,13 +385,42 @@ pub fn create_db_agent_loop(
         DbEventEmitter,
         DbMessageStore,
         OpenAiLlmAdapter,
-        WebhookToolExecutor,
+        UnifiedToolExecutor,
     >,
 > {
     let event_emitter = create_db_event_emitter(db.clone());
     let message_store = create_db_message_store(db);
     let llm_provider = create_openai_adapter()?;
-    let tool_executor = create_webhook_tool_executor();
+    let tool_executor = create_unified_tool_executor();
+
+    Ok(everruns_agent_loop::AgentLoop::new(
+        config,
+        event_emitter,
+        message_store,
+        llm_provider,
+        tool_executor,
+    ))
+}
+
+/// Create a fully configured AgentLoop with database backends and a custom tool registry
+///
+/// This allows passing a custom `ToolRegistry` with specific built-in tools.
+pub fn create_db_agent_loop_with_registry(
+    config: everruns_agent_loop::AgentConfig,
+    db: Database,
+    registry: everruns_agent_loop::ToolRegistry,
+) -> Result<
+    everruns_agent_loop::AgentLoop<
+        DbEventEmitter,
+        DbMessageStore,
+        OpenAiLlmAdapter,
+        UnifiedToolExecutor,
+    >,
+> {
+    let event_emitter = create_db_event_emitter(db.clone());
+    let message_store = create_db_message_store(db);
+    let llm_provider = create_openai_adapter()?;
+    let tool_executor = create_unified_tool_executor_with_registry(registry);
 
     Ok(everruns_agent_loop::AgentLoop::new(
         config,

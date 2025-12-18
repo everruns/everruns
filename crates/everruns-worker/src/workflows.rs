@@ -93,6 +93,7 @@ impl SessionWorkflow {
         );
 
         // Create and run the agent loop with database-backed components
+        // Uses UnifiedToolExecutor which supports both built-in and webhook tools
         let agent_loop = create_db_agent_loop(config, self.db.clone())?;
         let result = agent_loop.run(self.session_id).await;
 
