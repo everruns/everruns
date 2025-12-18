@@ -140,6 +140,45 @@ User sends: "How much is 2+2?"
 User can send another message to continue the conversation.
 ```
 
+### Capability
+
+Modular functionality that can be enabled on Agents. Capabilities contribute to system prompts, provide tools, and modify agent behavior.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | CapabilityId | Unique identifier (enum) |
+| `name` | string | Display name |
+| `description` | string | Description of functionality |
+| `status` | enum | `available`, `coming_soon`, `deprecated` |
+| `icon` | string? | Icon name for UI rendering |
+| `category` | string? | Category for grouping in UI |
+
+**Built-in Capability IDs:**
+
+| ID | Status | Description |
+|----|--------|-------------|
+| `noop` | available | No-op capability for testing |
+| `current_time` | available | Tool to get current date/time |
+| `research` | coming_soon | Deep research with scratchpad |
+| `sandbox` | coming_soon | Sandboxed code execution |
+| `file_system` | coming_soon | File system access tools |
+
+### AgentCapability
+
+Junction table linking Agents to Capabilities with ordering.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID v7 | Unique identifier |
+| `agent_id` | UUID v7 | Parent agent reference |
+| `capability_id` | CapabilityId | Capability identifier |
+| `position` | integer | Order in capability chain (lower = earlier) |
+| `created_at` | timestamp | Creation time |
+
+**Constraints:**
+- Each agent can have each capability at most once (`UNIQUE(agent_id, capability_id)`)
+- Capabilities are applied in `position` order when building agent configuration
+
 ## Design Decisions
 
 | Question | Decision |
@@ -149,3 +188,5 @@ User can send another message to continue the conversation.
 | Where are tool calls stored? | Messages with role=tool_call |
 | Where are tool results stored? | Messages with role=tool_result |
 | Session status? | Explicit status field (pending, running, completed, failed) |
+| Where are capabilities defined? | In-memory registry in API layer |
+| How are capabilities applied? | Resolved at API/service layer, merged into AgentConfig |

@@ -94,6 +94,45 @@ Server-Sent Events (SSE) for real-time UI updates.
 | PATCH | `/v1/llm-models/{id}` | Update model |
 | DELETE | `/v1/llm-models/{id}` | Delete model |
 
+### Capabilities
+
+Capabilities are modular functionality units that can be enabled on agents. See [capabilities.md](capabilities.md) for full specification.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/capabilities` | List all available capabilities |
+| GET | `/v1/capabilities/{capability_id}` | Get capability details |
+| GET | `/v1/agents/{agent_id}/capabilities` | Get capabilities for an agent |
+| PUT | `/v1/agents/{agent_id}/capabilities` | Set capabilities for an agent |
+
+**Request/Response Examples:**
+
+List capabilities:
+```json
+GET /v1/capabilities
+{
+  "items": [
+    {
+      "id": "current_time",
+      "name": "Current Time",
+      "description": "Tool to get current date and time",
+      "status": "available",
+      "icon": "clock",
+      "category": "Utilities"
+    }
+  ],
+  "total": 5
+}
+```
+
+Set agent capabilities:
+```json
+PUT /v1/agents/{agent_id}/capabilities
+{
+  "capabilities": ["current_time", "research"]
+}
+```
+
 ### API Documentation
 
 | Method | Path | Description |
