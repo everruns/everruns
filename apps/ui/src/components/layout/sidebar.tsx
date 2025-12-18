@@ -7,12 +7,14 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Boxes,
+  Puzzle,
   Settings,
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Agents", href: "/agents", icon: Boxes },
+  { name: "Capabilities", href: "/capabilities", icon: Puzzle },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

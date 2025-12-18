@@ -310,3 +310,23 @@ pub struct UpdateLlmModel {
     pub is_default: Option<bool>,
     pub status: Option<String>,
 }
+
+// ============================================
+// Agent Capability models
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentCapabilityRow {
+    pub id: Uuid,
+    pub agent_id: Uuid,
+    pub capability_id: String,
+    pub position: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAgentCapability {
+    pub agent_id: Uuid,
+    pub capability_id: String,
+    pub position: i32,
+}
