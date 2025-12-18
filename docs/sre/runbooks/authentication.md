@@ -109,13 +109,13 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 
 ```bash
 # Check auth config endpoint
-curl http://localhost:9000/api/auth/config
+curl http://localhost:9000/v1/auth/config
 
 # Should return:
-# {"mode":"none","passwordEnabled":false,"oauthProviders":[],"signupEnabled":false}
+# {"mode":"none","password_auth_enabled":false,"oauth_providers":[],"signup_enabled":false}
 
 # For admin mode:
-curl -X POST http://localhost:9000/api/auth/login \
+curl -X POST http://localhost:9000/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"your-password"}'
 ```
@@ -124,12 +124,12 @@ curl -X POST http://localhost:9000/api/auth/login \
 
 ```bash
 # Login first to get access token
-TOKEN=$(curl -s -X POST http://localhost:9000/api/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:9000/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"password"}' | jq -r '.access_token')
 
 # Create API key
-curl -X POST http://localhost:9000/api/auth/api-keys \
+curl -X POST http://localhost:9000/v1/auth/api-keys \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"my-api-key"}'
@@ -140,7 +140,7 @@ curl -X POST http://localhost:9000/api/auth/api-keys \
 ### Revoke API Key
 
 ```bash
-curl -X DELETE http://localhost:9000/api/auth/api-keys/{key_id} \
+curl -X DELETE http://localhost:9000/v1/auth/api-keys/{key_id} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -168,7 +168,7 @@ DELETE FROM refresh_tokens WHERE user_id = 'user-uuid-here';
 ### OAuth Redirect Fails
 
 - Verify `AUTH_BASE_URL` matches the OAuth app configuration
-- Check that redirect URI in provider matches `{AUTH_BASE_URL}/api/auth/callback/{provider}`
+- Check that redirect URI in provider matches `{AUTH_BASE_URL}/v1/auth/callback/{provider}`
 - Ensure client ID and secret are correct
 
 ### Password Login Returns Unauthorized
@@ -179,7 +179,7 @@ DELETE FROM refresh_tokens WHERE user_id = 'user-uuid-here';
 
 ## Database Migration
 
-Authentication requires migration `004_authentication.sql`:
+Authentication requires migration `003_authentication.sql`:
 
 ```bash
 # Run migrations

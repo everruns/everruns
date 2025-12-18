@@ -1,5 +1,5 @@
 // Authentication HTTP routes
-// Decision: Use /api/auth/* prefix for all auth endpoints
+// Decision: Use /v1/auth/* prefix for all auth endpoints (consistent with other API routes)
 // Decision: Support both JSON and cookie-based sessions
 
 use axum::{
@@ -131,25 +131,25 @@ pub struct AuthConfigResponse {
 pub fn routes(state: AuthState) -> Router {
     Router::new()
         // Public routes
-        .route("/api/auth/config", get(get_auth_config))
-        .route("/api/auth/login", post(login))
-        .route("/api/auth/register", post(register))
-        .route("/api/auth/refresh", post(refresh_token))
-        .route("/api/auth/logout", post(logout))
+        .route("/v1/auth/config", get(get_auth_config))
+        .route("/v1/auth/login", post(login))
+        .route("/v1/auth/register", post(register))
+        .route("/v1/auth/refresh", post(refresh_token))
+        .route("/v1/auth/logout", post(logout))
         // OAuth routes
-        .route("/api/auth/oauth/:provider", get(oauth_redirect))
-        .route("/api/auth/callback/:provider", get(oauth_callback))
+        .route("/v1/auth/oauth/:provider", get(oauth_redirect))
+        .route("/v1/auth/callback/:provider", get(oauth_callback))
         // Protected routes
-        .route("/api/auth/me", get(get_current_user))
+        .route("/v1/auth/me", get(get_current_user))
         .route(
-            "/api/auth/api-keys",
+            "/v1/auth/api-keys",
             get(list_api_keys).post(create_api_key_route),
         )
-        .route("/api/auth/api-keys/:key_id", delete(delete_api_key_route))
+        .route("/v1/auth/api-keys/:key_id", delete(delete_api_key_route))
         .with_state(state)
 }
 
-/// GET /api/auth/config - Get authentication configuration
+/// GET /v1/auth/config - Get authentication configuration
 pub async fn get_auth_config(State(state): State<AuthState>) -> Json<AuthConfigResponse> {
     let mut oauth_providers = Vec::new();
 
@@ -168,28 +168,32 @@ pub async fn get_auth_config(State(state): State<AuthState>) -> Json<AuthConfigR
         },
         password_auth_enabled: state.config.password_auth_enabled(),
         oauth_providers,
-        signup_enabled: !state.config.disable_signup,
+        // Admin mode has a single predefined user, no signup allowed
+        signup_enabled: state.config.mode != AuthMode::Admin && !state.config.disable_signup,
     })
 }
 
-/// POST /api/auth/login - Login with email and password
+/// POST /v1/auth/login - Login with email and password
 pub async fn login(
     State(state): State<AuthState>,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
-    // Check if password auth is enabled
-    if !state.config.password_auth_enabled() {
-        // In admin mode, check admin credentials
-        if state.config.mode == AuthMode::Admin {
-            if let Some(admin) = &state.config.admin {
-                if req.email == admin.email && req.password == admin.password {
-                    // Create or get admin user
-                    let user = get_or_create_admin_user(&state, admin).await?;
-                    return generate_token_response(&state, jar, &user).await;
-                }
+    // In admin mode, check admin credentials directly (no database lookup)
+    if state.config.mode == AuthMode::Admin {
+        if let Some(admin) = &state.config.admin {
+            if req.email == admin.email && req.password == admin.password {
+                // Create or get admin user
+                let user = get_or_create_admin_user(&state, admin).await?;
+                return generate_token_response(&state, jar, &user).await;
             }
         }
+        // Admin mode only allows the configured admin credentials
+        return Err(AuthError::unauthorized("Invalid email or password"));
+    }
+
+    // Check if password auth is enabled (for non-admin modes)
+    if !state.config.password_auth_enabled() {
         return Err(AuthError::unauthorized(
             "Password authentication is disabled",
         ));
@@ -234,7 +238,7 @@ pub async fn login(
     generate_token_response(&state, jar, &auth_user).await
 }
 
-/// POST /api/auth/register - Register a new user
+/// POST /v1/auth/register - Register a new user
 pub async fn register(
     State(state): State<AuthState>,
     jar: CookieJar,
@@ -297,7 +301,7 @@ pub async fn register(
     Ok((StatusCode::CREATED, jar, json))
 }
 
-/// POST /api/auth/refresh - Refresh access token
+/// POST /v1/auth/refresh - Refresh access token
 pub async fn refresh_token(
     State(state): State<AuthState>,
     jar: CookieJar,
@@ -356,13 +360,13 @@ pub async fn refresh_token(
     generate_token_response(&state, jar, &auth_user).await
 }
 
-/// POST /api/auth/logout - Logout (clear cookies)
+/// POST /v1/auth/logout - Logout (clear cookies)
 pub async fn logout(jar: CookieJar) -> CookieJar {
     jar.remove(Cookie::build("access_token").path("/"))
         .remove(Cookie::build("refresh_token").path("/"))
 }
 
-/// GET /api/auth/me - Get current user info
+/// GET /v1/auth/me - Get current user info
 pub async fn get_current_user(user: AuthUser) -> Json<UserInfoResponse> {
     Json(UserInfoResponse {
         id: user.id.to_string(),
@@ -373,7 +377,7 @@ pub async fn get_current_user(user: AuthUser) -> Json<UserInfoResponse> {
     })
 }
 
-/// GET /api/auth/oauth/:provider - Redirect to OAuth provider
+/// GET /v1/auth/oauth/:provider - Redirect to OAuth provider
 pub async fn oauth_redirect(
     State(state): State<AuthState>,
     Path(provider): Path<String>,
@@ -413,7 +417,7 @@ pub async fn oauth_redirect(
     Ok(Redirect::to(&auth_url.url))
 }
 
-/// GET /api/auth/callback/:provider - OAuth callback
+/// GET /v1/auth/callback/:provider - OAuth callback
 pub async fn oauth_callback(
     State(state): State<AuthState>,
     Path(provider): Path<String>,
@@ -522,7 +526,7 @@ pub async fn oauth_callback(
     Ok((jar, Redirect::to("/")))
 }
 
-/// GET /api/auth/api-keys - List API keys for current user
+/// GET /v1/auth/api-keys - List API keys for current user
 pub async fn list_api_keys(
     State(state): State<AuthState>,
     user: AuthUser,
@@ -555,7 +559,7 @@ pub async fn list_api_keys(
     Ok(Json(items))
 }
 
-/// POST /api/auth/api-keys - Create a new API key
+/// POST /v1/auth/api-keys - Create a new API key
 pub async fn create_api_key_route(
     State(state): State<AuthState>,
     user: AuthUser,
@@ -603,7 +607,7 @@ pub async fn create_api_key_route(
     ))
 }
 
-/// DELETE /api/auth/api-keys/:key_id - Delete an API key
+/// DELETE /v1/auth/api-keys/:key_id - Delete an API key
 pub async fn delete_api_key_route(
     State(state): State<AuthState>,
     user: AuthUser,
@@ -668,7 +672,7 @@ async fn generate_token_response(
         .build();
 
     let refresh_cookie = Cookie::build(("refresh_token", token_pair.refresh_token.clone()))
-        .path("/api/auth")
+        .path("/v1/auth")
         .http_only(true)
         .secure(true)
         .same_site(SameSite::Strict)

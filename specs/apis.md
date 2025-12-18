@@ -20,17 +20,17 @@ All endpoints are prefixed with `/v1/`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/auth/config` | Get authentication configuration |
-| POST | `/api/auth/login` | Login with email/password |
-| POST | `/api/auth/register` | Register new user |
-| POST | `/api/auth/refresh` | Refresh access token |
-| POST | `/api/auth/logout` | Logout (clear cookies) |
-| GET | `/api/auth/oauth/{provider}` | Redirect to OAuth provider |
-| GET | `/api/auth/callback/{provider}` | OAuth callback |
-| GET | `/api/auth/me` | Get current user info |
-| GET | `/api/auth/api-keys` | List user's API keys |
-| POST | `/api/auth/api-keys` | Create API key |
-| DELETE | `/api/auth/api-keys/{key_id}` | Delete API key |
+| GET | `/v1/auth/config` | Get authentication configuration |
+| POST | `/v1/auth/login` | Login with email/password |
+| POST | `/v1/auth/register` | Register new user |
+| POST | `/v1/auth/refresh` | Refresh access token |
+| POST | `/v1/auth/logout` | Logout (clear cookies) |
+| GET | `/v1/auth/oauth/{provider}` | Redirect to OAuth provider |
+| GET | `/v1/auth/callback/{provider}` | OAuth callback |
+| GET | `/v1/auth/me` | Get current user info |
+| GET | `/v1/auth/api-keys` | List user's API keys |
+| POST | `/v1/auth/api-keys` | Create API key |
+| DELETE | `/v1/auth/api-keys/{key_id}` | Delete API key |
 
 See [authentication.md](authentication.md) for full authentication specification.
 

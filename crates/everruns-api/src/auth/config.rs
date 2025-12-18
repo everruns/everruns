@@ -140,13 +140,13 @@ impl AuthConfig {
             }
         });
 
-        let access_token_lifetime = std::env::var("AUTH_ACCESS_TOKEN_LIFETIME")
+        let access_token_lifetime = std::env::var("AUTH_JWT_ACCESS_TOKEN_LIFETIME")
             .ok()
             .and_then(|s| s.parse().ok())
             .map(Duration::from_secs)
             .unwrap_or_else(|| Duration::from_secs(15 * 60));
 
-        let refresh_token_lifetime = std::env::var("AUTH_REFRESH_TOKEN_LIFETIME")
+        let refresh_token_lifetime = std::env::var("AUTH_JWT_REFRESH_TOKEN_LIFETIME")
             .ok()
             .and_then(|s| s.parse().ok())
             .map(Duration::from_secs)
@@ -160,8 +160,8 @@ impl AuthConfig {
 
         // Admin configuration
         let admin = match (
-            std::env::var("ADMIN_EMAIL"),
-            std::env::var("ADMIN_PASSWORD"),
+            std::env::var("AUTH_ADMIN_EMAIL"),
+            std::env::var("AUTH_ADMIN_PASSWORD"),
         ) {
             (Ok(email), Ok(password)) if !email.is_empty() && !password.is_empty() => {
                 Some(AdminConfig { email, password })
@@ -178,7 +178,7 @@ impl AuthConfig {
                 if !client_id.is_empty() && !client_secret.is_empty() =>
             {
                 let redirect_uri = std::env::var("AUTH_GOOGLE_REDIRECT_URI")
-                    .unwrap_or_else(|_| format!("{}/api/auth/callback/google", base_url));
+                    .unwrap_or_else(|_| format!("{}/v1/auth/callback/google", base_url));
                 let allowed_domains = std::env::var("AUTH_GOOGLE_ALLOWED_DOMAINS")
                     .ok()
                     .map(|s| s.split(',').map(|s| s.trim().to_string()).collect());
@@ -203,7 +203,7 @@ impl AuthConfig {
                 if !client_id.is_empty() && !client_secret.is_empty() =>
             {
                 let redirect_uri = std::env::var("AUTH_GITHUB_REDIRECT_URI")
-                    .unwrap_or_else(|_| format!("{}/api/auth/callback/github", base_url));
+                    .unwrap_or_else(|_| format!("{}/v1/auth/callback/github", base_url));
                 Some(GitHubOAuthConfig {
                     base: OAuthProviderConfig {
                         client_id,
@@ -250,7 +250,9 @@ impl AuthConfig {
 
     /// Check if password authentication is available
     pub fn password_auth_enabled(&self) -> bool {
-        self.mode == AuthMode::Full && !self.disable_password_auth
+        // Admin mode always has password auth (that's how you log in with admin credentials)
+        // Full mode has password auth unless explicitly disabled
+        self.mode == AuthMode::Admin || (self.mode == AuthMode::Full && !self.disable_password_auth)
     }
 
     /// Check if OAuth is available
@@ -287,5 +289,134 @@ mod tests {
         assert!(!config.is_enabled());
         assert!(!config.password_auth_enabled());
         assert!(!config.oauth_enabled());
+    }
+
+    #[test]
+    fn test_admin_mode_has_password_auth() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            ..Default::default()
+        };
+        assert!(config.is_enabled());
+        assert!(
+            config.password_auth_enabled(),
+            "Admin mode should have password auth enabled"
+        );
+        assert!(!config.oauth_enabled(), "Admin mode should not have OAuth");
+    }
+
+    #[test]
+    fn test_full_mode_password_auth() {
+        // Full mode with password auth enabled (default)
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            disable_password_auth: false,
+            ..Default::default()
+        };
+        assert!(
+            config.password_auth_enabled(),
+            "Full mode should have password auth by default"
+        );
+
+        // Full mode with password auth disabled
+        let config_disabled = AuthConfig {
+            mode: AuthMode::Full,
+            disable_password_auth: true,
+            ..Default::default()
+        };
+        assert!(
+            !config_disabled.password_auth_enabled(),
+            "Full mode with disable_password_auth should not have password auth"
+        );
+    }
+
+    #[test]
+    fn test_none_mode_no_password_auth() {
+        let config = AuthConfig {
+            mode: AuthMode::None,
+            ..Default::default()
+        };
+        assert!(
+            !config.password_auth_enabled(),
+            "None mode should not have password auth"
+        );
+    }
+
+    #[test]
+    fn test_admin_config_credentials() {
+        // Test that AdminConfig stores credentials correctly
+        let admin = AdminConfig {
+            email: "admin@example.com".to_string(),
+            password: "secret123".to_string(),
+        };
+
+        assert_eq!(admin.email, "admin@example.com");
+        assert_eq!(admin.password, "secret123");
+
+        // Simulate credential check (same logic as login handler)
+        let test_email = "admin@example.com";
+        let test_password = "secret123";
+        assert!(
+            test_email == admin.email && test_password == admin.password,
+            "Matching credentials should pass"
+        );
+
+        // Wrong password
+        let wrong_password = "wrongpass";
+        assert!(
+            !(test_email == admin.email && wrong_password == admin.password),
+            "Wrong password should fail"
+        );
+
+        // Wrong email
+        let wrong_email = "user@example.com";
+        assert!(
+            !(wrong_email == admin.email && test_password == admin.password),
+            "Wrong email should fail"
+        );
+    }
+
+    #[test]
+    fn test_admin_mode_requires_admin_config() {
+        // Admin mode without admin config
+        let config_no_admin = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: None,
+            ..Default::default()
+        };
+        assert!(config_no_admin.admin.is_none(), "Admin config can be None");
+
+        // Admin mode with admin config
+        let config_with_admin = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "changeme".to_string(),
+            }),
+            ..Default::default()
+        };
+        assert!(
+            config_with_admin.admin.is_some(),
+            "Admin config should be set"
+        );
+        let admin = config_with_admin.admin.unwrap();
+        assert_eq!(admin.email, "admin@example.com");
+        assert_eq!(admin.password, "changeme");
+    }
+
+    #[test]
+    fn test_admin_mode_signup_should_be_disabled() {
+        // In admin mode, signup should be disabled regardless of disable_signup setting
+        // (This is enforced in routes.rs, but we document the expected behavior here)
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            disable_signup: false, // Even if not explicitly disabled
+            ..Default::default()
+        };
+
+        // The signup_enabled check in routes.rs is:
+        // config.mode != AuthMode::Admin && !config.disable_signup
+        let signup_enabled = config.mode != AuthMode::Admin && !config.disable_signup;
+        assert!(!signup_enabled, "Admin mode should never allow signup");
     }
 }
