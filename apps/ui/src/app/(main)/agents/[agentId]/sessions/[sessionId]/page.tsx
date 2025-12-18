@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Send, User, Bot, Loader2 } from "lucide-react";
 import type { Message } from "@/lib/api/types";
+import { ToolCallCard } from "@/components/chat/tool-call-card";
 
 export default function SessionDetailPage({
   params,
@@ -93,6 +94,23 @@ export default function SessionDetailPage({
     return JSON.stringify(message.content);
   };
 
+  // Build a map of tool_call_id to tool_result messages
+  const toolResultsMap = new Map<string, Message>();
+  messages?.forEach((msg) => {
+    if (msg.role === "tool_result" && msg.tool_call_id) {
+      toolResultsMap.set(msg.tool_call_id, msg);
+    }
+  });
+
+  // Get tool call ID from message content
+  const getToolCallId = (message: Message): string | null => {
+    if (typeof message.content === "object" && message.content !== null) {
+      const content = message.content as Record<string, unknown>;
+      if (content.id) return String(content.id);
+    }
+    return null;
+  };
+
   if (sessionLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -170,7 +188,28 @@ export default function SessionDetailPage({
           messages?.map((message) => {
             const isUser = message.role === "user";
             const isAssistant = message.role === "assistant";
+            const isToolCall = message.role === "tool_call";
+            const isToolResult = message.role === "tool_result";
 
+            // Skip tool_result messages - they're rendered with their tool_call
+            if (isToolResult) {
+              return null;
+            }
+
+            // Render tool calls with their results
+            if (isToolCall) {
+              const toolCallId = getToolCallId(message);
+              const toolResult = toolCallId ? toolResultsMap.get(toolCallId) : undefined;
+              return (
+                <ToolCallCard
+                  key={message.id}
+                  toolCall={message}
+                  toolResult={toolResult}
+                />
+              );
+            }
+
+            // Render user and assistant messages
             return (
               <div
                 key={message.id}
