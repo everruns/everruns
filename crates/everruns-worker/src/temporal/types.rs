@@ -103,6 +103,9 @@ pub struct ToolCallData {
     pub id: String,
     pub name: String,
     pub arguments: String,
+    /// Optional tool definition JSON for webhook tools
+    #[serde(default)]
+    pub tool_definition_json: Option<String>,
 }
 
 /// Output from CallLLM activity
