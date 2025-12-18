@@ -127,6 +127,9 @@ impl AuthConfig {
             .or_else(|_| std::env::var("BASE_URL"))
             .unwrap_or_else(|_| "http://localhost:9000".to_string());
 
+        // API prefix for constructing OAuth callback URLs
+        let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
+
         // JWT configuration
         let jwt_secret = std::env::var("AUTH_JWT_SECRET").unwrap_or_else(|_| {
             if mode == AuthMode::None {
@@ -177,8 +180,9 @@ impl AuthConfig {
             (Ok(client_id), Ok(client_secret))
                 if !client_id.is_empty() && !client_secret.is_empty() =>
             {
-                let redirect_uri = std::env::var("AUTH_GOOGLE_REDIRECT_URI")
-                    .unwrap_or_else(|_| format!("{}/v1/auth/callback/google", base_url));
+                let redirect_uri = std::env::var("AUTH_GOOGLE_REDIRECT_URI").unwrap_or_else(|_| {
+                    format!("{}{}/v1/auth/callback/google", base_url, api_prefix)
+                });
                 let allowed_domains = std::env::var("AUTH_GOOGLE_ALLOWED_DOMAINS")
                     .ok()
                     .map(|s| s.split(',').map(|s| s.trim().to_string()).collect());
@@ -202,8 +206,9 @@ impl AuthConfig {
             (Ok(client_id), Ok(client_secret))
                 if !client_id.is_empty() && !client_secret.is_empty() =>
             {
-                let redirect_uri = std::env::var("AUTH_GITHUB_REDIRECT_URI")
-                    .unwrap_or_else(|_| format!("{}/v1/auth/callback/github", base_url));
+                let redirect_uri = std::env::var("AUTH_GITHUB_REDIRECT_URI").unwrap_or_else(|_| {
+                    format!("{}{}/v1/auth/callback/github", base_url, api_prefix)
+                });
                 Some(GitHubOAuthConfig {
                     base: OAuthProviderConfig {
                         client_id,

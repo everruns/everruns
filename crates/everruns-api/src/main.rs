@@ -238,7 +238,7 @@ async fn main() -> Result<()> {
         tracing::info!(origins = ?cors_origins, "CORS origins configured");
     }
 
-    // Build API routes
+    // Build API routes (including auth)
     // Note: llm_models routes must be merged BEFORE llm_providers
     // because /v1/llm-providers/{provider_id}/models is more specific
     // than /v1/llm-providers/{id}
@@ -247,14 +247,13 @@ async fn main() -> Result<()> {
         .merge(sessions::routes(sessions_state))
         .merge(llm_models::routes(llm_models_state))
         .merge(llm_providers::routes(llm_providers_state))
-        .merge(capabilities::routes(capabilities_state));
-
-    // Build main router with health, auth (not prefixed), and prefixed API routes
-    let mut app = Router::new()
-        .route("/health", get(health).with_state(health_state))
+        .merge(capabilities::routes(capabilities_state))
         .merge(auth::routes(auth_state));
 
-    // Apply API prefix if configured
+    // Build main router with health (not prefixed) and prefixed API routes
+    let mut app = Router::new().route("/health", get(health).with_state(health_state));
+
+    // Apply API prefix if configured (affects all API routes including auth)
     app = app.merge(build_router_with_prefix(api_routes, &api_prefix));
 
     // Add Swagger UI

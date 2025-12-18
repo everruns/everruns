@@ -3,8 +3,14 @@ import { Sidebar } from "@/components/layout/sidebar";
 
 // Mock next/navigation
 const mockPathname = jest.fn();
+const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
+  useRouter: () => ({
+    push: mockPush,
+    replace: jest.fn(),
+    back: jest.fn(),
+  }),
 }));
 
 // Mock next/image
@@ -16,9 +22,29 @@ jest.mock("next/image", () => ({
   ),
 }));
 
+// Mock auth provider
+jest.mock("@/providers/auth-provider", () => ({
+  useAuth: () => ({
+    user: null,
+    requiresAuth: false,
+    isAuthenticated: true,
+    config: { mode: "none" },
+    isLoading: false,
+  }),
+}));
+
+// Mock auth hooks
+jest.mock("@/hooks/use-auth", () => ({
+  useLogout: () => ({
+    mutateAsync: jest.fn(),
+    isPending: false,
+  }),
+}));
+
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
+    mockPush.mockClear();
   });
 
   it("renders the Everruns logo and title", () => {
@@ -33,6 +59,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
+    expect(screen.getByText("Capabilities")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
@@ -41,10 +68,12 @@ describe("Sidebar", () => {
 
     const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
     const agentsLink = screen.getByRole("link", { name: "Agents" });
+    const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(dashboardLink).toHaveAttribute("href", "/dashboard");
     expect(agentsLink).toHaveAttribute("href", "/agents");
+    expect(capabilitiesLink).toHaveAttribute("href", "/capabilities");
     expect(settingsLink).toHaveAttribute("href", "/settings");
   });
 
@@ -79,18 +108,18 @@ describe("Sidebar", () => {
     expect(screen.getByText("Everruns v0.1.0")).toBeInTheDocument();
   });
 
-  it("has exactly 3 navigation items", () => {
+  it("has exactly 4 navigation items", () => {
     render(<Sidebar />);
 
     // Get nav links (excluding logo link)
     const navLinks = screen.getAllByRole("link").filter(
       link => link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard")
     );
-    // Filter to only nav items (Dashboard, Agents, Settings)
-    const navItems = ["Dashboard", "Agents", "Settings"];
+    // Filter to only nav items (Dashboard, Agents, Capabilities, Settings)
+    const navItems = ["Dashboard", "Agents", "Capabilities", "Settings"];
     const foundNavLinks = navLinks.filter(link =>
       navItems.some(item => link.textContent?.includes(item))
     );
-    expect(foundNavLinks).toHaveLength(3);
+    expect(foundNavLinks).toHaveLength(4);
   });
 });
