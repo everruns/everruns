@@ -41,6 +41,15 @@ pub trait Tool: Send + Sync {
 - `EchoTool` - Echoes input (useful for testing)
 - `FailingTool` - Always fails (for error handling tests)
 
+**Capability-Provided Tools:**
+
+Tools can also be provided by Capabilities (see [capabilities.md](capabilities.md)). When an agent has capabilities enabled, their tools are merged into the agent's tool set:
+
+- `CurrentTime` capability provides `get_current_time` tool
+- `Research` capability will provide scratchpad and search tools
+- `Sandbox` capability will provide `execute_code` tool
+- `FileSystem` capability will provide read/write/search tools
+
 **ToolRegistry:**
 Manages multiple tools and implements `ToolExecutor` trait for integration with `AgentLoop`:
 ```rust
@@ -50,6 +59,17 @@ let registry = ToolRegistry::builder()
     .build();
 
 let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
+```
+
+**UnifiedToolExecutor:**
+Production executor that handles both built-in and webhook tools consistently across all execution modes (in-process and Temporal):
+```rust
+// Creates executor with default built-in tools
+let executor = UnifiedToolExecutor::with_default_tools();
+
+// Or with custom registry
+let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
+let executor = UnifiedToolExecutor::new(registry);
 ```
 
 ### Tool Definition Schema
