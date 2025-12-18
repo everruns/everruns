@@ -45,3 +45,7 @@ eventsource-stream = "0.2"
 [[example]]
 name = "tool_calling"
 path = "examples/tool_calling.rs"
+
+[[example]]
+name = "capabilities"
+path = "examples/capabilities.rs"
