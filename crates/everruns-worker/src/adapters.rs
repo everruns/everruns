@@ -13,10 +13,14 @@ use everruns_agent_loop::{
 };
 use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::ToolCall;
+use everruns_observability::{
+    backend::ObservabilityBackend, ObservabilityConfig, ObservableEventEmitter,
+};
 use everruns_storage::models::CreateMessage;
 use everruns_storage::repositories::Database;
 use futures::StreamExt;
-use tracing::{error, info};
+use std::sync::Arc;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::providers::{
@@ -425,6 +429,109 @@ pub fn create_db_agent_loop_with_registry(
     Ok(everruns_agent_loop::AgentLoop::new(
         config,
         event_emitter,
+        message_store,
+        llm_provider,
+        tool_executor,
+    ))
+}
+
+// ============================================================================
+// Observable Agent Loop Factory
+// ============================================================================
+
+/// Create observability backends from configuration
+fn create_observability_backends() -> Vec<Arc<dyn ObservabilityBackend>> {
+    let config = ObservabilityConfig::from_env();
+    let mut backends: Vec<Arc<dyn ObservabilityBackend>> = Vec::new();
+
+    if !config.is_enabled() {
+        return backends;
+    }
+
+    // Try to create Langfuse backend if configured
+    if let Some(langfuse_config) = config.langfuse {
+        match everruns_observability::LangfuseBackend::new(langfuse_config) {
+            Ok(backend) => {
+                info!("Langfuse observability backend initialized");
+                backends.push(Arc::new(backend));
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to initialize Langfuse backend");
+            }
+        }
+    }
+
+    backends
+}
+
+/// Create a fully configured AgentLoop with database backends and observability
+///
+/// This is the recommended way to create agent loops in production.
+/// It automatically configures observability backends from environment variables.
+pub fn create_observable_agent_loop(
+    config: everruns_agent_loop::AgentConfig,
+    db: Database,
+    agent_id: Option<String>,
+) -> Result<
+    everruns_agent_loop::AgentLoop<
+        ObservableEventEmitter<DbEventEmitter>,
+        DbMessageStore,
+        OpenAiLlmAdapter,
+        UnifiedToolExecutor,
+    >,
+> {
+    let base_emitter = create_db_event_emitter(db.clone());
+    let message_store = create_db_message_store(db);
+    let llm_provider = create_openai_adapter()?;
+    let tool_executor = create_unified_tool_executor();
+
+    // Wrap event emitter with observability
+    let backends = create_observability_backends();
+    let mut observable_emitter = ObservableEventEmitter::new(base_emitter, backends);
+
+    if let Some(id) = agent_id {
+        observable_emitter = observable_emitter.with_agent_id(id);
+    }
+
+    Ok(everruns_agent_loop::AgentLoop::new(
+        config,
+        observable_emitter,
+        message_store,
+        llm_provider,
+        tool_executor,
+    ))
+}
+
+/// Create a fully configured AgentLoop with database backends, custom tool registry, and observability
+pub fn create_observable_agent_loop_with_registry(
+    config: everruns_agent_loop::AgentConfig,
+    db: Database,
+    registry: everruns_agent_loop::ToolRegistry,
+    agent_id: Option<String>,
+) -> Result<
+    everruns_agent_loop::AgentLoop<
+        ObservableEventEmitter<DbEventEmitter>,
+        DbMessageStore,
+        OpenAiLlmAdapter,
+        UnifiedToolExecutor,
+    >,
+> {
+    let base_emitter = create_db_event_emitter(db.clone());
+    let message_store = create_db_message_store(db);
+    let llm_provider = create_openai_adapter()?;
+    let tool_executor = create_unified_tool_executor_with_registry(registry);
+
+    // Wrap event emitter with observability
+    let backends = create_observability_backends();
+    let mut observable_emitter = ObservableEventEmitter::new(base_emitter, backends);
+
+    if let Some(id) = agent_id {
+        observable_emitter = observable_emitter.with_agent_id(id);
+    }
+
+    Ok(everruns_agent_loop::AgentLoop::new(
+        config,
+        observable_emitter,
         message_store,
         llm_provider,
         tool_executor,

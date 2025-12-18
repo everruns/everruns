@@ -21,6 +21,7 @@ Available specs:
 - `specs/ag-ui-protocol.md` - AG-UI protocol integration
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system for modular functionality
+- `specs/observability.md` - Observability integrations (Langfuse, OpenTelemetry)
 
 Specification format: Abstract and Requirements sections.
 

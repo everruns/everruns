@@ -11,6 +11,7 @@ members = [
     "crates/everruns-contracts",
     "crates/everruns-storage",
     "crates/everruns-agent-loop",
+    "crates/everruns-observability",
 ]
 
 [workspace.package]
@@ -45,6 +46,13 @@ chrono = { version = "0.4", features = ["serde"] }
 # Error handling
 anyhow = "1.0"
 thiserror = "2.0"
+
+# OpenTelemetry (for observability)
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["http-proto", "reqwest-client"] }
+opentelemetry-semantic-conventions = "0.27"
+tonic = "0.12"
 
 # Async traits
 async-trait = "0.1"

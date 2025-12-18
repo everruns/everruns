@@ -15,6 +15,7 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
    - `everruns-agent-loop` - DB-agnostic agentic loop abstraction (traits, executor, step decomposition)
    - `everruns-contracts` - DTOs, AG-UI events, OpenAPI schemas
    - `everruns-storage` - PostgreSQL (sqlx), migrations, repositories
+   - `everruns-observability` - Observability integrations (Langfuse, OpenTelemetry)
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
 
 ### Data Layer

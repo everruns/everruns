@@ -18,6 +18,7 @@ sqlx.workspace = true
 everruns-contracts = { path = "../everruns-contracts" }
 everruns-storage = { path = "../everruns-storage" }
 everruns-agent-loop = { path = "../everruns-agent-loop" }
+everruns-observability = { path = "../everruns-observability" }
 
 chrono.workspace = true
 async-trait = "0.1.89"

@@ -1,0 +1,55 @@
+# Decision: Use OpenTelemetry for extensible observability with Langfuse as first backend
+# Decision: Feature-flag observability backends to avoid unnecessary dependencies
+# Decision: Use event subscription pattern to keep agent-loop decoupled
+
+[package]
+name = "everruns-observability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Observability integrations for Everruns (Langfuse, OpenTelemetry)"
+
+[features]
+default = []
+langfuse = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-otlp", "tonic", "opentelemetry-semantic-conventions"]
+
+[dependencies]
+# Internal crates
+everruns-agent-loop = { path = "../everruns-agent-loop" }
+everruns-contracts = { path = "../everruns-contracts" }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Time and IDs
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# Tracing
+tracing = { workspace = true }
+
+# OpenTelemetry (optional, for Langfuse)
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+opentelemetry-semantic-conventions = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# HTTP client for Langfuse
+reqwest = { workspace = true }
+
+# Base64 for auth
+base64 = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
