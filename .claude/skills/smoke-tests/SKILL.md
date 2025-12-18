@@ -25,7 +25,44 @@ Run these tests in order. Each test builds on the previous one.
 ```bash
 curl -s http://localhost:9000/health | jq
 ```
-Expected: `{"status": "ok", "version": "...", "runner_mode": "..."}`
+Expected: `{"status": "ok", "version": "...", "runner_mode": "...", "auth_mode": "..."}`
+
+#### 1.5. Authentication Config
+```bash
+curl -s http://localhost:9000/api/auth/config | jq
+```
+Expected: `{"mode": "...", "passwordEnabled": ..., "oauthProviders": [...], "signupEnabled": ...}`
+
+#### 1.6. Authentication Flow (when AUTH_MODE=admin or AUTH_MODE=full)
+```bash
+# Login (skip if AUTH_MODE=none)
+LOGIN_RESPONSE=$(curl -s -X POST http://localhost:9000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "'$AUTH_ADMIN_EMAIL'", "password": "'$AUTH_ADMIN_PASSWORD'"}')
+ACCESS_TOKEN=$(echo $LOGIN_RESPONSE | jq -r '.access_token')
+echo "Login successful: token starts with $(echo $ACCESS_TOKEN | cut -c1-20)..."
+
+# Get current user
+curl -s http://localhost:9000/api/auth/me \
+  -H "Authorization: Bearer $ACCESS_TOKEN" | jq
+```
+Expected: User object with email and name
+
+#### 1.7. API Key Authentication (when AUTH_MODE != none)
+```bash
+# Create API key
+API_KEY_RESPONSE=$(curl -s -X POST http://localhost:9000/api/auth/api-keys \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "smoke-test-key"}')
+API_KEY=$(echo $API_KEY_RESPONSE | jq -r '.key')
+echo "API Key created: $(echo $API_KEY | cut -c1-12)..."
+
+# Use API key for authentication
+curl -s http://localhost:9000/api/auth/me \
+  -H "Authorization: $API_KEY" | jq
+```
+Expected: Same user object as with JWT
 
 #### 2. Create Agent
 ```bash

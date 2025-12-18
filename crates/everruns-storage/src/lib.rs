@@ -2,6 +2,7 @@
 
 pub mod encryption;
 pub mod models;
+pub mod password;
 pub mod repositories;
 
 pub use encryption::{

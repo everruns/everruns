@@ -16,6 +16,24 @@ All endpoints are prefixed with `/v1/`.
 |--------|------|-------------|
 | GET | `/health` | Server health check (includes version and runner mode) |
 
+### Authentication
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/auth/config` | Get authentication configuration |
+| POST | `/api/auth/login` | Login with email/password |
+| POST | `/api/auth/register` | Register new user |
+| POST | `/api/auth/refresh` | Refresh access token |
+| POST | `/api/auth/logout` | Logout (clear cookies) |
+| GET | `/api/auth/oauth/{provider}` | Redirect to OAuth provider |
+| GET | `/api/auth/callback/{provider}` | OAuth callback |
+| GET | `/api/auth/me` | Get current user info |
+| GET | `/api/auth/api-keys` | List user's API keys |
+| POST | `/api/auth/api-keys` | Create API key |
+| DELETE | `/api/auth/api-keys/{key_id}` | Delete API key |
+
+See [authentication.md](authentication.md) for full authentication specification.
+
 ### Agents
 
 | Method | Path | Description |
@@ -101,5 +119,7 @@ Standard HTTP status codes:
 - `201` - Created
 - `204` - No content
 - `400` - Bad request
+- `401` - Unauthorized
+- `403` - Forbidden
 - `404` - Not found
 - `500` - Internal error

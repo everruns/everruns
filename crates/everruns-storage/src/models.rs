@@ -5,9 +5,10 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 // ============================================
-// Auth models (for future auth implementation)
+// Auth models
 // ============================================
 
+/// User row from database
 #[derive(Debug, Clone, FromRow)]
 pub struct UserRow {
     pub id: Uuid,
@@ -15,10 +16,15 @@ pub struct UserRow {
     pub name: String,
     pub avatar_url: Option<String>,
     pub roles: sqlx::types::JsonValue,
+    pub password_hash: Option<String>,
+    pub email_verified: bool,
+    pub auth_provider: Option<String>,
+    pub auth_provider_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
+/// Auth session row (legacy, kept for backwards compatibility)
 #[derive(Debug, Clone, FromRow)]
 pub struct AuthSessionRow {
     pub id: Uuid,
@@ -28,18 +34,77 @@ pub struct AuthSessionRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// API key row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct ApiKeyRow {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    pub key_hash: String,
+    pub key_prefix: String,
+    pub scopes: sqlx::types::JsonValue,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Refresh token row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct RefreshTokenRow {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating a new user
 #[derive(Debug, Clone)]
 pub struct CreateUser {
     pub email: String,
     pub name: String,
     pub avatar_url: Option<String>,
     pub roles: Vec<String>,
+    pub password_hash: Option<String>,
+    pub email_verified: bool,
+    pub auth_provider: Option<String>,
+    pub auth_provider_id: Option<String>,
 }
 
+/// Input for updating a user
+#[derive(Debug, Clone, Default)]
+pub struct UpdateUser {
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub roles: Option<Vec<String>>,
+    pub password_hash: Option<String>,
+    pub email_verified: Option<bool>,
+}
+
+/// Input for creating an auth session (legacy)
 #[derive(Debug, Clone)]
 pub struct CreateAuthSession {
     pub user_id: Uuid,
     pub token: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Input for creating an API key
+#[derive(Debug, Clone)]
+pub struct CreateApiKey {
+    pub user_id: Uuid,
+    pub name: String,
+    pub key_hash: String,
+    pub key_prefix: String,
+    pub scopes: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Input for creating a refresh token
+#[derive(Debug, Clone)]
+pub struct CreateRefreshToken {
+    pub user_id: Uuid,
+    pub token_hash: String,
     pub expires_at: DateTime<Utc>,
 }
 
