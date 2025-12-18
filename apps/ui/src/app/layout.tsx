@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
-import { MainLayout } from "@/components/layout";
+import { AuthProvider } from "@/providers/auth-provider";
 
 export const metadata: Metadata = {
   title: "Everruns - AI Agent Management",
@@ -17,7 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans antialiased">
         <QueryProvider>
-          <MainLayout>{children}</MainLayout>
+          <AuthProvider>{children}</AuthProvider>
         </QueryProvider>
       </body>
     </html>

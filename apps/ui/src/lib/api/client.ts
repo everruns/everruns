@@ -23,6 +23,7 @@ async function request<T>(
 ): Promise<{ data: T }> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
+    credentials: "include", // Include cookies for auth
     headers: {
       "Content-Type": "application/json",
       ...options.headers,
