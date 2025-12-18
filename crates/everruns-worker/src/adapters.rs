@@ -12,6 +12,7 @@ use everruns_agent_loop::{
     AgentLoopError, ConversationMessage, LoopEvent, MessageRole, Result,
 };
 use everruns_contracts::events::AgUiEvent;
+use everruns_contracts::tools::ToolCall;
 use everruns_storage::models::CreateMessage;
 use everruns_storage::repositories::Database;
 use futures::StreamExt;

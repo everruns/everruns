@@ -8,7 +8,7 @@
 // tool execution behavior.
 
 use async_trait::async_trait;
-use everruns_agent_loop::{traits::ToolExecutor, Result, Tool, ToolExecutionResult, ToolRegistry};
+use everruns_agent_loop::{traits::ToolExecutor, Result, ToolRegistry};
 use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
 use reqwest::Client;
 use std::sync::Arc;
@@ -81,16 +81,6 @@ impl UnifiedToolExecutor {
     /// Get reference to the tool registry.
     pub fn registry(&self) -> &ToolRegistry {
         &self.registry
-    }
-
-    /// Add a tool to the registry.
-    ///
-    /// Note: This creates a new Arc, so it's more efficient to build
-    /// the registry upfront and pass it to `new()`.
-    pub fn with_tool(mut self, tool: impl Tool + 'static) -> Self {
-        let registry = Arc::make_mut(&mut self.registry);
-        registry.register(tool);
-        self
     }
 
     /// Check if a tool requires approval before execution.
@@ -291,16 +281,6 @@ mod tests {
         // Should have get_current_time
         assert!(executor.registry().has("get_current_time"));
         // Should have echo
-        assert!(executor.registry().has("echo"));
-    }
-
-    #[tokio::test]
-    async fn test_with_tool_builder() {
-        let executor = UnifiedToolExecutor::webhook_only()
-            .with_tool(GetCurrentTime)
-            .with_tool(EchoTool);
-
-        assert!(executor.registry().has("get_current_time"));
         assert!(executor.registry().has("echo"));
     }
 

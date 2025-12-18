@@ -258,6 +258,7 @@ pub async fn call_llm_activity(
                 id: tc.id,
                 name: tc.name,
                 arguments: serde_json::to_string(&tc.arguments).unwrap_or_default(),
+                tool_definition_json: None,
             })
             .collect()
     });
