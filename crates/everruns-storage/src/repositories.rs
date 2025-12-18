@@ -134,6 +134,40 @@ impl Database {
         Ok(row)
     }
 
+    /// List all users with optional search query
+    /// Search matches name or email (case-insensitive, partial match)
+    pub async fn list_users(&self, search: Option<&str>) -> Result<Vec<UserRow>> {
+        let rows = match search {
+            Some(query) if !query.trim().is_empty() => {
+                let search_pattern = format!("%{}%", query.trim().to_lowercase());
+                sqlx::query_as::<_, UserRow>(
+                    r#"
+                    SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+                    FROM users
+                    WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .bind(&search_pattern)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, UserRow>(
+                    r#"
+                    SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at
+                    FROM users
+                    ORDER BY created_at DESC
+                    "#,
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
+
+        Ok(rows)
+    }
+
     // ============================================
     // API Keys
     // ============================================

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
-import { Server, Key } from "lucide-react";
+import { Server, Key, Users } from "lucide-react";
 
 const settingsNavigation = [
   {
@@ -18,6 +18,12 @@ const settingsNavigation = [
     href: "/settings/api-keys",
     icon: Key,
     description: "Manage API keys for programmatic access",
+  },
+  {
+    name: "Members",
+    href: "/settings/members",
+    icon: Users,
+    description: "View and manage team members",
   },
 ];
 
