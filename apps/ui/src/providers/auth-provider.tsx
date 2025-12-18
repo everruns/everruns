@@ -7,7 +7,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   type ReactNode,
 } from "react";
 import { useAuthConfig, useCurrentUser } from "@/hooks/use-auth";
@@ -43,19 +42,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     error: configError,
   } = useAuthConfig();
 
+  // Only fetch user if auth is required
+  const shouldFetchUser = config?.mode !== "none";
+
   const {
     data: user,
     isLoading: userLoading,
     error: userError,
-    refetch: refetchUser,
-  } = useCurrentUser();
-
-  // Refetch user when config loads and auth is enabled
-  useEffect(() => {
-    if (config && config.mode !== "none" && !user && !userLoading) {
-      refetchUser();
-    }
-  }, [config, user, userLoading, refetchUser]);
+  } = useCurrentUser(shouldFetchUser);
 
   // Determine if authentication is required based on mode
   const requiresAuth = config ? config.mode !== "none" : false;

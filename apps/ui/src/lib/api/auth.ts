@@ -1,5 +1,5 @@
 // Auth API client functions
-import { api, getApiBaseUrl } from "./client";
+import { api, getBackendUrl } from "./client";
 import type {
   AuthConfigResponse,
   LoginRequest,
@@ -16,7 +16,7 @@ import type {
  * This tells the UI what auth mode is enabled and what options are available.
  */
 export async function getAuthConfig(): Promise<AuthConfigResponse> {
-  const { data } = await api.get<AuthConfigResponse>("/api/auth/config");
+  const { data } = await api.get<AuthConfigResponse>("/v1/auth/config");
   return data;
 }
 
@@ -24,7 +24,7 @@ export async function getAuthConfig(): Promise<AuthConfigResponse> {
  * Login with email and password
  */
 export async function login(request: LoginRequest): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>("/api/auth/login", request);
+  const { data } = await api.post<TokenResponse>("/v1/auth/login", request);
   return data;
 }
 
@@ -34,7 +34,7 @@ export async function login(request: LoginRequest): Promise<TokenResponse> {
 export async function register(
   request: RegisterRequest
 ): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>("/api/auth/register", request);
+  const { data } = await api.post<TokenResponse>("/v1/auth/register", request);
   return data;
 }
 
@@ -42,7 +42,7 @@ export async function register(
  * Get current user info
  */
 export async function getCurrentUser(): Promise<UserInfoResponse> {
-  const { data } = await api.get<UserInfoResponse>("/api/auth/me");
+  const { data } = await api.get<UserInfoResponse>("/v1/auth/me");
   return data;
 }
 
@@ -50,14 +50,14 @@ export async function getCurrentUser(): Promise<UserInfoResponse> {
  * Logout (clear cookies)
  */
 export async function logout(): Promise<void> {
-  await api.post<void>("/api/auth/logout");
+  await api.post<void>("/v1/auth/logout");
 }
 
 /**
  * Refresh the access token using the refresh token
  */
 export async function refreshToken(token: string): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>("/api/auth/refresh", {
+  const { data } = await api.post<TokenResponse>("/v1/auth/refresh", {
     refresh_token: token,
   });
   return data;
@@ -65,16 +65,17 @@ export async function refreshToken(token: string): Promise<TokenResponse> {
 
 /**
  * Get OAuth redirect URL for a provider
+ * Uses full URL since browser needs to navigate to this
  */
 export function getOAuthUrl(provider: string): string {
-  return `${getApiBaseUrl()}/api/auth/oauth/${provider}`;
+  return `${getBackendUrl()}/v1/auth/oauth/${provider}`;
 }
 
 /**
  * List API keys for current user
  */
 export async function listApiKeys(): Promise<ApiKeyListItem[]> {
-  const { data } = await api.get<ApiKeyListItem[]>("/api/auth/api-keys");
+  const { data } = await api.get<ApiKeyListItem[]>("/v1/auth/api-keys");
   return data;
 }
 
@@ -84,7 +85,7 @@ export async function listApiKeys(): Promise<ApiKeyListItem[]> {
 export async function createApiKey(
   request: CreateApiKeyRequest
 ): Promise<ApiKeyResponse> {
-  const { data } = await api.post<ApiKeyResponse>("/api/auth/api-keys", request);
+  const { data } = await api.post<ApiKeyResponse>("/v1/auth/api-keys", request);
   return data;
 }
 
@@ -92,5 +93,5 @@ export async function createApiKey(
  * Delete an API key
  */
 export async function deleteApiKey(keyId: string): Promise<void> {
-  await api.delete<void>(`/api/auth/api-keys/${keyId}`);
+  await api.delete<void>(`/v1/auth/api-keys/${keyId}`);
 }

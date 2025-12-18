@@ -40,11 +40,13 @@ export function useAuthConfig() {
 /**
  * Hook to get current user info.
  * Returns null/undefined if not authenticated.
+ * @param enabled - Whether to fetch user (default: true). Set to false when auth is not required.
  */
-export function useCurrentUser() {
+export function useCurrentUser(enabled: boolean = true) {
   return useQuery({
     queryKey: authKeys.user(),
     queryFn: getCurrentUser,
+    enabled, // Only fetch when enabled
     retry: false, // Don't retry on 401
     staleTime: 60 * 1000, // Cache for 1 minute
   });

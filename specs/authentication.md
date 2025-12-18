@@ -77,11 +77,12 @@ Account linking by email is supported (same email = same account).
 | `AUTH_DISABLE_SIGNUP` | Disable user registration | `false` |
 | `AUTH_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
 | `AUTH_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
-| `AUTH_GOOGLE_REDIRECT_URI` | Google OAuth redirect URI | `{base_url}/api/auth/callback/google` |
+| `AUTH_GOOGLE_REDIRECT_URI` | Google OAuth redirect URI | `{base_url}/v1/auth/callback/google` |
 | `AUTH_GOOGLE_ALLOWED_DOMAINS` | Comma-separated allowed email domains | - |
 | `AUTH_GITHUB_CLIENT_ID` | GitHub OAuth client ID | - |
 | `AUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth client secret | - |
-| `AUTH_GITHUB_REDIRECT_URI` | GitHub OAuth redirect URI | `{base_url}/api/auth/callback/github` |
+| `AUTH_GITHUB_REDIRECT_URI` | GitHub OAuth redirect URI | `{base_url}/v1/auth/callback/github` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated allowed CORS origins (only if cross-origin) | Not set |
 
 ### Database Schema
 
@@ -145,7 +146,7 @@ CREATE TABLE refresh_tokens (
 
 ### Configuration Discovery
 
-The UI fetches authentication configuration from `GET /api/auth/config` on startup:
+The UI fetches authentication configuration from `GET /v1/auth/config` on startup:
 
 ```typescript
 interface AuthConfigResponse {
@@ -174,9 +175,9 @@ Based on `mode`:
 
 ### Authentication Flow
 
-1. App loads, fetches `/api/auth/config`
+1. App loads, fetches `/v1/auth/config`
 2. If `mode === "none"`, render app without auth
-3. Otherwise, check if user is authenticated via `/api/auth/me`
+3. Otherwise, check if user is authenticated via `/v1/auth/me`
 4. If not authenticated, redirect to `/login`
 5. After login, cookies are set automatically (HTTP-only)
 6. Subsequent requests include cookies via `credentials: "include"`
@@ -184,7 +185,7 @@ Based on `mode`:
 ### OAuth Flow
 
 1. User clicks OAuth button (e.g., "Continue with Google")
-2. Browser redirects to `GET /api/auth/oauth/{provider}`
+2. Browser redirects to `GET /v1/auth/oauth/{provider}`
 3. API redirects to provider's authorization page
 4. After user authorizes, provider redirects to callback
 5. API handles callback, sets cookies, redirects to `/`
@@ -211,9 +212,11 @@ Authentication state is managed via:
 ### API Client Configuration
 
 ```typescript
-// All requests include credentials for cookie-based auth
-fetch(url, {
+// All requests go through /api prefix and include credentials for cookie-based auth
+fetch('/api/v1/agents', {
   credentials: "include",
   headers: { "Content-Type": "application/json" }
 });
 ```
+
+The `/api` prefix is stripped by the proxy (Next.js in dev, reverse proxy in prod) before reaching the backend.

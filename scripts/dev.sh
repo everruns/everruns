@@ -39,7 +39,6 @@ case "$command" in
     echo "🔄 Resetting Everrun development environment..."
     cd harness
     docker compose down -v
-    docker compose up -d
     echo "✅ Services reset!"
     ;;
 
@@ -74,13 +73,13 @@ case "$command" in
     ;;
 
   api)
-    echo "🌐 Starting API server (Temporal mode)..."
-    AGENT_RUNNER_MODE=temporal cargo run -p everruns-api
+    echo "🌐 Starting API server..."
+    cargo run -p everruns-api
     ;;
 
   worker)
-    echo "⚙️  Starting worker (Temporal mode)..."
-    AGENT_RUNNER_MODE=temporal cargo run -p everruns-worker
+    echo "⚙️  Starting worker..."
+    cargo run -p everruns-worker
     ;;
 
   ui)
@@ -154,7 +153,8 @@ case "$command" in
 
     # Start API in background (Temporal mode)
     echo "4️⃣  Starting API server (Temporal mode)..."
-    AGENT_RUNNER_MODE=temporal cargo run -p everruns-api &
+    export AGENT_RUNNER_MODE=temporal
+    cargo run -p everruns-api &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
@@ -168,7 +168,7 @@ case "$command" in
 
     # Start Worker in background (Temporal mode)
     echo "5️⃣  Starting Temporal worker..."
-    AGENT_RUNNER_MODE=temporal cargo run -p everruns-worker &
+    cargo run -p everruns-worker &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
     sleep 2
