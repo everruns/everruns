@@ -19,16 +19,15 @@ use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::ToolDefinition;
 use everruns_storage::models::UpdateSession;
 use everruns_storage::repositories::Database;
-use reqwest::Client;
 use tracing::info;
 use uuid::Uuid;
 
 use crate::activities::PersistEventActivity;
-use crate::adapters::{DbMessageStore, OpenAiLlmAdapter, WebhookToolExecutor};
+use crate::adapters::{DbMessageStore, OpenAiLlmAdapter};
 use crate::providers::openai::OpenAiProvider;
 use crate::providers::{ChatMessage, LlmConfig, LlmProvider, MessageRole as ProviderMessageRole};
-use crate::tools::execute_tool;
-use everruns_agent_loop::traits::MessageStore;
+use crate::unified_tool_executor::UnifiedToolExecutor;
+use everruns_agent_loop::traits::{MessageStore, ToolExecutor};
 
 use super::types::*;
 
@@ -269,7 +268,10 @@ pub async fn call_llm_activity(
     })
 }
 
-/// Execute tool calls
+/// Execute tool calls using the UnifiedToolExecutor
+///
+/// This activity executes tool calls using the same ToolExecutor trait
+/// that the in-process mode uses, ensuring consistent behavior.
 pub async fn execute_tools_activity(
     ctx: &ActivityContext,
     db: &Database,
@@ -278,10 +280,11 @@ pub async fn execute_tools_activity(
     info!(
         session_id = %input.session_id,
         tool_count = input.tool_calls.len(),
-        "Executing tool calls"
+        "Executing tool calls via UnifiedToolExecutor"
     );
 
     let persist_activity = PersistEventActivity::new(db.clone());
+    let tool_executor = UnifiedToolExecutor::with_default_tools();
     let mut results = Vec::new();
 
     for (i, tool_call_data) in input.tool_calls.iter().enumerate() {
@@ -312,15 +315,49 @@ pub async fn execute_tools_activity(
             .persist_event(input.session_id, end_event)
             .await?;
 
-        // For now, return a placeholder result
-        // In a real implementation, we'd execute the actual tool
+        // Parse arguments from JSON string
+        let arguments: serde_json::Value =
+            serde_json::from_str(&tool_call_data.arguments).unwrap_or(serde_json::json!({}));
+
+        // Create ToolCall for execution
+        let tool_call = everruns_contracts::tools::ToolCall {
+            id: tool_call_data.id.clone(),
+            name: tool_call_data.name.clone(),
+            arguments,
+        };
+
+        // Parse tool definition if provided, otherwise create a placeholder
+        let tool_def: ToolDefinition = if let Some(ref json) = tool_call_data.tool_definition_json {
+            serde_json::from_str(json).unwrap_or_else(|_| {
+                ToolDefinition::Builtin(everruns_contracts::tools::BuiltinTool {
+                    name: tool_call_data.name.clone(),
+                    description: "Tool execution".to_string(),
+                    kind: everruns_contracts::tools::BuiltinToolKind::HttpGet,
+                    policy: everruns_contracts::tools::ToolPolicy::Auto,
+                    parameters: serde_json::json!({}),
+                })
+            })
+        } else {
+            // Default to builtin tool - UnifiedToolExecutor will look it up in registry
+            ToolDefinition::Builtin(everruns_contracts::tools::BuiltinTool {
+                name: tool_call_data.name.clone(),
+                description: "Tool execution".to_string(),
+                kind: everruns_contracts::tools::BuiltinToolKind::HttpGet,
+                policy: everruns_contracts::tools::ToolPolicy::Auto,
+                parameters: serde_json::json!({}),
+            })
+        };
+
+        // Execute the tool using the ToolExecutor trait
+        let exec_result = tool_executor
+            .execute(&tool_call, &tool_def)
+            .await
+            .map_err(|e| anyhow::anyhow!("Tool execution failed: {}", e))?;
+
         let result = ToolResultData {
-            tool_call_id: tool_call_data.id.clone(),
-            result: Some(serde_json::json!({
-                "status": "tool_execution_not_implemented",
-                "tool_name": tool_call_data.name
-            })),
-            error: None,
+            tool_call_id: exec_result.tool_call_id,
+            result: exec_result.result,
+            error: exec_result.error,
         };
 
         // Emit TOOL_CALL_RESULT event
@@ -458,11 +495,11 @@ pub async fn execute_llm_step_activity(
     .with_max_iterations(1); // Single iteration for this step
 
     // Create agent loop with NoOp event emitter (we'll emit events separately for Temporal)
-    // and DbMessageStore for message storage
+    // and DbMessageStore for message storage, using UnifiedToolExecutor for consistency
     let event_emitter = NoOpEventEmitter;
     let message_store = DbMessageStore::new(db.clone());
     let llm_provider = OpenAiLlmAdapter::new().context("Failed to create LLM adapter")?;
-    let tool_executor = WebhookToolExecutor::new();
+    let tool_executor = UnifiedToolExecutor::with_default_tools();
 
     let agent_loop = AgentLoop::new(
         config,
@@ -515,6 +552,8 @@ pub async fn execute_llm_step_activity(
 
 /// Execute a single tool activity - each tool call is a separate Temporal node
 /// This provides maximum observability and allows individual tool retries
+///
+/// Uses the UnifiedToolExecutor to ensure consistent behavior with in-process mode.
 #[allow(dead_code)]
 pub async fn execute_single_tool_activity(
     ctx: &ActivityContext,
@@ -525,7 +564,7 @@ pub async fn execute_single_tool_activity(
         session_id = %input.session_id,
         tool_id = %input.tool_call.id,
         tool_name = %input.tool_call.name,
-        "Executing single tool"
+        "Executing single tool via UnifiedToolExecutor"
     );
 
     ctx.heartbeat(&format!("Executing tool: {}", input.tool_call.name));
@@ -549,14 +588,14 @@ pub async fn execute_single_tool_activity(
         .persist_event(input.session_id, end_event)
         .await?;
 
-    // Execute the tool
-    let client = Client::new();
+    // Create the unified tool executor
+    let tool_executor = UnifiedToolExecutor::with_default_tools();
 
     // Parse tool definition if provided
     let tool_def: ToolDefinition = if let Some(ref json) = input.tool_definition_json {
         serde_json::from_str(json).context("Failed to parse tool definition")?
     } else {
-        // Default to a placeholder - in production this should come from agent config
+        // Default to builtin - UnifiedToolExecutor will look it up in registry
         ToolDefinition::Builtin(everruns_contracts::tools::BuiltinTool {
             name: input.tool_call.name.clone(),
             description: "Tool execution".to_string(),
@@ -566,13 +605,11 @@ pub async fn execute_single_tool_activity(
         })
     };
 
-    let tool_call_contract = everruns_contracts::tools::ToolCall {
-        id: input.tool_call.id.clone(),
-        name: input.tool_call.name.clone(),
-        arguments: input.tool_call.arguments.clone(),
-    };
-
-    let result = execute_tool(&tool_call_contract, &tool_def, &client).await;
+    // Execute the tool using the ToolExecutor trait
+    let result = tool_executor
+        .execute(&input.tool_call, &tool_def)
+        .await
+        .map_err(|e| anyhow::anyhow!("Tool execution failed: {}", e))?;
 
     // Persist tool result event
     let result_message_id = Uuid::now_v7().to_string();
@@ -602,14 +639,7 @@ pub async fn execute_single_tool_activity(
             }],
         });
 
-    Ok(ExecuteSingleToolOutput {
-        result: everruns_contracts::tools::ToolResult {
-            tool_call_id: result.tool_call_id,
-            result: result.result,
-            error: result.error,
-        },
-        step,
-    })
+    Ok(ExecuteSingleToolOutput { result, step })
 }
 
 /// Finalize step activity - saves final message and updates session status

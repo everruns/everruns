@@ -12,7 +12,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::activities::PersistEventActivity;
-use crate::adapters::create_db_agent_loop;
+use crate::adapters::create_db_agent_loop_unified;
 
 /// Session workflow orchestrating LLM calls and tool execution
 ///
@@ -93,7 +93,8 @@ impl SessionWorkflow {
         );
 
         // Create and run the agent loop with database-backed components
-        let agent_loop = create_db_agent_loop(config, self.db.clone())?;
+        // Uses UnifiedToolExecutor which supports both built-in and webhook tools
+        let agent_loop = create_db_agent_loop_unified(config, self.db.clone())?;
         let result = agent_loop.run(self.session_id).await;
 
         match result {
