@@ -860,4 +860,101 @@ impl Database {
 
         Ok(row)
     }
+
+    // ============================================
+    // Agent Capabilities
+    // ============================================
+
+    /// Get capabilities for an agent, ordered by position
+    pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
+        let rows = sqlx::query_as::<_, AgentCapabilityRow>(
+            r#"
+            SELECT id, agent_id, capability_id, position, created_at
+            FROM agent_capabilities
+            WHERE agent_id = $1
+            ORDER BY position ASC
+            "#,
+        )
+        .bind(agent_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Set capabilities for an agent (replaces existing capabilities)
+    /// capabilities: list of (capability_id, position) tuples
+    pub async fn set_agent_capabilities(
+        &self,
+        agent_id: Uuid,
+        capabilities: Vec<(String, i32)>,
+    ) -> Result<Vec<AgentCapabilityRow>> {
+        // Start a transaction
+        let mut tx = self.pool.begin().await?;
+
+        // Delete existing capabilities for this agent
+        sqlx::query("DELETE FROM agent_capabilities WHERE agent_id = $1")
+            .bind(agent_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // Insert new capabilities
+        for (capability_id, position) in &capabilities {
+            sqlx::query(
+                r#"
+                INSERT INTO agent_capabilities (agent_id, capability_id, position)
+                VALUES ($1, $2, $3)
+                "#,
+            )
+            .bind(agent_id)
+            .bind(capability_id)
+            .bind(position)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        // Commit transaction
+        tx.commit().await?;
+
+        // Return the new capabilities
+        self.get_agent_capabilities(agent_id).await
+    }
+
+    /// Add a single capability to an agent
+    pub async fn add_agent_capability(
+        &self,
+        input: CreateAgentCapability,
+    ) -> Result<AgentCapabilityRow> {
+        let row = sqlx::query_as::<_, AgentCapabilityRow>(
+            r#"
+            INSERT INTO agent_capabilities (agent_id, capability_id, position)
+            VALUES ($1, $2, $3)
+            RETURNING id, agent_id, capability_id, position, created_at
+            "#,
+        )
+        .bind(input.agent_id)
+        .bind(&input.capability_id)
+        .bind(input.position)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Remove a capability from an agent
+    pub async fn remove_agent_capability(
+        &self,
+        agent_id: Uuid,
+        capability_id: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "DELETE FROM agent_capabilities WHERE agent_id = $1 AND capability_id = $2",
+        )
+        .bind(agent_id)
+        .bind(capability_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
 }

@@ -4,6 +4,7 @@
 
 mod agents;
 mod auth;
+mod capabilities;
 mod llm_models;
 mod llm_providers;
 mod services;
@@ -80,6 +81,10 @@ struct HealthState {
         llm_models::get_model,
         llm_models::update_model,
         llm_models::delete_model,
+        capabilities::list_capabilities,
+        capabilities::get_capability,
+        capabilities::get_agent_capabilities,
+        capabilities::set_agent_capabilities,
     ),
     components(
         schemas(
@@ -98,6 +103,10 @@ struct HealthState {
             llm_providers::UpdateLlmProviderRequest,
             llm_models::CreateLlmModelRequest,
             llm_models::UpdateLlmModelRequest,
+            Capability, CapabilityId, CapabilityStatus,
+            AgentCapability, UpdateAgentCapabilitiesRequest,
+            ListResponse<Capability>,
+            ListResponse<AgentCapability>,
         )
     ),
     tags(
@@ -106,7 +115,8 @@ struct HealthState {
         (name = "messages", description = "Message management endpoints"),
         (name = "events", description = "Event streaming endpoints (SSE)"),
         (name = "llm-providers", description = "LLM Provider management endpoints"),
-        (name = "llm-models", description = "LLM Model management endpoints")
+        (name = "llm-models", description = "LLM Model management endpoints"),
+        (name = "capabilities", description = "Capability management endpoints")
     ),
     info(
         title = "Everruns API",
@@ -199,6 +209,7 @@ async fn main() -> Result<()> {
         encryption: encryption.clone(),
     };
     let llm_models_state = llm_models::AppState { db: db.clone() };
+    let capabilities_state = capabilities::AppState::new(db.clone());
     let health_state = HealthState {
         runner_mode: format!("{:?}", runner_config.mode),
         auth_mode: format!("{:?}", auth_config.mode),
@@ -219,7 +230,8 @@ async fn main() -> Result<()> {
         .merge(agents::routes(agents_state))
         .merge(sessions::routes(sessions_state))
         .merge(llm_models::routes(llm_models_state))
-        .merge(llm_providers::routes(llm_providers_state));
+        .merge(llm_providers::routes(llm_providers_state))
+        .merge(capabilities::routes(capabilities_state));
 
     // Build main router with health, auth (not prefixed), and prefixed API routes
     let mut app = Router::new()

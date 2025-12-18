@@ -232,3 +232,29 @@ export interface UpdateLlmModelRequest {
   is_default?: boolean;
   status?: LlmModelStatus;
 }
+
+// ============================================
+// Capability types
+// ============================================
+
+export type CapabilityId = "noop" | "research" | "sandbox" | "file_system";
+
+export type CapabilityStatus = "available" | "coming_soon" | "deprecated";
+
+export interface Capability {
+  id: CapabilityId;
+  name: string;
+  description: string;
+  status: CapabilityStatus;
+  icon?: string;
+  category?: string;
+}
+
+export interface AgentCapability {
+  capability_id: CapabilityId;
+  position: number;
+}
+
+export interface UpdateAgentCapabilitiesRequest {
+  capabilities: CapabilityId[];
+}
