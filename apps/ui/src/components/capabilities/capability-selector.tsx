@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CircleOff,
+  Clock,
   Search,
   Box,
   Folder,
@@ -21,6 +22,7 @@ import type { Capability, CapabilityId } from "@/lib/api/types";
 
 const iconMap: Record<string, LucideIcon> = {
   "circle-off": CircleOff,
+  clock: Clock,
   search: Search,
   box: Box,
   folder: Folder,

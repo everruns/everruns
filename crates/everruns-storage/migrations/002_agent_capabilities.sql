@@ -9,8 +9,8 @@
 CREATE TABLE agent_capabilities (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    -- Capability ID is a string enum (noop, research, sandbox, file_system)
-    capability_id VARCHAR(50) NOT NULL CHECK (capability_id IN ('noop', 'research', 'sandbox', 'file_system')),
+    -- Capability ID is a string enum (noop, current_time, research, sandbox, file_system)
+    capability_id VARCHAR(50) NOT NULL CHECK (capability_id IN ('noop', 'current_time', 'research', 'sandbox', 'file_system')),
     -- Position determines the order in the capability chain (lower = earlier)
     position INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

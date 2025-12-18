@@ -171,6 +171,9 @@ pub struct InternalCapability {
 
 /// Get all internal capability definitions
 pub fn get_capability_registry() -> Vec<InternalCapability> {
+    use everruns_contracts::tools::{BuiltinTool, BuiltinToolKind, ToolDefinition, ToolPolicy};
+    use serde_json::json;
+
     vec![
         // Noop capability - for testing/demo
         InternalCapability {
@@ -184,6 +187,41 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
             },
             system_prompt_addition: None,
             tools: vec![],
+        },
+        // CurrentTime capability - adds current time tool
+        InternalCapability {
+            info: Capability {
+                id: CapabilityId::CurrentTime,
+                name: "Current Time".to_string(),
+                description: "Adds a tool to get the current date and time in various formats and timezones.".to_string(),
+                status: CapabilityStatus::Available,
+                icon: Some("clock".to_string()),
+                category: Some("Utilities".to_string()),
+            },
+            system_prompt_addition: None, // No system prompt contribution
+            tools: vec![
+                ToolDefinition::Builtin(BuiltinTool {
+                    name: "get_current_time".to_string(),
+                    description: "Get the current date and time. Can return time in different formats and timezones.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "timezone": {
+                                "type": "string",
+                                "description": "Timezone to return the time in (e.g., 'UTC', 'America/New_York', 'Europe/London'). Defaults to UTC."
+                            },
+                            "format": {
+                                "type": "string",
+                                "enum": ["iso8601", "unix", "human"],
+                                "description": "Output format: 'iso8601' for ISO 8601 format, 'unix' for Unix timestamp, 'human' for human-readable format. Defaults to 'iso8601'."
+                            }
+                        },
+                        "required": []
+                    }),
+                    kind: BuiltinToolKind::CurrentTime,
+                    policy: ToolPolicy::Auto,
+                }),
+            ],
         },
         // Research capability - coming soon
         InternalCapability {

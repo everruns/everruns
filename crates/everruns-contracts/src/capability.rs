@@ -15,6 +15,8 @@ use utoipa::ToSchema;
 pub enum CapabilityId {
     /// No-op capability for testing/demo purposes
     Noop,
+    /// CurrentTime capability - adds a tool to get the current time
+    CurrentTime,
     /// Research capability - enables deep research with scratchpad and web tools
     Research,
     /// Sandbox capability - enables sandboxed code execution
@@ -27,6 +29,7 @@ impl std::fmt::Display for CapabilityId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CapabilityId::Noop => write!(f, "noop"),
+            CapabilityId::CurrentTime => write!(f, "current_time"),
             CapabilityId::Research => write!(f, "research"),
             CapabilityId::Sandbox => write!(f, "sandbox"),
             CapabilityId::FileSystem => write!(f, "file_system"),
@@ -40,6 +43,7 @@ impl std::str::FromStr for CapabilityId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "noop" => Ok(CapabilityId::Noop),
+            "current_time" => Ok(CapabilityId::CurrentTime),
             "research" => Ok(CapabilityId::Research),
             "sandbox" => Ok(CapabilityId::Sandbox),
             "file_system" => Ok(CapabilityId::FileSystem),
@@ -114,6 +118,7 @@ mod tests {
     #[test]
     fn test_capability_id_display() {
         assert_eq!(CapabilityId::Noop.to_string(), "noop");
+        assert_eq!(CapabilityId::CurrentTime.to_string(), "current_time");
         assert_eq!(CapabilityId::Research.to_string(), "research");
         assert_eq!(CapabilityId::Sandbox.to_string(), "sandbox");
         assert_eq!(CapabilityId::FileSystem.to_string(), "file_system");
@@ -122,6 +127,10 @@ mod tests {
     #[test]
     fn test_capability_id_from_str() {
         assert_eq!("noop".parse::<CapabilityId>().unwrap(), CapabilityId::Noop);
+        assert_eq!(
+            "current_time".parse::<CapabilityId>().unwrap(),
+            CapabilityId::CurrentTime
+        );
         assert_eq!(
             "research".parse::<CapabilityId>().unwrap(),
             CapabilityId::Research

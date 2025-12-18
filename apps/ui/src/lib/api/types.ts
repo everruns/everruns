@@ -237,7 +237,7 @@ export interface UpdateLlmModelRequest {
 // Capability types
 // ============================================
 
-export type CapabilityId = "noop" | "research" | "sandbox" | "file_system";
+export type CapabilityId = "noop" | "current_time" | "research" | "sandbox" | "file_system";
 
 export type CapabilityStatus = "available" | "coming_soon" | "deprecated";
 
