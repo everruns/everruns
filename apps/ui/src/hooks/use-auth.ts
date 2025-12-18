@@ -60,9 +60,9 @@ export function useLogin() {
 
   return useMutation({
     mutationFn: (request: LoginRequest) => login(request),
-    onSuccess: () => {
-      // Invalidate and refetch user data after login
-      queryClient.invalidateQueries({ queryKey: authKeys.user() });
+    onSuccess: async () => {
+      // Refetch user data after login and wait for it to complete
+      await queryClient.refetchQueries({ queryKey: authKeys.user() });
     },
   });
 }
@@ -75,9 +75,9 @@ export function useRegister() {
 
   return useMutation({
     mutationFn: (request: RegisterRequest) => register(request),
-    onSuccess: () => {
-      // Invalidate and refetch user data after registration
-      queryClient.invalidateQueries({ queryKey: authKeys.user() });
+    onSuccess: async () => {
+      // Refetch user data after registration and wait for it to complete
+      await queryClient.refetchQueries({ queryKey: authKeys.user() });
     },
   });
 }
