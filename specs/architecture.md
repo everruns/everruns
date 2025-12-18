@@ -58,6 +58,21 @@ The agentic loop is encapsulated in a DB-agnostic crate with pluggable backends:
    - `MockLlmProvider`, `MockToolExecutor`
    - `InMemoryAgentLoopBuilder` for easy test setup
 
+### Capabilities System
+
+Capabilities are modular functionality units that extend Agent behavior. See [specs/capabilities.md](capabilities.md) for detailed specification.
+
+1. **External to Agent Loop**: Capabilities are resolved at the service/API layer, not inside the loop
+2. **Composition Model**:
+   - Capabilities contribute system prompt additions
+   - Capabilities provide tool definitions
+   - Multiple capabilities can be enabled per agent
+3. **Resolution Flow**:
+   - Fetch agent's capabilities from `agent_capabilities` table
+   - Look up internal capability definitions from registry
+   - Merge system prompts and tools into `AgentConfig`
+   - Execute Agent Loop with configured AgentConfig
+
 ### API Design
 
 1. **RESTful**: Standard REST conventions for CRUD operations
