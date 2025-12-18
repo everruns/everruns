@@ -31,6 +31,21 @@ Specification format: Abstract and Requirements sections.
 Available skills:
 - `smoke-tests/` - API and UI smoke testing with support for Docker and no-Docker environments
 
+### Public Documentation
+
+`docs/` contains public-facing user documentation. This documentation is intended for end users and operators of the system, not for internal development reference.
+
+Documentation structure:
+- `docs/sre/` - Site Reliability Engineering documentation
+  - `environment-variables.md` - Configuration environment variables
+  - `admin-container.md` - Admin container usage guide
+  - `runbooks/` - Operational runbooks for common tasks
+    - `authentication.md` - Authentication configuration
+    - `encryption-key-rotation.md` - Key rotation procedures
+    - `production-migrations.md` - Database migration procedures
+
+When making changes that affect user-facing behavior or operations, update the relevant docs in this folder.
+
 ### Local dev expectations
 
 - A `harness/docker-compose.yml` brings up Temporal + Postgres + required dependencies
