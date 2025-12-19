@@ -13,9 +13,9 @@
 
 use std::collections::HashMap;
 
-use everruns_agent_loop::message::ConversationMessage;
-use everruns_agent_loop::step::StepOutput;
 use everruns_contracts::tools::{ToolCall, ToolResult};
+use everruns_core::message::ConversationMessage;
+use everruns_core::step::StepOutput;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{info, warn};
@@ -2010,9 +2010,9 @@ impl StepBasedWorkflow {
             .messages
             .iter()
             .rev()
-            .find(|m| m.role == everruns_agent_loop::MessageRole::Assistant)
+            .find(|m| m.role == everruns_core::MessageRole::Assistant)
             .and_then(|m| match &m.content {
-                everruns_agent_loop::message::MessageContent::Text(text) => Some(text.clone()),
+                everruns_core::message::MessageContent::Text(text) => Some(text.clone()),
                 _ => None,
             })
     }

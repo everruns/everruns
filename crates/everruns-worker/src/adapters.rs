@@ -1,28 +1,21 @@
-// Database-backed adapters for agent-loop traits
+// Database-backed adapters for core traits
 //
-// These implementations connect the agent-loop abstraction to the
+// These implementations connect the core agent-loop abstraction to the
 // actual database and LLM providers used in production.
 
 use async_trait::async_trait;
-use everruns_agent_loop::{
-    traits::{
-        EventEmitter, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-        LlmProvider, LlmResponseStream, LlmStreamEvent, MessageStore,
-    },
-    AgentLoopError, ConversationMessage, LoopEvent, MessageRole, Result,
-};
 use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::ToolCall;
+use everruns_core::{
+    traits::{EventEmitter, MessageStore},
+    AgentLoopError, ConversationMessage, LoopEvent, MessageRole, Result,
+};
+use everruns_openai::OpenAiProvider;
 use everruns_storage::models::CreateMessage;
 use everruns_storage::repositories::Database;
-use futures::StreamExt;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::providers::{
-    openai::OpenAiProvider, ChatMessage, LlmConfig, LlmProvider as WorkerLlmProvider,
-    LlmStreamEvent as WorkerLlmStreamEvent, MessageRole as WorkerMessageRole,
-};
 use crate::unified_tool_executor::UnifiedToolExecutor;
 
 // ============================================================================
@@ -136,10 +129,10 @@ impl MessageStore for DbMessageStore {
     async fn store(&self, session_id: Uuid, message: ConversationMessage) -> Result<()> {
         let role = message.role.to_string();
         let content = match &message.content {
-            everruns_agent_loop::message::MessageContent::Text(text) => {
+            everruns_core::message::MessageContent::Text(text) => {
                 serde_json::json!({ "text": text })
             }
-            everruns_agent_loop::message::MessageContent::ToolCall {
+            everruns_core::message::MessageContent::ToolCall {
                 id,
                 name,
                 arguments,
@@ -150,7 +143,7 @@ impl MessageStore for DbMessageStore {
                     "arguments": arguments
                 })
             }
-            everruns_agent_loop::message::MessageContent::ToolResult { result, error } => {
+            everruns_core::message::MessageContent::ToolResult { result, error } => {
                 serde_json::json!({
                     "result": result,
                     "error": error
@@ -192,7 +185,7 @@ impl MessageStore for DbMessageStore {
                             .and_then(|t| t.as_str())
                             .unwrap_or("")
                             .to_string();
-                        everruns_agent_loop::message::MessageContent::Text(text)
+                        everruns_core::message::MessageContent::Text(text)
                     }
                     MessageRole::ToolCall => {
                         let id = msg
@@ -212,7 +205,7 @@ impl MessageStore for DbMessageStore {
                             .get("arguments")
                             .cloned()
                             .unwrap_or(serde_json::json!({}));
-                        everruns_agent_loop::message::MessageContent::ToolCall {
+                        everruns_core::message::MessageContent::ToolCall {
                             id,
                             name,
                             arguments,
@@ -225,7 +218,7 @@ impl MessageStore for DbMessageStore {
                             .get("error")
                             .and_then(|v| v.as_str())
                             .map(String::from);
-                        everruns_agent_loop::message::MessageContent::ToolResult { result, error }
+                        everruns_core::message::MessageContent::ToolResult { result, error }
                     }
                 };
 
@@ -259,90 +252,6 @@ impl MessageStore for DbMessageStore {
 }
 
 // ============================================================================
-// OpenAiLlmAdapter - Wraps existing OpenAI provider
-// ============================================================================
-
-/// Adapter for the existing OpenAI provider
-///
-/// Wraps the worker's OpenAiProvider to implement the agent-loop's LlmProvider trait.
-pub struct OpenAiLlmAdapter {
-    provider: OpenAiProvider,
-}
-
-impl OpenAiLlmAdapter {
-    pub fn new() -> Result<Self> {
-        let provider = OpenAiProvider::new().map_err(|e| AgentLoopError::llm(e.to_string()))?;
-        Ok(Self { provider })
-    }
-
-    fn convert_message(msg: &LlmMessage) -> ChatMessage {
-        let role = match msg.role {
-            LlmMessageRole::System => WorkerMessageRole::System,
-            LlmMessageRole::User => WorkerMessageRole::User,
-            LlmMessageRole::Assistant => WorkerMessageRole::Assistant,
-            LlmMessageRole::Tool => WorkerMessageRole::Tool,
-        };
-
-        ChatMessage {
-            role,
-            content: msg.content.clone(),
-            tool_calls: msg.tool_calls.clone(),
-            tool_call_id: msg.tool_call_id.clone(),
-        }
-    }
-
-    fn convert_config(config: &LlmCallConfig) -> LlmConfig {
-        LlmConfig {
-            model: config.model.clone(),
-            temperature: config.temperature,
-            max_tokens: config.max_tokens,
-            system_prompt: None, // System prompt is in messages
-            tools: config.tools.clone(),
-        }
-    }
-}
-
-#[async_trait]
-impl LlmProvider for OpenAiLlmAdapter {
-    async fn chat_completion_stream(
-        &self,
-        messages: Vec<LlmMessage>,
-        config: &LlmCallConfig,
-    ) -> Result<LlmResponseStream> {
-        let chat_messages: Vec<ChatMessage> = messages.iter().map(Self::convert_message).collect();
-        let llm_config = Self::convert_config(config);
-
-        let stream = self
-            .provider
-            .chat_completion_stream(chat_messages, &llm_config)
-            .await
-            .map_err(|e| AgentLoopError::llm(e.to_string()))?;
-
-        // Convert the stream events
-        let converted_stream = stream.map(|result| {
-            result
-                .map(|event| match event {
-                    WorkerLlmStreamEvent::TextDelta(delta) => LlmStreamEvent::TextDelta(delta),
-                    WorkerLlmStreamEvent::ToolCalls(calls) => LlmStreamEvent::ToolCalls(calls),
-                    WorkerLlmStreamEvent::Done(meta) => {
-                        LlmStreamEvent::Done(LlmCompletionMetadata {
-                            total_tokens: meta.total_tokens,
-                            prompt_tokens: meta.prompt_tokens,
-                            completion_tokens: meta.completion_tokens,
-                            model: Some(meta.model),
-                            finish_reason: meta.finish_reason,
-                        })
-                    }
-                    WorkerLlmStreamEvent::Error(err) => LlmStreamEvent::Error(err),
-                })
-                .map_err(|e| AgentLoopError::llm(e.to_string()))
-        });
-
-        Ok(Box::pin(converted_stream))
-    }
-}
-
-// ============================================================================
 // Factory functions
 // ============================================================================
 
@@ -356,9 +265,9 @@ pub fn create_db_message_store(db: Database) -> DbMessageStore {
     DbMessageStore::new(db)
 }
 
-/// Create an OpenAI LLM adapter
-pub fn create_openai_adapter() -> Result<OpenAiLlmAdapter> {
-    OpenAiLlmAdapter::new()
+/// Create an OpenAI LLM provider
+pub fn create_openai_provider() -> Result<OpenAiProvider> {
+    OpenAiProvider::new().map_err(|e| AgentLoopError::llm(e.to_string()))
 }
 
 /// Create a unified tool executor with default built-in tools
@@ -368,7 +277,7 @@ pub fn create_unified_tool_executor() -> UnifiedToolExecutor {
 
 /// Create a unified tool executor with a custom tool registry
 pub fn create_unified_tool_executor_with_registry(
-    registry: everruns_agent_loop::ToolRegistry,
+    registry: everruns_core::ToolRegistry,
 ) -> UnifiedToolExecutor {
     UnifiedToolExecutor::new(registry)
 }
@@ -378,22 +287,17 @@ pub fn create_unified_tool_executor_with_registry(
 /// Uses the `UnifiedToolExecutor` which supports both built-in tools
 /// (via ToolRegistry) and webhook tools.
 pub fn create_db_agent_loop(
-    config: everruns_agent_loop::AgentConfig,
+    config: everruns_core::AgentConfig,
     db: Database,
 ) -> Result<
-    everruns_agent_loop::AgentLoop<
-        DbEventEmitter,
-        DbMessageStore,
-        OpenAiLlmAdapter,
-        UnifiedToolExecutor,
-    >,
+    everruns_core::AgentLoop<DbEventEmitter, DbMessageStore, OpenAiProvider, UnifiedToolExecutor>,
 > {
     let event_emitter = create_db_event_emitter(db.clone());
     let message_store = create_db_message_store(db);
-    let llm_provider = create_openai_adapter()?;
+    let llm_provider = create_openai_provider()?;
     let tool_executor = create_unified_tool_executor();
 
-    Ok(everruns_agent_loop::AgentLoop::new(
+    Ok(everruns_core::AgentLoop::new(
         config,
         event_emitter,
         message_store,
@@ -406,57 +310,22 @@ pub fn create_db_agent_loop(
 ///
 /// This allows passing a custom `ToolRegistry` with specific built-in tools.
 pub fn create_db_agent_loop_with_registry(
-    config: everruns_agent_loop::AgentConfig,
+    config: everruns_core::AgentConfig,
     db: Database,
-    registry: everruns_agent_loop::ToolRegistry,
+    registry: everruns_core::ToolRegistry,
 ) -> Result<
-    everruns_agent_loop::AgentLoop<
-        DbEventEmitter,
-        DbMessageStore,
-        OpenAiLlmAdapter,
-        UnifiedToolExecutor,
-    >,
+    everruns_core::AgentLoop<DbEventEmitter, DbMessageStore, OpenAiProvider, UnifiedToolExecutor>,
 > {
     let event_emitter = create_db_event_emitter(db.clone());
     let message_store = create_db_message_store(db);
-    let llm_provider = create_openai_adapter()?;
+    let llm_provider = create_openai_provider()?;
     let tool_executor = create_unified_tool_executor_with_registry(registry);
 
-    Ok(everruns_agent_loop::AgentLoop::new(
+    Ok(everruns_core::AgentLoop::new(
         config,
         event_emitter,
         message_store,
         llm_provider,
         tool_executor,
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_message_role_conversion() {
-        assert_eq!(
-            OpenAiLlmAdapter::convert_message(&LlmMessage {
-                role: LlmMessageRole::System,
-                content: "test".to_string(),
-                tool_calls: None,
-                tool_call_id: None,
-            })
-            .role,
-            WorkerMessageRole::System
-        );
-
-        assert_eq!(
-            OpenAiLlmAdapter::convert_message(&LlmMessage {
-                role: LlmMessageRole::User,
-                content: "test".to_string(),
-                tool_calls: None,
-                tool_call_id: None,
-            })
-            .role,
-            WorkerMessageRole::User
-        );
-    }
 }

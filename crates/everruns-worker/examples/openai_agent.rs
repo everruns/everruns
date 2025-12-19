@@ -8,14 +8,14 @@
 //!
 //! Run with: cargo run --example openai_agent -p everruns-worker
 
-use everruns_agent_loop::{
+use everruns_core::{
     config::AgentConfig,
     memory::{InMemoryMessageStore, NoOpEventEmitter},
     message::ConversationMessage,
     traits::ToolExecutor,
     AgentLoop, Result, ToolCall, ToolDefinition, ToolResult,
 };
-use everruns_worker::OpenAiLlmAdapter;
+use everruns_worker::OpenAiProvider;
 use uuid::Uuid;
 
 /// Simple no-op tool executor for this demo
@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
     // Create components
     let event_emitter = NoOpEventEmitter;
     let message_store = InMemoryMessageStore::new();
-    let llm_provider = OpenAiLlmAdapter::new()?;
+    let llm_provider = OpenAiProvider::new()?;
     let tool_executor = DemoToolExecutor;
 
     // Seed with a user message

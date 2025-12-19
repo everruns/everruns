@@ -10,7 +10,8 @@ members = [
     "crates/everruns-worker",
     "crates/everruns-contracts",
     "crates/everruns-storage",
-    "crates/everruns-agent-loop",
+    "crates/everruns-core",
+    "crates/everruns-openai",
 ]
 
 [workspace.package]
@@ -70,7 +71,8 @@ argon2 = "0.5"
 jsonwebtoken = "9.3"
 sha2 = "0.10"
 hex = "0.4"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+eventsource-stream = "0.2"
 time = "0.3"
 
 # Temporal SDK (used when AGENT_RUNNER_MODE=temporal)

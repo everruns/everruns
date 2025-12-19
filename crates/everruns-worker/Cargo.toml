@@ -17,13 +17,13 @@ sqlx.workspace = true
 
 everruns-contracts = { path = "../everruns-contracts" }
 everruns-storage = { path = "../everruns-storage" }
-everruns-agent-loop = { path = "../everruns-agent-loop" }
+everruns-core = { path = "../everruns-core" }
+everruns-openai = { path = "../everruns-openai" }
 
 chrono.workspace = true
-async-trait = "0.1.89"
-futures = "0.3.31"
-reqwest = { version = "0.12.25", features = ["json", "stream"] }
-eventsource-stream = "0.2.3"
+async-trait.workspace = true
+futures.workspace = true
+reqwest.workspace = true
 sha2 = "0.10"
 hex = "0.4"
 url = "2.5"

@@ -1,16 +1,23 @@
-// OpenAI provider implementation using direct HTTP API
+// OpenAI Provider Implementation
+//
+// Implements the LlmProvider trait from everruns-core for OpenAI's API.
 
-use super::{
-    ChatCompletionResult, ChatMessage, CompletionMetadata, LlmConfig, LlmProvider, LlmStream,
-    LlmStreamEvent, MessageRole,
+use crate::types::{
+    ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
+    OpenAiMessage, OpenAiResponse, OpenAiStreamChunk,
 };
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use eventsource_stream::Eventsource;
-use everruns_contracts::tools::{ToolCall, ToolDefinition};
+use everruns_contracts::tools::ToolCall;
+use everruns_core::traits::{
+    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmProvider,
+    LlmResponseStream, LlmStreamEvent as CoreLlmStreamEvent,
+};
 use futures::StreamExt;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
@@ -31,73 +38,51 @@ impl OpenAiProvider {
         Ok(Self { client, api_key })
     }
 
-    /// Convert our ChatMessage to OpenAI's API format
-    fn convert_message(msg: &ChatMessage) -> OpenAiMessage {
+    /// Create a new OpenAI provider with a custom API key
+    pub fn with_api_key(api_key: String) -> Self {
+        Self {
+            client: Client::new(),
+            api_key,
+        }
+    }
+
+    /// Convert core LlmMessage to OpenAI ChatMessage
+    fn convert_message(msg: &LlmMessage) -> ChatMessage {
         let role = match msg.role {
-            MessageRole::System => "system",
-            MessageRole::User => "user",
-            MessageRole::Assistant => "assistant",
-            MessageRole::Tool => "tool",
+            LlmMessageRole::System => MessageRole::System,
+            LlmMessageRole::User => MessageRole::User,
+            LlmMessageRole::Assistant => MessageRole::Assistant,
+            LlmMessageRole::Tool => MessageRole::Tool,
         };
 
-        OpenAiMessage {
-            role: role.to_string(),
-            content: Some(msg.content.clone()),
-            tool_calls: msg.tool_calls.as_ref().map(|calls| {
-                calls
-                    .iter()
-                    .map(|tc| OpenAiToolCall {
-                        id: tc.id.clone(),
-                        r#type: "function".to_string(),
-                        function: OpenAiFunctionCall {
-                            name: tc.name.clone(),
-                            arguments: serde_json::to_string(&tc.arguments).unwrap_or_default(),
-                        },
-                    })
-                    .collect()
-            }),
+        ChatMessage {
+            role,
+            content: msg.content.clone(),
+            tool_calls: msg.tool_calls.clone(),
             tool_call_id: msg.tool_call_id.clone(),
         }
     }
 
-    /// Convert tool definitions to OpenAI's format
-    fn convert_tools(tools: &[ToolDefinition]) -> Vec<OpenAiTool> {
-        tools
-            .iter()
-            .map(|tool| {
-                let (name, description, parameters) = match tool {
-                    ToolDefinition::Webhook(webhook) => {
-                        (&webhook.name, &webhook.description, &webhook.parameters)
-                    }
-                    ToolDefinition::Builtin(builtin) => {
-                        (&builtin.name, &builtin.description, &builtin.parameters)
-                    }
-                };
-
-                OpenAiTool {
-                    r#type: "function".to_string(),
-                    function: OpenAiFunction {
-                        name: name.clone(),
-                        description: description.clone(),
-                        parameters: parameters.clone(),
-                    },
-                }
-            })
-            .collect()
+    /// Convert core LlmCallConfig to OpenAI LlmConfig
+    fn convert_config(config: &LlmCallConfig) -> LlmConfig {
+        LlmConfig {
+            model: config.model.clone(),
+            temperature: config.temperature,
+            max_tokens: config.max_tokens,
+            system_prompt: None, // System prompt should be in messages
+            tools: config.tools.clone(),
+        }
     }
-}
 
-#[async_trait::async_trait]
-impl LlmProvider for OpenAiProvider {
-    /// Non-streaming chat completion
-    async fn chat_completion(
+    /// Non-streaming chat completion using native types
+    pub async fn chat_completion_native(
         &self,
         messages: Vec<ChatMessage>,
         config: &LlmConfig,
-    ) -> Result<ChatCompletionResult> {
+    ) -> Result<(String, Option<Vec<ToolCall>>, CompletionMetadata)> {
         // Convert messages to OpenAI format
         let mut openai_messages: Vec<OpenAiMessage> =
-            messages.iter().map(Self::convert_message).collect();
+            messages.iter().map(|m| m.to_openai()).collect();
 
         // Add system prompt if provided in config and not in messages
         if let Some(system_prompt) = &config.system_prompt {
@@ -121,10 +106,10 @@ impl LlmProvider for OpenAiProvider {
         let tools = if config.tools.is_empty() {
             None
         } else {
-            Some(Self::convert_tools(&config.tools))
+            Some(config.tools_to_openai())
         };
 
-        let request = OpenAiRequest {
+        let request = ChatRequest {
             model: config.model.clone(),
             messages: openai_messages,
             temperature: config.temperature,
@@ -188,22 +173,18 @@ impl LlmProvider for OpenAiProvider {
             finish_reason: choice.finish_reason.clone(),
         };
 
-        Ok(ChatCompletionResult {
-            text,
-            tool_calls,
-            metadata,
-        })
+        Ok((text, tool_calls, metadata))
     }
 
-    /// Streaming chat completion (kept for future use)
-    async fn chat_completion_stream(
+    /// Streaming chat completion using native types
+    pub async fn chat_completion_stream_native(
         &self,
         messages: Vec<ChatMessage>,
         config: &LlmConfig,
-    ) -> Result<LlmStream> {
+    ) -> Result<Pin<Box<dyn futures::Stream<Item = Result<LlmStreamEvent>> + Send>>> {
         // Convert messages to OpenAI format
         let mut openai_messages: Vec<OpenAiMessage> =
-            messages.iter().map(Self::convert_message).collect();
+            messages.iter().map(|m| m.to_openai()).collect();
 
         // Add system prompt if provided in config and not in messages
         if let Some(system_prompt) = &config.system_prompt {
@@ -227,10 +208,10 @@ impl LlmProvider for OpenAiProvider {
         let tools = if config.tools.is_empty() {
             None
         } else {
-            Some(Self::convert_tools(&config.tools))
+            Some(config.tools_to_openai())
         };
 
-        let request = OpenAiRequest {
+        let request = ChatRequest {
             model: config.model.clone(),
             messages: openai_messages,
             temperature: config.temperature,
@@ -269,7 +250,7 @@ impl LlmProvider for OpenAiProvider {
         let total_tokens = Arc::new(Mutex::new(0u32));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
 
-        let converted_stream: LlmStream = Box::pin(event_stream.then(move |result| {
+        let converted_stream = event_stream.then(move |result| {
             let model = model.clone();
             let total_tokens = Arc::clone(&total_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
@@ -386,9 +367,9 @@ impl LlmProvider for OpenAiProvider {
                     Err(e) => Ok(LlmStreamEvent::Error(format!("Stream error: {}", e))),
                 }
             }
-        }));
+        });
 
-        Ok(converted_stream)
+        Ok(Box::pin(converted_stream))
     }
 }
 
@@ -398,112 +379,43 @@ impl Default for OpenAiProvider {
     }
 }
 
-// OpenAI API types
+// ============================================================================
+// Core LlmProvider Implementation
+// ============================================================================
 
-#[derive(Debug, Clone, Serialize)]
-struct OpenAiRequest {
-    model: String,
-    messages: Vec<OpenAiMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
-    stream: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<OpenAiTool>>,
-}
+#[async_trait]
+impl LlmProvider for OpenAiProvider {
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> everruns_core::error::Result<LlmResponseStream> {
+        let chat_messages: Vec<ChatMessage> = messages.iter().map(Self::convert_message).collect();
+        let llm_config = Self::convert_config(config);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OpenAiMessage {
-    role: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_calls: Option<Vec<OpenAiToolCall>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_call_id: Option<String>,
-}
+        let stream = self
+            .chat_completion_stream_native(chat_messages, &llm_config)
+            .await
+            .map_err(|e| everruns_core::AgentLoopError::llm(e.to_string()))?;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OpenAiTool {
-    r#type: String,
-    function: OpenAiFunction,
-}
+        // Convert the stream events to core types
+        let converted_stream = stream.map(|result| {
+            result
+                .map(|event| match event {
+                    LlmStreamEvent::TextDelta(delta) => CoreLlmStreamEvent::TextDelta(delta),
+                    LlmStreamEvent::ToolCalls(calls) => CoreLlmStreamEvent::ToolCalls(calls),
+                    LlmStreamEvent::Done(meta) => CoreLlmStreamEvent::Done(LlmCompletionMetadata {
+                        total_tokens: meta.total_tokens,
+                        prompt_tokens: meta.prompt_tokens,
+                        completion_tokens: meta.completion_tokens,
+                        model: Some(meta.model),
+                        finish_reason: meta.finish_reason,
+                    }),
+                    LlmStreamEvent::Error(err) => CoreLlmStreamEvent::Error(err),
+                })
+                .map_err(|e| everruns_core::AgentLoopError::llm(e.to_string()))
+        });
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OpenAiFunction {
-    name: String,
-    description: String,
-    parameters: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OpenAiToolCall {
-    id: String,
-    r#type: String,
-    function: OpenAiFunctionCall,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct OpenAiFunctionCall {
-    name: String,
-    arguments: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAiStreamChunk {
-    choices: Vec<OpenAiStreamChoice>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAiStreamChoice {
-    delta: OpenAiDelta,
-    #[serde(default)]
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAiDelta {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<OpenAiStreamToolCall>>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAiStreamToolCall {
-    index: u32,
-    id: Option<String>,
-    #[allow(dead_code)]
-    r#type: Option<String>,
-    function: Option<OpenAiStreamFunction>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAiStreamFunction {
-    name: Option<String>,
-    arguments: Option<String>,
-}
-
-// Non-streaming response types
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAiResponse {
-    model: String,
-    choices: Vec<OpenAiChoice>,
-    usage: Option<OpenAiUsage>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAiChoice {
-    message: OpenAiMessage,
-    #[serde(default)]
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct OpenAiUsage {
-    prompt_tokens: u32,
-    completion_tokens: u32,
-    total_tokens: u32,
+        Ok(Box::pin(converted_stream))
+    }
 }

@@ -1,6 +1,5 @@
 pub mod activities;
 pub mod adapters;
-pub mod providers;
 pub mod runner;
 pub mod runner_inprocess;
 pub mod tools;
@@ -13,12 +12,15 @@ pub mod temporal;
 // Re-export main types
 pub use runner::{create_runner, AgentRunner, RunnerConfig, RunnerMode};
 
-// Re-export adapters for agent-loop integration
+// Re-export adapters for core integration
 pub use adapters::{
     create_db_agent_loop, create_db_agent_loop_with_registry, create_db_event_emitter,
-    create_db_message_store, create_openai_adapter, create_unified_tool_executor,
-    create_unified_tool_executor_with_registry, DbEventEmitter, DbMessageStore, OpenAiLlmAdapter,
+    create_db_message_store, create_openai_provider, create_unified_tool_executor,
+    create_unified_tool_executor_with_registry, DbEventEmitter, DbMessageStore,
 };
 
 // Re-export unified tool executor
 pub use unified_tool_executor::UnifiedToolExecutor;
+
+// Re-export OpenAI provider from the openai crate
+pub use everruns_openai::OpenAiProvider;

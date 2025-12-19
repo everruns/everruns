@@ -8,8 +8,8 @@
 // tool execution behavior.
 
 use async_trait::async_trait;
-use everruns_agent_loop::{traits::ToolExecutor, Result, ToolRegistry};
 use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
+use everruns_core::{traits::ToolExecutor, Result, ToolRegistry};
 use reqwest::Client;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -64,8 +64,8 @@ impl UnifiedToolExecutor {
     /// - `echo`: Echoes back the provided message
     pub fn with_default_tools() -> Self {
         let registry = ToolRegistry::builder()
-            .tool(everruns_agent_loop::GetCurrentTime)
-            .tool(everruns_agent_loop::EchoTool)
+            .tool(everruns_core::GetCurrentTime)
+            .tool(everruns_core::EchoTool)
             .build();
 
         Self::new(registry)
@@ -164,8 +164,8 @@ impl ToolExecutor for UnifiedToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_agent_loop::{EchoTool, FailingTool, GetCurrentTime};
     use everruns_contracts::tools::{BuiltinTool, BuiltinToolKind, ToolPolicy};
+    use everruns_core::{EchoTool, FailingTool, GetCurrentTime};
     use serde_json::json;
 
     #[tokio::test]

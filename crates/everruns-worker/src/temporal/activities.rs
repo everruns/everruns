@@ -11,24 +11,25 @@
 // All activities must be idempotent and handle their own error scenarios.
 
 use anyhow::{Context, Result};
-use everruns_agent_loop::capabilities::{apply_capabilities, CapabilityId, CapabilityRegistry};
-use everruns_agent_loop::config::AgentConfig;
-use everruns_agent_loop::memory::NoOpEventEmitter;
-use everruns_agent_loop::step::{LoopStep, StepInput, StepResult};
-use everruns_agent_loop::AgentLoop;
 use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::ToolDefinition;
+use everruns_core::capabilities::{apply_capabilities, CapabilityId, CapabilityRegistry};
+use everruns_core::config::AgentConfig;
+use everruns_core::memory::NoOpEventEmitter;
+use everruns_core::step::{LoopStep, StepInput, StepResult};
+use everruns_core::traits::{
+    LlmCallConfig, LlmMessage, LlmMessageRole, LlmProvider, MessageStore, ToolExecutor,
+};
+use everruns_core::AgentLoop;
+use everruns_openai::OpenAiProvider;
 use everruns_storage::models::UpdateSession;
 use everruns_storage::repositories::Database;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::activities::PersistEventActivity;
-use crate::adapters::{DbMessageStore, OpenAiLlmAdapter};
-use crate::providers::openai::OpenAiProvider;
-use crate::providers::{ChatMessage, LlmConfig, LlmProvider, MessageRole as ProviderMessageRole};
+use crate::adapters::DbMessageStore;
 use crate::unified_tool_executor::UnifiedToolExecutor;
-use everruns_agent_loop::traits::{MessageStore, ToolExecutor};
 
 use super::types::*;
 
@@ -269,8 +270,8 @@ pub async fn call_llm_activity(
         );
     }
 
-    // Convert message data to ChatMessage format
-    let messages: Vec<ChatMessage> = input
+    // Convert message data to LlmMessage format (core types)
+    let mut messages: Vec<LlmMessage> = input
         .messages
         .iter()
         .map(|m| {
@@ -288,13 +289,13 @@ pub async fn call_llm_activity(
                     .collect()
             });
 
-            ChatMessage {
+            LlmMessage {
                 role: match m.role.as_str() {
-                    "system" => ProviderMessageRole::System,
-                    "user" => ProviderMessageRole::User,
-                    "assistant" => ProviderMessageRole::Assistant,
-                    "tool" | "tool_result" => ProviderMessageRole::Tool,
-                    _ => ProviderMessageRole::User,
+                    "system" => LlmMessageRole::System,
+                    "user" => LlmMessageRole::User,
+                    "assistant" => LlmMessageRole::Assistant,
+                    "tool" | "tool_result" => LlmMessageRole::Tool,
+                    _ => LlmMessageRole::User,
                 },
                 content: m.content.clone(),
                 tool_calls,
@@ -303,13 +304,25 @@ pub async fn call_llm_activity(
         })
         .collect();
 
-    // Build LLM config with capability-provided tools
+    // Prepend system prompt as first message if not already present
+    if !messages.iter().any(|m| m.role == LlmMessageRole::System) {
+        messages.insert(
+            0,
+            LlmMessage {
+                role: LlmMessageRole::System,
+                content: applied.config.system_prompt.clone(),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+        );
+    }
+
+    // Build LLM config with capability-provided tools (core types)
     // applied.config.tools is already Vec<ToolDefinition> from capabilities
-    let config = LlmConfig {
+    let config = LlmCallConfig {
         model: input.model_id.clone(),
         temperature: input.temperature,
         max_tokens: input.max_tokens,
-        system_prompt: Some(applied.config.system_prompt.clone()),
         tools: applied.config.tools.clone(),
     };
 
@@ -323,12 +336,10 @@ pub async fn call_llm_activity(
     let result = match provider.chat_completion(messages, &config).await {
         Ok(r) => r,
         Err(e) => {
-            // Log the full error chain for debugging
-            let error_chain: Vec<String> = e.chain().map(|e| e.to_string()).collect();
+            // Log the error for debugging
             tracing::error!(
                 session_id = %input.session_id,
                 error = %e,
-                error_chain = ?error_chain,
                 model = %input.model_id,
                 "LLM call failed"
             );
@@ -661,7 +672,7 @@ pub async fn execute_llm_step_activity(
     // and DbMessageStore for message storage, using UnifiedToolExecutor for consistency
     let event_emitter = NoOpEventEmitter;
     let message_store = DbMessageStore::new(db.clone());
-    let llm_provider = OpenAiLlmAdapter::new().context("Failed to create LLM adapter")?;
+    let llm_provider = OpenAiProvider::new().context("Failed to create LLM provider")?;
     let tool_executor = UnifiedToolExecutor::with_default_tools();
 
     let agent_loop = AgentLoop::new(
