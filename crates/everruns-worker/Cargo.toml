@@ -38,15 +38,3 @@ tonic = "0.12"
 [[example]]
 name = "openai_agent"
 path = "examples/openai_agent.rs"
-
-[[example]]
-name = "v2_basic"
-path = "examples/v2_basic.rs"
-
-[[example]]
-name = "v2_tools"
-path = "examples/v2_tools.rs"
-
-[[example]]
-name = "v2_interactive"
-path = "examples/v2_interactive.rs"

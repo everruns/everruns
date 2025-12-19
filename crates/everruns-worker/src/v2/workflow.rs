@@ -1,190 +1,172 @@
-// V2 Session Workflow - Infinite loop state machine
+// V2 Session Workflow - Temporal-based infinite loop state machine
 //
 // Decision: Workflow is an infinite loop representing the entire session
-// Decision: States are: Waiting -> Running -> (agent loop) -> Waiting
-// Decision: New messages arrive via signals
+// Decision: States are: Initializing -> Waiting <-> Running -> Completed/Failed
+// Decision: New messages arrive via Temporal signals
 // Decision: Error if message arrives while running, accept if waiting
-// Decision: Tool calls execute in parallel
+// Decision: Tool calls execute in parallel as separate activities
+//
+// This workflow produces commands that map directly to Temporal workflow commands:
+// - ScheduleActivity -> temporal ScheduleActivity command
+// - ScheduleParallelActivities -> multiple ScheduleActivity commands
+// - WaitForSignal -> no commands (workflow waits for signal)
+// - Complete -> CompleteWorkflowExecution command
 
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use super::types::*;
+use crate::temporal::{
+    activity_names, CallLlmInput as TemporalCallLlmInput, ExecuteSingleToolInput,
+    ExecuteSingleToolOutput, LoadAgentInput, LoadAgentOutput, MessageData, ToolCallData,
+};
 
 /// Maximum number of agent iterations per turn (prevent infinite loops)
-const MAX_ITERATIONS_PER_TURN: usize = 10;
+const MAX_ITERATIONS_PER_TURN: u8 = 10;
 
-/// Workflow state for the session
+/// Workflow state for the v2 session
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum SessionState {
-    /// Initial state - loading agent config
-    Initializing,
+pub enum V2SessionState {
+    /// Initial state - need to load agent config
+    Starting,
 
-    /// Waiting for user input (idle)
+    /// Loading agent configuration
+    LoadingAgent { activity_seq: u32 },
+
+    /// Waiting for user input (idle) - workflow blocks on signal
     Waiting {
-        /// Messages in the conversation so far
-        messages: Vec<Message>,
-        /// Number of turns completed
+        agent_config: LoadAgentOutput,
+        messages: Vec<MessageData>,
         turn_count: u32,
     },
 
-    /// Running the agent loop
-    Running {
-        /// Agent configuration
-        agent_config: AgentConfig,
-        /// Messages in the conversation
-        messages: Vec<Message>,
-        /// Current iteration within the turn
-        iteration: usize,
-        /// Current turn number
+    /// Calling LLM
+    CallingLlm {
+        activity_seq: u32,
+        agent_config: LoadAgentOutput,
+        messages: Vec<MessageData>,
         turn_count: u32,
-        /// Pending LLM activity
-        pending_llm: Option<String>,
-        /// Pending tool activities (activity_id -> tool_call_id)
-        pending_tools: Vec<PendingTool>,
+        iteration: u8,
     },
 
-    /// Session completed (terminal state)
-    Completed {
-        messages: Vec<Message>,
+    /// Executing tool calls in parallel
+    ExecutingTools {
+        activity_seq: u32,
+        agent_config: LoadAgentOutput,
+        messages: Vec<MessageData>,
         turn_count: u32,
+        iteration: u8,
+        pending_tools: Vec<PendingToolActivity>,
+        tool_results: Vec<ToolResultData>,
     },
 
-    /// Session failed (terminal state)
-    Failed {
-        error: String,
-        messages: Vec<Message>,
-        turn_count: u32,
-    },
+    /// Workflow completed (terminal)
+    Completed { turn_count: u32 },
+
+    /// Workflow failed (terminal)
+    Failed { error: String, turn_count: u32 },
 }
 
-/// A pending tool execution
+/// Pending tool activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PendingTool {
-    /// Activity ID
+pub struct PendingToolActivity {
     pub activity_id: String,
-    /// Tool call ID
     pub tool_call_id: String,
-    /// Tool name
     pub tool_name: String,
 }
 
-/// Action to perform (commands from workflow to executor)
-#[derive(Debug, Clone)]
-pub enum WorkflowAction {
+/// Tool result data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolResultData {
+    pub tool_call_id: String,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
+/// Workflow input
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V2SessionWorkflowInput {
+    pub session_id: Uuid,
+    pub agent_id: Uuid,
+}
+
+/// Workflow output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V2SessionWorkflowOutput {
+    pub session_id: Uuid,
+    pub status: String,
+    pub total_turns: u32,
+    pub error: Option<String>,
+}
+
+/// Signal: new message from user
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V2NewMessageSignal {
+    pub content: String,
+}
+
+/// Signal: shutdown the session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V2ShutdownSignal;
+
+/// Workflow action (maps to Temporal commands)
+#[derive(Debug)]
+pub enum V2WorkflowAction {
     /// Schedule an activity
     ScheduleActivity {
         activity_id: String,
-        activity_type: ActivityType,
+        activity_type: String,
         input: serde_json::Value,
     },
-    /// Schedule multiple activities in parallel
-    ScheduleParallelActivities {
-        activities: Vec<(String, ActivityType, serde_json::Value)>,
-    },
-    /// Wait for signal (new message)
-    WaitForSignal,
     /// Complete the workflow
-    Complete { output: SessionOutput },
-    /// No action needed
+    CompleteWorkflow { result: V2SessionWorkflowOutput },
+    /// Fail the workflow
+    FailWorkflow { reason: String },
+    /// No action (waiting for more events)
     None,
 }
 
-/// Activity types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ActivityType {
-    LoadAgent,
-    CallLlm,
-    ExecuteTool,
-}
-
-impl std::fmt::Display for ActivityType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ActivityType::LoadAgent => write!(f, "load_agent"),
-            ActivityType::CallLlm => write!(f, "call_llm"),
-            ActivityType::ExecuteTool => write!(f, "execute_tool"),
-        }
-    }
-}
-
-/// Activity result (from executor to workflow)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ActivityResult {
-    Completed(serde_json::Value),
-    Failed(String),
-}
-
-/// Signal types
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WorkflowSignal {
-    /// New message from user
-    NewMessage(NewMessageSignal),
-    /// Shutdown the session
-    Shutdown,
-}
-
-/// The session workflow state machine
+/// The V2 session workflow state machine
 #[derive(Debug)]
-pub struct SessionWorkflow {
-    /// Workflow input
-    input: SessionInput,
-    /// Current state
-    state: SessionState,
-    /// Activity sequence counter
+pub struct V2SessionWorkflow {
+    input: V2SessionWorkflowInput,
+    state: V2SessionState,
     activity_seq: u32,
-    /// Agent configuration (cached after loading)
-    agent_config: Option<AgentConfig>,
 }
 
-impl SessionWorkflow {
-    /// Create a new session workflow
-    pub fn new(input: SessionInput) -> Self {
+impl V2SessionWorkflow {
+    /// Create a new workflow instance
+    pub fn new(input: V2SessionWorkflowInput) -> Self {
         Self {
             input,
-            state: SessionState::Initializing,
+            state: V2SessionState::Starting,
             activity_seq: 0,
-            agent_config: None,
         }
     }
 
     /// Get the current state
-    pub fn state(&self) -> &SessionState {
+    pub fn state(&self) -> &V2SessionState {
         &self.state
     }
 
-    /// Get the session ID
-    pub fn session_id(&self) -> Uuid {
-        self.input.session_id
+    /// Get the workflow input
+    pub fn input(&self) -> &V2SessionWorkflowInput {
+        &self.input
     }
 
-    /// Check if the workflow is in a terminal state
-    pub fn is_terminal(&self) -> bool {
-        matches!(
-            self.state,
-            SessionState::Completed { .. } | SessionState::Failed { .. }
-        )
+    /// Check if workflow is waiting for a signal
+    pub fn is_waiting_for_signal(&self) -> bool {
+        matches!(self.state, V2SessionState::Waiting { .. })
     }
 
-    /// Check if the workflow is waiting for input
-    pub fn is_waiting(&self) -> bool {
-        matches!(self.state, SessionState::Waiting { .. })
-    }
-
-    /// Check if the workflow is running
-    pub fn is_running(&self) -> bool {
-        matches!(self.state, SessionState::Running { .. })
-    }
-
-    /// Generate a unique activity ID
+    /// Generate unique activity ID
     fn next_activity_id(&mut self, activity_type: &str) -> String {
         self.activity_seq += 1;
         format!("{}-{}", activity_type, self.activity_seq)
     }
 
     /// Process workflow start
-    pub fn on_start(&mut self) -> WorkflowAction {
+    pub fn on_start(&mut self) -> Vec<V2WorkflowAction> {
         info!(
             session_id = %self.input.session_id,
             agent_id = %self.input.agent_id,
@@ -192,15 +174,18 @@ impl SessionWorkflow {
         );
 
         let activity_id = self.next_activity_id("load-agent");
-        let input = LoadAgentInput {
-            agent_id: self.input.agent_id,
-        };
+        let seq = self.activity_seq;
 
-        WorkflowAction::ScheduleActivity {
+        self.state = V2SessionState::LoadingAgent { activity_seq: seq };
+
+        vec![V2WorkflowAction::ScheduleActivity {
             activity_id,
-            activity_type: ActivityType::LoadAgent,
-            input: serde_json::to_value(&input).unwrap(),
-        }
+            activity_type: activity_names::LOAD_AGENT.to_string(),
+            input: serde_json::to_value(&LoadAgentInput {
+                agent_id: self.input.agent_id,
+            })
+            .unwrap(),
+        }]
     }
 
     /// Process activity completion
@@ -208,83 +193,133 @@ impl SessionWorkflow {
         &mut self,
         activity_id: &str,
         result: serde_json::Value,
-    ) -> WorkflowAction {
+    ) -> Vec<V2WorkflowAction> {
         match &self.state {
-            SessionState::Initializing => self.handle_load_agent_completed(result),
-
-            SessionState::Running { pending_llm, .. } if pending_llm.is_some() => {
-                self.handle_llm_completed(activity_id, result)
+            V2SessionState::LoadingAgent { .. } => self.handle_load_agent_completed(result),
+            V2SessionState::CallingLlm { .. } => {
+                self.handle_call_llm_completed(activity_id, result)
             }
-
-            SessionState::Running { pending_tools, .. } if !pending_tools.is_empty() => {
+            V2SessionState::ExecutingTools { .. } => {
                 self.handle_tool_completed(activity_id, result)
             }
-
             _ => {
                 warn!(
                     activity_id = %activity_id,
                     state = ?std::mem::discriminant(&self.state),
-                    "Unexpected activity completion"
+                    "Activity completed in unexpected state"
                 );
-                WorkflowAction::None
+                vec![V2WorkflowAction::None]
             }
         }
     }
 
     /// Process activity failure
-    pub fn on_activity_failed(&mut self, activity_id: &str, error: &str) -> WorkflowAction {
+    pub fn on_activity_failed(&mut self, activity_id: &str, error: &str) -> Vec<V2WorkflowAction> {
         warn!(
             activity_id = %activity_id,
             error = %error,
             "Activity failed"
         );
 
-        let (messages, turn_count) = match &self.state {
-            SessionState::Running {
-                messages,
-                turn_count,
-                ..
-            } => (messages.clone(), *turn_count),
-            SessionState::Waiting {
-                messages,
-                turn_count,
-            } => (messages.clone(), *turn_count),
-            _ => (Vec::new(), 0),
-        };
-
-        self.state = SessionState::Failed {
-            error: format!("Activity {} failed: {}", activity_id, error),
-            messages,
+        let turn_count = self.get_turn_count();
+        self.state = V2SessionState::Failed {
+            error: error.to_string(),
             turn_count,
         };
 
-        WorkflowAction::Complete {
-            output: SessionOutput {
-                session_id: self.input.session_id,
-                status: SessionStatus::Failed,
-                total_turns: turn_count,
-                error: Some(error.to_string()),
-            },
+        vec![V2WorkflowAction::FailWorkflow {
+            reason: format!("Activity {} failed: {}", activity_id, error),
+        }]
+    }
+
+    /// Process new message signal
+    pub fn on_new_message(&mut self, signal: V2NewMessageSignal) -> Vec<V2WorkflowAction> {
+        match &self.state {
+            V2SessionState::Waiting {
+                agent_config,
+                messages,
+                turn_count,
+            } => {
+                let agent_config = agent_config.clone();
+                let mut messages = messages.clone();
+                let turn_count = *turn_count + 1;
+
+                info!(
+                    session_id = %self.input.session_id,
+                    turn = turn_count,
+                    "New message received, starting turn"
+                );
+
+                // Add user message
+                messages.push(MessageData {
+                    role: "user".to_string(),
+                    content: signal.content,
+                    tool_calls: None,
+                    tool_call_id: None,
+                });
+
+                // Start LLM call
+                self.start_llm_call(agent_config, messages, turn_count, 1)
+            }
+
+            _ => {
+                warn!(
+                    session_id = %self.input.session_id,
+                    state = ?std::mem::discriminant(&self.state),
+                    "New message received in non-waiting state - ignoring"
+                );
+                vec![V2WorkflowAction::None]
+            }
         }
     }
 
-    /// Process a signal
-    pub fn on_signal(&mut self, signal: WorkflowSignal) -> WorkflowAction {
-        match signal {
-            WorkflowSignal::NewMessage(msg_signal) => self.handle_new_message(msg_signal),
-            WorkflowSignal::Shutdown => self.handle_shutdown(),
-        }
+    /// Process shutdown signal
+    pub fn on_shutdown(&mut self) -> Vec<V2WorkflowAction> {
+        let turn_count = self.get_turn_count();
+        info!(
+            session_id = %self.input.session_id,
+            turn_count = turn_count,
+            "Shutdown signal received"
+        );
+
+        self.state = V2SessionState::Completed { turn_count };
+
+        vec![V2WorkflowAction::CompleteWorkflow {
+            result: V2SessionWorkflowOutput {
+                session_id: self.input.session_id,
+                status: "completed".to_string(),
+                total_turns: turn_count,
+                error: None,
+            },
+        }]
     }
 
     // =========================================================================
     // Private handlers
     // =========================================================================
 
-    fn handle_load_agent_completed(&mut self, result: serde_json::Value) -> WorkflowAction {
-        let agent_config: AgentConfig = match serde_json::from_value(result) {
+    fn get_turn_count(&self) -> u32 {
+        match &self.state {
+            V2SessionState::Waiting { turn_count, .. } => *turn_count,
+            V2SessionState::CallingLlm { turn_count, .. } => *turn_count,
+            V2SessionState::ExecutingTools { turn_count, .. } => *turn_count,
+            V2SessionState::Completed { turn_count } => *turn_count,
+            V2SessionState::Failed { turn_count, .. } => *turn_count,
+            _ => 0,
+        }
+    }
+
+    fn handle_load_agent_completed(&mut self, result: serde_json::Value) -> Vec<V2WorkflowAction> {
+        let agent_config: LoadAgentOutput = match serde_json::from_value(result) {
             Ok(config) => config,
             Err(e) => {
-                return self.fail(&format!("Failed to parse agent config: {}", e));
+                self.state = V2SessionState::Failed {
+                    error: format!("Failed to parse agent config: {}", e),
+                    turn_count: 0,
+                };
+                return vec![V2WorkflowAction::FailWorkflow {
+                    reason: format!("Failed to parse agent config: {}", e),
+                }];
             }
         };
 
@@ -294,180 +329,120 @@ impl SessionWorkflow {
             "Agent loaded, waiting for input"
         );
 
-        self.agent_config = Some(agent_config);
-        self.state = SessionState::Waiting {
+        self.state = V2SessionState::Waiting {
+            agent_config,
             messages: Vec::new(),
             turn_count: 0,
         };
 
-        WorkflowAction::WaitForSignal
+        // Return no actions - workflow now waits for signal
+        vec![V2WorkflowAction::None]
     }
 
-    fn handle_new_message(&mut self, signal: NewMessageSignal) -> WorkflowAction {
-        match &self.state {
-            SessionState::Waiting {
-                messages,
-                turn_count,
-            } => {
-                let mut messages = messages.clone();
-                let turn_count = *turn_count + 1;
-
-                info!(
-                    session_id = %self.input.session_id,
-                    turn = turn_count,
-                    role = ?signal.message.role,
-                    "New message received, starting turn"
-                );
-
-                // Add the new message
-                messages.push(signal.message);
-
-                // Start the agent loop
-                self.start_turn(messages, turn_count)
-            }
-
-            SessionState::Running { .. } => {
-                warn!(
-                    session_id = %self.input.session_id,
-                    "Message received while running - rejected"
-                );
-                // In a real implementation, this would return an error signal
-                // For now, we just ignore it
-                WorkflowAction::None
-            }
-
-            _ => {
-                warn!(
-                    session_id = %self.input.session_id,
-                    state = ?std::mem::discriminant(&self.state),
-                    "Message received in unexpected state"
-                );
-                WorkflowAction::None
-            }
-        }
-    }
-
-    fn handle_shutdown(&mut self) -> WorkflowAction {
-        let (messages, turn_count) = match &self.state {
-            SessionState::Waiting {
-                messages,
-                turn_count,
-            } => (messages.clone(), *turn_count),
-            SessionState::Running {
-                messages,
-                turn_count,
-                ..
-            } => (messages.clone(), *turn_count),
-            _ => (Vec::new(), 0),
-        };
-
-        info!(
-            session_id = %self.input.session_id,
-            "Shutdown signal received"
-        );
-
-        self.state = SessionState::Completed {
-            messages,
-            turn_count,
-        };
-
-        WorkflowAction::Complete {
-            output: SessionOutput {
-                session_id: self.input.session_id,
-                status: SessionStatus::Completed,
-                total_turns: turn_count,
-                error: None,
-            },
-        }
-    }
-
-    fn start_turn(&mut self, messages: Vec<Message>, turn_count: u32) -> WorkflowAction {
-        let agent_config = match &self.agent_config {
-            Some(config) => config.clone(),
-            None => {
-                return self.fail("Agent config not loaded");
-            }
-        };
-
-        // Start LLM call
+    fn start_llm_call(
+        &mut self,
+        agent_config: LoadAgentOutput,
+        messages: Vec<MessageData>,
+        turn_count: u32,
+        iteration: u8,
+    ) -> Vec<V2WorkflowAction> {
         let activity_id = self.next_activity_id("call-llm");
-        let input = CallLlmInput {
+        let seq = self.activity_seq;
+
+        let input = TemporalCallLlmInput {
             session_id: self.input.session_id,
-            agent_config: agent_config.clone(),
             messages: messages.clone(),
+            model_id: agent_config.model_id.clone(),
+            system_prompt: agent_config.system_prompt.clone(),
+            temperature: agent_config.temperature,
+            max_tokens: agent_config.max_tokens,
+            capability_ids: agent_config.capability_ids.clone(),
         };
 
-        self.state = SessionState::Running {
+        self.state = V2SessionState::CallingLlm {
+            activity_seq: seq,
             agent_config,
             messages,
-            iteration: 1,
             turn_count,
-            pending_llm: Some(activity_id.clone()),
-            pending_tools: Vec::new(),
+            iteration,
         };
 
-        WorkflowAction::ScheduleActivity {
+        vec![V2WorkflowAction::ScheduleActivity {
             activity_id,
-            activity_type: ActivityType::CallLlm,
+            activity_type: activity_names::CALL_LLM.to_string(),
             input: serde_json::to_value(&input).unwrap(),
-        }
+        }]
     }
 
-    fn handle_llm_completed(
+    fn handle_call_llm_completed(
         &mut self,
         _activity_id: &str,
         result: serde_json::Value,
-    ) -> WorkflowAction {
-        let llm_response: LlmResponse = match serde_json::from_value(result) {
-            Ok(resp) => resp,
-            Err(e) => {
-                return self.fail(&format!("Failed to parse LLM response: {}", e));
-            }
-        };
-
-        // Extract current state
-        let (agent_config, mut messages, iteration, turn_count) = match &self.state {
-            SessionState::Running {
+    ) -> Vec<V2WorkflowAction> {
+        let (agent_config, mut messages, turn_count, iteration) = match &self.state {
+            V2SessionState::CallingLlm {
                 agent_config,
                 messages,
-                iteration,
                 turn_count,
+                iteration,
                 ..
             } => (
                 agent_config.clone(),
                 messages.clone(),
-                *iteration,
                 *turn_count,
+                *iteration,
             ),
-            _ => return self.fail("Invalid state for LLM completion"),
+            _ => return vec![V2WorkflowAction::None],
         };
+
+        // Parse LLM response
+        let text = result
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let tool_calls: Vec<ToolCallData> = result
+            .get("tool_calls")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
 
         info!(
             session_id = %self.input.session_id,
             turn = turn_count,
             iteration = iteration,
-            has_tool_calls = !llm_response.tool_calls.is_empty(),
+            tool_call_count = tool_calls.len(),
             "LLM response received"
         );
 
         // Add assistant message
-        if llm_response.tool_calls.is_empty() {
-            // No tool calls - add final response and complete turn
-            messages.push(Message::assistant(&llm_response.text));
+        let assistant_msg = MessageData {
+            role: "assistant".to_string(),
+            content: text.clone(),
+            tool_calls: if tool_calls.is_empty() {
+                None
+            } else {
+                Some(tool_calls.clone())
+            },
+            tool_call_id: None,
+        };
+        messages.push(assistant_msg);
 
-            self.state = SessionState::Waiting {
+        // If no tool calls, turn is complete - return to waiting
+        if tool_calls.is_empty() {
+            info!(
+                session_id = %self.input.session_id,
+                turn = turn_count,
+                "Turn complete, waiting for next message"
+            );
+
+            self.state = V2SessionState::Waiting {
+                agent_config,
                 messages,
                 turn_count,
             };
 
-            return WorkflowAction::WaitForSignal;
+            return vec![V2WorkflowAction::None];
         }
-
-        // Has tool calls - add assistant message with tool calls
-        messages.push(Message::assistant_with_tool_calls(
-            &llm_response.text,
-            llm_response.tool_calls.clone(),
-        ));
 
         // Check iteration limit
         if iteration >= MAX_ITERATIONS_PER_TURN {
@@ -475,88 +450,99 @@ impl SessionWorkflow {
                 session_id = %self.input.session_id,
                 "Max iterations reached, completing turn"
             );
-            self.state = SessionState::Waiting {
+
+            self.state = V2SessionState::Waiting {
+                agent_config,
                 messages,
                 turn_count,
             };
-            return WorkflowAction::WaitForSignal;
+
+            return vec![V2WorkflowAction::None];
         }
 
         // Schedule tool executions in parallel
-        let mut activities = Vec::new();
+        let mut actions = Vec::new();
         let mut pending_tools = Vec::new();
 
-        for tool_call in &llm_response.tool_calls {
+        for tool_call in &tool_calls {
             let activity_id = self.next_activity_id(&format!("tool-{}", tool_call.name));
-
-            let tool_def = agent_config
-                .tools
-                .iter()
-                .find(|t| t.name == tool_call.name)
-                .cloned();
 
             let input = ExecuteSingleToolInput {
                 session_id: self.input.session_id,
-                tool_call: tool_call.clone(),
-                tool_definition: tool_def,
+                tool_call: everruns_contracts::tools::ToolCall {
+                    id: tool_call.id.clone(),
+                    name: tool_call.name.clone(),
+                    arguments: serde_json::from_str(&tool_call.arguments).unwrap_or_default(),
+                },
+                tool_definition_json: tool_call.tool_definition_json.clone(),
             };
 
-            activities.push((
-                activity_id.clone(),
-                ActivityType::ExecuteTool,
-                serde_json::to_value(&input).unwrap(),
-            ));
+            actions.push(V2WorkflowAction::ScheduleActivity {
+                activity_id: activity_id.clone(),
+                activity_type: activity_names::EXECUTE_SINGLE_TOOL.to_string(),
+                input: serde_json::to_value(&input).unwrap(),
+            });
 
-            pending_tools.push(PendingTool {
+            pending_tools.push(PendingToolActivity {
                 activity_id,
                 tool_call_id: tool_call.id.clone(),
                 tool_name: tool_call.name.clone(),
             });
         }
 
-        self.state = SessionState::Running {
+        self.state = V2SessionState::ExecutingTools {
+            activity_seq: self.activity_seq,
             agent_config,
             messages,
-            iteration,
             turn_count,
-            pending_llm: None,
+            iteration,
             pending_tools,
+            tool_results: Vec::new(),
         };
 
-        WorkflowAction::ScheduleParallelActivities { activities }
+        actions
     }
 
     fn handle_tool_completed(
         &mut self,
         activity_id: &str,
         result: serde_json::Value,
-    ) -> WorkflowAction {
+    ) -> Vec<V2WorkflowAction> {
+        let (
+            agent_config,
+            mut messages,
+            turn_count,
+            iteration,
+            mut pending_tools,
+            mut tool_results,
+        ) = match &self.state {
+            V2SessionState::ExecutingTools {
+                agent_config,
+                messages,
+                turn_count,
+                iteration,
+                pending_tools,
+                tool_results,
+                ..
+            } => (
+                agent_config.clone(),
+                messages.clone(),
+                *turn_count,
+                *iteration,
+                pending_tools.clone(),
+                tool_results.clone(),
+            ),
+            _ => return vec![V2WorkflowAction::None],
+        };
+
+        // Parse tool result
         let tool_output: ExecuteSingleToolOutput = match serde_json::from_value(result) {
             Ok(output) => output,
             Err(e) => {
-                return self.fail(&format!("Failed to parse tool result: {}", e));
+                warn!(error = %e, "Failed to parse tool result");
+                return vec![V2WorkflowAction::None];
             }
         };
-
-        // Extract and update state
-        let (agent_config, mut messages, iteration, turn_count, mut pending_tools) =
-            match &self.state {
-                SessionState::Running {
-                    agent_config,
-                    messages,
-                    iteration,
-                    turn_count,
-                    pending_tools,
-                    ..
-                } => (
-                    agent_config.clone(),
-                    messages.clone(),
-                    *iteration,
-                    *turn_count,
-                    pending_tools.clone(),
-                ),
-                _ => return self.fail("Invalid state for tool completion"),
-            };
 
         // Find and remove the completed tool
         let completed_idx = pending_tools
@@ -566,11 +552,8 @@ impl SessionWorkflow {
         let completed_tool = match completed_idx {
             Some(idx) => pending_tools.remove(idx),
             None => {
-                warn!(
-                    activity_id = %activity_id,
-                    "Unknown tool activity completed"
-                );
-                return WorkflowAction::None;
+                warn!(activity_id = %activity_id, "Unknown tool activity completed");
+                return vec![V2WorkflowAction::None];
             }
         };
 
@@ -581,82 +564,47 @@ impl SessionWorkflow {
             "Tool completed"
         );
 
-        // Add tool result message
-        if let Some(err) = &tool_output.result.error {
-            messages.push(Message::tool_error(&completed_tool.tool_call_id, err));
-        } else if let Some(result) = &tool_output.result.result {
-            messages.push(Message::tool_result(
-                &completed_tool.tool_call_id,
-                result.clone(),
-            ));
-        }
+        // Store result
+        tool_results.push(ToolResultData {
+            tool_call_id: completed_tool.tool_call_id.clone(),
+            result: tool_output.result.result,
+            error: tool_output.result.error,
+        });
 
-        // Check if all tools are done
+        // If more tools pending, wait
         if !pending_tools.is_empty() {
-            // Still waiting for more tools
-            self.state = SessionState::Running {
+            self.state = V2SessionState::ExecutingTools {
+                activity_seq: self.activity_seq,
                 agent_config,
                 messages,
+                turn_count,
                 iteration,
-                turn_count,
-                pending_llm: None,
                 pending_tools,
+                tool_results,
             };
-            return WorkflowAction::None;
+            return vec![V2WorkflowAction::None];
         }
 
-        // All tools done - call LLM again
-        let activity_id = self.next_activity_id("call-llm");
-        let input = CallLlmInput {
-            session_id: self.input.session_id,
-            agent_config: agent_config.clone(),
-            messages: messages.clone(),
-        };
+        // All tools done - add tool result messages
+        for tool_result in &tool_results {
+            let content = if let Some(err) = &tool_result.error {
+                format!("Error: {}", err)
+            } else if let Some(result) = &tool_result.result {
+                result.to_string()
+            } else {
+                "null".to_string()
+            };
 
-        self.state = SessionState::Running {
-            agent_config,
-            messages,
-            iteration: iteration + 1,
-            turn_count,
-            pending_llm: Some(activity_id.clone()),
-            pending_tools: Vec::new(),
-        };
-
-        WorkflowAction::ScheduleActivity {
-            activity_id,
-            activity_type: ActivityType::CallLlm,
-            input: serde_json::to_value(&input).unwrap(),
+            messages.push(MessageData {
+                role: "tool".to_string(),
+                content,
+                tool_calls: None,
+                tool_call_id: Some(tool_result.tool_call_id.clone()),
+            });
         }
-    }
 
-    fn fail(&mut self, error: &str) -> WorkflowAction {
-        let (messages, turn_count) = match &self.state {
-            SessionState::Running {
-                messages,
-                turn_count,
-                ..
-            } => (messages.clone(), *turn_count),
-            SessionState::Waiting {
-                messages,
-                turn_count,
-            } => (messages.clone(), *turn_count),
-            _ => (Vec::new(), 0),
-        };
-
-        self.state = SessionState::Failed {
-            error: error.to_string(),
-            messages,
-            turn_count,
-        };
-
-        WorkflowAction::Complete {
-            output: SessionOutput {
-                session_id: self.input.session_id,
-                status: SessionStatus::Failed,
-                total_turns: turn_count,
-                error: Some(error.to_string()),
-            },
-        }
+        // Call LLM again with tool results
+        self.start_llm_call(agent_config, messages, turn_count, iteration + 1)
     }
 }
 
@@ -664,368 +612,226 @@ impl SessionWorkflow {
 mod tests {
     use super::*;
 
-    fn test_input() -> SessionInput {
-        SessionInput::new(Uuid::now_v7())
+    fn test_input() -> V2SessionWorkflowInput {
+        V2SessionWorkflowInput {
+            session_id: Uuid::nil(),
+            agent_id: Uuid::nil(),
+        }
     }
 
-    fn test_agent_config() -> AgentConfig {
-        AgentConfig::test("test-agent")
-            .with_system_prompt("You are helpful")
-            .with_tool(ToolDefinition::new("get_time", "Get current time"))
-    }
-
-    #[test]
-    fn test_workflow_start() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input.clone());
-
-        let action = workflow.on_start();
-
-        assert!(matches!(
-            action,
-            WorkflowAction::ScheduleActivity {
-                activity_type: ActivityType::LoadAgent,
-                ..
-            }
-        ));
-        assert!(matches!(workflow.state(), SessionState::Initializing));
-    }
-
-    #[test]
-    fn test_workflow_load_agent() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
-        workflow.on_start();
-
-        let agent_config = test_agent_config();
-        let action = workflow
-            .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
-
-        assert!(matches!(action, WorkflowAction::WaitForSignal));
-        assert!(workflow.is_waiting());
-    }
-
-    #[test]
-    fn test_workflow_new_message_starts_turn() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
-        // Initialize
-        workflow.on_start();
-        let agent_config = test_agent_config();
-        workflow
-            .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
-
-        // Send message
-        let signal = WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("Hello"),
-        });
-        let action = workflow.on_signal(signal);
-
-        assert!(matches!(
-            action,
-            WorkflowAction::ScheduleActivity {
-                activity_type: ActivityType::CallLlm,
-                ..
-            }
-        ));
-        assert!(workflow.is_running());
-    }
-
-    #[test]
-    fn test_workflow_message_rejected_while_running() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
-        // Initialize and start turn
-        workflow.on_start();
-        let agent_config = test_agent_config();
-        workflow
-            .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
-
-        let signal = WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("Hello"),
-        });
-        workflow.on_signal(signal);
-
-        // Try to send another message while running
-        let signal2 = WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("Another message"),
-        });
-        let action = workflow.on_signal(signal2);
-
-        assert!(matches!(action, WorkflowAction::None));
-        assert!(workflow.is_running());
-    }
-
-    #[test]
-    fn test_workflow_llm_response_without_tools() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
-        // Initialize and start turn
-        workflow.on_start();
-        let agent_config = test_agent_config();
-        workflow
-            .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
-
-        let signal = WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("Hello"),
-        });
-        workflow.on_signal(signal);
-
-        // LLM responds without tools
-        let llm_response = LlmResponse::text("Hello! How can I help?");
-        let action = workflow
-            .on_activity_completed("call-llm-2", serde_json::to_value(&llm_response).unwrap());
-
-        assert!(matches!(action, WorkflowAction::WaitForSignal));
-        assert!(workflow.is_waiting());
-
-        // Check messages
-        if let SessionState::Waiting { messages, .. } = workflow.state() {
-            assert_eq!(messages.len(), 2); // user + assistant
-            assert_eq!(messages[0].role, MessageRole::User);
-            assert_eq!(messages[1].role, MessageRole::Assistant);
-        } else {
-            panic!("Expected Waiting state");
+    fn test_agent_config() -> LoadAgentOutput {
+        LoadAgentOutput {
+            agent_id: Uuid::nil(),
+            name: "test-agent".to_string(),
+            model_id: "gpt-4".to_string(),
+            system_prompt: Some("You are helpful".to_string()),
+            temperature: None,
+            max_tokens: None,
+            capability_ids: vec![],
         }
     }
 
     #[test]
-    fn test_workflow_llm_response_with_tools() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
+    fn test_workflow_start() {
+        let mut workflow = V2SessionWorkflow::new(test_input());
+        let actions = workflow.on_start();
 
-        // Initialize and start turn
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            &actions[0],
+            V2WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::LOAD_AGENT
+        ));
+        assert!(matches!(
+            workflow.state(),
+            V2SessionState::LoadingAgent { .. }
+        ));
+    }
+
+    #[test]
+    fn test_workflow_load_agent_then_waiting() {
+        let mut workflow = V2SessionWorkflow::new(test_input());
         workflow.on_start();
+
+        let agent_config = test_agent_config();
+        let actions = workflow
+            .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
+
+        // Should return None action (waiting for signal)
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(&actions[0], V2WorkflowAction::None));
+        assert!(workflow.is_waiting_for_signal());
+    }
+
+    #[test]
+    fn test_workflow_new_message_starts_llm() {
+        let mut workflow = V2SessionWorkflow::new(test_input());
+        workflow.on_start();
+
         let agent_config = test_agent_config();
         workflow
             .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
 
-        let signal = WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("What time is it?"),
+        let signal = V2NewMessageSignal {
+            content: "Hello".to_string(),
+        };
+        let actions = workflow.on_new_message(signal);
+
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            &actions[0],
+            V2WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::CALL_LLM
+        ));
+        assert!(matches!(
+            workflow.state(),
+            V2SessionState::CallingLlm { .. }
+        ));
+    }
+
+    #[test]
+    fn test_workflow_llm_no_tools_returns_to_waiting() {
+        let mut workflow = V2SessionWorkflow::new(test_input());
+        workflow.on_start();
+
+        let agent_config = test_agent_config();
+        workflow
+            .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
+
+        workflow.on_new_message(V2NewMessageSignal {
+            content: "Hello".to_string(),
         });
-        workflow.on_signal(signal);
 
-        // LLM responds with tool call
-        let llm_response = LlmResponse::with_tools(
-            "Let me check the time",
-            vec![ToolCall::new("get_time", serde_json::json!({}))],
-        );
-        let action = workflow
-            .on_activity_completed("call-llm-2", serde_json::to_value(&llm_response).unwrap());
+        // LLM responds without tools
+        let llm_result = serde_json::json!({
+            "text": "Hello! How can I help?",
+            "tool_calls": []
+        });
+        let actions = workflow.on_activity_completed("call-llm-2", llm_result);
 
-        assert!(matches!(
-            action,
-            WorkflowAction::ScheduleParallelActivities { activities }
-            if activities.len() == 1
-        ));
-        assert!(workflow.is_running());
+        // Should return to waiting
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(&actions[0], V2WorkflowAction::None));
+        assert!(workflow.is_waiting_for_signal());
+
+        // Check turn count
+        if let V2SessionState::Waiting {
+            turn_count,
+            messages,
+            ..
+        } = workflow.state()
+        {
+            assert_eq!(*turn_count, 1);
+            assert_eq!(messages.len(), 2); // user + assistant
+        }
     }
 
     #[test]
-    fn test_workflow_tool_completion() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
-        // Initialize and start turn
+    fn test_workflow_llm_with_tools() {
+        let mut workflow = V2SessionWorkflow::new(test_input());
         workflow.on_start();
+
         let agent_config = test_agent_config();
         workflow
             .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
 
-        workflow.on_signal(WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("What time is it?"),
-        }));
+        workflow.on_new_message(V2NewMessageSignal {
+            content: "What time is it?".to_string(),
+        });
 
         // LLM responds with tool call
-        let llm_response = LlmResponse::with_tools(
-            "Let me check",
-            vec![ToolCall {
-                id: "call_123".to_string(),
-                name: "get_time".to_string(),
-                arguments: serde_json::json!({}),
-            }],
-        );
-        workflow.on_activity_completed("call-llm-2", serde_json::to_value(&llm_response).unwrap());
+        let llm_result = serde_json::json!({
+            "text": "Let me check",
+            "tool_calls": [{
+                "id": "call_123",
+                "name": "get_time",
+                "arguments": "{}"
+            }]
+        });
+        let actions = workflow.on_activity_completed("call-llm-2", llm_result);
 
-        // Tool completes
-        let tool_result = ExecuteSingleToolOutput {
-            result: ToolResult::success("call_123", serde_json::json!({"time": "12:00"})),
-        };
-        let action = workflow.on_activity_completed(
-            "tool-get_time-3",
-            serde_json::to_value(&tool_result).unwrap(),
-        );
-
-        // Should call LLM again
+        // Should schedule tool activity
+        assert_eq!(actions.len(), 1);
         assert!(matches!(
-            action,
-            WorkflowAction::ScheduleActivity {
-                activity_type: ActivityType::CallLlm,
-                ..
-            }
+            &actions[0],
+            V2WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::EXECUTE_SINGLE_TOOL
         ));
-    }
-
-    #[test]
-    fn test_workflow_parallel_tools() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
-        // Initialize
-        workflow.on_start();
-        let agent_config = AgentConfig::test("test-agent")
-            .with_tool(ToolDefinition::new("get_time", "Get time"))
-            .with_tool(ToolDefinition::new("get_weather", "Get weather"));
-        workflow
-            .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
-
-        workflow.on_signal(WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("What's the time and weather?"),
-        }));
-
-        // LLM responds with multiple tool calls
-        let llm_response = LlmResponse::with_tools(
-            "Let me check both",
-            vec![
-                ToolCall {
-                    id: "call_1".to_string(),
-                    name: "get_time".to_string(),
-                    arguments: serde_json::json!({}),
-                },
-                ToolCall {
-                    id: "call_2".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: serde_json::json!({}),
-                },
-            ],
-        );
-        let action = workflow
-            .on_activity_completed("call-llm-2", serde_json::to_value(&llm_response).unwrap());
-
-        // Should schedule 2 parallel activities
         assert!(matches!(
-            action,
-            WorkflowAction::ScheduleParallelActivities { activities }
-            if activities.len() == 2
-        ));
-
-        // First tool completes
-        let tool_result1 = ExecuteSingleToolOutput {
-            result: ToolResult::success("call_1", serde_json::json!({"time": "12:00"})),
-        };
-        let action = workflow.on_activity_completed(
-            "tool-get_time-3",
-            serde_json::to_value(&tool_result1).unwrap(),
-        );
-
-        // Should wait for second tool
-        assert!(matches!(action, WorkflowAction::None));
-
-        // Second tool completes
-        let tool_result2 = ExecuteSingleToolOutput {
-            result: ToolResult::success("call_2", serde_json::json!({"temp": 72})),
-        };
-        let action = workflow.on_activity_completed(
-            "tool-get_weather-4",
-            serde_json::to_value(&tool_result2).unwrap(),
-        );
-
-        // Now should call LLM again
-        assert!(matches!(
-            action,
-            WorkflowAction::ScheduleActivity {
-                activity_type: ActivityType::CallLlm,
-                ..
-            }
+            workflow.state(),
+            V2SessionState::ExecutingTools { .. }
         ));
     }
 
     #[test]
     fn test_workflow_shutdown() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
+        let mut workflow = V2SessionWorkflow::new(test_input());
         workflow.on_start();
+
         let agent_config = test_agent_config();
         workflow
             .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
 
-        let action = workflow.on_signal(WorkflowSignal::Shutdown);
+        let actions = workflow.on_shutdown();
 
+        assert_eq!(actions.len(), 1);
         assert!(matches!(
-            action,
-            WorkflowAction::Complete { output }
-            if output.status == SessionStatus::Completed
+            &actions[0],
+            V2WorkflowAction::CompleteWorkflow { result }
+            if result.status == "completed"
         ));
-        assert!(workflow.is_terminal());
     }
 
     #[test]
-    fn test_workflow_activity_failure() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
+    fn test_workflow_message_ignored_while_running() {
+        let mut workflow = V2SessionWorkflow::new(test_input());
         workflow.on_start();
+
         let agent_config = test_agent_config();
         workflow
             .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
 
-        workflow.on_signal(WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("Hello"),
-        }));
+        workflow.on_new_message(V2NewMessageSignal {
+            content: "Hello".to_string(),
+        });
 
-        let action = workflow.on_activity_failed("call-llm-2", "Connection timeout");
+        // Now in CallingLlm state - message should be ignored
+        let actions = workflow.on_new_message(V2NewMessageSignal {
+            content: "Another message".to_string(),
+        });
 
-        assert!(matches!(
-            action,
-            WorkflowAction::Complete { output }
-            if output.status == SessionStatus::Failed
-        ));
-        assert!(workflow.is_terminal());
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(&actions[0], V2WorkflowAction::None));
     }
 
     #[test]
-    fn test_multiple_turns() {
-        let input = test_input();
-        let mut workflow = SessionWorkflow::new(input);
-
-        // Initialize
+    fn test_workflow_multiple_turns() {
+        let mut workflow = V2SessionWorkflow::new(test_input());
         workflow.on_start();
+
         let agent_config = test_agent_config();
         workflow
             .on_activity_completed("load-agent-1", serde_json::to_value(&agent_config).unwrap());
 
-        // First turn
-        workflow.on_signal(WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("Hello"),
-        }));
+        // Turn 1
+        workflow.on_new_message(V2NewMessageSignal {
+            content: "Hello".to_string(),
+        });
         workflow.on_activity_completed(
             "call-llm-2",
-            serde_json::to_value(&LlmResponse::text("Hi there!")).unwrap(),
+            serde_json::json!({"text": "Hi!", "tool_calls": []}),
         );
 
-        assert!(workflow.is_waiting());
-
-        // Check turn count
-        if let SessionState::Waiting { turn_count, .. } = workflow.state() {
-            assert_eq!(*turn_count, 1);
-        }
-
-        // Second turn
-        workflow.on_signal(WorkflowSignal::NewMessage(NewMessageSignal {
-            message: Message::user("How are you?"),
-        }));
+        // Turn 2
+        workflow.on_new_message(V2NewMessageSignal {
+            content: "Bye".to_string(),
+        });
         workflow.on_activity_completed(
             "call-llm-3",
-            serde_json::to_value(&LlmResponse::text("I'm doing well!")).unwrap(),
+            serde_json::json!({"text": "Goodbye!", "tool_calls": []}),
         );
 
-        // Check turn count
-        if let SessionState::Waiting {
+        if let V2SessionState::Waiting {
             turn_count,
             messages,
             ..

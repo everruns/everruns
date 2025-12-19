@@ -1,20 +1,12 @@
-// V2 Agent Workflow - Session-based infinite loop workflow
+// V2 Session Workflow - Temporal-based infinite loop workflow
 //
 // Decision: Workflow represents a session (not a single turn)
-// Decision: Infinite loop structure: input -> (agent -> tools) -> output -> wait
-// Decision: LLM Call is an activity
-// Decision: Tool calls can run in parallel
-// Decision: When new message arrives: error if running, add message if waiting
-//
-// This module provides an isolated, runnable, and testable workflow implementation
-// that does not depend on external infrastructure (Temporal, database, etc.)
+// Decision: Infinite loop structure: input -> (agent -> tools) -> output -> wait for signal
+// Decision: LLM Call is a Temporal activity
+// Decision: Tool calls can run in parallel as separate activities
+// Decision: Uses Temporal signals to receive new messages
+// Decision: Error if message arrives while running, accept if waiting
 
-pub mod activities;
-pub mod executor;
-pub mod types;
 pub mod workflow;
 
-pub use activities::*;
-pub use executor::*;
-pub use types::*;
 pub use workflow::*;
