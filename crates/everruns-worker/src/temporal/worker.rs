@@ -246,6 +246,18 @@ async fn process_workflow_activation(
     let mut workflows_guard = workflows.lock().await;
     let mut commands = vec![];
 
+    debug!(
+        run_id = %task.run_id,
+        job_count = task.jobs.len(),
+        jobs = ?task.jobs.iter().map(|j| match &j.variant {
+            Some(wf_activation_job::Variant::StartWorkflow(_)) => "StartWorkflow",
+            Some(wf_activation_job::Variant::ResolveActivity(r)) => &r.activity_id,
+            Some(wf_activation_job::Variant::RemoveFromCache(_)) => "RemoveFromCache",
+            _ => "Other",
+        }).collect::<Vec<_>>(),
+        "Processing workflow activation"
+    );
+
     for job in &task.jobs {
         match &job.variant {
             Some(wf_activation_job::Variant::StartWorkflow(start)) => {
@@ -280,8 +292,30 @@ async fn process_workflow_activation(
             }
 
             Some(wf_activation_job::Variant::ResolveActivity(resolve)) => {
+                // Log the activity result status
+                let result_status = match &resolve.result {
+                    Some(ActivityResult {
+                        status: Some(activity_result::activity_result::Status::Completed(_)),
+                    }) => "Completed",
+                    Some(ActivityResult {
+                        status: Some(activity_result::activity_result::Status::Failed(f)),
+                    }) => {
+                        debug!(
+                            activity_id = %resolve.activity_id,
+                            failure_message = ?f.failure.as_ref().map(|f| &f.message),
+                            "Activity failed"
+                        );
+                        "Failed"
+                    }
+                    Some(ActivityResult {
+                        status: Some(activity_result::activity_result::Status::Canceled(_)),
+                    }) => "Canceled",
+                    _ => "Unknown",
+                };
+
                 debug!(
                     activity_id = %resolve.activity_id,
+                    result_status = %result_status,
                     "Activity resolved"
                 );
 
@@ -296,6 +330,11 @@ async fn process_workflow_activation(
                                 .as_ref()
                                 .map(|p| serde_json::from_slice(&p.data).unwrap_or_default())
                                 .unwrap_or_default();
+                            debug!(
+                                activity_id = %resolve.activity_id,
+                                result = %result,
+                                "Activity completed with result"
+                            );
                             workflow.on_activity_completed(&resolve.activity_id, result)
                         }
                         Some(ActivityResult {
@@ -306,6 +345,11 @@ async fn process_workflow_activation(
                                 .as_ref()
                                 .map(|f| f.message.clone())
                                 .unwrap_or_else(|| "Unknown error".to_string());
+                            error!(
+                                activity_id = %resolve.activity_id,
+                                error = %error,
+                                "Activity FAILED - calling on_activity_failed"
+                            );
                             workflow.on_activity_failed(&resolve.activity_id, &error)
                         }
                         _ => {
@@ -322,6 +366,12 @@ async fn process_workflow_activation(
                             commands.push(cmd);
                         }
                     }
+                } else {
+                    warn!(
+                        run_id = %task.run_id,
+                        activity_id = %resolve.activity_id,
+                        "Workflow not found in cache for activity resolution"
+                    );
                 }
             }
 
@@ -405,8 +455,18 @@ async fn poll_and_process_activity_task(core: &TemporalWorkerCore, db: &Database
     // Poll for activity task
     let task = core.core().poll_activity_task().await?;
 
+    // Check for empty task token (invalid task)
+    if task.task_token.is_empty() {
+        warn!("Received activity task with empty task token, skipping");
+        return Ok(());
+    }
+
     debug!(
-        task_token = ?task.task_token,
+        task_token_len = task.task_token.len(),
+        variant = ?task.variant.as_ref().map(|v| match v {
+            activity_task::Variant::Start(s) => format!("Start({})", s.activity_type),
+            activity_task::Variant::Cancel(_) => "Cancel".to_string(),
+        }),
         "Received activity task"
     );
 
@@ -430,8 +490,33 @@ async fn process_activity(task: &ActivityTask, db: &Database) -> ActivityResult 
 
     match &task.variant {
         Some(activity_task::Variant::Start(start)) => {
+            // Check for empty activity type - this can happen with synthetic tasks
+            if start.activity_type.is_empty() {
+                error!(
+                    workflow_execution = ?start.workflow_execution,
+                    workflow_type = %start.workflow_type,
+                    "Received activity task with empty activity_type - this may indicate a Temporal SDK issue or workflow bug"
+                );
+                return ActivityResult {
+                    status: Some(activity_result::activity_result::Status::Failed(
+                        activity_result::Failure {
+                            failure: Some(
+                                temporal_sdk_core::protos::coresdk::common::UserCodeFailure {
+                                    message: format!(
+                                        "Activity task has empty activity_type (workflow_type: {})",
+                                        start.workflow_type
+                                    ),
+                                    ..Default::default()
+                                },
+                            ),
+                        },
+                    )),
+                };
+            }
+
             info!(
                 activity_type = %start.activity_type,
+                workflow_type = %start.workflow_type,
                 "Executing activity"
             );
 
@@ -452,13 +537,24 @@ async fn process_activity(task: &ActivityTask, db: &Database) -> ActivityResult 
                     })
                 }
                 Err(e) => {
-                    error!(error = %e, activity_type = %start.activity_type, "Activity failed");
+                    // Log the full error chain for debugging
+                    let error_chain: Vec<String> = e.chain().map(|err| err.to_string()).collect();
+                    error!(
+                        error = %e,
+                        error_chain = ?error_chain,
+                        activity_type = %start.activity_type,
+                        workflow_type = %start.workflow_type,
+                        "Activity failed"
+                    );
+                    // Include the full error message in the Temporal failure
+                    // This will be visible in Temporal UI and propagated to the workflow
+                    let full_error = format!("{:#}", e);
                     ActivityResult {
                         status: Some(activity_result::activity_result::Status::Failed(
                             activity_result::Failure {
                                 failure: Some(
                                     temporal_sdk_core::protos::coresdk::common::UserCodeFailure {
-                                        message: e.to_string(),
+                                        message: full_error,
                                         ..Default::default()
                                     },
                                 ),
@@ -537,7 +633,25 @@ async fn execute_activity(
             save_message_activity(ctx, db, input).await?;
             Ok(serde_json::json!({}))
         }
-        _ => Err(anyhow::anyhow!("Unknown activity type: {}", activity_type)),
+        // Step-based activities are defined but not yet implemented in the main workflow
+        activity_names::SETUP_STEP
+        | activity_names::EXECUTE_LLM_STEP
+        | activity_names::EXECUTE_SINGLE_TOOL
+        | activity_names::FINALIZE_STEP => Err(anyhow::anyhow!(
+            "Step-based activity '{}' is not yet implemented in the main workflow. \
+                Known activities: load_agent, load_messages, update_status, persist_event, \
+                call_llm, execute_tools, save_message",
+            activity_type
+        )),
+        _ => {
+            // Provide a helpful error message with known activity types
+            Err(anyhow::anyhow!(
+                "Unknown activity type: '{}'. Known activities: load_agent, load_messages, \
+                update_status, persist_event, call_llm, execute_tools, save_message. \
+                This may indicate a workflow bug or version mismatch.",
+                activity_type
+            ))
+        }
     }
 }
 

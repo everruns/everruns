@@ -5,11 +5,15 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize logging with LOG_LEVEL env var (default: debug)
+    // Supports: trace, debug, info, warn, error
+    // Can also use RUST_LOG for more fine-grained control
+    let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "debug".to_string());
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| format!("everruns_worker={}", log_level).into());
+
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "everruns_worker=debug".into()),
-        )
+        .with(env_filter)
         .with(tracing_subscriber::fmt::layer())
         .init();
 

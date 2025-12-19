@@ -49,6 +49,9 @@ pub struct LoadAgentOutput {
     pub system_prompt: Option<String>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    /// Capability IDs enabled for this agent (e.g., ["current_time", "research"])
+    #[serde(default)]
+    pub capability_ids: Vec<String>,
 }
 
 /// Input for the LoadMessages activity
@@ -62,6 +65,12 @@ pub struct LoadMessagesInput {
 pub struct MessageData {
     pub role: String,
     pub content: String,
+    /// Tool calls for assistant messages (when the assistant requests tool execution)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCallData>>,
+    /// Tool call ID for tool result messages (links result to the original tool call)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 /// Output from LoadMessages activity
@@ -95,6 +104,9 @@ pub struct CallLlmInput {
     pub system_prompt: Option<String>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    /// Capability IDs to apply (resolve to tools)
+    #[serde(default)]
+    pub capability_ids: Vec<String>,
 }
 
 /// A tool call from the LLM
@@ -142,6 +154,9 @@ pub struct SaveMessageInput {
     pub session_id: Uuid,
     pub role: String,
     pub content: serde_json::Value,
+    /// Tool call ID for tool result messages (links result to the original tool call)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 /// Constants for activity names (used for registration and invocation)
@@ -255,4 +270,206 @@ pub struct FinalizeStepOutput {
     pub status: String,
     /// The finalize step record
     pub step: LoopStep,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_data_serialization_with_tool_calls() {
+        let tool_calls = vec![ToolCallData {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: r#"{"location": "NYC"}"#.to_string(),
+            tool_definition_json: None,
+        }];
+
+        let msg = MessageData {
+            role: "assistant".to_string(),
+            content: "Let me check the weather.".to_string(),
+            tool_calls: Some(tool_calls),
+            tool_call_id: None,
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: MessageData = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.role, "assistant");
+        assert_eq!(parsed.content, "Let me check the weather.");
+        assert!(parsed.tool_calls.is_some());
+        assert_eq!(parsed.tool_calls.as_ref().unwrap().len(), 1);
+        assert_eq!(parsed.tool_calls.as_ref().unwrap()[0].id, "call_123");
+        assert_eq!(parsed.tool_calls.as_ref().unwrap()[0].name, "get_weather");
+        assert!(parsed.tool_call_id.is_none());
+    }
+
+    #[test]
+    fn test_message_data_serialization_with_tool_call_id() {
+        let msg = MessageData {
+            role: "tool".to_string(),
+            content: r#"{"temperature": 72, "unit": "F"}"#.to_string(),
+            tool_calls: None,
+            tool_call_id: Some("call_123".to_string()),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: MessageData = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.role, "tool");
+        assert!(parsed.tool_calls.is_none());
+        assert_eq!(parsed.tool_call_id, Some("call_123".to_string()));
+    }
+
+    #[test]
+    fn test_message_data_serialization_simple_user_message() {
+        let msg = MessageData {
+            role: "user".to_string(),
+            content: "What's the weather?".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        // Verify that None fields are skipped in serialization
+        assert!(!json.contains("tool_calls"));
+        assert!(!json.contains("tool_call_id"));
+
+        let parsed: MessageData = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.role, "user");
+        assert_eq!(parsed.content, "What's the weather?");
+        assert!(parsed.tool_calls.is_none());
+        assert!(parsed.tool_call_id.is_none());
+    }
+
+    #[test]
+    fn test_message_data_deserialization_from_minimal_json() {
+        // Test backward compatibility - can deserialize JSON without tool fields
+        let json = r#"{"role": "user", "content": "Hello"}"#;
+        let parsed: MessageData = serde_json::from_str(json).unwrap();
+
+        assert_eq!(parsed.role, "user");
+        assert_eq!(parsed.content, "Hello");
+        assert!(parsed.tool_calls.is_none());
+        assert!(parsed.tool_call_id.is_none());
+    }
+
+    #[test]
+    fn test_tool_call_data_arguments_as_json_string() {
+        let tc = ToolCallData {
+            id: "call_abc".to_string(),
+            name: "search".to_string(),
+            arguments: r#"{"query": "rust programming", "limit": 10}"#.to_string(),
+            tool_definition_json: None,
+        };
+
+        // Verify arguments can be parsed as valid JSON
+        let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap();
+        assert_eq!(args["query"], "rust programming");
+        assert_eq!(args["limit"], 10);
+    }
+
+    #[test]
+    fn test_call_llm_output_with_tool_calls() {
+        let output = CallLlmOutput {
+            text: "I'll help you with that.".to_string(),
+            tool_calls: Some(vec![
+                ToolCallData {
+                    id: "call_1".to_string(),
+                    name: "tool_a".to_string(),
+                    arguments: "{}".to_string(),
+                    tool_definition_json: None,
+                },
+                ToolCallData {
+                    id: "call_2".to_string(),
+                    name: "tool_b".to_string(),
+                    arguments: r#"{"x": 1}"#.to_string(),
+                    tool_definition_json: None,
+                },
+            ]),
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        let parsed: CallLlmOutput = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.text, "I'll help you with that.");
+        assert!(parsed.tool_calls.is_some());
+        assert_eq!(parsed.tool_calls.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_call_llm_output_without_tool_calls() {
+        let output = CallLlmOutput {
+            text: "The answer is 42.".to_string(),
+            tool_calls: None,
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        let parsed: CallLlmOutput = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.text, "The answer is 42.");
+        assert!(parsed.tool_calls.is_none());
+    }
+
+    #[test]
+    fn test_tool_result_data_with_success() {
+        let result = ToolResultData {
+            tool_call_id: "call_123".to_string(),
+            result: Some(serde_json::json!({"status": "ok", "data": [1, 2, 3]})),
+            error: None,
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: ToolResultData = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.tool_call_id, "call_123");
+        assert!(parsed.result.is_some());
+        assert!(parsed.error.is_none());
+    }
+
+    #[test]
+    fn test_tool_result_data_with_error() {
+        let result = ToolResultData {
+            tool_call_id: "call_456".to_string(),
+            result: None,
+            error: Some("Tool execution failed: timeout".to_string()),
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: ToolResultData = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.tool_call_id, "call_456");
+        assert!(parsed.result.is_none());
+        assert_eq!(
+            parsed.error,
+            Some("Tool execution failed: timeout".to_string())
+        );
+    }
+
+    #[test]
+    fn test_execute_tools_output() {
+        let output = ExecuteToolsOutput {
+            results: vec![
+                ToolResultData {
+                    tool_call_id: "call_1".to_string(),
+                    result: Some(serde_json::json!("success")),
+                    error: None,
+                },
+                ToolResultData {
+                    tool_call_id: "call_2".to_string(),
+                    result: None,
+                    error: Some("failed".to_string()),
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        let parsed: ExecuteToolsOutput = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.results.len(), 2);
+        assert_eq!(parsed.results[0].tool_call_id, "call_1");
+        assert!(parsed.results[0].result.is_some());
+        assert_eq!(parsed.results[1].tool_call_id, "call_2");
+        assert!(parsed.results[1].error.is_some());
+    }
 }

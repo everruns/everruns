@@ -193,10 +193,24 @@ impl AgentRunWorkflow {
         activity_id: &str,
         result: serde_json::Value,
     ) -> Vec<WorkflowAction> {
+        // Log the state BEFORE processing
+        let state_name = match &self.state {
+            AgentRunWorkflowState::Starting => "Starting",
+            AgentRunWorkflowState::LoadingAgent { .. } => "LoadingAgent",
+            AgentRunWorkflowState::LoadingMessages { .. } => "LoadingMessages",
+            AgentRunWorkflowState::CallingLlm { .. } => "CallingLlm",
+            AgentRunWorkflowState::ExecutingTools { .. } => "ExecutingTools",
+            AgentRunWorkflowState::SavingMessage { .. } => "SavingMessage",
+            AgentRunWorkflowState::UpdatingStatus { .. } => "UpdatingStatus",
+            AgentRunWorkflowState::Completed => "Completed",
+            AgentRunWorkflowState::Failed { .. } => "Failed",
+        };
         info!(
             activity_id = %activity_id,
-            state = ?std::mem::discriminant(&self.state),
-            "Activity completed"
+            session_id = %self.input.session_id,
+            state = %state_name,
+            state_discriminant = ?std::mem::discriminant(&self.state),
+            "Activity completed - processing"
         );
 
         match &self.state {
@@ -209,15 +223,36 @@ impl AgentRunWorkflow {
                     return vec![];
                 }
 
+                // Debug log the raw result
+                tracing::debug!(
+                    session_id = %self.input.session_id,
+                    result = %result,
+                    "LoadingAgent: received activity result"
+                );
+
                 // Parse agent config
-                let agent_config: LoadAgentOutput = match serde_json::from_value(result) {
+                let agent_config: LoadAgentOutput = match serde_json::from_value(result.clone()) {
                     Ok(config) => config,
                     Err(e) => {
+                        warn!(
+                            session_id = %self.input.session_id,
+                            error = %e,
+                            result = %result,
+                            "Failed to parse agent config"
+                        );
                         return vec![
                             self.fail_workflow(&format!("Failed to parse agent config: {}", e))
                         ];
                     }
                 };
+
+                info!(
+                    session_id = %self.input.session_id,
+                    agent_id = %agent_config.agent_id,
+                    agent_name = %agent_config.name,
+                    capability_count = agent_config.capability_ids.len(),
+                    "LoadingAgent: parsed agent config, loading messages"
+                );
 
                 // Now load messages
                 let activity_id = self.next_activity_id("load-messages");
@@ -238,17 +273,49 @@ impl AgentRunWorkflow {
             }
 
             AgentRunWorkflowState::LoadingMessages { agent_config, .. } => {
+                // The update-status activity from on_start() may complete while we're in this state
+                // Just ignore it and wait for load-messages to complete
+                if activity_id.starts_with("update-status") {
+                    tracing::debug!(
+                        session_id = %self.input.session_id,
+                        activity_id = %activity_id,
+                        "LoadingMessages: ignoring update-status activity completion"
+                    );
+                    return vec![];
+                }
+
                 let agent_config = agent_config.clone();
 
+                // Debug log the raw result
+                tracing::debug!(
+                    session_id = %self.input.session_id,
+                    result = %result,
+                    "LoadingMessages: received activity result"
+                );
+
                 // Parse messages
-                let messages_output: LoadMessagesOutput = match serde_json::from_value(result) {
+                let messages_output: LoadMessagesOutput = match serde_json::from_value(
+                    result.clone(),
+                ) {
                     Ok(output) => output,
                     Err(e) => {
+                        warn!(
+                            session_id = %self.input.session_id,
+                            error = %e,
+                            result = %result,
+                            "Failed to parse messages output - this is causing the workflow to fail"
+                        );
                         return vec![
                             self.fail_workflow(&format!("Failed to parse messages: {}", e))
                         ];
                     }
                 };
+
+                info!(
+                    session_id = %self.input.session_id,
+                    message_count = messages_output.messages.len(),
+                    "LoadingMessages: parsed messages, calling LLM"
+                );
 
                 // Now call LLM
                 self.call_llm(agent_config, messages_output.messages, 1)
@@ -260,6 +327,20 @@ impl AgentRunWorkflow {
                 iteration,
                 ..
             } => {
+                // Check which activity completed
+                // We may receive save message completions from previous iteration
+                if activity_id.starts_with("save-assistant-msg")
+                    || activity_id.starts_with("save-tool-msg")
+                    || activity_id.starts_with("save-tool-call-msg")
+                {
+                    tracing::debug!(
+                        session_id = %self.input.session_id,
+                        activity_id = %activity_id,
+                        "CallingLlm: ignoring save message activity completion"
+                    );
+                    return vec![];
+                }
+
                 let agent_config = agent_config.clone();
                 let mut messages = messages.clone();
                 let iteration = *iteration;
@@ -274,20 +355,56 @@ impl AgentRunWorkflow {
                     }
                 };
 
-                // Add assistant message to history
+                // Check if there are tool calls
+                if let Some(ref tool_calls) = llm_output.tool_calls {
+                    if !tool_calls.is_empty() {
+                        // Build save actions:
+                        // 1. Assistant message with tool_calls (for LLM context on reload)
+                        // 2. Individual tool_call messages (for UI display as ToolCallCard)
+                        let mut save_actions = Vec::new();
+
+                        // Save assistant message with embedded tool_calls (for LLM API compatibility)
+                        save_actions.push(
+                            self.save_assistant_message_action(&llm_output.text, Some(tool_calls)),
+                        );
+
+                        // Save individual tool_call messages (for UI display)
+                        for tool_call in tool_calls {
+                            save_actions.push(self.save_tool_call_action(tool_call));
+                        }
+
+                        // Add assistant message with tool_calls to history
+                        // This is required by OpenAI - assistant message with tool_calls must precede tool results
+                        messages.push(MessageData {
+                            role: "assistant".to_string(),
+                            content: llm_output.text.clone(),
+                            tool_calls: Some(tool_calls.clone()),
+                            tool_call_id: None,
+                        });
+
+                        // Execute tools (schedule save actions and execute in parallel)
+                        let mut actions = self.execute_tools(
+                            agent_config,
+                            messages,
+                            llm_output.tool_calls.unwrap(),
+                            iteration,
+                        );
+                        // Add save actions first (will run in parallel with tool execution)
+                        for (i, save_action) in save_actions.into_iter().enumerate() {
+                            actions.insert(i, save_action);
+                        }
+                        return actions;
+                    }
+                }
+
+                // No tool calls - add assistant message without tool_calls
                 if !llm_output.text.is_empty() {
                     messages.push(MessageData {
                         role: "assistant".to_string(),
                         content: llm_output.text.clone(),
+                        tool_calls: None,
+                        tool_call_id: None,
                     });
-                }
-
-                // Check if there are tool calls
-                if let Some(tool_calls) = llm_output.tool_calls {
-                    if !tool_calls.is_empty() {
-                        // Execute tools
-                        return self.execute_tools(agent_config, messages, tool_calls, iteration);
-                    }
                 }
 
                 // No tool calls - save message and complete
@@ -300,6 +417,19 @@ impl AgentRunWorkflow {
                 iteration,
                 ..
             } => {
+                // Check which activity completed
+                // We may receive save message completions - ignore them
+                if activity_id.starts_with("save-assistant-msg")
+                    || activity_id.starts_with("save-tool-call-msg")
+                {
+                    tracing::debug!(
+                        session_id = %self.input.session_id,
+                        activity_id = %activity_id,
+                        "ExecutingTools: ignoring save message activity completion"
+                    );
+                    return vec![];
+                }
+
                 let agent_config = agent_config.clone();
                 let mut messages = messages.clone();
                 let iteration = *iteration;
@@ -314,19 +444,33 @@ impl AgentRunWorkflow {
                     }
                 };
 
-                // Add tool results to messages
+                // Save tool result messages to database and add to in-memory history
+                // Each tool result must include tool_call_id to link back to the original tool call
+                let mut save_actions: Vec<WorkflowAction> = Vec::new();
+
                 for tool_result in tools_output.results {
-                    let content = if let Some(result) = tool_result.result {
+                    // Save tool result message to database (UI-compatible format)
+                    save_actions.push(self.save_tool_result_action(
+                        &tool_result.tool_call_id,
+                        tool_result.result.as_ref(),
+                        tool_result.error.as_deref(),
+                    ));
+
+                    // Build text content for in-memory message history (OpenAI API format)
+                    let content = if let Some(ref result) = tool_result.result {
                         serde_json::to_string(&result).unwrap_or_default()
-                    } else if let Some(error) = tool_result.error {
+                    } else if let Some(ref error) = tool_result.error {
                         format!("Error: {}", error)
                     } else {
                         "No result".to_string()
                     };
 
+                    // Add to in-memory message history
                     messages.push(MessageData {
                         role: "tool".to_string(),
                         content,
+                        tool_calls: None,
+                        tool_call_id: Some(tool_result.tool_call_id),
                     });
                 }
 
@@ -337,11 +481,17 @@ impl AgentRunWorkflow {
                         iteration = iteration,
                         "Max tool iterations reached"
                     );
-                    return self.complete_workflow("pending".to_string());
+                    // Still save tool results before completing
+                    let mut actions = save_actions;
+                    actions.extend(self.complete_workflow("pending".to_string()));
+                    return actions;
                 }
 
                 // Continue with another LLM call
-                self.call_llm(agent_config, messages, iteration + 1)
+                // Schedule save actions in parallel with the LLM call
+                let mut actions = save_actions;
+                actions.extend(self.call_llm(agent_config, messages, iteration + 1));
+                actions
             }
 
             AgentRunWorkflowState::SavingMessage {
@@ -386,10 +536,13 @@ impl AgentRunWorkflow {
 
     /// Process activity failure
     pub fn on_activity_failed(&mut self, activity_id: &str, error: &str) -> Vec<WorkflowAction> {
-        warn!(
+        // Log the failure with full context
+        tracing::error!(
+            session_id = %self.input.session_id,
             activity_id = %activity_id,
             error = %error,
-            "Activity failed"
+            state = ?std::mem::discriminant(&self.state),
+            "Activity failed - this is causing the workflow to fail"
         );
 
         vec![self.fail_workflow(&format!("Activity {} failed: {}", activity_id, error))]
@@ -412,6 +565,7 @@ impl AgentRunWorkflow {
             system_prompt: agent_config.system_prompt.clone(),
             temperature: agent_config.temperature,
             max_tokens: agent_config.max_tokens,
+            capability_ids: agent_config.capability_ids.clone(),
         };
 
         self.state = AgentRunWorkflowState::CallingLlm {
@@ -474,6 +628,7 @@ impl AgentRunWorkflow {
             session_id: self.input.session_id,
             role: "assistant".to_string(),
             content: json!({ "text": assistant_text.clone() }),
+            tool_call_id: None,
         };
 
         self.state = AgentRunWorkflowState::SavingMessage {
@@ -490,6 +645,110 @@ impl AgentRunWorkflow {
             activity_type: activity_names::SAVE_MESSAGE.to_string(),
             input: serde_json::to_value(&input).unwrap(),
         }]
+    }
+
+    /// Build content JSON for assistant message with optional tool_calls
+    fn build_assistant_content(
+        text: &str,
+        tool_calls: Option<&[ToolCallData]>,
+    ) -> serde_json::Value {
+        match tool_calls {
+            Some(calls) if !calls.is_empty() => {
+                json!({
+                    "text": text,
+                    "tool_calls": calls
+                })
+            }
+            _ => json!({ "text": text }),
+        }
+    }
+
+    /// Create a save message action for an assistant message with tool_calls
+    fn save_assistant_message_action(
+        &mut self,
+        text: &str,
+        tool_calls: Option<&[ToolCallData]>,
+    ) -> WorkflowAction {
+        let activity_id = self.next_activity_id("save-assistant-msg");
+        let input = SaveMessageInput {
+            session_id: self.input.session_id,
+            role: "assistant".to_string(),
+            content: Self::build_assistant_content(text, tool_calls),
+            tool_call_id: None,
+        };
+
+        WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::SAVE_MESSAGE.to_string(),
+            input: serde_json::to_value(&input).unwrap(),
+        }
+    }
+
+    /// Create a save message action for a tool call (for UI display)
+    /// This creates a separate message with role "tool_call" containing the tool call details
+    fn save_tool_call_action(&mut self, tool_call: &ToolCallData) -> WorkflowAction {
+        let activity_id = self.next_activity_id("save-tool-call-msg");
+        let input = SaveMessageInput {
+            session_id: self.input.session_id,
+            // Use "tool_call" for database (matches messages_role_check constraint)
+            role: "tool_call".to_string(),
+            content: json!({
+                "id": tool_call.id,
+                "name": tool_call.name,
+                "arguments": serde_json::from_str::<serde_json::Value>(&tool_call.arguments)
+                    .unwrap_or(json!({}))
+            }),
+            tool_call_id: None, // Not needed for tool_call messages
+        };
+
+        WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::SAVE_MESSAGE.to_string(),
+            input: serde_json::to_value(&input).unwrap(),
+        }
+    }
+
+    /// Create a save message action for a tool result
+    /// Content is stored in UI-compatible format: { result?: Value, error?: String, text?: String }
+    fn save_tool_result_action(
+        &mut self,
+        tool_call_id: &str,
+        result: Option<&serde_json::Value>,
+        error: Option<&str>,
+    ) -> WorkflowAction {
+        let activity_id = self.next_activity_id("save-tool-msg");
+
+        // Build content in UI-compatible format
+        let content = if let Some(err) = error {
+            json!({
+                "error": err,
+                "text": format!("Error: {}", err)
+            })
+        } else if let Some(res) = result {
+            json!({
+                "result": res,
+                "text": serde_json::to_string(res).unwrap_or_default()
+            })
+        } else {
+            json!({
+                "text": "No result"
+            })
+        };
+
+        let input = SaveMessageInput {
+            session_id: self.input.session_id,
+            // Use "tool_result" for database (matches messages_role_check constraint)
+            // This gets converted back to "tool" when loading messages for OpenAI API
+            role: "tool_result".to_string(),
+            content,
+            tool_call_id: Some(tool_call_id.to_string()),
+        };
+
+        WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::SAVE_MESSAGE.to_string(),
+            input: serde_json::to_value(&input).unwrap(),
+        }
     }
 
     /// Complete workflow with final status
@@ -518,6 +777,13 @@ impl AgentRunWorkflow {
 
     /// Fail workflow
     fn fail_workflow(&mut self, error: &str) -> WorkflowAction {
+        // Log the failure with full error details
+        tracing::error!(
+            session_id = %self.input.session_id,
+            error = %error,
+            "Workflow failing"
+        );
+
         self.state = AgentRunWorkflowState::Failed {
             error: error.to_string(),
         };
@@ -595,6 +861,7 @@ mod tests {
             system_prompt: Some("You are helpful".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(1000),
+            capability_ids: vec![],
         };
 
         let actions = workflow
@@ -636,6 +903,618 @@ mod tests {
             WorkflowAction::ScheduleActivity { activity_type, .. }
             if activity_type == activity_names::SETUP_STEP
         )));
+    }
+
+    #[test]
+    fn test_workflow_with_tool_calls() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input.clone());
+
+        // Start workflow
+        workflow.on_start();
+
+        // Complete load agent activity
+        let agent_output = LoadAgentOutput {
+            agent_id: input.agent_id,
+            name: "Test Agent".to_string(),
+            model_id: "gpt-4".to_string(),
+            system_prompt: Some("You are helpful".to_string()),
+            temperature: Some(0.7),
+            max_tokens: Some(1000),
+            capability_ids: vec!["CurrentTime".to_string()],
+        };
+
+        workflow
+            .on_activity_completed("load-agent-2", serde_json::to_value(&agent_output).unwrap());
+
+        // Complete load messages with just a user message
+        let messages_output = LoadMessagesOutput {
+            messages: vec![MessageData {
+                role: "user".to_string(),
+                content: "What time is it?".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+        };
+
+        let actions = workflow.on_activity_completed(
+            "load-messages-3",
+            serde_json::to_value(&messages_output).unwrap(),
+        );
+
+        // Should schedule call-llm
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            &actions[0],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::CALL_LLM
+        ));
+
+        // Simulate LLM response with tool calls
+        let llm_output = CallLlmOutput {
+            text: "Let me check the time.".to_string(),
+            tool_calls: Some(vec![ToolCallData {
+                id: "call_abc123".to_string(),
+                name: "get_current_time".to_string(),
+                arguments: r#"{"timezone": "UTC"}"#.to_string(),
+                tool_definition_json: None,
+            }]),
+        };
+
+        let actions = workflow
+            .on_activity_completed("call-llm-4", serde_json::to_value(&llm_output).unwrap());
+
+        // Should schedule:
+        // 1. save-assistant-msg (assistant message with tool_calls for LLM context)
+        // 2. save-tool-call-msg (tool_call message for UI display)
+        // 3. execute-tools (actual tool execution)
+        assert_eq!(actions.len(), 3);
+        assert!(matches!(
+            &actions[0],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::SAVE_MESSAGE
+        ));
+        assert!(matches!(
+            &actions[1],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::SAVE_MESSAGE
+        ));
+        assert!(matches!(
+            &actions[2],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::EXECUTE_TOOLS
+        ));
+
+        // Verify the second action is a tool_call message
+        if let WorkflowAction::ScheduleActivity { input, .. } = &actions[1] {
+            let save_input: SaveMessageInput = serde_json::from_value(input.clone()).unwrap();
+            assert_eq!(save_input.role, "tool_call");
+            let content = save_input.content;
+            assert_eq!(content["name"], "get_current_time");
+            assert_eq!(content["id"], "call_abc123");
+        }
+
+        // Check the state includes tool calls
+        assert!(matches!(
+            workflow.state(),
+            AgentRunWorkflowState::ExecutingTools { .. }
+        ));
+    }
+
+    #[test]
+    fn test_workflow_tool_results_include_tool_call_id() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input.clone());
+
+        // Start workflow
+        workflow.on_start();
+
+        // Complete load agent activity
+        let agent_output = LoadAgentOutput {
+            agent_id: input.agent_id,
+            name: "Test Agent".to_string(),
+            model_id: "gpt-4".to_string(),
+            system_prompt: Some("You are helpful".to_string()),
+            temperature: Some(0.7),
+            max_tokens: Some(1000),
+            capability_ids: vec![],
+        };
+
+        workflow
+            .on_activity_completed("load-agent-2", serde_json::to_value(&agent_output).unwrap());
+
+        // Complete load messages
+        let messages_output = LoadMessagesOutput {
+            messages: vec![MessageData {
+                role: "user".to_string(),
+                content: "What time is it?".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+        };
+
+        workflow.on_activity_completed(
+            "load-messages-3",
+            serde_json::to_value(&messages_output).unwrap(),
+        );
+
+        // Simulate LLM response with tool calls
+        let llm_output = CallLlmOutput {
+            text: "".to_string(),
+            tool_calls: Some(vec![ToolCallData {
+                id: "call_tool1".to_string(),
+                name: "get_time".to_string(),
+                arguments: "{}".to_string(),
+                tool_definition_json: None,
+            }]),
+        };
+
+        workflow.on_activity_completed("call-llm-4", serde_json::to_value(&llm_output).unwrap());
+
+        // Simulate tool execution results
+        let tools_output = ExecuteToolsOutput {
+            results: vec![ToolResultData {
+                tool_call_id: "call_tool1".to_string(),
+                result: Some(serde_json::json!({"time": "12:00 UTC"})),
+                error: None,
+            }],
+        };
+
+        let actions = workflow.on_activity_completed(
+            "execute-tools-6",
+            serde_json::to_value(&tools_output).unwrap(),
+        );
+
+        // Should schedule save-tool-msg AND call-llm (in parallel)
+        assert_eq!(actions.len(), 2);
+        assert!(matches!(
+            &actions[0],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::SAVE_MESSAGE
+        ));
+        assert!(matches!(
+            &actions[1],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::CALL_LLM
+        ));
+
+        // Check the call-llm input includes proper message structure
+        if let WorkflowAction::ScheduleActivity { input, .. } = &actions[1] {
+            let call_llm_input: CallLlmInput = serde_json::from_value(input.clone()).unwrap();
+
+            // Should have: user, assistant (with tool_calls), tool (with tool_call_id)
+            assert_eq!(call_llm_input.messages.len(), 3);
+
+            // Check user message
+            assert_eq!(call_llm_input.messages[0].role, "user");
+            assert!(call_llm_input.messages[0].tool_calls.is_none());
+            assert!(call_llm_input.messages[0].tool_call_id.is_none());
+
+            // Check assistant message has tool_calls
+            assert_eq!(call_llm_input.messages[1].role, "assistant");
+            assert!(call_llm_input.messages[1].tool_calls.is_some());
+            assert_eq!(
+                call_llm_input.messages[1]
+                    .tool_calls
+                    .as_ref()
+                    .unwrap()
+                    .len(),
+                1
+            );
+            assert_eq!(
+                call_llm_input.messages[1].tool_calls.as_ref().unwrap()[0].id,
+                "call_tool1"
+            );
+
+            // Check tool message has tool_call_id
+            assert_eq!(call_llm_input.messages[2].role, "tool");
+            assert!(call_llm_input.messages[2].tool_calls.is_none());
+            assert_eq!(
+                call_llm_input.messages[2].tool_call_id,
+                Some("call_tool1".to_string())
+            );
+        } else {
+            panic!("Expected ScheduleActivity action");
+        }
+    }
+
+    #[test]
+    fn test_workflow_ignores_update_status_in_loading_messages() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input.clone());
+
+        // Start workflow
+        workflow.on_start();
+
+        // Complete load agent activity
+        let agent_output = LoadAgentOutput {
+            agent_id: input.agent_id,
+            name: "Test Agent".to_string(),
+            model_id: "gpt-4".to_string(),
+            system_prompt: Some("You are helpful".to_string()),
+            temperature: Some(0.7),
+            max_tokens: Some(1000),
+            capability_ids: vec![],
+        };
+
+        // Complete load-agent to move to LoadingMessages state
+        workflow
+            .on_activity_completed("load-agent-2", serde_json::to_value(&agent_output).unwrap());
+
+        // Now in LoadingMessages state, simulate update-status completing
+        // This should be ignored (race condition handling)
+        let actions = workflow.on_activity_completed("update-status-1", serde_json::json!({}));
+        assert!(
+            actions.is_empty(),
+            "update-status should be ignored in LoadingMessages state"
+        );
+
+        // State should still be LoadingMessages
+        assert!(matches!(
+            workflow.state(),
+            AgentRunWorkflowState::LoadingMessages { .. }
+        ));
+    }
+
+    #[test]
+    fn test_workflow_no_tool_calls_completes() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input.clone());
+
+        // Start workflow
+        workflow.on_start();
+
+        // Complete load agent activity
+        let agent_output = LoadAgentOutput {
+            agent_id: input.agent_id,
+            name: "Test Agent".to_string(),
+            model_id: "gpt-4".to_string(),
+            system_prompt: Some("You are helpful".to_string()),
+            temperature: Some(0.7),
+            max_tokens: Some(1000),
+            capability_ids: vec![],
+        };
+
+        workflow
+            .on_activity_completed("load-agent-2", serde_json::to_value(&agent_output).unwrap());
+
+        // Complete load messages
+        let messages_output = LoadMessagesOutput {
+            messages: vec![MessageData {
+                role: "user".to_string(),
+                content: "Hello!".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+        };
+
+        workflow.on_activity_completed(
+            "load-messages-3",
+            serde_json::to_value(&messages_output).unwrap(),
+        );
+
+        // Simulate LLM response WITHOUT tool calls
+        let llm_output = CallLlmOutput {
+            text: "Hello! How can I help you today?".to_string(),
+            tool_calls: None,
+        };
+
+        let actions = workflow
+            .on_activity_completed("call-llm-4", serde_json::to_value(&llm_output).unwrap());
+
+        // Should schedule save-message (not execute-tools)
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            &actions[0],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::SAVE_MESSAGE
+        ));
+    }
+
+    #[test]
+    fn test_workflow_empty_tool_calls_treated_as_no_tools() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input.clone());
+
+        // Start workflow
+        workflow.on_start();
+
+        // Complete load agent activity
+        let agent_output = LoadAgentOutput {
+            agent_id: input.agent_id,
+            name: "Test Agent".to_string(),
+            model_id: "gpt-4".to_string(),
+            system_prompt: None,
+            temperature: None,
+            max_tokens: None,
+            capability_ids: vec![],
+        };
+
+        workflow
+            .on_activity_completed("load-agent-2", serde_json::to_value(&agent_output).unwrap());
+
+        let messages_output = LoadMessagesOutput {
+            messages: vec![MessageData {
+                role: "user".to_string(),
+                content: "Hi".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+        };
+
+        workflow.on_activity_completed(
+            "load-messages-3",
+            serde_json::to_value(&messages_output).unwrap(),
+        );
+
+        // Simulate LLM response with empty tool_calls array (not None)
+        let llm_output = CallLlmOutput {
+            text: "Hi there!".to_string(),
+            tool_calls: Some(vec![]), // Empty, not None
+        };
+
+        let actions = workflow
+            .on_activity_completed("call-llm-4", serde_json::to_value(&llm_output).unwrap());
+
+        // Should schedule save-message (empty tool_calls should be treated as no tools)
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            &actions[0],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::SAVE_MESSAGE
+        ));
+    }
+
+    #[test]
+    fn test_save_assistant_message_action_includes_tool_calls() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input);
+
+        let tool_calls = vec![
+            ToolCallData {
+                id: "call_1".to_string(),
+                name: "get_time".to_string(),
+                arguments: r#"{"timezone": "UTC"}"#.to_string(),
+                tool_definition_json: None,
+            },
+            ToolCallData {
+                id: "call_2".to_string(),
+                name: "get_weather".to_string(),
+                arguments: r#"{"city": "NYC"}"#.to_string(),
+                tool_definition_json: None,
+            },
+        ];
+
+        let action =
+            workflow.save_assistant_message_action("Let me check that for you.", Some(&tool_calls));
+
+        if let WorkflowAction::ScheduleActivity { input, .. } = action {
+            let save_input: SaveMessageInput = serde_json::from_value(input).unwrap();
+            assert_eq!(save_input.role, "assistant");
+            assert!(save_input.tool_call_id.is_none());
+
+            // Verify content includes tool_calls
+            let content = save_input.content;
+            assert_eq!(content["text"], "Let me check that for you.");
+            assert!(content.get("tool_calls").is_some());
+
+            let saved_tool_calls: Vec<ToolCallData> =
+                serde_json::from_value(content["tool_calls"].clone()).unwrap();
+            assert_eq!(saved_tool_calls.len(), 2);
+            assert_eq!(saved_tool_calls[0].id, "call_1");
+            assert_eq!(saved_tool_calls[1].id, "call_2");
+        } else {
+            panic!("Expected ScheduleActivity action");
+        }
+    }
+
+    #[test]
+    fn test_save_tool_result_action_includes_tool_call_id() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input);
+
+        let result_value = serde_json::json!({"time": "12:00 UTC"});
+        let action = workflow.save_tool_result_action("call_abc123", Some(&result_value), None);
+
+        if let WorkflowAction::ScheduleActivity { input, .. } = action {
+            let save_input: SaveMessageInput = serde_json::from_value(input).unwrap();
+            // Database uses "tool_result" to match messages_role_check constraint
+            assert_eq!(save_input.role, "tool_result");
+            assert_eq!(save_input.tool_call_id, Some("call_abc123".to_string()));
+
+            // Verify content has UI-compatible format with result and text
+            let content = save_input.content;
+            assert_eq!(content["result"], serde_json::json!({"time": "12:00 UTC"}));
+            assert!(content["text"].as_str().unwrap().contains("12:00 UTC"));
+        } else {
+            panic!("Expected ScheduleActivity action");
+        }
+    }
+
+    #[test]
+    fn test_workflow_ignores_save_assistant_msg_in_executing_tools() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input.clone());
+
+        // Start workflow
+        workflow.on_start();
+
+        // Complete load agent activity
+        let agent_output = LoadAgentOutput {
+            agent_id: input.agent_id,
+            name: "Test Agent".to_string(),
+            model_id: "gpt-4".to_string(),
+            system_prompt: Some("You are helpful".to_string()),
+            temperature: Some(0.7),
+            max_tokens: Some(1000),
+            capability_ids: vec![],
+        };
+
+        workflow
+            .on_activity_completed("load-agent-2", serde_json::to_value(&agent_output).unwrap());
+
+        let messages_output = LoadMessagesOutput {
+            messages: vec![MessageData {
+                role: "user".to_string(),
+                content: "What time is it?".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+        };
+
+        workflow.on_activity_completed(
+            "load-messages-3",
+            serde_json::to_value(&messages_output).unwrap(),
+        );
+
+        // Simulate LLM response with tool calls
+        let llm_output = CallLlmOutput {
+            text: "Let me check.".to_string(),
+            tool_calls: Some(vec![ToolCallData {
+                id: "call_tool1".to_string(),
+                name: "get_time".to_string(),
+                arguments: "{}".to_string(),
+                tool_definition_json: None,
+            }]),
+        };
+
+        // This schedules save-assistant-msg AND execute-tools
+        workflow.on_activity_completed("call-llm-4", serde_json::to_value(&llm_output).unwrap());
+
+        // Verify we're in ExecutingTools state
+        assert!(matches!(
+            workflow.state(),
+            AgentRunWorkflowState::ExecutingTools { .. }
+        ));
+
+        // Now simulate save-assistant-msg completing (race condition)
+        // This should be ignored
+        let actions = workflow.on_activity_completed("save-assistant-msg-5", serde_json::json!({}));
+        assert!(
+            actions.is_empty(),
+            "save-assistant-msg should be ignored in ExecutingTools state"
+        );
+
+        // State should still be ExecutingTools
+        assert!(matches!(
+            workflow.state(),
+            AgentRunWorkflowState::ExecutingTools { .. }
+        ));
+    }
+
+    #[test]
+    fn test_workflow_saves_multiple_tool_results() {
+        let input = test_input();
+        let mut workflow = AgentRunWorkflow::new(input.clone());
+
+        // Start workflow
+        workflow.on_start();
+
+        // Complete load agent activity
+        let agent_output = LoadAgentOutput {
+            agent_id: input.agent_id,
+            name: "Test Agent".to_string(),
+            model_id: "gpt-4".to_string(),
+            system_prompt: None,
+            temperature: None,
+            max_tokens: None,
+            capability_ids: vec![],
+        };
+
+        workflow
+            .on_activity_completed("load-agent-2", serde_json::to_value(&agent_output).unwrap());
+
+        let messages_output = LoadMessagesOutput {
+            messages: vec![MessageData {
+                role: "user".to_string(),
+                content: "Get the time and weather.".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+        };
+
+        workflow.on_activity_completed(
+            "load-messages-3",
+            serde_json::to_value(&messages_output).unwrap(),
+        );
+
+        // Simulate LLM response with MULTIPLE tool calls
+        let llm_output = CallLlmOutput {
+            text: "Let me check both.".to_string(),
+            tool_calls: Some(vec![
+                ToolCallData {
+                    id: "call_time".to_string(),
+                    name: "get_time".to_string(),
+                    arguments: "{}".to_string(),
+                    tool_definition_json: None,
+                },
+                ToolCallData {
+                    id: "call_weather".to_string(),
+                    name: "get_weather".to_string(),
+                    arguments: r#"{"city": "NYC"}"#.to_string(),
+                    tool_definition_json: None,
+                },
+            ]),
+        };
+
+        workflow.on_activity_completed("call-llm-4", serde_json::to_value(&llm_output).unwrap());
+
+        // Simulate tool execution results with MULTIPLE results
+        let tools_output = ExecuteToolsOutput {
+            results: vec![
+                ToolResultData {
+                    tool_call_id: "call_time".to_string(),
+                    result: Some(serde_json::json!({"time": "12:00 UTC"})),
+                    error: None,
+                },
+                ToolResultData {
+                    tool_call_id: "call_weather".to_string(),
+                    result: Some(serde_json::json!({"temp": 72, "unit": "F"})),
+                    error: None,
+                },
+            ],
+        };
+
+        let actions = workflow.on_activity_completed(
+            "execute-tools-6",
+            serde_json::to_value(&tools_output).unwrap(),
+        );
+
+        // Should schedule 2 save-tool-msg actions + 1 call-llm action
+        assert_eq!(actions.len(), 3);
+
+        // First two should be save-tool-msg
+        assert!(matches!(
+            &actions[0],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::SAVE_MESSAGE
+        ));
+        assert!(matches!(
+            &actions[1],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::SAVE_MESSAGE
+        ));
+
+        // Last should be call-llm
+        assert!(matches!(
+            &actions[2],
+            WorkflowAction::ScheduleActivity { activity_type, .. }
+            if activity_type == activity_names::CALL_LLM
+        ));
+
+        // Verify the save actions have correct tool_call_ids
+        // Database uses "tool_result" to match messages_role_check constraint
+        if let WorkflowAction::ScheduleActivity { input, .. } = &actions[0] {
+            let save_input: SaveMessageInput = serde_json::from_value(input.clone()).unwrap();
+            assert_eq!(save_input.role, "tool_result");
+            assert_eq!(save_input.tool_call_id, Some("call_time".to_string()));
+        }
+
+        if let WorkflowAction::ScheduleActivity { input, .. } = &actions[1] {
+            let save_input: SaveMessageInput = serde_json::from_value(input.clone()).unwrap();
+            assert_eq!(save_input.role, "tool_result");
+            assert_eq!(save_input.tool_call_id, Some("call_weather".to_string()));
+        }
     }
 }
 

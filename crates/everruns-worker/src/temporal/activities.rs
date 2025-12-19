@@ -11,6 +11,7 @@
 // All activities must be idempotent and handle their own error scenarios.
 
 use anyhow::{Context, Result};
+use everruns_agent_loop::capabilities::{apply_capabilities, CapabilityId, CapabilityRegistry};
 use everruns_agent_loop::config::AgentConfig;
 use everruns_agent_loop::memory::NoOpEventEmitter;
 use everruns_agent_loop::step::{LoopStep, StepInput, StepResult};
@@ -19,7 +20,7 @@ use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::ToolDefinition;
 use everruns_storage::models::UpdateSession;
 use everruns_storage::repositories::Database;
-use tracing::info;
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::activities::PersistEventActivity;
@@ -81,6 +82,21 @@ pub async fn load_agent_activity(
         .context("Database error loading agent")?
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", input.agent_id))?;
 
+    // Load capabilities for this agent
+    let capabilities = db
+        .get_agent_capabilities(input.agent_id)
+        .await
+        .context("Database error loading agent capabilities")?;
+
+    let capability_ids: Vec<String> = capabilities.into_iter().map(|c| c.capability_id).collect();
+
+    info!(
+        agent_id = %input.agent_id,
+        capability_count = capability_ids.len(),
+        capabilities = ?capability_ids,
+        "Loaded agent with capabilities"
+    );
+
     Ok(LoadAgentOutput {
         agent_id: agent.id,
         name: agent.name,
@@ -91,6 +107,7 @@ pub async fn load_agent_activity(
         system_prompt: Some(agent.system_prompt),
         temperature: None,
         max_tokens: None,
+        capability_ids,
     })
 }
 
@@ -109,20 +126,36 @@ pub async fn load_messages_activity(
 
     let message_data: Vec<MessageData> = messages
         .into_iter()
-        .filter_map(|m| {
+        .map(|m| {
             // Extract text content from JSON
             let content = if let Some(text) = m.content.get("text").and_then(|t| t.as_str()) {
                 text.to_string()
             } else if let Some(content_str) = m.content.as_str() {
                 content_str.to_string()
             } else {
-                return None;
+                // For tool messages, the content might be in a different format
+                // Try to get the raw content as a string
+                m.content.to_string()
             };
 
-            Some(MessageData {
+            // Extract tool_calls from assistant messages (stored in content JSON)
+            let tool_calls = if m.role == "assistant" {
+                m.content
+                    .get("tool_calls")
+                    .and_then(|tc| serde_json::from_value::<Vec<ToolCallData>>(tc.clone()).ok())
+            } else {
+                None
+            };
+
+            // Get tool_call_id for tool result messages
+            let tool_call_id = m.tool_call_id.clone();
+
+            MessageData {
                 role: m.role,
                 content,
-            })
+                tool_calls,
+                tool_call_id,
+            }
         })
         .collect();
 
@@ -191,37 +224,93 @@ pub async fn call_llm_activity(
         session_id = %input.session_id,
         model = %input.model_id,
         message_count = input.messages.len(),
+        capability_count = input.capability_ids.len(),
         "Starting LLM call activity"
     );
 
     // Heartbeat to indicate we're starting
     ctx.heartbeat("Starting LLM call");
 
+    // Apply capabilities to get tools and system prompt modifications
+    let registry = CapabilityRegistry::with_builtins();
+    let capability_ids: Vec<CapabilityId> = input
+        .capability_ids
+        .iter()
+        .filter_map(|id| {
+            let parsed = id.parse::<CapabilityId>();
+            if parsed.is_err() {
+                warn!(capability_id = %id, "Unknown capability ID, skipping");
+            }
+            parsed.ok()
+        })
+        .collect();
+
+    // Build base agent config
+    let base_system_prompt = input.system_prompt.clone().unwrap_or_default();
+    let base_config = AgentConfig::new(&base_system_prompt, &input.model_id);
+
+    // Apply capabilities to get tools and modified system prompt
+    let applied = apply_capabilities(base_config, &capability_ids, &registry);
+
+    info!(
+        session_id = %input.session_id,
+        applied_capabilities = ?applied.applied_ids,
+        tool_count = applied.config.tools.len(),
+        "Applied capabilities"
+    );
+
+    // Debug log the tools that will be sent to LLM
+    for tool in &applied.config.tools {
+        debug!(
+            session_id = %input.session_id,
+            tool_name = %tool_name(tool),
+            tool_description = %tool_description(tool),
+            "Tool available for LLM"
+        );
+    }
+
     // Convert message data to ChatMessage format
     let messages: Vec<ChatMessage> = input
         .messages
         .iter()
-        .map(|m| ChatMessage {
-            role: match m.role.as_str() {
-                "system" => ProviderMessageRole::System,
-                "user" => ProviderMessageRole::User,
-                "assistant" => ProviderMessageRole::Assistant,
-                "tool" | "tool_result" => ProviderMessageRole::Tool,
-                _ => ProviderMessageRole::User,
-            },
-            content: m.content.clone(),
-            tool_calls: None,
-            tool_call_id: None,
+        .map(|m| {
+            // Convert ToolCallData to ToolCall (different argument types)
+            let tool_calls = m.tool_calls.as_ref().map(|calls| {
+                calls
+                    .iter()
+                    .map(|tc| everruns_contracts::tools::ToolCall {
+                        id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        // Parse the JSON string arguments back to Value
+                        arguments: serde_json::from_str(&tc.arguments)
+                            .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                    })
+                    .collect()
+            });
+
+            ChatMessage {
+                role: match m.role.as_str() {
+                    "system" => ProviderMessageRole::System,
+                    "user" => ProviderMessageRole::User,
+                    "assistant" => ProviderMessageRole::Assistant,
+                    "tool" | "tool_result" => ProviderMessageRole::Tool,
+                    _ => ProviderMessageRole::User,
+                },
+                content: m.content.clone(),
+                tool_calls,
+                tool_call_id: m.tool_call_id.clone(),
+            }
         })
         .collect();
 
-    // Build LLM config
+    // Build LLM config with capability-provided tools
+    // applied.config.tools is already Vec<ToolDefinition> from capabilities
     let config = LlmConfig {
         model: input.model_id.clone(),
         temperature: input.temperature,
         max_tokens: input.max_tokens,
-        system_prompt: input.system_prompt.clone(),
-        tools: Vec::new(),
+        system_prompt: Some(applied.config.system_prompt.clone()),
+        tools: applied.config.tools.clone(),
     };
 
     // Create provider
@@ -231,10 +320,22 @@ pub async fn call_llm_activity(
     ctx.heartbeat("Calling LLM...");
 
     // Non-streaming call
-    let result = provider
-        .chat_completion(messages, &config)
-        .await
-        .context("LLM call failed")?;
+    let result = match provider.chat_completion(messages, &config).await {
+        Ok(r) => r,
+        Err(e) => {
+            // Log the full error chain for debugging
+            let error_chain: Vec<String> = e.chain().map(|e| e.to_string()).collect();
+            tracing::error!(
+                session_id = %input.session_id,
+                error = %e,
+                error_chain = ?error_chain,
+                model = %input.model_id,
+                "LLM call failed"
+            );
+            // Return a detailed error message that will be visible in Temporal and potentially UI
+            return Err(anyhow::anyhow!("LLM call failed: {}", e));
+        }
+    };
 
     info!(
         session_id = %input.session_id,
@@ -242,6 +343,27 @@ pub async fn call_llm_activity(
         finish_reason = ?result.metadata.finish_reason,
         "LLM call completed"
     );
+
+    // Debug log the response text
+    debug!(
+        session_id = %input.session_id,
+        text_len = result.text.len(),
+        has_tool_calls = result.tool_calls.is_some(),
+        "LLM response details"
+    );
+
+    // Debug log tool calls if present
+    if let Some(ref tool_calls) = result.tool_calls {
+        for tc in tool_calls {
+            debug!(
+                session_id = %input.session_id,
+                tool_call_id = %tc.id,
+                tool_name = %tc.name,
+                arguments = %tc.arguments,
+                "LLM requested tool call"
+            );
+        }
+    }
 
     // Emit step events
     let persist_activity = PersistEventActivity::new(db.clone());
@@ -284,11 +406,30 @@ pub async fn execute_tools_activity(
         "Executing tool calls via UnifiedToolExecutor"
     );
 
+    // Debug log each tool call to be executed
+    for tc in &input.tool_calls {
+        debug!(
+            session_id = %input.session_id,
+            tool_call_id = %tc.id,
+            tool_name = %tc.name,
+            arguments = %tc.arguments,
+            "Tool call to execute"
+        );
+    }
+
     let persist_activity = PersistEventActivity::new(db.clone());
     let tool_executor = UnifiedToolExecutor::with_default_tools();
     let mut results = Vec::new();
 
     for (i, tool_call_data) in input.tool_calls.iter().enumerate() {
+        debug!(
+            session_id = %input.session_id,
+            tool_index = i + 1,
+            total_tools = input.tool_calls.len(),
+            tool_name = %tool_call_data.name,
+            "Starting tool execution"
+        );
+
         // Heartbeat progress
         ctx.heartbeat(&format!(
             "Executing tool {}/{}: {}",
@@ -355,6 +496,17 @@ pub async fn execute_tools_activity(
             .await
             .map_err(|e| anyhow::anyhow!("Tool execution failed: {}", e))?;
 
+        // Debug log the tool execution result
+        debug!(
+            session_id = %input.session_id,
+            tool_call_id = %exec_result.tool_call_id,
+            has_result = exec_result.result.is_some(),
+            has_error = exec_result.error.is_some(),
+            result = ?exec_result.result,
+            error = ?exec_result.error,
+            "Tool execution completed"
+        );
+
         let result = ToolResultData {
             tool_call_id: exec_result.tool_call_id,
             result: exec_result.result,
@@ -387,6 +539,7 @@ pub async fn save_message_activity(
     info!(
         session_id = %input.session_id,
         role = %input.role,
+        tool_call_id = ?input.tool_call_id,
         "Saving message to session"
     );
 
@@ -394,7 +547,7 @@ pub async fn save_message_activity(
         session_id: input.session_id,
         role: input.role,
         content: input.content,
-        tool_call_id: None,
+        tool_call_id: input.tool_call_id,
     };
 
     db.create_message(create_msg)
@@ -432,6 +585,14 @@ pub async fn setup_step_activity(
         .context("Database error loading agent")?
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", input.agent_id))?;
 
+    // Load capabilities for this agent
+    let capabilities = db
+        .get_agent_capabilities(input.agent_id)
+        .await
+        .context("Database error loading agent capabilities")?;
+
+    let capability_ids: Vec<String> = capabilities.into_iter().map(|c| c.capability_id).collect();
+
     let agent_config = LoadAgentOutput {
         agent_id: agent.id,
         name: agent.name,
@@ -442,6 +603,7 @@ pub async fn setup_step_activity(
         system_prompt: Some(agent.system_prompt),
         temperature: None,
         max_tokens: None,
+        capability_ids,
     };
 
     ctx.heartbeat("Loading messages");
@@ -707,6 +869,26 @@ pub async fn finalize_step_activity(
         status: "pending".to_string(),
         step,
     })
+}
+
+// =============================================================================
+// Helper functions for logging
+// =============================================================================
+
+/// Extract tool name from ToolDefinition enum
+fn tool_name(tool: &ToolDefinition) -> &str {
+    match tool {
+        ToolDefinition::Webhook(w) => &w.name,
+        ToolDefinition::Builtin(b) => &b.name,
+    }
+}
+
+/// Extract tool description from ToolDefinition enum
+fn tool_description(tool: &ToolDefinition) -> &str {
+    match tool {
+        ToolDefinition::Webhook(w) => &w.description,
+        ToolDefinition::Builtin(b) => &b.description,
+    }
 }
 
 #[cfg(test)]

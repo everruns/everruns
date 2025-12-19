@@ -111,6 +111,18 @@ export default function SessionDetailPage({
     return null;
   };
 
+  // Check if assistant message has embedded tool_calls (for LLM context only, not UI display)
+  const hasEmbeddedToolCalls = (message: Message): boolean => {
+    if (message.role !== "assistant") return false;
+    if (typeof message.content === "object" && message.content !== null) {
+      const content = message.content as Record<string, unknown>;
+      if (Array.isArray(content.tool_calls) && content.tool_calls.length > 0) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   if (sessionLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -193,6 +205,12 @@ export default function SessionDetailPage({
 
             // Skip tool_result messages - they're rendered with their tool_call
             if (isToolResult) {
+              return null;
+            }
+
+            // Skip assistant messages with embedded tool_calls - they're for LLM context only
+            // The actual tool calls are rendered as separate ToolCallCard components
+            if (hasEmbeddedToolCalls(message)) {
               return null;
             }
 
