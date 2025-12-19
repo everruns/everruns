@@ -9,9 +9,9 @@
 // M2 model: Agent → Session → Messages (no separate Thread/Run concepts)
 // Each LLM call and each tool execution is a separate Temporal activity (node).
 
-use everruns_agent_loop::message::ConversationMessage;
-use everruns_agent_loop::step::{LoopStep, StepOutput};
 use everruns_contracts::tools::{ToolCall, ToolResult};
+use everruns_core::message::ConversationMessage;
+use everruns_core::step::{LoopStep, StepOutput};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

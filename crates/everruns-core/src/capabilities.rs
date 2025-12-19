@@ -36,7 +36,7 @@ pub use everruns_contracts::{CapabilityId, CapabilityStatus};
 /// # Example
 ///
 /// ```ignore
-/// use everruns_agent_loop::capabilities::{Capability, CapabilityId};
+/// use everruns_core::capabilities::{Capability, CapabilityId};
 ///
 /// struct CurrentTimeCapability;
 ///
@@ -112,7 +112,7 @@ pub trait Capability: Send + Sync {
 /// # Example
 ///
 /// ```
-/// use everruns_agent_loop::capabilities::{CapabilityRegistry, CapabilityId};
+/// use everruns_core::capabilities::{CapabilityRegistry, CapabilityId};
 ///
 /// let registry = CapabilityRegistry::with_builtins();
 ///
@@ -286,8 +286,8 @@ pub struct AppliedCapabilities {
 /// # Example
 ///
 /// ```
-/// use everruns_agent_loop::capabilities::{apply_capabilities, CapabilityRegistry, CapabilityId};
-/// use everruns_agent_loop::config::AgentConfig;
+/// use everruns_core::capabilities::{apply_capabilities, CapabilityRegistry, CapabilityId};
+/// use everruns_core::config::AgentConfig;
 ///
 /// let registry = CapabilityRegistry::with_builtins();
 /// let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4");

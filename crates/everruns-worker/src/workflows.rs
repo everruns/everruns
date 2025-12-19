@@ -1,11 +1,11 @@
 // Session workflow for agentic loop execution (M2)
 // Uses Agent/Session/Messages model with Events as SSE notifications
-// Now uses everruns-agent-loop for the core loop logic
+// Now uses everruns-core for the core loop logic
 
 use anyhow::Result;
 use chrono::Utc;
-use everruns_agent_loop::AgentConfig;
 use everruns_contracts::events::AgUiEvent;
+use everruns_core::AgentConfig;
 use everruns_storage::models::UpdateSession;
 use everruns_storage::repositories::Database;
 use tracing::{error, info, warn};
@@ -113,11 +113,11 @@ impl SessionWorkflow {
             Err(e) => {
                 // Handle specific error types
                 match &e {
-                    everruns_agent_loop::AgentLoopError::NoMessages => {
+                    everruns_core::AgentLoopError::NoMessages => {
                         warn!(session_id = %self.session_id, "No messages to process");
                         self.update_session_status("pending", None, None).await?;
                     }
-                    everruns_agent_loop::AgentLoopError::MaxIterationsReached(max) => {
+                    everruns_core::AgentLoopError::MaxIterationsReached(max) => {
                         warn!(session_id = %self.session_id, max = max, "Max iterations reached");
                         // Still set to pending - can continue with more messages
                         self.update_session_status("pending", None, None).await?;

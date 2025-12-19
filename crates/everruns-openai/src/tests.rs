@@ -1,8 +1,8 @@
-// Unit tests for LLM provider abstraction
+// Unit tests for OpenAI provider
 
 #[cfg(test)]
 mod provider_tests {
-    use super::super::{ChatMessage, LlmConfig, MessageRole};
+    use crate::types::{ChatMessage, LlmConfig, MessageRole};
 
     #[test]
     fn test_chat_message_creation() {
@@ -168,5 +168,41 @@ mod provider_tests {
         assert!(matches!(messages[1].role, MessageRole::User));
         assert!(matches!(messages[2].role, MessageRole::Assistant));
         assert!(matches!(messages[3].role, MessageRole::User));
+    }
+
+    #[test]
+    fn test_chat_message_to_openai_conversion() {
+        let msg = ChatMessage {
+            role: MessageRole::User,
+            content: "Hello world".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+
+        let openai_msg = msg.to_openai();
+        assert_eq!(openai_msg.role, "user");
+        assert_eq!(openai_msg.content, Some("Hello world".to_string()));
+        assert!(openai_msg.tool_calls.is_none());
+    }
+
+    #[test]
+    fn test_chat_message_to_openai_all_roles() {
+        let roles = [
+            (MessageRole::System, "system"),
+            (MessageRole::User, "user"),
+            (MessageRole::Assistant, "assistant"),
+            (MessageRole::Tool, "tool"),
+        ];
+
+        for (role, expected_str) in roles {
+            let msg = ChatMessage {
+                role,
+                content: "test".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+            };
+            let openai_msg = msg.to_openai();
+            assert_eq!(openai_msg.role, expected_str);
+        }
     }
 }

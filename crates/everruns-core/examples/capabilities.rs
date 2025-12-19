@@ -1,23 +1,30 @@
-//! Tool Calling Example - Agent Loop with Tool Trait
+//! Capabilities Example - Agent Loop with Capability System
 //!
-//! This example demonstrates tool calling using the Tool trait abstraction
-//! and ToolRegistry for tool management. Uses OpenAI as the LLM provider.
+//! This example demonstrates how to use the capabilities system to compose
+//! agent functionality through modular units. Capabilities can contribute:
+//! - System prompt additions
+//! - Tools for the agent
 //!
-//! The OpenAI adapter is included inline to keep the example self-contained
-//! within the agent-loop crate (no dependency on worker crate).
+//! The example shows:
+//! 1. Using built-in capabilities (CurrentTime)
+//! 2. Creating custom capabilities
+//! 3. Applying capabilities to build an AgentConfig
+//! 4. Running the agent loop with capabilities
 //!
 //! Prerequisites:
 //! - Set OPENAI_API_KEY environment variable
 //!
-//! Run with: cargo run -p everruns-agent-loop --example tool_calling
+//! Run with: cargo run -p everruns-core --example capabilities
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
-use everruns_agent_loop::{
+use everruns_core::{
+    apply_capabilities,
+    capabilities::{Capability, CapabilityId, CapabilityRegistry, CapabilityStatus},
     config::AgentConfig,
     memory::{InMemoryEventEmitter, InMemoryMessageStore},
     message::{ConversationMessage, MessageContent, MessageRole},
-    tools::{Tool, ToolExecutionResult, ToolRegistry},
+    tools::{Tool, ToolExecutionResult},
     traits::{
         LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmProvider,
         LlmResponseStream, LlmStreamEvent,
@@ -32,12 +39,11 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 // ============================================================================
-// OpenAI Provider (Self-contained for this example)
+// OpenAI Provider (Same as tool_calling example)
 // ============================================================================
 
 const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 
-/// Minimal OpenAI provider for the example
 struct OpenAiProvider {
     client: Client,
     api_key: String,
@@ -179,7 +185,6 @@ impl LlmProvider for OpenAiProvider {
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
                             Ok(chunk) => {
                                 if let Some(choice) = chunk.choices.first() {
-                                    // Handle tool calls
                                     if let Some(tool_calls) = &choice.delta.tool_calls {
                                         let mut acc = accumulated_tool_calls.lock().unwrap();
 
@@ -211,13 +216,11 @@ impl LlmProvider for OpenAiProvider {
                                         return Ok(LlmStreamEvent::TextDelta(String::new()));
                                     }
 
-                                    // Handle content delta
                                     if let Some(content) = &choice.delta.content {
                                         *total_tokens.lock().unwrap() += 1;
                                         return Ok(LlmStreamEvent::TextDelta(content.clone()));
                                     }
 
-                                    // Handle finish reason
                                     if let Some(finish_reason) = &choice.finish_reason {
                                         let tokens = *total_tokens.lock().unwrap();
 
@@ -268,7 +271,7 @@ impl LlmProvider for OpenAiProvider {
     }
 }
 
-// OpenAI API types
+// OpenAI API types (same as tool_calling example)
 #[derive(Debug, Serialize)]
 struct OpenAiRequest {
     model: String,
@@ -353,68 +356,49 @@ struct OpenAiStreamFunction {
 }
 
 // ============================================================================
-// Custom Tools
+// Custom Capability: Calculator
 // ============================================================================
 
-/// Tool that returns the current date and time
-struct GetCurrentTime;
+/// A custom capability that provides a calculator tool
+struct CalculatorCapability;
 
-#[async_trait]
-impl Tool for GetCurrentTime {
+impl Capability for CalculatorCapability {
+    fn id(&self) -> CapabilityId {
+        // Using Noop as placeholder since we can't add new variants
+        // In a real application, you'd extend CapabilityId
+        CapabilityId::Noop
+    }
+
     fn name(&self) -> &str {
-        "get_current_time"
+        "Calculator"
     }
 
     fn description(&self) -> &str {
-        "Get the current date and time in various formats. Use this when asked about the current time or date."
+        "Provides a calculator tool for basic arithmetic operations."
     }
 
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "format": {
-                    "type": "string",
-                    "description": "Output format: 'iso8601' for ISO format, 'unix' for Unix timestamp, 'human' for readable format",
-                    "enum": ["iso8601", "unix", "human"]
-                }
-            },
-            "additionalProperties": false
-        })
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
     }
 
-    async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        let format = arguments
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("human");
+    fn icon(&self) -> Option<&str> {
+        Some("calculator")
+    }
 
-        let now = chrono::Utc::now();
+    fn category(&self) -> Option<&str> {
+        Some("Utilities")
+    }
 
-        let result = match format {
-            "unix" => json!({
-                "timestamp": now.timestamp(),
-                "format": "unix"
-            }),
-            "iso8601" => json!({
-                "datetime": now.to_rfc3339(),
-                "format": "iso8601"
-            }),
-            _ => json!({
-                "datetime": now.format("%A, %B %d, %Y at %H:%M:%S UTC").to_string(),
-                "format": "human"
-            }),
-        };
-
-        ToolExecutionResult::success(result)
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(CalculatorTool)]
     }
 }
 
-/// Tool that performs basic arithmetic calculations
-struct Calculator;
+/// Calculator tool implementation
+struct CalculatorTool;
 
 #[async_trait]
-impl Tool for Calculator {
+impl Tool for CalculatorTool {
     fn name(&self) -> &str {
         "calculate"
     }
@@ -485,57 +469,8 @@ impl Tool for Calculator {
     }
 }
 
-/// Tool that provides random facts
-struct RandomFact;
-
-#[async_trait]
-impl Tool for RandomFact {
-    fn name(&self) -> &str {
-        "get_random_fact"
-    }
-
-    fn description(&self) -> &str {
-        "Get a random interesting fact about a given topic."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "topic": {
-                    "type": "string",
-                    "description": "The topic to get a fact about (e.g., 'science', 'history', 'nature')"
-                }
-            },
-            "required": ["topic"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        let topic = arguments
-            .get("topic")
-            .and_then(|v| v.as_str())
-            .unwrap_or("general");
-
-        let fact = match topic.to_lowercase().as_str() {
-            "science" => "The human brain uses approximately 20% of the body's total energy.",
-            "history" => "The Great Wall of China is not visible from space with the naked eye.",
-            "nature" => "Honey never spoils. Archaeologists have found 3000-year-old honey in Egyptian tombs that was still edible.",
-            "space" => "A day on Venus is longer than a year on Venus.",
-            "animals" => "Octopuses have three hearts and blue blood.",
-            _ => "The average person walks about 100,000 miles in their lifetime.",
-        };
-
-        ToolExecutionResult::success(json!({
-            "topic": topic,
-            "fact": fact
-        }))
-    }
-}
-
 // ============================================================================
-// Helper to print conversation steps
+// Helper Functions
 // ============================================================================
 
 fn print_conversation_steps(messages: &[ConversationMessage]) {
@@ -588,12 +523,10 @@ fn print_conversation_steps(messages: &[ConversationMessage]) {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Set up logging (WARN level to reduce noise)
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .init();
 
-    // Check for API key
     if std::env::var("OPENAI_API_KEY").is_err() {
         eprintln!("Error: OPENAI_API_KEY environment variable is not set");
         eprintln!("Please set it before running this example:");
@@ -601,32 +534,38 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    println!("=== Tool Calling Demo (agent-loop) ===");
-    println!("(Using OpenAI API with Tool trait abstraction)\n");
+    println!("=== Capabilities Demo (everruns-core) ===\n");
 
-    // Run examples
-    example_time_query().await?;
-    example_calculation().await?;
-    example_multi_tool().await?;
+    // Example 1: Using built-in CurrentTime capability
+    example_builtin_capability().await?;
+
+    // Example 2: Using custom capability
+    example_custom_capability().await?;
+
+    // Example 3: Multiple capabilities
+    example_multiple_capabilities().await?;
 
     println!("=== Demo completed! ===");
     Ok(())
 }
 
-/// Example 1: Ask about the current time
-async fn example_time_query() -> anyhow::Result<()> {
-    println!("--- Example 1: Time Query ---\n");
+/// Example 1: Using the built-in CurrentTime capability
+async fn example_builtin_capability() -> anyhow::Result<()> {
+    println!("--- Example 1: Built-in CurrentTime Capability ---\n");
 
-    // Create tool registry
-    let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
+    // Create capability registry with built-in capabilities
+    let registry = CapabilityRegistry::with_builtins();
 
-    // Create agent config with tools
-    let config = AgentConfig::new(
-        "You are a helpful assistant with access to a time tool. When asked about time, use the get_current_time tool.",
-        "gpt-4o-mini",
-    )
-    .with_tools(registry.tool_definitions())
-    .with_max_iterations(5);
+    // Base agent config
+    let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4o-mini");
+
+    // Apply the CurrentTime capability
+    let capability_ids = vec![CapabilityId::CurrentTime];
+    let applied = apply_capabilities(base_config, &capability_ids, &registry);
+
+    println!("Applied capabilities: {:?}", applied.applied_ids);
+    println!("Tools available: {:?}", applied.tool_registry.tool_names());
+    println!();
 
     // Create components
     let event_emitter = InMemoryEventEmitter::new();
@@ -635,7 +574,58 @@ async fn example_time_query() -> anyhow::Result<()> {
 
     // Seed with user message
     let session_id = Uuid::now_v7();
-    let user_message = "What time is it right now?";
+    let user_message = "What's the current time?";
+    message_store
+        .seed(session_id, vec![ConversationMessage::user(user_message)])
+        .await;
+
+    println!("User: {}\n", user_message);
+
+    // Create and run agent loop with capability tools
+    let agent_loop = AgentLoop::new(
+        applied.config,
+        event_emitter,
+        message_store,
+        llm_provider,
+        applied.tool_registry,
+    );
+
+    let result = agent_loop.run(session_id).await?;
+
+    print_conversation_steps(&result.messages);
+    println!("\n  Final: {}", result.final_response.unwrap_or_default());
+    println!("  (Iterations: {})\n", result.iterations);
+
+    Ok(())
+}
+
+/// Example 2: Using a custom Calculator capability
+async fn example_custom_capability() -> anyhow::Result<()> {
+    println!("--- Example 2: Custom Calculator Capability ---\n");
+
+    // Create custom registry with our calculator capability
+    let mut registry = CapabilityRegistry::new();
+    registry.register(CalculatorCapability);
+
+    // Base agent config
+    let base_config = AgentConfig::new("You are a helpful math assistant.", "gpt-4o-mini");
+
+    // Apply the custom capability (using Noop ID as placeholder)
+    let capability_ids = vec![CapabilityId::Noop];
+    let applied = apply_capabilities(base_config, &capability_ids, &registry);
+
+    println!("Applied capabilities: {:?}", applied.applied_ids);
+    println!("Tools available: {:?}", applied.tool_registry.tool_names());
+    println!();
+
+    // Create components
+    let event_emitter = InMemoryEventEmitter::new();
+    let message_store = InMemoryMessageStore::new();
+    let llm_provider = OpenAiProvider::new()?;
+
+    // Seed with user message
+    let session_id = Uuid::now_v7();
+    let user_message = "What is 123 multiplied by 456?";
     message_store
         .seed(session_id, vec![ConversationMessage::user(user_message)])
         .await;
@@ -643,7 +633,13 @@ async fn example_time_query() -> anyhow::Result<()> {
     println!("User: {}\n", user_message);
 
     // Create and run agent loop
-    let agent_loop = AgentLoop::new(config, event_emitter, message_store, llm_provider, registry);
+    let agent_loop = AgentLoop::new(
+        applied.config,
+        event_emitter,
+        message_store,
+        llm_provider,
+        applied.tool_registry,
+    );
 
     let result = agent_loop.run(session_id).await?;
 
@@ -654,75 +650,49 @@ async fn example_time_query() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Example 2: Perform a calculation
-async fn example_calculation() -> anyhow::Result<()> {
-    println!("--- Example 2: Calculation ---\n");
+/// Example 3: Multiple capabilities combined
+async fn example_multiple_capabilities() -> anyhow::Result<()> {
+    println!("--- Example 3: Multiple Capabilities Combined ---\n");
 
-    let registry = ToolRegistry::builder().tool(Calculator).build();
+    // Create registry with built-in capabilities
+    let registry = CapabilityRegistry::with_builtins();
 
-    let config = AgentConfig::new(
-        "You are a helpful calculator assistant. Use the calculate tool for math operations.",
+    // Base agent config
+    let base_config = AgentConfig::new(
+        "You are a helpful assistant with access to time and other utilities.",
         "gpt-4o-mini",
-    )
-    .with_tools(registry.tool_definitions())
-    .with_max_iterations(5);
+    );
 
+    // Apply multiple capabilities
+    let capability_ids = vec![CapabilityId::CurrentTime, CapabilityId::Noop];
+    let applied = apply_capabilities(base_config, &capability_ids, &registry);
+
+    println!("Applied capabilities: {:?}", applied.applied_ids);
+    println!("Tools available: {:?}", applied.tool_registry.tool_names());
+    println!();
+
+    // Create components
     let event_emitter = InMemoryEventEmitter::new();
     let message_store = InMemoryMessageStore::new();
     let llm_provider = OpenAiProvider::new()?;
 
+    // Seed with user message
     let session_id = Uuid::now_v7();
-    let user_message = "What is 42 multiplied by 17?";
+    let user_message = "What time is it in human-readable format?";
     message_store
         .seed(session_id, vec![ConversationMessage::user(user_message)])
         .await;
 
     println!("User: {}\n", user_message);
 
-    let agent_loop = AgentLoop::new(config, event_emitter, message_store, llm_provider, registry);
-
-    let result = agent_loop.run(session_id).await?;
-
-    print_conversation_steps(&result.messages);
-    println!("\n  Final: {}", result.final_response.unwrap_or_default());
-    println!("  (Iterations: {})\n", result.iterations);
-
-    Ok(())
-}
-
-/// Example 3: Multiple tools available
-async fn example_multi_tool() -> anyhow::Result<()> {
-    println!("--- Example 3: Multi-Tool Query ---\n");
-
-    // Register multiple tools
-    let registry = ToolRegistry::builder()
-        .tool(GetCurrentTime)
-        .tool(Calculator)
-        .tool(RandomFact)
-        .build();
-
-    println!("Available tools: {:?}\n", registry.tool_names());
-
-    let config = AgentConfig::new(
-        "You are a helpful assistant with access to multiple tools: get_current_time for time queries, calculate for math, and get_random_fact for interesting facts. Use the appropriate tool based on the user's request.",
-        "gpt-4o-mini",
-    )
-    .with_tools(registry.tool_definitions())
-    .with_max_iterations(5);
-
-    let event_emitter = InMemoryEventEmitter::new();
-    let message_store = InMemoryMessageStore::new();
-    let llm_provider = OpenAiProvider::new()?;
-
-    let session_id = Uuid::now_v7();
-    let user_message = "Tell me a random fact about nature.";
-    message_store
-        .seed(session_id, vec![ConversationMessage::user(user_message)])
-        .await;
-
-    println!("User: {}\n", user_message);
-
-    let agent_loop = AgentLoop::new(config, event_emitter, message_store, llm_provider, registry);
+    // Create and run agent loop
+    let agent_loop = AgentLoop::new(
+        applied.config,
+        event_emitter,
+        message_store,
+        llm_provider,
+        applied.tool_registry,
+    );
 
     let result = agent_loop.run(session_id).await?;
 

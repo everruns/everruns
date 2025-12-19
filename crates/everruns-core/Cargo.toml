@@ -1,15 +1,16 @@
-# Agent Loop Abstraction
+# Core Agent Abstractions
 # Decision: Keep the loop logic DB-agnostic via traits (EventEmitter, MessageStore, ToolExecutor)
 # Decision: Use async_trait for trait definitions to support async operations
 # Decision: Re-export AG-UI events from everruns-contracts for consistency
+# Decision: Use OpenAI Protocol as the base for LLM Provider abstractions
 
 [package]
-name = "everruns-agent-loop"
+name = "everruns-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Agentic loop abstraction for Everruns - DB-agnostic, streamable, decomposable"
+description = "Core agent abstractions for Everruns - agent loop, events, tools, LLM providers"
 
 [dependencies]
 # Core dependencies

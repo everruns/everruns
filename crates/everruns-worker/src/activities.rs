@@ -3,12 +3,12 @@
 use anyhow::Result;
 use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
+use everruns_core::traits::{LlmCallConfig, LlmMessage, LlmProvider};
 use everruns_storage::repositories::Database;
 use reqwest::Client;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::providers::{ChatMessage, LlmConfig, LlmProvider};
 use crate::tools::{execute_tool, requires_approval};
 
 /// Result from LLM call including text and optional tool calls
@@ -96,8 +96,8 @@ impl<P: LlmProvider> LlmCallActivity<P> {
     pub async fn call(
         &self,
         session_id: Uuid,
-        messages: Vec<ChatMessage>,
-        config: LlmConfig,
+        messages: Vec<LlmMessage>,
+        config: LlmCallConfig,
     ) -> Result<LlmCallResult> {
         info!(
             session_id = %session_id,

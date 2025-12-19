@@ -284,7 +284,7 @@ pub trait Tool: Send + Sync {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_agent_loop::tools::{Tool, ToolRegistry};
+/// use everruns_core::tools::{Tool, ToolRegistry};
 ///
 /// // Create registry and add tools
 /// let mut registry = ToolRegistry::new();

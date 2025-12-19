@@ -11,8 +11,9 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 1. **Monorepo Structure**: Single repository with Cargo workspace containing multiple crates
 2. **Crate Separation**:
    - `everruns-api` - HTTP API server (axum), SSE streaming, health endpoints
-   - `everruns-worker` - Temporal worker, workflows, activities, LLM providers
-   - `everruns-agent-loop` - DB-agnostic agentic loop abstraction (traits, executor, step decomposition)
+   - `everruns-worker` - Temporal worker, workflows, activities, database adapters
+   - `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities)
+   - `everruns-openai` - OpenAI LLM provider implementation
    - `everruns-contracts` - DTOs, AG-UI events, OpenAPI schemas
    - `everruns-storage` - PostgreSQL (sqlx), migrations, repositories
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
@@ -34,14 +35,14 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 
 See [specs/temporal-integration.md](temporal-integration.md) for detailed Temporal architecture.
 
-### Agent Loop Abstraction (`everruns-agent-loop`)
+### Core Abstractions (`everruns-core`)
 
-The agentic loop is encapsulated in a DB-agnostic crate with pluggable backends:
+The core crate provides DB-agnostic agentic loop abstractions with pluggable backends:
 
 1. **Trait-Based Design**:
    - `EventEmitter` - Emit events during loop execution
    - `MessageStore` - Load/store conversation messages
-   - `LlmProvider` - Call LLM with streaming support
+   - `LlmProvider` - Call LLM with streaming support (OpenAI Protocol as base)
    - `ToolExecutor` - Execute tool calls
 
 2. **Execution Modes**:
@@ -57,6 +58,15 @@ The agentic loop is encapsulated in a DB-agnostic crate with pluggable backends:
    - `InMemoryMessageStore`, `InMemoryEventEmitter`
    - `MockLlmProvider`, `MockToolExecutor`
    - `InMemoryAgentLoopBuilder` for easy test setup
+
+### OpenAI Provider (`everruns-openai`)
+
+OpenAI-specific LLM provider implementation:
+
+1. **Implements Core Traits**: `LlmProvider` trait from `everruns-core`
+2. **OpenAI Protocol Base**: Core types use OpenAI's message format as the standard
+3. **Streaming Support**: Full SSE streaming with tool call support
+4. **Native API Access**: Direct methods for OpenAI-specific functionality
 
 ### Capabilities System
 
