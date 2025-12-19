@@ -82,6 +82,25 @@ case "$command" in
     cargo run -p everruns-worker
     ;;
 
+  watch-api)
+    echo "👀 Starting API server with auto-reload..."
+    if ! command -v cargo-watch &> /dev/null; then
+      echo "❌ cargo-watch not installed. Run: cargo install cargo-watch"
+      exit 1
+    fi
+    export AGENT_RUNNER_MODE=${AGENT_RUNNER_MODE:-temporal}
+    cargo watch -w crates -x 'run -p everruns-api'
+    ;;
+
+  watch-worker)
+    echo "👀 Starting worker with auto-reload..."
+    if ! command -v cargo-watch &> /dev/null; then
+      echo "❌ cargo-watch not installed. Run: cargo install cargo-watch"
+      exit 1
+    fi
+    cargo watch -w crates -x 'run -p everruns-worker'
+    ;;
+
   ui)
     echo "🖥️  Starting UI development server..."
     cd apps/ui
@@ -106,6 +125,12 @@ case "$command" in
     echo "🚀 Starting complete Everruns development environment..."
     echo ""
 
+    # Check for cargo-watch
+    if ! command -v cargo-watch &> /dev/null; then
+      echo "❌ cargo-watch not installed. Run: ./scripts/dev.sh init"
+      exit 1
+    fi
+
     # Track child PIDs for cleanup
     CHILD_PIDS=()
 
@@ -119,6 +144,7 @@ case "$command" in
         fi
       done
       # Also kill by name in case PIDs were replaced
+      pkill -f "cargo-watch" 2>/dev/null || true
       pkill -f "everruns-api" 2>/dev/null || true
       pkill -f "everruns-worker" 2>/dev/null || true
       pkill -f "next dev" 2>/dev/null || true
@@ -151,28 +177,28 @@ case "$command" in
     sqlx migrate run --source crates/everruns-storage/migrations
     echo "   ✅ Migrations complete"
 
-    # Start API in background (Temporal mode)
-    echo "4️⃣  Starting API server (Temporal mode)..."
+    # Start API in background with auto-reload (Temporal mode)
+    echo "4️⃣  Starting API server with auto-reload (Temporal mode)..."
     export AGENT_RUNNER_MODE=temporal
-    cargo run -p everruns-api &
+    cargo watch -w crates -x 'run -p everruns-api' &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
 
     # Check if API is running
     if curl -s http://localhost:9000/health > /dev/null 2>&1; then
-      echo "   ✅ API is running (PID: $API_PID)"
+      echo "   ✅ API is running with auto-reload (PID: $API_PID)"
     else
-      echo "   ⚠️  API may still be starting..."
+      echo "   ⚠️  API compiling (will auto-reload on changes)..."
     fi
 
-    # Start Worker in background (Temporal mode)
-    echo "5️⃣  Starting Temporal worker..."
-    cargo run -p everruns-worker &
+    # Start Worker in background with auto-reload (Temporal mode)
+    echo "5️⃣  Starting Temporal worker with auto-reload..."
+    cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
     sleep 2
-    echo "   ✅ Worker is starting (PID: $WORKER_PID)"
+    echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
     # Start UI in background
     echo "6️⃣  Starting UI server..."
@@ -186,14 +212,15 @@ case "$command" in
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "✅ All services started!"
+    echo "✅ All services started with auto-reload!"
     echo ""
-    echo "   🌐 API:         http://localhost:9000"
+    echo "   🌐 API:         http://localhost:9000 (auto-reload)"
     echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-    echo "   ⚙️  Worker:      running (Temporal workflows)"
-    echo "   🖥️  UI:          http://localhost:9100"
+    echo "   ⚙️  Worker:      running (auto-reload)"
+    echo "   🖥️  UI:          http://localhost:9100 (hot reload)"
     echo "   ⏱️  Temporal UI: http://localhost:8080"
     echo ""
+    echo "👀 Edit code in crates/ and services will auto-restart"
     echo "💡 Press Ctrl+C to stop services (Docker will keep running)"
     echo ""
 
@@ -239,6 +266,12 @@ case "$command" in
     else
       echo "  ✅ cargo-deny already installed"
     fi
+    if ! command -v cargo-watch &> /dev/null; then
+      echo "  Installing cargo-watch (for auto-reload)..."
+      cargo install cargo-watch
+    else
+      echo "  ✅ cargo-watch already installed"
+    fi
 
     # UI dependencies
     echo ""
@@ -277,7 +310,7 @@ Commands:
   init        Install all development dependencies (Rust tools + UI)
   start       Start Docker services (Postgres, Temporal)
   stop        Stop Docker services
-  start-all   Start everything (Docker, migrations, API, UI)
+  start-all   Start everything with auto-reload (Docker, API, Worker, UI)
   stop-all    Stop all services (API, UI, Docker)
   reset       Stop and remove all Docker volumes
   migrate     Run database migrations
@@ -286,6 +319,8 @@ Commands:
   check       Run format, lint, and test checks
   api         Start the API server
   worker      Start the worker
+  watch-api   Start API with auto-reload on code changes
+  watch-worker Start worker with auto-reload on code changes
   ui          Start the UI development server
   ui-build    Build the UI for production
   ui-install  Install UI dependencies
@@ -295,7 +330,8 @@ Commands:
 
 Examples:
   $0 init            # First-time setup (install all dependencies)
-  $0 start-all       # Start everything and run
+  $0 start-all       # Start everything with auto-reload
+  $0 watch-api       # Just run API with auto-reload
   $0 stop-all        # Stop everything
 EOF
     ;;
