@@ -81,6 +81,22 @@ pub struct CallModelResult {
     pub assistant_message: ConversationMessage,
 }
 
+/// Input for AddUserMessageAtom
+#[derive(Debug, Clone)]
+pub struct AddUserMessageInput {
+    /// Session ID
+    pub session_id: Uuid,
+    /// Message content
+    pub content: String,
+}
+
+/// Result of adding a user message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddUserMessageResult {
+    /// The stored message
+    pub message: ConversationMessage,
+}
+
 /// Input for ExecuteToolAtom (single tool)
 #[derive(Debug, Clone)]
 pub struct ExecuteToolInput {
@@ -88,8 +104,8 @@ pub struct ExecuteToolInput {
     pub session_id: Uuid,
     /// Tool call to execute
     pub tool_call: ToolCall,
-    /// Tool definition
-    pub tool_definition: ToolDefinition,
+    /// Available tool definitions for resolution
+    pub tool_definitions: Vec<ToolDefinition>,
 }
 
 /// Result of executing a single tool
@@ -246,15 +262,70 @@ where
 }
 
 // ============================================================================
+// AddUserMessageAtom - Atom for adding user messages
+// ============================================================================
+
+/// Atom that adds a user message to the conversation
+///
+/// This atom:
+/// 1. Creates a user message
+/// 2. Stores it in the message store
+/// 3. Returns the stored message
+pub struct AddUserMessageAtom<M>
+where
+    M: MessageStore,
+{
+    message_store: M,
+}
+
+impl<M> AddUserMessageAtom<M>
+where
+    M: MessageStore,
+{
+    /// Create a new AddUserMessageAtom
+    pub fn new(message_store: M) -> Self {
+        Self { message_store }
+    }
+}
+
+#[async_trait]
+impl<M> Atom for AddUserMessageAtom<M>
+where
+    M: MessageStore + Send + Sync,
+{
+    type Input = AddUserMessageInput;
+    type Output = AddUserMessageResult;
+
+    fn name(&self) -> &'static str {
+        "add_user_message"
+    }
+
+    async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+        let AddUserMessageInput {
+            session_id,
+            content,
+        } = input;
+
+        let message = ConversationMessage::user(content);
+        self.message_store
+            .store(session_id, message.clone())
+            .await?;
+
+        Ok(AddUserMessageResult { message })
+    }
+}
+
+// ============================================================================
 // ExecuteToolAtom - Atom for executing a single tool
 // ============================================================================
 
 /// Atom that executes a single tool call
 ///
 /// This atom:
-/// 1. Executes the tool call
-/// 2. Stores the tool result message
-/// 3. Returns the result
+/// 1. Resolves the tool definition from available definitions
+/// 2. Executes the tool call
+/// 3. Stores the tool result message
+/// 4. Returns the result
 pub struct ExecuteToolAtom<M, T>
 where
     M: MessageStore,
@@ -295,8 +366,22 @@ where
         let ExecuteToolInput {
             session_id,
             tool_call,
-            tool_definition,
+            tool_definitions,
         } = input;
+
+        // Resolve tool definition
+        let tool_definition = tool_definitions
+            .iter()
+            .find(|def| {
+                let name = match def {
+                    ToolDefinition::Builtin(b) => &b.name,
+                };
+                name == &tool_call.name
+            })
+            .cloned()
+            .ok_or_else(|| {
+                AgentLoopError::tool(format!("Tool definition not found: {}", tool_call.name))
+            })?;
 
         // Execute tool
         let result = self
@@ -367,6 +452,11 @@ where
         &self.tool_executor
     }
 
+    /// Create an AddUserMessageAtom
+    pub fn add_user_message_atom(&self) -> AddUserMessageAtom<M> {
+        AddUserMessageAtom::new(self.message_store.clone())
+    }
+
     /// Create a CallModelAtom
     pub fn call_model_atom(&self) -> CallModelAtom<M, L> {
         CallModelAtom::new(self.message_store.clone(), self.llm_provider.clone())
@@ -388,17 +478,18 @@ where
         Ok(LoadMessagesResult { messages, count })
     }
 
-    /// Add a user message to the conversation
+    /// Add a user message to the conversation (uses AddUserMessageAtom)
     pub async fn add_user_message(
         &self,
         session_id: Uuid,
         content: impl Into<String>,
-    ) -> Result<ConversationMessage> {
-        let message = ConversationMessage::user(content);
-        self.message_store
-            .store(session_id, message.clone())
-            .await?;
-        Ok(message)
+    ) -> Result<AddUserMessageResult> {
+        let atom = self.add_user_message_atom();
+        atom.execute(AddUserMessageInput {
+            session_id,
+            content: content.into(),
+        })
+        .await
     }
 
     /// Call the LLM model (uses CallModelAtom)
@@ -432,18 +523,6 @@ where
     ) -> Result<String> {
         self.add_user_message(session_id, user_message).await?;
 
-        // Build tool definition map for lookups
-        let tool_map: std::collections::HashMap<&str, &ToolDefinition> = config
-            .tools
-            .iter()
-            .map(|def| {
-                let name = match def {
-                    ToolDefinition::Builtin(b) => b.name.as_str(),
-                };
-                (name, def)
-            })
-            .collect();
-
         let mut final_response = String::new();
 
         for iteration in 1..=max_iterations {
@@ -461,31 +540,18 @@ where
             }
 
             // Execute tools in parallel using ExecuteToolAtom
+            let tool_definitions = config.tools.clone();
             let futures: Vec<_> = result
                 .tool_calls
                 .into_iter()
                 .map(|tool_call| {
-                    let tool_def = tool_map
-                        .get(tool_call.name.as_str())
-                        .map(|d| (*d).clone())
-                        .unwrap_or_else(|| {
-                            // Fallback: create a minimal definition if not found
-                            // This shouldn't happen in practice
-                            ToolDefinition::Builtin(everruns_contracts::tools::BuiltinTool {
-                                name: tool_call.name.clone(),
-                                description: String::new(),
-                                parameters: serde_json::json!({}),
-                                kind: everruns_contracts::tools::BuiltinToolKind::HttpGet,
-                                policy: everruns_contracts::tools::ToolPolicy::Auto,
-                            })
-                        });
-
                     let atom = self.execute_tool_atom();
+                    let tool_defs = tool_definitions.clone();
                     async move {
                         atom.execute(ExecuteToolInput {
                             session_id,
                             tool_call,
-                            tool_definition: tool_def,
+                            tool_definitions: tool_defs,
                         })
                         .await
                     }
