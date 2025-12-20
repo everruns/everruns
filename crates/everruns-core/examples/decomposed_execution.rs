@@ -1,185 +1,73 @@
-//! Decomposed Execution Example - Step-by-Step Agent Loop
+//! Decomposed Execution Example
 //!
-//! This example demonstrates decomposed (step-by-step) execution of the agent loop.
-//! Instead of running the entire loop at once, each step is executed independently.
+//! This example demonstrates using atoms directly for fine-grained control
+//! over the agent execution flow. Each atom is a self-contained operation
+//! that can be executed independently, making it suitable for:
 //!
-//! This pattern is useful for:
-//! - Temporal workflow activities (each step can be a separate activity)
-//! - Fine-grained control over execution flow
-//! - Custom state persistence between steps
-//! - Implementing pause/resume functionality
-//!
-//! The execution flow:
-//! 1. Create StepInput with initial messages
-//! 2. Execute step with execute_step()
-//! 3. Check if loop should continue
-//! 4. If tool calls are pending, execute them
-//! 5. Repeat until complete
+//! - Temporal workflow activities
+//! - Custom orchestration logic
+//! - Debugging and testing individual steps
 //!
 //! Prerequisites:
 //! - Set OPENAI_API_KEY environment variable
 //!
 //! Run with: cargo run -p everruns-core --example decomposed_execution --features openai
 
-use async_trait::async_trait;
 use everruns_core::{
-    config::AgentConfig,
-    memory::{InMemoryEventEmitter, InMemoryMessageStore},
-    message::{ConversationMessage, MessageContent, MessageRole},
+    atoms::{
+        AddUserMessageAtom, AddUserMessageInput, Atom, CallModelAtom, CallModelInput,
+        ExecuteToolAtom, ExecuteToolInput,
+    },
+    config::AgentConfigBuilder,
+    memory::InMemoryMessageStore,
     openai::OpenAIProtocolLlmProvider,
-    step::{StepInput, StepKind, StepResult},
-    tools::{Tool, ToolExecutionResult, ToolRegistry},
-    AgentLoop,
+    tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
+    MessageStore,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-// ============================================================================
-// Custom Tool: Get Current Time
-// ============================================================================
+/// A simple weather tool for demonstration
+struct GetWeatherTool;
 
-struct GetCurrentTime;
-
-#[async_trait]
-impl Tool for GetCurrentTime {
+#[async_trait::async_trait]
+impl Tool for GetWeatherTool {
     fn name(&self) -> &str {
-        "get_current_time"
+        "get_weather"
     }
 
     fn description(&self) -> &str {
-        "Get the current date and time. Use when asked about the current time."
+        "Get the current weather for a location"
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "format": {
+                "location": {
                     "type": "string",
-                    "description": "Output format: 'human' for readable, 'iso8601' for ISO format",
-                    "enum": ["human", "iso8601"]
+                    "description": "The city name"
                 }
             },
-            "additionalProperties": false
+            "required": ["location"]
         })
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        let format = arguments
-            .get("format")
+        let location = arguments
+            .get("location")
             .and_then(|v| v.as_str())
-            .unwrap_or("human");
+            .unwrap_or("Unknown");
 
-        let now = chrono::Utc::now();
-
-        let result = match format {
-            "iso8601" => json!({
-                "datetime": now.to_rfc3339(),
-                "format": "iso8601"
-            }),
-            _ => json!({
-                "datetime": now.format("%A, %B %d, %Y at %H:%M:%S UTC").to_string(),
-                "format": "human"
-            }),
-        };
-
-        ToolExecutionResult::success(result)
+        // Simulated weather data
+        ToolExecutionResult::Success(json!({
+            "location": location,
+            "temperature": "22°C",
+            "conditions": "Sunny",
+            "humidity": "45%"
+        }))
     }
 }
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn print_step_info(step_num: usize, kind: &StepKind, result: &StepResult) {
-    print!("  Step {}: {:?} -> ", step_num, kind);
-    match result {
-        StepResult::LlmCallComplete {
-            response_text,
-            tool_calls,
-            continue_loop,
-        } => {
-            if tool_calls.is_empty() {
-                println!("Response: \"{}\"", truncate(response_text, 60));
-            } else {
-                println!(
-                    "{} tool call(s), continue={}",
-                    tool_calls.len(),
-                    continue_loop
-                );
-                for tc in tool_calls {
-                    println!("       -> {}({})", tc.name, tc.arguments);
-                }
-            }
-        }
-        StepResult::ToolExecutionComplete { results } => {
-            println!("{} result(s)", results.len());
-            for result in results {
-                if let Some(ref val) = result.result {
-                    println!("       <- {}", val);
-                }
-            }
-        }
-        StepResult::SetupComplete { message_count } => {
-            println!("{} messages loaded", message_count);
-        }
-        StepResult::FinalizeComplete { final_response } => {
-            println!(
-                "Final: \"{}\"",
-                truncate(final_response.as_deref().unwrap_or("(none)"), 60)
-            );
-        }
-    }
-}
-
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len])
-    }
-}
-
-fn print_messages(messages: &[ConversationMessage]) {
-    println!("\n  Final conversation:");
-    for (i, msg) in messages.iter().enumerate() {
-        match msg.role {
-            MessageRole::User => {
-                println!("    {}. [User] {}", i + 1, msg.content.to_llm_string());
-            }
-            MessageRole::Assistant => {
-                let text = msg.content.to_llm_string();
-                if let Some(ref tool_calls) = msg.tool_calls {
-                    if !tool_calls.is_empty() {
-                        println!(
-                            "    {}. [Assistant] Calling {} tool(s)",
-                            i + 1,
-                            tool_calls.len()
-                        );
-                    } else if !text.is_empty() {
-                        println!("    {}. [Assistant] {}", i + 1, truncate(&text, 50));
-                    }
-                } else if !text.is_empty() {
-                    println!("    {}. [Assistant] {}", i + 1, truncate(&text, 50));
-                }
-            }
-            MessageRole::ToolResult => {
-                if let MessageContent::ToolResult { result, error } = &msg.content {
-                    if let Some(err) = error {
-                        println!("    {}. [Tool] Error: {}", i + 1, err);
-                    } else if let Some(res) = result {
-                        println!("    {}. [Tool] {}", i + 1, truncate(&res.to_string(), 50));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-// ============================================================================
-// Main
-// ============================================================================
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -193,153 +81,131 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    println!("=== Decomposed Execution Demo (everruns-core) ===\n");
+    println!("=== Decomposed Execution with Atoms ===\n");
 
-    // Example 1: Simple query (no tools)
-    example_simple_query().await?;
+    // Create shared dependencies
+    let message_store = InMemoryMessageStore::new();
+    let llm_provider = OpenAIProtocolLlmProvider::from_env()?;
+    let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
-    // Example 2: Query with tool calls
-    example_with_tool_calls().await?;
+    // Create config with tools
+    let config = AgentConfigBuilder::new()
+        .system_prompt("You are a helpful weather assistant. Use the get_weather tool to answer weather questions.")
+        .model("gpt-4o-mini")
+        .tools(tools.tool_definitions())
+        .build();
 
-    println!("=== Demo completed! ===");
+    let session_id = Uuid::now_v7();
+    let user_question = "What's the weather like in Paris?";
+
+    println!("Session: {}", session_id);
+    println!("User: {}\n", user_question);
+
+    // =========================================================================
+    // Step 1: Add user message using AddUserMessageAtom
+    // =========================================================================
+    println!("--- Step 1: AddUserMessageAtom ---");
+
+    let add_message_atom = AddUserMessageAtom::new(message_store.clone());
+    let add_result = add_message_atom
+        .execute(AddUserMessageInput {
+            session_id,
+            content: user_question.to_string(),
+        })
+        .await?;
+
+    println!("  Stored user message: {:?}", add_result.message.id);
+
+    // =========================================================================
+    // Step 2: Call model using CallModelAtom
+    // =========================================================================
+    println!("\n--- Step 2: CallModelAtom ---");
+
+    let call_model_atom = CallModelAtom::new(message_store.clone(), llm_provider.clone());
+    let model_result = call_model_atom
+        .execute(CallModelInput {
+            session_id,
+            config: config.clone(),
+        })
+        .await?;
+
+    println!("  Response text: {}", truncate(&model_result.text, 50));
+    println!("  Tool calls: {}", model_result.tool_calls.len());
+    println!(
+        "  Needs tool execution: {}",
+        model_result.needs_tool_execution
+    );
+
+    // =========================================================================
+    // Step 3: Execute tools if needed using ExecuteToolAtom
+    // =========================================================================
+    if model_result.needs_tool_execution {
+        println!("\n--- Step 3: ExecuteToolAtom (for each tool call) ---");
+
+        let execute_tool_atom = ExecuteToolAtom::new(message_store.clone(), tools.clone());
+
+        for tool_call in &model_result.tool_calls {
+            println!("  Executing tool: {}", tool_call.name);
+            println!("    Arguments: {}", tool_call.arguments);
+
+            let tool_result = execute_tool_atom
+                .execute(ExecuteToolInput {
+                    session_id,
+                    tool_call: tool_call.clone(),
+                    tool_definitions: config.tools.clone(),
+                })
+                .await?;
+
+            println!(
+                "    Result: {}",
+                tool_result
+                    .result
+                    .result
+                    .as_ref()
+                    .map(|v: &Value| truncate(&v.to_string(), 60))
+                    .unwrap_or_else(|| "None".to_string())
+            );
+        }
+
+        // =====================================================================
+        // Step 4: Call model again to get final response
+        // =====================================================================
+        println!("\n--- Step 4: CallModelAtom (final response) ---");
+
+        let final_result = call_model_atom
+            .execute(CallModelInput {
+                session_id,
+                config: config.clone(),
+            })
+            .await?;
+
+        println!("\nAssistant: {}", final_result.text);
+    } else {
+        println!("\nAssistant: {}", model_result.text);
+    }
+
+    // =========================================================================
+    // Print conversation history
+    // =========================================================================
+    println!("\n--- Conversation History ---");
+    let messages = message_store.load(session_id).await?;
+    for (i, msg) in messages.iter().enumerate() {
+        println!(
+            "  {}. [{:?}] {}",
+            i + 1,
+            msg.role,
+            truncate(&msg.content.to_llm_string(), 60)
+        );
+    }
+
+    println!("\n=== Demo completed! ===");
     Ok(())
 }
 
-/// Example 1: Simple query without tools - single step execution
-async fn example_simple_query() -> anyhow::Result<()> {
-    println!("--- Example 1: Simple Query (No Tools) ---\n");
-    println!("  This demonstrates a single LLM call without tool usage.\n");
-
-    // Create components
-    let event_emitter = InMemoryEventEmitter::new();
-    let message_store = InMemoryMessageStore::new();
-    let llm_provider = OpenAIProtocolLlmProvider::from_env()?;
-    let tools = ToolRegistry::new();
-
-    let config = AgentConfig::new("You are a helpful assistant. Be concise.", "gpt-4o-mini");
-
-    let agent = AgentLoop::new(config, event_emitter, message_store, llm_provider, tools);
-
-    // Create initial input
-    let session_id = Uuid::now_v7();
-    let user_message = "What is the capital of France? One word answer.";
-    println!("  User: {}\n", user_message);
-
-    let initial_messages = vec![ConversationMessage::user(user_message)];
-
-    // Create step input
-    let mut input = StepInput::new(session_id, initial_messages);
-    input.iteration = 1;
-
-    // Execute the step
-    println!("  Executing steps:");
-    let mut step_count = 0;
-
-    loop {
-        step_count += 1;
-        let output = agent.execute_step(input.clone()).await?;
-
-        // Print step info
-        if let Some(ref result) = output.step.result {
-            print_step_info(step_count, &output.step.kind, result);
-        }
-
-        if !output.continue_loop {
-            // Loop complete
-            print_messages(&output.messages);
-            break;
-        }
-
-        // Prepare next iteration
-        input = StepInput {
-            session_id,
-            iteration: input.iteration + 1,
-            messages: output.messages,
-            pending_tool_calls: output.pending_tool_calls,
-        };
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len])
     }
-
-    println!("\n  Total steps: {}\n", step_count);
-    Ok(())
-}
-
-/// Example 2: Query with tool calls - multiple step execution
-async fn example_with_tool_calls() -> anyhow::Result<()> {
-    println!("--- Example 2: Query with Tool Calls ---\n");
-    println!("  This demonstrates LLM call -> tool execution -> LLM response flow.\n");
-
-    // Create tool registry
-    let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
-
-    // Create components
-    let event_emitter = InMemoryEventEmitter::new();
-    let message_store = InMemoryMessageStore::new();
-    let llm_provider = OpenAIProtocolLlmProvider::from_env()?;
-
-    let config = AgentConfig::new(
-        "You are a helpful assistant. When asked about time, use the get_current_time tool.",
-        "gpt-4o-mini",
-    )
-    .with_tools(registry.tool_definitions())
-    .with_max_iterations(5);
-
-    let agent = AgentLoop::new(config, event_emitter, message_store, llm_provider, registry);
-
-    // Create initial input
-    let session_id = Uuid::now_v7();
-    let user_message = "What time is it right now?";
-    println!("  User: {}\n", user_message);
-
-    let initial_messages = vec![ConversationMessage::user(user_message)];
-
-    // Create step input
-    let mut input = StepInput::new(session_id, initial_messages);
-    input.iteration = 1;
-
-    // Execute steps until complete
-    println!("  Executing steps:");
-    let mut step_count = 0;
-    let max_steps = 10;
-
-    loop {
-        if step_count >= max_steps {
-            println!("  Warning: Max steps reached!");
-            break;
-        }
-
-        step_count += 1;
-        let output = agent.execute_step(input.clone()).await?;
-
-        // Print step info
-        if let Some(ref result) = output.step.result {
-            print_step_info(step_count, &output.step.kind, result);
-        }
-
-        if !output.continue_loop {
-            // Loop complete
-            print_messages(&output.messages);
-            break;
-        }
-
-        // Prepare next step
-        // If we have pending tool calls, execute them in the next step
-        // Otherwise, continue with LLM call
-        input = StepInput {
-            session_id,
-            iteration: if output.pending_tool_calls.is_empty() {
-                input.iteration + 1
-            } else {
-                input.iteration
-            },
-            messages: output.messages,
-            pending_tool_calls: output.pending_tool_calls,
-        };
-    }
-
-    println!("\n  Total steps: {}", step_count);
-    println!("  (Step 1: LLM decides to call tool)");
-    println!("  (Step 2: Tool execution)");
-    println!("  (Step 3: LLM generates final response)\n");
-
-    Ok(())
 }

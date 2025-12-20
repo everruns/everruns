@@ -13,12 +13,14 @@
 // - Error handling distinguishes between user-visible and internal errors
 // - Capabilities provide modular functionality units for composing agent behavior
 
+pub mod atoms;
 pub mod capabilities;
 pub mod config;
 pub mod error;
 pub mod events;
 pub mod executor;
 pub mod llm;
+pub mod r#loop;
 pub mod message;
 pub mod protocol;
 pub mod step;
@@ -62,7 +64,7 @@ pub use capabilities::{
 
 // Protocol re-exports (stateless atomic operations)
 pub use protocol::{
-    AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, AgentProtocol, Atom,
+    AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, AgentLoop2, AgentProtocol, Atom,
     CallModelAtom, CallModelInput, CallModelResult, ExecuteToolAtom, ExecuteToolInput,
     ExecuteToolResult, LoadMessagesResult,
 };
