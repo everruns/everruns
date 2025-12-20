@@ -16,7 +16,7 @@ use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_contracts::*;
 use everruns_storage::{Database, EncryptionService};
-use everruns_worker::{create_runner, RunnerConfig, RunnerMode};
+use everruns_worker::{create_runner, RunnerConfig};
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -35,7 +35,6 @@ pub struct AppState {
 struct HealthResponse {
     status: &'static str,
     version: &'static str,
-    runner_mode: String,
     auth_mode: String,
 }
 
@@ -43,7 +42,6 @@ async fn health(State(state): State<HealthState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
-        runner_mode: state.runner_mode.clone(),
         auth_mode: state.auth_mode.clone(),
     })
 }
@@ -51,7 +49,6 @@ async fn health(State(state): State<HealthState>) -> Json<HealthResponse> {
 /// State for health endpoint
 #[derive(Clone)]
 struct HealthState {
-    runner_mode: String,
     auth_mode: String,
 }
 
@@ -157,29 +154,18 @@ async fn main() -> Result<()> {
 
     // Load runner configuration from environment
     let runner_config = RunnerConfig::from_env();
-    tracing::info!(
-        mode = ?runner_config.mode,
-        "Agent runner mode configured"
-    );
 
-    // Create the agent runner based on configuration
+    // Create the agent runner (Temporal)
     let runner = create_runner(&runner_config, db.clone())
         .await
         .context("Failed to create agent runner")?;
 
-    match runner_config.mode {
-        RunnerMode::InProcess => {
-            tracing::info!("Using in-process agent runner (default)");
-        }
-        RunnerMode::Temporal => {
-            tracing::info!(
-                address = %runner_config.temporal_address(),
-                namespace = %runner_config.temporal_namespace(),
-                task_queue = %runner_config.temporal_task_queue(),
-                "Using Temporal agent runner"
-            );
-        }
-    }
+    tracing::info!(
+        address = %runner_config.temporal_address(),
+        namespace = %runner_config.temporal_namespace(),
+        task_queue = %runner_config.temporal_task_queue(),
+        "Using Temporal agent runner"
+    );
 
     // Create app state
     let db = Arc::new(db);
@@ -222,7 +208,6 @@ async fn main() -> Result<()> {
         auth: auth_state.clone(),
     };
     let health_state = HealthState {
-        runner_mode: format!("{:?}", runner_config.mode),
         auth_mode: format!("{:?}", auth_config.mode),
     };
 

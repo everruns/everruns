@@ -1,6 +1,6 @@
 use anyhow::Result;
 use everruns_storage::repositories::Database;
-use everruns_worker::{RunnerConfig, RunnerMode, TemporalWorker};
+use everruns_worker::{RunnerConfig, TemporalWorker};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -21,44 +21,32 @@ async fn main() -> Result<()> {
 
     // Load runner configuration
     let config = RunnerConfig::from_env();
-    tracing::info!(mode = ?config.mode, "Runner mode configured");
 
-    match config.mode {
-        RunnerMode::InProcess => {
-            // In-process mode: Worker is passive, workflows triggered by API
-            // Database connection not needed - API handles execution
-            tracing::info!("Worker running in passive mode (in-process execution handled by API)");
-            tracing::info!("Worker ready, waiting for shutdown signal...");
-            tokio::signal::ctrl_c().await?;
-        }
-        RunnerMode::Temporal => {
-            // Temporal mode: Start the Temporal worker to poll for tasks
-            tracing::info!(
-                task_queue = %config.temporal_task_queue(),
-                "Starting Temporal worker"
-            );
+    // Start the Temporal worker to poll for tasks
+    tracing::info!(
+        task_queue = %config.temporal_task_queue(),
+        "Starting Temporal worker"
+    );
 
-            // Connect to database
-            let database_url = std::env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://everruns:everruns@localhost:5432/everruns".into());
-            let db = Database::from_url(&database_url).await?;
+    // Connect to database
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://everruns:everruns@localhost:5432/everruns".into());
+    let db = Database::from_url(&database_url).await?;
 
-            // Create and run the Temporal worker
-            let worker = TemporalWorker::new(config, db).await?;
+    // Create and run the Temporal worker
+    let worker = TemporalWorker::new(config, db).await?;
 
-            // Run the worker (blocks until shutdown)
-            tokio::select! {
-                result = worker.run() => {
-                    if let Err(e) = result {
-                        tracing::error!(error = %e, "Worker error");
-                        return Err(e);
-                    }
-                }
-                _ = tokio::signal::ctrl_c() => {
-                    tracing::info!("Received shutdown signal");
-                    worker.shutdown();
-                }
+    // Run the worker (blocks until shutdown)
+    tokio::select! {
+        result = worker.run() => {
+            if let Err(e) = result {
+                tracing::error!(error = %e, "Worker error");
+                return Err(e);
             }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received shutdown signal");
+            worker.shutdown();
         }
     }
 

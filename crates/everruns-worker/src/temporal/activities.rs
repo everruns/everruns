@@ -398,8 +398,8 @@ pub async fn call_llm_activity(
 
 /// Execute tool calls using the UnifiedToolExecutor
 ///
-/// This activity executes tool calls using the same ToolExecutor trait
-/// that the in-process mode uses, ensuring consistent behavior.
+/// This activity executes tool calls using the UnifiedToolExecutor
+/// which uses ToolRegistry for consistent tool execution.
 pub async fn execute_tools_activity(
     ctx: &ActivityContext,
     db: &Database,

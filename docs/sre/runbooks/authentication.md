@@ -196,7 +196,7 @@ The `/health` endpoint shows current auth mode:
 
 ```bash
 curl http://localhost:9000/health
-# {"status":"ok","version":"0.1.0","runner_mode":"InProcess","auth_mode":"None"}
+# {"status":"ok","version":"0.2.0","auth_mode":"None"}
 ```
 
 ## Security Best Practices

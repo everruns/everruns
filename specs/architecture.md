@@ -26,10 +26,8 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 
 ### Execution Layer
 
-1. **Runner Abstraction**: `AgentRunner` trait provides pluggable execution backends
-2. **Execution Modes**:
-   - **In-Process** (`AGENT_RUNNER_MODE=inprocess`): Workflows run as tokio tasks in API process. Good for development.
-   - **Temporal** (`AGENT_RUNNER_MODE=temporal`): True Temporal workflow execution with separate worker process
+1. **Runner Abstraction**: `AgentRunner` trait provides the execution backend interface
+2. **Temporal Execution**: All agent workflows run via Temporal for durability and reliability
 3. **Workflow Isolation**: Temporal concepts (workflow IDs, task queues) never exposed in public API
 4. **Event Streaming**: AG-UI protocol over SSE for real-time event delivery via database-backed events
 
@@ -45,9 +43,9 @@ The core crate provides DB-agnostic agentic loop abstractions with pluggable bac
    - `LlmProvider` - Call LLM with streaming support (OpenAI Protocol as base)
    - `ToolExecutor` - Execute tool calls
 
-2. **Execution Modes**:
-   - **In-Process**: `AgentLoop::run()` - Complete loop execution in single process
-   - **Decomposed**: `AgentLoop::execute_step()` - Step-by-step execution for Temporal integration
+2. **Execution**:
+   - `AgentLoop::run()` - Complete loop execution
+   - `AgentLoop::execute_step()` - Step-by-step execution for Temporal activities
 
 3. **Step Abstraction** (`step.rs`):
    - `StepInput` / `StepOutput` - Input/output for each step

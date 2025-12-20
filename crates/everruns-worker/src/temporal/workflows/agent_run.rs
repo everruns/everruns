@@ -1,7 +1,6 @@
 // TemporalSessionWorkflow - Durable session-based agent execution workflow
 // Decision: Workflows are state machines that produce commands in response to activations
 // Decision: Each LLM call and each tool execution is a separate Temporal activity (node)
-// Decision: For non-durable execution, use InProcessWorkflow instead
 //
 // The session workflow orchestrates:
 // 1. Load agent configuration
@@ -83,7 +82,6 @@ pub enum ActivityResult {
 /// Temporal session workflow for durable agent execution
 ///
 /// This workflow runs via Temporal for durability, retry, and recovery.
-/// For non-durable in-process execution, use InProcessWorkflow instead.
 #[derive(Debug)]
 pub struct TemporalSessionWorkflow {
     /// Workflow input

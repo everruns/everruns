@@ -109,8 +109,6 @@ where
     }
 
     /// Run the complete agentic loop for a session
-    ///
-    /// This is the main entry point for in-process execution.
     pub async fn run(&self, session_id: Uuid) -> Result<LoopResult> {
         info!(session_id = %session_id, "Starting agent loop");
 

@@ -54,7 +54,7 @@ let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
 ```
 
 **UnifiedToolExecutor:**
-Production executor that uses `ToolRegistry` for all tool execution across both in-process and Temporal modes:
+Production executor that uses `ToolRegistry` for all tool execution:
 ```rust
 // Creates executor with default built-in tools
 let executor = UnifiedToolExecutor::with_default_tools();

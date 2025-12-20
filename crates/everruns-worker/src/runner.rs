@@ -1,5 +1,5 @@
-// Agent runner abstraction (M2)
-// Decision: Use trait-based abstraction to allow switching between in-process and Temporal execution
+// Agent runner abstraction
+// Decision: Use trait-based abstraction for workflow execution
 // This keeps the API layer agnostic to the execution backend
 //
 // M2 Note: run_id maps to session_id, agent_id maps to harness_id
@@ -9,43 +9,21 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// Configuration for the agent runner
+/// Configuration for the agent runner (Temporal)
 #[derive(Debug, Clone, Default)]
 pub struct RunnerConfig {
-    /// Runner mode: "in-process" or "temporal"
-    pub mode: RunnerMode,
-    /// Temporal server address (only used when mode is Temporal)
+    /// Temporal server address
     pub temporal_address: Option<String>,
-    /// Temporal namespace (only used when mode is Temporal)
+    /// Temporal namespace
     pub temporal_namespace: Option<String>,
-    /// Temporal task queue (only used when mode is Temporal)
+    /// Temporal task queue
     pub temporal_task_queue: Option<String>,
-}
-
-/// Runner execution mode
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub enum RunnerMode {
-    /// Execute workflows in-process using tokio tasks (default)
-    #[default]
-    InProcess,
-    /// Execute workflows via Temporal for durability (disabled during M2)
-    Temporal,
 }
 
 impl RunnerConfig {
     /// Create configuration from environment variables
     pub fn from_env() -> Self {
-        let mode = match std::env::var("AGENT_RUNNER_MODE")
-            .unwrap_or_default()
-            .to_lowercase()
-            .as_str()
-        {
-            "temporal" => RunnerMode::Temporal,
-            _ => RunnerMode::InProcess,
-        };
-
         Self {
-            mode,
             temporal_address: std::env::var("TEMPORAL_ADDRESS").ok(),
             temporal_namespace: std::env::var("TEMPORAL_NAMESPACE").ok(),
             temporal_task_queue: std::env::var("TEMPORAL_TASK_QUEUE").ok(),
@@ -96,26 +74,17 @@ pub trait AgentRunner: Send + Sync {
     async fn active_count(&self) -> usize;
 }
 
-/// Create an agent runner based on configuration
+/// Create the Temporal agent runner
 pub async fn create_runner(
     config: &RunnerConfig,
     db: everruns_storage::repositories::Database,
 ) -> Result<Arc<dyn AgentRunner>> {
-    match config.mode {
-        RunnerMode::InProcess => {
-            tracing::info!("Creating in-process agent runner");
-            let runner = crate::inprocess::InProcessRunner::new(db);
-            Ok(Arc::new(runner))
-        }
-        RunnerMode::Temporal => {
-            tracing::info!(
-                address = %config.temporal_address(),
-                namespace = %config.temporal_namespace(),
-                task_queue = %config.temporal_task_queue(),
-                "Creating Temporal agent runner"
-            );
-            let runner = crate::temporal::TemporalRunner::new(config.clone(), db).await?;
-            Ok(Arc::new(runner))
-        }
-    }
+    tracing::info!(
+        address = %config.temporal_address(),
+        namespace = %config.temporal_namespace(),
+        task_queue = %config.temporal_task_queue(),
+        "Creating Temporal agent runner"
+    );
+    let runner = crate::temporal::TemporalRunner::new(config.clone(), db).await?;
+    Ok(Arc::new(runner))
 }
