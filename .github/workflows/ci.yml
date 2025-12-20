@@ -178,18 +178,40 @@ jobs:
 
       - name: Start Temporal
         run: |
+          # Get the postgres container's network
+          POSTGRES_CONTAINER=$(docker ps --filter "ancestor=postgres:18-alpine" -q)
+          NETWORK=$(docker inspect $POSTGRES_CONTAINER --format '{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}')
+          echo "Postgres container: $POSTGRES_CONTAINER on network: $NETWORK"
+
+          # Get postgres container IP
+          POSTGRES_IP=$(docker inspect $POSTGRES_CONTAINER --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+          echo "Postgres IP: $POSTGRES_IP"
+
+          # Start Temporal on the same network
           docker run -d --name temporal \
-            --network host \
+            --network $NETWORK \
+            -p 7233:7233 \
             -e DB=postgres12 \
             -e DB_PORT=5432 \
             -e POSTGRES_USER=everruns \
             -e POSTGRES_PWD=everruns \
-            -e POSTGRES_SEEDS=localhost \
+            -e POSTGRES_SEEDS=$POSTGRES_IP \
             temporalio/auto-setup:latest
+
           # Wait for Temporal to be ready
           echo "Waiting for Temporal to start..."
-          timeout 120 bash -c 'until docker exec temporal tctl --address localhost:7233 cluster health 2>/dev/null; do sleep 2; done'
-          echo "Temporal is ready"
+          for i in $(seq 1 60); do
+            if docker exec temporal tctl --address localhost:7233 cluster health 2>/dev/null; then
+              echo "Temporal is ready"
+              exit 0
+            fi
+            echo "Waiting... ($i/60)"
+            docker logs temporal --tail 5 2>&1 || true
+            sleep 2
+          done
+          echo "Temporal failed to start"
+          docker logs temporal
+          exit 1
 
       - name: Cache cargo
         uses: actions/cache@v4
