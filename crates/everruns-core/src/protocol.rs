@@ -101,26 +101,6 @@ pub struct ExecuteToolResult {
     pub message: ConversationMessage,
 }
 
-/// Input for ExecuteToolsAtom (multiple tools in parallel)
-#[derive(Debug, Clone)]
-pub struct ExecuteToolsInput {
-    /// Session ID
-    pub session_id: Uuid,
-    /// Tool calls to execute
-    pub tool_calls: Vec<ToolCall>,
-    /// Available tool definitions
-    pub tool_definitions: Vec<ToolDefinition>,
-}
-
-/// Result of executing tools
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecuteToolsResult {
-    /// Results for each tool call
-    pub results: Vec<ToolResult>,
-    /// Messages stored (tool results)
-    pub messages: Vec<ConversationMessage>,
-}
-
 /// Result of loading messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadMessagesResult {
@@ -339,109 +319,6 @@ where
 }
 
 // ============================================================================
-// ExecuteToolsAtom - Atom for executing multiple tools in parallel
-// ============================================================================
-
-/// Atom that executes multiple tool calls in parallel
-///
-/// This atom:
-/// 1. Executes all tool calls concurrently using ExecuteToolAtom
-/// 2. Collects and returns all results
-pub struct ExecuteToolsAtom<M, T>
-where
-    M: MessageStore,
-    T: ToolExecutor,
-{
-    message_store: M,
-    tool_executor: T,
-}
-
-impl<M, T> ExecuteToolsAtom<M, T>
-where
-    M: MessageStore,
-    T: ToolExecutor,
-{
-    /// Create a new ExecuteToolsAtom
-    pub fn new(message_store: M, tool_executor: T) -> Self {
-        Self {
-            message_store,
-            tool_executor,
-        }
-    }
-}
-
-#[async_trait]
-impl<M, T> Atom for ExecuteToolsAtom<M, T>
-where
-    M: MessageStore + Clone + Send + Sync,
-    T: ToolExecutor + Clone + Send + Sync,
-{
-    type Input = ExecuteToolsInput;
-    type Output = ExecuteToolsResult;
-
-    fn name(&self) -> &'static str {
-        "execute_tools"
-    }
-
-    async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
-        let ExecuteToolsInput {
-            session_id,
-            tool_calls,
-            tool_definitions,
-        } = input;
-
-        // Build tool definition map
-        let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_definitions
-            .iter()
-            .map(|def| {
-                let name = match def {
-                    ToolDefinition::Builtin(b) => b.name.as_str(),
-                };
-                (name, def)
-            })
-            .collect();
-
-        // Prepare inputs for parallel execution
-        let mut inputs = Vec::with_capacity(tool_calls.len());
-        for tool_call in tool_calls {
-            let tool_def = tool_map.get(tool_call.name.as_str()).ok_or_else(|| {
-                AgentLoopError::tool(format!("Tool not found: {}", tool_call.name))
-            })?;
-
-            inputs.push(ExecuteToolInput {
-                session_id,
-                tool_call,
-                tool_definition: (*tool_def).clone(),
-            });
-        }
-
-        // Execute all tools in parallel
-        let futures: Vec<_> = inputs
-            .into_iter()
-            .map(|input| {
-                let atom =
-                    ExecuteToolAtom::new(self.message_store.clone(), self.tool_executor.clone());
-                async move { atom.execute(input).await }
-            })
-            .collect();
-
-        let results_vec: Vec<Result<ExecuteToolResult>> = futures::future::join_all(futures).await;
-
-        // Collect results, propagating any errors
-        let mut results = Vec::with_capacity(results_vec.len());
-        let mut messages = Vec::with_capacity(results_vec.len());
-
-        for result in results_vec {
-            let r = result?;
-            results.push(r.result);
-            messages.push(r.message);
-        }
-
-        Ok(ExecuteToolsResult { results, messages })
-    }
-}
-
-// ============================================================================
 // AgentProtocol - Orchestrates atoms
 // ============================================================================
 
@@ -500,11 +377,6 @@ where
         ExecuteToolAtom::new(self.message_store.clone(), self.tool_executor.clone())
     }
 
-    /// Create an ExecuteToolsAtom (multiple tools in parallel)
-    pub fn execute_tools_atom(&self) -> ExecuteToolsAtom<M, T> {
-        ExecuteToolsAtom::new(self.message_store.clone(), self.tool_executor.clone())
-    }
-
     // ========================================================================
     // Convenience Methods (use atoms internally)
     // ========================================================================
@@ -543,29 +415,13 @@ where
         .await
     }
 
-    /// Execute pending tool calls (uses ExecuteToolsAtom)
-    pub async fn execute_tools(
-        &self,
-        session_id: Uuid,
-        tool_calls: &[ToolCall],
-        tool_definitions: &[ToolDefinition],
-    ) -> Result<ExecuteToolsResult> {
-        let atom = self.execute_tools_atom();
-        atom.execute(ExecuteToolsInput {
-            session_id,
-            tool_calls: tool_calls.to_vec(),
-            tool_definitions: tool_definitions.to_vec(),
-        })
-        .await
-    }
-
     /// Run a complete turn (user message → final response)
     ///
     /// Determines the next action based on the output of the previous atom,
     /// without re-inspecting the message store. Follows a functional data-flow pattern:
     ///
     /// ```text
-    /// User Message → CallModel → ExecuteTools → CallModel → ... → Response
+    /// User Message → CallModel → ExecuteTools (parallel) → CallModel → ... → Response
     /// ```
     pub async fn run_turn(
         &self,
@@ -575,6 +431,18 @@ where
         max_iterations: usize,
     ) -> Result<String> {
         self.add_user_message(session_id, user_message).await?;
+
+        // Build tool definition map for lookups
+        let tool_map: std::collections::HashMap<&str, &ToolDefinition> = config
+            .tools
+            .iter()
+            .map(|def| {
+                let name = match def {
+                    ToolDefinition::Builtin(b) => b.name.as_str(),
+                };
+                (name, def)
+            })
+            .collect();
 
         let mut final_response = String::new();
 
@@ -592,9 +460,44 @@ where
                 return Ok(final_response);
             }
 
-            // Execute tools within this iteration
-            self.execute_tools(session_id, &result.tool_calls, &config.tools)
-                .await?;
+            // Execute tools in parallel using ExecuteToolAtom
+            let futures: Vec<_> = result
+                .tool_calls
+                .into_iter()
+                .map(|tool_call| {
+                    let tool_def = tool_map
+                        .get(tool_call.name.as_str())
+                        .map(|d| (*d).clone())
+                        .unwrap_or_else(|| {
+                            // Fallback: create a minimal definition if not found
+                            // This shouldn't happen in practice
+                            ToolDefinition::Builtin(everruns_contracts::tools::BuiltinTool {
+                                name: tool_call.name.clone(),
+                                description: String::new(),
+                                parameters: serde_json::json!({}),
+                                kind: everruns_contracts::tools::BuiltinToolKind::HttpGet,
+                                policy: everruns_contracts::tools::ToolPolicy::Auto,
+                            })
+                        });
+
+                    let atom = self.execute_tool_atom();
+                    async move {
+                        atom.execute(ExecuteToolInput {
+                            session_id,
+                            tool_call,
+                            tool_definition: tool_def,
+                        })
+                        .await
+                    }
+                })
+                .collect();
+
+            let results: Vec<Result<ExecuteToolResult>> = futures::future::join_all(futures).await;
+
+            // Check for errors
+            for result in results {
+                result?;
+            }
 
             // Check if we've exhausted iterations
             if iteration == max_iterations {
