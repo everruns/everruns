@@ -21,9 +21,15 @@ pub use client::TemporalClient;
 pub use runner::{run_temporal_worker, TemporalRunner};
 pub use types::*;
 pub use workflows::{
-    // Primary exports
-    TemporalSessionWorkflow, TemporalSessionWorkflowState, Workflow, WorkflowAction,
-    WorkflowInput, WorkflowRegistry, WorkflowRegistryBuilder,
     // Legacy aliases for backwards compatibility
-    AgentRunWorkflow, AgentRunWorkflowState,
+    AgentRunWorkflow,
+    AgentRunWorkflowState,
+    // Primary exports
+    TemporalSessionWorkflow,
+    TemporalSessionWorkflowState,
+    Workflow,
+    WorkflowAction,
+    WorkflowInput,
+    WorkflowRegistry,
+    WorkflowRegistryBuilder,
 };

@@ -653,16 +653,6 @@ async fn execute_activity(
             save_message_activity(ctx, db, input).await?;
             Ok(serde_json::json!({}))
         }
-        // Step-based activities are defined but not yet implemented in the main workflow
-        activity_names::SETUP_STEP
-        | activity_names::EXECUTE_LLM_STEP
-        | activity_names::EXECUTE_SINGLE_TOOL
-        | activity_names::FINALIZE_STEP => Err(anyhow::anyhow!(
-            "Step-based activity '{}' is not yet implemented in the main workflow. \
-                Known activities: load_agent, load_messages, update_status, persist_event, \
-                call_llm, execute_tools, save_message",
-            activity_type
-        )),
         _ => {
             // Provide a helpful error message with known activity types
             Err(anyhow::anyhow!(
