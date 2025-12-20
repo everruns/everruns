@@ -297,7 +297,7 @@ pub trait Tool: Send + Sync {
 /// // Use with agent loop
 /// let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
 /// ```
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
 }

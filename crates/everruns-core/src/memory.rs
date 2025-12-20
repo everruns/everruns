@@ -124,7 +124,7 @@ impl EventEmitter for NoOpEventEmitter {
 /// In-memory message store
 ///
 /// Stores messages in a HashMap keyed by session ID.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct InMemoryMessageStore {
     messages: Arc<RwLock<HashMap<Uuid, Vec<ConversationMessage>>>>,
 }

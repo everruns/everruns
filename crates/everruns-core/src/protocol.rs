@@ -6,11 +6,12 @@
 // own message retrieval and storage.
 //
 // Key concepts:
-// - Atoms: Atomic operations (call_model, execute_tool, etc.)
+// - Atom trait: Defines atomic operations with Input → Output
 // - Each Atom handles: load messages → execute → store results
 // - Stateless: No internal state, all state passed in/out
 // - Composable: Atoms can be orchestrated by external systems (Temporal, custom loops)
 
+use async_trait::async_trait;
 use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -25,8 +26,47 @@ use crate::message::{ConversationMessage, MessageRole};
 use crate::traits::{MessageStore, ToolExecutor};
 
 // ============================================================================
-// Atom Results - Output types for atomic operations
+// Atom Trait - Core abstraction for atomic operations
 // ============================================================================
+
+/// An atomic operation in the agent protocol
+///
+/// Atoms are self-contained operations that:
+/// 1. Take an input with all required context
+/// 2. Perform their operation (may load/store messages)
+/// 3. Return a result
+///
+/// This trait enables:
+/// - Uniform execution interface for all operations
+/// - Easy composition and orchestration
+/// - Temporal activity integration
+/// - Testing and mocking
+#[async_trait]
+pub trait Atom: Send + Sync {
+    /// Input type for this atom
+    type Input: Send;
+    /// Output type for this atom
+    type Output: Send;
+
+    /// Name of this atom (for logging/debugging)
+    fn name(&self) -> &'static str;
+
+    /// Execute the atom with the given input
+    async fn execute(&self, input: Self::Input) -> Result<Self::Output>;
+}
+
+// ============================================================================
+// Atom Inputs and Outputs
+// ============================================================================
+
+/// Input for CallModelAtom
+#[derive(Debug, Clone)]
+pub struct CallModelInput {
+    /// Session ID
+    pub session_id: Uuid,
+    /// Agent configuration
+    pub config: AgentConfig,
+}
 
 /// Result of calling the model
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +79,17 @@ pub struct CallModelResult {
     pub needs_tool_execution: bool,
     /// The assistant message that was stored
     pub assistant_message: ConversationMessage,
+}
+
+/// Input for ExecuteToolsAtom
+#[derive(Debug, Clone)]
+pub struct ExecuteToolsInput {
+    /// Session ID
+    pub session_id: Uuid,
+    /// Tool calls to execute
+    pub tool_calls: Vec<ToolCall>,
+    /// Available tool definitions
+    pub tool_definitions: Vec<ToolDefinition>,
 }
 
 /// Result of executing tools
@@ -95,110 +146,55 @@ impl NextAction {
 }
 
 // ============================================================================
-// AgentProtocol - Stateless atomic operations
+// CallModelAtom - Atom for calling the LLM
 // ============================================================================
 
-/// Stateless agent protocol with atomic operations
+/// Atom that calls the LLM model
 ///
-/// Each method is an "Atom" - a self-contained operation that:
-/// 1. Loads required state from the message store
-/// 2. Performs its operation
-/// 3. Stores results back to the message store
-///
-/// This design enables:
-/// - Temporal workflow integration (each atom = activity)
-/// - Custom orchestration logic
-/// - Easy testing and debugging
-/// - State persistence between steps
-pub struct AgentProtocol<M, L, T>
+/// This atom:
+/// 1. Loads messages from the store
+/// 2. Calls the LLM with the messages
+/// 3. Stores the assistant response
+/// 4. Returns the result with tool calls (if any)
+pub struct CallModelAtom<M, L>
 where
     M: MessageStore,
     L: LlmProvider,
-    T: ToolExecutor,
 {
     message_store: M,
     llm_provider: L,
-    tool_executor: T,
 }
 
-impl<M, L, T> AgentProtocol<M, L, T>
+impl<M, L> CallModelAtom<M, L>
 where
     M: MessageStore,
     L: LlmProvider,
-    T: ToolExecutor,
 {
-    /// Create a new agent protocol
-    pub fn new(message_store: M, llm_provider: L, tool_executor: T) -> Self {
+    /// Create a new CallModelAtom
+    pub fn new(message_store: M, llm_provider: L) -> Self {
         Self {
             message_store,
             llm_provider,
-            tool_executor,
         }
     }
+}
 
-    /// Get reference to the message store
-    pub fn message_store(&self) -> &M {
-        &self.message_store
+#[async_trait]
+impl<M, L> Atom for CallModelAtom<M, L>
+where
+    M: MessageStore + Send + Sync,
+    L: LlmProvider + Send + Sync,
+{
+    type Input = CallModelInput;
+    type Output = CallModelResult;
+
+    fn name(&self) -> &'static str {
+        "call_model"
     }
 
-    /// Get reference to the LLM provider
-    pub fn llm_provider(&self) -> &L {
-        &self.llm_provider
-    }
+    async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+        let CallModelInput { session_id, config } = input;
 
-    /// Get reference to the tool executor
-    pub fn tool_executor(&self) -> &T {
-        &self.tool_executor
-    }
-
-    // ========================================================================
-    // Atom: Load Messages
-    // ========================================================================
-
-    /// Load all messages for a session
-    ///
-    /// This is a read-only atom that retrieves the current conversation state.
-    pub async fn load_messages(&self, session_id: Uuid) -> Result<LoadMessagesResult> {
-        let messages = self.message_store.load(session_id).await?;
-        let count = messages.len();
-        Ok(LoadMessagesResult { messages, count })
-    }
-
-    // ========================================================================
-    // Atom: Add User Message
-    // ========================================================================
-
-    /// Add a user message to the conversation
-    ///
-    /// Stores the message and returns it.
-    pub async fn add_user_message(
-        &self,
-        session_id: Uuid,
-        content: impl Into<String>,
-    ) -> Result<ConversationMessage> {
-        let message = ConversationMessage::user(content);
-        self.message_store
-            .store(session_id, message.clone())
-            .await?;
-        Ok(message)
-    }
-
-    // ========================================================================
-    // Atom: Call Model
-    // ========================================================================
-
-    /// Call the LLM model
-    ///
-    /// This atom:
-    /// 1. Loads messages from the store
-    /// 2. Calls the LLM with the messages
-    /// 3. Stores the assistant response
-    /// 4. Returns the result with tool calls (if any)
-    pub async fn call_model(
-        &self,
-        session_id: Uuid,
-        config: &AgentConfig,
-    ) -> Result<CallModelResult> {
         // 1. Load messages
         let messages = self.message_store.load(session_id).await?;
 
@@ -228,7 +224,7 @@ where
         }
 
         // 3. Call LLM
-        let llm_config = LlmCallConfig::from(config);
+        let llm_config = LlmCallConfig::from(&config);
         let mut stream = self
             .llm_provider
             .chat_completion_stream(llm_messages, &llm_config)
@@ -282,23 +278,61 @@ where
             assistant_message,
         })
     }
+}
 
-    // ========================================================================
-    // Atom: Execute Tools
-    // ========================================================================
+// ============================================================================
+// ExecuteToolsAtom - Atom for executing tools
+// ============================================================================
 
-    /// Execute pending tool calls
-    ///
-    /// This atom:
-    /// 1. Executes each tool call
-    /// 2. Stores tool result messages
-    /// 3. Returns the results
-    pub async fn execute_tools(
-        &self,
-        session_id: Uuid,
-        tool_calls: &[ToolCall],
-        tool_definitions: &[ToolDefinition],
-    ) -> Result<ExecuteToolsResult> {
+/// Atom that executes pending tool calls
+///
+/// This atom:
+/// 1. Executes each tool call
+/// 2. Stores tool result messages
+/// 3. Returns the results
+pub struct ExecuteToolsAtom<M, T>
+where
+    M: MessageStore,
+    T: ToolExecutor,
+{
+    message_store: M,
+    tool_executor: T,
+}
+
+impl<M, T> ExecuteToolsAtom<M, T>
+where
+    M: MessageStore,
+    T: ToolExecutor,
+{
+    /// Create a new ExecuteToolsAtom
+    pub fn new(message_store: M, tool_executor: T) -> Self {
+        Self {
+            message_store,
+            tool_executor,
+        }
+    }
+}
+
+#[async_trait]
+impl<M, T> Atom for ExecuteToolsAtom<M, T>
+where
+    M: MessageStore + Send + Sync,
+    T: ToolExecutor + Send + Sync,
+{
+    type Input = ExecuteToolsInput;
+    type Output = ExecuteToolsResult;
+
+    fn name(&self) -> &'static str {
+        "execute_tools"
+    }
+
+    async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+        let ExecuteToolsInput {
+            session_id,
+            tool_calls,
+            tool_definitions,
+        } = input;
+
         let mut results = Vec::with_capacity(tool_calls.len());
         let mut messages = Vec::with_capacity(tool_calls.len());
 
@@ -313,7 +347,7 @@ where
             })
             .collect();
 
-        for tool_call in tool_calls {
+        for tool_call in &tool_calls {
             // Find tool definition
             let tool_def = tool_map.get(tool_call.name.as_str()).ok_or_else(|| {
                 AgentLoopError::tool(format!("Tool not found: {}", tool_call.name))
@@ -338,15 +372,122 @@ where
 
         Ok(ExecuteToolsResult { results, messages })
     }
+}
+
+// ============================================================================
+// AgentProtocol - Orchestrates atoms
+// ============================================================================
+
+/// Stateless agent protocol with atomic operations
+///
+/// Provides convenient methods that internally use atoms.
+/// For direct atom access, use the individual atom types.
+pub struct AgentProtocol<M, L, T>
+where
+    M: MessageStore,
+    L: LlmProvider,
+    T: ToolExecutor,
+{
+    message_store: M,
+    llm_provider: L,
+    tool_executor: T,
+}
+
+impl<M, L, T> AgentProtocol<M, L, T>
+where
+    M: MessageStore + Clone + Send + Sync,
+    L: LlmProvider + Clone + Send + Sync,
+    T: ToolExecutor + Clone + Send + Sync,
+{
+    /// Create a new agent protocol
+    pub fn new(message_store: M, llm_provider: L, tool_executor: T) -> Self {
+        Self {
+            message_store,
+            llm_provider,
+            tool_executor,
+        }
+    }
+
+    /// Get reference to the message store
+    pub fn message_store(&self) -> &M {
+        &self.message_store
+    }
+
+    /// Get reference to the LLM provider
+    pub fn llm_provider(&self) -> &L {
+        &self.llm_provider
+    }
+
+    /// Get reference to the tool executor
+    pub fn tool_executor(&self) -> &T {
+        &self.tool_executor
+    }
+
+    /// Create a CallModelAtom
+    pub fn call_model_atom(&self) -> CallModelAtom<M, L> {
+        CallModelAtom::new(self.message_store.clone(), self.llm_provider.clone())
+    }
+
+    /// Create an ExecuteToolsAtom
+    pub fn execute_tools_atom(&self) -> ExecuteToolsAtom<M, T> {
+        ExecuteToolsAtom::new(self.message_store.clone(), self.tool_executor.clone())
+    }
 
     // ========================================================================
-    // Atom: Determine Next Action
+    // Convenience Methods (use atoms internally)
     // ========================================================================
+
+    /// Load all messages for a session
+    pub async fn load_messages(&self, session_id: Uuid) -> Result<LoadMessagesResult> {
+        let messages = self.message_store.load(session_id).await?;
+        let count = messages.len();
+        Ok(LoadMessagesResult { messages, count })
+    }
+
+    /// Add a user message to the conversation
+    pub async fn add_user_message(
+        &self,
+        session_id: Uuid,
+        content: impl Into<String>,
+    ) -> Result<ConversationMessage> {
+        let message = ConversationMessage::user(content);
+        self.message_store
+            .store(session_id, message.clone())
+            .await?;
+        Ok(message)
+    }
+
+    /// Call the LLM model (uses CallModelAtom)
+    pub async fn call_model(
+        &self,
+        session_id: Uuid,
+        config: &AgentConfig,
+    ) -> Result<CallModelResult> {
+        let atom = self.call_model_atom();
+        atom.execute(CallModelInput {
+            session_id,
+            config: config.clone(),
+        })
+        .await
+    }
+
+    /// Execute pending tool calls (uses ExecuteToolsAtom)
+    pub async fn execute_tools(
+        &self,
+        session_id: Uuid,
+        tool_calls: &[ToolCall],
+        tool_definitions: &[ToolDefinition],
+    ) -> Result<ExecuteToolsResult> {
+        let atom = self.execute_tools_atom();
+        atom.execute(ExecuteToolsInput {
+            session_id,
+            tool_calls: tool_calls.to_vec(),
+            tool_definitions: tool_definitions.to_vec(),
+        })
+        .await
+    }
 
     /// Determine what action should be taken next
-    ///
-    /// This is a read-only atom that examines the current state and determines
-    /// what the orchestrator should do next.
     pub async fn determine_next_action(&self, session_id: Uuid) -> Result<NextAction> {
         let messages = self.message_store.load(session_id).await?;
 
@@ -358,16 +499,9 @@ where
         let last_msg = messages.last().unwrap();
 
         match last_msg.role {
-            MessageRole::User => {
-                // User message: call model
-                Ok(NextAction::CallModel)
-            }
-            MessageRole::ToolResult => {
-                // Tool result: call model to continue
-                Ok(NextAction::CallModel)
-            }
+            MessageRole::User => Ok(NextAction::CallModel),
+            MessageRole::ToolResult => Ok(NextAction::CallModel),
             MessageRole::Assistant => {
-                // Check if assistant requested tool calls
                 if let Some(ref tool_calls) = last_msg.tool_calls {
                     if !tool_calls.is_empty() {
                         // Check if we already have results for these tool calls
@@ -379,29 +513,24 @@ where
                         });
 
                         if has_all_results {
-                            // All tools executed, call model
                             Ok(NextAction::CallModel)
                         } else {
-                            // Need to execute tools
                             Ok(NextAction::ExecuteTools {
                                 tool_calls: tool_calls.clone(),
                             })
                         }
                     } else {
-                        // No tool calls, session complete
                         Ok(NextAction::Complete {
                             final_response: last_msg.text().map(|s| s.to_string()),
                         })
                     }
                 } else {
-                    // No tool calls, session complete
                     Ok(NextAction::Complete {
                         final_response: last_msg.text().map(|s| s.to_string()),
                     })
                 }
             }
             MessageRole::ToolCall => {
-                // Shouldn't happen normally, but find pending tool calls
                 let pending: Vec<_> = messages
                     .iter()
                     .filter_map(|m| {
@@ -412,7 +541,6 @@ where
                                 arguments,
                             } = &m.content
                             {
-                                // Check if there's a result for this
                                 let has_result = messages.iter().any(|r| {
                                     r.role == MessageRole::ToolResult
                                         && r.tool_call_id.as_ref() == Some(id)
@@ -438,21 +566,11 @@ where
                     })
                 }
             }
-            MessageRole::System => {
-                // Just system message, need user input
-                Ok(NextAction::CallModel)
-            }
+            MessageRole::System => Ok(NextAction::CallModel),
         }
     }
 
-    // ========================================================================
-    // High-level: Run Turn
-    // ========================================================================
-
     /// Run a complete turn (user message → final response)
-    ///
-    /// This is a convenience method that orchestrates atoms to run a complete
-    /// turn. For more control, use the individual atoms directly.
     pub async fn run_turn(
         &self,
         session_id: Uuid,
@@ -460,7 +578,6 @@ where
         config: &AgentConfig,
         max_iterations: usize,
     ) -> Result<String> {
-        // Add user message
         self.add_user_message(session_id, user_message).await?;
 
         let mut iteration = 0;
@@ -472,7 +589,6 @@ where
                 return Err(AgentLoopError::MaxIterationsReached(max_iterations));
             }
 
-            // Determine next action
             let action = self.determine_next_action(session_id).await?;
 
             match action {
@@ -482,15 +598,12 @@ where
                         final_response = result.text;
                     }
                     if !result.needs_tool_execution {
-                        // No tool calls, we're done
                         break;
                     }
-                    // Continue loop to execute tools
                 }
                 NextAction::ExecuteTools { tool_calls } => {
                     self.execute_tools(session_id, &tool_calls, &config.tools)
                         .await?;
-                    // Continue loop to call model with results
                 }
                 NextAction::Complete {
                     final_response: response,
@@ -523,9 +636,7 @@ mod tests {
         let action = NextAction::CallModel;
         assert!(action.is_call_model());
 
-        let action = NextAction::ExecuteTools {
-            tool_calls: vec![],
-        };
+        let action = NextAction::ExecuteTools { tool_calls: vec![] };
         assert!(action.is_execute_tools());
 
         let action = NextAction::Complete {

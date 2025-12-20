@@ -6,12 +6,11 @@
 //! - No internal state in the protocol - all state in the message store
 //! - Perfect for Temporal workflows, custom orchestration, pause/resume
 //!
-//! Key Atoms:
-//! - add_user_message: Add a user message
-//! - call_model: Call the LLM (loads messages, calls, stores response)
-//! - execute_tools: Execute tool calls (stores results)
-//! - determine_next_action: Decide what to do next
-//! - run_turn: High-level convenience method
+//! Key concepts:
+//! - Atom trait: Defines atomic operations with Input → Output
+//! - CallModelAtom: Atom for calling the LLM
+//! - ExecuteToolsAtom: Atom for executing tools
+//! - AgentProtocol: Convenience wrapper that uses atoms internally
 //!
 //! Prerequisites:
 //! - Set OPENAI_API_KEY environment variable
@@ -23,8 +22,9 @@ use everruns_core::{
     config::AgentConfig,
     memory::InMemoryMessageStore,
     openai::OpenAIProtocolLlmProvider,
-    protocol::{AgentProtocol, NextAction},
+    protocol::{AgentProtocol, Atom, CallModelAtom, CallModelInput, NextAction},
     tools::{Tool, ToolExecutionResult, ToolRegistry},
+    MessageStore,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -82,8 +82,8 @@ async fn main() -> anyhow::Result<()> {
     // Example 1: Simple query using run_turn (high-level)
     example_run_turn().await?;
 
-    // Example 2: Manual orchestration with atoms
-    example_manual_atoms().await?;
+    // Example 2: Using Atom trait directly
+    example_atom_trait().await?;
 
     // Example 3: Tool calling with atoms
     example_tool_calling().await?;
@@ -119,51 +119,48 @@ async fn example_run_turn() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Example 2: Manual orchestration using individual atoms
-async fn example_manual_atoms() -> anyhow::Result<()> {
-    println!("--- Example 2: Manual Atom Orchestration ---\n");
+/// Example 2: Using the Atom trait directly
+async fn example_atom_trait() -> anyhow::Result<()> {
+    println!("--- Example 2: Using Atom Trait Directly ---\n");
 
-    // Create protocol
+    // Create components
     let message_store = InMemoryMessageStore::new();
     let llm_provider = OpenAIProtocolLlmProvider::from_env()?;
-    let tools = ToolRegistry::new();
-    let protocol = AgentProtocol::new(message_store, llm_provider, tools);
 
     let config = AgentConfig::new("You are helpful. Be concise.", "gpt-4o-mini");
     let session_id = Uuid::now_v7();
 
-    // Step 1: Add user message
-    println!("  Step 1: Adding user message...");
-    let user_msg = protocol
-        .add_user_message(session_id, "What is the capital of France?")
+    // Add user message first
+    let user_msg = everruns_core::ConversationMessage::user("What is the capital of France?");
+    message_store.seed(session_id, vec![user_msg.clone()]).await;
+    println!("  Added user message: {:?}", user_msg.content);
+
+    // Create CallModelAtom directly
+    let call_model_atom = CallModelAtom::new(message_store.clone(), llm_provider);
+
+    // Execute the atom using the Atom trait
+    println!("  Executing CallModelAtom...");
+    println!("    Atom name: {}", call_model_atom.name());
+
+    let result = call_model_atom
+        .execute(CallModelInput {
+            session_id,
+            config: config.clone(),
+        })
         .await?;
-    println!("    Added: {:?}", user_msg.content);
 
-    // Step 2: Check what to do next
-    println!("  Step 2: Determining next action...");
-    let action = protocol.determine_next_action(session_id).await?;
-    println!("    Next action: {:?}", action);
-
-    // Step 3: Call model (since action is CallModel)
-    println!("  Step 3: Calling model...");
-    let result = protocol.call_model(session_id, &config).await?;
     println!("    Response: {}", result.text);
-    println!("    Needs tools: {}", result.needs_tool_execution);
+    println!("    Tool calls: {}", result.tool_calls.len());
+    println!("    Needs tool execution: {}", result.needs_tool_execution);
 
-    // Step 4: Check next action (should be Complete)
-    println!("  Step 4: Determining next action...");
-    let action = protocol.determine_next_action(session_id).await?;
-    println!("    Next action: {:?}", action);
-
-    // Step 5: Load all messages to verify
-    println!("  Step 5: Loading all messages...");
-    let loaded = protocol.load_messages(session_id).await?;
-    println!("    Total messages: {}\n", loaded.count);
+    // Verify message was stored
+    let messages = message_store.load(session_id).await?;
+    println!("    Messages in store: {}\n", messages.len());
 
     Ok(())
 }
 
-/// Example 3: Tool calling with atoms
+/// Example 3: Tool calling with atoms via AgentProtocol
 async fn example_tool_calling() -> anyhow::Result<()> {
     println!("--- Example 3: Tool Calling with Atoms ---\n");
 
@@ -192,7 +189,7 @@ async fn example_tool_calling() -> anyhow::Result<()> {
         .add_user_message(session_id, "What time is it?")
         .await?;
 
-    // Manual loop using atoms
+    // Manual loop using atoms (via protocol convenience methods)
     let mut iteration = 0;
     let max_iterations = 5;
 
@@ -211,6 +208,7 @@ async fn example_tool_calling() -> anyhow::Result<()> {
 
         match action {
             NextAction::CallModel => {
+                // Uses CallModelAtom internally
                 let result = protocol.call_model(session_id, &config).await?;
                 if !result.text.is_empty() {
                     println!("  Model response: {}", truncate(&result.text, 60));
@@ -227,6 +225,7 @@ async fn example_tool_calling() -> anyhow::Result<()> {
                 }
             }
             NextAction::ExecuteTools { tool_calls } => {
+                // Uses ExecuteToolsAtom internally
                 println!("  Executing {} tool(s)...", tool_calls.len());
                 let result = protocol
                     .execute_tools(session_id, &tool_calls, &config.tools)
