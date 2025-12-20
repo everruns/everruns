@@ -162,9 +162,20 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      temporal:
+        image: temporalio/auto-setup:latest
+        ports:
+          - 7233:7233
+        options: >-
+          --health-cmd "tctl --address localhost:7233 cluster health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
 
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
+      TEMPORAL_ADDRESS: localhost:7233
 
     steps:
       - uses: actions/checkout@v4
