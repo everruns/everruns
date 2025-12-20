@@ -85,6 +85,6 @@ pub async fn create_runner(
         task_queue = %config.temporal_task_queue(),
         "Creating Temporal agent runner"
     );
-    let runner = crate::temporal::TemporalRunner::new(config.clone(), db).await?;
+    let runner = crate::temporal_runner::TemporalRunner::new(config.clone(), db).await?;
     Ok(Arc::new(runner))
 }

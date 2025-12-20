@@ -39,7 +39,7 @@ impl WorkflowRegistry {
     /// Create a registry with default workflows (TemporalSessionWorkflow) registered
     pub fn with_defaults() -> Self {
         Self::builder()
-            .workflow::<crate::temporal::workflows::TemporalSessionWorkflow>()
+            .workflow::<crate::session_workflow::TemporalSessionWorkflow>()
             .build()
     }
 
@@ -155,7 +155,7 @@ impl Default for WorkflowRegistryBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::temporal::types::SessionWorkflowInput;
+    use crate::temporal_types::SessionWorkflowInput;
     use uuid::Uuid;
 
     #[test]
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn test_registry_builder() {
         let registry = WorkflowRegistry::builder()
-            .workflow::<crate::temporal::workflows::TemporalSessionWorkflow>()
+            .workflow::<crate::session_workflow::TemporalSessionWorkflow>()
             .build();
 
         assert!(registry.has("session_workflow"));

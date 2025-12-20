@@ -23,9 +23,8 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::activities::PersistEventActivity;
+use crate::temporal_types::*;
 use crate::unified_tool_executor::UnifiedToolExecutor;
-
-use super::types::*;
 
 /// Activity context for heartbeat reporting
 /// In the real Temporal SDK, this would be provided by the runtime

@@ -5,7 +5,7 @@
 
 use serde::de::DeserializeOwned;
 
-use crate::temporal::types::WorkflowAction;
+use crate::temporal_types::WorkflowAction;
 use crate::workflow_registry::WorkflowFactory;
 
 /// Trait for workflow implementations in the Temporal worker.
