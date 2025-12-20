@@ -198,15 +198,18 @@ jobs:
             -e POSTGRES_SEEDS=$POSTGRES_IP \
             temporalio/auto-setup:latest
 
-          # Wait for Temporal to be ready
+          # Wait for Temporal to be ready by checking if it accepts connections
           echo "Waiting for Temporal to start..."
-          for i in $(seq 1 60); do
-            if docker exec temporal tctl --address localhost:7233 cluster health 2>/dev/null; then
+          for i in $(seq 1 90); do
+            # Check if Temporal's gRPC port is accepting connections
+            if nc -z localhost 7233 2>/dev/null; then
+              echo "Temporal port 7233 is accepting connections"
+              # Give it a few more seconds to fully initialize
+              sleep 5
               echo "Temporal is ready"
               exit 0
             fi
-            echo "Waiting... ($i/60)"
-            docker logs temporal --tail 5 2>&1 || true
+            echo "Waiting... ($i/90)"
             sleep 2
           done
           echo "Temporal failed to start"
