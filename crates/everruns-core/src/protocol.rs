@@ -565,7 +565,7 @@ where
     /// without re-inspecting the message store. Follows a functional data-flow pattern:
     ///
     /// ```text
-    /// User Message → CallModel → (has tools?) → ExecuteTools → CallModel → ... → Response
+    /// User Message → CallModel → ExecuteTools → CallModel → ... → Response
     /// ```
     pub async fn run_turn(
         &self,
@@ -576,17 +576,9 @@ where
     ) -> Result<String> {
         self.add_user_message(session_id, user_message).await?;
 
-        // Start with calling the model
-        let mut pending_tool_calls: Option<Vec<ToolCall>> = None;
         let mut final_response = String::new();
 
         for iteration in 1..=max_iterations {
-            if let Some(tool_calls) = pending_tool_calls.take() {
-                // Execute tools, then continue to call model
-                self.execute_tools(session_id, &tool_calls, &config.tools)
-                    .await?;
-            }
-
             // Call the model
             let result = self.call_model(session_id, config).await?;
 
@@ -595,16 +587,17 @@ where
                 final_response = result.text;
             }
 
-            // Determine next step from output
-            if result.needs_tool_execution {
-                pending_tool_calls = Some(result.tool_calls);
-            } else {
-                // No tool calls = we're done
+            // If no tool calls, we're done
+            if !result.needs_tool_execution {
                 return Ok(final_response);
             }
 
-            // Check if we've exhausted iterations (will loop back and try again)
-            if iteration == max_iterations && pending_tool_calls.is_some() {
+            // Execute tools within this iteration
+            self.execute_tools(session_id, &result.tool_calls, &config.tools)
+                .await?;
+
+            // Check if we've exhausted iterations
+            if iteration == max_iterations {
                 return Err(AgentLoopError::MaxIterationsReached(max_iterations));
             }
         }
