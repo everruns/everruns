@@ -22,7 +22,7 @@ use everruns_core::{
     config::AgentConfig,
     memory::InMemoryMessageStore,
     openai::OpenAIProtocolLlmProvider,
-    protocol::{AgentProtocol, Atom, CallModelAtom, CallModelInput, NextAction},
+    protocol::{AgentProtocol, Atom, CallModelAtom, CallModelInput},
     tools::{Tool, ToolExecutionResult, ToolRegistry},
     MessageStore,
 };
@@ -160,9 +160,9 @@ async fn example_atom_trait() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Example 3: Tool calling with atoms via AgentProtocol
+/// Example 3: Tool calling with output-driven flow
 async fn example_tool_calling() -> anyhow::Result<()> {
-    println!("--- Example 3: Tool Calling with Atoms ---\n");
+    println!("--- Example 3: Tool Calling (Output-Driven Flow) ---\n");
 
     // Create protocol with tools
     let message_store = InMemoryMessageStore::new();
@@ -189,79 +189,54 @@ async fn example_tool_calling() -> anyhow::Result<()> {
         .add_user_message(session_id, "What time is it?")
         .await?;
 
-    // Manual loop using atoms (via protocol convenience methods)
-    let mut iteration = 0;
+    // Output-driven loop: next action determined by previous atom's output
     let max_iterations = 5;
+    let mut pending_tool_calls: Option<Vec<everruns_core::ToolCall>> = None;
 
-    loop {
-        iteration += 1;
-        if iteration > max_iterations {
-            println!("  Max iterations reached!");
-            break;
-        }
-
+    for iteration in 1..=max_iterations {
         println!("\n  --- Iteration {} ---", iteration);
 
-        // Determine next action
-        let action = protocol.determine_next_action(session_id).await?;
-        println!("  Next action: {:?}", format_action(&action));
+        // Execute pending tools if any
+        if let Some(tool_calls) = pending_tool_calls.take() {
+            println!("  Executing {} tool(s)...", tool_calls.len());
+            let result = protocol
+                .execute_tools(session_id, &tool_calls, &config.tools)
+                .await?;
+            for (tc, res) in tool_calls.iter().zip(result.results.iter()) {
+                if let Some(ref val) = res.result {
+                    println!("    {} -> {}", tc.name, val);
+                }
+            }
+        }
 
-        match action {
-            NextAction::CallModel => {
-                // Uses CallModelAtom internally
-                let result = protocol.call_model(session_id, &config).await?;
-                if !result.text.is_empty() {
-                    println!("  Model response: {}", truncate(&result.text, 60));
-                }
-                if result.needs_tool_execution {
-                    println!(
-                        "  Tool calls: {:?}",
-                        result
-                            .tool_calls
-                            .iter()
-                            .map(|tc| &tc.name)
-                            .collect::<Vec<_>>()
-                    );
-                }
-            }
-            NextAction::ExecuteTools { tool_calls } => {
-                // Uses ExecuteToolsAtom internally
-                println!("  Executing {} tool(s)...", tool_calls.len());
-                let result = protocol
-                    .execute_tools(session_id, &tool_calls, &config.tools)
-                    .await?;
-                for (tc, res) in tool_calls.iter().zip(result.results.iter()) {
-                    if let Some(ref val) = res.result {
-                        println!("    {} -> {}", tc.name, val);
-                    }
-                }
-            }
-            NextAction::Complete { final_response } => {
-                if let Some(resp) = final_response {
-                    println!("\n  Final response: {}", resp);
-                }
-                break;
-            }
-            NextAction::Error { message } => {
-                println!("  Error: {}", message);
-                break;
-            }
+        // Call model
+        println!("  Calling model...");
+        let result = protocol.call_model(session_id, &config).await?;
+
+        if !result.text.is_empty() {
+            println!("  Model response: {}", truncate(&result.text, 60));
+        }
+
+        // Determine next step from output
+        if result.needs_tool_execution {
+            println!(
+                "  Tool calls requested: {:?}",
+                result
+                    .tool_calls
+                    .iter()
+                    .map(|tc| &tc.name)
+                    .collect::<Vec<_>>()
+            );
+            pending_tool_calls = Some(result.tool_calls);
+        } else {
+            // No tool calls = we're done
+            println!("\n  Final response: {}", result.text);
+            break;
         }
     }
 
     println!();
     Ok(())
-}
-
-fn format_action(action: &NextAction) -> String {
-    match action {
-        NextAction::CallModel => "CallModel".to_string(),
-        NextAction::ExecuteTools { tool_calls } => {
-            format!("ExecuteTools({} calls)", tool_calls.len())
-        }
-        NextAction::Complete { .. } => "Complete".to_string(),
-        NextAction::Error { message } => format!("Error({})", message),
-    }
 }
 
 fn truncate(s: &str, max_len: usize) -> String {

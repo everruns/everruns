@@ -64,7 +64,7 @@ pub use capabilities::{
 pub use protocol::{
     AgentProtocol, Atom, CallModelAtom, CallModelInput, CallModelResult, ExecuteToolAtom,
     ExecuteToolInput, ExecuteToolResult, ExecuteToolsAtom, ExecuteToolsInput, ExecuteToolsResult,
-    LoadMessagesResult, NextAction,
+    LoadMessagesResult,
 };
 
 // Re-export AG-UI events for compatibility
