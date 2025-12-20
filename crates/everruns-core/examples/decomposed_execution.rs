@@ -1,9 +1,13 @@
-//! Decomposed Execution Example
+//! Decomposed Execution Example - ReACT Loop
 //!
-//! This example demonstrates using atoms directly for fine-grained control
-//! over the agent execution flow. Each atom is a self-contained operation
-//! that can be executed independently, making it suitable for:
+//! This example demonstrates using atoms directly to implement a ReACT
+//! (Reason-Act) loop. Each iteration:
 //!
+//! 1. **Reason**: Call the model to decide what to do next
+//! 2. **Act**: Execute any requested tool calls
+//! 3. **Repeat**: Loop until the model provides a final response
+//!
+//! This pattern is suitable for:
 //! - Temporal workflow activities
 //! - Custom orchestration logic
 //! - Debugging and testing individual steps
@@ -81,74 +85,91 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    println!("=== Decomposed Execution with Atoms ===\n");
+    println!("=== ReACT Loop with Atoms ===\n");
 
     // Create shared dependencies
     let message_store = InMemoryMessageStore::new();
     let llm_provider = OpenAIProtocolLlmProvider::from_env()?;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
+    // Create atoms
+    let add_user_message = AddUserMessageAtom::new(message_store.clone());
+    let call_model = CallModelAtom::new(message_store.clone(), llm_provider.clone());
+    let execute_tool = ExecuteToolAtom::new(message_store.clone(), tools.clone());
+
     // Create config with tools
     let config = AgentConfigBuilder::new()
-        .system_prompt("You are a helpful weather assistant. Use the get_weather tool to answer weather questions.")
+        .system_prompt(
+            "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.",
+        )
         .model("gpt-4o-mini")
         .tools(tools.tool_definitions())
         .build();
 
     let session_id = Uuid::now_v7();
     let user_question = "What's the weather like in Paris?";
+    let max_iterations = 5;
 
     println!("Session: {}", session_id);
     println!("User: {}\n", user_question);
 
     // =========================================================================
-    // Step 1: Add user message using AddUserMessageAtom
+    // Add user message
     // =========================================================================
-    println!("--- Step 1: AddUserMessageAtom ---");
-
-    let add_message_atom = AddUserMessageAtom::new(message_store.clone());
-    let add_result = add_message_atom
+    add_user_message
         .execute(AddUserMessageInput {
             session_id,
             content: user_question.to_string(),
         })
         .await?;
 
-    println!("  Stored user message: {:?}", add_result.message.id);
-
     // =========================================================================
-    // Step 2: Call model using CallModelAtom
+    // ReACT Loop
     // =========================================================================
-    println!("\n--- Step 2: CallModelAtom ---");
+    let mut final_response = String::new();
 
-    let call_model_atom = CallModelAtom::new(message_store.clone(), llm_provider.clone());
-    let model_result = call_model_atom
-        .execute(CallModelInput {
-            session_id,
-            config: config.clone(),
-        })
-        .await?;
+    for iteration in 1..=max_iterations {
+        println!("━━━ Iteration {} ━━━", iteration);
 
-    println!("  Response text: {}", truncate(&model_result.text, 50));
-    println!("  Tool calls: {}", model_result.tool_calls.len());
-    println!(
-        "  Needs tool execution: {}",
-        model_result.needs_tool_execution
-    );
+        // =====================================================================
+        // REASON: Call the model
+        // =====================================================================
+        println!("  [Reason] Calling model...");
 
-    // =========================================================================
-    // Step 3: Execute tools if needed using ExecuteToolAtom
-    // =========================================================================
-    if model_result.needs_tool_execution {
-        println!("\n--- Step 3: ExecuteToolAtom (for each tool call) ---");
+        let model_result = call_model
+            .execute(CallModelInput {
+                session_id,
+                config: config.clone(),
+            })
+            .await?;
 
-        let execute_tool_atom = ExecuteToolAtom::new(message_store.clone(), tools.clone());
+        // Capture response
+        if !model_result.text.is_empty() {
+            final_response = model_result.text.clone();
+            println!("    Response: {}", truncate(&model_result.text, 60));
+        }
+
+        // Check if we're done (no tool calls = final response)
+        if !model_result.needs_tool_execution {
+            println!("  [Done] No tool calls, returning final response\n");
+            break;
+        }
+
+        println!(
+            "    Tool calls requested: {}",
+            model_result.tool_calls.len()
+        );
+
+        // =====================================================================
+        // ACT: Execute tool calls
+        // =====================================================================
+        println!("  [Act] Executing tools...");
 
         for tool_call in &model_result.tool_calls {
-            println!("  Executing tool: {}", tool_call.name);
-            println!("    Arguments: {}", tool_call.arguments);
+            println!("    Tool: {}", tool_call.name);
+            println!("    Args: {}", tool_call.arguments);
 
-            let tool_result = execute_tool_atom
+            let tool_result = execute_tool
                 .execute(ExecuteToolInput {
                     session_id,
                     tool_call: tool_call.clone(),
@@ -156,38 +177,34 @@ async fn main() -> anyhow::Result<()> {
                 })
                 .await?;
 
-            println!(
-                "    Result: {}",
-                tool_result
-                    .result
-                    .result
-                    .as_ref()
-                    .map(|v: &Value| truncate(&v.to_string(), 60))
-                    .unwrap_or_else(|| "None".to_string())
-            );
+            let result_str = tool_result
+                .result
+                .result
+                .as_ref()
+                .map(|v: &Value| truncate(&v.to_string(), 50))
+                .unwrap_or_else(|| "None".to_string());
+
+            println!("    Result: {}", result_str);
         }
 
-        // =====================================================================
-        // Step 4: Call model again to get final response
-        // =====================================================================
-        println!("\n--- Step 4: CallModelAtom (final response) ---");
+        println!();
 
-        let final_result = call_model_atom
-            .execute(CallModelInput {
-                session_id,
-                config: config.clone(),
-            })
-            .await?;
-
-        println!("\nAssistant: {}", final_result.text);
-    } else {
-        println!("\nAssistant: {}", model_result.text);
+        // Safety check
+        if iteration == max_iterations {
+            println!("  [Warning] Max iterations reached!");
+        }
     }
 
     // =========================================================================
-    // Print conversation history
+    // Final Output
     // =========================================================================
-    println!("\n--- Conversation History ---");
+    println!("━━━ Final Response ━━━");
+    println!("Assistant: {}", final_response);
+
+    // =========================================================================
+    // Conversation History
+    // =========================================================================
+    println!("\n━━━ Conversation History ━━━");
     let messages = message_store.load(session_id).await?;
     for (i, msg) in messages.iter().enumerate() {
         println!(
