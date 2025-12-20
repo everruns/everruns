@@ -89,7 +89,7 @@ mod tests {
 
     #[derive(Debug)]
     struct TestWorkflow {
-        input: TestInput,
+        _input: TestInput,
         started: bool,
     }
 
@@ -130,7 +130,7 @@ mod tests {
 
         fn from_input(input: Self::Input) -> Self {
             TestWorkflow {
-                input,
+                _input: input,
                 started: false,
             }
         }
