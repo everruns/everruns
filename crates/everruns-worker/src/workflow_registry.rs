@@ -155,7 +155,7 @@ impl Default for WorkflowRegistryBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::temporal_types::SessionWorkflowInput;
+    use crate::types::SessionWorkflowInput;
     use uuid::Uuid;
 
     #[test]

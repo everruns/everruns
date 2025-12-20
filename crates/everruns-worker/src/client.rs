@@ -21,7 +21,7 @@ use temporal_sdk_core::{
 };
 
 use crate::runner::RunnerConfig;
-use crate::temporal_types::{workflow_names, SessionWorkflowInput};
+use crate::types::{workflow_names, SessionWorkflowInput};
 
 /// Client for interacting with Temporal server
 /// Used by the API to start workflows

@@ -29,13 +29,13 @@ use tokio::sync::{watch, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::runner::RunnerConfig;
-use crate::temporal_activities::{
+use crate::activities::{
     call_llm_activity, execute_tools_activity, load_agent_activity, load_messages_activity,
     persist_event_activity, save_message_activity, update_status_activity, ActivityContext,
 };
-use crate::temporal_client::TemporalWorkerCore;
-use crate::temporal_types::*;
+use crate::client::TemporalWorkerCore;
+use crate::runner::RunnerConfig;
+use crate::types::*;
 use crate::workflow_registry::WorkflowRegistry;
 use crate::workflow_traits::Workflow;
 
