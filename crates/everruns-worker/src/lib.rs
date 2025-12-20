@@ -5,6 +5,7 @@ pub mod runner;
 pub mod session_workflow;
 pub mod types;
 pub mod unified_tool_executor;
+pub mod v2;
 pub mod worker;
 pub mod workflow_registry;
 pub mod workflow_traits;

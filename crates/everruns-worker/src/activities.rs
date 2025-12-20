@@ -15,7 +15,10 @@ use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::ToolDefinition;
 use everruns_core::capabilities::{apply_capabilities, CapabilityId, CapabilityRegistry};
 use everruns_core::config::AgentConfig;
-use everruns_core::traits::{LlmCallConfig, LlmMessage, LlmMessageRole, LlmProvider, ToolExecutor};
+use everruns_core::llm::{
+    LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider,
+};
+use everruns_core::traits::ToolExecutor;
 use everruns_openai::OpenAiProvider;
 use everruns_storage::models::UpdateSession;
 use everruns_storage::repositories::Database;
@@ -357,7 +360,7 @@ pub async fn call_llm_activity(
                     "tool" | "tool_result" => LlmMessageRole::Tool,
                     _ => LlmMessageRole::User,
                 },
-                content: m.content.clone(),
+                content: LlmMessageContent::Text(m.content.clone()),
                 tool_calls,
                 tool_call_id: m.tool_call_id.clone(),
             }
@@ -370,7 +373,7 @@ pub async fn call_llm_activity(
             0,
             LlmMessage {
                 role: LlmMessageRole::System,
-                content: applied.config.system_prompt.clone(),
+                content: LlmMessageContent::Text(applied.config.system_prompt.clone()),
                 tool_calls: None,
                 tool_call_id: None,
             },
