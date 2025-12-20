@@ -728,6 +728,61 @@ where
 
         Ok(final_response)
     }
+
+    /// Run a complete turn using output-driven flow (v2)
+    ///
+    /// Unlike `run_turn`, this version determines the next action based on
+    /// the output of the previous atom, without re-inspecting the message store.
+    /// This is more efficient and follows a functional data-flow pattern:
+    ///
+    /// ```text
+    /// User Message → CallModel → (has tools?) → ExecuteTools → CallModel → ... → Response
+    /// ```
+    pub async fn run_turn_v2(
+        &self,
+        session_id: Uuid,
+        user_message: impl Into<String>,
+        config: &AgentConfig,
+        max_iterations: usize,
+    ) -> Result<String> {
+        self.add_user_message(session_id, user_message).await?;
+
+        // Start with calling the model
+        let mut pending_tool_calls: Option<Vec<ToolCall>> = None;
+        let mut final_response = String::new();
+
+        for iteration in 1..=max_iterations {
+            if let Some(tool_calls) = pending_tool_calls.take() {
+                // Execute tools, then continue to call model
+                self.execute_tools(session_id, &tool_calls, &config.tools)
+                    .await?;
+            }
+
+            // Call the model
+            let result = self.call_model(session_id, config).await?;
+
+            // Capture the response text
+            if !result.text.is_empty() {
+                final_response = result.text;
+            }
+
+            // Determine next step from output
+            if result.needs_tool_execution {
+                pending_tool_calls = Some(result.tool_calls);
+            } else {
+                // No tool calls = we're done
+                return Ok(final_response);
+            }
+
+            // Check if we've exhausted iterations (will loop back and try again)
+            if iteration == max_iterations && pending_tool_calls.is_some() {
+                return Err(AgentLoopError::MaxIterationsReached(max_iterations));
+            }
+        }
+
+        // Should not reach here, but just in case
+        Err(AgentLoopError::MaxIterationsReached(max_iterations))
+    }
 }
 
 // ============================================================================
