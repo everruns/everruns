@@ -9,12 +9,6 @@ pub mod workflows;
 // Temporal integration for durable workflow execution
 pub mod temporal;
 
-// V2 workflow - session-based infinite loop
-pub mod v2;
-
-// V3 workflow - minimal forever-running loop example
-pub mod v3;
-
 // Re-export main types
 pub use runner::{create_runner, AgentRunner, RunnerConfig, RunnerMode};
 

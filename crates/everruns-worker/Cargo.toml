@@ -39,6 +39,3 @@ tonic = "0.12"
 name = "openai_agent"
 path = "examples/openai_agent.rs"
 
-[[example]]
-name = "v3_loop"
-path = "examples/v3_loop.rs"
