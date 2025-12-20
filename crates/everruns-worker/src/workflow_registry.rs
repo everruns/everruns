@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, Result};
 
-use super::traits::{Workflow, WorkflowInput};
+use crate::workflow_traits::{Workflow, WorkflowInput};
 
 /// Factory function for creating workflow instances from JSON input.
 pub type WorkflowFactory =
@@ -39,7 +39,7 @@ impl WorkflowRegistry {
     /// Create a registry with default workflows (TemporalSessionWorkflow) registered
     pub fn with_defaults() -> Self {
         Self::builder()
-            .workflow::<super::TemporalSessionWorkflow>()
+            .workflow::<crate::temporal::workflows::TemporalSessionWorkflow>()
             .build()
     }
 
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn test_registry_builder() {
         let registry = WorkflowRegistry::builder()
-            .workflow::<super::super::TemporalSessionWorkflow>()
+            .workflow::<crate::temporal::workflows::TemporalSessionWorkflow>()
             .build();
 
         assert!(registry.has("session_workflow"));

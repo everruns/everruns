@@ -18,9 +18,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{info, warn};
 
-use super::traits::{Workflow, WorkflowInput};
-use super::WorkflowAction;
 use crate::temporal::types::*;
+use crate::workflow_traits::{Workflow, WorkflowInput};
 
 /// Maximum number of tool iterations before forcing completion
 const MAX_TOOL_ITERATIONS: u8 = 10;

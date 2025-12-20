@@ -3,6 +3,8 @@ pub mod adapters;
 pub mod runner;
 pub mod unified_tool_executor;
 pub mod worker;
+pub mod workflow_registry;
+pub mod workflow_traits;
 
 // Temporal integration for durable workflow execution
 pub mod temporal;
@@ -10,6 +12,8 @@ pub mod temporal;
 // Re-export main types
 pub use runner::{create_runner, AgentRunner, RunnerConfig};
 pub use worker::TemporalWorker;
+pub use workflow_registry::{WorkflowFactory, WorkflowRegistry, WorkflowRegistryBuilder};
+pub use workflow_traits::{Workflow, WorkflowInput};
 
 // Re-export adapters for core integration
 pub use adapters::{
