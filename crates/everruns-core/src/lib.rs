@@ -62,8 +62,9 @@ pub use capabilities::{
 
 // Protocol re-exports (stateless atomic operations)
 pub use protocol::{
-    AgentProtocol, Atom, CallModelAtom, CallModelInput, CallModelResult, ExecuteToolsAtom,
-    ExecuteToolsInput, ExecuteToolsResult, LoadMessagesResult, NextAction,
+    AgentProtocol, Atom, CallModelAtom, CallModelInput, CallModelResult, ExecuteToolAtom,
+    ExecuteToolInput, ExecuteToolResult, ExecuteToolsAtom, ExecuteToolsInput, ExecuteToolsResult,
+    LoadMessagesResult, NextAction,
 };
 
 // Re-export AG-UI events for compatibility

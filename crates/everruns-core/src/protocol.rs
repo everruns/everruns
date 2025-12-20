@@ -81,7 +81,27 @@ pub struct CallModelResult {
     pub assistant_message: ConversationMessage,
 }
 
-/// Input for ExecuteToolsAtom
+/// Input for ExecuteToolAtom (single tool)
+#[derive(Debug, Clone)]
+pub struct ExecuteToolInput {
+    /// Session ID
+    pub session_id: Uuid,
+    /// Tool call to execute
+    pub tool_call: ToolCall,
+    /// Tool definition
+    pub tool_definition: ToolDefinition,
+}
+
+/// Result of executing a single tool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteToolResult {
+    /// Result of the tool call
+    pub result: ToolResult,
+    /// Message stored (tool result)
+    pub message: ConversationMessage,
+}
+
+/// Input for ExecuteToolsAtom (multiple tools in parallel)
 #[derive(Debug, Clone)]
 pub struct ExecuteToolsInput {
     /// Session ID
@@ -281,15 +301,87 @@ where
 }
 
 // ============================================================================
-// ExecuteToolsAtom - Atom for executing tools
+// ExecuteToolAtom - Atom for executing a single tool
 // ============================================================================
 
-/// Atom that executes pending tool calls
+/// Atom that executes a single tool call
 ///
 /// This atom:
-/// 1. Executes each tool call
-/// 2. Stores tool result messages
-/// 3. Returns the results
+/// 1. Executes the tool call
+/// 2. Stores the tool result message
+/// 3. Returns the result
+pub struct ExecuteToolAtom<M, T>
+where
+    M: MessageStore,
+    T: ToolExecutor,
+{
+    message_store: M,
+    tool_executor: T,
+}
+
+impl<M, T> ExecuteToolAtom<M, T>
+where
+    M: MessageStore,
+    T: ToolExecutor,
+{
+    /// Create a new ExecuteToolAtom
+    pub fn new(message_store: M, tool_executor: T) -> Self {
+        Self {
+            message_store,
+            tool_executor,
+        }
+    }
+}
+
+#[async_trait]
+impl<M, T> Atom for ExecuteToolAtom<M, T>
+where
+    M: MessageStore + Send + Sync,
+    T: ToolExecutor + Send + Sync,
+{
+    type Input = ExecuteToolInput;
+    type Output = ExecuteToolResult;
+
+    fn name(&self) -> &'static str {
+        "execute_tool"
+    }
+
+    async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+        let ExecuteToolInput {
+            session_id,
+            tool_call,
+            tool_definition,
+        } = input;
+
+        // Execute tool
+        let result = self
+            .tool_executor
+            .execute(&tool_call, &tool_definition)
+            .await?;
+
+        // Store tool result message
+        let message = ConversationMessage::tool_result(
+            &tool_call.id,
+            result.result.clone(),
+            result.error.clone(),
+        );
+        self.message_store
+            .store(session_id, message.clone())
+            .await?;
+
+        Ok(ExecuteToolResult { result, message })
+    }
+}
+
+// ============================================================================
+// ExecuteToolsAtom - Atom for executing multiple tools in parallel
+// ============================================================================
+
+/// Atom that executes multiple tool calls in parallel
+///
+/// This atom:
+/// 1. Executes all tool calls concurrently using ExecuteToolAtom
+/// 2. Collects and returns all results
 pub struct ExecuteToolsAtom<M, T>
 where
     M: MessageStore,
@@ -316,8 +408,8 @@ where
 #[async_trait]
 impl<M, T> Atom for ExecuteToolsAtom<M, T>
 where
-    M: MessageStore + Send + Sync,
-    T: ToolExecutor + Send + Sync,
+    M: MessageStore + Clone + Send + Sync,
+    T: ToolExecutor + Clone + Send + Sync,
 {
     type Input = ExecuteToolsInput;
     type Output = ExecuteToolsResult;
@@ -333,9 +425,6 @@ where
             tool_definitions,
         } = input;
 
-        let mut results = Vec::with_capacity(tool_calls.len());
-        let mut messages = Vec::with_capacity(tool_calls.len());
-
         // Build tool definition map
         let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_definitions
             .iter()
@@ -347,27 +436,40 @@ where
             })
             .collect();
 
-        for tool_call in &tool_calls {
-            // Find tool definition
+        // Prepare inputs for parallel execution
+        let mut inputs = Vec::with_capacity(tool_calls.len());
+        for tool_call in tool_calls {
             let tool_def = tool_map.get(tool_call.name.as_str()).ok_or_else(|| {
                 AgentLoopError::tool(format!("Tool not found: {}", tool_call.name))
             })?;
 
-            // Execute tool
-            let result = self.tool_executor.execute(tool_call, tool_def).await?;
+            inputs.push(ExecuteToolInput {
+                session_id,
+                tool_call,
+                tool_definition: (*tool_def).clone(),
+            });
+        }
 
-            // Store tool result message
-            let result_msg = ConversationMessage::tool_result(
-                &tool_call.id,
-                result.result.clone(),
-                result.error.clone(),
-            );
-            self.message_store
-                .store(session_id, result_msg.clone())
-                .await?;
+        // Execute all tools in parallel
+        let futures: Vec<_> = inputs
+            .into_iter()
+            .map(|input| {
+                let atom =
+                    ExecuteToolAtom::new(self.message_store.clone(), self.tool_executor.clone());
+                async move { atom.execute(input).await }
+            })
+            .collect();
 
-            messages.push(result_msg);
-            results.push(result);
+        let results_vec: Vec<Result<ExecuteToolResult>> = futures::future::join_all(futures).await;
+
+        // Collect results, propagating any errors
+        let mut results = Vec::with_capacity(results_vec.len());
+        let mut messages = Vec::with_capacity(results_vec.len());
+
+        for result in results_vec {
+            let r = result?;
+            results.push(r.result);
+            messages.push(r.message);
         }
 
         Ok(ExecuteToolsResult { results, messages })
@@ -428,7 +530,12 @@ where
         CallModelAtom::new(self.message_store.clone(), self.llm_provider.clone())
     }
 
-    /// Create an ExecuteToolsAtom
+    /// Create an ExecuteToolAtom (single tool)
+    pub fn execute_tool_atom(&self) -> ExecuteToolAtom<M, T> {
+        ExecuteToolAtom::new(self.message_store.clone(), self.tool_executor.clone())
+    }
+
+    /// Create an ExecuteToolsAtom (multiple tools in parallel)
     pub fn execute_tools_atom(&self) -> ExecuteToolsAtom<M, T> {
         ExecuteToolsAtom::new(self.message_store.clone(), self.tool_executor.clone())
     }
