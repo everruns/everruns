@@ -162,16 +162,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      temporal:
-        image: temporalio/auto-setup:latest
-        ports:
-          - 7233:7233
-        options: >-
-          --health-cmd "tctl --address localhost:7233 cluster health"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
 
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
@@ -185,6 +175,21 @@ jobs:
 
       - name: Install jq and protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y jq protobuf-compiler
+
+      - name: Start Temporal
+        run: |
+          docker run -d --name temporal \
+            --network host \
+            -e DB=postgres12 \
+            -e DB_PORT=5432 \
+            -e POSTGRES_USER=everruns \
+            -e POSTGRES_PWD=everruns \
+            -e POSTGRES_SEEDS=localhost \
+            temporalio/auto-setup:latest
+          # Wait for Temporal to be ready
+          echo "Waiting for Temporal to start..."
+          timeout 120 bash -c 'until docker exec temporal tctl --address localhost:7233 cluster health 2>/dev/null; do sleep 2; done'
+          echo "Temporal is ready"
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -292,6 +297,10 @@ jobs:
       - name: Stop API server
         if: always()
         run: kill $API_PID || true
+
+      - name: Stop Temporal
+        if: always()
+        run: docker stop temporal || true
 
   ui-build:
     name: UI Build & Lint
