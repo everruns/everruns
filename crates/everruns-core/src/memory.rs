@@ -335,7 +335,7 @@ impl ToolExecutor for FailingToolExecutor {
 // MockLlmProvider - Returns predefined responses
 // ============================================================================
 
-use crate::traits::{
+use crate::llm::{
     LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmProvider, LlmResponseStream,
     LlmStreamEvent,
 };

@@ -18,13 +18,19 @@ pub mod config;
 pub mod error;
 pub mod events;
 pub mod executor;
+pub mod llm;
 pub mod message;
+pub mod protocol;
 pub mod step;
 pub mod tools;
 pub mod traits;
 
 // In-memory implementations for examples and testing
 pub mod memory;
+
+// OpenAI Protocol provider (requires "openai" feature)
+#[cfg(feature = "openai")]
+pub mod openai;
 
 // Re-exports for convenience
 pub use config::AgentConfig;
@@ -33,7 +39,13 @@ pub use events::LoopEvent;
 pub use executor::AgentLoop;
 pub use message::{ConversationMessage, MessageRole};
 pub use step::{LoopStep, StepKind, StepResult};
-pub use traits::{EventEmitter, LlmProvider, MessageStore, ToolExecutor};
+pub use traits::{EventEmitter, MessageStore, ToolExecutor};
+
+// LLM types re-exports
+pub use llm::{
+    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmProvider, LlmResponse, LlmResponseStream, LlmStreamEvent,
+};
 
 // Tool abstraction re-exports
 pub use tools::{
@@ -46,6 +58,11 @@ pub use capabilities::{
     apply_capabilities, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
     CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, FileSystemCapability,
     GetCurrentTimeTool, NoopCapability, ResearchCapability, SandboxCapability,
+};
+
+// Protocol re-exports (stateless atomic operations)
+pub use protocol::{
+    AgentProtocol, CallModelResult, ExecuteToolsResult, LoadMessagesResult, NextAction,
 };
 
 // Re-export AG-UI events for compatibility

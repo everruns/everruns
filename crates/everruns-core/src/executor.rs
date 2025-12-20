@@ -16,12 +16,12 @@ use uuid::Uuid;
 use crate::config::AgentConfig;
 use crate::error::{AgentLoopError, Result};
 use crate::events::LoopEvent;
+use crate::llm::{
+    LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider, LlmStreamEvent,
+};
 use crate::message::{ConversationMessage, MessageRole};
 use crate::step::{LoopStep, StepInput, StepOutput, StepResult};
-use crate::traits::{
-    EventEmitter, LlmCallConfig, LlmMessage, LlmMessageRole, LlmProvider, LlmStreamEvent,
-    MessageStore, ToolExecutor,
-};
+use crate::traits::{EventEmitter, MessageStore, ToolExecutor};
 
 /// Result of a complete loop execution
 #[derive(Debug, Clone)]
@@ -403,7 +403,7 @@ where
         if !self.config.system_prompt.is_empty() {
             llm_messages.push(LlmMessage {
                 role: LlmMessageRole::System,
-                content: self.config.system_prompt.clone(),
+                content: LlmMessageContent::Text(self.config.system_prompt.clone()),
                 tool_calls: None,
                 tool_call_id: None,
             });
