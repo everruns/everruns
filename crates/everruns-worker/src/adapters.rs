@@ -284,8 +284,7 @@ pub fn create_unified_tool_executor_with_registry(
 
 /// Create a fully configured AgentLoop with database backends
 ///
-/// Uses the `UnifiedToolExecutor` which supports both built-in tools
-/// (via ToolRegistry) and webhook tools.
+/// Uses the `UnifiedToolExecutor` with ToolRegistry for built-in tools.
 pub fn create_db_agent_loop(
     config: everruns_core::AgentConfig,
     db: Database,

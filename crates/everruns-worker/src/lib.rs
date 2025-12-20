@@ -1,16 +1,21 @@
 pub mod activities;
 pub mod adapters;
+pub mod client;
 pub mod runner;
-pub mod runner_inprocess;
-pub mod tools;
+pub mod session_workflow;
+pub mod types;
 pub mod unified_tool_executor;
-pub mod workflows;
-
-// Temporal integration for durable workflow execution
-pub mod temporal;
+pub mod worker;
+pub mod workflow_registry;
+pub mod workflow_traits;
 
 // Re-export main types
-pub use runner::{create_runner, AgentRunner, RunnerConfig, RunnerMode};
+pub use runner::{create_runner, run_worker, AgentRunner, RunnerConfig, TemporalRunner};
+pub use session_workflow::TemporalSessionWorkflow;
+pub use types::WorkflowAction;
+pub use worker::TemporalWorker;
+pub use workflow_registry::{WorkflowFactory, WorkflowRegistry, WorkflowRegistryBuilder};
+pub use workflow_traits::{Workflow, WorkflowInput};
 
 // Re-export adapters for core integration
 pub use adapters::{

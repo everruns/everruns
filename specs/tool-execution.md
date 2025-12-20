@@ -8,16 +8,8 @@ Everruns agents can invoke tools during execution. This specification defines to
 
 ### Tool Types
 
-#### Webhook Tools
-External HTTP endpoints called by the agent:
-- `url`: Target endpoint URL
-- `method`: HTTP method (POST)
-- `headers`: Custom headers
-- `timeout_secs`: Request timeout
-- `max_retries`: Retry count on failure
-
 #### Built-in Tools
-System-provided tools implemented via the `Tool` trait in `everruns-agent-loop`.
+System-provided tools implemented via the `Tool` trait in `everruns-core`.
 
 **Tool Trait Interface:**
 ```rust
@@ -48,7 +40,7 @@ Tools can also be provided by Capabilities (see [capabilities.md](capabilities.m
 - `CurrentTime` capability provides `get_current_time` tool
 - `Research` capability will provide scratchpad and search tools
 - `Sandbox` capability will provide `execute_code` tool
-- `FileSystem` capability will provide read/write/search tools
+- `FileSystem` capability will provide read/write/search files tools
 
 **ToolRegistry:**
 Manages multiple tools and implements `ToolExecutor` trait for integration with `AgentLoop`:
@@ -62,7 +54,7 @@ let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
 ```
 
 **UnifiedToolExecutor:**
-Production executor that handles both built-in and webhook tools consistently across all execution modes (in-process and Temporal):
+Production executor that uses `ToolRegistry` for all tool execution:
 ```rust
 // Creates executor with default built-in tools
 let executor = UnifiedToolExecutor::with_default_tools();
@@ -76,7 +68,7 @@ let executor = UnifiedToolExecutor::new(registry);
 
 ```json
 {
-  "type": "webhook",
+  "type": "builtin",
   "name": "tool_name",
   "description": "What the tool does",
   "parameters": {
@@ -89,11 +81,7 @@ let executor = UnifiedToolExecutor::new(registry);
     },
     "required": ["param1"]
   },
-  "url": "https://api.example.com/endpoint",
-  "method": "POST",
-  "headers": {},
-  "timeout_secs": 30,
-  "max_retries": 3,
+  "kind": "current_time",
   "policy": "auto"
 }
 ```
@@ -108,7 +96,7 @@ let executor = UnifiedToolExecutor::new(registry);
 1. LLM returns tool calls in response
 2. For each tool call:
    - Emit `ToolCallStart` event
-   - Execute tool
+   - Execute tool via `ToolRegistry`
    - Emit `ToolCallResult` event
 3. Add tool results to message history
 4. Call LLM again with results
@@ -145,15 +133,8 @@ Benefits:
 - **Maximum observability**: Each step visible in Temporal UI
 - **Better debugging**: Isolate failures to specific steps
 
-### Webhook Execution
-
-1. **Request Signing**: HMAC-SHA256 signature in `X-Webhook-Signature` header
-2. **Retry Logic**: Exponential backoff on transient failures
-3. **Timeout**: Configurable per-tool, default 30 seconds
-4. **Error Handling**: Non-2xx responses recorded as tool errors
-
 ### Security
 
-1. **URL Validation**: Only HTTPS URLs in production
-2. **Secret Management**: Webhook secrets stored securely
+1. **Tool Validation**: Only registered tools can be executed
+2. **Policy Enforcement**: `requires_approval` tools pause for user confirmation (future)
 3. **Rate Limiting**: Per-agent rate limits (future)

@@ -29,15 +29,15 @@ use tokio::sync::{watch, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::runner::RunnerConfig;
-
-use super::activities::{
+use crate::activities::{
     call_llm_activity, execute_tools_activity, load_agent_activity, load_messages_activity,
     persist_event_activity, save_message_activity, update_status_activity, ActivityContext,
 };
-use super::client::TemporalWorkerCore;
-use super::types::*;
-use super::workflows::{AgentRunWorkflow, WorkflowAction};
+use crate::client::TemporalWorkerCore;
+use crate::runner::RunnerConfig;
+use crate::types::*;
+use crate::workflow_registry::WorkflowRegistry;
+use crate::workflow_traits::Workflow;
 
 /// Temporal worker that processes workflow and activity tasks
 pub struct TemporalWorker {
@@ -48,6 +48,8 @@ pub struct TemporalWorker {
     /// Worker configuration
     #[allow(dead_code)]
     config: RunnerConfig,
+    /// Workflow registry for creating workflow instances
+    registry: Arc<WorkflowRegistry>,
     /// Shutdown signal sender
     shutdown_tx: watch::Sender<bool>,
     /// Shutdown signal receiver
@@ -55,8 +57,17 @@ pub struct TemporalWorker {
 }
 
 impl TemporalWorker {
-    /// Create a new Temporal worker
+    /// Create a new Temporal worker with default workflow registry
     pub async fn new(config: RunnerConfig, db: Database) -> Result<Self> {
+        Self::with_registry(config, db, WorkflowRegistry::with_defaults()).await
+    }
+
+    /// Create a new Temporal worker with a custom workflow registry
+    pub async fn with_registry(
+        config: RunnerConfig,
+        db: Database,
+        registry: WorkflowRegistry,
+    ) -> Result<Self> {
         let core = TemporalWorkerCore::new(config.clone())
             .await
             .context("Failed to create Temporal worker core")?;
@@ -67,6 +78,7 @@ impl TemporalWorker {
             core: Arc::new(core),
             db,
             config,
+            registry: Arc::new(registry),
             shutdown_tx,
             shutdown_rx,
         })
@@ -80,8 +92,12 @@ impl TemporalWorker {
         );
 
         // Spawn workflow task poller
-        let workflow_handle =
-            spawn_workflow_poller(self.core.clone(), self.db.clone(), self.shutdown_rx.clone());
+        let workflow_handle = spawn_workflow_poller(
+            self.core.clone(),
+            self.db.clone(),
+            self.registry.clone(),
+            self.shutdown_rx.clone(),
+        );
 
         // Spawn activity task poller
         let activity_handle =
@@ -114,10 +130,11 @@ impl TemporalWorker {
 fn spawn_workflow_poller(
     core: Arc<TemporalWorkerCore>,
     db: Database,
+    registry: Arc<WorkflowRegistry>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
-    // Track active workflow instances
-    let workflows: Arc<Mutex<HashMap<String, AgentRunWorkflow>>> =
+    // Track active workflow instances (using trait objects for dynamic dispatch)
+    let workflows: Arc<Mutex<HashMap<String, Box<dyn Workflow>>>> =
         Arc::new(Mutex::new(HashMap::new()));
 
     tokio::spawn(async move {
@@ -127,7 +144,7 @@ fn spawn_workflow_poller(
                     info!("Workflow poller shutting down");
                     break;
                 }
-                result = poll_and_process_workflow_task(&core, &db, workflows.clone()) => {
+                result = poll_and_process_workflow_task(&core, &db, &registry, workflows.clone()) => {
                     if let Err(e) = result {
                         match e.downcast_ref::<PollWfError>() {
                             Some(PollWfError::ShutDown) => {
@@ -184,7 +201,8 @@ fn spawn_activity_poller(
 async fn poll_and_process_workflow_task(
     core: &TemporalWorkerCore,
     _db: &Database,
-    workflows: Arc<Mutex<HashMap<String, AgentRunWorkflow>>>,
+    registry: &WorkflowRegistry,
+    workflows: Arc<Mutex<HashMap<String, Box<dyn Workflow>>>>,
 ) -> Result<()> {
     // Poll for workflow task
     let task = core.core().poll_workflow_task().await?;
@@ -213,7 +231,7 @@ async fn poll_and_process_workflow_task(
     }
 
     // Process workflow activation
-    let commands = process_workflow_activation(&task, workflows).await?;
+    let commands = process_workflow_activation(&task, registry, workflows).await?;
 
     // Build completion
     let completion = if commands.is_empty() {
@@ -241,7 +259,8 @@ async fn poll_and_process_workflow_task(
 /// Process workflow activation and return commands
 async fn process_workflow_activation(
     task: &WfActivation,
-    workflows: Arc<Mutex<HashMap<String, AgentRunWorkflow>>>,
+    registry: &WorkflowRegistry,
+    workflows: Arc<Mutex<HashMap<String, Box<dyn Workflow>>>>,
 ) -> Result<Vec<temporal_sdk_core::protos::coresdk::workflow_commands::WorkflowCommand>> {
     let mut workflows_guard = workflows.lock().await;
     let mut commands = vec![];
@@ -267,15 +286,17 @@ async fn process_workflow_activation(
                     "Starting workflow"
                 );
 
-                // Parse workflow input
-                let input: AgentRunWorkflowInput = if let Some(args) = start.arguments.first() {
+                // Parse workflow input as raw JSON
+                let input: serde_json::Value = if let Some(args) = start.arguments.first() {
                     serde_json::from_slice(&args.data).context("Failed to parse workflow input")?
                 } else {
                     return Err(anyhow::anyhow!("Workflow started without input"));
                 };
 
-                // Create workflow instance
-                let mut workflow = AgentRunWorkflow::new(input);
+                // Create workflow instance using registry
+                let mut workflow = registry
+                    .create(&start.workflow_type, input)
+                    .context("Failed to create workflow")?;
 
                 // Start the workflow
                 let actions = workflow.on_start();
@@ -287,7 +308,7 @@ async fn process_workflow_activation(
                     }
                 }
 
-                // Store workflow
+                // Store workflow (now Box<dyn Workflow>)
                 workflows_guard.insert(task.run_id.clone(), workflow);
             }
 
@@ -633,16 +654,6 @@ async fn execute_activity(
             save_message_activity(ctx, db, input).await?;
             Ok(serde_json::json!({}))
         }
-        // Step-based activities are defined but not yet implemented in the main workflow
-        activity_names::SETUP_STEP
-        | activity_names::EXECUTE_LLM_STEP
-        | activity_names::EXECUTE_SINGLE_TOOL
-        | activity_names::FINALIZE_STEP => Err(anyhow::anyhow!(
-            "Step-based activity '{}' is not yet implemented in the main workflow. \
-                Known activities: load_agent, load_messages, update_status, persist_event, \
-                call_llm, execute_tools, save_message",
-            activity_type
-        )),
         _ => {
             // Provide a helpful error message with known activity types
             Err(anyhow::anyhow!(

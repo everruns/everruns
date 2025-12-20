@@ -5,7 +5,7 @@
 //
 // Key design decisions:
 // - Uses traits (EventEmitter, MessageStore, ToolExecutor) for pluggable backends
-// - Can run fully in-process or decomposed into steps (for Temporal integration)
+// - Can be decomposed into steps for Temporal activity execution
 // - Emits AG-UI compatible events for SSE streaming
 // - Configuration via AgentConfig (can be built from Agent entity or created directly)
 // - Tools are defined via a Tool trait for flexibility (function-style tools)

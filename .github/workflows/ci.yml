@@ -165,6 +165,7 @@ jobs:
 
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
+      TEMPORAL_ADDRESS: localhost:7233
 
     steps:
       - uses: actions/checkout@v4
@@ -174,6 +175,46 @@ jobs:
 
       - name: Install jq and protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y jq protobuf-compiler
+
+      - name: Start Temporal
+        run: |
+          # Get the postgres container's network
+          POSTGRES_CONTAINER=$(docker ps --filter "ancestor=postgres:18-alpine" -q)
+          NETWORK=$(docker inspect $POSTGRES_CONTAINER --format '{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}')
+          echo "Postgres container: $POSTGRES_CONTAINER on network: $NETWORK"
+
+          # Get postgres container IP
+          POSTGRES_IP=$(docker inspect $POSTGRES_CONTAINER --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+          echo "Postgres IP: $POSTGRES_IP"
+
+          # Start Temporal on the same network
+          docker run -d --name temporal \
+            --network $NETWORK \
+            -p 7233:7233 \
+            -e DB=postgres12 \
+            -e DB_PORT=5432 \
+            -e POSTGRES_USER=everruns \
+            -e POSTGRES_PWD=everruns \
+            -e POSTGRES_SEEDS=$POSTGRES_IP \
+            temporalio/auto-setup:latest
+
+          # Wait for Temporal to be ready by checking if it accepts connections
+          echo "Waiting for Temporal to start..."
+          for i in $(seq 1 90); do
+            # Check if Temporal's gRPC port is accepting connections
+            if nc -z localhost 7233 2>/dev/null; then
+              echo "Temporal port 7233 is accepting connections"
+              # Give it a few more seconds to fully initialize
+              sleep 5
+              echo "Temporal is ready"
+              exit 0
+            fi
+            echo "Waiting... ($i/90)"
+            sleep 2
+          done
+          echo "Temporal failed to start"
+          docker logs temporal
+          exit 1
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -281,6 +322,10 @@ jobs:
       - name: Stop API server
         if: always()
         run: kill $API_PID || true
+
+      - name: Stop Temporal
+        if: always()
+        run: docker stop temporal || true
 
   ui-build:
     name: UI Build & Lint

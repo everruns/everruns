@@ -120,28 +120,14 @@ export interface ListResponse<T> {
 
 export type ToolPolicy = "auto" | "requires_approval";
 
-export type ToolDefinition = WebhookTool | BuiltinTool;
-
-export interface WebhookTool {
-  type: "webhook";
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  url: string;
-  method?: string;
-  headers?: Record<string, string>;
-  signing_secret?: string;
-  timeout_secs?: number;
-  max_retries?: number;
-  policy?: ToolPolicy;
-}
+export type ToolDefinition = BuiltinTool;
 
 export interface BuiltinTool {
   type: "builtin";
   name: string;
   description: string;
   parameters: Record<string, unknown>;
-  kind: "http_get" | "http_post" | "read_file" | "write_file";
+  kind: "http_get" | "http_post" | "read_file" | "write_file" | "current_time";
   policy?: ToolPolicy;
 }
 

@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This specification documents the Temporal workflow integration for agent execution in Everruns. When running in Temporal mode, agent runs are executed as durable, distributed workflows rather than in-process tasks.
+This specification documents the Temporal workflow integration for agent execution in Everruns. All agent workflows run via Temporal for durability and reliability.
 
 ## Architecture
 
@@ -35,7 +35,7 @@ This specification documents the Temporal workflow integration for agent executi
 
 ## Components
 
-### TemporalClient (`temporal_client.rs`)
+### TemporalClient (`temporal/client.rs`)
 
 Client wrapper for starting workflows from the API process.
 
@@ -46,11 +46,11 @@ pub struct TemporalClient {
 }
 
 impl TemporalClient {
-    async fn start_agent_run_workflow(&self, input: &AgentRunWorkflowInput) -> Result<StartWorkflowExecutionResponse>;
+    async fn start_session_workflow(&self, input: &SessionWorkflowInput) -> Result<StartWorkflowExecutionResponse>;
 }
 ```
 
-### TemporalWorker (`temporal_worker.rs`)
+### TemporalWorker (`worker.rs`)
 
 Worker that polls Temporal for tasks and executes them.
 
@@ -65,57 +65,37 @@ impl TemporalWorker {
 }
 ```
 
-### Workflow State Machine (`workflows.rs`)
+### Workflow State Machine (`temporal/workflows/`)
 
-Two workflow implementations are available:
-
-#### Legacy Workflow (`AgentRunWorkflow`)
-The original workflow with batched tool execution.
-
-#### Step-Based Workflow (`StepBasedWorkflow`)
-Uses `everruns-agent-loop` step abstractions for maximum granularity.
+Session workflow implementation with trait-based abstraction:
 
 ```rust
-pub enum StepBasedWorkflowState {
-    Starting,
-    Setup { activity_seq: u32 },
-    ExecutingLlm { activity_seq: u32, agent_config, messages, iteration },
-    ExecutingTool { activity_seq: u32, agent_config, messages, iteration, pending_tools, completed_results, current_tool_index },
-    Finalizing { activity_seq: u32, messages, iteration, final_response },
-    UpdatingStatus { activity_seq: u32, final_status: String },
-    Completed,
-    Failed { error: String },
+pub trait Workflow: Send + Sync + Debug {
+    fn workflow_type(&self) -> &'static str;
+    fn on_start(&mut self) -> Vec<WorkflowAction>;
+    fn on_activity_completed(&mut self, activity_id: &str, result: Value) -> Vec<WorkflowAction>;
+    fn on_activity_failed(&mut self, activity_id: &str, error: &str) -> Vec<WorkflowAction>;
+    fn is_completed(&self) -> bool;
 }
 ```
 
-Key difference: **Each tool call is a separate activity** (not batched), enabling individual retries and better observability.
-
-### Activities (`activities.rs`)
+### Activities (`temporal/activities.rs`)
 
 Idempotent activity functions:
 
-#### Legacy Activities
 | Activity | Description | Heartbeat |
 |----------|-------------|-----------|
 | `load_agent` | Load agent configuration from database | No |
-| `load_messages` | Load thread messages | No |
-| `update_status` | Update run status in database | No |
+| `load_messages` | Load session messages | No |
+| `update_status` | Update session status in database | No |
 | `persist_event` | Persist AG-UI event to database | No |
 | `call_llm` | Call LLM and stream response | Yes (every 10 chunks) |
-| `execute_tools` | Execute tool calls (batched) | Yes (per tool) |
-| `save_message` | Save message to thread | No |
-
-#### Step-Based Activities (using `everruns-agent-loop`)
-| Activity | Description | Heartbeat |
-|----------|-------------|-----------|
-| `setup_step` | Load agent config + messages | Yes |
-| `execute_llm_step` | Single LLM call via `AgentLoop::execute_step()` | Yes |
-| `execute_single_tool` | Execute ONE tool call (not batched) | Yes |
-| `finalize_step` | Save final message, update status | Yes |
+| `execute_tools` | Execute tool calls | Yes (per tool) |
+| `save_message` | Save message to session | No |
 
 ## Workflow Execution Flow
 
-1. **API receives request** - Creates run in database
+1. **API receives request** - Creates session in database
 2. **TemporalRunner.start_run()** - Queues workflow to Temporal server
 3. **Worker polls workflow task** - Creates workflow state machine
 4. **Workflow schedules activities** - update_status, load_agent
@@ -124,15 +104,15 @@ Idempotent activity functions:
 7. **LLM call with heartbeats** - call_llm activity streams and persists events
 8. **Tool iteration** - If tool calls present, execute_tools then call_llm again
 9. **Completion** - save_message, update_status to completed
-10. **Workflow completes** - Run marked complete in database
+10. **Workflow completes** - Session marked complete in database
 
 ## Streaming Preservation
 
 SSE streaming to clients is preserved through database-backed events:
 
-1. Activities persist events to `run_events` table using `PersistEventActivity`
+1. Activities persist events to `session_events` table using `PersistEventActivity`
 2. `call_llm` activity persists `TEXT_MESSAGE_CONTENT` events during streaming
-3. SSE endpoint polls `run_events` table for new events
+3. SSE endpoint polls `session_events` table for new events
 4. No changes needed to SSE infrastructure
 
 ## Configuration
@@ -140,31 +120,22 @@ SSE streaming to clients is preserved through database-backed events:
 Environment variables:
 
 ```bash
-AGENT_RUNNER_MODE=temporal          # Enable Temporal mode
-TEMPORAL_ADDRESS=localhost:7233     # Temporal server address
-TEMPORAL_NAMESPACE=default          # Temporal namespace
+TEMPORAL_ADDRESS=localhost:7233          # Temporal server address
+TEMPORAL_NAMESPACE=default               # Temporal namespace
 TEMPORAL_TASK_QUEUE=everruns-agent-runs  # Task queue name
 ```
-
-## In-Process Mode (Default)
-
-When `AGENT_RUNNER_MODE=inprocess` (default), execution happens in the API process:
-
-- Workflows are tokio tasks
-- Same activity logic reused
-- Good for development and single-process deployment
 
 ## Error Handling
 
 ### Activity Failures
 - Temporal automatically retries failed activities
 - Non-retryable errors transition workflow to Failed state
-- Failed workflows update run status to "failed"
+- Failed workflows update session status to "failed"
 
 ### Workflow Failures
 - Workflow failures are recorded in database
-- AG-UI `RUN_ERROR` event emitted
-- Run status updated to "failed"
+- AG-UI `SESSION_ERROR` event emitted
+- Session status updated to "failed"
 
 ## Activity Heartbeats
 
@@ -181,19 +152,19 @@ Heartbeat timeout is 30 seconds. If an activity fails to heartbeat, Temporal wil
 
 ## Tool Iteration Limit
 
-Maximum 10 tool iterations per run to prevent infinite loops:
+Maximum 5 tool iterations per session to prevent infinite loops:
 
 ```rust
-const MAX_TOOL_ITERATIONS: u8 = 10;
+const MAX_TOOL_ITERATIONS: u32 = 5;
 ```
 
 ## Database Schema Usage
 
 | Table | Usage |
 |-------|-------|
-| `runs` | Status updates, workflow_id recording |
-| `run_events` | AG-UI event persistence for streaming |
-| `messages` | Thread message storage |
+| `sessions` | Status updates, workflow_id recording |
+| `session_events` | AG-UI event persistence for streaming |
+| `messages` | Session message storage |
 | `agents` | Agent configuration loading |
 
 ## SDK Choice
