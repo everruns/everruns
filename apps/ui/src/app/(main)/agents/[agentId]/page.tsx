@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { CapabilitySelector } from "@/components/capabilities";
-import { ArrowLeft, Plus, MessageSquare } from "lucide-react";
+import { ArrowLeft, Plus, MessageSquare, Pencil } from "lucide-react";
 
 export default function AgentDetailPage({
   params,
@@ -80,10 +80,18 @@ export default function AgentDetailPage({
             ID: {agent.id.slice(0, 8)}...
           </p>
         </div>
-        <Button onClick={handleNewSession} disabled={createSession.isPending}>
-          <Plus className="w-4 h-4 mr-2" />
-          {createSession.isPending ? "Creating..." : "New Session"}
-        </Button>
+        <div className="flex gap-2">
+          <Link href={`/agents/${agentId}/edit`}>
+            <Button variant="outline">
+              <Pencil className="w-4 h-4 mr-2" />
+              Edit
+            </Button>
+          </Link>
+          <Button onClick={handleNewSession} disabled={createSession.isPending}>
+            <Plus className="w-4 h-4 mr-2" />
+            {createSession.isPending ? "Creating..." : "New Session"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
