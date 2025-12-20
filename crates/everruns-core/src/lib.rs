@@ -22,7 +22,6 @@ pub mod executor;
 pub mod llm;
 pub mod r#loop;
 pub mod message;
-pub mod protocol;
 pub mod step;
 pub mod tools;
 pub mod traits;
@@ -62,12 +61,14 @@ pub use capabilities::{
     GetCurrentTimeTool, NoopCapability, ResearchCapability, SandboxCapability,
 };
 
-// Protocol re-exports (stateless atomic operations)
-pub use protocol::{
-    AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, AgentLoop2, AgentProtocol, Atom,
-    CallModelAtom, CallModelInput, CallModelResult, ExecuteToolAtom, ExecuteToolInput,
-    ExecuteToolResult, LoadMessagesResult,
+// Atoms re-exports (stateless atomic operations)
+pub use atoms::{
+    AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, Atom, CallModelAtom,
+    CallModelInput, CallModelResult, ExecuteToolAtom, ExecuteToolInput, ExecuteToolResult,
 };
+
+// Loop re-exports
+pub use r#loop::{AgentLoop2, LoadMessagesResult};
 
 // Re-export AG-UI events for compatibility
 pub use everruns_contracts::events::AgUiEvent;
