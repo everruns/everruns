@@ -104,7 +104,7 @@ pub async fn create_runner(
     match config.mode {
         RunnerMode::InProcess => {
             tracing::info!("Creating in-process agent runner");
-            let runner = crate::runner_inprocess::InProcessRunner::new(db);
+            let runner = crate::inprocess::InProcessRunner::new(db);
             Ok(Arc::new(runner))
         }
         RunnerMode::Temporal => {

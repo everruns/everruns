@@ -4,21 +4,26 @@
 // This module contains:
 // - types.rs: Workflow/activity input/output types
 // - activities.rs: Activity implementations (database, LLM, tools)
-// - workflows.rs: Workflow state machines
+// - workflows/: Workflow state machines with trait-based abstraction
 // - client.rs: Temporal client for starting workflows
-// - worker.rs: Worker for polling and executing tasks
 // - runner.rs: AgentRunner implementation using Temporal
+//
+// Note: TemporalWorker is in the root module (crate::temporal_worker)
 
-mod activities;
-mod client;
+pub(crate) mod activities;
+pub(crate) mod client;
 mod runner;
-mod types;
-mod worker;
-mod workflows;
+pub mod types;
+pub mod workflows;
 
 // Re-export main types for external use
 pub use client::TemporalClient;
 pub use runner::{run_temporal_worker, TemporalRunner};
 pub use types::*;
-pub use worker::TemporalWorker;
-pub use workflows::{AgentRunWorkflow, WorkflowAction};
+pub use workflows::{
+    // Primary exports
+    TemporalSessionWorkflow, TemporalSessionWorkflowState, Workflow, WorkflowAction,
+    WorkflowInput, WorkflowRegistry, WorkflowRegistryBuilder,
+    // Legacy aliases for backwards compatibility
+    AgentRunWorkflow, AgentRunWorkflowState,
+};

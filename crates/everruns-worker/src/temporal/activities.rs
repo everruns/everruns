@@ -889,7 +889,6 @@ pub async fn finalize_step_activity(
 /// Extract tool name from ToolDefinition enum
 fn tool_name(tool: &ToolDefinition) -> &str {
     match tool {
-        ToolDefinition::Webhook(w) => &w.name,
         ToolDefinition::Builtin(b) => &b.name,
     }
 }
@@ -897,7 +896,6 @@ fn tool_name(tool: &ToolDefinition) -> &str {
 /// Extract tool description from ToolDefinition enum
 fn tool_description(tool: &ToolDefinition) -> &str {
     match tool {
-        ToolDefinition::Webhook(w) => &w.description,
         ToolDefinition::Builtin(b) => &b.description,
     }
 }

@@ -1,5 +1,6 @@
-// In-process session runner (M2)
-// This is the default runner that executes workflows using tokio tasks
+// In-process session runner
+// Decision: Executes workflows using tokio tasks (non-durable)
+// Decision: For durable execution, use temporal/runner.rs instead
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -11,8 +12,8 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 use uuid::Uuid;
 
+use super::workflow::InProcessWorkflow;
 use crate::runner::AgentRunner;
-use crate::workflows::SessionWorkflow;
 
 /// In-process session runner using tokio tasks
 pub struct InProcessRunner {
@@ -44,7 +45,7 @@ impl AgentRunner for InProcessRunner {
             "Starting in-process session workflow"
         );
 
-        let workflow = SessionWorkflow::new(session_id, harness_id, self.db.clone()).await?;
+        let workflow = InProcessWorkflow::new(session_id, harness_id, self.db.clone()).await?;
 
         let cancel_signals = self.cancel_signals.clone();
         let active_workflows = self.active_workflows.clone();

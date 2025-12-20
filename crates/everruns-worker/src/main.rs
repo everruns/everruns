@@ -1,6 +1,6 @@
 use anyhow::Result;
 use everruns_storage::repositories::Database;
-use everruns_worker::{temporal::TemporalWorker, RunnerConfig, RunnerMode};
+use everruns_worker::{RunnerConfig, RunnerMode, TemporalWorker};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]

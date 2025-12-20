@@ -243,7 +243,6 @@ pub trait ToolExecutor: Send + Sync {
             .iter()
             .map(|def| {
                 let name = match def {
-                    ToolDefinition::Webhook(w) => w.name.as_str(),
                     ToolDefinition::Builtin(b) => b.name.as_str(),
                 };
                 (name, def)
@@ -280,7 +279,6 @@ pub trait ToolExecutor: Send + Sync {
             .iter()
             .map(|def| {
                 let name = match def {
-                    ToolDefinition::Webhook(w) => w.name.as_str(),
                     ToolDefinition::Builtin(b) => b.name.as_str(),
                 };
                 (name, def)

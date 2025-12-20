@@ -15,10 +15,10 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::runner::{AgentRunner, RunnerConfig};
+use crate::worker::TemporalWorker;
 
 use super::client::TemporalClient;
 use super::types::SessionWorkflowInput;
-use super::worker::TemporalWorker;
 
 /// Temporal-based session runner using true Temporal workflows
 ///

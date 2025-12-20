@@ -15,6 +15,23 @@ use everruns_core::step::{LoopStep, StepOutput};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Result from processing a workflow activation
+#[derive(Debug)]
+pub enum WorkflowAction {
+    /// Schedule an activity
+    ScheduleActivity {
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+    },
+    /// Complete the workflow successfully
+    CompleteWorkflow { result: Option<serde_json::Value> },
+    /// Fail the workflow
+    FailWorkflow { reason: String },
+    /// No action needed (waiting for activity result)
+    None,
+}
+
 /// Input for the Session workflow (M2)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionWorkflowInput {
@@ -115,7 +132,7 @@ pub struct ToolCallData {
     pub id: String,
     pub name: String,
     pub arguments: String,
-    /// Optional tool definition JSON for webhook tools
+    /// Optional tool definition JSON (for future use)
     #[serde(default)]
     pub tool_definition_json: Option<String>,
 }
@@ -240,7 +257,7 @@ pub struct ExecuteLlmStepOutput {
 pub struct ExecuteSingleToolInput {
     pub session_id: Uuid,
     pub tool_call: ToolCall,
-    /// Tool definition JSON for webhook tools
+    /// Tool definition JSON (for future use)
     pub tool_definition_json: Option<String>,
 }
 

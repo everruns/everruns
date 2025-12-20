@@ -531,7 +531,6 @@ where
                 .iter()
                 .find(|def| {
                     let name = match def {
-                        everruns_contracts::tools::ToolDefinition::Webhook(w) => &w.name,
                         everruns_contracts::tools::ToolDefinition::Builtin(b) => &b.name,
                     };
                     name == &tool_call.name

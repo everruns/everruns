@@ -1,6 +1,9 @@
-// Session workflow for agentic loop execution (M2)
+// In-process workflow for agentic loop execution
+// Decision: InProcessWorkflow runs directly in a tokio task (non-durable)
+// Decision: For durable execution, use TemporalSessionWorkflow via Temporal
+//
 // Uses Agent/Session/Messages model with Events as SSE notifications
-// Now uses everruns-core for the core loop logic
+// Delegates the core agentic loop to everruns-core
 
 use anyhow::Result;
 use chrono::Utc;
@@ -14,18 +17,21 @@ use uuid::Uuid;
 use crate::activities::PersistEventActivity;
 use crate::adapters::create_db_agent_loop;
 
-/// Session workflow orchestrating LLM calls and tool execution
+/// In-process session workflow for non-durable execution
 ///
-/// This workflow now delegates the core agentic loop to everruns-agent-loop,
+/// This workflow runs directly in a tokio task without Temporal.
+/// For durable execution with retry and recovery, use TemporalSessionWorkflow.
+///
+/// The workflow delegates the core agentic loop to everruns-core,
 /// while managing session lifecycle (status updates, error handling).
-pub struct SessionWorkflow {
+pub struct InProcessWorkflow {
     session_id: Uuid,
     agent_id: Uuid,
     db: Database,
     persist_activity: PersistEventActivity,
 }
 
-impl SessionWorkflow {
+impl InProcessWorkflow {
     pub async fn new(session_id: Uuid, agent_id: Uuid, db: Database) -> Result<Self> {
         let persist_activity = PersistEventActivity::new(db.clone());
         Ok(Self {
@@ -93,7 +99,7 @@ impl SessionWorkflow {
         );
 
         // Create and run the agent loop with database-backed components
-        // Uses UnifiedToolExecutor which supports both built-in and webhook tools
+        // Uses UnifiedToolExecutor with ToolRegistry for built-in tools
         let agent_loop = create_db_agent_loop(config, self.db.clone())?;
         let result = agent_loop.run(self.session_id).await;
 
@@ -196,10 +202,10 @@ impl SessionWorkflow {
     }
 }
 
-// Keep the old name as an alias for backwards compatibility during migration
-pub type AgentRunWorkflow = SessionWorkflow;
+// Legacy aliases for backwards compatibility
+pub type SessionWorkflow = InProcessWorkflow;
 
-impl AgentRunWorkflow {
+impl InProcessWorkflow {
     /// Legacy compatibility constructor
     /// In M2, run_id maps to session_id, agent_id remains agent_id
     pub async fn legacy_new(
@@ -208,7 +214,7 @@ impl AgentRunWorkflow {
         _thread_id: Uuid,
         db: Database,
     ) -> Result<Self> {
-        SessionWorkflow::new(run_id, agent_id, db).await
+        InProcessWorkflow::new(run_id, agent_id, db).await
     }
 }
 
@@ -222,7 +228,7 @@ mod tests {
     #[test]
     fn test_workflow_type_alias() {
         // Verify the type alias works
-        fn _accepts_workflow(_w: AgentRunWorkflow) {}
-        fn _accepts_session(_w: SessionWorkflow) {}
+        fn _accepts_inprocess(_w: InProcessWorkflow) {}
+        fn _accepts_session(_w: SessionWorkflow) {} // Legacy alias
     }
 }

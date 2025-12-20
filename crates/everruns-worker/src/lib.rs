@@ -1,16 +1,21 @@
 pub mod activities;
 pub mod adapters;
 pub mod runner;
-pub mod runner_inprocess;
-pub mod tools;
 pub mod unified_tool_executor;
-pub mod workflows;
+pub mod worker;
+
+// In-process execution (non-durable, tokio tasks)
+pub mod inprocess;
 
 // Temporal integration for durable workflow execution
 pub mod temporal;
 
 // Re-export main types
 pub use runner::{create_runner, AgentRunner, RunnerConfig, RunnerMode};
+pub use worker::TemporalWorker;
+
+// Re-export in-process types
+pub use inprocess::{InProcessRunner, InProcessWorkflow};
 
 // Re-export adapters for core integration
 pub use adapters::{

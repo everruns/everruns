@@ -228,9 +228,6 @@ impl LlmConfig {
             .iter()
             .map(|tool| {
                 let (name, description, parameters) = match tool {
-                    ToolDefinition::Webhook(webhook) => {
-                        (&webhook.name, &webhook.description, &webhook.parameters)
-                    }
                     ToolDefinition::Builtin(builtin) => {
                         (&builtin.name, &builtin.description, &builtin.parameters)
                     }
