@@ -765,12 +765,8 @@ mod tests {
         let tool = GetCurrentTime;
         let def = tool.to_definition();
 
-        match def {
-            ToolDefinition::Builtin(builtin) => {
-                assert_eq!(builtin.name, "get_current_time");
-                assert_eq!(builtin.policy, ToolPolicy::Auto);
-            }
-            _ => panic!("Expected builtin tool definition"),
-        }
+        let ToolDefinition::Builtin(builtin) = def;
+        assert_eq!(builtin.name, "get_current_time");
+        assert_eq!(builtin.policy, ToolPolicy::Auto);
     }
 }
