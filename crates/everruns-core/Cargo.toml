@@ -12,10 +12,6 @@ license.workspace = true
 authors.workspace = true
 description = "Core agent abstractions for Everruns - agent loop, events, tools, LLM providers"
 
-[features]
-default = []
-openai = ["dep:reqwest", "dep:eventsource-stream"]
-
 [dependencies]
 # Core dependencies
 anyhow.workspace = true
@@ -41,15 +37,13 @@ tracing.workspace = true
 # Internal dependencies
 everruns-contracts = { path = "../everruns-contracts" }
 
-# Optional: OpenAI provider
-reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
-eventsource-stream = { version = "0.2", optional = true }
+# OpenAI Protocol provider
+reqwest = { version = "0.12", features = ["json", "stream"] }
+eventsource-stream = "0.2"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
-reqwest = { version = "0.12", features = ["json", "stream"] }
-eventsource-stream = "0.2"
 
 [[example]]
 name = "tool_calling"
@@ -62,4 +56,7 @@ path = "examples/capabilities.rs"
 [[example]]
 name = "simple_agent"
 path = "examples/simple_agent.rs"
-required-features = ["openai"]
+
+[[example]]
+name = "decomposed_execution"
+path = "examples/decomposed_execution.rs"

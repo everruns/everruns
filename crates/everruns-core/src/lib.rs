@@ -29,8 +29,7 @@ pub mod traits;
 // In-memory implementations for examples and testing
 pub mod memory;
 
-// OpenAI Protocol provider (requires "openai" feature)
-#[cfg(feature = "openai")]
+// OpenAI Protocol provider
 pub mod openai;
 
 // Re-exports for convenience
