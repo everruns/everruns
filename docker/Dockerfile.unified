@@ -112,9 +112,9 @@ FROM deps AS builder-admin
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-# Build the reencrypt-secrets binary and install sqlx-cli
+# Build the reencrypt-secrets binary and install sqlx-cli with TLS support
 RUN cargo build --release --bin reencrypt-secrets && \
-    cargo install sqlx-cli --no-default-features --features postgres --locked
+    cargo install sqlx-cli --no-default-features --features postgres,native-tls --locked
 
 # ============================================================================
 # Stage 5c: Admin Runtime image

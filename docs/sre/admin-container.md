@@ -65,6 +65,14 @@ docker run --rm \
 | `SECRETS_ENCRYPTION_KEY_PREVIOUS` | For rotation | Previous encryption key |
 | `RUST_LOG` | No | Log level (default: info) |
 
+## TLS/SSL Connections
+
+The admin container supports TLS connections to PostgreSQL. Use the `sslmode` parameter in your connection string:
+
+```bash
+DATABASE_URL="postgres://user:pass@host:5432/db?sslmode=require"
+```
+
 ## Production Deployment
 
 The admin container can be run as a one-off task in any container orchestration platform:
