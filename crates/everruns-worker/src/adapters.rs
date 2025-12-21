@@ -6,9 +6,7 @@
 use async_trait::async_trait;
 use everruns_contracts::tools::ToolCall;
 use everruns_core::{
-    message::MessageContent,
-    traits::MessageStore,
-    AgentLoopError, Message, MessageRole, Result,
+    message::MessageContent, traits::MessageStore, AgentLoopError, Message, MessageRole, Result,
 };
 use everruns_storage::models::CreateMessage;
 use everruns_storage::repositories::Database;

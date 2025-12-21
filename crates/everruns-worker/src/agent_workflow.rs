@@ -19,8 +19,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::activities::{CallModelOutput, ExecuteToolOutput};
-use crate::types::WorkflowAction;
 use crate::traits::{Workflow, WorkflowInput};
+use crate::types::WorkflowAction;
 
 // ============================================================================
 // Input/Output Types

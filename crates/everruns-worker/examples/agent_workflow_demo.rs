@@ -11,8 +11,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use everruns_worker::types::WorkflowAction;
-use everruns_worker::{AgentWorkflow, AgentWorkflowInput};
 use everruns_worker::Workflow;
+use everruns_worker::{AgentWorkflow, AgentWorkflowInput};
 
 fn main() {
     println!("=== Agent Workflow Demo ===\n");

@@ -35,9 +35,9 @@ use crate::activities::{
 };
 use crate::client::TemporalWorkerCore;
 use crate::runner::RunnerConfig;
+use crate::traits::Workflow;
 use crate::types::*;
 use crate::workflow_registry::WorkflowRegistry;
-use crate::traits::Workflow;
 
 /// Temporal worker that processes workflow and activity tasks
 pub struct TemporalWorker {

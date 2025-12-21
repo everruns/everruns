@@ -17,8 +17,8 @@ use std::sync::Arc;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::client::TemporalClient;
 use crate::agent_workflow::AgentWorkflowInput;
+use crate::client::TemporalClient;
 use crate::worker::TemporalWorker;
 
 // =============================================================================
