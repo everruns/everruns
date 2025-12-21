@@ -2,187 +2,325 @@
 //
 // Activities are the units of work scheduled by the workflow.
 // Each activity runs outside the workflow and returns a result.
+//
+// These implementations use Atoms from everruns-core for the actual work:
+// - CallModelAtom for LLM calls
+// - ExecuteToolAtom for tool execution
+//
+// Atoms handle message loading/storage internally via MessageStore trait.
 
+use anyhow::{Context, Result};
+use everruns_contracts::tools::{
+    BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy,
+};
+use everruns_core::atoms::{
+    Atom, CallModelAtom, CallModelInput as AtomCallModelInput, ExecuteToolAtom,
+    ExecuteToolInput as AtomExecuteToolInput,
+};
+use everruns_core::config::AgentConfigBuilder;
+use everruns_core::openai::OpenAIProtocolLlmProvider;
+use everruns_storage::repositories::Database;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use uuid::Uuid;
 
-use super::session_workflow::{MessageData, ToolCallData, ToolDefinitionData, ToolResultData};
+use super::session_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
+use crate::adapters::DbMessageStore;
+use crate::unified_tool_executor::UnifiedToolExecutor;
 
 // ============================================================================
 // Activity Input/Output Types
 // ============================================================================
 
+/// Input for call-model activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallModelInput {
+    /// Session ID (UUID string)
     pub session_id: String,
-    pub model: String,
-    pub messages: Vec<MessageData>,
-    pub tools: Vec<ToolDefinitionData>,
+    /// Agent configuration (model, tools, system_prompt)
+    pub agent_config: AgentConfigData,
 }
 
+/// Output from call-model activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallModelOutput {
+    /// Text response from the model
     pub text: String,
+    /// Tool calls requested by the model (if any)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCallData>>,
+    /// Whether tool execution is needed
+    pub needs_tool_execution: bool,
 }
 
+/// Input for execute-tool activity (single tool)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecuteToolsInput {
+pub struct ExecuteToolInput {
+    /// Session ID (UUID string)
     pub session_id: String,
-    pub tool_calls: Vec<ToolCallData>,
-    pub tools: Vec<ToolDefinitionData>,
+    /// Tool call to execute
+    pub tool_call: ToolCallData,
+    /// Available tool definitions
+    pub tool_definitions: Vec<ToolDefinitionData>,
 }
 
+/// Output from execute-tool activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecuteToolsOutput {
-    pub results: Vec<ToolResultData>,
+pub struct ExecuteToolOutput {
+    /// Result of the tool execution
+    pub result: ToolResultData,
 }
+
+// Legacy types for backwards compatibility
+pub type ExecuteToolsInput = ExecuteToolInput;
+pub type ExecuteToolsOutput = ExecuteToolOutput;
 
 // ============================================================================
 // Activity Implementations
 // ============================================================================
 
-/// IMPLEMENT MODEL CALL HERE
+/// Call the LLM model using CallModelAtom
 ///
-/// This is where the actual LLM call happens.
-/// The workflow schedules this activity with type "call-model".
-///
-/// Input: CallModelInput { session_id, model, messages, tools }
-/// Output: CallModelOutput { text, tool_calls }
-///
-/// Example implementation:
-/// ```ignore
-/// pub async fn call_model_activity(
-///     input: CallModelInput,
-///     llm_provider: &impl LlmProvider,
-/// ) -> Result<CallModelOutput> {
-///     // Convert messages to LLM format
-///     let llm_messages = input.messages.iter().map(|m| /* ... */).collect();
-///
-///     // Build config with tools
-///     let config = LlmCallConfig {
-///         model: input.model,
-///         tools: input.tools.into_iter().map(/* ... */).collect(),
-///         ..Default::default()
-///     };
-///
-///     // Call the LLM
-///     let response = llm_provider.chat_completion(llm_messages, &config).await?;
-///
-///     Ok(CallModelOutput {
-///         text: response.text,
-///         tool_calls: response.tool_calls.map(|calls| /* convert to ToolCallData */),
-///     })
-/// }
-/// ```
-pub fn call_model_activity_stub(input: CallModelInput) -> CallModelOutput {
-    // TODO: Replace with real implementation using LlmProvider
-    //
-    // For now, return a fake response for testing
-    let _ = input; // silence unused warning
+/// This activity:
+/// 1. Loads messages from the database via MessageStore
+/// 2. Calls the LLM with the agent configuration
+/// 3. Stores the assistant response and any tool call messages
+/// 4. Returns the text and tool calls
+pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<CallModelOutput> {
+    let session_id: Uuid = input
+        .session_id
+        .parse()
+        .context("Invalid session_id UUID")?;
 
-    CallModelOutput {
-        text: "This is a fake response. Implement call_model_activity with LlmProvider.".into(),
-        tool_calls: None,
-    }
+    // Create atom dependencies
+    let message_store = DbMessageStore::new(db);
+    let llm_provider =
+        OpenAIProtocolLlmProvider::from_env().context("Failed to create LLM provider")?;
+
+    // Build AgentConfig from the workflow's AgentConfigData
+    let agent_config = build_agent_config(&input.agent_config);
+
+    // Create and execute CallModelAtom
+    let atom = CallModelAtom::new(message_store, llm_provider);
+    let result = atom
+        .execute(AtomCallModelInput {
+            session_id,
+            config: agent_config,
+        })
+        .await
+        .context("CallModelAtom execution failed")?;
+
+    // Convert to activity output
+    let tool_calls = if result.tool_calls.is_empty() {
+        None
+    } else {
+        Some(
+            result
+                .tool_calls
+                .iter()
+                .map(|tc| ToolCallData {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    arguments: tc.arguments.clone(),
+                })
+                .collect(),
+        )
+    };
+
+    Ok(CallModelOutput {
+        text: result.text,
+        tool_calls,
+        needs_tool_execution: result.needs_tool_execution,
+    })
 }
 
-/// IMPLEMENT TOOL EXECUTION HERE
+/// Execute a single tool using ExecuteToolAtom
 ///
-/// This is where tools are executed (in parallel).
-/// The workflow schedules this activity with type "execute-tools".
-///
-/// Input: ExecuteToolsInput { session_id, tool_calls, tools }
-/// Output: ExecuteToolsOutput { results }
-///
-/// Example implementation:
-/// ```ignore
-/// pub async fn execute_tools_activity(
-///     input: ExecuteToolsInput,
-///     tool_executor: &impl ToolExecutor,
-/// ) -> Result<ExecuteToolsOutput> {
-///     // Execute all tools in parallel
-///     let results = tool_executor
-///         .execute_parallel(&input.tool_calls, &input.tools)
-///         .await?;
-///
-///     Ok(ExecuteToolsOutput {
-///         results: results.into_iter().map(|r| ToolResultData {
-///             tool_call_id: r.tool_call_id,
-///             result: r.result,
-///             error: r.error,
-///         }).collect(),
-///     })
-/// }
-/// ```
-pub fn execute_tools_activity_stub(input: ExecuteToolsInput) -> ExecuteToolsOutput {
-    // TODO: Replace with real implementation using ToolExecutor
-    //
-    // For now, return fake results for testing
-    let results = input
-        .tool_calls
+/// This activity:
+/// 1. Executes the tool call via ToolExecutor
+/// 2. Stores the tool result message
+/// 3. Returns the result
+pub async fn execute_tool_activity(
+    db: Database,
+    input: ExecuteToolInput,
+) -> Result<ExecuteToolOutput> {
+    let session_id: Uuid = input
+        .session_id
+        .parse()
+        .context("Invalid session_id UUID")?;
+
+    // Create atom dependencies
+    let message_store = DbMessageStore::new(db);
+    let tool_executor = UnifiedToolExecutor::with_default_tools();
+
+    // Convert tool call data
+    let tool_call = ToolCall {
+        id: input.tool_call.id.clone(),
+        name: input.tool_call.name.clone(),
+        arguments: input.tool_call.arguments.clone(),
+    };
+
+    // Convert tool definitions
+    let tool_definitions: Vec<ToolDefinition> = input
+        .tool_definitions
         .iter()
-        .map(|tc| ToolResultData {
-            tool_call_id: tc.id.clone(),
-            result: Some(json!({"status": "ok", "note": "fake result"})),
-            error: None,
-        })
+        .map(convert_tool_definition)
         .collect();
 
-    ExecuteToolsOutput { results }
+    // Create and execute ExecuteToolAtom
+    let atom = ExecuteToolAtom::new(message_store, tool_executor);
+    let result = atom
+        .execute(AtomExecuteToolInput {
+            session_id,
+            tool_call: tool_call.clone(),
+            tool_definitions,
+        })
+        .await
+        .context("ExecuteToolAtom execution failed")?;
+
+    Ok(ExecuteToolOutput {
+        result: ToolResultData {
+            tool_call_id: tool_call.id,
+            result: result.result.result,
+            error: result.result.error,
+        },
+    })
 }
 
 // ============================================================================
-// Activity Dispatcher (for worker integration)
+// Legacy Stub Functions (for backwards compatibility during migration)
+// ============================================================================
+
+/// Stub implementation - use call_model_activity instead
+#[allow(dead_code)]
+#[deprecated(note = "Use call_model_activity instead")]
+pub fn call_model_activity_stub(input: CallModelInput) -> CallModelOutput {
+    let _ = input;
+    CallModelOutput {
+        text: "STUB: Use call_model_activity instead".into(),
+        tool_calls: None,
+        needs_tool_execution: false,
+    }
+}
+
+/// Stub implementation - use execute_tool_activity instead
+#[allow(dead_code)]
+#[deprecated(note = "Use execute_tool_activity instead")]
+pub fn execute_tools_activity_stub(input: ExecuteToolInput) -> ExecuteToolOutput {
+    ExecuteToolOutput {
+        result: ToolResultData {
+            tool_call_id: input.tool_call.id,
+            result: Some(json!({"status": "stub", "note": "Use execute_tool_activity instead"})),
+            error: None,
+        },
+    }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Build AgentConfig from workflow's AgentConfigData
+fn build_agent_config(data: &AgentConfigData) -> everruns_core::AgentConfig {
+    let tools: Vec<ToolDefinition> = data.tools.iter().map(convert_tool_definition).collect();
+
+    AgentConfigBuilder::new()
+        .model(&data.model)
+        .system_prompt(data.system_prompt.as_deref().unwrap_or(""))
+        .tools(tools)
+        .max_iterations(data.max_iterations as usize)
+        .build()
+}
+
+/// Convert workflow's ToolDefinitionData to core's ToolDefinition
+fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
+    ToolDefinition::Builtin(BuiltinTool {
+        name: tool.name.clone(),
+        description: tool.description.clone(),
+        parameters: tool.parameters.clone(),
+        kind: BuiltinToolKind::CurrentTime, // Default kind, actual execution is by name
+        policy: ToolPolicy::Auto,
+    })
+}
+
+// ============================================================================
+// Activity Type Constants
 // ============================================================================
 
 /// Activity type constants matching workflow's activity_names
 pub mod activity_types {
     pub const CALL_MODEL: &str = "call-model";
-    pub const EXECUTE_TOOLS: &str = "execute-tools";
+    pub const EXECUTE_TOOL: &str = "execute-tool";
     pub const LOAD_AGENT: &str = "load-agent";
     pub const LOAD_MESSAGES: &str = "load-messages";
     pub const SAVE_MESSAGE: &str = "save-message";
     pub const EMIT_EVENT: &str = "emit-event";
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_call_model_stub() {
+    fn test_call_model_input_serialization() {
         let input = CallModelInput {
-            session_id: "test".into(),
-            model: "gpt-4".into(),
-            messages: vec![MessageData {
-                role: "user".into(),
-                content: "Hello".into(),
-                tool_calls: None,
-                tool_call_id: None,
-            }],
-            tools: vec![],
+            session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            agent_config: AgentConfigData {
+                model: "gpt-4".into(),
+                system_prompt: Some("You are a helpful assistant.".into()),
+                tools: vec![],
+                max_iterations: 5,
+            },
         };
 
-        let output = call_model_activity_stub(input);
-        assert!(!output.text.is_empty());
+        let json = serde_json::to_string(&input).unwrap();
+        let parsed: CallModelInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.session_id, input.session_id);
+        assert_eq!(parsed.agent_config.model, "gpt-4");
     }
 
     #[test]
-    fn test_execute_tools_stub() {
-        let input = ExecuteToolsInput {
-            session_id: "test".into(),
-            tool_calls: vec![ToolCallData {
+    fn test_execute_tool_input_serialization() {
+        let input = ExecuteToolInput {
+            session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            tool_call: ToolCallData {
                 id: "call_1".into(),
                 name: "get_time".into(),
                 arguments: json!({}),
+            },
+            tool_definitions: vec![ToolDefinitionData {
+                name: "get_time".into(),
+                description: "Get current time".into(),
+                parameters: json!({"type": "object", "properties": {}}),
             }],
-            tools: vec![],
         };
 
-        let output = execute_tools_activity_stub(input);
-        assert_eq!(output.results.len(), 1);
-        assert_eq!(output.results[0].tool_call_id, "call_1");
+        let json = serde_json::to_string(&input).unwrap();
+        let parsed: ExecuteToolInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.tool_call.name, "get_time");
+    }
+
+    #[test]
+    fn test_build_agent_config() {
+        let data = AgentConfigData {
+            model: "gpt-4o-mini".into(),
+            system_prompt: Some("Test prompt".into()),
+            tools: vec![ToolDefinitionData {
+                name: "test_tool".into(),
+                description: "A test tool".into(),
+                parameters: json!({}),
+            }],
+            max_iterations: 10,
+        };
+
+        let config = build_agent_config(&data);
+        assert_eq!(config.model, "gpt-4o-mini");
+        assert_eq!(config.system_prompt, "Test prompt");
+        assert_eq!(config.tools.len(), 1);
+        assert_eq!(config.max_iterations, 10);
     }
 }

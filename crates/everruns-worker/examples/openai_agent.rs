@@ -11,9 +11,8 @@
 use everruns_core::{
     config::AgentConfig,
     memory::{InMemoryMessageStore, NoOpEventEmitter},
-    message::ConversationMessage,
     traits::ToolExecutor,
-    AgentLoop, Result, ToolCall, ToolDefinition, ToolResult,
+    AgentLoop, Message, Result, ToolCall, ToolDefinition, ToolResult,
 };
 use everruns_worker::OpenAiProvider;
 use uuid::Uuid;
@@ -81,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
     message_store
         .seed(
             session_id,
-            vec![ConversationMessage::user(
+            vec![Message::user(
                 "Hello! Can you tell me a short joke about programming?",
             )],
         )

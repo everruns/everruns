@@ -7,8 +7,8 @@ pub mod activities;
 pub mod session_workflow;
 
 pub use activities::{
-    activity_types, call_model_activity_stub, execute_tools_activity_stub, CallModelInput,
-    CallModelOutput, ExecuteToolsInput, ExecuteToolsOutput,
+    activity_types, call_model_activity, execute_tool_activity, CallModelInput, CallModelOutput,
+    ExecuteToolInput, ExecuteToolOutput, ExecuteToolsInput, ExecuteToolsOutput,
 };
 pub use session_workflow::{
     AgentConfigData, MessageData, SessionWorkflowV2, SessionWorkflowV2Input, ToolCallData,
