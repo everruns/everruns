@@ -12,6 +12,7 @@
 // - ToolRegistry implements ToolExecutor for easy tool management
 // - Error handling distinguishes between user-visible and internal errors
 // - Capabilities provide modular functionality units for composing agent behavior
+// - This crate has NO dependency on storage/contracts - it's purely runtime abstractions
 
 pub mod atoms;
 pub mod capabilities;
