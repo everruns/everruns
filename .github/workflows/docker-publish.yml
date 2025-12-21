@@ -32,7 +32,7 @@ jobs:
           - target: admin
             dockerfile: docker/Dockerfile.unified
             image_name: everruns-admin
-          - target: runner
+          - target: ui
             dockerfile: apps/ui/Dockerfile
             image_name: everruns-ui
             context: apps/ui

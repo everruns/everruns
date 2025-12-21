@@ -65,16 +65,11 @@ COPY crates crates
 RUN cargo build --release -p everruns-worker
 
 # ============================================================================
-# Stage 5a: API Runtime image
+# Stage 5a: API Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM debian:bookworm-slim AS api
+FROM gcr.io/distroless/cc-debian12 AS api
 
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder-api /app/target/release/everruns-api /app/everruns-api
 
@@ -87,16 +82,11 @@ ENV PORT=9000
 CMD ["/app/everruns-api"]
 
 # ============================================================================
-# Stage 5b: Worker Runtime image
+# Stage 5b: Worker Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM debian:bookworm-slim AS worker
+FROM gcr.io/distroless/cc-debian12 AS worker
 
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder-worker /app/target/release/everruns-worker /app/everruns-worker
 
@@ -112,15 +102,18 @@ FROM deps AS builder-admin
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-# Build the reencrypt-secrets binary and install sqlx-cli with TLS support
+# Build the reencrypt-secrets binary and install sqlx-cli with TLS support (rustls)
 RUN cargo build --release --bin reencrypt-secrets && \
-    cargo install sqlx-cli --no-default-features --features postgres,native-tls --locked
+    cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
 # ============================================================================
 # Stage 5c: Admin Runtime image
 # ============================================================================
 # Admin container for running migrations, key rotation, and other admin tasks
-# in production environments.
+# in production environments. Uses debian-slim instead of distroless because
+# it needs a shell for the entrypoint script.
+#
+# Note: No libssl3 needed since we switched to rustls for TLS.
 #
 # Usage:
 #   docker build --target admin -f docker/Dockerfile.unified -t everruns-admin .
@@ -135,9 +128,8 @@ FROM debian:bookworm-slim AS admin
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy sqlx-cli from builder
