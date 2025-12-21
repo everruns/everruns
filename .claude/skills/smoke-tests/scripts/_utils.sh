@@ -9,6 +9,7 @@ export PG_BIN="/usr/lib/postgresql/$PG_VERSION/bin"
 export TEMPORAL_BIN="/usr/local/bin/temporal"
 export TEMPORAL_LOG="/tmp/temporal.log"
 export API_LOG="/tmp/api.log"
+export WORKER_LOG="/tmp/worker.log"
 
 # Colors for output
 RED='\033[0;31m'
