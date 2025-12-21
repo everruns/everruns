@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use everruns_contracts::events::{AgUiEvent, AgUiMessageRole};
+use crate::ag_ui::{AgUiEvent, AgUiMessageRole};
 use futures::StreamExt;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -488,8 +488,8 @@ where
     async fn execute_tools(
         &self,
         session_id: Uuid,
-        tool_calls: &[everruns_contracts::tools::ToolCall],
-    ) -> Result<Vec<everruns_contracts::tools::ToolResult>> {
+        tool_calls: &[crate::tool_types::ToolCall],
+    ) -> Result<Vec<crate::tool_types::ToolResult>> {
         let mut results = Vec::with_capacity(tool_calls.len());
 
         for tool_call in tool_calls {
@@ -529,7 +529,7 @@ where
                 .iter()
                 .find(|def| {
                     let name = match def {
-                        everruns_contracts::tools::ToolDefinition::Builtin(b) => &b.name,
+                        crate::tool_types::ToolDefinition::Builtin(b) => &b.name,
                     };
                     name == &tool_call.name
                 })
@@ -570,5 +570,5 @@ where
 /// Result from calling the LLM
 struct LlmCallResult {
     text: String,
-    tool_calls: Option<Vec<everruns_contracts::tools::ToolCall>>,
+    tool_calls: Option<Vec<crate::tool_types::ToolCall>>,
 }

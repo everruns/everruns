@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-use everruns_contracts::tools::{
+use crate::tool_types::{
     BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
 };
 

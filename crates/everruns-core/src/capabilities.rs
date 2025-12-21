@@ -13,15 +13,15 @@
 // - The agent-loop remains execution-focused; capabilities are applied before execution
 
 use crate::config::AgentConfig;
+use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolRegistry};
 use async_trait::async_trait;
-use everruns_contracts::tools::ToolDefinition;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// Re-export capability types from contracts
-pub use everruns_contracts::{CapabilityId, CapabilityStatus};
+// Re-export capability types for convenience
+pub use crate::capability_types::{CapabilityId, CapabilityStatus};
 
 // ============================================================================
 // Capability Trait

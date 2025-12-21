@@ -4,8 +4,8 @@
 // This allows the loop to emit standard AG-UI events while also providing
 // higher-level loop status events.
 
+use crate::ag_ui::AgUiEvent;
 use chrono::{DateTime, Utc};
-use everruns_contracts::events::AgUiEvent;
 use serde::{Deserialize, Serialize};
 
 /// Events emitted during loop execution

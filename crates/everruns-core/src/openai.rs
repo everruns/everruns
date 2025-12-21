@@ -16,7 +16,7 @@ use crate::llm::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmProvider, LlmResponseStream, LlmStreamEvent,
 };
-use everruns_contracts::tools::{ToolCall, ToolDefinition};
+use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 

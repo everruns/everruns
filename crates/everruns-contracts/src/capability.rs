@@ -1,90 +1,27 @@
 // Capability DTOs - defines agent capabilities that add functionality
 //
-// Design Decision: Capabilities are external to the Agent Loop.
-// They are resolved at the service/API layer and contribute to AgentConfig
-// (system prompt additions, tools, etc.). The Agent Loop remains focused on
-// execution and receives a fully-configured AgentConfig.
+// Runtime types (CapabilityId, CapabilityStatus) are defined in everruns-core
+// and re-exported here. This file defines the API/DTO types with ToSchema.
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-/// Known capability identifiers
-/// These are the internal IDs for built-in capabilities
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum CapabilityId {
-    /// No-op capability for testing/demo purposes
-    Noop,
-    /// CurrentTime capability - adds a tool to get the current time
-    CurrentTime,
-    /// Research capability - enables deep research with scratchpad and web tools
-    Research,
-    /// Sandbox capability - enables sandboxed code execution
-    Sandbox,
-    /// FileSystem capability - adds file system access tools
-    FileSystem,
-}
-
-impl std::fmt::Display for CapabilityId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CapabilityId::Noop => write!(f, "noop"),
-            CapabilityId::CurrentTime => write!(f, "current_time"),
-            CapabilityId::Research => write!(f, "research"),
-            CapabilityId::Sandbox => write!(f, "sandbox"),
-            CapabilityId::FileSystem => write!(f, "file_system"),
-        }
-    }
-}
-
-impl std::str::FromStr for CapabilityId {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "noop" => Ok(CapabilityId::Noop),
-            "current_time" => Ok(CapabilityId::CurrentTime),
-            "research" => Ok(CapabilityId::Research),
-            "sandbox" => Ok(CapabilityId::Sandbox),
-            "file_system" => Ok(CapabilityId::FileSystem),
-            _ => Err(format!("Unknown capability: {}", s)),
-        }
-    }
-}
-
-/// Capability status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum CapabilityStatus {
-    /// Capability is available for use
-    Available,
-    /// Capability is coming soon (not yet implemented)
-    ComingSoon,
-    /// Capability is deprecated
-    Deprecated,
-}
-
-impl std::fmt::Display for CapabilityStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CapabilityStatus::Available => write!(f, "available"),
-            CapabilityStatus::ComingSoon => write!(f, "coming_soon"),
-            CapabilityStatus::Deprecated => write!(f, "deprecated"),
-        }
-    }
-}
+// Re-export capability types from core
+pub use everruns_core::capability_types::{CapabilityId, CapabilityStatus};
 
 /// Public capability information (without internal details)
 /// This is what gets returned from the API
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Capability {
     /// Unique capability identifier
+    #[schema(value_type = String)]
     pub id: CapabilityId,
     /// Display name
     pub name: String,
     /// Description of what this capability provides
     pub description: String,
     /// Current status
+    #[schema(value_type = String)]
     pub status: CapabilityStatus,
     /// Icon name (for UI rendering)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -98,6 +35,7 @@ pub struct Capability {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentCapability {
     /// The capability ID
+    #[schema(value_type = String)]
     pub capability_id: CapabilityId,
     /// Position in the chain (lower = earlier)
     pub position: i32,
@@ -108,6 +46,7 @@ pub struct AgentCapability {
 pub struct UpdateAgentCapabilitiesRequest {
     /// List of capability IDs in desired order
     /// Position is determined by array index
+    #[schema(value_type = Vec<String>)]
     pub capabilities: Vec<CapabilityId>,
 }
 

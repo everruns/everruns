@@ -4,15 +4,13 @@
 // the ToolExecutor trait work correctly together.
 
 use async_trait::async_trait;
-use everruns_contracts::tools::{
-    BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy,
-};
 use everruns_core::{
     memory::{InMemoryEventEmitter, InMemoryMessageStore, MockLlmProvider, MockLlmResponse},
     tools::{EchoTool, FailingTool, GetCurrentTime, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
     AgentConfig, AgentLoop, LoopEvent, Message, MessageRole,
 };
+use everruns_core::{BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy};
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

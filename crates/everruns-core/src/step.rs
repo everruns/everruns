@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use everruns_contracts::tools::{ToolCall, ToolResult};
+use crate::tool_types::{ToolCall, ToolResult};
 
 use crate::message::Message;
 

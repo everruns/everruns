@@ -4,7 +4,7 @@
 // - Created directly for standalone usage
 // - Built from an Agent entity via the `from_agent` method
 
-use everruns_contracts::tools::ToolDefinition;
+use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for the agent loop

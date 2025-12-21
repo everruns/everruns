@@ -13,6 +13,12 @@
 // - Error handling distinguishes between user-visible and internal errors
 // - Capabilities provide modular functionality units for composing agent behavior
 // - This crate has NO dependency on storage/contracts - it's purely runtime abstractions
+// - AG-UI events and tool types are defined here as runtime types
+
+// Runtime types (AG-UI protocol events, tool definitions, capability types)
+pub mod ag_ui;
+pub mod capability_types;
+pub mod tool_types;
 
 pub mod atoms;
 pub mod capabilities;
@@ -70,6 +76,21 @@ pub use atoms::{
 // Loop re-exports
 pub use r#loop::{AgentLoop2, LoadMessagesResult};
 
-// Re-export AG-UI events for compatibility
-pub use everruns_contracts::events::AgUiEvent;
-pub use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
+// AG-UI events (runtime types defined in this crate)
+pub use ag_ui::{
+    AgUiEvent, AgUiMessageRole, CustomEvent, JsonPatchOp, MessagesSnapshotEvent, RunErrorEvent,
+    RunFinishedEvent, RunStartedEvent, SnapshotMessage, StateDeltaEvent, StateSnapshotEvent,
+    StepFinishedEvent, StepStartedEvent, TextMessageContentEvent, TextMessageEndEvent,
+    TextMessageStartEvent, ToolCallArgsEvent, ToolCallEndEvent, ToolCallResultEvent,
+    ToolCallStartEvent, EVENT_MESSAGE_ASSISTANT, EVENT_MESSAGE_SYSTEM, EVENT_MESSAGE_USER,
+    EVENT_SESSION_ERROR, EVENT_SESSION_FINISHED, EVENT_SESSION_STARTED, EVENT_STATE_DELTA,
+    EVENT_STATE_SNAPSHOT, EVENT_TEXT_DELTA, EVENT_TEXT_END, EVENT_TEXT_START, EVENT_TOOL_CALL_ARGS,
+    EVENT_TOOL_CALL_END, EVENT_TOOL_CALL_START, EVENT_TOOL_RESULT, HITL_DECISION, HITL_REQUEST,
+};
+
+// Tool types (runtime types defined in this crate)
+pub use tool_types::{
+    BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
+};
+
+// Note: CapabilityId and CapabilityStatus are re-exported via capabilities module

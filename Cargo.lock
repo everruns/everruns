@@ -791,6 +791,7 @@ name = "everruns-contracts"
 version = "0.2.0"
 dependencies = [
  "chrono",
+ "everruns-core",
  "serde",
  "serde_json",
  "utoipa",
@@ -805,7 +806,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "eventsource-stream",
- "everruns-contracts",
  "futures",
  "reqwest",
  "serde",
@@ -844,9 +844,11 @@ dependencies = [
  "aes-gcm",
  "anyhow",
  "argon2",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "everruns-contracts",
+ "everruns-core",
  "hex",
  "rand",
  "serde",

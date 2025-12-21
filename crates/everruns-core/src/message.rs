@@ -3,8 +3,8 @@
 // Message is a DB-agnostic message type that represents
 // a single message in the conversation history.
 
+use crate::tool_types::ToolCall;
 use chrono::{DateTime, Utc};
-use everruns_contracts::tools::ToolCall;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

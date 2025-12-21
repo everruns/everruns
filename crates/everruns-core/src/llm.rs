@@ -3,8 +3,8 @@
 // Provider-agnostic types for LLM interactions.
 // Supports both simple text content and multipart content (text, images, audio).
 
+use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
-use everruns_contracts::tools::{ToolCall, ToolDefinition};
 use futures::Stream;
 use std::pin::Pin;
 
