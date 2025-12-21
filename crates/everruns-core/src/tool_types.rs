@@ -54,6 +54,18 @@ pub enum BuiltinToolKind {
     WriteFile,
     /// Get current time in various formats
     CurrentTime,
+    /// Test math: add two numbers
+    TestMathAdd,
+    /// Test math: subtract two numbers
+    TestMathSubtract,
+    /// Test math: multiply two numbers
+    TestMathMultiply,
+    /// Test math: divide two numbers
+    TestMathDivide,
+    /// Test weather: get current weather
+    TestWeatherGet,
+    /// Test weather: get forecast
+    TestWeatherForecast,
 }
 
 /// Tool call from LLM response
