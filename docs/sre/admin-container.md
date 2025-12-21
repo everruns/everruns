@@ -65,6 +65,44 @@ docker run --rm \
 | `SECRETS_ENCRYPTION_KEY_PREVIOUS` | For rotation | Previous encryption key |
 | `RUST_LOG` | No | Log level (default: info) |
 
+## TLS/SSL Connections
+
+The admin container supports TLS connections to PostgreSQL. Use the `sslmode` parameter in your connection string:
+
+```bash
+# Require TLS (recommended for production)
+DATABASE_URL="postgres://user:pass@host:5432/db?sslmode=require"
+
+# Verify server certificate against system CA certificates
+DATABASE_URL="postgres://user:pass@host:5432/db?sslmode=verify-ca"
+
+# Verify server certificate and hostname
+DATABASE_URL="postgres://user:pass@host:5432/db?sslmode=verify-full"
+```
+
+### Cloud Database Examples
+
+**AWS RDS:**
+```bash
+docker run --rm \
+    -e DATABASE_URL="postgres://user:pass@mydb.abc123.us-east-1.rds.amazonaws.com:5432/db?sslmode=require" \
+    everruns-admin migrate
+```
+
+**Azure Database for PostgreSQL:**
+```bash
+docker run --rm \
+    -e DATABASE_URL="postgres://user@server:pass@server.postgres.database.azure.com:5432/db?sslmode=require" \
+    everruns-admin migrate
+```
+
+**Google Cloud SQL:**
+```bash
+docker run --rm \
+    -e DATABASE_URL="postgres://user:pass@/db?host=/cloudsql/project:region:instance&sslmode=require" \
+    everruns-admin migrate
+```
+
 ## Production Deployment
 
 The admin container can be run as a one-off task in any container orchestration platform:
