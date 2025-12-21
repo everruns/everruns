@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -150,7 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -179,7 +179,7 @@ jobs:
       - name: Start Temporal
         run: |
           # Get the postgres container's network
-          POSTGRES_CONTAINER=$(docker ps --filter "ancestor=postgres:18-alpine" -q)
+          POSTGRES_CONTAINER=$(docker ps --filter "ancestor=postgres:17-alpine" -q)
           NETWORK=$(docker inspect $POSTGRES_CONTAINER --format '{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}')
           echo "Postgres container: $POSTGRES_CONTAINER on network: $NETWORK"
 

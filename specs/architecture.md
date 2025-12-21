@@ -20,7 +20,8 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 
 ### Data Layer
 
-1. **Database**: PostgreSQL 18+ with native UUID v7 support
+1. **Database**: PostgreSQL 17 with custom UUID v7 function
+   - Decision: Using PostgreSQL 17 because PostgreSQL 18 is not yet available on managed services like AWS Aurora RDS. This is temporary; we will migrate to PostgreSQL 18 with native uuidv7() when it becomes widely available.
 2. **UUID Strategy**: All IDs use UUID v7 (time-ordered, better indexing, naturally sortable)
 3. **Migrations**: Managed via sqlx-cli in `crates/everruns-storage/migrations/`
 

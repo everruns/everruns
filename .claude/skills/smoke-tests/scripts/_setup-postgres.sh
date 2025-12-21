@@ -1,6 +1,6 @@
 #!/bin/bash
 # PostgreSQL setup for smoke tests (no-Docker mode)
-# Sets up a local PostgreSQL 18 cluster without Docker
+# Sets up a local PostgreSQL 17 cluster without Docker
 #
 # This script can be:
 # - Sourced by run-no-docker.sh (_utils.sh must be sourced first)

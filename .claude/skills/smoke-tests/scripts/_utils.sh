@@ -4,7 +4,7 @@
 # Configuration
 export PGDATA="/tmp/pgdata"
 export PG_LOGFILE="$PGDATA/pg.log"
-export PG_VERSION="18"
+export PG_VERSION="17"
 export PG_BIN="/usr/lib/postgresql/$PG_VERSION/bin"
 export TEMPORAL_BIN="/usr/local/bin/temporal"
 export TEMPORAL_LOG="/tmp/temporal.log"

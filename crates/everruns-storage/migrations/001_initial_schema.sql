@@ -2,7 +2,57 @@
 -- Decision: Use UUID v7 for time-ordered, sortable IDs (better for DB performance)
 -- Decision: Messages are PRIMARY data store, Events are SSE notifications only
 -- Decision: API keys encrypted with AES-256-GCM, key from SECRETS_ENCRYPTION_KEY env var
--- PostgreSQL 18+ has native UUIDv7 support via uuidv7()
+-- PostgreSQL 17 with custom uuidv7() function (native support requires PostgreSQL 18+)
+-- Decision: Using PostgreSQL 17 because PG18 is not yet available on managed services (AWS Aurora RDS).
+-- This is temporary; migrate to PostgreSQL 18 native uuidv7() when widely available.
+
+-- ============================================
+-- UUID v7 Function (conditional for PG < 18)
+-- ============================================
+-- UUID v7: time-ordered UUIDs with millisecond timestamp prefix
+-- Format: 48-bit timestamp | 4-bit version (7) | 12-bit random | 2-bit variant | 62-bit random
+-- PostgreSQL 18+ has native uuidv7(); this creates a fallback for older versions.
+
+-- pgcrypto provides gen_random_bytes() for PG < 17
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Only create uuidv7() if it doesn't already exist (preserves native PG18+ function)
+DO $$
+BEGIN
+    -- Check if uuidv7() function exists
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE p.proname = 'uuidv7'
+        AND n.nspname = 'pg_catalog'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE p.proname = 'uuidv7'
+        AND n.nspname = 'public'
+    ) THEN
+        -- Create custom uuidv7() for PostgreSQL < 18
+        CREATE FUNCTION uuidv7() RETURNS uuid AS $func$
+        DECLARE
+            timestamp_ms BIGINT;
+            uuid_bytes BYTEA;
+        BEGIN
+            timestamp_ms := (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT;
+            uuid_bytes := gen_random_bytes(16);
+            uuid_bytes := set_byte(uuid_bytes, 0, ((timestamp_ms >> 40) & 255)::INT);
+            uuid_bytes := set_byte(uuid_bytes, 1, ((timestamp_ms >> 32) & 255)::INT);
+            uuid_bytes := set_byte(uuid_bytes, 2, ((timestamp_ms >> 24) & 255)::INT);
+            uuid_bytes := set_byte(uuid_bytes, 3, ((timestamp_ms >> 16) & 255)::INT);
+            uuid_bytes := set_byte(uuid_bytes, 4, ((timestamp_ms >> 8) & 255)::INT);
+            uuid_bytes := set_byte(uuid_bytes, 5, (timestamp_ms & 255)::INT);
+            uuid_bytes := set_byte(uuid_bytes, 6, (get_byte(uuid_bytes, 6) & 15) | 112);
+            uuid_bytes := set_byte(uuid_bytes, 8, (get_byte(uuid_bytes, 8) & 63) | 128);
+            RETURN encode(uuid_bytes, 'hex')::uuid;
+        END;
+        $func$ LANGUAGE plpgsql;
+    END IF;
+END;
+$$;
 
 -- ============================================
 -- Utility Functions
