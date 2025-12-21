@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::activities::{CallModelOutput, ExecuteToolOutput};
+use crate::activities::{CallModelOutput, ExecuteToolOutput};
 use crate::types::WorkflowAction;
 use crate::workflow_traits::{Workflow, WorkflowInput};
 

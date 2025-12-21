@@ -39,7 +39,7 @@ impl WorkflowRegistry {
     /// Create a registry with default workflows (AgentWorkflow) registered
     pub fn with_defaults() -> Self {
         Self::builder()
-            .workflow::<crate::v2::AgentWorkflow>()
+            .workflow::<crate::agent_workflow::AgentWorkflow>()
             .build()
     }
 
@@ -155,7 +155,7 @@ impl Default for WorkflowRegistryBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::v2::AgentWorkflowInput;
+    use crate::agent_workflow::AgentWorkflowInput;
     use uuid::Uuid;
 
     #[test]
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn test_registry_builder() {
         let registry = WorkflowRegistry::builder()
-            .workflow::<crate::v2::AgentWorkflow>()
+            .workflow::<crate::agent_workflow::AgentWorkflow>()
             .build();
 
         assert!(registry.has("agent_workflow"));

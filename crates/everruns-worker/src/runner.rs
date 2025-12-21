@@ -18,7 +18,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::client::TemporalClient;
-use crate::v2::AgentWorkflowInput;
+use crate::agent_workflow::AgentWorkflowInput;
 use crate::worker::TemporalWorker;
 
 // =============================================================================

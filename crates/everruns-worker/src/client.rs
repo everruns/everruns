@@ -22,7 +22,7 @@ use temporal_sdk_core::{
 
 use crate::runner::RunnerConfig;
 use crate::types::workflow_names;
-use crate::v2::AgentWorkflowInput;
+use crate::agent_workflow::AgentWorkflowInput;
 
 /// Client for interacting with Temporal server
 /// Used by the API to start workflows

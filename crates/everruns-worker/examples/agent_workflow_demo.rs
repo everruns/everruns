@@ -11,7 +11,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use everruns_worker::types::WorkflowAction;
-use everruns_worker::v2::{AgentWorkflow, AgentWorkflowInput};
+use everruns_worker::{AgentWorkflow, AgentWorkflowInput};
 use everruns_worker::Workflow;
 
 fn main() {

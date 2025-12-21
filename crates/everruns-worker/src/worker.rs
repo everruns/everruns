@@ -30,13 +30,12 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::activities::{
-    call_llm_activity, execute_tools_activity, load_agent_activity, load_messages_activity,
-    persist_event_activity, save_message_activity, update_status_activity, ActivityContext,
+    activity_types, call_model_activity, execute_tool_activity, load_agent_activity,
+    CallModelInput, ExecuteToolInput, LoadAgentInput,
 };
 use crate::client::TemporalWorkerCore;
 use crate::runner::RunnerConfig;
 use crate::types::*;
-use crate::v2;
 use crate::workflow_registry::WorkflowRegistry;
 use crate::workflow_traits::Workflow;
 
@@ -508,8 +507,6 @@ async fn poll_and_process_activity_task(core: &TemporalWorkerCore, db: &Database
 
 /// Process an activity task and return the result
 async fn process_activity(task: &ActivityTask, db: &Database) -> ActivityResult {
-    let ctx = ActivityContext::new(task.task_token.clone());
-
     match &task.variant {
         Some(activity_task::Variant::Start(start)) => {
             // Check for empty activity type - this can happen with synthetic tasks
@@ -548,7 +545,7 @@ async fn process_activity(task: &ActivityTask, db: &Database) -> ActivityResult 
                 .map(|p| p.data.clone())
                 .unwrap_or_default();
 
-            let result = execute_activity(&ctx, db, &start.activity_type, &input_data).await;
+            let result = execute_activity(db, &start.activity_type, &input_data).await;
 
             match result {
                 Ok(output) => {
@@ -614,69 +611,30 @@ async fn process_activity(task: &ActivityTask, db: &Database) -> ActivityResult 
 
 /// Execute an activity by type
 async fn execute_activity(
-    ctx: &ActivityContext,
     db: &Database,
     activity_type: &str,
     input_data: &[u8],
 ) -> Result<serde_json::Value> {
     match activity_type {
-        activity_names::LOAD_AGENT => {
+        activity_types::LOAD_AGENT => {
             let input: LoadAgentInput = serde_json::from_slice(input_data)?;
-            let output = load_agent_activity(ctx, db, input).await?;
+            let output = load_agent_activity(db.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
-        activity_names::LOAD_MESSAGES => {
-            let input: LoadMessagesInput = serde_json::from_slice(input_data)?;
-            let output = load_messages_activity(ctx, db, input).await?;
+        activity_types::CALL_MODEL => {
+            let input: CallModelInput = serde_json::from_slice(input_data)?;
+            let output = call_model_activity(db.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
-        activity_names::UPDATE_STATUS => {
-            let input: UpdateStatusInput = serde_json::from_slice(input_data)?;
-            update_status_activity(ctx, db, input).await?;
-            Ok(serde_json::json!({}))
-        }
-        activity_names::PERSIST_EVENT => {
-            let input: PersistEventInput = serde_json::from_slice(input_data)?;
-            persist_event_activity(ctx, db, input).await?;
-            Ok(serde_json::json!({}))
-        }
-        activity_names::CALL_LLM => {
-            let input: CallLlmInput = serde_json::from_slice(input_data)?;
-            let output = call_llm_activity(ctx, db, input).await?;
-            Ok(serde_json::to_value(output)?)
-        }
-        activity_names::EXECUTE_TOOLS => {
-            let input: ExecuteToolsInput = serde_json::from_slice(input_data)?;
-            let output = execute_tools_activity(ctx, db, input).await?;
-            Ok(serde_json::to_value(output)?)
-        }
-        activity_names::SAVE_MESSAGE => {
-            let input: SaveMessageInput = serde_json::from_slice(input_data)?;
-            save_message_activity(ctx, db, input).await?;
-            Ok(serde_json::json!({}))
-        }
-        // V2 activities using Atoms framework
-        v2::activity_types::LOAD_AGENT => {
-            let input: v2::LoadAgentInput = serde_json::from_slice(input_data)?;
-            let output = v2::load_agent_activity(db.clone(), input).await?;
-            Ok(serde_json::to_value(output)?)
-        }
-        v2::activity_types::CALL_MODEL => {
-            let input: v2::CallModelInput = serde_json::from_slice(input_data)?;
-            let output = v2::call_model_activity(db.clone(), input).await?;
-            Ok(serde_json::to_value(output)?)
-        }
-        v2::activity_types::EXECUTE_TOOL => {
-            let input: v2::ExecuteToolInput = serde_json::from_slice(input_data)?;
-            let output = v2::execute_tool_activity(db.clone(), input).await?;
+        activity_types::EXECUTE_TOOL => {
+            let input: ExecuteToolInput = serde_json::from_slice(input_data)?;
+            let output = execute_tool_activity(db.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
         _ => {
             // Provide a helpful error message with known activity types
             Err(anyhow::anyhow!(
-                "Unknown activity type: '{}'. Known activities: load_agent, load_messages, \
-                update_status, persist_event, call_llm, execute_tools, save_message (v1), \
-                load-agent, call-model, execute-tool (v2/agent_workflow). \
+                "Unknown activity type: '{}'. Known activities: load-agent, call-model, execute-tool. \
                 This may indicate a workflow bug or version mismatch.",
                 activity_type
             ))
