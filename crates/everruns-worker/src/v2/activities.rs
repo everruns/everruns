@@ -270,7 +270,7 @@ mod tests {
         let input = CallModelInput {
             session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             agent_config: AgentConfigData {
-                model: "gpt-4".into(),
+                model: "gpt-5.2".into(),
                 system_prompt: Some("You are a helpful assistant.".into()),
                 tools: vec![],
                 max_iterations: 5,
@@ -280,7 +280,7 @@ mod tests {
         let json = serde_json::to_string(&input).unwrap();
         let parsed: CallModelInput = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.session_id, input.session_id);
-        assert_eq!(parsed.agent_config.model, "gpt-4");
+        assert_eq!(parsed.agent_config.model, "gpt-5.2");
     }
 
     #[test]
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn test_build_agent_config() {
         let data = AgentConfigData {
-            model: "gpt-4o-mini".into(),
+            model: "gpt-5.2".into(),
             system_prompt: Some("Test prompt".into()),
             tools: vec![ToolDefinitionData {
                 name: "test_tool".into(),
@@ -318,7 +318,7 @@ mod tests {
         };
 
         let config = build_agent_config(&data);
-        assert_eq!(config.model, "gpt-4o-mini");
+        assert_eq!(config.model, "gpt-5.2");
         assert_eq!(config.system_prompt, "Test prompt");
         assert_eq!(config.tools.len(), 1);
         assert_eq!(config.max_iterations, 10);

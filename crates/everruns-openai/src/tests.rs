@@ -31,14 +31,14 @@ mod provider_tests {
     #[test]
     fn test_llm_config_with_all_options() {
         let config = LlmConfig {
-            model: "gpt-4".to_string(),
+            model: "gpt-5.2".to_string(),
             temperature: Some(0.7),
             max_tokens: Some(1000),
             system_prompt: Some("You are helpful".to_string()),
             tools: Vec::new(),
         };
 
-        assert_eq!(config.model, "gpt-4");
+        assert_eq!(config.model, "gpt-5.2");
         assert_eq!(config.temperature, Some(0.7));
         assert_eq!(config.max_tokens, Some(1000));
         assert_eq!(config.system_prompt, Some("You are helpful".to_string()));
@@ -80,7 +80,7 @@ mod provider_tests {
     #[test]
     fn test_config_serialization() {
         let config = LlmConfig {
-            model: "gpt-4".to_string(),
+            model: "gpt-5.2".to_string(),
             temperature: Some(0.5),
             max_tokens: Some(500),
             system_prompt: None,

@@ -81,7 +81,7 @@ pub struct AgentConfigData {
 impl Default for AgentConfigData {
     fn default() -> Self {
         Self {
-            model: "gpt-4".to_string(),
+            model: "gpt-5.2".to_string(),
             system_prompt: None,
             tools: Vec::new(),
             max_iterations: 10,
@@ -597,7 +597,7 @@ mod tests {
         let actions = workflow.on_activity_completed(
             &load_agent_id,
             json!({
-                "model": "gpt-4",
+                "model": "gpt-5.2",
                 "tools": [],
                 "max_iterations": 5
             }),
@@ -622,7 +622,7 @@ mod tests {
         let actions = workflow.on_activity_completed(
             &load_agent_id,
             json!({
-                "model": "gpt-4",
+                "model": "gpt-5.2",
                 "tools": [{"name": "get_time", "description": "Get time", "parameters": {}}],
                 "max_iterations": 5
             }),
@@ -657,7 +657,7 @@ mod tests {
         let actions = workflow.on_activity_completed(
             &load_agent_id,
             json!({
-                "model": "gpt-4",
+                "model": "gpt-5.2",
                 "tools": [],
                 "max_iterations": 5
             }),

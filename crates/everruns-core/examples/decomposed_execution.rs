@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
         .system_prompt(
             "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.",
         )
-        .model("gpt-4o-mini")
+        .model("gpt-5.2")
         .tools(tools.tool_definitions())
         .build();
 

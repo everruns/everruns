@@ -71,7 +71,7 @@ fn demo_simple_response() {
     let actions = workflow.on_activity_completed(
         &load_agent_id,
         json!({
-            "model": "gpt-4",
+            "model": "gpt-5.2",
             "system_prompt": "You are a helpful assistant.",
             "tools": [],
             "max_iterations": 5
@@ -116,7 +116,7 @@ fn demo_tool_call_flow() {
     let actions = workflow.on_activity_completed(
         &load_agent_id,
         json!({
-            "model": "gpt-4",
+            "model": "gpt-5.2",
             "tools": [{
                 "name": "get_current_time",
                 "description": "Get current time in a timezone",
@@ -202,7 +202,7 @@ fn demo_multi_iteration() {
     let actions = workflow.on_activity_completed(
         &load_agent_id,
         json!({
-            "model": "gpt-4",
+            "model": "gpt-5.2",
             "tools": [
                 {"name": "get_weather", "description": "Get weather", "parameters": {}},
                 {"name": "calculate", "description": "Calculate", "parameters": {}}

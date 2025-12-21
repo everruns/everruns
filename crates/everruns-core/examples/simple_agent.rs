@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     let llm = OpenAIProtocolLlmProvider::from_env()?;
 
     // 2. Create agent config (no tools)
-    let config = AgentConfig::new("You are a helpful assistant. Be concise.", "gpt-4o-mini");
+    let config = AgentConfig::new("You are a helpful assistant. Be concise.", "gpt-5.2");
 
     // 3. Create in-memory stores
     let events = InMemoryEventEmitter::new();

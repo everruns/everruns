@@ -32,7 +32,7 @@ pub enum MessageRole {
 /// LLM configuration following OpenAI's API parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
-    /// Model identifier (e.g., "gpt-4", "gpt-3.5-turbo")
+    /// Model identifier (e.g., "gpt-5.2", "gpt-3.5-turbo")
     pub model: String,
     /// Sampling temperature (0.0 - 2.0)
     pub temperature: Option<f32>,

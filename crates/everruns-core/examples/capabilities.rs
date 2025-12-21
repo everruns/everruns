@@ -232,7 +232,7 @@ async fn example_builtin_capability() -> anyhow::Result<()> {
     let registry = CapabilityRegistry::with_builtins();
 
     // Base agent config
-    let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4o-mini");
+    let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
     // Apply the CurrentTime capability
     let capability_ids = vec![CapabilityId::CurrentTime];
@@ -283,7 +283,7 @@ async fn example_custom_capability() -> anyhow::Result<()> {
     registry.register(CalculatorCapability);
 
     // Base agent config
-    let base_config = AgentConfig::new("You are a helpful math assistant.", "gpt-4o-mini");
+    let base_config = AgentConfig::new("You are a helpful math assistant.", "gpt-5.2");
 
     // Apply the custom capability (using Noop ID as placeholder)
     let capability_ids = vec![CapabilityId::Noop];
@@ -335,7 +335,7 @@ async fn example_multiple_capabilities() -> anyhow::Result<()> {
     // Base agent config
     let base_config = AgentConfig::new(
         "You are a helpful assistant with access to time and other utilities.",
-        "gpt-4o-mini",
+        "gpt-5.2",
     );
 
     // Apply multiple capabilities
