@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::activities::{CallModelOutput, ExecuteToolOutput};
 use crate::types::WorkflowAction;
-use crate::workflow_traits::{Workflow, WorkflowInput};
+use crate::traits::{Workflow, WorkflowInput};
 
 // ============================================================================
 // Input/Output Types

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, Result};
 
-use crate::workflow_traits::{Workflow, WorkflowInput};
+use crate::traits::{Workflow, WorkflowInput};
 
 /// Factory function for creating workflow instances from JSON input.
 pub type WorkflowFactory =
