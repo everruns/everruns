@@ -19,4 +19,4 @@ pub use types::{
 };
 
 // Re-export core types for convenience
-pub use everruns_core::traits::LlmProvider;
+pub use everruns_core::llm::LlmProvider;

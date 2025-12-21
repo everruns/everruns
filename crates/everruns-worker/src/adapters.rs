@@ -8,7 +8,7 @@ use everruns_contracts::events::AgUiEvent;
 use everruns_contracts::tools::ToolCall;
 use everruns_core::{
     traits::{EventEmitter, MessageStore},
-    AgentLoopError, ConversationMessage, LoopEvent, MessageRole, Result,
+    AgentLoopError, LoopEvent, Message, MessageRole, Result,
 };
 use everruns_openai::OpenAiProvider;
 use everruns_storage::models::CreateMessage;
@@ -126,7 +126,7 @@ impl DbMessageStore {
 
 #[async_trait]
 impl MessageStore for DbMessageStore {
-    async fn store(&self, session_id: Uuid, message: ConversationMessage) -> Result<()> {
+    async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
         let role = message.role.to_string();
         let content = match &message.content {
             everruns_core::message::MessageContent::Text(text) => {
@@ -166,14 +166,14 @@ impl MessageStore for DbMessageStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: Uuid) -> Result<Vec<ConversationMessage>> {
+    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
         let messages = self
             .db
             .list_messages(session_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
-        let converted: Vec<ConversationMessage> = messages
+        let converted: Vec<Message> = messages
             .into_iter()
             .map(|msg| {
                 let role = MessageRole::from(msg.role.as_str());
@@ -231,7 +231,7 @@ impl MessageStore for DbMessageStore {
                     None
                 };
 
-                ConversationMessage {
+                Message {
                     id: msg.id,
                     role,
                     content,

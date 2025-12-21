@@ -883,7 +883,7 @@ mod tests {
         let agent_output = LoadAgentOutput {
             agent_id: input.agent_id,
             name: "Test Agent".to_string(),
-            model_id: "gpt-4".to_string(),
+            model_id: "gpt-5.2".to_string(),
             system_prompt: Some("You are helpful".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(1000),
@@ -952,7 +952,7 @@ mod tests {
         let agent_output = LoadAgentOutput {
             agent_id: input.agent_id,
             name: "Test Agent".to_string(),
-            model_id: "gpt-4".to_string(),
+            model_id: "gpt-5.2".to_string(),
             system_prompt: Some("You are helpful".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(1000),
@@ -1039,7 +1039,7 @@ mod tests {
         let agent_output = LoadAgentOutput {
             agent_id: input.agent_id,
             name: "Test Agent".to_string(),
-            model_id: "gpt-4".to_string(),
+            model_id: "gpt-5.2".to_string(),
             system_prompt: Some("You are helpful".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(1000),
@@ -1094,7 +1094,7 @@ mod tests {
         let agent_output = LoadAgentOutput {
             agent_id: input.agent_id,
             name: "Test Agent".to_string(),
-            model_id: "gpt-4".to_string(),
+            model_id: "gpt-5.2".to_string(),
             system_prompt: Some("You are helpful".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(1000),

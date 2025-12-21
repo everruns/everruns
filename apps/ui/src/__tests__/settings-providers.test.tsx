@@ -32,7 +32,7 @@ const mockProviders = [
 const mockModels = [
   {
     id: "model-1",
-    model_id: "gpt-4",
+    model_id: "gpt-5.2",
     display_name: "GPT-4",
     provider_id: "provider-1",
     provider_name: "OpenAI Production",
@@ -148,7 +148,7 @@ describe("ProvidersPage", () => {
     render(<ProvidersPage />, { wrapper });
 
     expect(screen.getByText("GPT-4")).toBeInTheDocument();
-    expect(screen.getByText("gpt-4 - OpenAI Production")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.2 - OpenAI Production")).toBeInTheDocument();
   });
 
   it("shows loading skeleton when providers are loading", () => {

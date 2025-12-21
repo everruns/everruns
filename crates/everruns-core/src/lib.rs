@@ -13,11 +13,14 @@
 // - Error handling distinguishes between user-visible and internal errors
 // - Capabilities provide modular functionality units for composing agent behavior
 
+pub mod atoms;
 pub mod capabilities;
 pub mod config;
 pub mod error;
 pub mod events;
 pub mod executor;
+pub mod llm;
+pub mod r#loop;
 pub mod message;
 pub mod step;
 pub mod tools;
@@ -26,14 +29,23 @@ pub mod traits;
 // In-memory implementations for examples and testing
 pub mod memory;
 
+// OpenAI Protocol provider
+pub mod openai;
+
 // Re-exports for convenience
 pub use config::AgentConfig;
 pub use error::{AgentLoopError, Result};
 pub use events::LoopEvent;
 pub use executor::AgentLoop;
-pub use message::{ConversationMessage, MessageRole};
+pub use message::{Message, MessageRole};
 pub use step::{LoopStep, StepKind, StepResult};
-pub use traits::{EventEmitter, LlmProvider, MessageStore, ToolExecutor};
+pub use traits::{EventEmitter, MessageStore, ToolExecutor};
+
+// LLM types re-exports
+pub use llm::{
+    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmProvider, LlmResponse, LlmResponseStream, LlmStreamEvent,
+};
 
 // Tool abstraction re-exports
 pub use tools::{
@@ -47,6 +59,15 @@ pub use capabilities::{
     CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, FileSystemCapability,
     GetCurrentTimeTool, NoopCapability, ResearchCapability, SandboxCapability,
 };
+
+// Atoms re-exports (stateless atomic operations)
+pub use atoms::{
+    AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, Atom, CallModelAtom,
+    CallModelInput, CallModelResult, ExecuteToolAtom, ExecuteToolInput, ExecuteToolResult,
+};
+
+// Loop re-exports
+pub use r#loop::{AgentLoop2, LoadMessagesResult};
 
 // Re-export AG-UI events for compatibility
 pub use everruns_contracts::events::AgUiEvent;

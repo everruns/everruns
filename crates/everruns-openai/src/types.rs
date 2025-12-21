@@ -1,7 +1,7 @@
 // OpenAI Protocol Types
 //
-// These types represent the OpenAI API protocol format.
-// They serve as the base protocol for LLM providers in the system.
+// These types are kept for backward compatibility with existing code.
+// The actual implementation is now in everruns-core/src/openai.rs.
 
 use everruns_contracts::tools::{ToolCall, ToolDefinition};
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ pub enum MessageRole {
 /// LLM configuration following OpenAI's API parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
-    /// Model identifier (e.g., "gpt-4", "gpt-3.5-turbo")
+    /// Model identifier (e.g., "gpt-5.2", "gpt-3.5-turbo")
     pub model: String,
     /// Sampling temperature (0.0 - 2.0)
     pub temperature: Option<f32>,
@@ -88,7 +88,7 @@ pub struct ChatRequest {
 }
 
 // ============================================================================
-// OpenAI API Types (Internal)
+// OpenAI API Types (for ChatRequest serialization)
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,64 +126,6 @@ pub struct OpenAiToolCall {
 pub struct OpenAiFunctionCall {
     pub name: String,
     pub arguments: String,
-}
-
-// Streaming types
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAiStreamChunk {
-    pub choices: Vec<OpenAiStreamChoice>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAiStreamChoice {
-    pub delta: OpenAiDelta,
-    #[serde(default)]
-    pub finish_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAiDelta {
-    #[serde(default)]
-    pub content: Option<String>,
-    #[serde(default)]
-    pub tool_calls: Option<Vec<OpenAiStreamToolCall>>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAiStreamToolCall {
-    pub index: u32,
-    pub id: Option<String>,
-    #[allow(dead_code)]
-    pub r#type: Option<String>,
-    pub function: Option<OpenAiStreamFunction>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAiStreamFunction {
-    pub name: Option<String>,
-    pub arguments: Option<String>,
-}
-
-// Non-streaming response types
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAiResponse {
-    pub model: String,
-    pub choices: Vec<OpenAiChoice>,
-    pub usage: Option<OpenAiUsage>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAiChoice {
-    pub message: OpenAiMessage,
-    #[serde(default)]
-    pub finish_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAiUsage {
-    pub prompt_tokens: u32,
-    pub completion_tokens: u32,
-    pub total_tokens: u32,
 }
 
 // ============================================================================

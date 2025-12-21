@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::events::LoopEvent;
-use crate::message::ConversationMessage;
+use crate::message::Message;
 use crate::traits::{EventEmitter, MessageStore, ToolExecutor};
 
 // ============================================================================
@@ -124,9 +124,9 @@ impl EventEmitter for NoOpEventEmitter {
 /// In-memory message store
 ///
 /// Stores messages in a HashMap keyed by session ID.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct InMemoryMessageStore {
-    messages: Arc<RwLock<HashMap<Uuid, Vec<ConversationMessage>>>>,
+    messages: Arc<RwLock<HashMap<Uuid, Vec<Message>>>>,
 }
 
 impl InMemoryMessageStore {
@@ -153,14 +153,14 @@ impl InMemoryMessageStore {
     }
 
     /// Pre-populate with messages (useful for testing)
-    pub async fn seed(&self, session_id: Uuid, messages: Vec<ConversationMessage>) {
+    pub async fn seed(&self, session_id: Uuid, messages: Vec<Message>) {
         self.messages.write().await.insert(session_id, messages);
     }
 }
 
 #[async_trait]
 impl MessageStore for InMemoryMessageStore {
-    async fn store(&self, session_id: Uuid, message: ConversationMessage) -> Result<()> {
+    async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
         self.messages
             .write()
             .await
@@ -170,7 +170,7 @@ impl MessageStore for InMemoryMessageStore {
         Ok(())
     }
 
-    async fn load(&self, session_id: Uuid) -> Result<Vec<ConversationMessage>> {
+    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
         Ok(self
             .messages
             .read()
@@ -335,7 +335,7 @@ impl ToolExecutor for FailingToolExecutor {
 // MockLlmProvider - Returns predefined responses
 // ============================================================================
 
-use crate::traits::{
+use crate::llm::{
     LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmProvider, LlmResponseStream,
     LlmStreamEvent,
 };
@@ -572,7 +572,7 @@ mod tests {
         let session_id = Uuid::now_v7();
 
         store
-            .store(session_id, ConversationMessage::user("Hello"))
+            .store(session_id, Message::user("Hello"))
             .await
             .unwrap();
 

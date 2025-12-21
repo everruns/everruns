@@ -9,7 +9,7 @@ use everruns_contracts::tools::{ToolCall, ToolResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::message::ConversationMessage;
+use crate::message::Message;
 
 /// The kind of step being executed
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -171,7 +171,7 @@ pub struct StepInput {
     pub iteration: usize,
 
     /// Current messages in the conversation
-    pub messages: Vec<ConversationMessage>,
+    pub messages: Vec<Message>,
 
     /// Pending tool calls to execute (for tool execution steps)
     pub pending_tool_calls: Vec<ToolCall>,
@@ -179,7 +179,7 @@ pub struct StepInput {
 
 impl StepInput {
     /// Create input for a new loop
-    pub fn new(session_id: Uuid, messages: Vec<ConversationMessage>) -> Self {
+    pub fn new(session_id: Uuid, messages: Vec<Message>) -> Self {
         Self {
             session_id,
             iteration: 0,
@@ -192,7 +192,7 @@ impl StepInput {
     pub fn for_tool_execution(
         session_id: Uuid,
         iteration: usize,
-        messages: Vec<ConversationMessage>,
+        messages: Vec<Message>,
         tool_calls: Vec<ToolCall>,
     ) -> Self {
         Self {
@@ -218,7 +218,7 @@ pub struct StepOutput {
     pub step: LoopStep,
 
     /// Updated messages (including any new messages from this step)
-    pub messages: Vec<ConversationMessage>,
+    pub messages: Vec<Message>,
 
     /// Whether the loop should continue
     pub continue_loop: bool,
@@ -231,7 +231,7 @@ impl StepOutput {
     /// Create output indicating the loop should continue
     pub fn continue_with(
         step: LoopStep,
-        messages: Vec<ConversationMessage>,
+        messages: Vec<Message>,
         pending_tool_calls: Vec<ToolCall>,
     ) -> Self {
         Self {
@@ -243,7 +243,7 @@ impl StepOutput {
     }
 
     /// Create output indicating the loop is complete
-    pub fn complete(step: LoopStep, messages: Vec<ConversationMessage>) -> Self {
+    pub fn complete(step: LoopStep, messages: Vec<Message>) -> Self {
         Self {
             step,
             messages,

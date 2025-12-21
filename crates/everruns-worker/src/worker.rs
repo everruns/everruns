@@ -36,6 +36,7 @@ use crate::activities::{
 use crate::client::TemporalWorkerCore;
 use crate::runner::RunnerConfig;
 use crate::types::*;
+use crate::v2;
 use crate::workflow_registry::WorkflowRegistry;
 use crate::workflow_traits::Workflow;
 
@@ -654,11 +655,23 @@ async fn execute_activity(
             save_message_activity(ctx, db, input).await?;
             Ok(serde_json::json!({}))
         }
+        // V2 activities using Atoms framework
+        v2::activity_types::CALL_MODEL => {
+            let input: v2::CallModelInput = serde_json::from_slice(input_data)?;
+            let output = v2::call_model_activity(db.clone(), input).await?;
+            Ok(serde_json::to_value(output)?)
+        }
+        v2::activity_types::EXECUTE_TOOL => {
+            let input: v2::ExecuteToolInput = serde_json::from_slice(input_data)?;
+            let output = v2::execute_tool_activity(db.clone(), input).await?;
+            Ok(serde_json::to_value(output)?)
+        }
         _ => {
             // Provide a helpful error message with known activity types
             Err(anyhow::anyhow!(
                 "Unknown activity type: '{}'. Known activities: load_agent, load_messages, \
-                update_status, persist_event, call_llm, execute_tools, save_message. \
+                update_status, persist_event, call_llm, execute_tools, save_message, \
+                call-model (v2), execute-tool (v2). \
                 This may indicate a workflow bug or version mismatch.",
                 activity_type
             ))

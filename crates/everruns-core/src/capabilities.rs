@@ -290,7 +290,7 @@ pub struct AppliedCapabilities {
 /// use everruns_core::config::AgentConfig;
 ///
 /// let registry = CapabilityRegistry::with_builtins();
-/// let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4");
+/// let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 ///
 /// let capability_ids = vec![CapabilityId::CurrentTime];
 /// let applied = apply_capabilities(base_config, &capability_ids, &registry);
@@ -644,7 +644,7 @@ mod tests {
     #[test]
     fn test_apply_capabilities_empty() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4");
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(base_config.clone(), &[], &registry);
 
@@ -656,7 +656,7 @@ mod tests {
     #[test]
     fn test_apply_capabilities_noop() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4");
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(base_config.clone(), &[CapabilityId::Noop], &registry);
 
@@ -669,7 +669,7 @@ mod tests {
     #[test]
     fn test_apply_capabilities_current_time() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4");
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied =
             apply_capabilities(base_config.clone(), &[CapabilityId::CurrentTime], &registry);
@@ -684,7 +684,7 @@ mod tests {
     #[test]
     fn test_apply_capabilities_skips_coming_soon() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4");
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
         // Research is ComingSoon, so it should be skipped
         let applied = apply_capabilities(base_config.clone(), &[CapabilityId::Research], &registry);
@@ -697,7 +697,7 @@ mod tests {
     #[test]
     fn test_apply_capabilities_multiple() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-4");
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
             base_config.clone(),
@@ -715,7 +715,7 @@ mod tests {
     #[test]
     fn test_apply_capabilities_preserves_order() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("Base prompt.", "gpt-4");
+        let base_config = AgentConfig::new("Base prompt.", "gpt-5.2");
 
         // Order should be preserved in applied_ids
         let applied = apply_capabilities(
