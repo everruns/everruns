@@ -154,7 +154,7 @@ cargo clippy -p everrun-api -- -D warnings
 ## Architecture
 
 - **Framework**: Axum (async Rust web framework)
-- **Database**: PostgreSQL 18 with native UUIDv7 support
+- **Database**: PostgreSQL 17 with custom UUIDv7 function
 - **Documentation**: utoipa + Swagger UI
 - **Validation**: Multi-tenant isolation at DB level
 - **Error Handling**: Structured error responses

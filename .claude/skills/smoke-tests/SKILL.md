@@ -194,7 +194,7 @@ For environments without Docker (Cloud Agent, CI):
 ```
 
 This script:
-1. Installs PostgreSQL 18 from PGDG repository
+1. Installs PostgreSQL 17 from PGDG repository
 2. Installs Temporal CLI
 3. Starts local PostgreSQL cluster and Temporal dev server
 4. Runs database migrations
@@ -206,7 +206,7 @@ This script:
 | Script | Description |
 |--------|-------------|
 | `scripts/run-no-docker.sh` | Entry point for no-Docker environments |
-| `scripts/_setup-postgres.sh` | PostgreSQL 18 cluster setup (internal) |
+| `scripts/_setup-postgres.sh` | PostgreSQL 17 cluster setup (internal) |
 | `scripts/_setup-temporal.sh` | Temporal dev server setup (internal) |
 | `scripts/_utils.sh` | Shared utilities and configuration (internal) |
 
