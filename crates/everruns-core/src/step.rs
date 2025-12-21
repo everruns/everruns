@@ -5,9 +5,10 @@
 // that can be executed independently (e.g., as Temporal activities).
 
 use chrono::{DateTime, Utc};
-use everruns_contracts::tools::{ToolCall, ToolResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::tool_types::{ToolCall, ToolResult};
 
 use crate::message::Message;
 

@@ -1,7 +1,8 @@
 # Core Agent Abstractions
 # Decision: Keep the loop logic DB-agnostic via traits (EventEmitter, MessageStore, ToolExecutor)
 # Decision: Use async_trait for trait definitions to support async operations
-# Decision: Re-export AG-UI events from everruns-contracts for consistency
+# Decision: AG-UI events and tool types are defined here (runtime types)
+# Decision: This crate has NO dependency on storage/contracts (purely runtime abstractions)
 # Decision: Use OpenAI Protocol as the base for LLM Provider abstractions
 
 [package]
@@ -34,8 +35,8 @@ chrono.workspace = true
 # Tracing
 tracing.workspace = true
 
-# Internal dependencies
-everruns-contracts = { path = "../everruns-contracts" }
+# Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
+# AG-UI events and tool types are defined locally in this crate
 
 # OpenAI Protocol provider
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }

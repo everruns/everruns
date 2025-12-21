@@ -5,8 +5,8 @@
 // - Database implementations for production
 // - Channel-based implementations for streaming
 
+use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
-use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
 use uuid::Uuid;
 
 use crate::error::Result;

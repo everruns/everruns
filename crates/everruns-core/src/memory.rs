@@ -5,8 +5,8 @@
 // - Unit tests
 // - Quick prototyping
 
+use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
-use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -594,12 +594,12 @@ mod tests {
             arguments: serde_json::json!({"city": "NYC"}),
         };
 
-        let tool_def = ToolDefinition::Builtin(everruns_contracts::tools::BuiltinTool {
+        let tool_def = ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
             name: "get_weather".to_string(),
             description: "Get weather".to_string(),
             parameters: serde_json::json!({}),
-            kind: everruns_contracts::tools::BuiltinToolKind::HttpGet,
-            policy: everruns_contracts::tools::ToolPolicy::Auto,
+            kind: crate::tool_types::BuiltinToolKind::HttpGet,
+            policy: crate::tool_types::ToolPolicy::Auto,
         });
 
         let result = executor.execute(&tool_call, &tool_def).await.unwrap();

@@ -3,7 +3,7 @@
 // These types are kept for backward compatibility with existing code.
 // The actual implementation is now in everruns-core/src/openai.rs.
 
-use everruns_contracts::tools::{ToolCall, ToolDefinition};
+use everruns_core::{ToolCall, ToolDefinition};
 use serde::{Deserialize, Serialize};
 
 /// Provider-agnostic chat message following OpenAI's format

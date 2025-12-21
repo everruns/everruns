@@ -10,3 +10,6 @@ serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 utoipa.workspace = true
+
+# Re-export runtime types from core for backward compatibility
+everruns-core = { path = "../everruns-core" }

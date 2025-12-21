@@ -103,7 +103,7 @@ struct HealthState {
             llm_providers::UpdateLlmProviderRequest,
             llm_models::CreateLlmModelRequest,
             llm_models::UpdateLlmModelRequest,
-            Capability, CapabilityId, CapabilityStatus,
+            Capability,  // CapabilityId and CapabilityStatus use value_type = String in schemas
             AgentCapability, UpdateAgentCapabilitiesRequest,
             ListResponse<Capability>,
             ListResponse<AgentCapability>,

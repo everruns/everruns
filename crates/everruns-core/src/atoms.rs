@@ -9,8 +9,8 @@
 // - Stateless: No internal state, all state passed in/out
 // - Composable: Atoms can be orchestrated by external systems (Temporal, custom loops)
 
+use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
-use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

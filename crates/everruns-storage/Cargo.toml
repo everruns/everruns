@@ -20,5 +20,7 @@ tracing.workspace = true
 argon2.workspace = true
 sha2.workspace = true
 hex.workspace = true
+async-trait.workspace = true
 
 everruns-contracts = { path = "../everruns-contracts" }
+everruns-core = { path = "../everruns-core" }
