@@ -207,8 +207,8 @@ test_single_tool() {
 
     log_verbose "Agent ID: $agent_id"
 
-    log_verbose "Setting math capability..."
-    set_capabilities "$agent_id" "math"
+    log_verbose "Setting test_math capability..."
+    set_capabilities "$agent_id" "test_math"
 
     log_verbose "Creating session..."
     local session_id=$(create_session "$agent_id" "Single Tool Test")
@@ -254,7 +254,7 @@ test_multiple_tools() {
         return 1
     fi
 
-    set_capabilities "$agent_id" "math"
+    set_capabilities "$agent_id" "test_math"
     local session_id=$(create_session "$agent_id" "Multiple Tools Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -291,7 +291,7 @@ test_weather_tools() {
         return 1
     fi
 
-    set_capabilities "$agent_id" "weather"
+    set_capabilities "$agent_id" "test_weather"
     local session_id=$(create_session "$agent_id" "Weather Tools Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -328,7 +328,7 @@ test_parallel_tools() {
         return 1
     fi
 
-    set_capabilities "$agent_id" "weather"
+    set_capabilities "$agent_id" "test_weather"
     local session_id=$(create_session "$agent_id" "Parallel Tools Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -374,7 +374,7 @@ test_combined_capabilities() {
         return 1
     fi
 
-    set_capabilities "$agent_id" "math" "weather"
+    set_capabilities "$agent_id" "test_math" "test_weather"
     local session_id=$(create_session "$agent_id" "Combined Capabilities Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -411,7 +411,7 @@ test_tool_error_handling() {
         return 1
     fi
 
-    set_capabilities "$agent_id" "math"
+    set_capabilities "$agent_id" "test_math"
     local session_id=$(create_session "$agent_id" "Error Handling Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -471,19 +471,19 @@ main() {
     log_info "Running tool calling tests..."
     echo ""
 
-    run_test "Single Tool (Math Add)" test_single_tool || true
+    run_test "Single Tool (TestMath Add)" test_single_tool || true
     echo ""
 
-    run_test "Multiple Tools (Math Operations)" test_multiple_tools || true
+    run_test "Multiple Tools (TestMath Operations)" test_multiple_tools || true
     echo ""
 
-    run_test "Weather Tools (Multi-step)" test_weather_tools || true
+    run_test "TestWeather Tools (Multi-step)" test_weather_tools || true
     echo ""
 
     run_test "Parallel Tool Execution" test_parallel_tools || true
     echo ""
 
-    run_test "Combined Capabilities (Math + Weather)" test_combined_capabilities || true
+    run_test "Combined Capabilities (TestMath + TestWeather)" test_combined_capabilities || true
     echo ""
 
     run_test "Tool Error Handling (Division by Zero)" test_tool_error_handling || true

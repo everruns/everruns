@@ -146,8 +146,8 @@ impl CapabilityRegistry {
         registry.register(ResearchCapability);
         registry.register(SandboxCapability);
         registry.register(FileSystemCapability);
-        registry.register(MathCapability);
-        registry.register(WeatherCapability);
+        registry.register(TestMathCapability);
+        registry.register(TestWeatherCapability);
         registry
     }
 
@@ -519,20 +519,20 @@ impl Capability for FileSystemCapability {
     }
 }
 
-/// Math capability - calculator tools for mathematical operations
-pub struct MathCapability;
+/// TestMath capability - calculator tools for testing tool calling
+pub struct TestMathCapability;
 
-impl Capability for MathCapability {
+impl Capability for TestMathCapability {
     fn id(&self) -> CapabilityId {
-        CapabilityId::Math
+        CapabilityId::TestMath
     }
 
     fn name(&self) -> &str {
-        "Math"
+        "Test Math"
     }
 
     fn description(&self) -> &str {
-        "Adds calculator tools for mathematical operations: add, subtract, multiply, and divide."
+        "Testing capability: adds calculator tools (add, subtract, multiply, divide) for tool calling tests."
     }
 
     fn icon(&self) -> Option<&str> {
@@ -540,7 +540,7 @@ impl Capability for MathCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Utilities")
+        Some("Testing")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -557,20 +557,20 @@ impl Capability for MathCapability {
     }
 }
 
-/// Weather capability - weather information tools (mocked for testing)
-pub struct WeatherCapability;
+/// TestWeather capability - mock weather tools for testing tool calling
+pub struct TestWeatherCapability;
 
-impl Capability for WeatherCapability {
+impl Capability for TestWeatherCapability {
     fn id(&self) -> CapabilityId {
-        CapabilityId::Weather
+        CapabilityId::TestWeather
     }
 
     fn name(&self) -> &str {
-        "Weather"
+        "Test Weather"
     }
 
     fn description(&self) -> &str {
-        "Adds weather tools to get current weather and forecasts for locations."
+        "Testing capability: adds mock weather tools (get_weather, get_forecast) for tool calling tests."
     }
 
     fn icon(&self) -> Option<&str> {
@@ -578,7 +578,7 @@ impl Capability for WeatherCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Information")
+        Some("Testing")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -1048,8 +1048,8 @@ mod tests {
         assert!(registry.has(CapabilityId::Research));
         assert!(registry.has(CapabilityId::Sandbox));
         assert!(registry.has(CapabilityId::FileSystem));
-        assert!(registry.has(CapabilityId::Math));
-        assert!(registry.has(CapabilityId::Weather));
+        assert!(registry.has(CapabilityId::TestMath));
+        assert!(registry.has(CapabilityId::TestWeather));
         assert_eq!(registry.len(), 7);
     }
 
@@ -1241,11 +1241,11 @@ mod tests {
         }
     }
 
-    // Math capability tests
+    // TestMath capability tests
     #[test]
-    fn test_math_capability_has_tools() {
+    fn test_test_math_capability_has_tools() {
         let registry = CapabilityRegistry::with_builtins();
-        let math = registry.get(CapabilityId::Math).unwrap();
+        let math = registry.get(CapabilityId::TestMath).unwrap();
         let tools = math.tools();
 
         assert_eq!(tools.len(), 4);
@@ -1326,11 +1326,11 @@ mod tests {
         }
     }
 
-    // Weather capability tests
+    // TestWeather capability tests
     #[test]
-    fn test_weather_capability_has_tools() {
+    fn test_test_weather_capability_has_tools() {
         let registry = CapabilityRegistry::with_builtins();
-        let weather = registry.get(CapabilityId::Weather).unwrap();
+        let weather = registry.get(CapabilityId::TestWeather).unwrap();
         let tools = weather.tools();
 
         assert_eq!(tools.len(), 2);
@@ -1397,13 +1397,13 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_capabilities_math() {
+    fn test_apply_capabilities_test_math() {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied = apply_capabilities(base_config.clone(), &[CapabilityId::Math], &registry);
+        let applied = apply_capabilities(base_config.clone(), &[CapabilityId::TestMath], &registry);
 
-        // Math has system prompt addition and 4 tools
+        // TestMath has system prompt addition and 4 tools
         assert!(applied.config.system_prompt.contains("math tools"));
         assert!(applied.tool_registry.has("add"));
         assert!(applied.tool_registry.has("subtract"));
@@ -1413,13 +1413,14 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_capabilities_weather() {
+    fn test_apply_capabilities_test_weather() {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied = apply_capabilities(base_config.clone(), &[CapabilityId::Weather], &registry);
+        let applied =
+            apply_capabilities(base_config.clone(), &[CapabilityId::TestWeather], &registry);
 
-        // Weather has system prompt addition and 2 tools
+        // TestWeather has system prompt addition and 2 tools
         assert!(applied.config.system_prompt.contains("weather tools"));
         assert!(applied.tool_registry.has("get_weather"));
         assert!(applied.tool_registry.has("get_forecast"));
@@ -1427,13 +1428,13 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_capabilities_math_and_weather() {
+    fn test_apply_capabilities_test_math_and_test_weather() {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
             base_config.clone(),
-            &[CapabilityId::Math, CapabilityId::Weather],
+            &[CapabilityId::TestMath, CapabilityId::TestWeather],
             &registry,
         );
 

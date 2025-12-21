@@ -172,10 +172,10 @@ Expected: "Everruns API"
 
 These tests verify the agent tool calling functionality via the API. They require the API and worker to be running.
 
-#### 12. Single Tool Test (Math - Add)
-Create an agent with math capability and test a single tool call:
+#### 12. Single Tool Test (TestMath - Add)
+Create an agent with test_math capability and test a single tool call:
 ```bash
-# Create agent with math capability
+# Create agent with test_math capability
 MATH_AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
@@ -185,10 +185,10 @@ MATH_AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
   }')
 MATH_AGENT_ID=$(echo $MATH_AGENT | jq -r '.id')
 
-# Set math capability
+# Set test_math capability
 curl -s -X PUT "http://localhost:9000/v1/agents/$MATH_AGENT_ID/capabilities" \
   -H "Content-Type: application/json" \
-  -d '{"capabilities": ["math"]}' | jq
+  -d '{"capabilities": ["test_math"]}' | jq
 
 # Create session
 MATH_SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$MATH_AGENT_ID/sessions" \
@@ -227,10 +227,10 @@ curl -s "http://localhost:9000/v1/agents/$MATH_AGENT_ID/sessions/$MATH_SESSION_I
 ```
 Expected: Multiple tool calls (subtract and multiply)
 
-#### 14. Multi-Step Agent Test (Weather Forecast)
+#### 14. Multi-Step Agent Test (TestWeather Forecast)
 Test agent that makes multiple tool calls across iterations:
 ```bash
-# Create agent with weather capability
+# Create agent with test_weather capability
 WEATHER_AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
@@ -240,10 +240,10 @@ WEATHER_AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
   }')
 WEATHER_AGENT_ID=$(echo $WEATHER_AGENT | jq -r '.id')
 
-# Set weather capability
+# Set test_weather capability
 curl -s -X PUT "http://localhost:9000/v1/agents/$WEATHER_AGENT_ID/capabilities" \
   -H "Content-Type: application/json" \
-  -d '{"capabilities": ["weather"]}'
+  -d '{"capabilities": ["test_weather"]}'
 
 # Create session
 WEATHER_SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$WEATHER_AGENT_ID/sessions" \
@@ -282,7 +282,7 @@ curl -s "http://localhost:9000/v1/agents/$WEATHER_AGENT_ID/sessions/$WEATHER_SES
 ```
 Expected: Assistant message with multiple tool calls (3 get_weather calls)
 
-#### 16. Combined Capabilities Test (Math + Weather)
+#### 16. Combined Capabilities Test (TestMath + TestWeather)
 Test agent with multiple capabilities:
 ```bash
 # Create agent with both capabilities
@@ -298,7 +298,7 @@ COMBO_AGENT_ID=$(echo $COMBO_AGENT | jq -r '.id')
 # Set both capabilities
 curl -s -X PUT "http://localhost:9000/v1/agents/$COMBO_AGENT_ID/capabilities" \
   -H "Content-Type: application/json" \
-  -d '{"capabilities": ["math", "weather"]}'
+  -d '{"capabilities": ["test_math", "test_weather"]}'
 
 # Create session
 COMBO_SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$COMBO_AGENT_ID/sessions" \

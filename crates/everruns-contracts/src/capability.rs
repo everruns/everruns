@@ -83,14 +83,17 @@ mod tests {
     }
 
     #[test]
-    fn test_math_weather_capabilities() {
-        // Verify math and weather capabilities are available
-        assert_eq!(CapabilityId::Math.to_string(), "math");
-        assert_eq!(CapabilityId::Weather.to_string(), "weather");
-        assert_eq!("math".parse::<CapabilityId>().unwrap(), CapabilityId::Math);
+    fn test_test_capabilities() {
+        // Verify test math and weather capabilities are available
+        assert_eq!(CapabilityId::TestMath.to_string(), "test_math");
+        assert_eq!(CapabilityId::TestWeather.to_string(), "test_weather");
         assert_eq!(
-            "weather".parse::<CapabilityId>().unwrap(),
-            CapabilityId::Weather
+            "test_math".parse::<CapabilityId>().unwrap(),
+            CapabilityId::TestMath
+        );
+        assert_eq!(
+            "test_weather".parse::<CapabilityId>().unwrap(),
+            CapabilityId::TestWeather
         );
     }
 }
