@@ -22,6 +22,10 @@ pub enum CapabilityId {
     Sandbox,
     /// FileSystem capability (coming soon)
     FileSystem,
+    /// Math capability - adds calculator tools (add, subtract, multiply, divide)
+    Math,
+    /// Weather capability - adds weather tools (get_weather, get_forecast)
+    Weather,
 }
 
 impl std::fmt::Display for CapabilityId {
@@ -32,6 +36,8 @@ impl std::fmt::Display for CapabilityId {
             CapabilityId::Research => write!(f, "research"),
             CapabilityId::Sandbox => write!(f, "sandbox"),
             CapabilityId::FileSystem => write!(f, "file_system"),
+            CapabilityId::Math => write!(f, "math"),
+            CapabilityId::Weather => write!(f, "weather"),
         }
     }
 }
@@ -46,6 +52,8 @@ impl std::str::FromStr for CapabilityId {
             "research" => Ok(CapabilityId::Research),
             "sandbox" => Ok(CapabilityId::Sandbox),
             "file_system" => Ok(CapabilityId::FileSystem),
+            "math" => Ok(CapabilityId::Math),
+            "weather" => Ok(CapabilityId::Weather),
             _ => Err(format!("Unknown capability: {}", s)),
         }
     }
@@ -84,6 +92,8 @@ mod tests {
         assert_eq!(CapabilityId::Research.to_string(), "research");
         assert_eq!(CapabilityId::Sandbox.to_string(), "sandbox");
         assert_eq!(CapabilityId::FileSystem.to_string(), "file_system");
+        assert_eq!(CapabilityId::Math.to_string(), "math");
+        assert_eq!(CapabilityId::Weather.to_string(), "weather");
     }
 
     #[test]
@@ -104,6 +114,11 @@ mod tests {
         assert_eq!(
             "file_system".parse::<CapabilityId>().unwrap(),
             CapabilityId::FileSystem
+        );
+        assert_eq!("math".parse::<CapabilityId>().unwrap(), CapabilityId::Math);
+        assert_eq!(
+            "weather".parse::<CapabilityId>().unwrap(),
+            CapabilityId::Weather
         );
     }
 

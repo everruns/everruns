@@ -146,6 +146,8 @@ impl CapabilityRegistry {
         registry.register(ResearchCapability);
         registry.register(SandboxCapability);
         registry.register(FileSystemCapability);
+        registry.register(MathCapability);
+        registry.register(WeatherCapability);
         registry
     }
 
@@ -517,6 +519,77 @@ impl Capability for FileSystemCapability {
     }
 }
 
+/// Math capability - calculator tools for mathematical operations
+pub struct MathCapability;
+
+impl Capability for MathCapability {
+    fn id(&self) -> CapabilityId {
+        CapabilityId::Math
+    }
+
+    fn name(&self) -> &str {
+        "Math"
+    }
+
+    fn description(&self) -> &str {
+        "Adds calculator tools for mathematical operations: add, subtract, multiply, and divide."
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some("calculator")
+    }
+
+    fn category(&self) -> Option<&str> {
+        Some("Utilities")
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some("You have access to math tools. Use them for calculations: add, subtract, multiply, divide.")
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![
+            Box::new(AddTool),
+            Box::new(SubtractTool),
+            Box::new(MultiplyTool),
+            Box::new(DivideTool),
+        ]
+    }
+}
+
+/// Weather capability - weather information tools (mocked for testing)
+pub struct WeatherCapability;
+
+impl Capability for WeatherCapability {
+    fn id(&self) -> CapabilityId {
+        CapabilityId::Weather
+    }
+
+    fn name(&self) -> &str {
+        "Weather"
+    }
+
+    fn description(&self) -> &str {
+        "Adds weather tools to get current weather and forecasts for locations."
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some("cloud-sun")
+    }
+
+    fn category(&self) -> Option<&str> {
+        Some("Information")
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some("You have access to weather tools. Use get_weather for current conditions and get_forecast for multi-day forecasts.")
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(GetWeatherTool), Box::new(GetForecastTool)]
+    }
+}
+
 // ============================================================================
 // Capability Tools
 // ============================================================================
@@ -590,6 +663,375 @@ impl Tool for GetCurrentTimeTool {
 }
 
 // ============================================================================
+// Math Tools
+// ============================================================================
+
+/// Tool that adds two numbers
+pub struct AddTool;
+
+#[async_trait]
+impl Tool for AddTool {
+    fn name(&self) -> &str {
+        "add"
+    }
+
+    fn description(&self) -> &str {
+        "Add two numbers together and return the result."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "a": {
+                    "type": "number",
+                    "description": "The first number"
+                },
+                "b": {
+                    "type": "number",
+                    "description": "The second number"
+                }
+            },
+            "required": ["a", "b"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
+        let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let result = a + b;
+
+        crate::tools::ToolExecutionResult::success(serde_json::json!({
+            "result": result,
+            "operation": "add",
+            "a": a,
+            "b": b
+        }))
+    }
+}
+
+/// Tool that subtracts two numbers
+pub struct SubtractTool;
+
+#[async_trait]
+impl Tool for SubtractTool {
+    fn name(&self) -> &str {
+        "subtract"
+    }
+
+    fn description(&self) -> &str {
+        "Subtract the second number from the first and return the result."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "a": {
+                    "type": "number",
+                    "description": "The number to subtract from"
+                },
+                "b": {
+                    "type": "number",
+                    "description": "The number to subtract"
+                }
+            },
+            "required": ["a", "b"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
+        let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let result = a - b;
+
+        crate::tools::ToolExecutionResult::success(serde_json::json!({
+            "result": result,
+            "operation": "subtract",
+            "a": a,
+            "b": b
+        }))
+    }
+}
+
+/// Tool that multiplies two numbers
+pub struct MultiplyTool;
+
+#[async_trait]
+impl Tool for MultiplyTool {
+    fn name(&self) -> &str {
+        "multiply"
+    }
+
+    fn description(&self) -> &str {
+        "Multiply two numbers together and return the result."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "a": {
+                    "type": "number",
+                    "description": "The first number"
+                },
+                "b": {
+                    "type": "number",
+                    "description": "The second number"
+                }
+            },
+            "required": ["a", "b"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
+        let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let result = a * b;
+
+        crate::tools::ToolExecutionResult::success(serde_json::json!({
+            "result": result,
+            "operation": "multiply",
+            "a": a,
+            "b": b
+        }))
+    }
+}
+
+/// Tool that divides two numbers
+pub struct DivideTool;
+
+#[async_trait]
+impl Tool for DivideTool {
+    fn name(&self) -> &str {
+        "divide"
+    }
+
+    fn description(&self) -> &str {
+        "Divide the first number by the second and return the result. Returns an error if dividing by zero."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "a": {
+                    "type": "number",
+                    "description": "The dividend (number to be divided)"
+                },
+                "b": {
+                    "type": "number",
+                    "description": "The divisor (number to divide by)"
+                }
+            },
+            "required": ["a", "b"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
+        let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+        if b == 0.0 {
+            return crate::tools::ToolExecutionResult::tool_error("Cannot divide by zero");
+        }
+
+        let result = a / b;
+
+        crate::tools::ToolExecutionResult::success(serde_json::json!({
+            "result": result,
+            "operation": "divide",
+            "a": a,
+            "b": b
+        }))
+    }
+}
+
+// ============================================================================
+// Weather Tools (Mocked for Testing)
+// ============================================================================
+
+/// Tool that returns mock weather data for a location
+pub struct GetWeatherTool;
+
+#[async_trait]
+impl Tool for GetWeatherTool {
+    fn name(&self) -> &str {
+        "get_weather"
+    }
+
+    fn description(&self) -> &str {
+        "Get the current weather for a location. Returns temperature, conditions, humidity, and wind speed."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string",
+                    "description": "The city or location name (e.g., 'New York', 'London', 'Tokyo')"
+                },
+                "units": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"],
+                    "description": "Temperature units. Defaults to 'celsius'."
+                }
+            },
+            "required": ["location"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
+        let location = arguments
+            .get("location")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
+
+        let units = arguments
+            .get("units")
+            .and_then(|v| v.as_str())
+            .unwrap_or("celsius");
+
+        // Generate deterministic mock weather based on location hash
+        let hash = location
+            .bytes()
+            .fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+        let temp_c = ((hash % 35) as i32) + 5; // 5-40°C range
+        let temp = if units == "fahrenheit" {
+            (temp_c as f64 * 9.0 / 5.0) + 32.0
+        } else {
+            temp_c as f64
+        };
+
+        let conditions = match hash % 5 {
+            0 => "sunny",
+            1 => "partly cloudy",
+            2 => "cloudy",
+            3 => "rainy",
+            _ => "windy",
+        };
+
+        let humidity = (hash % 50) + 30; // 30-80%
+        let wind_speed = (hash % 30) + 5; // 5-35 km/h
+
+        crate::tools::ToolExecutionResult::success(serde_json::json!({
+            "location": location,
+            "temperature": temp,
+            "units": units,
+            "conditions": conditions,
+            "humidity": humidity,
+            "wind_speed_kmh": wind_speed,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    }
+}
+
+/// Tool that returns mock weather forecast for a location
+pub struct GetForecastTool;
+
+#[async_trait]
+impl Tool for GetForecastTool {
+    fn name(&self) -> &str {
+        "get_forecast"
+    }
+
+    fn description(&self) -> &str {
+        "Get the weather forecast for a location for the next several days."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string",
+                    "description": "The city or location name (e.g., 'New York', 'London', 'Tokyo')"
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Number of days to forecast (1-7). Defaults to 3."
+                },
+                "units": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"],
+                    "description": "Temperature units. Defaults to 'celsius'."
+                }
+            },
+            "required": ["location"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
+        let location = arguments
+            .get("location")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
+
+        let days = arguments
+            .get("days")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3)
+            .min(7) as usize;
+
+        let units = arguments
+            .get("units")
+            .and_then(|v| v.as_str())
+            .unwrap_or("celsius");
+
+        // Generate deterministic mock forecast based on location hash
+        let hash = location
+            .bytes()
+            .fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+
+        let today = chrono::Utc::now().date_naive();
+        let mut forecast_days = Vec::new();
+
+        for day_offset in 0..days {
+            let day_hash = hash.wrapping_add(day_offset as u32 * 7);
+            let temp_c = ((day_hash % 35) as i32) + 5;
+            let temp_high = if units == "fahrenheit" {
+                (temp_c as f64 * 9.0 / 5.0) + 32.0
+            } else {
+                temp_c as f64
+            };
+            let temp_low = temp_high - 8.0 - ((day_hash % 5) as f64);
+
+            let conditions = match day_hash % 5 {
+                0 => "sunny",
+                1 => "partly cloudy",
+                2 => "cloudy",
+                3 => "rainy",
+                _ => "windy",
+            };
+
+            let date = today + chrono::Duration::days(day_offset as i64);
+
+            forecast_days.push(serde_json::json!({
+                "date": date.to_string(),
+                "high": temp_high,
+                "low": temp_low,
+                "conditions": conditions,
+                "precipitation_chance": (day_hash % 100) as i32
+            }));
+        }
+
+        crate::tools::ToolExecutionResult::success(serde_json::json!({
+            "location": location,
+            "units": units,
+            "days": days,
+            "forecast": forecast_days
+        }))
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -606,7 +1048,9 @@ mod tests {
         assert!(registry.has(CapabilityId::Research));
         assert!(registry.has(CapabilityId::Sandbox));
         assert!(registry.has(CapabilityId::FileSystem));
-        assert_eq!(registry.len(), 5);
+        assert!(registry.has(CapabilityId::Math));
+        assert!(registry.has(CapabilityId::Weather));
+        assert_eq!(registry.len(), 7);
     }
 
     #[test]
@@ -795,5 +1239,207 @@ mod tests {
         } else {
             panic!("Expected success");
         }
+    }
+
+    // Math capability tests
+    #[test]
+    fn test_math_capability_has_tools() {
+        let registry = CapabilityRegistry::with_builtins();
+        let math = registry.get(CapabilityId::Math).unwrap();
+        let tools = math.tools();
+
+        assert_eq!(tools.len(), 4);
+        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(tool_names.contains(&"add"));
+        assert!(tool_names.contains(&"subtract"));
+        assert!(tool_names.contains(&"multiply"));
+        assert!(tool_names.contains(&"divide"));
+    }
+
+    #[tokio::test]
+    async fn test_add_tool() {
+        let tool = AddTool;
+        let result = tool.execute(serde_json::json!({"a": 5, "b": 3})).await;
+
+        if let crate::tools::ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 8.0);
+            assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "add");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_subtract_tool() {
+        let tool = SubtractTool;
+        let result = tool.execute(serde_json::json!({"a": 10, "b": 4})).await;
+
+        if let crate::tools::ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 6.0);
+            assert_eq!(
+                value.get("operation").unwrap().as_str().unwrap(),
+                "subtract"
+            );
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_multiply_tool() {
+        let tool = MultiplyTool;
+        let result = tool.execute(serde_json::json!({"a": 6, "b": 7})).await;
+
+        if let crate::tools::ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 42.0);
+            assert_eq!(
+                value.get("operation").unwrap().as_str().unwrap(),
+                "multiply"
+            );
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_divide_tool() {
+        let tool = DivideTool;
+        let result = tool.execute(serde_json::json!({"a": 20, "b": 4})).await;
+
+        if let crate::tools::ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 5.0);
+            assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "divide");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_divide_by_zero() {
+        let tool = DivideTool;
+        let result = tool.execute(serde_json::json!({"a": 10, "b": 0})).await;
+
+        if let crate::tools::ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("divide by zero"));
+        } else {
+            panic!("Expected tool error for division by zero");
+        }
+    }
+
+    // Weather capability tests
+    #[test]
+    fn test_weather_capability_has_tools() {
+        let registry = CapabilityRegistry::with_builtins();
+        let weather = registry.get(CapabilityId::Weather).unwrap();
+        let tools = weather.tools();
+
+        assert_eq!(tools.len(), 2);
+        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(tool_names.contains(&"get_weather"));
+        assert!(tool_names.contains(&"get_forecast"));
+    }
+
+    #[tokio::test]
+    async fn test_get_weather_tool() {
+        let tool = GetWeatherTool;
+        let result = tool
+            .execute(serde_json::json!({"location": "New York"}))
+            .await;
+
+        if let crate::tools::ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("location").unwrap().as_str().unwrap(), "New York");
+            assert!(value.get("temperature").is_some());
+            assert!(value.get("conditions").is_some());
+            assert!(value.get("humidity").is_some());
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_weather_fahrenheit() {
+        let tool = GetWeatherTool;
+        let result = tool
+            .execute(serde_json::json!({"location": "London", "units": "fahrenheit"}))
+            .await;
+
+        if let crate::tools::ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("units").unwrap().as_str().unwrap(), "fahrenheit");
+            // Fahrenheit temps should be higher than Celsius
+            let temp = value.get("temperature").unwrap().as_f64().unwrap();
+            assert!(temp > 30.0); // At least 30°F
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_forecast_tool() {
+        let tool = GetForecastTool;
+        let result = tool
+            .execute(serde_json::json!({"location": "Tokyo", "days": 5}))
+            .await;
+
+        if let crate::tools::ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("location").unwrap().as_str().unwrap(), "Tokyo");
+            assert_eq!(value.get("days").unwrap().as_u64().unwrap(), 5);
+            let forecast = value.get("forecast").unwrap().as_array().unwrap();
+            assert_eq!(forecast.len(), 5);
+            // Check first day has expected fields
+            let first_day = &forecast[0];
+            assert!(first_day.get("date").is_some());
+            assert!(first_day.get("high").is_some());
+            assert!(first_day.get("low").is_some());
+            assert!(first_day.get("conditions").is_some());
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[test]
+    fn test_apply_capabilities_math() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(base_config.clone(), &[CapabilityId::Math], &registry);
+
+        // Math has system prompt addition and 4 tools
+        assert!(applied.config.system_prompt.contains("math tools"));
+        assert!(applied.tool_registry.has("add"));
+        assert!(applied.tool_registry.has("subtract"));
+        assert!(applied.tool_registry.has("multiply"));
+        assert!(applied.tool_registry.has("divide"));
+        assert_eq!(applied.tool_registry.len(), 4);
+    }
+
+    #[test]
+    fn test_apply_capabilities_weather() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(base_config.clone(), &[CapabilityId::Weather], &registry);
+
+        // Weather has system prompt addition and 2 tools
+        assert!(applied.config.system_prompt.contains("weather tools"));
+        assert!(applied.tool_registry.has("get_weather"));
+        assert!(applied.tool_registry.has("get_forecast"));
+        assert_eq!(applied.tool_registry.len(), 2);
+    }
+
+    #[test]
+    fn test_apply_capabilities_math_and_weather() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(
+            base_config.clone(),
+            &[CapabilityId::Math, CapabilityId::Weather],
+            &registry,
+        );
+
+        // Should have both sets of tools
+        assert_eq!(applied.tool_registry.len(), 6); // 4 math + 2 weather
+        assert!(applied.tool_registry.has("add"));
+        assert!(applied.tool_registry.has("get_weather"));
     }
 }

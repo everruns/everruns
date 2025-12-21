@@ -62,9 +62,11 @@ pub use tools::{
 
 // Capability re-exports
 pub use capabilities::{
-    apply_capabilities, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
-    CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, FileSystemCapability,
-    GetCurrentTimeTool, NoopCapability, ResearchCapability, SandboxCapability,
+    apply_capabilities, AddTool, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
+    CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, DivideTool,
+    FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetWeatherTool, MathCapability,
+    MultiplyTool, NoopCapability, ResearchCapability, SandboxCapability, SubtractTool,
+    WeatherCapability,
 };
 
 // Atoms re-exports (stateless atomic operations)

@@ -55,42 +55,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_capability_id_display() {
-        assert_eq!(CapabilityId::Noop.to_string(), "noop");
-        assert_eq!(CapabilityId::CurrentTime.to_string(), "current_time");
-        assert_eq!(CapabilityId::Research.to_string(), "research");
-        assert_eq!(CapabilityId::Sandbox.to_string(), "sandbox");
-        assert_eq!(CapabilityId::FileSystem.to_string(), "file_system");
-    }
-
-    #[test]
-    fn test_capability_id_from_str() {
-        assert_eq!("noop".parse::<CapabilityId>().unwrap(), CapabilityId::Noop);
-        assert_eq!(
-            "current_time".parse::<CapabilityId>().unwrap(),
-            CapabilityId::CurrentTime
-        );
-        assert_eq!(
-            "research".parse::<CapabilityId>().unwrap(),
-            CapabilityId::Research
-        );
-        assert_eq!(
-            "sandbox".parse::<CapabilityId>().unwrap(),
-            CapabilityId::Sandbox
-        );
-        assert_eq!(
-            "file_system".parse::<CapabilityId>().unwrap(),
-            CapabilityId::FileSystem
-        );
-    }
-
-    #[test]
-    fn test_capability_id_from_str_unknown() {
-        let result = "unknown".parse::<CapabilityId>();
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_capability_serialization() {
         let cap = Capability {
             id: CapabilityId::Research,
@@ -116,5 +80,17 @@ mod tests {
         let json = serde_json::to_string(&agent_cap).unwrap();
         assert!(json.contains("\"capability_id\":\"sandbox\""));
         assert!(json.contains("\"position\":1"));
+    }
+
+    #[test]
+    fn test_math_weather_capabilities() {
+        // Verify math and weather capabilities are available
+        assert_eq!(CapabilityId::Math.to_string(), "math");
+        assert_eq!(CapabilityId::Weather.to_string(), "weather");
+        assert_eq!("math".parse::<CapabilityId>().unwrap(), CapabilityId::Math);
+        assert_eq!(
+            "weather".parse::<CapabilityId>().unwrap(),
+            CapabilityId::Weather
+        );
     }
 }
