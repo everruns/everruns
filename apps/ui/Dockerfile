@@ -11,7 +11,7 @@ COPY . .
 RUN npm run build
 
 # Production image
-FROM node:20-alpine AS runner
+FROM node:20-alpine AS ui
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -25,6 +25,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Note: Stage renamed from 'runner' to 'ui' for consistency with other images
 USER nextjs
 
 EXPOSE 9100

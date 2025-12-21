@@ -44,16 +44,11 @@ COPY crates crates
 RUN cargo build --release -p everruns-worker
 
 # ============================================================================
-# Stage 4: Runtime - Minimal production image
+# Stage 4: Runtime - Distroless production image (minimal size and security)
 # ============================================================================
-FROM debian:bookworm-slim AS runtime
+FROM gcr.io/distroless/cc-debian12 AS runtime
 
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/everruns-worker /app/everruns-worker
 
