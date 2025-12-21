@@ -205,7 +205,7 @@ curl -s "http://localhost:9000/v1/agents/$MATH_AGENT_ID/sessions/$MATH_SESSION_I
 Run all tool calling tests automatically:
 
 ```bash
-./.claude/skills/smoke-test/scripts/tool-calling-tests.sh
+./scripts/tool-calling-tests.sh
 ```
 
 ### Options
@@ -220,13 +220,13 @@ Run all tool calling tests automatically:
 
 ```bash
 # Run with verbose output
-./.claude/skills/smoke-test/scripts/tool-calling-tests.sh --verbose
+./scripts/tool-calling-tests.sh --verbose
 
 # Run against different API URL
-./.claude/skills/smoke-test/scripts/tool-calling-tests.sh --api-url http://localhost:9000
+./scripts/tool-calling-tests.sh --api-url http://localhost:9000
 
 # Keep test agents for debugging
-./.claude/skills/smoke-test/scripts/tool-calling-tests.sh --skip-cleanup --verbose
+./scripts/tool-calling-tests.sh --skip-cleanup --verbose
 ```
 
 ### Test Summary

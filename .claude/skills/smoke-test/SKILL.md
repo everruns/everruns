@@ -219,7 +219,7 @@ Expected: 200
 For environments without Docker (Cloud Agent, CI):
 
 ```bash
-./.claude/skills/smoke-test/scripts/run-no-docker.sh
+./scripts/run-no-docker.sh
 ```
 
 This script:
@@ -283,7 +283,7 @@ export OPENAI_API_KEY=your-key
 
 **"must be run as root"**: The PostgreSQL setup requires root access:
 ```bash
-sudo ./.claude/skills/smoke-test/scripts/run-no-docker.sh
+sudo ./scripts/run-no-docker.sh
 ```
 
 **Messages sent but no assistant response**: Ensure the Temporal worker is running:
