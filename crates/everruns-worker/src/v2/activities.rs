@@ -41,7 +41,7 @@ pub struct CallModelInput {
 }
 
 /// Output from call-model activity
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CallModelOutput {
     /// Text response from the model
     pub text: String,

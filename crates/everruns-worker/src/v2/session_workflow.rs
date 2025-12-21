@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use super::activities::{CallModelOutput, ExecuteToolOutput};
 use crate::types::WorkflowAction;
 use crate::workflow_traits::{Workflow, WorkflowInput};
 
@@ -185,21 +186,12 @@ impl SessionWorkflowV2 {
         iteration: u8,
         result: serde_json::Value,
     ) -> Vec<WorkflowAction> {
-        let text = result
-            .get("text")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let needs_tool_execution = result
-            .get("needs_tool_execution")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let tool_calls: Option<Vec<ToolCallData>> = result
-            .get("tool_calls")
-            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        // Deserialize directly to CallModelOutput (same struct the activity returns)
+        let output: CallModelOutput = serde_json::from_value(result).unwrap_or_default();
 
-        if needs_tool_execution {
-            if let Some(tool_calls) = tool_calls {
+        // Check if we need to execute tools
+        if output.needs_tool_execution {
+            if let Some(tool_calls) = output.tool_calls {
                 if !tool_calls.is_empty() && iteration < agent_config.max_iterations {
                     return self.transition_to_tool_execution(agent_config, tool_calls, iteration);
                 }
@@ -208,7 +200,7 @@ impl SessionWorkflowV2 {
 
         // No tool calls or max iterations - complete
         self.state = WorkflowState::Completed {
-            final_text: Some(text),
+            final_text: Some(output.text),
         };
 
         vec![WorkflowAction::CompleteWorkflow {
@@ -243,18 +235,18 @@ impl SessionWorkflowV2 {
                 _ => return vec![],
             };
 
-        // Parse result
-        let tool_result: ToolResultData =
-            serde_json::from_value(result.get("result").cloned().unwrap_or(result.clone()))
-                .unwrap_or(ToolResultData {
-                    tool_call_id: "unknown".to_string(),
-                    result: None,
-                    error: Some("Failed to parse tool result".to_string()),
-                });
+        // Deserialize directly to ExecuteToolOutput (same struct the activity returns)
+        let output: ExecuteToolOutput = serde_json::from_value(result).unwrap_or(ExecuteToolOutput {
+            result: ToolResultData {
+                tool_call_id: "unknown".to_string(),
+                result: None,
+                error: Some("Failed to parse tool result".to_string()),
+            },
+        });
 
         // Remove from pending, add to completed
         pending_activities.retain(|id| id != &activity_id);
-        completed.push((activity_id, tool_result));
+        completed.push((activity_id, output.result));
 
         // Check if all tools are done
         if pending_activities.is_empty() {
