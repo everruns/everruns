@@ -188,35 +188,6 @@ pub async fn execute_tool_activity(
 }
 
 // ============================================================================
-// Legacy Stub Functions (for backwards compatibility during migration)
-// ============================================================================
-
-/// Stub implementation - use call_model_activity instead
-#[allow(dead_code)]
-#[deprecated(note = "Use call_model_activity instead")]
-pub fn call_model_activity_stub(input: CallModelInput) -> CallModelOutput {
-    let _ = input;
-    CallModelOutput {
-        text: "STUB: Use call_model_activity instead".into(),
-        tool_calls: None,
-        needs_tool_execution: false,
-    }
-}
-
-/// Stub implementation - use execute_tool_activity instead
-#[allow(dead_code)]
-#[deprecated(note = "Use execute_tool_activity instead")]
-pub fn execute_tools_activity_stub(input: ExecuteToolInput) -> ExecuteToolOutput {
-    ExecuteToolOutput {
-        result: ToolResultData {
-            tool_call_id: input.tool_call.id,
-            result: Some(json!({"status": "stub", "note": "Use execute_tool_activity instead"})),
-            error: None,
-        },
-    }
-}
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
 
