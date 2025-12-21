@@ -186,9 +186,7 @@ pub mod activity_names {
 
 /// Constants for workflow names
 pub mod workflow_names {
-    pub const SESSION_WORKFLOW: &str = "session_workflow";
-    /// Legacy alias
-    pub const AGENT_RUN: &str = "session_workflow";
+    pub const AGENT_WORKFLOW: &str = "agent_workflow";
 }
 
 /// Task queue name for agent runs

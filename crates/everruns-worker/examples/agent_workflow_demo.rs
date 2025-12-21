@@ -1,23 +1,23 @@
-//! Session Workflow V2 Demo - State Machine Simulation
+//! Agent Workflow Demo - State Machine Simulation
 //!
-//! This example demonstrates the v2 workflow state machine logic.
+//! This example demonstrates the agent workflow state machine logic.
 //! It simulates workflow execution without requiring Temporal or database.
 //!
 //! For real Temporal execution, use the smoke tests or API endpoints.
 //!
-//! Run with: cargo run --example session_workflow_v2_demo -p everruns-worker
+//! Run with: cargo run --example agent_workflow_demo -p everruns-worker
 
 use serde_json::json;
 use uuid::Uuid;
 
 use everruns_worker::types::WorkflowAction;
-use everruns_worker::v2::{SessionWorkflowV2, SessionWorkflowV2Input};
+use everruns_worker::v2::{AgentWorkflow, AgentWorkflowInput};
 use everruns_worker::Workflow;
 
 fn main() {
-    println!("=== Session Workflow V2 Demo ===\n");
-    println!("This demo simulates the v2 workflow state machine.\n");
-    println!("V2 workflow design:");
+    println!("=== Agent Workflow Demo ===\n");
+    println!("This demo simulates the agent workflow state machine.\n");
+    println!("Agent workflow design:");
     println!("  - Atoms handle message storage internally (no messages in state)");
     println!("  - Each tool call is a separate activity for visibility");
     println!("  - Workflow is a lightweight orchestrator\n");
@@ -39,12 +39,12 @@ fn main() {
 fn demo_simple_response() {
     println!("--- Scenario 1: Simple Response (No Tools) ---\n");
 
-    let input = SessionWorkflowV2Input {
+    let input = AgentWorkflowInput {
         session_id: Uuid::now_v7(),
         agent_id: Uuid::now_v7(),
     };
 
-    let mut workflow = SessionWorkflowV2::new(input);
+    let mut workflow = AgentWorkflow::new(input);
 
     // Step 1: Start workflow
     println!("1. on_start()");
@@ -83,12 +83,12 @@ fn demo_simple_response() {
 fn demo_tool_call() {
     println!("--- Scenario 2: Tool Call Flow ---\n");
 
-    let input = SessionWorkflowV2Input {
+    let input = AgentWorkflowInput {
         session_id: Uuid::now_v7(),
         agent_id: Uuid::now_v7(),
     };
 
-    let mut workflow = SessionWorkflowV2::new(input);
+    let mut workflow = AgentWorkflow::new(input);
 
     // Start
     let actions = workflow.on_start();
@@ -160,12 +160,12 @@ fn demo_tool_call() {
 fn demo_parallel_tools() {
     println!("--- Scenario 3: Parallel Tool Calls ---\n");
 
-    let input = SessionWorkflowV2Input {
+    let input = AgentWorkflowInput {
         session_id: Uuid::now_v7(),
         agent_id: Uuid::now_v7(),
     };
 
-    let mut workflow = SessionWorkflowV2::new(input);
+    let mut workflow = AgentWorkflow::new(input);
 
     // Start and load agent
     let actions = workflow.on_start();

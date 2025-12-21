@@ -23,13 +23,20 @@ use everruns_storage::repositories::Database;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::session_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
+use super::agent_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
 use crate::adapters::DbMessageStore;
 use crate::unified_tool_executor::UnifiedToolExecutor;
 
 // ============================================================================
 // Activity Input/Output Types
 // ============================================================================
+
+/// Input for load-agent activity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadAgentInput {
+    /// Agent ID (UUID string)
+    pub agent_id: String,
+}
 
 /// Input for call-model activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +84,86 @@ pub type ExecuteToolsOutput = ExecuteToolOutput;
 // ============================================================================
 // Activity Implementations
 // ============================================================================
+
+/// Load agent configuration from database
+///
+/// This activity loads the agent from the database and builds the AgentConfigData
+/// including the model, system_prompt, tools from capabilities, and max_iterations.
+pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<AgentConfigData> {
+    use everruns_core::capabilities::{CapabilityId, CapabilityRegistry};
+
+    let agent_id: Uuid = input.agent_id.parse().context("Invalid agent_id UUID")?;
+
+    tracing::info!(agent_id = %agent_id, "Loading agent configuration");
+
+    // Load agent from database
+    let agent = db
+        .get_agent(agent_id)
+        .await
+        .context("Database error loading agent")?
+        .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", agent_id))?;
+
+    // Load capabilities for this agent
+    let capabilities = db
+        .get_agent_capabilities(agent_id)
+        .await
+        .context("Database error loading agent capabilities")?;
+
+    let capability_ids: Vec<String> = capabilities.into_iter().map(|c| c.capability_id).collect();
+
+    // Apply capabilities to get tools
+    let registry = CapabilityRegistry::with_builtins();
+    let parsed_capability_ids: Vec<CapabilityId> = capability_ids
+        .iter()
+        .filter_map(|id| id.parse::<CapabilityId>().ok())
+        .collect();
+
+    // Build base config and apply capabilities
+    let model_str = agent
+        .default_model_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "gpt-4o".to_string());
+    let base_config = everruns_core::AgentConfig::new(&agent.system_prompt, &model_str);
+    let applied = everruns_core::capabilities::apply_capabilities(
+        base_config,
+        &parsed_capability_ids,
+        &registry,
+    );
+
+    // Convert tools to ToolDefinitionData
+    let tools: Vec<ToolDefinitionData> = applied
+        .config
+        .tools
+        .iter()
+        .map(|tool| match tool {
+            ToolDefinition::Builtin(b) => ToolDefinitionData {
+                name: b.name.clone(),
+                description: b.description.clone(),
+                parameters: b.parameters.clone(),
+            },
+        })
+        .collect();
+
+    let model = agent
+        .default_model_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "gpt-4o".to_string());
+
+    tracing::info!(
+        agent_id = %agent_id,
+        model = %model,
+        capability_count = capability_ids.len(),
+        tool_count = tools.len(),
+        "Loaded agent with capabilities"
+    );
+
+    Ok(AgentConfigData {
+        model,
+        system_prompt: Some(applied.config.system_prompt),
+        tools,
+        max_iterations: 10,
+    })
+}
 
 /// Call the LLM model using CallModelAtom
 ///

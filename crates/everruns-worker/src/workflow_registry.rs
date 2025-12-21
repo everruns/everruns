@@ -1,7 +1,7 @@
 // Workflow registry for dynamic workflow creation
 // Decision: Factory functions allow runtime workflow creation from JSON input
 // Decision: Builder pattern for fluent registration API
-// Decision: with_defaults() registers TemporalSessionWorkflow
+// Decision: with_defaults() registers AgentWorkflow
 
 use std::collections::HashMap;
 
@@ -19,10 +19,10 @@ pub type WorkflowFactory =
 ///
 /// ```ignore
 /// let registry = WorkflowRegistry::builder()
-///     .workflow::<TemporalSessionWorkflow>()
+///     .workflow::<AgentWorkflow>()
 ///     .build();
 ///
-/// let workflow = registry.create("session_workflow", input_json)?;
+/// let workflow = registry.create("agent_workflow", input_json)?;
 /// ```
 pub struct WorkflowRegistry {
     factories: HashMap<&'static str, WorkflowFactory>,
@@ -36,10 +36,10 @@ impl WorkflowRegistry {
         }
     }
 
-    /// Create a registry with default workflows (TemporalSessionWorkflow) registered
+    /// Create a registry with default workflows (AgentWorkflow) registered
     pub fn with_defaults() -> Self {
         Self::builder()
-            .workflow::<crate::session_workflow::TemporalSessionWorkflow>()
+            .workflow::<crate::v2::AgentWorkflow>()
             .build()
     }
 
@@ -155,7 +155,7 @@ impl Default for WorkflowRegistryBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SessionWorkflowInput;
+    use crate::v2::AgentWorkflowInput;
     use uuid::Uuid;
 
     #[test]
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_registry_with_defaults() {
         let registry = WorkflowRegistry::with_defaults();
-        assert!(registry.has("session_workflow"));
+        assert!(registry.has("agent_workflow"));
         assert!(!registry.is_empty());
         assert_eq!(registry.len(), 1);
     }
@@ -177,15 +177,15 @@ mod tests {
     fn test_registry_create_workflow() {
         let registry = WorkflowRegistry::with_defaults();
 
-        let input = serde_json::to_value(SessionWorkflowInput {
+        let input = serde_json::to_value(AgentWorkflowInput {
             session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
         })
         .unwrap();
 
-        let workflow = registry.create("session_workflow", input);
+        let workflow = registry.create("agent_workflow", input);
         assert!(workflow.is_ok());
-        assert_eq!(workflow.unwrap().workflow_type(), "session_workflow");
+        assert_eq!(workflow.unwrap().workflow_type(), "agent_workflow");
     }
 
     #[test]
@@ -204,7 +204,7 @@ mod tests {
         let registry = WorkflowRegistry::with_defaults();
 
         // Missing required fields
-        let result = registry.create("session_workflow", serde_json::json!({"invalid": true}));
+        let result = registry.create("agent_workflow", serde_json::json!({"invalid": true}));
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
         assert!(error.contains("Failed to parse"));
@@ -213,10 +213,10 @@ mod tests {
     #[test]
     fn test_registry_builder() {
         let registry = WorkflowRegistry::builder()
-            .workflow::<crate::session_workflow::TemporalSessionWorkflow>()
+            .workflow::<crate::v2::AgentWorkflow>()
             .build();
 
-        assert!(registry.has("session_workflow"));
+        assert!(registry.has("agent_workflow"));
         assert_eq!(registry.len(), 1);
     }
 
@@ -224,7 +224,7 @@ mod tests {
     fn test_registry_types() {
         let registry = WorkflowRegistry::with_defaults();
         let types = registry.types();
-        assert!(types.contains(&"session_workflow"));
+        assert!(types.contains(&"agent_workflow"));
     }
 
     #[test]
@@ -232,12 +232,12 @@ mod tests {
         let registry = WorkflowRegistry::with_defaults();
         let debug_str = format!("{:?}", registry);
         assert!(debug_str.contains("WorkflowRegistry"));
-        assert!(debug_str.contains("session_workflow"));
+        assert!(debug_str.contains("agent_workflow"));
     }
 
     #[test]
     fn test_registry_default_impl() {
         let registry = WorkflowRegistry::default();
-        assert!(registry.has("session_workflow"));
+        assert!(registry.has("agent_workflow"));
     }
 }

@@ -2,7 +2,6 @@ pub mod activities;
 pub mod adapters;
 pub mod client;
 pub mod runner;
-pub mod session_workflow;
 pub mod types;
 pub mod unified_tool_executor;
 pub mod v2;
@@ -12,8 +11,8 @@ pub mod workflow_traits;
 
 // Re-export main types
 pub use runner::{create_runner, run_worker, AgentRunner, RunnerConfig, TemporalRunner};
-pub use session_workflow::TemporalSessionWorkflow;
 pub use types::WorkflowAction;
+pub use v2::{AgentWorkflow, AgentWorkflowInput};
 pub use worker::TemporalWorker;
 pub use workflow_registry::{WorkflowFactory, WorkflowRegistry, WorkflowRegistryBuilder};
 pub use workflow_traits::{Workflow, WorkflowInput};

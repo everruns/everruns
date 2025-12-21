@@ -656,6 +656,11 @@ async fn execute_activity(
             Ok(serde_json::json!({}))
         }
         // V2 activities using Atoms framework
+        v2::activity_types::LOAD_AGENT => {
+            let input: v2::LoadAgentInput = serde_json::from_slice(input_data)?;
+            let output = v2::load_agent_activity(db.clone(), input).await?;
+            Ok(serde_json::to_value(output)?)
+        }
         v2::activity_types::CALL_MODEL => {
             let input: v2::CallModelInput = serde_json::from_slice(input_data)?;
             let output = v2::call_model_activity(db.clone(), input).await?;
@@ -670,8 +675,8 @@ async fn execute_activity(
             // Provide a helpful error message with known activity types
             Err(anyhow::anyhow!(
                 "Unknown activity type: '{}'. Known activities: load_agent, load_messages, \
-                update_status, persist_event, call_llm, execute_tools, save_message, \
-                call-model (v2), execute-tool (v2). \
+                update_status, persist_event, call_llm, execute_tools, save_message (v1), \
+                load-agent, call-model, execute-tool (v2/agent_workflow). \
                 This may indicate a workflow bug or version mismatch.",
                 activity_type
             ))
