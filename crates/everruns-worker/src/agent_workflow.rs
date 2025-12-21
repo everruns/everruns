@@ -1,4 +1,4 @@
-// Session Workflow V2 - Agent Loop Orchestration with Atoms
+// Agent Workflow - Agent Loop Orchestration with Atoms
 //
 // Design: Lightweight state machine that orchestrates atoms
 //
@@ -18,9 +18,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use super::activities::{CallModelOutput, ExecuteToolOutput};
+use crate::activities::{CallModelOutput, ExecuteToolOutput};
+use crate::traits::{Workflow, WorkflowInput};
 use crate::types::WorkflowAction;
-use crate::workflow_traits::{Workflow, WorkflowInput};
 
 // ============================================================================
 // Input/Output Types
@@ -28,7 +28,7 @@ use crate::workflow_traits::{Workflow, WorkflowInput};
 
 /// Workflow input
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionWorkflowV2Input {
+pub struct AgentWorkflowInput {
     /// Session ID
     pub session_id: Uuid,
     /// Agent ID for loading configuration
@@ -145,16 +145,16 @@ mod activity_names {
 // Workflow Implementation
 // ============================================================================
 
-/// V2 Session Workflow with Atoms
+/// Agent Workflow with Atoms
 #[derive(Debug)]
-pub struct SessionWorkflowV2 {
-    input: SessionWorkflowV2Input,
+pub struct AgentWorkflow {
+    input: AgentWorkflowInput,
     state: WorkflowState,
     activity_seq: u32,
 }
 
-impl SessionWorkflowV2 {
-    pub fn new(input: SessionWorkflowV2Input) -> Self {
+impl AgentWorkflow {
+    pub fn new(input: AgentWorkflowInput) -> Self {
         Self {
             input,
             state: WorkflowState::Init,
@@ -267,9 +267,9 @@ impl SessionWorkflowV2 {
     }
 }
 
-impl Workflow for SessionWorkflowV2 {
+impl Workflow for AgentWorkflow {
     fn workflow_type(&self) -> &'static str {
-        "session_workflow_v2"
+        "agent_workflow"
     }
 
     fn on_start(&mut self) -> Vec<WorkflowAction> {
@@ -338,7 +338,7 @@ impl Workflow for SessionWorkflowV2 {
 }
 
 // Helper methods for state transitions
-impl SessionWorkflowV2 {
+impl AgentWorkflow {
     fn transition_to_model_call(
         &mut self,
         agent_config: AgentConfigData,
@@ -399,12 +399,12 @@ impl SessionWorkflowV2 {
     }
 }
 
-impl WorkflowInput for SessionWorkflowV2 {
-    const WORKFLOW_TYPE: &'static str = "session_workflow_v2";
-    type Input = SessionWorkflowV2Input;
+impl WorkflowInput for AgentWorkflow {
+    const WORKFLOW_TYPE: &'static str = "agent_workflow";
+    type Input = AgentWorkflowInput;
 
     fn from_input(input: Self::Input) -> Self {
-        SessionWorkflowV2::new(input)
+        AgentWorkflow::new(input)
     }
 }
 
@@ -434,12 +434,12 @@ mod tests {
 
     #[test]
     fn test_workflow_start() {
-        let input = SessionWorkflowV2Input {
+        let input = AgentWorkflowInput {
             session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
         };
 
-        let mut workflow = SessionWorkflowV2::new(input);
+        let mut workflow = AgentWorkflow::new(input);
         let actions = workflow.on_start();
 
         // Should just load agent (no emit-event)
@@ -450,12 +450,12 @@ mod tests {
 
     #[test]
     fn test_agent_loaded_goes_to_model_call() {
-        let input = SessionWorkflowV2Input {
+        let input = AgentWorkflowInput {
             session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
         };
 
-        let mut workflow = SessionWorkflowV2::new(input);
+        let mut workflow = AgentWorkflow::new(input);
         let actions = workflow.on_start();
         let load_agent_id = find_activity_id(&actions, "load-agent").unwrap();
 
@@ -475,12 +475,12 @@ mod tests {
 
     #[test]
     fn test_model_with_tool_calls() {
-        let input = SessionWorkflowV2Input {
+        let input = AgentWorkflowInput {
             session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
         };
 
-        let mut workflow = SessionWorkflowV2::new(input);
+        let mut workflow = AgentWorkflow::new(input);
         let actions = workflow.on_start();
         let load_agent_id = find_activity_id(&actions, "load-agent").unwrap();
 
@@ -511,12 +511,12 @@ mod tests {
 
     #[test]
     fn test_completion_without_tools() {
-        let input = SessionWorkflowV2Input {
+        let input = AgentWorkflowInput {
             session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
         };
 
-        let mut workflow = SessionWorkflowV2::new(input);
+        let mut workflow = AgentWorkflow::new(input);
         let actions = workflow.on_start();
         let load_agent_id = find_activity_id(&actions, "load-agent").unwrap();
 

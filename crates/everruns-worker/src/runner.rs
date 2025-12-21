@@ -17,8 +17,8 @@ use std::sync::Arc;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::agent_workflow::AgentWorkflowInput;
 use crate::client::TemporalClient;
-use crate::types::SessionWorkflowInput;
 use crate::worker::TemporalWorker;
 
 // =============================================================================
@@ -132,7 +132,7 @@ impl TemporalRunner {
 
 #[async_trait]
 impl AgentRunner for TemporalRunner {
-    /// Start a session workflow
+    /// Start an agent workflow
     /// In M2: run_id = session_id, agent_id = agent_id, thread_id = session_id
     async fn start_run(&self, session_id: Uuid, agent_id: Uuid, _thread_id: Uuid) -> Result<()> {
         info!(
@@ -142,13 +142,13 @@ impl AgentRunner for TemporalRunner {
         );
 
         // Build workflow input
-        let input = SessionWorkflowInput {
+        let input = AgentWorkflowInput {
             session_id,
             agent_id,
         };
 
         // Start the workflow on Temporal server
-        let response = self.client.start_session_workflow(&input).await?;
+        let response = self.client.start_agent_workflow(&input).await?;
 
         // Workflow ID is derived from session_id (session-{session_id})
         let workflow_id = TemporalClient::workflow_id_for_session(session_id);

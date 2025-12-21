@@ -1,680 +1,377 @@
 // Activity implementations for workflow execution
-// Decision: Activities are standalone functions that can be registered with Temporal
-// Decision: Each LLM call and each tool execution is a separate Temporal activity (node)
 //
-// These activities handle the actual work of session execution:
-// - Loading data from database
-// - Calling LLMs (with streaming and heartbeats)
-// - Executing tools (each tool = separate activity)
-// - Persisting events
+// Activities are the units of work scheduled by the workflow.
+// Each activity runs outside the workflow and returns a result.
 //
-// All activities must be idempotent and handle their own error scenarios.
+// These implementations use Atoms from everruns-core for the actual work:
+// - CallModelAtom for LLM calls
+// - ExecuteToolAtom for tool execution
+//
+// Atoms handle message loading/storage internally via MessageStore trait.
 
 use anyhow::{Context, Result};
-use everruns_contracts::events::AgUiEvent;
-use everruns_contracts::tools::ToolDefinition;
-use everruns_core::capabilities::{apply_capabilities, CapabilityId, CapabilityRegistry};
-use everruns_core::config::AgentConfig;
-use everruns_core::llm::{
-    LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider,
+use everruns_contracts::tools::{
+    BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy,
 };
-use everruns_core::traits::ToolExecutor;
-use everruns_openai::OpenAiProvider;
-use everruns_storage::models::UpdateSession;
+use everruns_core::atoms::{
+    Atom, CallModelAtom, CallModelInput as AtomCallModelInput, ExecuteToolAtom,
+    ExecuteToolInput as AtomExecuteToolInput,
+};
+use everruns_core::config::AgentConfigBuilder;
+use everruns_core::openai::OpenAIProtocolLlmProvider;
 use everruns_storage::repositories::Database;
-use tracing::{debug, info, warn};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::types::*;
+use crate::adapters::DbMessageStore;
+use crate::agent_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
 use crate::unified_tool_executor::UnifiedToolExecutor;
 
-// =============================================================================
-// Activity Context
-// =============================================================================
+// ============================================================================
+// Activity Input/Output Types
+// ============================================================================
 
-/// Activity context for heartbeat reporting
-/// In the real Temporal SDK, this would be provided by the runtime
-pub struct ActivityContext {
-    /// Task token for this activity (used for heartbeats)
-    #[allow(dead_code)]
-    task_token: Vec<u8>,
-    /// Function to report heartbeat progress
-    heartbeat_fn: Option<Box<dyn Fn(String) + Send + Sync>>,
+/// Input for load-agent activity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadAgentInput {
+    /// Agent ID (UUID string)
+    pub agent_id: String,
 }
 
-impl ActivityContext {
-    pub fn new(task_token: Vec<u8>) -> Self {
-        Self {
-            task_token,
-            heartbeat_fn: None,
-        }
-    }
-
-    /// Set the heartbeat function
-    #[allow(dead_code)]
-    pub fn with_heartbeat<F>(mut self, f: F) -> Self
-    where
-        F: Fn(String) + Send + Sync + 'static,
-    {
-        self.heartbeat_fn = Some(Box::new(f));
-        self
-    }
-
-    /// Report progress (heartbeat)
-    pub fn heartbeat(&self, details: &str) {
-        if let Some(f) = &self.heartbeat_fn {
-            f(details.to_string());
-        }
-    }
+/// Input for call-model activity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallModelInput {
+    /// Session ID (UUID string)
+    pub session_id: String,
+    /// Agent configuration (model, tools, system_prompt)
+    pub agent_config: AgentConfigData,
 }
 
-// =============================================================================
-// Event Persistence
-// =============================================================================
-
-/// Activity to persist AG-UI events to the session_events table
-pub struct PersistEventActivity {
-    db: Database,
+/// Output from call-model activity
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CallModelOutput {
+    /// Text response from the model
+    pub text: String,
+    /// Tool calls requested by the model (if any)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCallData>>,
+    /// Whether tool execution is needed
+    pub needs_tool_execution: bool,
 }
 
-impl PersistEventActivity {
-    pub fn new(db: Database) -> Self {
-        Self { db }
-    }
-
-    /// Persist an event to the session_events table
-    pub async fn persist_event(&self, session_id: Uuid, event: AgUiEvent) -> Result<()> {
-        let event_type = match &event {
-            AgUiEvent::RunStarted(_) => "session.started",
-            AgUiEvent::RunFinished(_) => "session.finished",
-            AgUiEvent::RunError(_) => "session.error",
-            AgUiEvent::StepStarted(_) => "step.started",
-            AgUiEvent::StepFinished(_) => "step.finished",
-            AgUiEvent::TextMessageStart(_) => "text.start",
-            AgUiEvent::TextMessageContent(_) => "text.delta",
-            AgUiEvent::TextMessageEnd(_) => "text.end",
-            AgUiEvent::ToolCallStart(_) => "tool.call.start",
-            AgUiEvent::ToolCallArgs(_) => "tool.call.args",
-            AgUiEvent::ToolCallEnd(_) => "tool.call.end",
-            AgUiEvent::ToolCallResult(_) => "tool.result",
-            AgUiEvent::StateSnapshot(_) => "state.snapshot",
-            AgUiEvent::StateDelta(_) => "state.delta",
-            AgUiEvent::MessagesSnapshot(_) => "messages.snapshot",
-            AgUiEvent::Custom(_) => "custom",
-        };
-
-        let event_data = serde_json::to_value(&event)?;
-
-        // Insert into events table with auto-incrementing sequence
-        sqlx::query(
-            r#"
-            INSERT INTO events (session_id, sequence, event_type, data)
-            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM events WHERE session_id = $1), 1), $2, $3)
-            "#,
-        )
-        .bind(session_id)
-        .bind(event_type)
-        .bind(event_data)
-        .execute(self.db.pool())
-        .await?;
-
-        info!(
-            session_id = %session_id,
-            event_type = %event_type,
-            "Persisted event"
-        );
-
-        Ok(())
-    }
+/// Input for execute-tool activity (single tool)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteToolInput {
+    /// Session ID (UUID string)
+    pub session_id: String,
+    /// Tool call to execute
+    pub tool_call: ToolCallData,
+    /// Available tool definitions
+    pub tool_definitions: Vec<ToolDefinitionData>,
 }
 
-// =============================================================================
-// Workflow Activities
-// =============================================================================
+/// Output from execute-tool activity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteToolOutput {
+    /// Result of the tool execution
+    pub result: ToolResultData,
+}
+
+// ============================================================================
+// Activity Implementations
+// ============================================================================
 
 /// Load agent configuration from database
-pub async fn load_agent_activity(
-    _ctx: &ActivityContext,
-    db: &Database,
-    input: LoadAgentInput,
-) -> Result<LoadAgentOutput> {
-    info!(agent_id = %input.agent_id, "Loading agent configuration");
+///
+/// This activity loads the agent from the database and builds the AgentConfigData
+/// including the model, system_prompt, tools from capabilities, and max_iterations.
+pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<AgentConfigData> {
+    use everruns_core::capabilities::{CapabilityId, CapabilityRegistry};
 
+    let agent_id: Uuid = input.agent_id.parse().context("Invalid agent_id UUID")?;
+
+    tracing::info!(agent_id = %agent_id, "Loading agent configuration");
+
+    // Load agent from database
     let agent = db
-        .get_agent(input.agent_id)
+        .get_agent(agent_id)
         .await
         .context("Database error loading agent")?
-        .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", input.agent_id))?;
+        .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", agent_id))?;
 
     // Load capabilities for this agent
     let capabilities = db
-        .get_agent_capabilities(input.agent_id)
+        .get_agent_capabilities(agent_id)
         .await
         .context("Database error loading agent capabilities")?;
 
     let capability_ids: Vec<String> = capabilities.into_iter().map(|c| c.capability_id).collect();
 
-    info!(
-        agent_id = %input.agent_id,
+    // Apply capabilities to get tools
+    let registry = CapabilityRegistry::with_builtins();
+    let parsed_capability_ids: Vec<CapabilityId> = capability_ids
+        .iter()
+        .filter_map(|id| id.parse::<CapabilityId>().ok())
+        .collect();
+
+    // Build base config and apply capabilities
+    let model_str = agent
+        .default_model_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "gpt-4o".to_string());
+    let base_config = everruns_core::AgentConfig::new(&agent.system_prompt, &model_str);
+    let applied = everruns_core::capabilities::apply_capabilities(
+        base_config,
+        &parsed_capability_ids,
+        &registry,
+    );
+
+    // Convert tools to ToolDefinitionData
+    let tools: Vec<ToolDefinitionData> = applied
+        .config
+        .tools
+        .iter()
+        .map(|tool| match tool {
+            ToolDefinition::Builtin(b) => ToolDefinitionData {
+                name: b.name.clone(),
+                description: b.description.clone(),
+                parameters: b.parameters.clone(),
+            },
+        })
+        .collect();
+
+    let model = agent
+        .default_model_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "gpt-4o".to_string());
+
+    tracing::info!(
+        agent_id = %agent_id,
+        model = %model,
         capability_count = capability_ids.len(),
-        capabilities = ?capability_ids,
+        tool_count = tools.len(),
         "Loaded agent with capabilities"
     );
 
-    Ok(LoadAgentOutput {
-        agent_id: agent.id,
-        name: agent.name,
-        model_id: agent
-            .default_model_id
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| "gpt-5.2".to_string()),
-        system_prompt: Some(agent.system_prompt),
-        temperature: None,
-        max_tokens: None,
-        capability_ids,
+    Ok(AgentConfigData {
+        model,
+        system_prompt: Some(applied.config.system_prompt),
+        tools,
+        max_iterations: 10,
     })
 }
 
-/// Load messages from a session
-pub async fn load_messages_activity(
-    _ctx: &ActivityContext,
-    db: &Database,
-    input: LoadMessagesInput,
-) -> Result<LoadMessagesOutput> {
-    info!(session_id = %input.session_id, "Loading session messages");
-
-    let messages = db
-        .list_messages(input.session_id)
-        .await
-        .context("Database error loading messages")?;
-
-    let message_data: Vec<MessageData> = messages
-        .into_iter()
-        .map(|m| {
-            // Extract text content from JSON
-            let content = if let Some(text) = m.content.get("text").and_then(|t| t.as_str()) {
-                text.to_string()
-            } else if let Some(content_str) = m.content.as_str() {
-                content_str.to_string()
-            } else {
-                // For tool messages, the content might be in a different format
-                // Try to get the raw content as a string
-                m.content.to_string()
-            };
-
-            // Extract tool_calls from assistant messages (stored in content JSON)
-            let tool_calls = if m.role == "assistant" {
-                m.content
-                    .get("tool_calls")
-                    .and_then(|tc| serde_json::from_value::<Vec<ToolCallData>>(tc.clone()).ok())
-            } else {
-                None
-            };
-
-            // Get tool_call_id for tool result messages
-            let tool_call_id = m.tool_call_id.clone();
-
-            MessageData {
-                role: m.role,
-                content,
-                tool_calls,
-                tool_call_id,
-            }
-        })
-        .collect();
-
-    info!(
-        session_id = %input.session_id,
-        message_count = message_data.len(),
-        "Loaded messages"
-    );
-
-    Ok(LoadMessagesOutput {
-        messages: message_data,
-    })
-}
-
-/// Update session status in database
-pub async fn update_status_activity(
-    _ctx: &ActivityContext,
-    db: &Database,
-    input: UpdateStatusInput,
-) -> Result<()> {
-    info!(
-        session_id = %input.session_id,
-        status = %input.status,
-        "Updating session status"
-    );
-
-    let update = UpdateSession {
-        status: Some(input.status.clone()),
-        started_at: input.started_at,
-        finished_at: input.finished_at,
-        ..Default::default()
-    };
-
-    db.update_session(input.session_id, update)
-        .await
-        .context("Database error updating session status")?;
-
-    Ok(())
-}
-
-/// Persist an AG-UI event to the database
-pub async fn persist_event_activity(
-    _ctx: &ActivityContext,
-    db: &Database,
-    input: PersistEventInput,
-) -> Result<()> {
-    let event: AgUiEvent = serde_json::from_value(input.event_data.clone())
-        .context("Failed to deserialize event data")?;
-
-    let persist_activity = PersistEventActivity::new(db.clone());
-    persist_activity
-        .persist_event(input.session_id, event)
-        .await?;
-
-    Ok(())
-}
-
-/// Call LLM and return response (non-streaming for M2)
-/// This is a long-running activity that uses heartbeats
-pub async fn call_llm_activity(
-    ctx: &ActivityContext,
-    db: &Database,
-    input: CallLlmInput,
-) -> Result<CallLlmOutput> {
-    info!(
-        session_id = %input.session_id,
-        model = %input.model_id,
-        message_count = input.messages.len(),
-        capability_count = input.capability_ids.len(),
-        "Starting LLM call activity"
-    );
-
-    // Heartbeat to indicate we're starting
-    ctx.heartbeat("Starting LLM call");
-
-    // Apply capabilities to get tools and system prompt modifications
-    let registry = CapabilityRegistry::with_builtins();
-    let capability_ids: Vec<CapabilityId> = input
-        .capability_ids
-        .iter()
-        .filter_map(|id| {
-            let parsed = id.parse::<CapabilityId>();
-            if parsed.is_err() {
-                warn!(capability_id = %id, "Unknown capability ID, skipping");
-            }
-            parsed.ok()
-        })
-        .collect();
-
-    // Build base agent config
-    let base_system_prompt = input.system_prompt.clone().unwrap_or_default();
-    let base_config = AgentConfig::new(&base_system_prompt, &input.model_id);
-
-    // Apply capabilities to get tools and modified system prompt
-    let applied = apply_capabilities(base_config, &capability_ids, &registry);
-
-    info!(
-        session_id = %input.session_id,
-        applied_capabilities = ?applied.applied_ids,
-        tool_count = applied.config.tools.len(),
-        "Applied capabilities"
-    );
-
-    // Debug log the tools that will be sent to LLM
-    for tool in &applied.config.tools {
-        debug!(
-            session_id = %input.session_id,
-            tool_name = %tool_name(tool),
-            tool_description = %tool_description(tool),
-            "Tool available for LLM"
-        );
-    }
-
-    // Convert message data to LlmMessage format (core types)
-    let mut messages: Vec<LlmMessage> = input
-        .messages
-        .iter()
-        .map(|m| {
-            // Convert ToolCallData to ToolCall (different argument types)
-            let tool_calls = m.tool_calls.as_ref().map(|calls| {
-                calls
-                    .iter()
-                    .map(|tc| everruns_contracts::tools::ToolCall {
-                        id: tc.id.clone(),
-                        name: tc.name.clone(),
-                        // Parse the JSON string arguments back to Value
-                        arguments: serde_json::from_str(&tc.arguments)
-                            .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
-                    })
-                    .collect()
-            });
-
-            LlmMessage {
-                role: match m.role.as_str() {
-                    "system" => LlmMessageRole::System,
-                    "user" => LlmMessageRole::User,
-                    "assistant" => LlmMessageRole::Assistant,
-                    "tool" | "tool_result" => LlmMessageRole::Tool,
-                    _ => LlmMessageRole::User,
-                },
-                content: LlmMessageContent::Text(m.content.clone()),
-                tool_calls,
-                tool_call_id: m.tool_call_id.clone(),
-            }
-        })
-        .collect();
-
-    // Prepend system prompt as first message if not already present
-    if !messages.iter().any(|m| m.role == LlmMessageRole::System) {
-        messages.insert(
-            0,
-            LlmMessage {
-                role: LlmMessageRole::System,
-                content: LlmMessageContent::Text(applied.config.system_prompt.clone()),
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        );
-    }
-
-    // Build LLM config with capability-provided tools (core types)
-    // applied.config.tools is already Vec<ToolDefinition> from capabilities
-    let config = LlmCallConfig {
-        model: input.model_id.clone(),
-        temperature: input.temperature,
-        max_tokens: input.max_tokens,
-        tools: applied.config.tools.clone(),
-    };
-
-    // Create provider
-    let provider = OpenAiProvider::new().context("Failed to create OpenAI provider")?;
-
-    // Heartbeat before LLM call
-    ctx.heartbeat("Calling LLM...");
-
-    // Non-streaming call
-    let result = match provider.chat_completion(messages, &config).await {
-        Ok(r) => r,
-        Err(e) => {
-            // Log the error for debugging
-            tracing::error!(
-                session_id = %input.session_id,
-                error = %e,
-                model = %input.model_id,
-                "LLM call failed"
-            );
-            // Return a detailed error message that will be visible in Temporal and potentially UI
-            return Err(anyhow::anyhow!("LLM call failed: {}", e));
-        }
-    };
-
-    info!(
-        session_id = %input.session_id,
-        tokens = ?result.metadata.total_tokens,
-        finish_reason = ?result.metadata.finish_reason,
-        "LLM call completed"
-    );
-
-    // Debug log the response text
-    debug!(
-        session_id = %input.session_id,
-        text_len = result.text.len(),
-        has_tool_calls = result.tool_calls.is_some(),
-        "LLM response details"
-    );
-
-    // Debug log tool calls if present
-    if let Some(ref tool_calls) = result.tool_calls {
-        for tc in tool_calls {
-            debug!(
-                session_id = %input.session_id,
-                tool_call_id = %tc.id,
-                tool_name = %tc.name,
-                arguments = %tc.arguments,
-                "LLM requested tool call"
-            );
-        }
-    }
-
-    // Emit step events
-    let persist_activity = PersistEventActivity::new(db.clone());
-    let step_event = AgUiEvent::step_finished("llm_call".to_string());
-    persist_activity
-        .persist_event(input.session_id, step_event)
-        .await?;
-
-    // Convert tool calls to output format
-    let output_tool_calls = result.tool_calls.map(|calls| {
-        calls
-            .into_iter()
-            .map(|tc| ToolCallData {
-                id: tc.id,
-                name: tc.name,
-                arguments: serde_json::to_string(&tc.arguments).unwrap_or_default(),
-                tool_definition_json: None,
-            })
-            .collect()
-    });
-
-    Ok(CallLlmOutput {
-        text: result.text,
-        tool_calls: output_tool_calls,
-    })
-}
-
-/// Execute tool calls using the UnifiedToolExecutor
+/// Call the LLM model using CallModelAtom
 ///
-/// This activity executes tool calls using the UnifiedToolExecutor
-/// which uses ToolRegistry for consistent tool execution.
-pub async fn execute_tools_activity(
-    ctx: &ActivityContext,
-    db: &Database,
-    input: ExecuteToolsInput,
-) -> Result<ExecuteToolsOutput> {
-    info!(
-        session_id = %input.session_id,
-        tool_count = input.tool_calls.len(),
-        "Executing tool calls via UnifiedToolExecutor"
-    );
+/// This activity:
+/// 1. Loads messages from the database via MessageStore
+/// 2. Calls the LLM with the agent configuration
+/// 3. Stores the assistant response and any tool call messages
+/// 4. Returns the text and tool calls
+pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<CallModelOutput> {
+    let session_id: Uuid = input
+        .session_id
+        .parse()
+        .context("Invalid session_id UUID")?;
 
-    // Debug log each tool call to be executed
-    for tc in &input.tool_calls {
-        debug!(
-            session_id = %input.session_id,
-            tool_call_id = %tc.id,
-            tool_name = %tc.name,
-            arguments = %tc.arguments,
-            "Tool call to execute"
-        );
-    }
+    // Create atom dependencies
+    let message_store = DbMessageStore::new(db);
+    let llm_provider =
+        OpenAIProtocolLlmProvider::from_env().context("Failed to create LLM provider")?;
 
-    let persist_activity = PersistEventActivity::new(db.clone());
-    let tool_executor = UnifiedToolExecutor::with_default_tools();
-    let mut results = Vec::new();
+    // Build AgentConfig from the workflow's AgentConfigData
+    let agent_config = build_agent_config(&input.agent_config);
 
-    for (i, tool_call_data) in input.tool_calls.iter().enumerate() {
-        debug!(
-            session_id = %input.session_id,
-            tool_index = i + 1,
-            total_tools = input.tool_calls.len(),
-            tool_name = %tool_call_data.name,
-            "Starting tool execution"
-        );
+    // Create and execute CallModelAtom
+    let atom = CallModelAtom::new(message_store, llm_provider);
+    let result = atom
+        .execute(AtomCallModelInput {
+            session_id,
+            config: agent_config,
+        })
+        .await
+        .context("CallModelAtom execution failed")?;
 
-        // Heartbeat progress
-        ctx.heartbeat(&format!(
-            "Executing tool {}/{}: {}",
-            i + 1,
-            input.tool_calls.len(),
-            tool_call_data.name
-        ));
-
-        // Emit TOOL_CALL_START event
-        let start_event = AgUiEvent::tool_call_start(&tool_call_data.id, &tool_call_data.name);
-        persist_activity
-            .persist_event(input.session_id, start_event)
-            .await?;
-
-        // Emit TOOL_CALL_ARGS event
-        let args_event =
-            AgUiEvent::tool_call_args(&tool_call_data.id, tool_call_data.arguments.clone());
-        persist_activity
-            .persist_event(input.session_id, args_event)
-            .await?;
-
-        // Emit TOOL_CALL_END event
-        let end_event = AgUiEvent::tool_call_end(&tool_call_data.id);
-        persist_activity
-            .persist_event(input.session_id, end_event)
-            .await?;
-
-        // Parse arguments from JSON string
-        let arguments: serde_json::Value =
-            serde_json::from_str(&tool_call_data.arguments).unwrap_or(serde_json::json!({}));
-
-        // Create ToolCall for execution
-        let tool_call = everruns_contracts::tools::ToolCall {
-            id: tool_call_data.id.clone(),
-            name: tool_call_data.name.clone(),
-            arguments,
-        };
-
-        // Parse tool definition if provided, otherwise create a placeholder
-        let tool_def: ToolDefinition = if let Some(ref json) = tool_call_data.tool_definition_json {
-            serde_json::from_str(json).unwrap_or_else(|_| {
-                ToolDefinition::Builtin(everruns_contracts::tools::BuiltinTool {
-                    name: tool_call_data.name.clone(),
-                    description: "Tool execution".to_string(),
-                    kind: everruns_contracts::tools::BuiltinToolKind::HttpGet,
-                    policy: everruns_contracts::tools::ToolPolicy::Auto,
-                    parameters: serde_json::json!({}),
+    // Convert to activity output
+    let tool_calls = if result.tool_calls.is_empty() {
+        None
+    } else {
+        Some(
+            result
+                .tool_calls
+                .iter()
+                .map(|tc| ToolCallData {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    arguments: tc.arguments.clone(),
                 })
-            })
-        } else {
-            // Default to builtin tool - UnifiedToolExecutor will look it up in registry
-            ToolDefinition::Builtin(everruns_contracts::tools::BuiltinTool {
-                name: tool_call_data.name.clone(),
-                description: "Tool execution".to_string(),
-                kind: everruns_contracts::tools::BuiltinToolKind::HttpGet,
-                policy: everruns_contracts::tools::ToolPolicy::Auto,
-                parameters: serde_json::json!({}),
-            })
-        };
-
-        // Execute the tool using the ToolExecutor trait
-        let exec_result = tool_executor
-            .execute(&tool_call, &tool_def)
-            .await
-            .map_err(|e| anyhow::anyhow!("Tool execution failed: {}", e))?;
-
-        // Debug log the tool execution result
-        debug!(
-            session_id = %input.session_id,
-            tool_call_id = %exec_result.tool_call_id,
-            has_result = exec_result.result.is_some(),
-            has_error = exec_result.error.is_some(),
-            result = ?exec_result.result,
-            error = ?exec_result.error,
-            "Tool execution completed"
-        );
-
-        let result = ToolResultData {
-            tool_call_id: exec_result.tool_call_id,
-            result: exec_result.result,
-            error: exec_result.error,
-        };
-
-        // Emit TOOL_CALL_RESULT event
-        let result_message_id = Uuid::now_v7().to_string();
-        let result_event = AgUiEvent::tool_call_result(
-            &result_message_id,
-            &tool_call_data.id,
-            result.result.clone().unwrap_or_default(),
-        );
-        persist_activity
-            .persist_event(input.session_id, result_event)
-            .await?;
-
-        results.push(result);
-    }
-
-    Ok(ExecuteToolsOutput { results })
-}
-
-/// Save a message to the session
-pub async fn save_message_activity(
-    _ctx: &ActivityContext,
-    db: &Database,
-    input: SaveMessageInput,
-) -> Result<()> {
-    info!(
-        session_id = %input.session_id,
-        role = %input.role,
-        tool_call_id = ?input.tool_call_id,
-        "Saving message to session"
-    );
-
-    let create_msg = everruns_storage::models::CreateMessage {
-        session_id: input.session_id,
-        role: input.role,
-        content: input.content,
-        tool_call_id: input.tool_call_id,
+                .collect(),
+        )
     };
 
-    db.create_message(create_msg)
+    Ok(CallModelOutput {
+        text: result.text,
+        tool_calls,
+        needs_tool_execution: result.needs_tool_execution,
+    })
+}
+
+/// Execute a single tool using ExecuteToolAtom
+///
+/// This activity:
+/// 1. Executes the tool call via ToolExecutor
+/// 2. Stores the tool result message
+/// 3. Returns the result
+pub async fn execute_tool_activity(
+    db: Database,
+    input: ExecuteToolInput,
+) -> Result<ExecuteToolOutput> {
+    let session_id: Uuid = input
+        .session_id
+        .parse()
+        .context("Invalid session_id UUID")?;
+
+    // Create atom dependencies
+    let message_store = DbMessageStore::new(db);
+    let tool_executor = UnifiedToolExecutor::with_default_tools();
+
+    // Convert tool call data
+    let tool_call = ToolCall {
+        id: input.tool_call.id.clone(),
+        name: input.tool_call.name.clone(),
+        arguments: input.tool_call.arguments.clone(),
+    };
+
+    // Convert tool definitions
+    let tool_definitions: Vec<ToolDefinition> = input
+        .tool_definitions
+        .iter()
+        .map(convert_tool_definition)
+        .collect();
+
+    // Create and execute ExecuteToolAtom
+    let atom = ExecuteToolAtom::new(message_store, tool_executor);
+    let result = atom
+        .execute(AtomExecuteToolInput {
+            session_id,
+            tool_call: tool_call.clone(),
+            tool_definitions,
+        })
         .await
-        .context("Database error saving message")?;
+        .context("ExecuteToolAtom execution failed")?;
 
-    Ok(())
+    Ok(ExecuteToolOutput {
+        result: ToolResultData {
+            tool_call_id: tool_call.id,
+            result: result.result.result,
+            error: result.result.error,
+        },
+    })
 }
 
-// =============================================================================
-// Helper functions for logging
-// =============================================================================
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
-/// Extract tool name from ToolDefinition enum
-fn tool_name(tool: &ToolDefinition) -> &str {
-    match tool {
-        ToolDefinition::Builtin(b) => &b.name,
-    }
+/// Build AgentConfig from workflow's AgentConfigData
+fn build_agent_config(data: &AgentConfigData) -> everruns_core::AgentConfig {
+    let tools: Vec<ToolDefinition> = data.tools.iter().map(convert_tool_definition).collect();
+
+    AgentConfigBuilder::new()
+        .model(&data.model)
+        .system_prompt(data.system_prompt.as_deref().unwrap_or(""))
+        .tools(tools)
+        .max_iterations(data.max_iterations as usize)
+        .build()
 }
 
-/// Extract tool description from ToolDefinition enum
-fn tool_description(tool: &ToolDefinition) -> &str {
-    match tool {
-        ToolDefinition::Builtin(b) => &b.description,
-    }
+/// Convert workflow's ToolDefinitionData to core's ToolDefinition
+fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
+    ToolDefinition::Builtin(BuiltinTool {
+        name: tool.name.clone(),
+        description: tool.description.clone(),
+        parameters: tool.parameters.clone(),
+        kind: BuiltinToolKind::CurrentTime, // Default kind, actual execution is by name
+        policy: ToolPolicy::Auto,
+    })
 }
+
+// ============================================================================
+// Activity Type Constants
+// ============================================================================
+
+/// Activity type constants for workflow scheduling
+pub mod activity_types {
+    pub const CALL_MODEL: &str = "call-model";
+    pub const EXECUTE_TOOL: &str = "execute-tool";
+    pub const LOAD_AGENT: &str = "load-agent";
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn test_activity_context_heartbeat() {
-        let ctx = ActivityContext::new(vec![1, 2, 3]);
-        // Should not panic even without heartbeat function
-        ctx.heartbeat("test");
+    fn test_call_model_input_serialization() {
+        let input = CallModelInput {
+            session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            agent_config: AgentConfigData {
+                model: "gpt-4o".into(),
+                system_prompt: Some("You are a helpful assistant.".into()),
+                tools: vec![],
+                max_iterations: 5,
+            },
+        };
+
+        let json = serde_json::to_string(&input).unwrap();
+        let parsed: CallModelInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.session_id, input.session_id);
+        assert_eq!(parsed.agent_config.model, "gpt-4o");
     }
 
     #[test]
-    fn test_activity_context_with_heartbeat() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::Arc;
+    fn test_execute_tool_input_serialization() {
+        let input = ExecuteToolInput {
+            session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            tool_call: ToolCallData {
+                id: "call_1".into(),
+                name: "get_time".into(),
+                arguments: json!({}),
+            },
+            tool_definitions: vec![ToolDefinitionData {
+                name: "get_time".into(),
+                description: "Get current time".into(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }],
+        };
 
-        let counter = Arc::new(AtomicUsize::new(0));
-        let counter_clone = counter.clone();
+        let json = serde_json::to_string(&input).unwrap();
+        let parsed: ExecuteToolInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.tool_call.name, "get_time");
+    }
 
-        let ctx = ActivityContext::new(vec![1, 2, 3]).with_heartbeat(move |_| {
-            counter_clone.fetch_add(1, Ordering::SeqCst);
-        });
+    #[test]
+    fn test_build_agent_config() {
+        let data = AgentConfigData {
+            model: "gpt-4o".into(),
+            system_prompt: Some("Test prompt".into()),
+            tools: vec![ToolDefinitionData {
+                name: "test_tool".into(),
+                description: "A test tool".into(),
+                parameters: json!({}),
+            }],
+            max_iterations: 10,
+        };
 
-        ctx.heartbeat("test1");
-        ctx.heartbeat("test2");
-
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
+        let config = build_agent_config(&data);
+        assert_eq!(config.model, "gpt-4o");
+        assert_eq!(config.system_prompt, "Test prompt");
+        assert_eq!(config.tools.len(), 1);
+        assert_eq!(config.max_iterations, 10);
     }
 }

@@ -22,14 +22,19 @@ install_temporal() {
 
     log_info "Installing Temporal CLI..."
 
-    # Download Temporal CLI binary for Linux x86_64
-    curl -sL "https://temporal.download/cli/archive/latest?platform=linux&arch=amd64" -o /tmp/temporal.tar.gz
+    # Download Temporal CLI binary from GitHub releases
+    # Using --insecure for restricted network environments
+    local temporal_version="1.1.2"
+    local download_url="https://github.com/temporalio/cli/releases/download/v${temporal_version}/temporal_cli_${temporal_version}_linux_amd64.tar.gz"
+
+    curl -L --insecure "$download_url" -o /tmp/temporal.tar.gz
 
     # Extract and install
-    tar -xzf /tmp/temporal.tar.gz -C /tmp
-    mv /tmp/temporal "$TEMPORAL_BIN"
+    mkdir -p /tmp/temporal_extract
+    tar -xzf /tmp/temporal.tar.gz -C /tmp/temporal_extract
+    mv /tmp/temporal_extract/temporal "$TEMPORAL_BIN"
     chmod +x "$TEMPORAL_BIN"
-    rm -f /tmp/temporal.tar.gz
+    rm -rf /tmp/temporal.tar.gz /tmp/temporal_extract
 
     check_pass "Temporal install - $($TEMPORAL_BIN --version)"
 }

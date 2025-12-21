@@ -133,6 +133,29 @@ curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages
 ```
 Expected: At least 1 message
 
+#### 9.5. Verify Workflow Execution (Temporal)
+After sending a user message, verify the agent workflow executed correctly:
+```bash
+# Wait for workflow to complete (5-10 seconds)
+sleep 10
+
+# Check session status (should be 'pending' after workflow completes)
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID" | jq '.status'
+```
+Expected: `"pending"` (workflow completed)
+
+```bash
+# Check for assistant response
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data[] | select(.role == "assistant") | .content.text'
+```
+Expected: Non-empty assistant response text
+
+```bash
+# Verify workflow type in worker logs (if running locally)
+grep "agent_workflow" /tmp/worker.log | head -3
+```
+Expected: Logs showing `workflow_type: "agent_workflow"` and activities like `load-agent`, `call-model`
+
 #### 10. List Sessions
 ```bash
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions" | jq '.data | length'
@@ -194,21 +217,32 @@ For environments without Docker (Cloud Agent, CI):
 ```
 
 This script:
-1. Installs PostgreSQL 17 from PGDG repository
-2. Installs Temporal CLI
+1. Detects or installs PostgreSQL (supports pre-installed versions via `pg_ctlcluster`)
+2. Installs Temporal CLI from GitHub releases
 3. Starts local PostgreSQL cluster and Temporal dev server
 4. Runs database migrations
-5. Starts API server
-6. Runs the test checklist above
+5. Starts API server AND Temporal worker (both required for workflow execution)
+6. Keeps services running until Ctrl+C
+
+**Important**: The Temporal worker is required for workflow execution. Without it, sending messages won't trigger LLM responses.
 
 ### Scripts
 
 | Script | Description |
 |--------|-------------|
 | `scripts/run-no-docker.sh` | Entry point for no-Docker environments |
-| `scripts/_setup-postgres.sh` | PostgreSQL 17 cluster setup (internal) |
-| `scripts/_setup-temporal.sh` | Temporal dev server setup (internal) |
+| `scripts/_setup-postgres.sh` | PostgreSQL cluster setup - auto-detects system install (internal) |
+| `scripts/_setup-temporal.sh` | Temporal CLI install from GitHub releases (internal) |
 | `scripts/_utils.sh` | Shared utilities and configuration (internal) |
+
+### Log Files
+
+| Log | Location |
+|-----|----------|
+| API | `/tmp/api.log` |
+| Worker | `/tmp/worker.log` |
+| Temporal | `/tmp/temporal.log` |
+| PostgreSQL | `/tmp/pgdata/pg.log` |
 
 ## Troubleshooting
 
@@ -245,3 +279,65 @@ export OPENAI_API_KEY=your-key
 ```bash
 sudo ./.claude/skills/smoke-tests/scripts/run-no-docker.sh
 ```
+
+**Messages sent but no assistant response**: Ensure the Temporal worker is running:
+```bash
+# Check if worker is running
+ps aux | grep everruns-worker
+
+# Check worker logs for errors
+tail -50 /tmp/worker.log
+
+# Manually start worker if needed
+export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
+export TEMPORAL_ADDRESS="localhost:7233"
+cargo run -p everruns-worker
+```
+
+**Network/curl issues in restricted environments**: The Temporal CLI download uses `--insecure` flag. If you still have issues, manually download:
+```bash
+# Direct download from GitHub
+curl -L --insecure https://github.com/temporalio/cli/releases/download/v1.1.2/temporal_cli_1.1.2_linux_amd64.tar.gz -o /tmp/temporal.tar.gz
+mkdir -p /tmp/temporal_extract
+tar -xzf /tmp/temporal.tar.gz -C /tmp/temporal_extract
+mv /tmp/temporal_extract/temporal /usr/local/bin/temporal
+chmod +x /usr/local/bin/temporal
+```
+
+**PostgreSQL already running**: The script auto-detects system PostgreSQL via `pg_ctlcluster`. If you have a custom setup:
+```bash
+# Check what's using port 5432
+lsof -i :5432
+
+# Use system PostgreSQL
+pg_ctlcluster 16 main start  # or whatever version you have
+```
+
+### Workflow Verification
+
+To verify the full workflow cycle works:
+```bash
+# 1. Create agent
+AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Test", "system_prompt": "You are helpful."}')
+AGENT_ID=$(echo $AGENT | jq -r '.id')
+
+# 2. Create session
+SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Test"}')
+SESSION_ID=$(echo $SESSION | jq -r '.id')
+
+# 3. Send message (this triggers the agent_workflow)
+curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "user", "content": {"text": "Hello!"}}'
+
+# 4. Wait and check for response
+sleep 10
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
+  jq '.data[] | select(.role == "assistant") | .content.text'
+```
+
+Expected: An assistant message with LLM-generated text
