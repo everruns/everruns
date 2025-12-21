@@ -236,13 +236,14 @@ impl SessionWorkflowV2 {
             };
 
         // Deserialize directly to ExecuteToolOutput (same struct the activity returns)
-        let output: ExecuteToolOutput = serde_json::from_value(result).unwrap_or(ExecuteToolOutput {
-            result: ToolResultData {
-                tool_call_id: "unknown".to_string(),
-                result: None,
-                error: Some("Failed to parse tool result".to_string()),
-            },
-        });
+        let output: ExecuteToolOutput =
+            serde_json::from_value(result).unwrap_or(ExecuteToolOutput {
+                result: ToolResultData {
+                    tool_call_id: "unknown".to_string(),
+                    result: None,
+                    error: Some("Failed to parse tool result".to_string()),
+                },
+            });
 
         // Remove from pending, add to completed
         pending_activities.retain(|id| id != &activity_id);
