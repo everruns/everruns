@@ -6,12 +6,13 @@ import Link from "next/link";
 import {
   useAgent,
   useUpdateAgent,
+  useDeleteAgent,
   useCapabilities,
   useAgentCapabilities,
   useSetAgentCapabilities,
 } from "@/hooks";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft,
   Save,
+  Trash2,
   CircleOff,
   Clock,
   Search,
@@ -59,6 +61,7 @@ export default function EditAgentPage({
   // Agent data
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const updateAgent = useUpdateAgent();
+  const deleteAgent = useDeleteAgent();
 
   // Capabilities data
   const { data: allCapabilities, isLoading: capabilitiesLoading } =
@@ -198,6 +201,20 @@ export default function EditAgentPage({
     }
   };
 
+  // Delete handler
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this agent? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      await deleteAgent.mutateAsync(agentId);
+      router.push("/agents");
+    } catch (error) {
+      console.error("Failed to delete agent:", error);
+    }
+  };
+
   const isLoading =
     agentLoading || capabilitiesLoading || agentCapabilitiesLoading;
   const isSaving = updateAgent.isPending || setCapabilities.isPending;
@@ -307,6 +324,35 @@ export default function EditAgentPage({
                   <p className="text-xs text-muted-foreground">
                     Instructions for the AI model (supports Markdown)
                   </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Danger Zone */}
+            <Card className="border-destructive/50">
+              <CardHeader>
+                <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                <CardDescription>
+                  Irreversible actions that affect this agent
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Delete this agent</p>
+                    <p className="text-sm text-muted-foreground">
+                      Once deleted, this agent and all its sessions will be permanently removed.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={deleteAgent.isPending}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {deleteAgent.isPending ? "Deleting..." : "Delete Agent"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

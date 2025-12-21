@@ -11,7 +11,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  Trash2,
   Pencil,
   CircleOff,
   Clock,
@@ -34,8 +33,6 @@ interface AgentCardProps {
   agent: Agent;
   capabilities?: AgentCapability[];
   allCapabilities?: Capability[];
-  onDelete?: (agentId: string) => void;
-  isDeleting?: boolean;
   showEditButton?: boolean;
   compact?: boolean;
 }
@@ -44,8 +41,6 @@ export function AgentCard({
   agent,
   capabilities,
   allCapabilities,
-  onDelete,
-  isDeleting,
   showEditButton = false,
   compact = false,
 }: AgentCardProps) {
@@ -126,26 +121,13 @@ export function AgentCard({
           <span className="text-xs text-muted-foreground">
             Created {new Date(agent.created_at).toLocaleDateString()}
           </span>
-          <div className="flex gap-1">
-            {showEditButton && (
-              <Link href={`/agents/${agent.id}/edit`}>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Pencil className="w-4 h-4" />
-                </Button>
-              </Link>
-            )}
-            {onDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-destructive hover:text-destructive"
-                onClick={() => onDelete(agent.id)}
-                disabled={isDeleting}
-              >
-                <Trash2 className="w-4 h-4" />
+          {showEditButton && (
+            <Link href={`/agents/${agent.id}/edit`}>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Pencil className="w-4 h-4" />
               </Button>
-            )}
-          </div>
+            </Link>
+          )}
         </div>
       </CardContent>
     </Card>

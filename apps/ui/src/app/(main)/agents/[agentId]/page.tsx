@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { useAgent, useSessions, useCreateSession } from "@/hooks";
+import { useAgent, useSessions, useCreateSession, useAgentCapabilities, useCapabilities } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
-import { CapabilitySelector } from "@/components/capabilities";
-import { ArrowLeft, Plus, MessageSquare, Pencil } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  MessageSquare,
+  Pencil,
+  CircleOff,
+  Clock,
+  Search,
+  Box,
+  Folder,
+  LucideIcon,
+} from "lucide-react";
+import type { Capability } from "@/lib/api/types";
+
+const iconMap: Record<string, LucideIcon> = {
+  "circle-off": CircleOff,
+  clock: Clock,
+  search: Search,
+  box: Box,
+  folder: Folder,
+};
 
 export default function AgentDetailPage({
   params,
@@ -21,6 +40,8 @@ export default function AgentDetailPage({
   const router = useRouter();
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const { data: sessions, isLoading: sessionsLoading } = useSessions(agentId);
+  const { data: agentCapabilities, isLoading: capabilitiesLoading } = useAgentCapabilities(agentId);
+  const { data: allCapabilities } = useCapabilities();
   const createSession = useCreateSession();
 
   const handleNewSession = async () => {
@@ -34,6 +55,13 @@ export default function AgentDetailPage({
       console.error("Failed to create session:", error);
     }
   };
+
+  const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
+    allCapabilities?.find((c) => c.id === capabilityId);
+
+  const sortedCapabilities = agentCapabilities
+    ? [...agentCapabilities].sort((a, b) => a.position - b.position)
+    : [];
 
   if (agentLoading) {
     return (
@@ -150,7 +178,51 @@ export default function AgentDetailPage({
         </div>
 
         <div className="space-y-6">
-          <CapabilitySelector agentId={agentId} />
+          <Card>
+            <CardHeader>
+              <CardTitle>Capabilities</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {capabilitiesLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              ) : sortedCapabilities.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No capabilities enabled.{" "}
+                  <Link href={`/agents/${agentId}/edit`} className="text-primary hover:underline">
+                    Add some
+                  </Link>
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {sortedCapabilities.map((ac) => {
+                    const cap = getCapabilityInfo(ac.capability_id);
+                    if (!cap) return null;
+                    const IconComponent = cap.icon
+                      ? iconMap[cap.icon] || CircleOff
+                      : CircleOff;
+
+                    return (
+                      <div
+                        key={ac.capability_id}
+                        className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
+                      >
+                        <IconComponent className="w-4 h-4" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{cap.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {cap.description}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  useAgents,
-  useDeleteAgent,
-  useCapabilities,
-} from "@/hooks";
+import { useAgents, useCapabilities } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -16,17 +12,10 @@ import { useAgentCapabilitiesBulk } from "@/hooks/use-agent-capabilities-bulk";
 export default function AgentsPage() {
   const { data: agents, isLoading, error } = useAgents();
   const { data: allCapabilities } = useCapabilities();
-  const deleteAgent = useDeleteAgent();
 
   // Get agent IDs for bulk capabilities fetch
   const agentIds = agents?.map((a) => a.id) || [];
   const { data: agentCapabilitiesMap } = useAgentCapabilitiesBulk(agentIds);
-
-  const handleDelete = async (agentId: string) => {
-    if (confirm("Are you sure you want to archive this agent?")) {
-      await deleteAgent.mutateAsync(agentId);
-    }
-  };
 
   if (error) {
     return (
@@ -82,8 +71,6 @@ export default function AgentsPage() {
               agent={agent}
               capabilities={agentCapabilitiesMap?.[agent.id]}
               allCapabilities={allCapabilities}
-              onDelete={handleDelete}
-              isDeleting={deleteAgent.isPending}
               showEditButton
             />
           ))}
