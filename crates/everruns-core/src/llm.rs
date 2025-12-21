@@ -250,11 +250,11 @@ pub struct LlmResponse {
 }
 
 // ============================================================================
-// Conversion from ConversationMessage
+// Conversion from Message
 // ============================================================================
 
-impl From<&crate::message::ConversationMessage> for LlmMessage {
-    fn from(msg: &crate::message::ConversationMessage) -> Self {
+impl From<&crate::message::Message> for LlmMessage {
+    fn from(msg: &crate::message::Message) -> Self {
         let role = match msg.role {
             crate::message::MessageRole::System => LlmMessageRole::System,
             crate::message::MessageRole::User => LlmMessageRole::User,

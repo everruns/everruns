@@ -11,7 +11,7 @@ use everruns_core::{
     memory::{InMemoryEventEmitter, InMemoryMessageStore, MockLlmProvider, MockLlmResponse},
     tools::{EchoTool, FailingTool, GetCurrentTime, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
-    AgentConfig, AgentLoop, ConversationMessage, LoopEvent, MessageRole,
+    AgentConfig, AgentLoop, LoopEvent, Message, MessageRole,
 };
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -214,10 +214,7 @@ async fn test_agent_loop_with_tool_execution() {
     // Create a standalone store and seed it
     let message_store = InMemoryMessageStore::new();
     message_store
-        .seed(
-            session_id,
-            vec![ConversationMessage::user("What time is it?")],
-        )
+        .seed(session_id, vec![Message::user("What time is it?")])
         .await;
 
     // Create a fresh LLM provider

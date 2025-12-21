@@ -20,7 +20,7 @@ use crate::error::{AgentLoopError, Result};
 use crate::llm::{
     LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider, LlmStreamEvent,
 };
-use crate::message::{ConversationMessage, MessageRole};
+use crate::message::{Message, MessageRole};
 use crate::traits::{MessageStore, ToolExecutor};
 
 // ============================================================================
@@ -70,7 +70,7 @@ pub struct AddUserMessageInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddUserMessageResult {
     /// The stored message
-    pub message: ConversationMessage,
+    pub message: Message,
 }
 
 /// Input for CallModelAtom
@@ -92,7 +92,7 @@ pub struct CallModelResult {
     /// Whether the loop should continue (has tool calls)
     pub needs_tool_execution: bool,
     /// The assistant message that was stored
-    pub assistant_message: ConversationMessage,
+    pub assistant_message: Message,
 }
 
 /// Input for ExecuteToolAtom (single tool)
@@ -112,7 +112,7 @@ pub struct ExecuteToolResult {
     /// Result of the tool call
     pub result: ToolResult,
     /// Message stored (tool result)
-    pub message: ConversationMessage,
+    pub message: Message,
 }
 
 // ============================================================================
@@ -160,7 +160,7 @@ where
             content,
         } = input;
 
-        let message = ConversationMessage::user(content);
+        let message = Message::user(content);
         self.message_store
             .store(session_id, message.clone())
             .await?;
@@ -278,9 +278,9 @@ where
         // 4. Store assistant message
         let has_tool_calls = !tool_calls.is_empty();
         let assistant_message = if has_tool_calls {
-            ConversationMessage::assistant_with_tools(&text, tool_calls.clone())
+            Message::assistant_with_tools(&text, tool_calls.clone())
         } else {
-            ConversationMessage::assistant(&text)
+            Message::assistant(&text)
         };
 
         self.message_store
@@ -290,7 +290,7 @@ where
         // 5. If there are tool calls, store tool_call messages too
         if has_tool_calls {
             for tool_call in &tool_calls {
-                let tool_call_msg = ConversationMessage::tool_call(tool_call);
+                let tool_call_msg = Message::tool_call(tool_call);
                 self.message_store.store(session_id, tool_call_msg).await?;
             }
         }
@@ -379,11 +379,8 @@ where
             .await?;
 
         // Store tool result message
-        let message = ConversationMessage::tool_result(
-            &tool_call.id,
-            result.result.clone(),
-            result.error.clone(),
-        );
+        let message =
+            Message::tool_result(&tool_call.id, result.result.clone(), result.error.clone());
         self.message_store
             .store(session_id, message.clone())
             .await?;
@@ -406,7 +403,7 @@ mod tests {
             text: "Hello".to_string(),
             tool_calls: vec![],
             needs_tool_execution: false,
-            assistant_message: ConversationMessage::assistant("Hello"),
+            assistant_message: Message::assistant("Hello"),
         };
         assert_eq!(result.text, "Hello");
         assert!(!result.needs_tool_execution);

@@ -13,14 +13,14 @@ use crate::atoms::{
 use crate::config::AgentConfig;
 use crate::error::{AgentLoopError, Result};
 use crate::llm::LlmProvider;
-use crate::message::ConversationMessage;
+use crate::message::Message;
 use crate::traits::{MessageStore, ToolExecutor};
 
 /// Result of loading messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadMessagesResult {
     /// Loaded messages
-    pub messages: Vec<ConversationMessage>,
+    pub messages: Vec<Message>,
     /// Count of messages
     pub count: usize,
 }

@@ -1,6 +1,6 @@
-// Conversation message types
+// Message types
 //
-// ConversationMessage is a DB-agnostic message type that represents
+// Message is a DB-agnostic message type that represents
 // a single message in the conversation history.
 
 use chrono::{DateTime, Utc};
@@ -51,7 +51,7 @@ impl From<&str> for MessageRole {
 
 /// A message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConversationMessage {
+pub struct Message {
     /// Unique message ID
     pub id: Uuid,
 
@@ -129,7 +129,7 @@ impl MessageContent {
     }
 }
 
-impl ConversationMessage {
+impl Message {
     /// Create a new user message
     pub fn user(content: impl Into<String>) -> Self {
         Self {
@@ -227,21 +227,21 @@ mod tests {
 
     #[test]
     fn test_user_message() {
-        let msg = ConversationMessage::user("Hello");
+        let msg = Message::user("Hello");
         assert_eq!(msg.role, MessageRole::User);
         assert_eq!(msg.text(), Some("Hello"));
     }
 
     #[test]
     fn test_assistant_message() {
-        let msg = ConversationMessage::assistant("Hi there!");
+        let msg = Message::assistant("Hi there!");
         assert_eq!(msg.role, MessageRole::Assistant);
         assert_eq!(msg.text(), Some("Hi there!"));
     }
 
     #[test]
     fn test_tool_result_message() {
-        let msg = ConversationMessage::tool_result(
+        let msg = Message::tool_result(
             "call_123",
             Some(serde_json::json!({"result": "success"})),
             None,

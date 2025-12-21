@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::events::LoopEvent;
-use crate::message::ConversationMessage;
+use crate::message::Message;
 
 // ============================================================================
 // EventEmitter - For streaming events during execution
@@ -51,14 +51,10 @@ pub trait EventEmitter: Send + Sync {
 #[async_trait]
 pub trait MessageStore: Send + Sync {
     /// Store a message
-    async fn store(&self, session_id: Uuid, message: ConversationMessage) -> Result<()>;
+    async fn store(&self, session_id: Uuid, message: Message) -> Result<()>;
 
     /// Store multiple messages
-    async fn store_batch(
-        &self,
-        session_id: Uuid,
-        messages: Vec<ConversationMessage>,
-    ) -> Result<()> {
+    async fn store_batch(&self, session_id: Uuid, messages: Vec<Message>) -> Result<()> {
         for message in messages {
             self.store(session_id, message).await?;
         }
@@ -66,7 +62,7 @@ pub trait MessageStore: Send + Sync {
     }
 
     /// Load all messages for a session
-    async fn load(&self, session_id: Uuid) -> Result<Vec<ConversationMessage>>;
+    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>>;
 
     /// Load messages with pagination
     async fn load_page(
@@ -74,7 +70,7 @@ pub trait MessageStore: Send + Sync {
         session_id: Uuid,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<ConversationMessage>> {
+    ) -> Result<Vec<Message>> {
         let all = self.load(session_id).await?;
         Ok(all.into_iter().skip(offset).take(limit).collect())
     }

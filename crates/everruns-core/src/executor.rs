@@ -19,7 +19,7 @@ use crate::events::LoopEvent;
 use crate::llm::{
     LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider, LlmStreamEvent,
 };
-use crate::message::{ConversationMessage, MessageRole};
+use crate::message::{Message, MessageRole};
 use crate::step::{LoopStep, StepInput, StepOutput, StepResult};
 use crate::traits::{EventEmitter, MessageStore, ToolExecutor};
 
@@ -29,7 +29,7 @@ pub struct LoopResult {
     /// Session ID
     pub session_id: Uuid,
     /// Final messages (including all responses)
-    pub messages: Vec<ConversationMessage>,
+    pub messages: Vec<Message>,
     /// Total iterations executed
     pub iterations: usize,
     /// Final assistant response text (if any)
@@ -182,9 +182,9 @@ where
             // Store assistant response as message (even with empty text if there are tool_calls)
             if !llm_result.text.is_empty() || has_tool_calls {
                 let assistant_msg = if let Some(ref tool_calls) = llm_result.tool_calls {
-                    ConversationMessage::assistant_with_tools(&llm_result.text, tool_calls.clone())
+                    Message::assistant_with_tools(&llm_result.text, tool_calls.clone())
                 } else {
-                    ConversationMessage::assistant(&llm_result.text)
+                    Message::assistant(&llm_result.text)
                 };
 
                 self.message_store
@@ -210,7 +210,7 @@ where
 
                 // Store tool call messages
                 for tool_call in &tool_calls {
-                    let tool_call_msg = ConversationMessage::tool_call(tool_call);
+                    let tool_call_msg = Message::tool_call(tool_call);
                     self.message_store
                         .store(session_id, tool_call_msg.clone())
                         .await?;
@@ -222,7 +222,7 @@ where
 
                 // Store tool result messages and add to conversation
                 for (tool_call, result) in tool_calls.iter().zip(tool_results.iter()) {
-                    let result_msg = ConversationMessage::tool_result(
+                    let result_msg = Message::tool_result(
                         &tool_call.id,
                         result.result.clone(),
                         result.error.clone(),
@@ -302,7 +302,7 @@ where
             // Create result messages
             let mut messages = input.messages;
             for (tool_call, result) in input.pending_tool_calls.iter().zip(tool_results.iter()) {
-                let result_msg = ConversationMessage::tool_result(
+                let result_msg = Message::tool_result(
                     &tool_call.id,
                     result.result.clone(),
                     result.error.clone(),
@@ -335,9 +335,9 @@ where
         // Add assistant response (even with empty text if there are tool_calls)
         if !llm_result.text.is_empty() || has_tool_calls {
             let assistant_msg = if let Some(ref tool_calls) = llm_result.tool_calls {
-                ConversationMessage::assistant_with_tools(&llm_result.text, tool_calls.clone())
+                Message::assistant_with_tools(&llm_result.text, tool_calls.clone())
             } else {
-                ConversationMessage::assistant(&llm_result.text)
+                Message::assistant(&llm_result.text)
             };
             messages.push(assistant_msg);
         }
@@ -352,7 +352,7 @@ where
             // Add tool call messages
             let tool_calls = llm_result.tool_calls.unwrap();
             for tool_call in &tool_calls {
-                messages.push(ConversationMessage::tool_call(tool_call));
+                messages.push(Message::tool_call(tool_call));
             }
 
             Ok(StepOutput::continue_with(step, messages, tool_calls))
@@ -370,7 +370,7 @@ where
         user_message: impl Into<String>,
     ) -> Result<LoopResult> {
         // Store user message
-        let user_msg = ConversationMessage::user(user_message);
+        let user_msg = Message::user(user_message);
         self.message_store.store(session_id, user_msg).await?;
 
         // Run the loop
@@ -386,7 +386,7 @@ where
         &self,
         session_id: Uuid,
         iteration: usize,
-        messages: &[ConversationMessage],
+        messages: &[Message],
     ) -> Result<LlmCallResult> {
         // Emit LLM call started
         self.event_emitter

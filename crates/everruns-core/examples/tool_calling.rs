@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use everruns_core::{
     config::AgentConfig,
     memory::{InMemoryEventEmitter, InMemoryMessageStore},
-    message::{ConversationMessage, MessageContent, MessageRole},
+    message::{Message, MessageContent, MessageRole},
     openai::OpenAIProtocolLlmProvider,
     tools::{Tool, ToolExecutionResult, ToolRegistry},
     AgentLoop,
@@ -206,7 +206,7 @@ impl Tool for RandomFact {
 // Helper to print conversation steps
 // ============================================================================
 
-fn print_conversation_steps(messages: &[ConversationMessage]) {
+fn print_conversation_steps(messages: &[Message]) {
     println!("\n  Steps:");
     for (i, msg) in messages.iter().enumerate() {
         match msg.role {
@@ -305,7 +305,7 @@ async fn example_time_query() -> anyhow::Result<()> {
     let session_id = Uuid::now_v7();
     let user_message = "What time is it right now?";
     message_store
-        .seed(session_id, vec![ConversationMessage::user(user_message)])
+        .seed(session_id, vec![Message::user(user_message)])
         .await;
 
     println!("User: {}\n", user_message);
@@ -342,7 +342,7 @@ async fn example_calculation() -> anyhow::Result<()> {
     let session_id = Uuid::now_v7();
     let user_message = "What is 42 multiplied by 17?";
     message_store
-        .seed(session_id, vec![ConversationMessage::user(user_message)])
+        .seed(session_id, vec![Message::user(user_message)])
         .await;
 
     println!("User: {}\n", user_message);
@@ -385,7 +385,7 @@ async fn example_multi_tool() -> anyhow::Result<()> {
     let session_id = Uuid::now_v7();
     let user_message = "Tell me a random fact about nature.";
     message_store
-        .seed(session_id, vec![ConversationMessage::user(user_message)])
+        .seed(session_id, vec![Message::user(user_message)])
         .await;
 
     println!("User: {}\n", user_message);

@@ -22,7 +22,7 @@ use everruns_core::{
     capabilities::{Capability, CapabilityId, CapabilityRegistry, CapabilityStatus},
     config::AgentConfig,
     memory::{InMemoryEventEmitter, InMemoryMessageStore},
-    message::{ConversationMessage, MessageContent, MessageRole},
+    message::{Message, MessageContent, MessageRole},
     openai::OpenAIProtocolLlmProvider,
     tools::{Tool, ToolExecutionResult},
     AgentLoop,
@@ -148,7 +148,7 @@ impl Tool for CalculatorTool {
 // Helper Functions
 // ============================================================================
 
-fn print_conversation_steps(messages: &[ConversationMessage]) {
+fn print_conversation_steps(messages: &[Message]) {
     println!("\n  Steps:");
     for (i, msg) in messages.iter().enumerate() {
         match msg.role {
@@ -251,7 +251,7 @@ async fn example_builtin_capability() -> anyhow::Result<()> {
     let session_id = Uuid::now_v7();
     let user_message = "What's the current time?";
     message_store
-        .seed(session_id, vec![ConversationMessage::user(user_message)])
+        .seed(session_id, vec![Message::user(user_message)])
         .await;
 
     println!("User: {}\n", user_message);
@@ -302,7 +302,7 @@ async fn example_custom_capability() -> anyhow::Result<()> {
     let session_id = Uuid::now_v7();
     let user_message = "What is 123 multiplied by 456?";
     message_store
-        .seed(session_id, vec![ConversationMessage::user(user_message)])
+        .seed(session_id, vec![Message::user(user_message)])
         .await;
 
     println!("User: {}\n", user_message);
@@ -355,7 +355,7 @@ async fn example_multiple_capabilities() -> anyhow::Result<()> {
     let session_id = Uuid::now_v7();
     let user_message = "What time is it in human-readable format?";
     message_store
-        .seed(session_id, vec![ConversationMessage::user(user_message)])
+        .seed(session_id, vec![Message::user(user_message)])
         .await;
 
     println!("User: {}\n", user_message);

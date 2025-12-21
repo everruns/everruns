@@ -11,7 +11,7 @@
 use everruns_core::{
     config::AgentConfig,
     memory::{InMemoryEventEmitter, InMemoryMessageStore},
-    message::ConversationMessage,
+    message::Message,
     openai::OpenAIProtocolLlmProvider,
     tools::ToolRegistry,
     AgentLoop,
@@ -45,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
     let user_input = "What is Rust programming language in one sentence?";
 
     messages
-        .seed(session_id, vec![ConversationMessage::user(user_input)])
+        .seed(session_id, vec![Message::user(user_input)])
         .await;
 
     println!("User: {}\n", user_input);
