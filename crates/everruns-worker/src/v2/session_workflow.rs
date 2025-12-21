@@ -4,20 +4,15 @@
 //
 // Key design principles:
 // - Atoms handle message loading/storage internally via MessageStore
+// - Atoms emit events via EventEmitter (no separate emit-event activities)
 // - Workflow only tracks session_id, agent_config, and iteration
 // - Each tool call is a separate activity for better visibility
 // - No message passing between states - atoms load from DB
 //
 // State machine:
-// Init → LoadingAgent → PreModelCall → CallingModel →
-//   (tool_calls?) → ExecutingTools → (wait for all) → PreModelCall (loop)
+// Init → LoadingAgent → CallingModel →
+//   (tool_calls?) → ExecutingTools → (wait for all) → CallingModel (loop)
 //   (no tools)   → Completed
-//
-// Events emitted:
-// - LoopStarted: On workflow start
-// - LlmCallStarted/LlmCallCompleted: Before/after model call
-// - ToolExecutionStarted/ToolExecutionCompleted: For each tool
-// - LoopCompleted/LoopError: On workflow end
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -98,25 +93,19 @@ pub struct ToolDefinitionData {
 }
 
 // ============================================================================
-// Workflow State (Simplified - no message passing)
+// Workflow State (Simplified - no message passing, no emit-event)
 // ============================================================================
 
-/// Workflow states - atoms handle message storage
+/// Workflow states - atoms handle message storage and event emission
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WorkflowState {
-    /// Initial: emit start event, load agent config
+    /// Initial state
     Init,
 
     /// Loading agent configuration
     LoadingAgent { pending_activity: String },
 
-    /// Ready to call LLM (atoms load messages from DB)
-    PreModelCall {
-        agent_config: AgentConfigData,
-        iteration: u8,
-    },
-
-    /// Waiting for LLM response
+    /// Waiting for LLM response (atoms load messages from DB)
     CallingModel {
         pending_activity: String,
         agent_config: AgentConfigData,
@@ -149,7 +138,6 @@ mod activity_names {
     pub const LOAD_AGENT: &str = "load-agent";
     pub const CALL_MODEL: &str = "call-model";
     pub const EXECUTE_TOOL: &str = "execute-tool";
-    pub const EMIT_EVENT: &str = "emit-event";
 }
 
 // ============================================================================
@@ -182,32 +170,13 @@ impl SessionWorkflowV2 {
         self.input.session_id.to_string()
     }
 
-    /// Create activity to emit an event
-    fn emit_event_activity(&mut self, event_type: &str, data: serde_json::Value) -> WorkflowAction {
-        WorkflowAction::ScheduleActivity {
-            activity_id: self.next_activity_id(activity_names::EMIT_EVENT),
-            activity_type: activity_names::EMIT_EVENT.to_string(),
-            input: json!({
-                "session_id": self.session_id(),
-                "event_type": event_type,
-                "data": data,
-            }),
-        }
-    }
-
     // =========================================================================
     // State Handlers
     // =========================================================================
 
     fn handle_agent_loaded(&mut self, result: serde_json::Value) -> Vec<WorkflowAction> {
         let agent_config: AgentConfigData = serde_json::from_value(result).unwrap_or_default();
-
-        // Go directly to PreModelCall - atoms will load messages
-        self.state = WorkflowState::PreModelCall {
-            agent_config,
-            iteration: 1,
-        };
-        self.transition_to_model_call()
+        self.transition_to_model_call(agent_config, 1)
     }
 
     fn handle_model_response(
@@ -229,26 +198,10 @@ impl SessionWorkflowV2 {
             .get("tool_calls")
             .and_then(|v| serde_json::from_value(v.clone()).ok());
 
-        // Event: LlmCallCompleted
-        let mut actions = vec![self.emit_event_activity(
-            "llm_call_completed",
-            json!({
-                "session_id": self.session_id(),
-                "iteration": iteration,
-                "has_tool_calls": needs_tool_execution,
-            }),
-        )];
-
         if needs_tool_execution {
             if let Some(tool_calls) = tool_calls {
                 if !tool_calls.is_empty() && iteration < agent_config.max_iterations {
-                    // Schedule tool execution
-                    actions.extend(self.transition_to_tool_execution(
-                        agent_config,
-                        tool_calls,
-                        iteration,
-                    ));
-                    return actions;
+                    return self.transition_to_tool_execution(agent_config, tool_calls, iteration);
                 }
             }
         }
@@ -258,20 +211,12 @@ impl SessionWorkflowV2 {
             final_text: Some(text),
         };
 
-        actions.push(self.emit_event_activity(
-            "loop_completed",
-            json!({
-                "session_id": self.session_id(),
-            }),
-        ));
-        actions.push(WorkflowAction::CompleteWorkflow {
+        vec![WorkflowAction::CompleteWorkflow {
             result: Some(json!({
                 "status": "completed",
                 "session_id": self.session_id(),
             })),
-        });
-
-        actions
+        }]
     }
 
     fn handle_tool_completed(
@@ -307,22 +252,6 @@ impl SessionWorkflowV2 {
                     error: Some("Failed to parse tool result".to_string()),
                 });
 
-        // Find the tool call for this result
-        let tool_call = tool_calls
-            .iter()
-            .find(|tc| tc.id == tool_result.tool_call_id);
-
-        // Emit completion event
-        let mut actions = vec![self.emit_event_activity(
-            "tool_execution_completed",
-            json!({
-                "session_id": self.session_id(),
-                "tool_call_id": tool_result.tool_call_id,
-                "tool_name": tool_call.map(|tc| tc.name.as_str()).unwrap_or("unknown"),
-                "success": tool_result.error.is_none(),
-            }),
-        )];
-
         // Remove from pending, add to completed
         pending_activities.retain(|id| id != &activity_id);
         completed.push((activity_id, tool_result));
@@ -330,11 +259,7 @@ impl SessionWorkflowV2 {
         // Check if all tools are done
         if pending_activities.is_empty() {
             // All tools completed, go to next iteration
-            self.state = WorkflowState::PreModelCall {
-                agent_config,
-                iteration: iteration + 1,
-            };
-            actions.extend(self.transition_to_model_call());
+            self.transition_to_model_call(agent_config, iteration + 1)
         } else {
             // Still waiting for more tools
             self.state = WorkflowState::ExecutingTools {
@@ -344,9 +269,8 @@ impl SessionWorkflowV2 {
                 tool_calls,
                 iteration,
             };
+            vec![]
         }
-
-        actions
     }
 }
 
@@ -362,23 +286,13 @@ impl Workflow for SessionWorkflowV2 {
             pending_activity: activity_id.clone(),
         };
 
-        vec![
-            // Event: LoopStarted
-            self.emit_event_activity(
-                "loop_started",
-                json!({
-                    "session_id": self.session_id(),
-                }),
-            ),
-            // Load agent config
-            WorkflowAction::ScheduleActivity {
-                activity_id,
-                activity_type: activity_names::LOAD_AGENT.to_string(),
-                input: json!({
-                    "agent_id": self.input.agent_id.to_string(),
-                }),
-            },
-        ]
+        vec![WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::LOAD_AGENT.to_string(),
+            input: json!({
+                "agent_id": self.input.agent_id.to_string(),
+            }),
+        }]
     }
 
     fn on_activity_completed(
@@ -408,33 +322,18 @@ impl Workflow for SessionWorkflowV2 {
                 self.handle_tool_completed(activity_id.to_string(), result)
             }
 
-            // Ignore unrelated activity completions (e.g., emit_event)
             _ => vec![],
         }
     }
 
-    fn on_activity_failed(&mut self, activity_id: &str, error: &str) -> Vec<WorkflowAction> {
-        // Ignore emit_event failures
-        if activity_id.starts_with(activity_names::EMIT_EVENT) {
-            return vec![];
-        }
-
+    fn on_activity_failed(&mut self, _activity_id: &str, error: &str) -> Vec<WorkflowAction> {
         self.state = WorkflowState::Failed {
             error: error.to_string(),
         };
 
-        vec![
-            self.emit_event_activity(
-                "loop_error",
-                json!({
-                    "session_id": self.session_id(),
-                    "error": error,
-                }),
-            ),
-            WorkflowAction::FailWorkflow {
-                reason: error.to_string(),
-            },
-        ]
+        vec![WorkflowAction::FailWorkflow {
+            reason: error.to_string(),
+        }]
     }
 
     fn is_completed(&self) -> bool {
@@ -447,15 +346,11 @@ impl Workflow for SessionWorkflowV2 {
 
 // Helper methods for state transitions
 impl SessionWorkflowV2 {
-    fn transition_to_model_call(&mut self) -> Vec<WorkflowAction> {
-        let (agent_config, iteration) = match &self.state {
-            WorkflowState::PreModelCall {
-                agent_config,
-                iteration,
-            } => (agent_config.clone(), *iteration),
-            _ => return vec![],
-        };
-
+    fn transition_to_model_call(
+        &mut self,
+        agent_config: AgentConfigData,
+        iteration: u8,
+    ) -> Vec<WorkflowAction> {
         let activity_id = self.next_activity_id(activity_names::CALL_MODEL);
 
         self.state = WorkflowState::CallingModel {
@@ -464,25 +359,14 @@ impl SessionWorkflowV2 {
             iteration,
         };
 
-        vec![
-            // Event: LlmCallStarted
-            self.emit_event_activity(
-                "llm_call_started",
-                json!({
-                    "session_id": self.session_id(),
-                    "iteration": iteration,
-                }),
-            ),
-            // Call model - atoms load messages from DB
-            WorkflowAction::ScheduleActivity {
-                activity_id,
-                activity_type: activity_names::CALL_MODEL.to_string(),
-                input: json!({
-                    "session_id": self.session_id(),
-                    "agent_config": agent_config,
-                }),
-            },
-        ]
+        vec![WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::CALL_MODEL.to_string(),
+            input: json!({
+                "session_id": self.session_id(),
+                "agent_config": agent_config,
+            }),
+        }]
     }
 
     fn transition_to_tool_execution(
@@ -499,17 +383,6 @@ impl SessionWorkflowV2 {
             let activity_id = self.next_activity_id(activity_names::EXECUTE_TOOL);
             pending_activities.push(activity_id.clone());
 
-            // Event: ToolExecutionStarted
-            actions.push(self.emit_event_activity(
-                "tool_execution_started",
-                json!({
-                    "session_id": self.session_id(),
-                    "tool_call_id": tool_call.id,
-                    "tool_name": tool_call.name,
-                }),
-            ));
-
-            // Schedule tool execution
             actions.push(WorkflowAction::ScheduleActivity {
                 activity_id,
                 activity_type: activity_names::EXECUTE_TOOL.to_string(),
@@ -576,8 +449,8 @@ mod tests {
         let mut workflow = SessionWorkflowV2::new(input);
         let actions = workflow.on_start();
 
-        // Should emit start event and load agent
-        assert!(actions.len() >= 2);
+        // Should just load agent (no emit-event)
+        assert_eq!(actions.len(), 1);
         assert!(find_activity_id(&actions, "load-agent").is_some());
         assert!(!workflow.is_completed());
     }
@@ -593,7 +466,6 @@ mod tests {
         let actions = workflow.on_start();
         let load_agent_id = find_activity_id(&actions, "load-agent").unwrap();
 
-        // Agent loaded - should go directly to call-model (no load-messages)
         let actions = workflow.on_activity_completed(
             &load_agent_id,
             json!({
@@ -603,9 +475,9 @@ mod tests {
             }),
         );
 
-        // Should schedule call-model (not load-messages)
+        // Should schedule only call-model (no emit-event)
+        assert_eq!(actions.len(), 1);
         assert!(find_activity_id(&actions, "call-model").is_some());
-        assert!(find_activity_id(&actions, "load-messages").is_none());
     }
 
     #[test]
@@ -639,7 +511,8 @@ mod tests {
             }),
         );
 
-        // Should schedule execute-tool (not execute-tools)
+        // Should schedule only execute-tool (no emit-event)
+        assert_eq!(actions.len(), 1);
         assert!(find_activity_id(&actions, "execute-tool").is_some());
     }
 
@@ -674,7 +547,8 @@ mod tests {
             }),
         );
 
-        // Should complete
+        // Should complete (just CompleteWorkflow, no emit-event)
+        assert_eq!(actions.len(), 1);
         assert!(workflow.is_completed());
         assert!(actions
             .iter()

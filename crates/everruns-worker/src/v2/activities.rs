@@ -21,7 +21,6 @@ use everruns_core::config::AgentConfigBuilder;
 use everruns_core::openai::OpenAIProtocolLlmProvider;
 use everruns_storage::repositories::Database;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use uuid::Uuid;
 
 use super::session_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
@@ -223,9 +222,6 @@ pub mod activity_types {
     pub const CALL_MODEL: &str = "call-model";
     pub const EXECUTE_TOOL: &str = "execute-tool";
     pub const LOAD_AGENT: &str = "load-agent";
-    pub const LOAD_MESSAGES: &str = "load-messages";
-    pub const SAVE_MESSAGE: &str = "save-message";
-    pub const EMIT_EVENT: &str = "emit-event";
 }
 
 // ============================================================================
