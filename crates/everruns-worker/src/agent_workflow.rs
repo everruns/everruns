@@ -68,16 +68,32 @@ pub struct ToolResultData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfigData {
     pub model: String,
+    /// Provider type (openai, anthropic, azure_openai, ollama, custom)
+    #[serde(default = "default_provider_type")]
+    pub provider_type: String,
+    /// Optional API key (only passed when provider-specific key is configured)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Optional base URL override
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
     pub system_prompt: Option<String>,
     pub tools: Vec<ToolDefinitionData>,
     #[serde(default)]
     pub max_iterations: u8,
 }
 
+fn default_provider_type() -> String {
+    "openai".to_string()
+}
+
 impl Default for AgentConfigData {
     fn default() -> Self {
         Self {
-            model: "gpt-5.2".to_string(),
+            model: "gpt-4o".to_string(),
+            provider_type: "openai".to_string(),
+            api_key: None,
+            base_url: None,
             system_prompt: None,
             tools: Vec::new(),
             max_iterations: 10,

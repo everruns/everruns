@@ -19,6 +19,7 @@ everruns-contracts = { path = "../everruns-contracts" }
 everruns-storage = { path = "../everruns-storage" }
 everruns-core = { path = "../everruns-core" }
 everruns-openai = { path = "../everruns-openai" }
+everruns-anthropic = { path = "../everruns-anthropic" }
 
 chrono.workspace = true
 async-trait.workspace = true

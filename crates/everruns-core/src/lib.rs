@@ -36,8 +36,10 @@ pub mod traits;
 // In-memory implementations for examples and testing
 pub mod memory;
 
-// OpenAI Protocol provider
+// LLM Protocol providers
+pub mod anthropic;
 pub mod openai;
+pub mod provider_factory;
 
 // Re-exports for convenience
 pub use config::AgentConfig;
@@ -92,5 +94,11 @@ pub use ag_ui::{
 
 // Tool types (runtime types defined in this crate)
 pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
+
+// Provider factory re-exports
+pub use provider_factory::{
+    create_default_provider, create_provider, create_provider_from_env, BoxedLlmProvider,
+    ProviderConfig, ProviderType,
+};
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module

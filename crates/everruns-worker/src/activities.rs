@@ -16,7 +16,7 @@ use everruns_core::atoms::{
     ExecuteToolInput as AtomExecuteToolInput,
 };
 use everruns_core::config::AgentConfigBuilder;
-use everruns_core::openai::OpenAIProtocolLlmProvider;
+use everruns_core::provider_factory::{create_provider, ProviderConfig, ProviderType};
 use everruns_storage::repositories::Database;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -109,12 +109,46 @@ pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<
     // Apply capabilities to get tools
     let registry = CapabilityRegistry::with_builtins();
 
+    // Look up the LLM model configuration if default_model_id is set
+    let (model_id, provider_type) = if let Some(llm_model_uuid) = agent.default_model_id {
+        // Look up the LLM model to get the actual model_id and provider_type
+        match db.get_llm_model(llm_model_uuid).await {
+            Ok(Some(llm_model)) => {
+                // Get provider info to determine provider_type
+                match db.get_llm_provider(llm_model.provider_id).await {
+                    Ok(Some(provider)) => {
+                        tracing::info!(
+                            agent_id = %agent_id,
+                            model_id = %llm_model.model_id,
+                            provider_type = %provider.provider_type,
+                            "Resolved LLM model from database"
+                        );
+                        (llm_model.model_id, provider.provider_type)
+                    }
+                    _ => {
+                        // Fallback to model detection if provider lookup fails
+                        let model_id = llm_model.model_id.clone();
+                        let provider_type = detect_provider_type(&model_id);
+                        (model_id, provider_type)
+                    }
+                }
+            }
+            _ => {
+                // Fallback to default if model lookup fails
+                let default_model = "gpt-4o".to_string();
+                let provider_type = detect_provider_type(&default_model);
+                (default_model, provider_type)
+            }
+        }
+    } else {
+        // No default_model_id set, use gpt-4o default
+        let default_model = "gpt-4o".to_string();
+        let provider_type = detect_provider_type(&default_model);
+        (default_model, provider_type)
+    };
+
     // Build base config and apply capabilities
-    let model_str = agent
-        .default_model_id
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| "gpt-4o".to_string());
-    let base_config = everruns_core::AgentConfig::new(&agent.system_prompt, &model_str);
+    let base_config = everruns_core::AgentConfig::new(&agent.system_prompt, &model_id);
     let applied =
         everruns_core::capabilities::apply_capabilities(base_config, &capability_ids, &registry);
 
@@ -132,21 +166,20 @@ pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<
         })
         .collect();
 
-    let model = agent
-        .default_model_id
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| "gpt-4o".to_string());
-
     tracing::info!(
         agent_id = %agent_id,
-        model = %model,
+        model = %model_id,
+        provider_type = %provider_type,
         capability_count = capability_ids.len(),
         tool_count = tools.len(),
         "Loaded agent with capabilities"
     );
 
     Ok(AgentConfigData {
-        model,
+        model: model_id,
+        provider_type,
+        api_key: None, // Uses environment variable by default
+        base_url: None,
         system_prompt: Some(applied.config.system_prompt),
         tools,
         max_iterations: 10,
@@ -166,10 +199,33 @@ pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<
         .parse()
         .context("Invalid session_id UUID")?;
 
+    // Create LLM provider based on agent config
+    let provider_type: ProviderType = input
+        .agent_config
+        .provider_type
+        .parse()
+        .unwrap_or(ProviderType::OpenAI);
+
+    tracing::info!(
+        session_id = %session_id,
+        model = %input.agent_config.model,
+        provider_type = %provider_type,
+        "Creating LLM provider for call_model_activity"
+    );
+
+    let mut provider_config = ProviderConfig::new(provider_type);
+    if let Some(ref api_key) = input.agent_config.api_key {
+        provider_config = provider_config.with_api_key(api_key);
+    }
+    if let Some(ref base_url) = input.agent_config.base_url {
+        provider_config = provider_config.with_base_url(base_url);
+    }
+
+    let llm_provider =
+        create_provider(&provider_config).context("Failed to create LLM provider")?;
+
     // Create atom dependencies
     let message_store = DbMessageStore::new(db);
-    let llm_provider =
-        OpenAIProtocolLlmProvider::from_env().context("Failed to create LLM provider")?;
 
     // Build AgentConfig from the workflow's AgentConfigData
     let agent_config = build_agent_config(&input.agent_config);
@@ -287,6 +343,39 @@ fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
     })
 }
 
+/// Detect provider type from model name pattern
+///
+/// This is a helper function that infers the provider type from the model name.
+/// It supports common patterns for OpenAI, Anthropic, and other providers.
+fn detect_provider_type(model_id: &str) -> String {
+    let model_lower = model_id.to_lowercase();
+
+    if model_lower.starts_with("claude")
+        || model_lower.contains("claude")
+        || model_lower.starts_with("anthropic")
+    {
+        "anthropic".to_string()
+    } else if model_lower.starts_with("gpt")
+        || model_lower.starts_with("o1")
+        || model_lower.starts_with("o3")
+        || model_lower.starts_with("chatgpt")
+        || model_lower.starts_with("davinci")
+        || model_lower.starts_with("text-")
+    {
+        "openai".to_string()
+    } else if model_lower.contains("llama")
+        || model_lower.contains("mistral")
+        || model_lower.contains("codellama")
+        || model_lower.contains("deepseek")
+    {
+        // Local models typically run via Ollama
+        "ollama".to_string()
+    } else {
+        // Default to OpenAI for unknown models
+        "openai".to_string()
+    }
+}
+
 // ============================================================================
 // Activity Type Constants
 // ============================================================================
@@ -313,6 +402,9 @@ mod tests {
             session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             agent_config: AgentConfigData {
                 model: "gpt-4o".into(),
+                provider_type: "openai".into(),
+                api_key: None,
+                base_url: None,
                 system_prompt: Some("You are a helpful assistant.".into()),
                 tools: vec![],
                 max_iterations: 5,
@@ -350,6 +442,9 @@ mod tests {
     fn test_build_agent_config() {
         let data = AgentConfigData {
             model: "gpt-4o".into(),
+            provider_type: "openai".into(),
+            api_key: None,
+            base_url: None,
             system_prompt: Some("Test prompt".into()),
             tools: vec![ToolDefinitionData {
                 name: "test_tool".into(),
@@ -364,5 +459,20 @@ mod tests {
         assert_eq!(config.system_prompt, "Test prompt");
         assert_eq!(config.tools.len(), 1);
         assert_eq!(config.max_iterations, 10);
+    }
+
+    #[test]
+    fn test_detect_provider_type() {
+        assert_eq!(detect_provider_type("gpt-4o"), "openai");
+        assert_eq!(detect_provider_type("gpt-4-turbo"), "openai");
+        assert_eq!(detect_provider_type("claude-3-opus"), "anthropic");
+        assert_eq!(
+            detect_provider_type("claude-3-5-sonnet-20241022"),
+            "anthropic"
+        );
+        assert_eq!(detect_provider_type("llama-3.1-70b"), "ollama");
+        assert_eq!(detect_provider_type("mistral-7b"), "ollama");
+        assert_eq!(detect_provider_type("o1-preview"), "openai");
+        assert_eq!(detect_provider_type("unknown-model"), "openai"); // Default
     }
 }
