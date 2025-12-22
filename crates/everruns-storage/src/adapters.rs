@@ -452,7 +452,7 @@ mod tests {
         // The error is properly parsed
         if let MessageContent::ToolResult { result, error } = content {
             // result is Some(Value::Null) due to how serde_json works
-            assert!(result.as_ref().map_or(true, |v| v.is_null()));
+            assert!(result.as_ref().is_none_or(|v| v.is_null()));
             assert_eq!(error, Some("Tool not found".to_string()));
         } else {
             panic!("Expected ToolResult content");
