@@ -75,11 +75,13 @@ impl CapabilityId {
     pub const FILE_SYSTEM: &'static str = "file_system";
     pub const TEST_MATH: &'static str = "test_math";
     pub const TEST_WEATHER: &'static str = "test_weather";
+    pub const TASK_LIST: &'static str = "task_list";
 
     // Factory methods
     pub fn new(id: impl Into<String>) -> Self;
     pub fn noop() -> Self;
     pub fn current_time() -> Self;
+    pub fn task_list() -> Self;
     // ... etc
 }
 ```
@@ -185,6 +187,41 @@ The `CapabilityRegistry` in core holds all registered capability implementations
 - **Icon**: "folder"
 - **Category**: "File Operations"
 
+#### TaskList
+
+- **Status**: Available
+- **Purpose**: Enable agents to create and manage structured task lists for tracking multi-step work progress
+- **System Prompt**: Comprehensive guidance on when and how to use task management, including best practices for multi-step workflows
+- **Tools**:
+  - `write_todos` - Create or update a task list
+    - Parameters:
+      - `todos`: array of task objects, each with:
+        - `content`: string (imperative form, e.g., "Run tests", "Fix the bug")
+        - `activeForm`: string (present continuous, e.g., "Running tests", "Fixing the bug")
+        - `status`: enum (pending, in_progress, completed)
+    - Returns: success status with task counts and validated todos
+    - Validation: Warns if no task is in_progress (when pending tasks exist) or if multiple tasks are in_progress
+    - Policy: Auto
+- **Icon**: "list-checks"
+- **Category**: "Productivity"
+
+##### When to Use TaskList
+
+The system prompt instructs agents to use task management when:
+1. **Complex multi-step tasks** - Tasks requiring 3 or more distinct steps
+2. **User provides multiple tasks** - When users give a list of things to do
+3. **Non-trivial work** - Tasks requiring careful planning
+4. **After receiving new instructions** - Capture requirements immediately
+5. **When starting work** - Mark a task as `in_progress` BEFORE beginning
+6. **After completing work** - Mark task as `completed` and add follow-up tasks
+
+##### Best Practices
+
+1. **One task in progress** - Exactly one task should be `in_progress` at a time
+2. **Update immediately** - Mark tasks completed as soon as done, don't batch
+3. **Replace entire list** - Each `write_todos` call replaces the full list
+4. **Completion criteria** - Only mark `completed` when fully done (tests pass, no errors)
+
 ### Capability Application Flow
 
 When a session executes:
@@ -226,6 +263,14 @@ Response:
       "category": "Utilities"
     },
     {
+      "id": "task_list",
+      "name": "Task Management",
+      "description": "Enables agents to create and manage structured task lists for tracking multi-step work progress.",
+      "status": "available",
+      "icon": "list-checks",
+      "category": "Productivity"
+    },
+    {
       "id": "research",
       "name": "Research",
       "description": "Deep research capability with organized scratchpad.",
@@ -234,7 +279,7 @@ Response:
       "category": "AI"
     }
   ],
-  "total": 7
+  "total": 8
 }
 ```
 
