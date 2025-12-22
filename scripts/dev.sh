@@ -49,6 +49,11 @@ case "$command" in
     echo "✅ Migrations complete!"
     ;;
 
+  seed)
+    echo "🌱 Seeding development database..."
+    "$SCRIPT_DIR/seed-agents.sh"
+    ;;
+
   build)
     echo "🔨 Building Everrun..."
     cargo build
@@ -192,8 +197,31 @@ case "$command" in
       echo "   ⚠️  API compiling (will auto-reload on changes)..."
     fi
 
+    # Seed development agents (runs in background, waits for API)
+    echo "5️⃣  Seeding development agents..."
+    (
+      # Wait for API to be healthy before seeding
+      max_attempts=60
+      attempt=0
+      while [[ $attempt -lt $max_attempts ]]; do
+        if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+          break
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+      done
+
+      # Check if yq and jq are available for seeding
+      if command -v yq &> /dev/null && command -v jq &> /dev/null; then
+        "$SCRIPT_DIR/seed-agents.sh" 2>&1 | sed 's/^/   /'
+      else
+        echo "   ⚠️  Skipping seed: yq and jq required (install with: pip install yq && apt-get install jq)"
+      fi
+    ) &
+    SEED_PID=$!
+
     # Start Worker in background with auto-reload (Temporal mode)
-    echo "5️⃣  Starting Temporal worker with auto-reload..."
+    echo "6️⃣  Starting Temporal worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
@@ -201,7 +229,7 @@ case "$command" in
     echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
     # Start UI in background
-    echo "6️⃣  Starting UI server..."
+    echo "7️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
@@ -310,10 +338,11 @@ Commands:
   init        Install all development dependencies (Rust tools + UI)
   start       Start Docker services (Postgres, Temporal)
   stop        Stop Docker services
-  start-all   Start everything with auto-reload (Docker, API, Worker, UI)
+  start-all   Start everything with auto-reload (Docker, API, Worker, UI, seed)
   stop-all    Stop all services (API, UI, Docker)
   reset       Stop and remove all Docker volumes
   migrate     Run database migrations
+  seed        Seed development agents from harness/seed-agents.yaml
   build       Build all crates
   test        Run tests
   check       Run format, lint, and test checks
