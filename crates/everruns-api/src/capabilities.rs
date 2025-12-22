@@ -268,6 +268,121 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
             ),
             tools: vec![], // Tools would be added here when implemented
         },
+        // TestMath capability - for testing tool calling
+        InternalCapability {
+            info: Capability {
+                id: CapabilityId::TestMath,
+                name: "Test Math".to_string(),
+                description: "Testing capability: adds calculator tools (add, subtract, multiply, divide) for tool calling tests.".to_string(),
+                status: CapabilityStatus::Available,
+                icon: Some("calculator".to_string()),
+                category: Some("Testing".to_string()),
+            },
+            system_prompt_addition: Some(
+                "You have access to math tools. Use them for calculations: add, subtract, multiply, divide.".to_string()
+            ),
+            tools: vec![
+                ToolDefinition::Builtin(BuiltinTool {
+                    name: "add".to_string(),
+                    description: "Add two numbers together.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "a": { "type": "number", "description": "First number" },
+                            "b": { "type": "number", "description": "Second number" }
+                        },
+                        "required": ["a", "b"]
+                    }),
+                    kind: BuiltinToolKind::TestMathAdd,
+                    policy: ToolPolicy::Auto,
+                }),
+                ToolDefinition::Builtin(BuiltinTool {
+                    name: "subtract".to_string(),
+                    description: "Subtract the second number from the first.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "a": { "type": "number", "description": "Number to subtract from" },
+                            "b": { "type": "number", "description": "Number to subtract" }
+                        },
+                        "required": ["a", "b"]
+                    }),
+                    kind: BuiltinToolKind::TestMathSubtract,
+                    policy: ToolPolicy::Auto,
+                }),
+                ToolDefinition::Builtin(BuiltinTool {
+                    name: "multiply".to_string(),
+                    description: "Multiply two numbers together.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "a": { "type": "number", "description": "First number" },
+                            "b": { "type": "number", "description": "Second number" }
+                        },
+                        "required": ["a", "b"]
+                    }),
+                    kind: BuiltinToolKind::TestMathMultiply,
+                    policy: ToolPolicy::Auto,
+                }),
+                ToolDefinition::Builtin(BuiltinTool {
+                    name: "divide".to_string(),
+                    description: "Divide the first number by the second.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "a": { "type": "number", "description": "Dividend (number to divide)" },
+                            "b": { "type": "number", "description": "Divisor (number to divide by)" }
+                        },
+                        "required": ["a", "b"]
+                    }),
+                    kind: BuiltinToolKind::TestMathDivide,
+                    policy: ToolPolicy::Auto,
+                }),
+            ],
+        },
+        // TestWeather capability - for testing tool calling
+        InternalCapability {
+            info: Capability {
+                id: CapabilityId::TestWeather,
+                name: "Test Weather".to_string(),
+                description: "Testing capability: adds mock weather tools (get_weather, get_forecast) for tool calling tests.".to_string(),
+                status: CapabilityStatus::Available,
+                icon: Some("cloud-sun".to_string()),
+                category: Some("Testing".to_string()),
+            },
+            system_prompt_addition: Some(
+                "You have access to weather tools. Use get_weather for current conditions and get_forecast for multi-day forecasts.".to_string()
+            ),
+            tools: vec![
+                ToolDefinition::Builtin(BuiltinTool {
+                    name: "get_weather".to_string(),
+                    description: "Get current weather for a city.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "city": { "type": "string", "description": "City name (e.g., 'New York', 'London', 'Tokyo')" }
+                        },
+                        "required": ["city"]
+                    }),
+                    kind: BuiltinToolKind::TestWeatherGet,
+                    policy: ToolPolicy::Auto,
+                }),
+                ToolDefinition::Builtin(BuiltinTool {
+                    name: "get_forecast".to_string(),
+                    description: "Get multi-day weather forecast for a city.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "city": { "type": "string", "description": "City name" },
+                            "days": { "type": "integer", "description": "Number of days (1-7, default: 5)" }
+                        },
+                        "required": ["city"]
+                    }),
+                    kind: BuiltinToolKind::TestWeatherForecast,
+                    policy: ToolPolicy::Auto,
+                }),
+            ],
+        },
     ]
 }
 

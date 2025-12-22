@@ -22,6 +22,10 @@ pub enum CapabilityId {
     Sandbox,
     /// FileSystem capability (coming soon)
     FileSystem,
+    /// TestMath capability - adds calculator tools for testing (add, subtract, multiply, divide)
+    TestMath,
+    /// TestWeather capability - adds mock weather tools for testing (get_weather, get_forecast)
+    TestWeather,
 }
 
 impl std::fmt::Display for CapabilityId {
@@ -32,6 +36,8 @@ impl std::fmt::Display for CapabilityId {
             CapabilityId::Research => write!(f, "research"),
             CapabilityId::Sandbox => write!(f, "sandbox"),
             CapabilityId::FileSystem => write!(f, "file_system"),
+            CapabilityId::TestMath => write!(f, "test_math"),
+            CapabilityId::TestWeather => write!(f, "test_weather"),
         }
     }
 }
@@ -46,6 +52,8 @@ impl std::str::FromStr for CapabilityId {
             "research" => Ok(CapabilityId::Research),
             "sandbox" => Ok(CapabilityId::Sandbox),
             "file_system" => Ok(CapabilityId::FileSystem),
+            "test_math" => Ok(CapabilityId::TestMath),
+            "test_weather" => Ok(CapabilityId::TestWeather),
             _ => Err(format!("Unknown capability: {}", s)),
         }
     }
@@ -84,6 +92,8 @@ mod tests {
         assert_eq!(CapabilityId::Research.to_string(), "research");
         assert_eq!(CapabilityId::Sandbox.to_string(), "sandbox");
         assert_eq!(CapabilityId::FileSystem.to_string(), "file_system");
+        assert_eq!(CapabilityId::TestMath.to_string(), "test_math");
+        assert_eq!(CapabilityId::TestWeather.to_string(), "test_weather");
     }
 
     #[test]
@@ -104,6 +114,14 @@ mod tests {
         assert_eq!(
             "file_system".parse::<CapabilityId>().unwrap(),
             CapabilityId::FileSystem
+        );
+        assert_eq!(
+            "test_math".parse::<CapabilityId>().unwrap(),
+            CapabilityId::TestMath
+        );
+        assert_eq!(
+            "test_weather".parse::<CapabilityId>().unwrap(),
+            CapabilityId::TestWeather
         );
     }
 

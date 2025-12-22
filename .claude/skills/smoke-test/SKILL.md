@@ -1,5 +1,5 @@
 ---
-name: smoke-tests
+name: smoke-test
 description: Run API and UI smoke tests to verify the Everruns system works correctly. Use this skill when you need to test system functionality after changes, verify deployments, or troubleshoot issues. Supports both Docker-based and no-Docker environments.
 ---
 
@@ -168,6 +168,12 @@ curl -s http://localhost:9000/api-doc/openapi.json | jq '.info.title'
 ```
 Expected: "Everruns API"
 
+### Scenario Tests
+
+Additional test scenarios are available in the `scenarios/` folder:
+
+- **[Tool Calling](scenarios/tool-calling.md)** - Tests for agent tool calling functionality (TestMath, TestWeather capabilities)
+
 ### UI Tests
 
 Run these after API tests pass. Requires UI running (`./scripts/dev.sh ui`).
@@ -213,7 +219,7 @@ Expected: 200
 For environments without Docker (Cloud Agent, CI):
 
 ```bash
-./.claude/skills/smoke-tests/scripts/run-no-docker.sh
+./scripts/run-no-docker.sh
 ```
 
 This script:
@@ -277,7 +283,7 @@ export OPENAI_API_KEY=your-key
 
 **"must be run as root"**: The PostgreSQL setup requires root access:
 ```bash
-sudo ./.claude/skills/smoke-tests/scripts/run-no-docker.sh
+sudo ./scripts/run-no-docker.sh
 ```
 
 **Messages sent but no assistant response**: Ensure the Temporal worker is running:

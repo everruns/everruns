@@ -47,10 +47,20 @@ impl UnifiedToolExecutor {
     /// This includes:
     /// - `get_current_time`: Returns the current date and time
     /// - `echo`: Echoes back the provided message
+    /// - TestMath tools: add, subtract, multiply, divide
+    /// - TestWeather tools: get_weather, get_forecast
     pub fn with_default_tools() -> Self {
         let registry = ToolRegistry::builder()
             .tool(everruns_core::GetCurrentTime)
             .tool(everruns_core::EchoTool)
+            // TestMath capability tools
+            .tool(everruns_core::AddTool)
+            .tool(everruns_core::SubtractTool)
+            .tool(everruns_core::MultiplyTool)
+            .tool(everruns_core::DivideTool)
+            // TestWeather capability tools
+            .tool(everruns_core::GetWeatherTool)
+            .tool(everruns_core::GetForecastTool)
             .build();
 
         Self::new(registry)
