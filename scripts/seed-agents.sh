@@ -133,7 +133,7 @@ seed_agents() {
 
     # Extract agent fields using yq
     name=$(yq -r ".agents[$i].name" "$SEED_FILE")
-    description=$(yq -r ".agents[$i].description // empty" "$SEED_FILE")
+    description=$(yq -r ".agents[$i].description // \"\"" "$SEED_FILE")
     system_prompt=$(yq -r ".agents[$i].system_prompt" "$SEED_FILE")
     tags=$(yq -c ".agents[$i].tags // []" "$SEED_FILE")
     capabilities=$(yq -c ".agents[$i].capabilities // []" "$SEED_FILE")
