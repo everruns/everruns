@@ -39,7 +39,8 @@ tracing.workspace = true
 # AG-UI events and tool types are defined locally in this crate
 
 # OpenAI Protocol provider
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+# Note: We need "default" features for system proxy detection from environment variables
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
 eventsource-stream = "0.2"
 
 [dev-dependencies]
