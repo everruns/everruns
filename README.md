@@ -1,5 +1,7 @@
 # Everruns
 
+> **Note:** This repository is in **Heavy Vibecoding PoC Mode**. Expect rapid changes, experimental features, and unconventional approaches as we explore ideas quickly.
+
 Durable AI agent execution platform. Run long-running LLM agents reliably - if the service restarts, agents resume from where they left off.
 
 ## Overview
