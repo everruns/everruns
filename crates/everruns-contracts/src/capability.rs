@@ -31,6 +31,20 @@ pub struct Capability {
     pub category: Option<String>,
 }
 
+impl Capability {
+    /// Create a Capability DTO from a core Capability trait object
+    pub fn from_core(cap: &dyn everruns_core::capabilities::Capability) -> Self {
+        Self {
+            id: CapabilityId::new(cap.id()),
+            name: cap.name().to_string(),
+            description: cap.description().to_string(),
+            status: cap.status(),
+            icon: cap.icon().map(|s| s.to_string()),
+            category: cap.category().map(|s| s.to_string()),
+        }
+    }
+}
+
 /// Agent capability assignment with ordering
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentCapability {
