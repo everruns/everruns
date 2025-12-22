@@ -38,7 +38,15 @@ impl MessageStore for DbMessageStore {
         let role = message.role.to_string();
         let content = match &message.content {
             MessageContent::Text(text) => {
-                serde_json::json!({ "text": text })
+                // For assistant messages with tool_calls, include them in the content
+                if let Some(tool_calls) = &message.tool_calls {
+                    serde_json::json!({
+                        "text": text,
+                        "tool_calls": tool_calls
+                    })
+                } else {
+                    serde_json::json!({ "text": text })
+                }
             }
             MessageContent::ToolCall {
                 id,
