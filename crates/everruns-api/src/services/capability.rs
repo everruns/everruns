@@ -26,7 +26,7 @@ impl CapabilityService {
     }
 
     /// Get a specific capability by ID
-    pub fn get(&self, id: CapabilityId) -> Option<Capability> {
+    pub fn get(&self, id: &CapabilityId) -> Option<Capability> {
         get_capability_definition(id).map(|c| c.info)
     }
 
@@ -36,12 +36,9 @@ impl CapabilityService {
 
         let capabilities: Vec<AgentCapability> = rows
             .into_iter()
-            .filter_map(|row| {
-                let capability_id: Result<CapabilityId, _> = row.capability_id.parse();
-                capability_id.ok().map(|cap_id| AgentCapability {
-                    capability_id: cap_id,
-                    position: row.position,
-                })
+            .map(|row| AgentCapability {
+                capability_id: CapabilityId::new(&row.capability_id),
+                position: row.position,
             })
             .collect();
 
@@ -65,12 +62,9 @@ impl CapabilityService {
 
         let result: Vec<AgentCapability> = rows
             .into_iter()
-            .filter_map(|row| {
-                let capability_id: Result<CapabilityId, _> = row.capability_id.parse();
-                capability_id.ok().map(|cap_id| AgentCapability {
-                    capability_id: cap_id,
-                    position: row.position,
-                })
+            .map(|row| AgentCapability {
+                capability_id: CapabilityId::new(&row.capability_id),
+                position: row.position,
             })
             .collect();
 

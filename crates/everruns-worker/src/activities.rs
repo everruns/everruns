@@ -10,9 +10,7 @@
 // Atoms handle message loading/storage internally via MessageStore trait.
 
 use anyhow::{Context, Result};
-use everruns_contracts::tools::{
-    BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy,
-};
+use everruns_contracts::tools::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use everruns_core::atoms::{
     Atom, CallModelAtom, CallModelInput as AtomCallModelInput, ExecuteToolAtom,
     ExecuteToolInput as AtomExecuteToolInput,
@@ -86,7 +84,7 @@ pub struct ExecuteToolOutput {
 /// This activity loads the agent from the database and builds the AgentConfigData
 /// including the model, system_prompt, tools from capabilities, and max_iterations.
 pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<AgentConfigData> {
-    use everruns_core::capabilities::{CapabilityId, CapabilityRegistry};
+    use everruns_core::capabilities::CapabilityRegistry;
 
     let agent_id: Uuid = input.agent_id.parse().context("Invalid agent_id UUID")?;
 
@@ -105,14 +103,11 @@ pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<
         .await
         .context("Database error loading agent capabilities")?;
 
+    // Collect capability IDs as strings (no parsing needed now)
     let capability_ids: Vec<String> = capabilities.into_iter().map(|c| c.capability_id).collect();
 
     // Apply capabilities to get tools
     let registry = CapabilityRegistry::with_builtins();
-    let parsed_capability_ids: Vec<CapabilityId> = capability_ids
-        .iter()
-        .filter_map(|id| id.parse::<CapabilityId>().ok())
-        .collect();
 
     // Build base config and apply capabilities
     let model_str = agent
@@ -120,11 +115,8 @@ pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<
         .map(|id| id.to_string())
         .unwrap_or_else(|| "gpt-4o".to_string());
     let base_config = everruns_core::AgentConfig::new(&agent.system_prompt, &model_str);
-    let applied = everruns_core::capabilities::apply_capabilities(
-        base_config,
-        &parsed_capability_ids,
-        &registry,
-    );
+    let applied =
+        everruns_core::capabilities::apply_capabilities(base_config, &capability_ids, &registry);
 
     // Convert tools to ToolDefinitionData
     let tools: Vec<ToolDefinitionData> = applied
@@ -291,7 +283,6 @@ fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
         name: tool.name.clone(),
         description: tool.description.clone(),
         parameters: tool.parameters.clone(),
-        kind: BuiltinToolKind::CurrentTime, // Default kind, actual execution is by name
         policy: ToolPolicy::Auto,
     })
 }

@@ -10,7 +10,7 @@ use everruns_core::{
     traits::ToolExecutor,
     AgentConfig, AgentLoop, LoopEvent, Message, MessageRole,
 };
-use everruns_core::{BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy};
+use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -39,7 +39,6 @@ async fn test_tool_registry_as_executor() {
         name: "echo".to_string(),
         description: "Echo".to_string(),
         parameters: json!({}),
-        kind: BuiltinToolKind::HttpGet,
         policy: ToolPolicy::Auto,
     });
 
@@ -64,7 +63,6 @@ async fn test_get_current_time_tool() {
         name: "get_current_time".to_string(),
         description: "Get time".to_string(),
         parameters: json!({}),
-        kind: BuiltinToolKind::HttpGet,
         policy: ToolPolicy::Auto,
     });
 
@@ -93,7 +91,6 @@ async fn test_tool_error_handling() {
         name: "failing_tool".to_string(),
         description: "A tool that fails".to_string(),
         parameters: json!({}),
-        kind: BuiltinToolKind::HttpGet,
         policy: ToolPolicy::Auto,
     });
 
@@ -121,7 +118,6 @@ async fn test_internal_error_is_hidden() {
         name: "failing_tool".to_string(),
         description: "A tool that fails internally".to_string(),
         parameters: json!({}),
-        kind: BuiltinToolKind::HttpGet,
         policy: ToolPolicy::Auto,
     });
 
@@ -150,7 +146,6 @@ async fn test_tool_not_found_error() {
         name: "nonexistent_tool".to_string(),
         description: "Does not exist".to_string(),
         parameters: json!({}),
-        kind: BuiltinToolKind::HttpGet,
         policy: ToolPolicy::Auto,
     });
 
@@ -192,7 +187,6 @@ async fn test_agent_loop_with_tool_execution() {
             name: "get_current_time".to_string(),
             description: "Get the current time".to_string(),
             parameters: json!({}),
-            kind: BuiltinToolKind::HttpGet,
             policy: ToolPolicy::Auto,
         })]);
 
@@ -238,7 +232,6 @@ async fn test_agent_loop_with_tool_execution() {
             name: "get_current_time".to_string(),
             description: "Get the current time".to_string(),
             parameters: json!({}),
-            kind: BuiltinToolKind::HttpGet,
             policy: ToolPolicy::Auto,
         })]);
 
@@ -338,7 +331,6 @@ async fn test_custom_tool_execution() {
         name: "counter".to_string(),
         description: "Counter".to_string(),
         parameters: json!({}),
-        kind: BuiltinToolKind::HttpGet,
         policy: ToolPolicy::Auto,
     });
 
@@ -377,7 +369,6 @@ async fn test_multiple_tools_in_registry() {
         name: "get_current_time".to_string(),
         description: "Get time".to_string(),
         parameters: json!({}),
-        kind: BuiltinToolKind::HttpGet,
         policy: ToolPolicy::Auto,
     });
 
@@ -396,7 +387,6 @@ async fn test_multiple_tools_in_registry() {
         name: "echo".to_string(),
         description: "Echo".to_string(),
         parameters: json!({}),
-        kind: BuiltinToolKind::HttpGet,
         policy: ToolPolicy::Auto,
     });
 

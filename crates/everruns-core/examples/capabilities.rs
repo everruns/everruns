@@ -38,10 +38,9 @@ use uuid::Uuid;
 struct CalculatorCapability;
 
 impl Capability for CalculatorCapability {
-    fn id(&self) -> CapabilityId {
-        // Using Noop as placeholder since we can't add new variants
-        // In a real application, you'd extend CapabilityId
-        CapabilityId::Noop
+    fn id(&self) -> &str {
+        // Custom capability with a custom ID
+        "calculator"
     }
 
     fn name(&self) -> &str {
@@ -235,7 +234,7 @@ async fn example_builtin_capability() -> anyhow::Result<()> {
     let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
     // Apply the CurrentTime capability
-    let capability_ids = vec![CapabilityId::CurrentTime];
+    let capability_ids = vec![CapabilityId::CURRENT_TIME.to_string()];
     let applied = apply_capabilities(base_config, &capability_ids, &registry);
 
     println!("Applied capabilities: {:?}", applied.applied_ids);
@@ -285,8 +284,8 @@ async fn example_custom_capability() -> anyhow::Result<()> {
     // Base agent config
     let base_config = AgentConfig::new("You are a helpful math assistant.", "gpt-5.2");
 
-    // Apply the custom capability (using Noop ID as placeholder)
-    let capability_ids = vec![CapabilityId::Noop];
+    // Apply the custom capability
+    let capability_ids = vec!["calculator".to_string()];
     let applied = apply_capabilities(base_config, &capability_ids, &registry);
 
     println!("Applied capabilities: {:?}", applied.applied_ids);
@@ -339,7 +338,10 @@ async fn example_multiple_capabilities() -> anyhow::Result<()> {
     );
 
     // Apply multiple capabilities
-    let capability_ids = vec![CapabilityId::CurrentTime, CapabilityId::Noop];
+    let capability_ids = vec![
+        CapabilityId::CURRENT_TIME.to_string(),
+        CapabilityId::NOOP.to_string(),
+    ];
     let applied = apply_capabilities(base_config, &capability_ids, &registry);
 
     println!("Applied capabilities: {:?}", applied.applied_ids);

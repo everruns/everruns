@@ -78,9 +78,9 @@ pub async fn get_capability(
     State(state): State<AppState>,
     Path(capability_id): Path<String>,
 ) -> Result<Json<Capability>, StatusCode> {
-    let cap_id: CapabilityId = capability_id.parse().map_err(|_| StatusCode::NOT_FOUND)?;
+    let cap_id = CapabilityId::new(&capability_id);
 
-    let capability = state.service.get(cap_id).ok_or(StatusCode::NOT_FOUND)?;
+    let capability = state.service.get(&cap_id).ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(capability))
 }
@@ -136,7 +136,7 @@ pub async fn set_agent_capabilities(
 ) -> Result<Json<ListResponse<AgentCapability>>, StatusCode> {
     // Validate all capability IDs exist
     for cap_id in &req.capabilities {
-        if state.service.get(*cap_id).is_none() {
+        if state.service.get(cap_id).is_none() {
             return Err(StatusCode::BAD_REQUEST);
         }
     }
@@ -171,14 +171,14 @@ pub struct InternalCapability {
 
 /// Get all internal capability definitions
 pub fn get_capability_registry() -> Vec<InternalCapability> {
-    use everruns_contracts::tools::{BuiltinTool, BuiltinToolKind, ToolDefinition, ToolPolicy};
+    use everruns_contracts::tools::{BuiltinTool, ToolDefinition, ToolPolicy};
     use serde_json::json;
 
     vec![
         // Noop capability - for testing/demo
         InternalCapability {
             info: Capability {
-                id: CapabilityId::Noop,
+                id: CapabilityId::noop(),
                 name: "No-Op".to_string(),
                 description: "A no-operation capability for testing and demonstration purposes. Does not add any functionality.".to_string(),
                 status: CapabilityStatus::Available,
@@ -191,7 +191,7 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
         // CurrentTime capability - adds current time tool
         InternalCapability {
             info: Capability {
-                id: CapabilityId::CurrentTime,
+                id: CapabilityId::current_time(),
                 name: "Current Time".to_string(),
                 description: "Adds a tool to get the current date and time in various formats and timezones.".to_string(),
                 status: CapabilityStatus::Available,
@@ -218,7 +218,6 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
                         },
                         "required": []
                     }),
-                    kind: BuiltinToolKind::CurrentTime,
                     policy: ToolPolicy::Auto,
                 }),
             ],
@@ -226,7 +225,7 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
         // Research capability - coming soon
         InternalCapability {
             info: Capability {
-                id: CapabilityId::Research,
+                id: CapabilityId::research(),
                 name: "Deep Research".to_string(),
                 description: "Enables deep research capabilities with a scratchpad for notes, web search tools, and structured thinking.".to_string(),
                 status: CapabilityStatus::ComingSoon,
@@ -241,7 +240,7 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
         // Sandbox capability - coming soon
         InternalCapability {
             info: Capability {
-                id: CapabilityId::Sandbox,
+                id: CapabilityId::sandbox(),
                 name: "Sandboxed Execution".to_string(),
                 description: "Enables sandboxed code execution environment for running code safely.".to_string(),
                 status: CapabilityStatus::ComingSoon,
@@ -256,7 +255,7 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
         // FileSystem capability - coming soon
         InternalCapability {
             info: Capability {
-                id: CapabilityId::FileSystem,
+                id: CapabilityId::file_system(),
                 name: "File System Access".to_string(),
                 description: "Adds tools to access and manipulate files - read, write, grep, and more.".to_string(),
                 status: CapabilityStatus::ComingSoon,
@@ -271,7 +270,7 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
         // TestMath capability - for testing tool calling
         InternalCapability {
             info: Capability {
-                id: CapabilityId::TestMath,
+                id: CapabilityId::test_math(),
                 name: "Test Math".to_string(),
                 description: "Testing capability: adds calculator tools (add, subtract, multiply, divide) for tool calling tests.".to_string(),
                 status: CapabilityStatus::Available,
@@ -293,7 +292,6 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
                         },
                         "required": ["a", "b"]
                     }),
-                    kind: BuiltinToolKind::TestMathAdd,
                     policy: ToolPolicy::Auto,
                 }),
                 ToolDefinition::Builtin(BuiltinTool {
@@ -307,7 +305,6 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
                         },
                         "required": ["a", "b"]
                     }),
-                    kind: BuiltinToolKind::TestMathSubtract,
                     policy: ToolPolicy::Auto,
                 }),
                 ToolDefinition::Builtin(BuiltinTool {
@@ -321,7 +318,6 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
                         },
                         "required": ["a", "b"]
                     }),
-                    kind: BuiltinToolKind::TestMathMultiply,
                     policy: ToolPolicy::Auto,
                 }),
                 ToolDefinition::Builtin(BuiltinTool {
@@ -335,7 +331,6 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
                         },
                         "required": ["a", "b"]
                     }),
-                    kind: BuiltinToolKind::TestMathDivide,
                     policy: ToolPolicy::Auto,
                 }),
             ],
@@ -343,7 +338,7 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
         // TestWeather capability - for testing tool calling
         InternalCapability {
             info: Capability {
-                id: CapabilityId::TestWeather,
+                id: CapabilityId::test_weather(),
                 name: "Test Weather".to_string(),
                 description: "Testing capability: adds mock weather tools (get_weather, get_forecast) for tool calling tests.".to_string(),
                 status: CapabilityStatus::Available,
@@ -364,7 +359,6 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
                         },
                         "required": ["city"]
                     }),
-                    kind: BuiltinToolKind::TestWeatherGet,
                     policy: ToolPolicy::Auto,
                 }),
                 ToolDefinition::Builtin(BuiltinTool {
@@ -378,7 +372,6 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
                         },
                         "required": ["city"]
                     }),
-                    kind: BuiltinToolKind::TestWeatherForecast,
                     policy: ToolPolicy::Auto,
                 }),
             ],
@@ -387,8 +380,8 @@ pub fn get_capability_registry() -> Vec<InternalCapability> {
 }
 
 /// Get a specific capability from the registry
-pub fn get_capability_definition(id: CapabilityId) -> Option<InternalCapability> {
+pub fn get_capability_definition(id: &CapabilityId) -> Option<InternalCapability> {
     get_capability_registry()
         .into_iter()
-        .find(|c| c.info.id == id)
+        .find(|c| c.info.id == *id)
 }

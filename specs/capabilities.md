@@ -43,22 +43,35 @@ Capabilities are designed as an **external concern** to the Agent Loop:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | CapabilityId | Unique identifier (enum) |
+| `id` | CapabilityId | Unique string identifier |
 | `name` | string | Display name |
 | `description` | string | Description of functionality |
 | `status` | CapabilityStatus | Availability status |
 | `icon` | string? | Icon name for UI rendering |
 | `category` | string? | Category for grouping in UI |
 
-#### CapabilityId (Enum)
+#### CapabilityId (String wrapper)
+
+Capability IDs are now string-based for extensibility. New capabilities can be added without database migrations.
 
 ```rust
-pub enum CapabilityId {
-    Noop,       // "noop"
-    CurrentTime, // "current_time"
-    Research,   // "research"
-    Sandbox,    // "sandbox"
-    FileSystem, // "file_system"
+pub struct CapabilityId(String);
+
+impl CapabilityId {
+    // Built-in capability ID constants
+    pub const NOOP: &'static str = "noop";
+    pub const CURRENT_TIME: &'static str = "current_time";
+    pub const RESEARCH: &'static str = "research";
+    pub const SANDBOX: &'static str = "sandbox";
+    pub const FILE_SYSTEM: &'static str = "file_system";
+    pub const TEST_MATH: &'static str = "test_math";
+    pub const TEST_WEATHER: &'static str = "test_weather";
+
+    // Factory methods
+    pub fn new(id: impl Into<String>) -> Self;
+    pub fn noop() -> Self;
+    pub fn current_time() -> Self;
+    // ... etc
 }
 ```
 
@@ -105,6 +118,30 @@ pub struct InternalCapability {
       - `format`: enum (iso8601, unix, human)
     - Policy: Auto
 
+#### TestMath
+
+- **Status**: Available
+- **Purpose**: Testing tool calling with calculator operations
+- **System Prompt**: "You have access to math tools. Use them for calculations: add, subtract, multiply, divide."
+- **Tools**:
+  - `add` - Add two numbers
+  - `subtract` - Subtract second number from first
+  - `multiply` - Multiply two numbers
+  - `divide` - Divide first number by second
+- **Icon**: "calculator"
+- **Category**: "Testing"
+
+#### TestWeather
+
+- **Status**: Available
+- **Purpose**: Testing tool calling with mock weather data
+- **System Prompt**: "You have access to weather tools. Use get_weather for current conditions and get_forecast for multi-day forecasts."
+- **Tools**:
+  - `get_weather` - Get current weather for a city
+  - `get_forecast` - Get multi-day forecast
+- **Icon**: "cloud-sun"
+- **Category**: "Testing"
+
 #### Research (Coming Soon)
 
 - **Status**: ComingSoon
@@ -139,7 +176,7 @@ When a session executes:
 1. **Load Agent**: Fetch agent configuration from database
 2. **Fetch Capabilities**: Get agent's enabled capabilities via `get_agent_capabilities(agent_id)`
 3. **Resolve Capabilities**: For each capability (ordered by `position`):
-   - Look up `InternalCapability` from registry
+   - Look up `InternalCapability` from registry by string ID
    - Collect `system_prompt_addition` texts
    - Collect `tools` definitions
 4. **Build AgentConfig**:
@@ -181,7 +218,7 @@ Response:
       "category": "AI"
     }
   ],
-  "total": 5
+  "total": 7
 }
 ```
 
@@ -192,14 +229,14 @@ PUT /v1/agents/{agent_id}/capabilities
 Content-Type: application/json
 
 {
-  "capabilities": ["current_time", "research"]
+  "capabilities": ["current_time", "test_math"]
 }
 
 Response:
 {
   "items": [
     { "capability_id": "current_time", "position": 0 },
-    { "capability_id": "research", "position": 1 }
+    { "capability_id": "test_math", "position": 1 }
   ],
   "total": 2
 }
@@ -213,9 +250,8 @@ The array order determines `position` (index becomes position value).
 CREATE TABLE agent_capabilities (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-    capability_id VARCHAR(50) NOT NULL CHECK (
-        capability_id IN ('noop', 'current_time', 'research', 'sandbox', 'file_system')
-    ),
+    -- Capability ID is a string; validation happens at application layer
+    capability_id VARCHAR(50) NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(agent_id, capability_id)
@@ -224,6 +260,8 @@ CREATE TABLE agent_capabilities (
 CREATE INDEX idx_agent_capabilities_agent_id ON agent_capabilities(agent_id);
 CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, position);
 ```
+
+**Note**: The `capability_id` column no longer has a CHECK constraint. Validation is performed at the application layer via `CapabilityRegistry`. This allows adding new capabilities without database migrations.
 
 ### Design Decisions
 
@@ -234,6 +272,40 @@ CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, pos
 | Order of application? | By `position` field (lower = earlier) |
 | Can capabilities conflict? | Currently no conflict resolution; later capabilities add to earlier ones |
 | Can users create custom capabilities? | Not in current version (built-in only) |
+| How are new capabilities added? | Implement `Capability` trait and register in `CapabilityRegistry` - no database changes needed |
+
+### Adding New Capabilities
+
+To add a new capability:
+
+1. **Implement the Capability trait**:
+   ```rust
+   pub struct MyNewCapability;
+
+   impl Capability for MyNewCapability {
+       fn id(&self) -> &str { "my_new_capability" }
+       fn name(&self) -> &str { "My New Capability" }
+       fn description(&self) -> &str { "Description here" }
+       fn status(&self) -> CapabilityStatus { CapabilityStatus::Available }
+       fn tools(&self) -> Vec<Box<dyn Tool>> { vec![] }
+   }
+   ```
+
+2. **Register in CapabilityRegistry**:
+   ```rust
+   impl CapabilityRegistry {
+       pub fn with_builtins() -> Self {
+           let mut registry = Self::new();
+           // ... existing capabilities
+           registry.register(MyNewCapability);
+           registry
+       }
+   }
+   ```
+
+3. **Add tool implementations** if needed (implement `Tool` trait)
+
+4. **No database migration required** - the capability ID is validated at runtime
 
 ### Extension Points (Future)
 

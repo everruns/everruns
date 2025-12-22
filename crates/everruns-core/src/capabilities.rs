@@ -41,8 +41,8 @@ pub use crate::capability_types::{CapabilityId, CapabilityStatus};
 /// struct CurrentTimeCapability;
 ///
 /// impl Capability for CurrentTimeCapability {
-///     fn id(&self) -> CapabilityId {
-///         CapabilityId::CurrentTime
+///     fn id(&self) -> &str {
+///         CapabilityId::CURRENT_TIME
 ///     }
 ///
 ///     fn name(&self) -> &str {
@@ -59,8 +59,8 @@ pub use crate::capability_types::{CapabilityId, CapabilityStatus};
 /// }
 /// ```
 pub trait Capability: Send + Sync {
-    /// Returns the unique capability identifier
-    fn id(&self) -> CapabilityId;
+    /// Returns the unique capability identifier as a string
+    fn id(&self) -> &str;
 
     /// Returns the display name
     fn name(&self) -> &str;
@@ -117,7 +117,7 @@ pub trait Capability: Send + Sync {
 /// let registry = CapabilityRegistry::with_builtins();
 ///
 /// // Get a capability by ID
-/// if let Some(cap) = registry.get(CapabilityId::CurrentTime) {
+/// if let Some(cap) = registry.get(CapabilityId::CURRENT_TIME) {
 ///     println!("Capability: {}", cap.name());
 /// }
 ///
@@ -127,7 +127,7 @@ pub trait Capability: Send + Sync {
 /// }
 /// ```
 pub struct CapabilityRegistry {
-    capabilities: HashMap<CapabilityId, Arc<dyn Capability>>,
+    capabilities: HashMap<String, Arc<dyn Capability>>,
 }
 
 impl CapabilityRegistry {
@@ -154,28 +154,29 @@ impl CapabilityRegistry {
     /// Register a capability
     pub fn register(&mut self, capability: impl Capability + 'static) {
         self.capabilities
-            .insert(capability.id(), Arc::new(capability));
+            .insert(capability.id().to_string(), Arc::new(capability));
     }
 
     /// Register a boxed capability
     pub fn register_boxed(&mut self, capability: Box<dyn Capability>) {
         self.capabilities
-            .insert(capability.id(), Arc::from(capability));
+            .insert(capability.id().to_string(), Arc::from(capability));
     }
 
     /// Register an Arc-wrapped capability
     pub fn register_arc(&mut self, capability: Arc<dyn Capability>) {
-        self.capabilities.insert(capability.id(), capability);
+        self.capabilities
+            .insert(capability.id().to_string(), capability);
     }
 
     /// Get a capability by ID
-    pub fn get(&self, id: CapabilityId) -> Option<&Arc<dyn Capability>> {
-        self.capabilities.get(&id)
+    pub fn get(&self, id: &str) -> Option<&Arc<dyn Capability>> {
+        self.capabilities.get(id)
     }
 
     /// Check if a capability is registered
-    pub fn has(&self, id: CapabilityId) -> bool {
-        self.capabilities.contains_key(&id)
+    pub fn has(&self, id: &str) -> bool {
+        self.capabilities.contains_key(id)
     }
 
     /// Get all registered capabilities
@@ -263,7 +264,7 @@ pub struct AppliedCapabilities {
     /// Tool registry containing all capability tools
     pub tool_registry: ToolRegistry,
     /// IDs of capabilities that were applied
-    pub applied_ids: Vec<CapabilityId>,
+    pub applied_ids: Vec<String>,
 }
 
 /// Apply capabilities to a base agent configuration.
@@ -294,7 +295,7 @@ pub struct AppliedCapabilities {
 /// let registry = CapabilityRegistry::with_builtins();
 /// let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 ///
-/// let capability_ids = vec![CapabilityId::CurrentTime];
+/// let capability_ids = vec![CapabilityId::CURRENT_TIME.to_string()];
 /// let applied = apply_capabilities(base_config, &capability_ids, &registry);
 ///
 /// // The config now includes CurrentTime tool
@@ -302,17 +303,17 @@ pub struct AppliedCapabilities {
 /// ```
 pub fn apply_capabilities(
     base_config: AgentConfig,
-    capability_ids: &[CapabilityId],
+    capability_ids: &[String],
     registry: &CapabilityRegistry,
 ) -> AppliedCapabilities {
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut tool_registry = ToolRegistry::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
-    let mut applied_ids: Vec<CapabilityId> = Vec::new();
+    let mut applied_ids: Vec<String> = Vec::new();
 
     // Apply capabilities in order
     for cap_id in capability_ids {
-        if let Some(capability) = registry.get(*cap_id) {
+        if let Some(capability) = registry.get(cap_id) {
             // Only apply available capabilities
             if capability.status() != CapabilityStatus::Available {
                 continue;
@@ -331,7 +332,7 @@ pub fn apply_capabilities(
             // Collect tool definitions
             tool_definitions.extend(capability.tool_definitions());
 
-            applied_ids.push(*cap_id);
+            applied_ids.push(cap_id.clone());
         }
     }
 
@@ -368,8 +369,8 @@ pub fn apply_capabilities(
 pub struct NoopCapability;
 
 impl Capability for NoopCapability {
-    fn id(&self) -> CapabilityId {
-        CapabilityId::Noop
+    fn id(&self) -> &str {
+        CapabilityId::NOOP
     }
 
     fn name(&self) -> &str {
@@ -393,8 +394,8 @@ impl Capability for NoopCapability {
 pub struct CurrentTimeCapability;
 
 impl Capability for CurrentTimeCapability {
-    fn id(&self) -> CapabilityId {
-        CapabilityId::CurrentTime
+    fn id(&self) -> &str {
+        CapabilityId::CURRENT_TIME
     }
 
     fn name(&self) -> &str {
@@ -422,8 +423,8 @@ impl Capability for CurrentTimeCapability {
 pub struct ResearchCapability;
 
 impl Capability for ResearchCapability {
-    fn id(&self) -> CapabilityId {
-        CapabilityId::Research
+    fn id(&self) -> &str {
+        CapabilityId::RESEARCH
     }
 
     fn name(&self) -> &str {
@@ -455,8 +456,8 @@ impl Capability for ResearchCapability {
 pub struct SandboxCapability;
 
 impl Capability for SandboxCapability {
-    fn id(&self) -> CapabilityId {
-        CapabilityId::Sandbox
+    fn id(&self) -> &str {
+        CapabilityId::SANDBOX
     }
 
     fn name(&self) -> &str {
@@ -490,8 +491,8 @@ impl Capability for SandboxCapability {
 pub struct FileSystemCapability;
 
 impl Capability for FileSystemCapability {
-    fn id(&self) -> CapabilityId {
-        CapabilityId::FileSystem
+    fn id(&self) -> &str {
+        CapabilityId::FILE_SYSTEM
     }
 
     fn name(&self) -> &str {
@@ -523,8 +524,8 @@ impl Capability for FileSystemCapability {
 pub struct TestMathCapability;
 
 impl Capability for TestMathCapability {
-    fn id(&self) -> CapabilityId {
-        CapabilityId::TestMath
+    fn id(&self) -> &str {
+        CapabilityId::TEST_MATH
     }
 
     fn name(&self) -> &str {
@@ -561,8 +562,8 @@ impl Capability for TestMathCapability {
 pub struct TestWeatherCapability;
 
 impl Capability for TestWeatherCapability {
-    fn id(&self) -> CapabilityId {
-        CapabilityId::TestWeather
+    fn id(&self) -> &str {
+        CapabilityId::TEST_WEATHER
     }
 
     fn name(&self) -> &str {
@@ -1043,13 +1044,13 @@ mod tests {
     fn test_capability_registry_with_builtins() {
         let registry = CapabilityRegistry::with_builtins();
 
-        assert!(registry.has(CapabilityId::Noop));
-        assert!(registry.has(CapabilityId::CurrentTime));
-        assert!(registry.has(CapabilityId::Research));
-        assert!(registry.has(CapabilityId::Sandbox));
-        assert!(registry.has(CapabilityId::FileSystem));
-        assert!(registry.has(CapabilityId::TestMath));
-        assert!(registry.has(CapabilityId::TestWeather));
+        assert!(registry.has(CapabilityId::NOOP));
+        assert!(registry.has(CapabilityId::CURRENT_TIME));
+        assert!(registry.has(CapabilityId::RESEARCH));
+        assert!(registry.has(CapabilityId::SANDBOX));
+        assert!(registry.has(CapabilityId::FILE_SYSTEM));
+        assert!(registry.has(CapabilityId::TEST_MATH));
+        assert!(registry.has(CapabilityId::TEST_WEATHER));
         assert_eq!(registry.len(), 7);
     }
 
@@ -1057,8 +1058,8 @@ mod tests {
     fn test_capability_registry_get() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let noop = registry.get(CapabilityId::Noop).unwrap();
-        assert_eq!(noop.id(), CapabilityId::Noop);
+        let noop = registry.get(CapabilityId::NOOP).unwrap();
+        assert_eq!(noop.id(), CapabilityId::NOOP);
         assert_eq!(noop.name(), "No-Op");
         assert_eq!(noop.status(), CapabilityStatus::Available);
     }
@@ -1067,10 +1068,10 @@ mod tests {
     fn test_capability_status() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let current_time = registry.get(CapabilityId::CurrentTime).unwrap();
+        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
         assert_eq!(current_time.status(), CapabilityStatus::Available);
 
-        let research = registry.get(CapabilityId::Research).unwrap();
+        let research = registry.get(CapabilityId::RESEARCH).unwrap();
         assert_eq!(research.status(), CapabilityStatus::ComingSoon);
     }
 
@@ -1078,7 +1079,7 @@ mod tests {
     fn test_current_time_capability_has_tools() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let current_time = registry.get(CapabilityId::CurrentTime).unwrap();
+        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
         let tools = current_time.tools();
 
         assert_eq!(tools.len(), 1);
@@ -1102,12 +1103,16 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied = apply_capabilities(base_config.clone(), &[CapabilityId::Noop], &registry);
+        let applied = apply_capabilities(
+            base_config.clone(),
+            &[CapabilityId::NOOP.to_string()],
+            &registry,
+        );
 
         // Noop has no system prompt addition or tools
         assert_eq!(applied.config.system_prompt, base_config.system_prompt);
         assert!(applied.tool_registry.is_empty());
-        assert_eq!(applied.applied_ids, vec![CapabilityId::Noop]);
+        assert_eq!(applied.applied_ids, vec![CapabilityId::NOOP]);
     }
 
     #[test]
@@ -1115,14 +1120,17 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied =
-            apply_capabilities(base_config.clone(), &[CapabilityId::CurrentTime], &registry);
+        let applied = apply_capabilities(
+            base_config.clone(),
+            &[CapabilityId::CURRENT_TIME.to_string()],
+            &registry,
+        );
 
         // CurrentTime has no system prompt addition but has a tool
         assert_eq!(applied.config.system_prompt, base_config.system_prompt);
         assert!(applied.tool_registry.has("get_current_time"));
         assert_eq!(applied.tool_registry.len(), 1);
-        assert_eq!(applied.applied_ids, vec![CapabilityId::CurrentTime]);
+        assert_eq!(applied.applied_ids, vec![CapabilityId::CURRENT_TIME]);
     }
 
     #[test]
@@ -1131,7 +1139,11 @@ mod tests {
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
         // Research is ComingSoon, so it should be skipped
-        let applied = apply_capabilities(base_config.clone(), &[CapabilityId::Research], &registry);
+        let applied = apply_capabilities(
+            base_config.clone(),
+            &[CapabilityId::RESEARCH.to_string()],
+            &registry,
+        );
 
         // System prompt should not have the research addition
         assert_eq!(applied.config.system_prompt, base_config.system_prompt);
@@ -1145,14 +1157,17 @@ mod tests {
 
         let applied = apply_capabilities(
             base_config.clone(),
-            &[CapabilityId::Noop, CapabilityId::CurrentTime],
+            &[
+                CapabilityId::NOOP.to_string(),
+                CapabilityId::CURRENT_TIME.to_string(),
+            ],
             &registry,
         );
 
         assert!(applied.tool_registry.has("get_current_time"));
         assert_eq!(
             applied.applied_ids,
-            vec![CapabilityId::Noop, CapabilityId::CurrentTime]
+            vec![CapabilityId::NOOP, CapabilityId::CURRENT_TIME]
         );
     }
 
@@ -1164,13 +1179,16 @@ mod tests {
         // Order should be preserved in applied_ids
         let applied = apply_capabilities(
             base_config,
-            &[CapabilityId::CurrentTime, CapabilityId::Noop],
+            &[
+                CapabilityId::CURRENT_TIME.to_string(),
+                CapabilityId::NOOP.to_string(),
+            ],
             &registry,
         );
 
         assert_eq!(
             applied.applied_ids,
-            vec![CapabilityId::CurrentTime, CapabilityId::Noop]
+            vec![CapabilityId::CURRENT_TIME, CapabilityId::NOOP]
         );
     }
 
@@ -1181,8 +1199,8 @@ mod tests {
             .capability(CurrentTimeCapability)
             .build();
 
-        assert!(registry.has(CapabilityId::Noop));
-        assert!(registry.has(CapabilityId::CurrentTime));
+        assert!(registry.has(CapabilityId::NOOP));
+        assert!(registry.has(CapabilityId::CURRENT_TIME));
         assert_eq!(registry.len(), 2);
     }
 
@@ -1190,11 +1208,11 @@ mod tests {
     fn test_capability_icons_and_categories() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let noop = registry.get(CapabilityId::Noop).unwrap();
+        let noop = registry.get(CapabilityId::NOOP).unwrap();
         assert_eq!(noop.icon(), Some("circle-off"));
         assert_eq!(noop.category(), Some("Testing"));
 
-        let current_time = registry.get(CapabilityId::CurrentTime).unwrap();
+        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
         assert_eq!(current_time.icon(), Some("clock"));
         assert_eq!(current_time.category(), Some("Utilities"));
     }
@@ -1245,7 +1263,7 @@ mod tests {
     #[test]
     fn test_test_math_capability_has_tools() {
         let registry = CapabilityRegistry::with_builtins();
-        let math = registry.get(CapabilityId::TestMath).unwrap();
+        let math = registry.get(CapabilityId::TEST_MATH).unwrap();
         let tools = math.tools();
 
         assert_eq!(tools.len(), 4);
@@ -1330,7 +1348,7 @@ mod tests {
     #[test]
     fn test_test_weather_capability_has_tools() {
         let registry = CapabilityRegistry::with_builtins();
-        let weather = registry.get(CapabilityId::TestWeather).unwrap();
+        let weather = registry.get(CapabilityId::TEST_WEATHER).unwrap();
         let tools = weather.tools();
 
         assert_eq!(tools.len(), 2);
@@ -1401,7 +1419,11 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied = apply_capabilities(base_config.clone(), &[CapabilityId::TestMath], &registry);
+        let applied = apply_capabilities(
+            base_config.clone(),
+            &[CapabilityId::TEST_MATH.to_string()],
+            &registry,
+        );
 
         // TestMath has system prompt addition and 4 tools
         assert!(applied.config.system_prompt.contains("math tools"));
@@ -1417,8 +1439,11 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied =
-            apply_capabilities(base_config.clone(), &[CapabilityId::TestWeather], &registry);
+        let applied = apply_capabilities(
+            base_config.clone(),
+            &[CapabilityId::TEST_WEATHER.to_string()],
+            &registry,
+        );
 
         // TestWeather has system prompt addition and 2 tools
         assert!(applied.config.system_prompt.contains("weather tools"));
@@ -1434,7 +1459,10 @@ mod tests {
 
         let applied = apply_capabilities(
             base_config.clone(),
-            &[CapabilityId::TestMath, CapabilityId::TestWeather],
+            &[
+                CapabilityId::TEST_MATH.to_string(),
+                CapabilityId::TEST_WEATHER.to_string(),
+            ],
             &registry,
         );
 

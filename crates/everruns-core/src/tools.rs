@@ -16,9 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-use crate::tool_types::{
-    BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
-};
+use crate::tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
 
 use crate::error::Result;
 use crate::traits::ToolExecutor;
@@ -265,7 +263,6 @@ pub trait Tool: Send + Sync {
             name: self.name().to_string(),
             description: self.description().to_string(),
             parameters: self.parameters_schema(),
-            kind: BuiltinToolKind::HttpGet, // Generic kind for custom tools
             policy: self.policy(),
         })
     }

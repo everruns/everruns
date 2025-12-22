@@ -598,7 +598,6 @@ mod tests {
             name: "get_weather".to_string(),
             description: "Get weather".to_string(),
             parameters: serde_json::json!({}),
-            kind: crate::tool_types::BuiltinToolKind::HttpGet,
             policy: crate::tool_types::ToolPolicy::Auto,
         });
 

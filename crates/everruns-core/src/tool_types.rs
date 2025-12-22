@@ -1,7 +1,9 @@
 // Tool definitions and policies for agent execution
 //
-// These are runtime types used by the agent loop for tool execution.
-// They are re-exported by everruns-contracts for backward compatibility.
+// Design Decision: Tools are identified by name (string) for extensibility.
+// The BuiltinToolKind enum has been removed to allow adding new tools
+// without code changes. Tool execution happens via the ToolRegistry
+// which looks up tools by name.
 
 use serde::{Deserialize, Serialize};
 
@@ -25,47 +27,21 @@ pub enum ToolDefinition {
 }
 
 /// Built-in tool configuration
+///
+/// Note: The `kind` field has been removed. Tools are now identified
+/// solely by their `name` field, and execution happens via the ToolRegistry
+/// which looks up tools by name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuiltinTool {
-    /// Tool name (used by LLM)
+    /// Tool name (used by LLM and for registry lookup)
     pub name: String,
     /// Tool description for LLM
     pub description: String,
     /// JSON schema for tool parameters
     pub parameters: serde_json::Value,
-    /// Built-in tool kind
-    pub kind: BuiltinToolKind,
     /// Tool policy (auto or requires_approval)
     #[serde(default)]
     pub policy: ToolPolicy,
-}
-
-/// Built-in tool types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum BuiltinToolKind {
-    /// HTTP GET request
-    HttpGet,
-    /// HTTP POST request
-    HttpPost,
-    /// Read file (future)
-    ReadFile,
-    /// Write file (future)
-    WriteFile,
-    /// Get current time in various formats
-    CurrentTime,
-    /// Test math: add two numbers
-    TestMathAdd,
-    /// Test math: subtract two numbers
-    TestMathSubtract,
-    /// Test math: multiply two numbers
-    TestMathMultiply,
-    /// Test math: divide two numbers
-    TestMathDivide,
-    /// Test weather: get current weather
-    TestWeatherGet,
-    /// Test weather: get forecast
-    TestWeatherForecast,
 }
 
 /// Tool call from LLM response
@@ -95,19 +71,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_builtin_tool_http_get() {
+    fn test_builtin_tool_serialization() {
         let json = r#"{
             "type": "builtin",
             "name": "fetch_data",
             "description": "Fetch data from URL",
-            "parameters": {"type": "object"},
-            "kind": "http_get"
+            "parameters": {"type": "object"}
         }"#;
 
         let tool: ToolDefinition = serde_json::from_str(json).unwrap();
         match tool {
             ToolDefinition::Builtin(builtin) => {
-                assert_eq!(builtin.kind, BuiltinToolKind::HttpGet);
+                assert_eq!(builtin.name, "fetch_data");
                 assert_eq!(builtin.policy, ToolPolicy::Auto);
             }
         }
@@ -120,7 +95,6 @@ mod tests {
             "name": "delete_file",
             "description": "Delete a file",
             "parameters": {"type": "object"},
-            "kind": "write_file",
             "policy": "requires_approval"
         }"#;
 
@@ -130,5 +104,36 @@ mod tests {
                 assert_eq!(builtin.policy, ToolPolicy::RequiresApproval);
             }
         }
+    }
+
+    #[test]
+    fn test_tool_call_serialization() {
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: serde_json::json!({"city": "New York"}),
+        };
+
+        let json = serde_json::to_string(&tool_call).unwrap();
+        let parsed: ToolCall = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.id, tool_call.id);
+        assert_eq!(parsed.name, tool_call.name);
+    }
+
+    #[test]
+    fn test_tool_result_serialization() {
+        let result = ToolResult {
+            tool_call_id: "call_123".to_string(),
+            result: Some(serde_json::json!({"temperature": 72})),
+            error: None,
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: ToolResult = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.tool_call_id, result.tool_call_id);
+        assert!(parsed.result.is_some());
+        assert!(parsed.error.is_none());
     }
 }
