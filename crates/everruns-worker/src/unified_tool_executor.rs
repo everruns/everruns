@@ -49,6 +49,7 @@ impl UnifiedToolExecutor {
     /// - `echo`: Echoes back the provided message
     /// - TestMath tools: add, subtract, multiply, divide
     /// - TestWeather tools: get_weather, get_forecast
+    /// - TaskList tools: write_todos
     pub fn with_default_tools() -> Self {
         let registry = ToolRegistry::builder()
             .tool(everruns_core::GetCurrentTime)
@@ -61,6 +62,8 @@ impl UnifiedToolExecutor {
             // TestWeather capability tools
             .tool(everruns_core::GetWeatherTool)
             .tool(everruns_core::GetForecastTool)
+            // TaskList capability tools
+            .tool(everruns_core::WriteTodosTool)
             .build();
 
         Self::new(registry)
@@ -229,5 +232,7 @@ mod tests {
         assert!(executor.registry().has("get_current_time"));
         // Should have echo
         assert!(executor.registry().has("echo"));
+        // Should have write_todos (TaskList capability)
+        assert!(executor.registry().has("write_todos"));
     }
 }

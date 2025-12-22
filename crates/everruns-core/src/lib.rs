@@ -65,8 +65,8 @@ pub use capabilities::{
     apply_capabilities, AddTool, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
     CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, DivideTool,
     FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetWeatherTool, MultiplyTool,
-    NoopCapability, ResearchCapability, SandboxCapability, SubtractTool, TestMathCapability,
-    TestWeatherCapability,
+    NoopCapability, ResearchCapability, SandboxCapability, SubtractTool, TaskListCapability,
+    TestMathCapability, TestWeatherCapability, WriteTodosTool,
 };
 
 // Atoms re-exports (stateless atomic operations)
