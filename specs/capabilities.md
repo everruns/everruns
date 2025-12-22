@@ -16,15 +16,23 @@ A Capability is an abstraction that defines added functionality for an Agent:
 
 ### Architecture
 
-Capabilities are designed as an **external concern** to the Agent Loop:
+Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
+│                     everruns-core                        │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ CapabilityRegistry + Capability trait impls     │   │
+│  │ (single source of truth for capability defs)   │   │
+│  └─────────────────────────────────────────────────┘   │
+└───────────────────────────┬─────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────┐
 │                     API / Service Layer                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │   Agent     │  │ Capabilities│  │CapabilityService│  │
-│  │   Config    │←─│   Registry  │←─│  (resolution)   │  │
-│  └─────────────┘  └─────────────┘  └─────────────────┘  │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ CapabilityService (uses core registry directly) │   │
+│  │ Capability::from_core() converts to DTOs        │   │
+│  └─────────────────────────────────────────────────┘   │
 └───────────────────────────┬─────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -33,7 +41,8 @@ Capabilities are designed as an **external concern** to the Agent Loop:
 └─────────────────────────────────────────────────────────┘
 ```
 
-- Capabilities are resolved at the **service/API layer**
+- Capabilities are defined in **everruns-core** (trait implementations)
+- The API layer uses the core registry and converts to DTOs for responses
 - The Agent Loop remains focused on execution
 - AgentConfig is built with merged system prompt and tools from capabilities
 
@@ -85,17 +94,24 @@ pub enum CapabilityStatus {
 }
 ```
 
-#### InternalCapability (Server-side)
+#### Capability Trait (everruns-core)
 
-Full capability definition with implementation details:
+Capabilities are defined as trait implementations in the core crate:
 
 ```rust
-pub struct InternalCapability {
-    pub info: Capability,                    // Public info
-    pub system_prompt_addition: Option<String>, // Prepended to agent's system prompt
-    pub tools: Vec<ToolDefinition>,          // Tools provided by this capability
+pub trait Capability: Send + Sync {
+    fn id(&self) -> &str;
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+    fn status(&self) -> CapabilityStatus;
+    fn system_prompt_addition(&self) -> Option<&str> { None }
+    fn tools(&self) -> Vec<Box<dyn Tool>> { vec![] }
+    fn icon(&self) -> Option<&str> { None }
+    fn category(&self) -> Option<&str> { None }
 }
 ```
+
+The `CapabilityRegistry` in core holds all registered capability implementations. The API layer converts trait objects to DTOs using `Capability::from_core()`.
 
 ### Built-in Capabilities
 
