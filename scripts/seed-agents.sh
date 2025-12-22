@@ -3,12 +3,17 @@ set -euo pipefail
 
 # Seed agents from YAML configuration into the local development database
 # Usage: ./scripts/seed-agents.sh [--api-url URL]
+#
+# Supports both mikefarah/yq (Go) and kislyuk/yq (Python) versions
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 SEED_FILE="$PROJECT_ROOT/harness/seed-agents.yaml"
 
 API_URL="${API_URL:-http://localhost:9000}"
+
+# yq variant: "go" for mikefarah/yq, "python" for kislyuk/yq
+YQ_VARIANT=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -24,6 +29,55 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Detect which yq variant is installed
+detect_yq_variant() {
+  local version_output
+  version_output=$(yq --version 2>&1 || true)
+
+  if echo "$version_output" | grep -qi "mikefarah\|https://github.com/mikefarah/yq"; then
+    YQ_VARIANT="go"
+    echo "   Using mikefarah/yq (Go)"
+  elif echo "$version_output" | grep -qE "^yq [0-9]" || echo "$version_output" | grep -qi "kislyuk"; then
+    YQ_VARIANT="python"
+    echo "   Using kislyuk/yq (Python)"
+  else
+    # Try to detect by behavior - Go yq outputs version differently
+    if yq --version 2>&1 | grep -qE "version v?[0-9]+\.[0-9]+"; then
+      YQ_VARIANT="go"
+      echo "   Using mikefarah/yq (Go)"
+    else
+      YQ_VARIANT="python"
+      echo "   Using kislyuk/yq (Python) [assumed]"
+    fi
+  fi
+}
+
+# Wrapper for yq that handles both variants
+# Usage: yq_read <expression> <file>
+yq_read() {
+  local expr="$1"
+  local file="$2"
+
+  if [[ "$YQ_VARIANT" == "go" ]]; then
+    yq -r "$expr" "$file"
+  else
+    yq -r "$expr" "$file"
+  fi
+}
+
+# Wrapper for yq JSON output
+# Usage: yq_json <expression> <file>
+yq_json() {
+  local expr="$1"
+  local file="$2"
+
+  if [[ "$YQ_VARIANT" == "go" ]]; then
+    yq -o=json -I=0 "$expr" "$file"
+  else
+    yq -c "$expr" "$file"
+  fi
+}
+
 # Check for required tools
 check_tools() {
   if ! command -v curl &> /dev/null; then
@@ -37,9 +91,13 @@ check_tools() {
   fi
   if ! command -v yq &> /dev/null; then
     echo "❌ yq is required but not installed"
-    echo "   Install with: pip install yq (or brew install yq)"
+    echo "   Install with:"
+    echo "     Go version:     brew install yq (or go install github.com/mikefarah/yq/v4@latest)"
+    echo "     Python version: pip install yq"
     exit 1
   fi
+
+  detect_yq_variant
 }
 
 # Wait for API to be healthy
@@ -111,7 +169,7 @@ seed_agents() {
 
   # Get number of agents in YAML
   local agent_count
-  agent_count=$(yq -r '.agents | length' "$SEED_FILE")
+  agent_count=$(yq_read '.agents | length' "$SEED_FILE")
 
   if [[ "$agent_count" -eq 0 ]]; then
     echo "   No agents defined in seed file"
@@ -131,12 +189,12 @@ seed_agents() {
     local tags
     local capabilities
 
-    # Extract agent fields using yq
-    name=$(yq -r ".agents[$i].name" "$SEED_FILE")
-    description=$(yq -r ".agents[$i].description // \"\"" "$SEED_FILE")
-    system_prompt=$(yq -r ".agents[$i].system_prompt" "$SEED_FILE")
-    tags=$(yq -c ".agents[$i].tags // []" "$SEED_FILE")
-    capabilities=$(yq -c ".agents[$i].capabilities // []" "$SEED_FILE")
+    # Extract agent fields using yq wrapper
+    name=$(yq_read ".agents[$i].name" "$SEED_FILE")
+    description=$(yq_read ".agents[$i].description // \"\"" "$SEED_FILE")
+    system_prompt=$(yq_read ".agents[$i].system_prompt" "$SEED_FILE")
+    tags=$(yq_json ".agents[$i].tags // []" "$SEED_FILE")
+    capabilities=$(yq_json ".agents[$i].capabilities // []" "$SEED_FILE")
 
     # Check if agent already exists
     if agent_exists "$name"; then
