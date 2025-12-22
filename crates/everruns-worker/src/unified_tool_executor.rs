@@ -115,7 +115,7 @@ impl ToolExecutor for UnifiedToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::tools::{BuiltinTool, BuiltinToolKind, ToolPolicy};
+    use everruns_contracts::tools::{BuiltinTool, ToolPolicy};
     use everruns_core::{EchoTool, FailingTool, GetCurrentTime};
     use serde_json::json;
 
@@ -134,7 +134,6 @@ mod tests {
             name: "get_current_time".to_string(),
             description: "Get current time".to_string(),
             parameters: json!({}),
-            kind: BuiltinToolKind::HttpGet,
             policy: ToolPolicy::Auto,
         });
 
@@ -161,7 +160,6 @@ mod tests {
             name: "echo".to_string(),
             description: "Echo message".to_string(),
             parameters: json!({}),
-            kind: BuiltinToolKind::HttpGet,
             policy: ToolPolicy::Auto,
         });
 
@@ -188,7 +186,6 @@ mod tests {
             name: "nonexistent_tool".to_string(),
             description: "Does not exist".to_string(),
             parameters: json!({}),
-            kind: BuiltinToolKind::HttpGet,
             policy: ToolPolicy::Auto,
         });
 
@@ -215,7 +212,6 @@ mod tests {
             name: "failing_tool".to_string(),
             description: "Always fails".to_string(),
             parameters: json!({}),
-            kind: BuiltinToolKind::HttpGet,
             policy: ToolPolicy::Auto,
         });
 

@@ -31,6 +31,20 @@ pub struct Capability {
     pub category: Option<String>,
 }
 
+impl Capability {
+    /// Create a Capability DTO from a core Capability trait object
+    pub fn from_core(cap: &dyn everruns_core::capabilities::Capability) -> Self {
+        Self {
+            id: CapabilityId::new(cap.id()),
+            name: cap.name().to_string(),
+            description: cap.description().to_string(),
+            status: cap.status(),
+            icon: cap.icon().map(|s| s.to_string()),
+            category: cap.category().map(|s| s.to_string()),
+        }
+    }
+}
+
 /// Agent capability assignment with ordering
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentCapability {
@@ -57,7 +71,7 @@ mod tests {
     #[test]
     fn test_capability_serialization() {
         let cap = Capability {
-            id: CapabilityId::Research,
+            id: CapabilityId::research(),
             name: "Research".to_string(),
             description: "Deep research capability".to_string(),
             status: CapabilityStatus::Available,
@@ -73,7 +87,7 @@ mod tests {
     #[test]
     fn test_agent_capability_serialization() {
         let agent_cap = AgentCapability {
-            capability_id: CapabilityId::Sandbox,
+            capability_id: CapabilityId::sandbox(),
             position: 1,
         };
 
@@ -85,15 +99,17 @@ mod tests {
     #[test]
     fn test_test_capabilities() {
         // Verify test math and weather capabilities are available
-        assert_eq!(CapabilityId::TestMath.to_string(), "test_math");
-        assert_eq!(CapabilityId::TestWeather.to_string(), "test_weather");
-        assert_eq!(
-            "test_math".parse::<CapabilityId>().unwrap(),
-            CapabilityId::TestMath
-        );
-        assert_eq!(
-            "test_weather".parse::<CapabilityId>().unwrap(),
-            CapabilityId::TestWeather
-        );
+        assert_eq!(CapabilityId::test_math().to_string(), "test_math");
+        assert_eq!(CapabilityId::test_weather().to_string(), "test_weather");
+    }
+
+    #[test]
+    fn test_custom_capability_id() {
+        // Custom capability IDs should work
+        let custom = CapabilityId::new("my_custom_capability");
+        assert_eq!(custom.to_string(), "my_custom_capability");
+
+        let json = serde_json::to_string(&custom).unwrap();
+        assert_eq!(json, "\"my_custom_capability\"");
     }
 }

@@ -42,6 +42,7 @@ reqwest.workspace = true
 time.workspace = true
 
 everruns-contracts = { path = "../everruns-contracts" }
+everruns-core = { path = "../everruns-core" }
 everruns-storage = { path = "../everruns-storage" }
 everruns-worker = { path = "../everruns-worker" }
 

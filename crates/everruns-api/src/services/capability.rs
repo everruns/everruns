@@ -1,33 +1,47 @@
 // Capability service - business logic for capabilities
+//
+// Uses CapabilityRegistry from everruns-core as the single source of truth
+// for capability definitions.
 
 use anyhow::Result;
 use everruns_contracts::{AgentCapability, Capability, CapabilityId};
+use everruns_core::capabilities::CapabilityRegistry;
 use everruns_storage::Database;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::capabilities::{get_capability_definition, get_capability_registry};
-
 pub struct CapabilityService {
     db: Arc<Database>,
+    registry: CapabilityRegistry,
 }
 
 impl CapabilityService {
     pub fn new(db: Arc<Database>) -> Self {
-        Self { db }
+        Self {
+            db,
+            registry: CapabilityRegistry::with_builtins(),
+        }
     }
 
     /// List all available capabilities (public info only)
     pub fn list_all(&self) -> Vec<Capability> {
-        get_capability_registry()
+        self.registry
+            .list()
             .into_iter()
-            .map(|c| c.info)
+            .map(|cap| Capability::from_core(cap.as_ref()))
             .collect()
     }
 
     /// Get a specific capability by ID
-    pub fn get(&self, id: CapabilityId) -> Option<Capability> {
-        get_capability_definition(id).map(|c| c.info)
+    pub fn get(&self, id: &CapabilityId) -> Option<Capability> {
+        self.registry
+            .get(id.as_str())
+            .map(|cap| Capability::from_core(cap.as_ref()))
+    }
+
+    /// Check if a capability exists in the registry
+    pub fn has(&self, id: &CapabilityId) -> bool {
+        self.registry.has(id.as_str())
     }
 
     /// Get capabilities for an agent
@@ -36,12 +50,9 @@ impl CapabilityService {
 
         let capabilities: Vec<AgentCapability> = rows
             .into_iter()
-            .filter_map(|row| {
-                let capability_id: Result<CapabilityId, _> = row.capability_id.parse();
-                capability_id.ok().map(|cap_id| AgentCapability {
-                    capability_id: cap_id,
-                    position: row.position,
-                })
+            .map(|row| AgentCapability {
+                capability_id: CapabilityId::new(&row.capability_id),
+                position: row.position,
             })
             .collect();
 
@@ -65,12 +76,9 @@ impl CapabilityService {
 
         let result: Vec<AgentCapability> = rows
             .into_iter()
-            .filter_map(|row| {
-                let capability_id: Result<CapabilityId, _> = row.capability_id.parse();
-                capability_id.ok().map(|cap_id| AgentCapability {
-                    capability_id: cap_id,
-                    position: row.position,
-                })
+            .map(|row| AgentCapability {
+                capability_id: CapabilityId::new(&row.capability_id),
+                position: row.position,
             })
             .collect();
 

@@ -91,8 +91,6 @@ pub use ag_ui::{
 };
 
 // Tool types (runtime types defined in this crate)
-pub use tool_types::{
-    BuiltinTool, BuiltinToolKind, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
-};
+pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module

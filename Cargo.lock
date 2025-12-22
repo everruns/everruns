@@ -767,6 +767,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "everruns-contracts",
+ "everruns-core",
  "everruns-storage",
  "everruns-worker",
  "futures",
