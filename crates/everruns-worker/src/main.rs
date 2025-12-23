@@ -35,9 +35,8 @@ async fn main() -> Result<()> {
 
     // Initialize encryption service for decrypting API keys
     // SECRETS_ENCRYPTION_KEY is required for API key decryption
-    let encryption = EncryptionService::from_env().context(
-        "Failed to initialize encryption service. Ensure SECRETS_ENCRYPTION_KEY is set.",
-    )?;
+    let encryption = EncryptionService::from_env()
+        .context("Failed to initialize encryption service. Ensure SECRETS_ENCRYPTION_KEY is set.")?;
 
     // Create and run the Temporal worker
     let worker = TemporalWorker::new(config, db, encryption).await?;
