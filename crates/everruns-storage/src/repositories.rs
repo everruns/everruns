@@ -347,21 +347,6 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
-        let row = sqlx::query_as::<_, AgentRow>(
-            r#"
-            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
-            FROM agents
-            WHERE name = $1
-            "#,
-        )
-        .bind(name)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
     pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
         let rows = sqlx::query_as::<_, AgentRow>(
             r#"
