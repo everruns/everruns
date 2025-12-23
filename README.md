@@ -100,7 +100,12 @@ curl -X POST http://localhost:9000/v1/agents/{agent_id}/sessions \
 # Send a message (triggers workflow execution)
 curl -X POST http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
-  -d '{"content": "Hello, how are you?"}'
+  -d '{
+    "message": {
+      "role": "user",
+      "content": [{"type": "text", "text": "Hello, how are you?"}]
+    }
+  }'
 
 # Get messages (poll for response)
 curl http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/messages
