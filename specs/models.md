@@ -261,7 +261,7 @@ Configuration for a specific model within a provider.
 | `provider_id` | UUID v7 | Parent provider reference |
 | `model_id` | string | Model identifier (e.g., "gpt-4o") |
 | `display_name` | string | Display name |
-| `capabilities` | string[] | Model capabilities |
+| `features` | string[] | Model features (e.g., vision, function_calling, streaming) |
 | `context_window` | integer? | Context window size |
 | `is_default` | boolean | Default model for this provider |
 | `status` | enum | `active` or `disabled` |
