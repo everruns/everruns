@@ -39,10 +39,27 @@ See [authentication.md](authentication.md) for full authentication specification
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/agents` | Create agent |
+| PUT | `/v1/agents` | Create agent if not exists (idempotent) |
 | GET | `/v1/agents` | List agents (paginated) |
 | GET | `/v1/agents/{id}` | Get agent by ID |
 | PATCH | `/v1/agents/{id}` | Update agent |
 | DELETE | `/v1/agents/{id}` | Archive agent (soft delete) |
+
+**Idempotent Agent Creation (PUT /v1/agents):**
+
+The PUT endpoint creates an agent if it doesn't exist, or returns the existing agent. This is useful for seeding and automation scripts.
+
+- Returns `201 Created` with agent if a new agent was created
+- Returns `200 OK` with agent if the agent already exists (matched by name)
+
+```json
+PUT /v1/agents
+{
+  "name": "My Agent",
+  "system_prompt": "You are a helpful assistant.",
+  "tags": ["demo"]
+}
+```
 
 ### Sessions
 

@@ -304,3 +304,94 @@ async fn test_llm_provider_and_model_workflow() {
 
     println!("All LLM provider and model tests passed!");
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_idempotent_agent_creation() {
+    let client = reqwest::Client::new();
+
+    println!("Testing idempotent agent creation (PUT /v1/agents)...");
+
+    let unique_name = format!("Idempotent Test Agent {}", uuid::Uuid::new_v4());
+
+    // Step 1: Create agent using PUT (should return 201)
+    println!("\nStep 1: First PUT request (should create)...");
+    let first_response = client
+        .put(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": unique_name,
+            "system_prompt": "You are a test assistant.",
+            "tags": ["test", "idempotent"]
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(
+        first_response.status(),
+        201,
+        "Expected 201 Created for first PUT, got {}",
+        first_response.status()
+    );
+
+    let first_agent: Agent = first_response
+        .json()
+        .await
+        .expect("Failed to parse first agent response");
+
+    println!(
+        "Created agent: {} (id: {})",
+        first_agent.name, first_agent.id
+    );
+    assert_eq!(first_agent.name, unique_name);
+
+    // Step 2: Second PUT with same name (should return 200 with same agent)
+    println!("\nStep 2: Second PUT request (should return existing)...");
+    let second_response = client
+        .put(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": unique_name,
+            "system_prompt": "Different prompt - should be ignored.",
+            "tags": ["different", "tags"]
+        }))
+        .send()
+        .await
+        .expect("Failed to get existing agent");
+
+    assert_eq!(
+        second_response.status(),
+        200,
+        "Expected 200 OK for second PUT (existing agent), got {}",
+        second_response.status()
+    );
+
+    let second_agent: Agent = second_response
+        .json()
+        .await
+        .expect("Failed to parse second agent response");
+
+    println!(
+        "Returned agent: {} (id: {})",
+        second_agent.name, second_agent.id
+    );
+    assert_eq!(
+        second_agent.id, first_agent.id,
+        "Expected same agent ID for idempotent PUT"
+    );
+
+    // Step 3: Cleanup - delete the test agent
+    println!("\nStep 3: Cleaning up...");
+    let delete_response = client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, first_agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    assert_eq!(
+        delete_response.status(),
+        204,
+        "Expected 204 No Content for delete"
+    );
+
+    println!("\nIdempotent agent creation test passed!");
+}

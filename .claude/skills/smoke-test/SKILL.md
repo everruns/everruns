@@ -78,6 +78,37 @@ echo "Agent ID: $AGENT_ID"
 ```
 Expected: Valid UUID returned
 
+#### 2.5. Idempotent Agent Creation (PUT)
+```bash
+# Create agent idempotently (first time - should return 201)
+RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT http://localhost:9000/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Idempotent Test Agent",
+    "system_prompt": "Testing idempotent creation.",
+    "tags": ["test", "idempotent"]
+  }')
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+echo "First call - HTTP $HTTP_CODE"
+IDEM_AGENT_ID=$(echo "$BODY" | jq -r '.id')
+
+# Call again with same name - should return 200 with same ID
+RESPONSE2=$(curl -s -w "\n%{http_code}" -X PUT http://localhost:9000/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Idempotent Test Agent",
+    "system_prompt": "Different prompt - ignored for existing.",
+    "tags": ["different"]
+  }')
+HTTP_CODE2=$(echo "$RESPONSE2" | tail -n1)
+BODY2=$(echo "$RESPONSE2" | sed '$d')
+IDEM_AGENT_ID2=$(echo "$BODY2" | jq -r '.id')
+echo "Second call - HTTP $HTTP_CODE2"
+echo "IDs match: $([[ "$IDEM_AGENT_ID" == "$IDEM_AGENT_ID2" ]] && echo 'yes' || echo 'no')"
+```
+Expected: First call returns 201, second call returns 200, both return same agent ID
+
 #### 3. Get Agent
 ```bash
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID" | jq
