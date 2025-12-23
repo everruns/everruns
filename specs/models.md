@@ -52,30 +52,77 @@ The primary conversation data. Stores all conversation content including user me
 | `session_id` | UUID v7 | Parent session reference |
 | `sequence` | integer | Order within session (auto-increment per session) |
 | `role` | enum | `user`, `assistant`, `tool_call`, `tool_result`, `system` |
-| `content` | JSON | Message content (schema depends on role) |
+| `content` | ContentPart[] | Array of content parts (see below) |
+| `metadata` | object? | Message-level metadata (e.g., locale) |
 | `tool_call_id` | string? | For tool_result, references the tool_call id |
 | `created_at` | timestamp | Creation time |
 
-**Content schemas by role:**
+**ContentPart types (discriminated by `type` field):**
 
 ```json
-// role=user, assistant, or system
-{
-  "text": "Hello, how are you?"
-}
+// type=text
+{ "type": "text", "text": "Hello, how are you?" }
 
-// role=tool_call (assistant requesting tool execution)
+// type=image
+{ "type": "image", "url": "https://..." }
+// or
+{ "type": "image", "base64": "...", "media_type": "image/png" }
+
+// type=tool_call (assistant requesting tool execution)
 {
+  "type": "tool_call",
   "id": "call_abc123",
   "name": "search",
   "arguments": { "query": "test" }
 }
 
-// role=tool_result (result of tool execution)
+// type=tool_result (result of tool execution)
 {
+  "type": "tool_result",
   "result": { "matches": [...] },
   "error": null
 }
+```
+
+**CreateMessageRequest structure:**
+
+```json
+{
+  "message": {
+    "role": "user",
+    "content": [
+      { "type": "text", "text": "Compare these two images." }
+    ],
+    "metadata": {
+      "locale": "en-US"
+    }
+  },
+  "controls": {
+    "model_id": "provider/model-name",
+    "reasoning": { "effort": "medium" },
+    "max_tokens": 4096,
+    "temperature": 0.7
+  },
+  "metadata": {
+    "request_id": "req_123"
+  },
+  "tags": ["important", "review"]
+}
+```
+
+**Legacy content storage (internal):**
+
+For backwards compatibility, content is stored in the database as JSON:
+
+```json
+// role=user, assistant, or system
+{ "text": "Hello, how are you?" }
+
+// role=tool_call
+{ "id": "call_abc123", "name": "search", "arguments": {...} }
+
+// role=tool_result
+{ "result": {...}, "error": null }
 ```
 
 ### Event

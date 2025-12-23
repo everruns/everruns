@@ -261,11 +261,27 @@ pub async fn create_message(
     Path((agent_id, session_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), StatusCode> {
+    use crate::services::message::content_parts_to_json;
+
+    // Convert ContentPart array to JSON for storage
+    let content = content_parts_to_json(&req.message.role, &req.message.content);
+
+    // Convert message metadata to JSON
+    let metadata = req
+        .message
+        .metadata
+        .and_then(|m| serde_json::to_value(m).ok());
+
+    // Get tags from request (empty if not provided)
+    let tags = req.tags.unwrap_or_default();
+
     let input = CreateMessage {
         session_id,
-        role: req.role.to_string(),
-        content: req.content,
-        tool_call_id: req.tool_call_id,
+        role: req.message.role.to_string(),
+        content,
+        metadata,
+        tags,
+        tool_call_id: req.message.tool_call_id,
     };
 
     let message = state.message_service.create(input).await.map_err(|e| {
