@@ -332,24 +332,6 @@ impl Database {
         Ok(row)
     }
 
-    /// Create an agent if it doesn't exist, or return the existing one.
-    /// This is idempotent - calling it multiple times with the same name
-    /// will not create duplicate agents. Returns (agent, created) where
-    /// created is true if a new agent was created, false if existing was returned.
-    ///
-    /// Note: This uses application-level checking, not a database constraint.
-    /// There is no unique constraint on agent names in the database.
-    pub async fn create_or_get_agent(&self, input: CreateAgent) -> Result<(AgentRow, bool)> {
-        // Check if agent with this name already exists
-        if let Some(existing) = self.get_agent_by_name(&input.name).await? {
-            return Ok((existing, false));
-        }
-
-        // Agent doesn't exist, create it
-        let row = self.create_agent(input).await?;
-        Ok((row, true))
-    }
-
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"

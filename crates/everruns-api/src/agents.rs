@@ -3,7 +3,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use everruns_contracts::{Agent, CreateAgentRequest, ListResponse, UpdateAgentRequest};
@@ -33,10 +33,7 @@ impl AppState {
 /// Create agent routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route(
-            "/v1/agents",
-            post(create_agent).get(list_agents).put(create_or_get_agent),
-        )
+        .route("/v1/agents", post(create_agent).get(list_agents))
         .route(
             "/v1/agents/:agent_id",
             get(get_agent).patch(update_agent).delete(delete_agent),
@@ -73,47 +70,6 @@ pub async fn create_agent(
     })?;
 
     Ok((StatusCode::CREATED, Json(agent)))
-}
-
-/// PUT /v1/agents - Create agent if it doesn't exist (idempotent)
-///
-/// Returns 201 Created if a new agent was created, 200 OK if the agent already exists.
-/// This is useful for seeding and ensures idempotent agent creation.
-#[utoipa::path(
-    put,
-    path = "/v1/agents",
-    request_body = CreateAgentRequest,
-    responses(
-        (status = 201, description = "Agent created successfully", body = Agent),
-        (status = 200, description = "Agent already exists", body = Agent),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "agents"
-)]
-pub async fn create_or_get_agent(
-    State(state): State<AppState>,
-    Json(req): Json<CreateAgentRequest>,
-) -> Result<(StatusCode, Json<Agent>), StatusCode> {
-    let input = CreateAgent {
-        name: req.name,
-        description: req.description,
-        system_prompt: req.system_prompt,
-        default_model_id: req.default_model_id,
-        tags: req.tags,
-    };
-
-    let (agent, created) = state.service.create_or_get(input).await.map_err(|e| {
-        tracing::error!("Failed to create or get agent: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    let status = if created {
-        StatusCode::CREATED
-    } else {
-        StatusCode::OK
-    };
-
-    Ok((status, Json(agent)))
 }
 
 /// GET /v1/agents - List all active agents
