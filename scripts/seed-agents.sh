@@ -143,9 +143,9 @@ create_model() {
   echo "$response"
 }
 
-# Get existing agents and return their names as JSON array
+# Get existing agents and return their names
 get_existing_agent_names() {
-  curl -s "$API_URL/v1/agents" | jq -r '.items[].name'
+  curl -s "$API_URL/v1/agents" | jq -r '.data[].name'
 }
 
 # Check if agent with name already exists
