@@ -59,7 +59,7 @@ fn row_to_provider(row: &everruns_storage::models::LlmProviderRow) -> LlmProvide
     LlmProvider {
         id: row.id,
         name: row.name.clone(),
-        provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Custom),
+        provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Openai),
         base_url: row.base_url.clone(),
         api_key_set: row.api_key_set,
         is_default: row.is_default,
@@ -118,6 +118,7 @@ pub async fn create_provider(
         base_url: req.base_url,
         api_key_encrypted,
         is_default: req.is_default,
+        settings: None, // Default empty settings
     };
 
     let row = state.db.create_llm_provider(input).await.map_err(|e| {
@@ -249,6 +250,7 @@ pub async fn update_provider(
             LlmProviderStatus::Active => "active".to_string(),
             LlmProviderStatus::Disabled => "disabled".to_string(),
         }),
+        settings: None, // Settings updates not yet exposed via API
     };
 
     let row = state.db.update_llm_provider(id, input).await.map_err(|e| {

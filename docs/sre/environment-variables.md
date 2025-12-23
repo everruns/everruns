@@ -47,6 +47,30 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 - If set, credentials are allowed (`Access-Control-Allow-Credentials: true`)
 - Wildcard (`*`) is not supported when using credentials
 
+## LLM Provider API Keys
+
+LLM provider API keys (OpenAI, Anthropic, Azure OpenAI) are **not** configured via environment variables. Instead, they are stored encrypted in the database and managed via the Settings > Providers UI.
+
+| Property | Value |
+|----------|-------|
+| **Storage** | Database (encrypted with AES-256-GCM) |
+| **Configuration** | Settings > Providers UI or `/v1/llm-providers` API |
+| **Supported Providers** | OpenAI, Anthropic, Azure OpenAI |
+
+**Required for encryption:**
+
+The `SECRETS_ENCRYPTION_KEY` environment variable must be set for the API and Worker to encrypt/decrypt API keys:
+
+```bash
+# Generate a new key
+python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())"
+
+# Set in environment
+SECRETS_ENCRYPTION_KEY=kek-v1:your-generated-key-here
+```
+
+**Note:** Environment variables like `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` are NOT used by the system. All API keys must be configured through the database.
+
 ## UI API Proxy Architecture
 
 The UI makes all API requests to `/api/*` paths. These are handled differently in each environment:

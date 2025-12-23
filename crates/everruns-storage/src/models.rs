@@ -237,6 +237,7 @@ pub struct LlmProviderRow {
     pub api_key_set: bool,
     pub is_default: bool,
     pub status: String,
+    pub settings: sqlx::types::JsonValue,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -272,6 +273,18 @@ pub struct LlmModelWithProviderRow {
     pub provider_type: String,
 }
 
+/// LLM Provider with decrypted API key (used by worker activities)
+#[derive(Debug, Clone)]
+pub struct LlmProviderWithApiKey {
+    pub id: Uuid,
+    pub name: String,
+    pub provider_type: String,
+    pub base_url: Option<String>,
+    /// Decrypted API key (only available when needed for LLM calls)
+    pub api_key: Option<String>,
+    pub settings: serde_json::Value,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateLlmProvider {
     pub name: String,
@@ -279,6 +292,7 @@ pub struct CreateLlmProvider {
     pub base_url: Option<String>,
     pub api_key_encrypted: Option<Vec<u8>>,
     pub is_default: bool,
+    pub settings: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -289,6 +303,7 @@ pub struct UpdateLlmProvider {
     pub api_key_encrypted: Option<Vec<u8>>,
     pub is_default: Option<bool>,
     pub status: Option<String>,
+    pub settings: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]

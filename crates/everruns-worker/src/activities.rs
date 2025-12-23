@@ -17,7 +17,7 @@ use everruns_core::atoms::{
 };
 use everruns_core::config::AgentConfigBuilder;
 use everruns_core::provider_factory::{create_provider, ProviderConfig, ProviderType};
-use everruns_storage::repositories::Database;
+use everruns_storage::{repositories::Database, EncryptionService};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -83,7 +83,12 @@ pub struct ExecuteToolOutput {
 ///
 /// This activity loads the agent from the database and builds the AgentConfigData
 /// including the model, system_prompt, tools from capabilities, and max_iterations.
-pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<AgentConfigData> {
+/// API keys are decrypted from the database using the provided encryption service.
+pub async fn load_agent_activity(
+    db: Database,
+    encryption: EncryptionService,
+    input: LoadAgentInput,
+) -> Result<AgentConfigData> {
     use everruns_core::capabilities::CapabilityRegistry;
 
     let agent_id: Uuid = input.agent_id.parse().context("Invalid agent_id UUID")?;
@@ -110,41 +115,85 @@ pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<
     let registry = CapabilityRegistry::with_builtins();
 
     // Look up the LLM model configuration if default_model_id is set
-    let (model_id, provider_type) = if let Some(llm_model_uuid) = agent.default_model_id {
+    // Also get the decrypted API key from the provider
+    let (model_id, provider_type, api_key, base_url) = if let Some(llm_model_uuid) =
+        agent.default_model_id
+    {
         // Look up the LLM model to get the actual model_id and provider_type
         match db.get_llm_model(llm_model_uuid).await {
             Ok(Some(llm_model)) => {
-                // Get provider info to determine provider_type
+                // Get provider info to determine provider_type and get API key
                 match db.get_llm_provider(llm_model.provider_id).await {
                     Ok(Some(provider)) => {
+                        // Decrypt the API key from the provider
+                        let provider_with_key = db
+                            .get_provider_with_api_key(&provider, &encryption)
+                            .context("Failed to decrypt provider API key")?;
+
                         tracing::info!(
                             agent_id = %agent_id,
                             model_id = %llm_model.model_id,
                             provider_type = %provider.provider_type,
-                            "Resolved LLM model from database"
+                            api_key_set = provider_with_key.api_key.is_some(),
+                            "Resolved LLM model and provider from database"
                         );
-                        (llm_model.model_id, provider.provider_type)
+                        (
+                            llm_model.model_id,
+                            provider.provider_type,
+                            provider_with_key.api_key,
+                            provider_with_key.base_url,
+                        )
                     }
                     _ => {
                         // Fallback to model detection if provider lookup fails
                         let model_id = llm_model.model_id.clone();
                         let provider_type = detect_provider_type(&model_id);
-                        (model_id, provider_type)
+                        (model_id, provider_type, None, None)
                     }
                 }
             }
             _ => {
-                // Fallback to default if model lookup fails
-                let default_model = "gpt-4o".to_string();
-                let provider_type = detect_provider_type(&default_model);
-                (default_model, provider_type)
+                // Fallback to default provider if model lookup fails
+                match db.get_default_llm_provider().await {
+                    Ok(Some(provider)) => {
+                        let provider_with_key = db
+                            .get_provider_with_api_key(&provider, &encryption)
+                            .context("Failed to decrypt default provider API key")?;
+                        (
+                            "gpt-4o".to_string(),
+                            provider.provider_type,
+                            provider_with_key.api_key,
+                            provider_with_key.base_url,
+                        )
+                    }
+                    _ => {
+                        let default_model = "gpt-4o".to_string();
+                        let provider_type = detect_provider_type(&default_model);
+                        (default_model, provider_type, None, None)
+                    }
+                }
             }
         }
     } else {
-        // No default_model_id set, use gpt-4o default
-        let default_model = "gpt-4o".to_string();
-        let provider_type = detect_provider_type(&default_model);
-        (default_model, provider_type)
+        // No default_model_id set, try to use default provider
+        match db.get_default_llm_provider().await {
+            Ok(Some(provider)) => {
+                let provider_with_key = db
+                    .get_provider_with_api_key(&provider, &encryption)
+                    .context("Failed to decrypt default provider API key")?;
+                (
+                    "gpt-4o".to_string(),
+                    provider.provider_type,
+                    provider_with_key.api_key,
+                    provider_with_key.base_url,
+                )
+            }
+            _ => {
+                let default_model = "gpt-4o".to_string();
+                let provider_type = detect_provider_type(&default_model);
+                (default_model, provider_type, None, None)
+            }
+        }
     };
 
     // Build base config and apply capabilities
@@ -170,6 +219,7 @@ pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<
         agent_id = %agent_id,
         model = %model_id,
         provider_type = %provider_type,
+        api_key_configured = api_key.is_some(),
         capability_count = capability_ids.len(),
         tool_count = tools.len(),
         "Loaded agent with capabilities"
@@ -178,8 +228,8 @@ pub async fn load_agent_activity(db: Database, input: LoadAgentInput) -> Result<
     Ok(AgentConfigData {
         model: model_id,
         provider_type,
-        api_key: None, // Uses environment variable by default
-        base_url: None,
+        api_key, // Decrypted from database
+        base_url,
         system_prompt: Some(applied.config.system_prompt),
         tools,
         max_iterations: 10,
@@ -346,7 +396,7 @@ fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
 /// Detect provider type from model name pattern
 ///
 /// This is a helper function that infers the provider type from the model name.
-/// It supports common patterns for OpenAI, Anthropic, and other providers.
+/// It supports common patterns for OpenAI and Anthropic providers.
 fn detect_provider_type(model_id: &str) -> String {
     let model_lower = model_id.to_lowercase();
 
@@ -355,23 +405,8 @@ fn detect_provider_type(model_id: &str) -> String {
         || model_lower.starts_with("anthropic")
     {
         "anthropic".to_string()
-    } else if model_lower.starts_with("gpt")
-        || model_lower.starts_with("o1")
-        || model_lower.starts_with("o3")
-        || model_lower.starts_with("chatgpt")
-        || model_lower.starts_with("davinci")
-        || model_lower.starts_with("text-")
-    {
-        "openai".to_string()
-    } else if model_lower.contains("llama")
-        || model_lower.contains("mistral")
-        || model_lower.contains("codellama")
-        || model_lower.contains("deepseek")
-    {
-        // Local models typically run via Ollama
-        "ollama".to_string()
     } else {
-        // Default to OpenAI for unknown models
+        // Default to OpenAI for all other models (including GPT, O1, O3, etc.)
         "openai".to_string()
     }
 }
@@ -470,9 +505,10 @@ mod tests {
             detect_provider_type("claude-3-5-sonnet-20241022"),
             "anthropic"
         );
-        assert_eq!(detect_provider_type("llama-3.1-70b"), "ollama");
-        assert_eq!(detect_provider_type("mistral-7b"), "ollama");
         assert_eq!(detect_provider_type("o1-preview"), "openai");
-        assert_eq!(detect_provider_type("unknown-model"), "openai"); // Default
+        assert_eq!(detect_provider_type("unknown-model"), "openai"); // Default to OpenAI
+        // Previously Ollama models now default to OpenAI
+        assert_eq!(detect_provider_type("llama-3.1-70b"), "openai");
+        assert_eq!(detect_provider_type("mistral-7b"), "openai");
     }
 }

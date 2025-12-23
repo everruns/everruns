@@ -1,5 +1,5 @@
-use anyhow::Result;
-use everruns_storage::repositories::Database;
+use anyhow::{Context, Result};
+use everruns_storage::{repositories::Database, EncryptionService};
 use everruns_worker::{RunnerConfig, TemporalWorker};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -33,8 +33,13 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "postgres://everruns:everruns@localhost:5432/everruns".into());
     let db = Database::from_url(&database_url).await?;
 
+    // Initialize encryption service for decrypting API keys
+    // SECRETS_ENCRYPTION_KEY is required for API key decryption
+    let encryption = EncryptionService::from_env()
+        .context("Failed to initialize encryption service. Ensure SECRETS_ENCRYPTION_KEY is set.")?;
+
     // Create and run the Temporal worker
-    let worker = TemporalWorker::new(config, db).await?;
+    let worker = TemporalWorker::new(config, db, encryption).await?;
 
     // Run the worker (blocks until shutdown)
     tokio::select! {

@@ -179,6 +179,48 @@ Junction table linking Agents to Capabilities with ordering.
 - Each agent can have each capability at most once (`UNIQUE(agent_id, capability_id)`)
 - Capabilities are applied in `position` order when building agent configuration
 
+### LLM Provider
+
+Configuration for LLM API providers. Stores encrypted API keys and provider-specific settings.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID v7 | Unique identifier |
+| `name` | string | Display name |
+| `provider_type` | enum | `openai`, `anthropic`, `azure_openai` |
+| `base_url` | string? | Custom API endpoint (for Azure or proxies) |
+| `api_key_encrypted` | bytes? | AES-256-GCM encrypted API key |
+| `api_key_set` | boolean | Whether API key is configured |
+| `is_default` | boolean | Default provider for new agents |
+| `status` | enum | `active` or `disabled` |
+| `settings` | JSON | Provider-specific settings (e.g., Azure deployment_name) |
+| `created_at` | timestamp | Creation time |
+| `updated_at` | timestamp | Last modification time |
+
+**Supported Provider Types:**
+- `openai` - OpenAI API (GPT-4o, o1, etc.)
+- `anthropic` - Anthropic API (Claude models)
+- `azure_openai` - Azure OpenAI Service
+
+**Note:** Ollama and Custom provider types are no longer supported. All LLM provider API keys must be configured in the database (via Settings > Providers UI) - they are not read from environment variables.
+
+### LLM Model
+
+Configuration for a specific model within a provider.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID v7 | Unique identifier |
+| `provider_id` | UUID v7 | Parent provider reference |
+| `model_id` | string | Model identifier (e.g., "gpt-4o") |
+| `display_name` | string | Display name |
+| `capabilities` | string[] | Model capabilities |
+| `context_window` | integer? | Context window size |
+| `is_default` | boolean | Default model for this provider |
+| `status` | enum | `active` or `disabled` |
+| `created_at` | timestamp | Creation time |
+| `updated_at` | timestamp | Last modification time |
+
 ## Design Decisions
 
 | Question | Decision |
@@ -190,3 +232,5 @@ Junction table linking Agents to Capabilities with ordering.
 | Session status? | Explicit status field (pending, running, completed, failed) |
 | Where are capabilities defined? | In-memory registry in API layer |
 | How are capabilities applied? | Resolved at API/service layer, merged into AgentConfig |
+| Where are API keys stored? | Encrypted in database (llm_providers.api_key_encrypted), decrypted at runtime |
+| Environment variables for API keys? | No - all API keys must be configured via database/UI |
