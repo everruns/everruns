@@ -116,85 +116,84 @@ pub async fn load_agent_activity(
 
     // Look up the LLM model configuration if default_model_id is set
     // Also get the decrypted API key from the provider
-    let (model_id, provider_type, api_key, base_url) = if let Some(llm_model_uuid) =
-        agent.default_model_id
-    {
-        // Look up the LLM model to get the actual model_id and provider_type
-        match db.get_llm_model(llm_model_uuid).await {
-            Ok(Some(llm_model)) => {
-                // Get provider info to determine provider_type and get API key
-                match db.get_llm_provider(llm_model.provider_id).await {
-                    Ok(Some(provider)) => {
-                        // Decrypt the API key from the provider
-                        let provider_with_key = db
-                            .get_provider_with_api_key(&provider, &encryption)
-                            .context("Failed to decrypt provider API key")?;
+    let (model_id, provider_type, api_key, base_url) =
+        if let Some(llm_model_uuid) = agent.default_model_id {
+            // Look up the LLM model to get the actual model_id and provider_type
+            match db.get_llm_model(llm_model_uuid).await {
+                Ok(Some(llm_model)) => {
+                    // Get provider info to determine provider_type and get API key
+                    match db.get_llm_provider(llm_model.provider_id).await {
+                        Ok(Some(provider)) => {
+                            // Decrypt the API key from the provider
+                            let provider_with_key = db
+                                .get_provider_with_api_key(&provider, &encryption)
+                                .context("Failed to decrypt provider API key")?;
 
-                        tracing::info!(
-                            agent_id = %agent_id,
-                            model_id = %llm_model.model_id,
-                            provider_type = %provider.provider_type,
-                            api_key_set = provider_with_key.api_key.is_some(),
-                            "Resolved LLM model and provider from database"
-                        );
-                        (
-                            llm_model.model_id,
-                            provider.provider_type,
-                            provider_with_key.api_key,
-                            provider_with_key.base_url,
-                        )
+                            tracing::info!(
+                                agent_id = %agent_id,
+                                model_id = %llm_model.model_id,
+                                provider_type = %provider.provider_type,
+                                api_key_set = provider_with_key.api_key.is_some(),
+                                "Resolved LLM model and provider from database"
+                            );
+                            (
+                                llm_model.model_id,
+                                provider.provider_type,
+                                provider_with_key.api_key,
+                                provider_with_key.base_url,
+                            )
+                        }
+                        _ => {
+                            // Fallback to model detection if provider lookup fails
+                            let model_id = llm_model.model_id.clone();
+                            let provider_type = detect_provider_type(&model_id);
+                            (model_id, provider_type, None, None)
+                        }
                     }
-                    _ => {
-                        // Fallback to model detection if provider lookup fails
-                        let model_id = llm_model.model_id.clone();
-                        let provider_type = detect_provider_type(&model_id);
-                        (model_id, provider_type, None, None)
+                }
+                _ => {
+                    // Fallback to default provider if model lookup fails
+                    match db.get_default_llm_provider().await {
+                        Ok(Some(provider)) => {
+                            let provider_with_key = db
+                                .get_provider_with_api_key(&provider, &encryption)
+                                .context("Failed to decrypt default provider API key")?;
+                            (
+                                "gpt-4o".to_string(),
+                                provider.provider_type,
+                                provider_with_key.api_key,
+                                provider_with_key.base_url,
+                            )
+                        }
+                        _ => {
+                            let default_model = "gpt-4o".to_string();
+                            let provider_type = detect_provider_type(&default_model);
+                            (default_model, provider_type, None, None)
+                        }
                     }
                 }
             }
-            _ => {
-                // Fallback to default provider if model lookup fails
-                match db.get_default_llm_provider().await {
-                    Ok(Some(provider)) => {
-                        let provider_with_key = db
-                            .get_provider_with_api_key(&provider, &encryption)
-                            .context("Failed to decrypt default provider API key")?;
-                        (
-                            "gpt-4o".to_string(),
-                            provider.provider_type,
-                            provider_with_key.api_key,
-                            provider_with_key.base_url,
-                        )
-                    }
-                    _ => {
-                        let default_model = "gpt-4o".to_string();
-                        let provider_type = detect_provider_type(&default_model);
-                        (default_model, provider_type, None, None)
-                    }
+        } else {
+            // No default_model_id set, try to use default provider
+            match db.get_default_llm_provider().await {
+                Ok(Some(provider)) => {
+                    let provider_with_key = db
+                        .get_provider_with_api_key(&provider, &encryption)
+                        .context("Failed to decrypt default provider API key")?;
+                    (
+                        "gpt-4o".to_string(),
+                        provider.provider_type,
+                        provider_with_key.api_key,
+                        provider_with_key.base_url,
+                    )
+                }
+                _ => {
+                    let default_model = "gpt-4o".to_string();
+                    let provider_type = detect_provider_type(&default_model);
+                    (default_model, provider_type, None, None)
                 }
             }
-        }
-    } else {
-        // No default_model_id set, try to use default provider
-        match db.get_default_llm_provider().await {
-            Ok(Some(provider)) => {
-                let provider_with_key = db
-                    .get_provider_with_api_key(&provider, &encryption)
-                    .context("Failed to decrypt default provider API key")?;
-                (
-                    "gpt-4o".to_string(),
-                    provider.provider_type,
-                    provider_with_key.api_key,
-                    provider_with_key.base_url,
-                )
-            }
-            _ => {
-                let default_model = "gpt-4o".to_string();
-                let provider_type = detect_provider_type(&default_model);
-                (default_model, provider_type, None, None)
-            }
-        }
-    };
+        };
 
     // Build base config and apply capabilities
     let base_config = everruns_core::AgentConfig::new(&agent.system_prompt, &model_id);
@@ -507,7 +506,7 @@ mod tests {
         );
         assert_eq!(detect_provider_type("o1-preview"), "openai");
         assert_eq!(detect_provider_type("unknown-model"), "openai"); // Default to OpenAI
-        // Previously Ollama models now default to OpenAI
+                                                                     // Previously Ollama models now default to OpenAI
         assert_eq!(detect_provider_type("llama-3.1-70b"), "openai");
         assert_eq!(detect_provider_type("mistral-7b"), "openai");
     }
