@@ -162,8 +162,8 @@ async fn example_basic_task_list() -> anyhow::Result<()> {
         "gpt-4.1-mini",
     );
 
-    // Apply the TaskList capability
-    let capability_ids = vec![CapabilityId::TASK_LIST.to_string()];
+    // Apply the StatelessTodoList capability
+    let capability_ids = vec![CapabilityId::STATELESS_TODO_LIST.to_string()];
     let applied = apply_capabilities(base_config, &capability_ids, &registry);
 
     println!("Applied capabilities: {:?}", applied.applied_ids);
@@ -215,9 +215,9 @@ async fn example_project_planning() -> anyhow::Result<()> {
         "gpt-4.1-mini",
     );
 
-    // Apply TaskList and CurrentTime capabilities
+    // Apply StatelessTodoList and CurrentTime capabilities
     let capability_ids = vec![
-        CapabilityId::TASK_LIST.to_string(),
+        CapabilityId::STATELESS_TODO_LIST.to_string(),
         CapabilityId::CURRENT_TIME.to_string(),
     ];
     let applied = apply_capabilities(base_config, &capability_ids, &registry);

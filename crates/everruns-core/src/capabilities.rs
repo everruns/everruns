@@ -148,7 +148,7 @@ impl CapabilityRegistry {
         registry.register(FileSystemCapability);
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);
-        registry.register(TaskListCapability);
+        registry.register(StatelessTodoListCapability);
         registry
     }
 
@@ -592,12 +592,50 @@ impl Capability for TestWeatherCapability {
     }
 }
 
-/// TaskList capability - enables agents to create and manage task lists for tracking work progress
-pub struct TaskListCapability;
+/// Stateless Todo List capability - enables agents to create and manage task lists for tracking work progress.
+///
+/// # Design Decision: Stateless Implementation
+///
+/// This capability is intentionally **stateless** - it does not persist todos to a database.
+/// State is maintained through conversation history (message storage).
+///
+/// ## Why Stateless?
+///
+/// This follows the same pattern as Claude Code's TodoWrite tool:
+/// - Each `write_todos` call receives and returns the **complete** todo list
+/// - The LLM remembers todos by reading previous tool calls from conversation history
+/// - No separate storage layer needed - simpler implementation
+///
+/// ## Alternative Approaches (from research)
+///
+/// **LangChain DeepAgents TodoListMiddleware**:
+/// - Uses dedicated `todos` state channel (not message history)
+/// - Thread-scoped lifecycle with subagent isolation
+/// - Known issue: context tokens grow quickly (proposed `auto_clean_context` flag)
+/// - Reference: https://deepwiki.com/langchain-ai/deepagents/2.4-state-management
+///
+/// **OpenAI Codex CLI update_plan**:
+/// - Maintains plan history across resumed runs
+/// - Supports "compacting conversation state" for longer sessions
+/// - Reference: https://github.com/openai/codex
+///
+/// ## Trade-offs
+///
+/// | Approach | Pros | Cons |
+/// |----------|------|------|
+/// | Stateless (current) | Simple, no DB changes | Context grows with messages |
+/// | State channel | Efficient context | Complex middleware needed |
+/// | DB persistence | Survives context loss | Requires schema changes |
+///
+/// ## Future Improvements
+///
+/// Consider adding context compaction (prune old write_todos calls) if context
+/// growth becomes an issue in long-running sessions.
+pub struct StatelessTodoListCapability;
 
-impl Capability for TaskListCapability {
+impl Capability for StatelessTodoListCapability {
     fn id(&self) -> &str {
-        CapabilityId::TASK_LIST
+        CapabilityId::STATELESS_TODO_LIST
     }
 
     fn name(&self) -> &str {
@@ -605,7 +643,7 @@ impl Capability for TaskListCapability {
     }
 
     fn description(&self) -> &str {
-        "Enables agents to create and manage structured task lists for tracking multi-step work progress."
+        "Enables agents to create and manage structured task lists for tracking multi-step work progress. State is maintained in conversation history."
     }
 
     fn icon(&self) -> Option<&str> {
@@ -617,7 +655,7 @@ impl Capability for TaskListCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(TASK_LIST_SYSTEM_PROMPT)
+        Some(STATELESS_TODO_LIST_SYSTEM_PROMPT)
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -625,8 +663,8 @@ impl Capability for TaskListCapability {
     }
 }
 
-/// System prompt addition for TaskList capability
-const TASK_LIST_SYSTEM_PROMPT: &str = r#"# Task Management
+/// System prompt addition for StatelessTodoList capability
+const STATELESS_TODO_LIST_SYSTEM_PROMPT: &str = r#"# Task Management
 
 You have access to a task management tool via `write_todos` to help you track and manage tasks.
 
@@ -1297,7 +1335,7 @@ mod tests {
         assert!(registry.has(CapabilityId::FILE_SYSTEM));
         assert!(registry.has(CapabilityId::TEST_MATH));
         assert!(registry.has(CapabilityId::TEST_WEATHER));
-        assert!(registry.has(CapabilityId::TASK_LIST));
+        assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
         assert_eq!(registry.len(), 8);
     }
 
@@ -1719,23 +1757,23 @@ mod tests {
         assert!(applied.tool_registry.has("get_weather"));
     }
 
-    // TaskList capability tests
+    // StatelessTodoList capability tests
     #[test]
-    fn test_task_list_capability_has_tools() {
+    fn test_stateless_todo_list_capability_has_tools() {
         let registry = CapabilityRegistry::with_builtins();
-        let task_list = registry.get(CapabilityId::TASK_LIST).unwrap();
-        let tools = task_list.tools();
+        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
+        let tools = capability.tools();
 
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name(), "write_todos");
     }
 
     #[test]
-    fn test_task_list_capability_has_system_prompt() {
+    fn test_stateless_todo_list_capability_has_system_prompt() {
         let registry = CapabilityRegistry::with_builtins();
-        let task_list = registry.get(CapabilityId::TASK_LIST).unwrap();
+        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
 
-        let system_prompt = task_list.system_prompt_addition().unwrap();
+        let system_prompt = capability.system_prompt_addition().unwrap();
         assert!(system_prompt.contains("Task Management"));
         assert!(system_prompt.contains("write_todos"));
         assert!(system_prompt.contains("in_progress"));
@@ -1743,14 +1781,14 @@ mod tests {
     }
 
     #[test]
-    fn test_task_list_capability_metadata() {
+    fn test_stateless_todo_list_capability_metadata() {
         let registry = CapabilityRegistry::with_builtins();
-        let task_list = registry.get(CapabilityId::TASK_LIST).unwrap();
+        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
 
-        assert_eq!(task_list.name(), "Task Management");
-        assert_eq!(task_list.icon(), Some("list-checks"));
-        assert_eq!(task_list.category(), Some("Productivity"));
-        assert_eq!(task_list.status(), CapabilityStatus::Available);
+        assert_eq!(capability.name(), "Task Management");
+        assert_eq!(capability.icon(), Some("list-checks"));
+        assert_eq!(capability.category(), Some("Productivity"));
+        assert_eq!(capability.status(), CapabilityStatus::Available);
     }
 
     #[tokio::test]
@@ -1935,17 +1973,17 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_capabilities_task_list() {
+    fn test_apply_capabilities_stateless_todo_list() {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
             base_config.clone(),
-            &[CapabilityId::TASK_LIST.to_string()],
+            &[CapabilityId::STATELESS_TODO_LIST.to_string()],
             &registry,
         );
 
-        // TaskList has system prompt addition and 1 tool
+        // StatelessTodoList has system prompt addition and 1 tool
         assert!(applied.config.system_prompt.contains("Task Management"));
         assert!(applied.config.system_prompt.contains("write_todos"));
         assert!(applied.tool_registry.has("write_todos"));
