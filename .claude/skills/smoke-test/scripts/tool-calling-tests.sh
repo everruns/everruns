@@ -171,7 +171,7 @@ send_message() {
 
     curl -s -X POST "$API_URL/v1/agents/$agent_id/sessions/$session_id/messages" \
         -H "Content-Type: application/json" \
-        -d "{\"role\": \"user\", \"content\": {\"text\": \"$message\"}}" > /dev/null
+        -d "{\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"$message\"}]}}" > /dev/null
 
     log_verbose "Waiting ${wait_seconds}s for workflow to complete..."
     sleep "$wait_seconds"
