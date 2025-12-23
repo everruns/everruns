@@ -109,7 +109,7 @@ Before creating a pull request, ensure:
 1. **Formatting**: Run `cargo fmt` to format all code
 2. **Linting**: Run `cargo clippy -- -D warnings` and fix all warnings
 3. **Tests**: Run `cargo test` to ensure all tests pass
-4. **UI Linting**: Run `npm run lint` in `apps/ui/` to check for ESLint issues
+4. **UI Linting**: Run `npm run lint` in `apps/ui/` to check for oxlint issues
 5. **UI Build**: Run `npm run build` in `apps/ui/` to verify TypeScript and build
 6. **Smoke tests**: Run smoke tests to verify the system works end-to-end
 7. **Update specs**: If your changes affect system behavior, update the relevant specs in `specs/`
@@ -129,7 +129,7 @@ CI will fail if formatting, linting, tests, or UI build fail. Always run these l
 
 - Use **npm** for package management (CI uses `npm ci`)
 - After adding dependencies, ensure `package-lock.json` is updated via `npm install`
-- Run `npm run lint` to check for ESLint issues
+- Run `npm run lint` to check for oxlint issues
 - Run `npm run build` to verify TypeScript types and build before pushing
 
 ### Testing conventions

@@ -6,7 +6,7 @@
     "dev": "next dev --port 9100",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "oxlint -c oxlint.json ./src",
     "test": "jest",
     "test:watch": "jest --watch"
   },
@@ -33,10 +33,9 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.0.10",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
+    "oxlint": "^1.35.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.2.5",
     "typescript": "^5"
