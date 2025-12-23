@@ -1,27 +1,50 @@
-// Capabilities Module for Agent Loop
-//
-// This module provides the capabilities abstraction that allows composing
-// agent functionality through modular units. Each capability can contribute:
-// - System prompt additions
-// - Tools for the agent
-// - Behavior modifications (future)
-//
-// Design decisions:
-// - Capabilities are defined via the Capability trait for flexibility
-// - CapabilityRegistry holds all available capability implementations
-// - apply_capabilities() merges capability contributions into AgentConfig
-// - The agent-loop remains execution-focused; capabilities are applied before execution
+//! Capabilities Module for Agent Loop
+//!
+//! This module provides the capabilities abstraction that allows composing
+//! agent functionality through modular units. Each capability can contribute:
+//! - System prompt additions
+//! - Tools for the agent
+//! - Behavior modifications (future)
+//!
+//! Design decisions:
+//! - Capabilities are defined via the Capability trait for flexibility
+//! - CapabilityRegistry holds all available capability implementations
+//! - apply_capabilities() merges capability contributions into AgentConfig
+//! - The agent-loop remains execution-focused; capabilities are applied before execution
+//!
+//! Each capability is in its own file with collocated tools.
 
 use crate::config::AgentConfig;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolRegistry};
-use async_trait::async_trait;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// Re-export capability types for convenience
+// Re-export capability types from capability_types module
 pub use crate::capability_types::{CapabilityId, CapabilityStatus};
+
+// ============================================================================
+// Capability Modules
+// ============================================================================
+
+mod current_time;
+mod file_system;
+mod noop;
+mod research;
+mod sandbox;
+mod stateless_todo_list;
+mod test_math;
+mod test_weather;
+
+// Re-export capabilities
+pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
+pub use file_system::FileSystemCapability;
+pub use noop::NoopCapability;
+pub use research::ResearchCapability;
+pub use sandbox::SandboxCapability;
+pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
+pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
+pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
 
 // ============================================================================
 // Capability Trait
@@ -148,6 +171,7 @@ impl CapabilityRegistry {
         registry.register(FileSystemCapability);
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);
+        registry.register(StatelessTodoListCapability);
         registry
     }
 
@@ -362,683 +386,13 @@ pub fn apply_capabilities(
 }
 
 // ============================================================================
-// Built-in Capabilities
-// ============================================================================
-
-/// Noop capability - for testing and demonstration purposes
-pub struct NoopCapability;
-
-impl Capability for NoopCapability {
-    fn id(&self) -> &str {
-        CapabilityId::NOOP
-    }
-
-    fn name(&self) -> &str {
-        "No-Op"
-    }
-
-    fn description(&self) -> &str {
-        "A no-operation capability for testing and demonstration purposes. Does not add any functionality."
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("circle-off")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("Testing")
-    }
-}
-
-/// CurrentTime capability - provides tools to get current date and time
-pub struct CurrentTimeCapability;
-
-impl Capability for CurrentTimeCapability {
-    fn id(&self) -> &str {
-        CapabilityId::CURRENT_TIME
-    }
-
-    fn name(&self) -> &str {
-        "Current Time"
-    }
-
-    fn description(&self) -> &str {
-        "Adds a tool to get the current date and time in various formats and timezones."
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("clock")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("Utilities")
-    }
-
-    fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(GetCurrentTimeTool)]
-    }
-}
-
-/// Research capability - for deep research with organized findings (coming soon)
-pub struct ResearchCapability;
-
-impl Capability for ResearchCapability {
-    fn id(&self) -> &str {
-        CapabilityId::RESEARCH
-    }
-
-    fn name(&self) -> &str {
-        "Deep Research"
-    }
-
-    fn description(&self) -> &str {
-        "Enables deep research capabilities with a scratchpad for notes, web search tools, and structured thinking."
-    }
-
-    fn status(&self) -> CapabilityStatus {
-        CapabilityStatus::ComingSoon
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("search")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("AI")
-    }
-
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some("You have access to a research scratchpad. Use it to organize your thoughts and findings.")
-    }
-}
-
-/// Sandbox capability - for sandboxed code execution (coming soon)
-pub struct SandboxCapability;
-
-impl Capability for SandboxCapability {
-    fn id(&self) -> &str {
-        CapabilityId::SANDBOX
-    }
-
-    fn name(&self) -> &str {
-        "Sandboxed Execution"
-    }
-
-    fn description(&self) -> &str {
-        "Enables sandboxed code execution environment for running code safely."
-    }
-
-    fn status(&self) -> CapabilityStatus {
-        CapabilityStatus::ComingSoon
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("box")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("Execution")
-    }
-
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            "You can execute code in a sandboxed environment. Use the execute_code tool to run code safely.",
-        )
-    }
-}
-
-/// FileSystem capability - for file system access (coming soon)
-pub struct FileSystemCapability;
-
-impl Capability for FileSystemCapability {
-    fn id(&self) -> &str {
-        CapabilityId::FILE_SYSTEM
-    }
-
-    fn name(&self) -> &str {
-        "File System Access"
-    }
-
-    fn description(&self) -> &str {
-        "Adds tools to access and manipulate files - read, write, grep, and more."
-    }
-
-    fn status(&self) -> CapabilityStatus {
-        CapabilityStatus::ComingSoon
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("folder")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("File Operations")
-    }
-
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some("You have access to file system tools. You can read, write, and search files.")
-    }
-}
-
-/// TestMath capability - calculator tools for testing tool calling
-pub struct TestMathCapability;
-
-impl Capability for TestMathCapability {
-    fn id(&self) -> &str {
-        CapabilityId::TEST_MATH
-    }
-
-    fn name(&self) -> &str {
-        "Test Math"
-    }
-
-    fn description(&self) -> &str {
-        "Testing capability: adds calculator tools (add, subtract, multiply, divide) for tool calling tests."
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("calculator")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("Testing")
-    }
-
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some("You have access to math tools. Use them for calculations: add, subtract, multiply, divide.")
-    }
-
-    fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![
-            Box::new(AddTool),
-            Box::new(SubtractTool),
-            Box::new(MultiplyTool),
-            Box::new(DivideTool),
-        ]
-    }
-}
-
-/// TestWeather capability - mock weather tools for testing tool calling
-pub struct TestWeatherCapability;
-
-impl Capability for TestWeatherCapability {
-    fn id(&self) -> &str {
-        CapabilityId::TEST_WEATHER
-    }
-
-    fn name(&self) -> &str {
-        "Test Weather"
-    }
-
-    fn description(&self) -> &str {
-        "Testing capability: adds mock weather tools (get_weather, get_forecast) for tool calling tests."
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("cloud-sun")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("Testing")
-    }
-
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some("You have access to weather tools. Use get_weather for current conditions and get_forecast for multi-day forecasts.")
-    }
-
-    fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(GetWeatherTool), Box::new(GetForecastTool)]
-    }
-}
-
-// ============================================================================
-// Capability Tools
-// ============================================================================
-
-/// Tool that returns the current date and time
-pub struct GetCurrentTimeTool;
-
-#[async_trait]
-impl Tool for GetCurrentTimeTool {
-    fn name(&self) -> &str {
-        "get_current_time"
-    }
-
-    fn description(&self) -> &str {
-        "Get the current date and time. Can return time in different formats and timezones."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "timezone": {
-                    "type": "string",
-                    "description": "Timezone to return the time in (e.g., 'UTC', 'America/New_York', 'Europe/London'). Defaults to UTC."
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["iso8601", "unix", "human"],
-                    "description": "Output format: 'iso8601' for ISO 8601 format, 'unix' for Unix timestamp, 'human' for human-readable format. Defaults to 'iso8601'."
-                }
-            },
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
-        let format = arguments
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("iso8601");
-
-        let _timezone = arguments
-            .get("timezone")
-            .and_then(|v| v.as_str())
-            .unwrap_or("UTC");
-
-        // Note: For simplicity, we're using UTC. Full timezone support would require
-        // the chrono-tz crate which adds significant dependencies.
-        let now = chrono::Utc::now();
-
-        let result = match format {
-            "unix" => serde_json::json!({
-                "timestamp": now.timestamp(),
-                "format": "unix",
-                "timezone": "UTC"
-            }),
-            "human" => serde_json::json!({
-                "datetime": now.format("%A, %B %d, %Y at %H:%M:%S UTC").to_string(),
-                "format": "human",
-                "timezone": "UTC"
-            }),
-            _ => serde_json::json!({
-                "datetime": now.to_rfc3339(),
-                "format": "iso8601",
-                "timezone": "UTC"
-            }),
-        };
-
-        crate::tools::ToolExecutionResult::success(result)
-    }
-}
-
-// ============================================================================
-// Math Tools
-// ============================================================================
-
-/// Tool that adds two numbers
-pub struct AddTool;
-
-#[async_trait]
-impl Tool for AddTool {
-    fn name(&self) -> &str {
-        "add"
-    }
-
-    fn description(&self) -> &str {
-        "Add two numbers together and return the result."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "a": {
-                    "type": "number",
-                    "description": "The first number"
-                },
-                "b": {
-                    "type": "number",
-                    "description": "The second number"
-                }
-            },
-            "required": ["a", "b"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
-        let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let result = a + b;
-
-        crate::tools::ToolExecutionResult::success(serde_json::json!({
-            "result": result,
-            "operation": "add",
-            "a": a,
-            "b": b
-        }))
-    }
-}
-
-/// Tool that subtracts two numbers
-pub struct SubtractTool;
-
-#[async_trait]
-impl Tool for SubtractTool {
-    fn name(&self) -> &str {
-        "subtract"
-    }
-
-    fn description(&self) -> &str {
-        "Subtract the second number from the first and return the result."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "a": {
-                    "type": "number",
-                    "description": "The number to subtract from"
-                },
-                "b": {
-                    "type": "number",
-                    "description": "The number to subtract"
-                }
-            },
-            "required": ["a", "b"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
-        let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let result = a - b;
-
-        crate::tools::ToolExecutionResult::success(serde_json::json!({
-            "result": result,
-            "operation": "subtract",
-            "a": a,
-            "b": b
-        }))
-    }
-}
-
-/// Tool that multiplies two numbers
-pub struct MultiplyTool;
-
-#[async_trait]
-impl Tool for MultiplyTool {
-    fn name(&self) -> &str {
-        "multiply"
-    }
-
-    fn description(&self) -> &str {
-        "Multiply two numbers together and return the result."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "a": {
-                    "type": "number",
-                    "description": "The first number"
-                },
-                "b": {
-                    "type": "number",
-                    "description": "The second number"
-                }
-            },
-            "required": ["a", "b"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
-        let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let result = a * b;
-
-        crate::tools::ToolExecutionResult::success(serde_json::json!({
-            "result": result,
-            "operation": "multiply",
-            "a": a,
-            "b": b
-        }))
-    }
-}
-
-/// Tool that divides two numbers
-pub struct DivideTool;
-
-#[async_trait]
-impl Tool for DivideTool {
-    fn name(&self) -> &str {
-        "divide"
-    }
-
-    fn description(&self) -> &str {
-        "Divide the first number by the second and return the result. Returns an error if dividing by zero."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "a": {
-                    "type": "number",
-                    "description": "The dividend (number to be divided)"
-                },
-                "b": {
-                    "type": "number",
-                    "description": "The divisor (number to divide by)"
-                }
-            },
-            "required": ["a", "b"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
-        let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
-
-        if b == 0.0 {
-            return crate::tools::ToolExecutionResult::tool_error("Cannot divide by zero");
-        }
-
-        let result = a / b;
-
-        crate::tools::ToolExecutionResult::success(serde_json::json!({
-            "result": result,
-            "operation": "divide",
-            "a": a,
-            "b": b
-        }))
-    }
-}
-
-// ============================================================================
-// Weather Tools (Mocked for Testing)
-// ============================================================================
-
-/// Tool that returns mock weather data for a location
-pub struct GetWeatherTool;
-
-#[async_trait]
-impl Tool for GetWeatherTool {
-    fn name(&self) -> &str {
-        "get_weather"
-    }
-
-    fn description(&self) -> &str {
-        "Get the current weather for a location. Returns temperature, conditions, humidity, and wind speed."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "The city or location name (e.g., 'New York', 'London', 'Tokyo')"
-                },
-                "units": {
-                    "type": "string",
-                    "enum": ["celsius", "fahrenheit"],
-                    "description": "Temperature units. Defaults to 'celsius'."
-                }
-            },
-            "required": ["location"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
-        let location = arguments
-            .get("location")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown");
-
-        let units = arguments
-            .get("units")
-            .and_then(|v| v.as_str())
-            .unwrap_or("celsius");
-
-        // Generate deterministic mock weather based on location hash
-        let hash = location
-            .bytes()
-            .fold(0u32, |acc, b| acc.wrapping_add(b as u32));
-        let temp_c = ((hash % 35) as i32) + 5; // 5-40°C range
-        let temp = if units == "fahrenheit" {
-            (temp_c as f64 * 9.0 / 5.0) + 32.0
-        } else {
-            temp_c as f64
-        };
-
-        let conditions = match hash % 5 {
-            0 => "sunny",
-            1 => "partly cloudy",
-            2 => "cloudy",
-            3 => "rainy",
-            _ => "windy",
-        };
-
-        let humidity = (hash % 50) + 30; // 30-80%
-        let wind_speed = (hash % 30) + 5; // 5-35 km/h
-
-        crate::tools::ToolExecutionResult::success(serde_json::json!({
-            "location": location,
-            "temperature": temp,
-            "units": units,
-            "conditions": conditions,
-            "humidity": humidity,
-            "wind_speed_kmh": wind_speed,
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        }))
-    }
-}
-
-/// Tool that returns mock weather forecast for a location
-pub struct GetForecastTool;
-
-#[async_trait]
-impl Tool for GetForecastTool {
-    fn name(&self) -> &str {
-        "get_forecast"
-    }
-
-    fn description(&self) -> &str {
-        "Get the weather forecast for a location for the next several days."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "The city or location name (e.g., 'New York', 'London', 'Tokyo')"
-                },
-                "days": {
-                    "type": "integer",
-                    "description": "Number of days to forecast (1-7). Defaults to 3."
-                },
-                "units": {
-                    "type": "string",
-                    "enum": ["celsius", "fahrenheit"],
-                    "description": "Temperature units. Defaults to 'celsius'."
-                }
-            },
-            "required": ["location"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> crate::tools::ToolExecutionResult {
-        let location = arguments
-            .get("location")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown");
-
-        let days = arguments
-            .get("days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3)
-            .min(7) as usize;
-
-        let units = arguments
-            .get("units")
-            .and_then(|v| v.as_str())
-            .unwrap_or("celsius");
-
-        // Generate deterministic mock forecast based on location hash
-        let hash = location
-            .bytes()
-            .fold(0u32, |acc, b| acc.wrapping_add(b as u32));
-
-        let today = chrono::Utc::now().date_naive();
-        let mut forecast_days = Vec::new();
-
-        for day_offset in 0..days {
-            let day_hash = hash.wrapping_add(day_offset as u32 * 7);
-            let temp_c = ((day_hash % 35) as i32) + 5;
-            let temp_high = if units == "fahrenheit" {
-                (temp_c as f64 * 9.0 / 5.0) + 32.0
-            } else {
-                temp_c as f64
-            };
-            let temp_low = temp_high - 8.0 - ((day_hash % 5) as f64);
-
-            let conditions = match day_hash % 5 {
-                0 => "sunny",
-                1 => "partly cloudy",
-                2 => "cloudy",
-                3 => "rainy",
-                _ => "windy",
-            };
-
-            let date = today + chrono::Duration::days(day_offset as i64);
-
-            forecast_days.push(serde_json::json!({
-                "date": date.to_string(),
-                "high": temp_high,
-                "low": temp_low,
-                "conditions": conditions,
-                "precipitation_chance": (day_hash % 100) as i32
-            }));
-        }
-
-        crate::tools::ToolExecutionResult::success(serde_json::json!({
-            "location": location,
-            "units": units,
-            "days": days,
-            "forecast": forecast_days
-        }))
-    }
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::ToolExecutionResult;
 
     #[test]
     fn test_capability_registry_with_builtins() {
@@ -1051,7 +405,8 @@ mod tests {
         assert!(registry.has(CapabilityId::FILE_SYSTEM));
         assert!(registry.has(CapabilityId::TEST_MATH));
         assert!(registry.has(CapabilityId::TEST_WEATHER));
-        assert_eq!(registry.len(), 7);
+        assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
+        assert_eq!(registry.len(), 8);
     }
 
     #[test]
@@ -1222,7 +577,7 @@ mod tests {
         let tool = GetCurrentTimeTool;
         let result = tool.execute(serde_json::json!({})).await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert!(value.get("datetime").is_some());
             assert_eq!(value.get("format").unwrap().as_str().unwrap(), "iso8601");
         } else {
@@ -1235,7 +590,7 @@ mod tests {
         let tool = GetCurrentTimeTool;
         let result = tool.execute(serde_json::json!({"format": "unix"})).await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert!(value.get("timestamp").is_some());
             assert_eq!(value.get("format").unwrap().as_str().unwrap(), "unix");
         } else {
@@ -1248,7 +603,7 @@ mod tests {
         let tool = GetCurrentTimeTool;
         let result = tool.execute(serde_json::json!({"format": "human"})).await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert!(value.get("datetime").is_some());
             assert_eq!(value.get("format").unwrap().as_str().unwrap(), "human");
             // Human format should contain "at" for time
@@ -1279,7 +634,7 @@ mod tests {
         let tool = AddTool;
         let result = tool.execute(serde_json::json!({"a": 5, "b": 3})).await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 8.0);
             assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "add");
         } else {
@@ -1292,7 +647,7 @@ mod tests {
         let tool = SubtractTool;
         let result = tool.execute(serde_json::json!({"a": 10, "b": 4})).await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 6.0);
             assert_eq!(
                 value.get("operation").unwrap().as_str().unwrap(),
@@ -1308,7 +663,7 @@ mod tests {
         let tool = MultiplyTool;
         let result = tool.execute(serde_json::json!({"a": 6, "b": 7})).await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 42.0);
             assert_eq!(
                 value.get("operation").unwrap().as_str().unwrap(),
@@ -1324,7 +679,7 @@ mod tests {
         let tool = DivideTool;
         let result = tool.execute(serde_json::json!({"a": 20, "b": 4})).await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 5.0);
             assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "divide");
         } else {
@@ -1337,7 +692,7 @@ mod tests {
         let tool = DivideTool;
         let result = tool.execute(serde_json::json!({"a": 10, "b": 0})).await;
 
-        if let crate::tools::ToolExecutionResult::ToolError(msg) = result {
+        if let ToolExecutionResult::ToolError(msg) = result {
             assert!(msg.contains("divide by zero"));
         } else {
             panic!("Expected tool error for division by zero");
@@ -1364,7 +719,7 @@ mod tests {
             .execute(serde_json::json!({"location": "New York"}))
             .await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("location").unwrap().as_str().unwrap(), "New York");
             assert!(value.get("temperature").is_some());
             assert!(value.get("conditions").is_some());
@@ -1381,7 +736,7 @@ mod tests {
             .execute(serde_json::json!({"location": "London", "units": "fahrenheit"}))
             .await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("units").unwrap().as_str().unwrap(), "fahrenheit");
             // Fahrenheit temps should be higher than Celsius
             let temp = value.get("temperature").unwrap().as_f64().unwrap();
@@ -1398,7 +753,7 @@ mod tests {
             .execute(serde_json::json!({"location": "Tokyo", "days": 5}))
             .await;
 
-        if let crate::tools::ToolExecutionResult::Success(value) = result {
+        if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("location").unwrap().as_str().unwrap(), "Tokyo");
             assert_eq!(value.get("days").unwrap().as_u64().unwrap(), 5);
             let forecast = value.get("forecast").unwrap().as_array().unwrap();
@@ -1470,5 +825,57 @@ mod tests {
         assert_eq!(applied.tool_registry.len(), 6); // 4 math + 2 weather
         assert!(applied.tool_registry.has("add"));
         assert!(applied.tool_registry.has("get_weather"));
+    }
+
+    // StatelessTodoList capability tests
+    #[test]
+    fn test_stateless_todo_list_capability_has_tools() {
+        let registry = CapabilityRegistry::with_builtins();
+        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
+        let tools = capability.tools();
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name(), "write_todos");
+    }
+
+    #[test]
+    fn test_stateless_todo_list_capability_has_system_prompt() {
+        let registry = CapabilityRegistry::with_builtins();
+        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
+
+        let system_prompt = capability.system_prompt_addition().unwrap();
+        assert!(system_prompt.contains("Task Management"));
+        assert!(system_prompt.contains("write_todos"));
+        assert!(system_prompt.contains("in_progress"));
+        assert!(system_prompt.contains("completed"));
+    }
+
+    #[test]
+    fn test_stateless_todo_list_capability_metadata() {
+        let registry = CapabilityRegistry::with_builtins();
+        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
+
+        assert_eq!(capability.name(), "Task Management");
+        assert_eq!(capability.icon(), Some("list-checks"));
+        assert_eq!(capability.category(), Some("Productivity"));
+        assert_eq!(capability.status(), CapabilityStatus::Available);
+    }
+
+    #[test]
+    fn test_apply_capabilities_stateless_todo_list() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(
+            base_config.clone(),
+            &[CapabilityId::STATELESS_TODO_LIST.to_string()],
+            &registry,
+        );
+
+        // StatelessTodoList has system prompt addition and 1 tool
+        assert!(applied.config.system_prompt.contains("Task Management"));
+        assert!(applied.config.system_prompt.contains("write_todos"));
+        assert!(applied.tool_registry.has("write_todos"));
+        assert_eq!(applied.tool_registry.len(), 1);
     }
 }

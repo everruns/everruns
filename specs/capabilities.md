@@ -75,11 +75,13 @@ impl CapabilityId {
     pub const FILE_SYSTEM: &'static str = "file_system";
     pub const TEST_MATH: &'static str = "test_math";
     pub const TEST_WEATHER: &'static str = "test_weather";
+    pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
 
     // Factory methods
     pub fn new(id: impl Into<String>) -> Self;
     pub fn noop() -> Self;
     pub fn current_time() -> Self;
+    pub fn stateless_todo_list() -> Self;
     // ... etc
 }
 ```
@@ -185,6 +187,79 @@ The `CapabilityRegistry` in core holds all registered capability implementations
 - **Icon**: "folder"
 - **Category**: "File Operations"
 
+#### StatelessTodoList
+
+- **Status**: Available
+- **ID**: `stateless_todo_list`
+- **Purpose**: Enable agents to create and manage structured task lists for tracking multi-step work progress
+- **System Prompt**: Comprehensive guidance on when and how to use task management, including best practices for multi-step workflows
+- **Tools**:
+  - `write_todos` - Create or update a task list
+    - Parameters:
+      - `todos`: array of task objects, each with:
+        - `content`: string (imperative form, e.g., "Run tests", "Fix the bug")
+        - `activeForm`: string (present continuous, e.g., "Running tests", "Fixing the bug")
+        - `status`: enum (pending, in_progress, completed)
+    - Returns: success status with task counts and validated todos
+    - Validation: Warns if no task is in_progress (when pending tasks exist) or if multiple tasks are in_progress
+    - Policy: Auto
+- **Icon**: "list-checks"
+- **Category**: "Productivity"
+
+##### Design Decision: Stateless Implementation
+
+This capability is intentionally **stateless** - it does not persist todos to a separate database table. State is maintained through conversation history (message storage).
+
+###### Why Stateless?
+
+This follows the same pattern as Claude Code's TodoWrite tool:
+- Each `write_todos` call receives and returns the **complete** todo list
+- The LLM remembers todos by reading previous tool calls from conversation history
+- No separate storage layer needed - simpler implementation
+
+###### Alternative Approaches (Research)
+
+**LangChain DeepAgents TodoListMiddleware**:
+- Uses dedicated `todos` state channel (not message history)
+- Thread-scoped lifecycle with subagent isolation
+- Known issue: context tokens grow quickly (proposed `auto_clean_context` flag)
+- Reference: https://deepwiki.com/langchain-ai/deepagents/2.4-state-management
+
+**OpenAI Codex CLI update_plan**:
+- Tool named `update_plan` with explanation + plan items
+- Maintains plan history across resumed runs
+- Supports "compacting conversation state" for longer sessions
+- Reference: https://github.com/openai/codex
+
+###### Trade-offs
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| Stateless (current) | Simple, no DB changes | Context grows with messages |
+| State channel | Efficient context | Complex middleware needed |
+| DB persistence | Survives context loss | Requires schema changes |
+
+###### Future Improvements
+
+Consider adding context compaction (prune old `write_todos` calls) if context growth becomes an issue in long-running sessions.
+
+##### When to Use StatelessTodoList
+
+The system prompt instructs agents to use task management when:
+1. **Complex multi-step tasks** - Tasks requiring 3 or more distinct steps
+2. **User provides multiple tasks** - When users give a list of things to do
+3. **Non-trivial work** - Tasks requiring careful planning
+4. **After receiving new instructions** - Capture requirements immediately
+5. **When starting work** - Mark a task as `in_progress` BEFORE beginning
+6. **After completing work** - Mark task as `completed` and add follow-up tasks
+
+##### Best Practices
+
+1. **One task in progress** - Exactly one task should be `in_progress` at a time
+2. **Update immediately** - Mark tasks completed as soon as done, don't batch
+3. **Replace entire list** - Each `write_todos` call replaces the full list
+4. **Completion criteria** - Only mark `completed` when fully done (tests pass, no errors)
+
 ### Capability Application Flow
 
 When a session executes:
@@ -226,6 +301,14 @@ Response:
       "category": "Utilities"
     },
     {
+      "id": "stateless_todo_list",
+      "name": "Task Management",
+      "description": "Enables agents to create and manage structured task lists for tracking multi-step work progress. State is maintained in conversation history.",
+      "status": "available",
+      "icon": "list-checks",
+      "category": "Productivity"
+    },
+    {
       "id": "research",
       "name": "Research",
       "description": "Deep research capability with organized scratchpad.",
@@ -234,7 +317,7 @@ Response:
       "category": "AI"
     }
   ],
-  "total": 7
+  "total": 8
 }
 ```
 

@@ -33,6 +33,7 @@ impl CapabilityId {
     pub const FILE_SYSTEM: &'static str = "file_system";
     pub const TEST_MATH: &'static str = "test_math";
     pub const TEST_WEATHER: &'static str = "test_weather";
+    pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
 
     /// Create the noop capability ID
     pub fn noop() -> Self {
@@ -67,6 +68,11 @@ impl CapabilityId {
     /// Create the test_weather capability ID
     pub fn test_weather() -> Self {
         Self::new(Self::TEST_WEATHER)
+    }
+
+    /// Create the stateless_todo_list capability ID
+    pub fn stateless_todo_list() -> Self {
+        Self::new(Self::STATELESS_TODO_LIST)
     }
 }
 
@@ -137,6 +143,10 @@ mod tests {
         assert_eq!(CapabilityId::file_system().to_string(), "file_system");
         assert_eq!(CapabilityId::test_math().to_string(), "test_math");
         assert_eq!(CapabilityId::test_weather().to_string(), "test_weather");
+        assert_eq!(
+            CapabilityId::stateless_todo_list().to_string(),
+            "stateless_todo_list"
+        );
     }
 
     #[test]
@@ -168,6 +178,10 @@ mod tests {
         assert_eq!(
             "test_weather".parse::<CapabilityId>().unwrap(),
             CapabilityId::test_weather()
+        );
+        assert_eq!(
+            "stateless_todo_list".parse::<CapabilityId>().unwrap(),
+            CapabilityId::stateless_todo_list()
         );
     }
 
