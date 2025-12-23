@@ -305,6 +305,23 @@ export interface LlmProvider {
   updated_at: string;
 }
 
+// Model profile types for capabilities like reasoning effort
+export interface ReasoningLevel {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface ReasoningEffortConfig {
+  supported: boolean;
+  levels: ReasoningLevel[];
+  default?: string;
+}
+
+export interface ModelProfile {
+  reasoning_effort?: ReasoningEffortConfig;
+}
+
 export interface LlmModel {
   id: string;
   provider_id: string;
@@ -312,6 +329,7 @@ export interface LlmModel {
   display_name: string;
   capabilities: string[];
   context_window?: number;
+  model_profile?: ModelProfile;
   is_default: boolean;
   status: LlmModelStatus;
   created_at: string;
@@ -345,6 +363,7 @@ export interface CreateLlmModelRequest {
   display_name: string;
   capabilities?: string[];
   context_window?: number;
+  model_profile?: ModelProfile;
   is_default?: boolean;
 }
 
@@ -353,6 +372,7 @@ export interface UpdateLlmModelRequest {
   display_name?: string;
   capabilities?: string[];
   context_window?: number;
+  model_profile?: ModelProfile;
   is_default?: boolean;
   status?: LlmModelStatus;
 }

@@ -166,13 +166,24 @@ impl LlmProvider for OpenAIProtocolLlmProvider {
             Some(Self::convert_tools(&config.tools))
         };
 
+        // For reasoning models (o1, o3), use max_completion_tokens instead of max_tokens
+        // and don't set temperature (reasoning models don't support it)
+        let is_reasoning_model = config.reasoning_effort.is_some();
+        let (temperature, max_tokens, max_completion_tokens) = if is_reasoning_model {
+            (None, None, config.max_tokens)
+        } else {
+            (config.temperature, config.max_tokens, None)
+        };
+
         let request = OpenAiRequest {
             model: config.model.clone(),
             messages: openai_messages,
-            temperature: config.temperature,
-            max_tokens: config.max_tokens,
+            temperature,
+            max_tokens,
+            max_completion_tokens,
             stream: true,
             tools,
+            reasoning_effort: config.reasoning_effort.clone(),
         };
 
         let response = self
@@ -333,9 +344,14 @@ struct OpenAiRequest {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_completion_tokens: Option<u32>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<OpenAiTool>>,
+    /// Reasoning effort for o1/o3 models (low, medium, high)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
 }
 
 /// Content can be either a simple string or an array of content parts

@@ -92,14 +92,26 @@ export async function listMessages(
 export async function sendUserMessage(
   agentId: string,
   sessionId: string,
-  content: string
+  content: string,
+  controls?: { reasoning_effort?: string }
 ): Promise<Message> {
-  return createMessage(agentId, sessionId, {
+  const request: CreateMessageRequest = {
     message: {
       role: "user",
       content: [{ type: "text", text: content }],
     },
-  });
+  };
+
+  // Add controls if reasoning_effort is specified
+  if (controls?.reasoning_effort) {
+    request.controls = {
+      reasoning: {
+        effort: controls.reasoning_effort,
+      },
+    };
+  }
+
+  return createMessage(agentId, sessionId, request);
 }
 
 // ============================================

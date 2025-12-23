@@ -2,14 +2,22 @@
 
 import { use, useState, useRef, useEffect } from "react";
 import { useAgent, useSession, useMessages, useSendMessage } from "@/hooks";
+import { useLlmModels } from "@/hooks/use-llm-providers";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Send, User, Bot, Loader2 } from "lucide-react";
-import type { Message } from "@/lib/api/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ArrowLeft, Send, User, Bot, Loader2, Brain } from "lucide-react";
+import type { Message, ReasoningLevel } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 
@@ -24,12 +32,29 @@ export default function SessionDetailPage({
   // Track if user has sent a message and is waiting for response
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
 
+  // Reasoning effort state
+  const [reasoningEffort, setReasoningEffort] = useState<string | undefined>(undefined);
+
   // First fetch session without polling to get initial status
   const { data: session, isLoading: sessionLoading } = useSession(
     agentId,
     sessionId
   );
   const sendMessage = useSendMessage();
+
+  // Fetch models to find the current model's profile
+  const { data: models } = useLlmModels();
+
+  // Determine the model ID to use (session model or agent default)
+  const currentModelId = session?.model_id || agent?.default_model_id;
+
+  // Find the current model and get its reasoning effort config
+  const currentModel = models?.find(m => m.id === currentModelId);
+  const reasoningConfig = currentModel?.model_profile?.reasoning_effort;
+  const supportsReasoning = reasoningConfig?.supported && reasoningConfig.levels.length > 0;
+
+  // Get effective reasoning effort (user selection or default)
+  const effectiveReasoningEffort = reasoningEffort ?? reasoningConfig?.default;
 
   // Determine if session is still processing
   const isActive = session?.status === "running" || session?.status === "pending";
@@ -67,6 +92,7 @@ export default function SessionDetailPage({
         agentId,
         sessionId,
         content: inputValue.trim(),
+        controls: supportsReasoning ? { reasoning_effort: effectiveReasoningEffort } : undefined,
       });
       setInputValue("");
       // Start polling for the response
@@ -265,6 +291,35 @@ export default function SessionDetailPage({
 
       {/* Input area */}
       <div className="border-t p-4">
+        {/* Reasoning effort selector - only shown when model supports it */}
+        {supportsReasoning && reasoningConfig && (
+          <div className="flex items-center gap-2 mb-3">
+            <Brain className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Reasoning:</span>
+            <Select
+              value={effectiveReasoningEffort || "medium"}
+              onValueChange={setReasoningEffort}
+            >
+              <SelectTrigger className="w-[140px] h-8">
+                <SelectValue placeholder="Select level" />
+              </SelectTrigger>
+              <SelectContent>
+                {reasoningConfig.levels.map((level: ReasoningLevel) => (
+                  <SelectItem key={level.value} value={level.value}>
+                    <div className="flex flex-col">
+                      <span>{level.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {reasoningConfig.levels.find(l => l.value === effectiveReasoningEffort)?.description && (
+              <span className="text-xs text-muted-foreground">
+                {reasoningConfig.levels.find(l => l.value === effectiveReasoningEffort)?.description}
+              </span>
+            )}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea
             value={inputValue}

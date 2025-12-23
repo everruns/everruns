@@ -376,6 +376,7 @@ pub fn apply_capabilities(
         max_iterations: base_config.max_iterations,
         temperature: base_config.temperature,
         max_tokens: base_config.max_tokens,
+        reasoning_effort: base_config.reasoning_effort,
     };
 
     AppliedCapabilities {

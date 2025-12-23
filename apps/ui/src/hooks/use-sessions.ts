@@ -97,11 +97,13 @@ export function useSendMessage() {
       agentId,
       sessionId,
       content,
+      controls,
     }: {
       agentId: string;
       sessionId: string;
       content: string;
-    }) => sendUserMessage(agentId, sessionId, content),
+      controls?: { reasoning_effort?: string };
+    }) => sendUserMessage(agentId, sessionId, content, controls),
     onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: ["messages", agentId, sessionId],

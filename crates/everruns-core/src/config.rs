@@ -31,6 +31,11 @@ pub struct AgentConfig {
     /// Maximum tokens to generate per response
     #[serde(default)]
     pub max_tokens: Option<u32>,
+
+    /// Reasoning effort level for reasoning models (e.g., "low", "medium", "high")
+    /// Only applicable to OpenAI o1/o3 models
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 fn default_max_iterations() -> usize {
@@ -47,6 +52,7 @@ impl AgentConfig {
             max_iterations: default_max_iterations(),
             temperature: None,
             max_tokens: None,
+            reasoning_effort: None,
         }
     }
 
@@ -73,6 +79,12 @@ impl AgentConfig {
         self.max_tokens = Some(max_tokens);
         self
     }
+
+    /// Set reasoning effort (for OpenAI o1/o3 models)
+    pub fn with_reasoning_effort(mut self, reasoning_effort: impl Into<String>) -> Self {
+        self.reasoning_effort = Some(reasoning_effort.into());
+        self
+    }
 }
 
 impl Default for AgentConfig {
@@ -84,6 +96,7 @@ impl Default for AgentConfig {
             max_iterations: default_max_iterations(),
             temperature: None,
             max_tokens: None,
+            reasoning_effort: None,
         }
     }
 }
@@ -140,6 +153,12 @@ impl AgentConfigBuilder {
     /// Set max tokens
     pub fn max_tokens(mut self, tokens: u32) -> Self {
         self.config.max_tokens = Some(tokens);
+        self
+    }
+
+    /// Set reasoning effort (for OpenAI o1/o3 models)
+    pub fn reasoning_effort(mut self, effort: impl Into<String>) -> Self {
+        self.config.reasoning_effort = Some(effort.into());
         self
     }
 

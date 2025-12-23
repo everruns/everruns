@@ -6,7 +6,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType};
+use everruns_contracts::{
+    LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType, ModelProfile,
+};
 use everruns_storage::{
     models::{CreateLlmModel, UpdateLlmModel},
     Database,
@@ -29,6 +31,9 @@ pub struct CreateLlmModelRequest {
     pub capabilities: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window: Option<i32>,
+    /// Model-specific profile with capabilities like reasoning effort
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_profile: Option<ModelProfile>,
     #[serde(default)]
     pub is_default: bool,
 }
@@ -43,6 +48,9 @@ pub struct UpdateLlmModelRequest {
     pub capabilities: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window: Option<i32>,
+    /// Model-specific profile with capabilities like reasoning effort
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_profile: Option<ModelProfile>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_default: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -57,6 +65,8 @@ pub struct ErrorResponse {
 fn row_to_model(row: &everruns_storage::models::LlmModelRow) -> LlmModel {
     let capabilities: Vec<String> =
         serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
+    let model_profile: ModelProfile =
+        serde_json::from_value(row.model_profile.clone()).unwrap_or_default();
     LlmModel {
         id: row.id,
         provider_id: row.provider_id,
@@ -64,6 +74,7 @@ fn row_to_model(row: &everruns_storage::models::LlmModelRow) -> LlmModel {
         display_name: row.display_name.clone(),
         capabilities,
         context_window: row.context_window,
+        model_profile,
         is_default: row.is_default,
         status: match row.status.as_str() {
             "active" => LlmModelStatus::Active,
@@ -79,6 +90,8 @@ fn row_to_model_with_provider(
 ) -> LlmModelWithProvider {
     let capabilities: Vec<String> =
         serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
+    let model_profile: ModelProfile =
+        serde_json::from_value(row.model_profile.clone()).unwrap_or_default();
     LlmModelWithProvider {
         id: row.id,
         provider_id: row.provider_id,
@@ -86,6 +99,7 @@ fn row_to_model_with_provider(
         display_name: row.display_name.clone(),
         capabilities,
         context_window: row.context_window,
+        model_profile,
         is_default: row.is_default,
         status: match row.status.as_str() {
             "active" => LlmModelStatus::Active,
@@ -118,12 +132,16 @@ pub async fn create_model(
     Path(provider_id): Path<Uuid>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<LlmModel>), (StatusCode, Json<ErrorResponse>)> {
+    let model_profile_json = req
+        .model_profile
+        .and_then(|p| serde_json::to_value(p).ok());
     let input = CreateLlmModel {
         provider_id,
         model_id: req.model_id,
         display_name: req.display_name,
         capabilities: req.capabilities,
         context_window: req.context_window,
+        model_profile: model_profile_json,
         is_default: req.is_default,
     };
 
@@ -255,11 +273,15 @@ pub async fn update_model(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateLlmModelRequest>,
 ) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
+    let model_profile_json = req
+        .model_profile
+        .and_then(|p| serde_json::to_value(p).ok());
     let input = UpdateLlmModel {
         model_id: req.model_id,
         display_name: req.display_name,
         capabilities: req.capabilities,
         context_window: req.context_window,
+        model_profile: model_profile_json,
         is_default: req.is_default,
         status: req.status.map(|s| match s {
             LlmModelStatus::Active => "active".to_string(),

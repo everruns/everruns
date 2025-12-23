@@ -248,6 +248,9 @@ pub struct LlmCallConfig {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub tools: Vec<ToolDefinition>,
+    /// Reasoning effort level for reasoning models (e.g., "low", "medium", "high")
+    /// Only applicable to OpenAI o1/o3 models
+    pub reasoning_effort: Option<String>,
 }
 
 impl From<&AgentConfig> for LlmCallConfig {
@@ -257,6 +260,7 @@ impl From<&AgentConfig> for LlmCallConfig {
             temperature: config.temperature,
             max_tokens: config.max_tokens,
             tools: config.tools.clone(),
+            reasoning_effort: config.reasoning_effort.clone(),
         }
     }
 }

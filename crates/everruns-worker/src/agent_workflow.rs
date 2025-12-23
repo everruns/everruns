@@ -81,6 +81,9 @@ pub struct AgentConfigData {
     pub tools: Vec<ToolDefinitionData>,
     #[serde(default)]
     pub max_iterations: u8,
+    /// Reasoning effort level for reasoning models (e.g., "low", "medium", "high")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 fn default_provider_type() -> String {
@@ -97,6 +100,7 @@ impl Default for AgentConfigData {
             system_prompt: None,
             tools: Vec::new(),
             max_iterations: 10,
+            reasoning_effort: None,
         }
     }
 }

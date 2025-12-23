@@ -232,6 +232,7 @@ pub async fn load_agent_activity(
         system_prompt: Some(applied.config.system_prompt),
         tools,
         max_iterations: 10,
+        reasoning_effort: applied.config.reasoning_effort,
     })
 }
 
@@ -374,12 +375,17 @@ pub async fn execute_tool_activity(
 fn build_agent_config(data: &AgentConfigData) -> everruns_core::AgentConfig {
     let tools: Vec<ToolDefinition> = data.tools.iter().map(convert_tool_definition).collect();
 
-    AgentConfigBuilder::new()
+    let mut builder = AgentConfigBuilder::new()
         .model(&data.model)
         .system_prompt(data.system_prompt.as_deref().unwrap_or(""))
         .tools(tools)
-        .max_iterations(data.max_iterations as usize)
-        .build()
+        .max_iterations(data.max_iterations as usize);
+
+    if let Some(ref effort) = data.reasoning_effort {
+        builder = builder.reasoning_effort(effort);
+    }
+
+    builder.build()
 }
 
 /// Convert workflow's ToolDefinitionData to core's ToolDefinition
@@ -442,6 +448,7 @@ mod tests {
                 system_prompt: Some("You are a helpful assistant.".into()),
                 tools: vec![],
                 max_iterations: 5,
+                reasoning_effort: None,
             },
         };
 
@@ -486,6 +493,7 @@ mod tests {
                 parameters: json!({}),
             }],
             max_iterations: 10,
+            reasoning_effort: None,
         };
 
         let config = build_agent_config(&data);
