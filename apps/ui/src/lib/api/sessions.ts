@@ -95,8 +95,10 @@ export async function sendUserMessage(
   content: string
 ): Promise<Message> {
   return createMessage(agentId, sessionId, {
-    role: "user",
-    content: { text: content },
+    message: {
+      role: "user",
+      content: [{ type: "text", text: content }],
+    },
   });
 }
 

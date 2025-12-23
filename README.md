@@ -1,5 +1,7 @@
 # Everruns
 
+[![Website](https://img.shields.io/badge/Website-everruns.com-blue)](https://everruns.com)
+
 > **Note:** This repository is in **Heavy Vibecoding PoC Mode**. Expect rapid changes, experimental features, and unconventional approaches as we explore ideas quickly.
 
 Durable AI agent execution platform. Run long-running LLM agents reliably - if the service restarts, agents resume from where they left off.
@@ -11,7 +13,6 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 ### Key Features
 
 - **Durable execution**: Agent sessions survive restarts via Temporal workflows
-- **AG-UI protocol**: Compatible event stream for real-time UI updates
 - **Management UI**: Dashboard for agents, sessions, and chat
 - **Indefinite sessions**: Sessions can receive messages continuously without terminating
 
@@ -20,7 +21,8 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 - **Agent**: Configuration for an agentic loop (system prompt, model, etc.)
 - **Session**: An instance of conversation with an agent
 - **Message**: User messages and assistant responses within a session
-- **Event**: Real-time notifications for UI updates (AG-UI protocol)
+- **LLM Provider**: External LLM service configuration (OpenAI, Anthropic, etc.)
+- **Capability**: Modular functionality that can be enabled on agents (tools, behaviors)
 
 ### Architecture
 
@@ -98,7 +100,12 @@ curl -X POST http://localhost:9000/v1/agents/{agent_id}/sessions \
 # Send a message (triggers workflow execution)
 curl -X POST http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
-  -d '{"content": "Hello, how are you?"}'
+  -d '{
+    "message": {
+      "role": "user",
+      "content": [{"type": "text", "text": "Hello, how are you?"}]
+    }
+  }'
 
 # Get messages (poll for response)
 curl http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/messages
@@ -139,8 +146,11 @@ everruns/
 ├── crates/
 │   ├── everruns-api/     # HTTP API (axum)
 │   ├── everruns-worker/  # Temporal worker
+│   ├── everruns-core/    # Core business logic
 │   ├── everruns-contracts/  # DTOs and events
-│   └── everruns-storage/ # Database layer
+│   ├── everruns-storage/ # Database layer
+│   ├── everruns-openai/  # OpenAI provider
+│   └── everruns-anthropic/  # Anthropic provider
 ├── harness/              # Docker Compose
 ├── specs/                # Specifications
 └── scripts/              # Dev scripts
@@ -148,11 +158,10 @@ everruns/
 
 ## Configuration
 
-Create a `.env` file:
+Copy `.env.example` to `.env` and configure as needed:
 
 ```bash
-OPENAI_API_KEY=sk-...
-DATABASE_URL=postgres://everruns:everruns@localhost:5432/everruns
+cp .env.example .env
 ```
 
 ## License

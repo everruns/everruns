@@ -509,14 +509,16 @@ impl Database {
         // Get next sequence number for this session
         let row = sqlx::query_as::<_, MessageRow>(
             r#"
-            INSERT INTO messages (session_id, sequence, role, content, tool_call_id)
-            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM messages WHERE session_id = $1), 1), $2, $3, $4)
-            RETURNING id, session_id, sequence, role, content, tool_call_id, created_at
+            INSERT INTO messages (session_id, sequence, role, content, metadata, tags, tool_call_id)
+            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM messages WHERE session_id = $1), 1), $2, $3, $4, $5, $6)
+            RETURNING id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
             "#,
         )
         .bind(input.session_id)
         .bind(&input.role)
         .bind(&input.content)
+        .bind(&input.metadata)
+        .bind(&input.tags)
         .bind(&input.tool_call_id)
         .fetch_one(&self.pool)
         .await?;
@@ -527,7 +529,7 @@ impl Database {
     pub async fn get_message(&self, id: Uuid) -> Result<Option<MessageRow>> {
         let row = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, tool_call_id, created_at
+            SELECT id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
             FROM messages
             WHERE id = $1
             "#,
@@ -542,7 +544,7 @@ impl Database {
     pub async fn list_messages(&self, session_id: Uuid) -> Result<Vec<MessageRow>> {
         let rows = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, tool_call_id, created_at
+            SELECT id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
             FROM messages
             WHERE session_id = $1
             ORDER BY sequence ASC
@@ -563,7 +565,7 @@ impl Database {
     ) -> Result<Vec<MessageRow>> {
         let rows = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, tool_call_id, created_at
+            SELECT id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
             FROM messages
             WHERE session_id = $1 AND role = $2
             ORDER BY sequence ASC
