@@ -333,7 +333,14 @@ export default function EditAgentPage({
                     }
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Use default model" />
+                      <SelectValue>
+                        {formData.default_model_id
+                          ? models.find((m) => m.id === formData.default_model_id)?.display_name +
+                            " (" +
+                            models.find((m) => m.id === formData.default_model_id)?.provider_name +
+                            ")"
+                          : "Use default model"}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Use default model</SelectItem>

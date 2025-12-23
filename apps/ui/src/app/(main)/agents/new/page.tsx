@@ -93,13 +93,20 @@ export default function NewAgentPage() {
             <div className="space-y-2">
               <Label htmlFor="model">Model (optional)</Label>
               <Select
-                value={formData.default_model_id}
+                value={formData.default_model_id || "none"}
                 onValueChange={(value) =>
                   setFormData({ ...formData, default_model_id: value === "none" ? "" : value })
                 }
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Use default model" />
+                  <SelectValue>
+                    {formData.default_model_id
+                      ? models.find((m) => m.id === formData.default_model_id)?.display_name +
+                        " (" +
+                        models.find((m) => m.id === formData.default_model_id)?.provider_name +
+                        ")"
+                      : "Use default model"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Use default model</SelectItem>
