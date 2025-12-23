@@ -342,7 +342,7 @@ mod tests {
             .await;
 
         if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("success").unwrap().as_bool().unwrap(), true);
+            assert!(value.get("success").unwrap().as_bool().unwrap());
             assert_eq!(value.get("total_tasks").unwrap().as_u64().unwrap(), 3);
             assert_eq!(value.get("pending").unwrap().as_u64().unwrap(), 1);
             assert_eq!(value.get("in_progress").unwrap().as_u64().unwrap(), 1);
@@ -413,7 +413,7 @@ mod tests {
             .await;
 
         if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("success").unwrap().as_bool().unwrap(), true);
+            assert!(value.get("success").unwrap().as_bool().unwrap());
             assert_eq!(value.get("total_tasks").unwrap().as_u64().unwrap(), 0);
         } else {
             panic!("Expected success");
