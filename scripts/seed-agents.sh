@@ -143,9 +143,9 @@ create_model() {
   echo "$response"
 }
 
-# Get existing agents and return their names as JSON array
+# Get existing agents and return their names
 get_existing_agent_names() {
-  curl -s "$API_URL/v1/agents" | jq -r '.items[].name'
+  curl -s "$API_URL/v1/agents" | jq -r '.data[].name'
 }
 
 # Check if agent with name already exists
@@ -409,7 +409,7 @@ seed_agents() {
     tags=$(yq -o=json -I=0 ".agents[$i].tags // []" "$SEED_FILE")
     capabilities=$(yq -o=json -I=0 ".agents[$i].capabilities // []" "$SEED_FILE")
 
-    # Check if agent already exists
+    # Check if agent already exists (idempotent seeding)
     if agent_exists "$name"; then
       echo "   ⏭️  Skipping '$name' (already exists)"
       skipped=$((skipped + 1))
