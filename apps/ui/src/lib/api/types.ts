@@ -72,20 +72,91 @@ export interface UpdateSessionRequest {
 
 export type MessageRole = "user" | "assistant" | "tool_call" | "tool_result" | "system";
 
+// ContentPart discriminated union - message content parts
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; url?: string; base64?: string; media_type?: string }
+  | { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> }
+  | { type: "tool_result"; result?: unknown; error?: string };
+
+// Helper type guards for ContentPart
+export function isTextPart(part: ContentPart): part is { type: "text"; text: string } {
+  return part.type === "text";
+}
+
+export function isToolCallPart(part: ContentPart): part is { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> } {
+  return part.type === "tool_call";
+}
+
+export function isToolResultPart(part: ContentPart): part is { type: "tool_result"; result?: unknown; error?: string } {
+  return part.type === "tool_result";
+}
+
+// Reasoning configuration for model controls
+export interface ReasoningConfig {
+  effort?: string;
+}
+
+// Runtime controls for message processing
+export interface Controls {
+  model_id?: string;
+  reasoning?: ReasoningConfig;
+  max_tokens?: number;
+  temperature?: number;
+}
+
+// Message response from API
 export interface Message {
   id: string;
   session_id: string;
   sequence: number;
   role: MessageRole;
-  content: Record<string, unknown>;
+  content: ContentPart[];
+  metadata?: Record<string, unknown>;
   tool_call_id: string | null;
   created_at: string;
 }
 
-export interface CreateMessageRequest {
+// Message input for creating a message
+export interface MessageInput {
   role: MessageRole;
-  content: Record<string, unknown>;
+  content: ContentPart[];
+  metadata?: Record<string, unknown>;
   tool_call_id?: string;
+}
+
+// Request to create a message (new contract)
+export interface CreateMessageRequest {
+  message: MessageInput;
+  controls?: Controls;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+}
+
+// Helper function to create a simple text message request
+export function createTextMessageRequest(text: string, controls?: Controls): CreateMessageRequest {
+  return {
+    message: {
+      role: "user",
+      content: [{ type: "text", text }],
+    },
+    controls,
+  };
+}
+
+// Helper function to extract text from content parts
+export function getTextFromContent(content: ContentPart[]): string {
+  return content
+    .filter(isTextPart)
+    .map(part => part.text)
+    .join("\n");
+}
+
+// Helper function to get tool calls from content parts
+export function getToolCallsFromContent(content: ContentPart[]): Array<{ id: string; name: string; arguments: Record<string, unknown> }> {
+  return content
+    .filter(isToolCallPart)
+    .map(part => ({ id: part.id, name: part.name, arguments: part.arguments }));
 }
 
 // ============================================

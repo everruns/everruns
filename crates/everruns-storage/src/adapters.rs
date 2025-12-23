@@ -2,6 +2,10 @@
 //
 // These implementations connect the core agent-loop abstraction to the
 // actual database used in production.
+//
+// Note: The database stores content as JSONB with a flexible schema.
+// The core Message type uses MessageContent enum for type safety.
+// The API contracts use ContentPart array for the new message contract.
 
 use async_trait::async_trait;
 use everruns_core::{
@@ -143,6 +147,8 @@ impl MessageStore for DbMessageStore {
             session_id,
             role,
             content,
+            metadata: None, // Core messages don't have metadata currently
+            tags: vec![],   // Core messages don't have tags currently
             tool_call_id: message.tool_call_id,
         };
 

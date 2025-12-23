@@ -292,7 +292,7 @@ jobs:
           echo "Creating message..."
           MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
             -H 'Content-Type: application/json' \
-            -d '{"role":"user","content":{"text":"Hello, world!"}}')
+            -d '{"message":{"role":"user","content":[{"type":"text","text":"Hello, world!"}]}}')
           echo "Message response: $MESSAGE"
           MESSAGE_ID=$(echo "$MESSAGE" | jq -r '.id')
           echo "Message ID: $MESSAGE_ID"
