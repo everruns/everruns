@@ -132,9 +132,7 @@ pub async fn create_model(
     Path(provider_id): Path<Uuid>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<LlmModel>), (StatusCode, Json<ErrorResponse>)> {
-    let model_profile_json = req
-        .model_profile
-        .and_then(|p| serde_json::to_value(p).ok());
+    let model_profile_json = req.model_profile.and_then(|p| serde_json::to_value(p).ok());
     let input = CreateLlmModel {
         provider_id,
         model_id: req.model_id,
@@ -273,9 +271,7 @@ pub async fn update_model(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateLlmModelRequest>,
 ) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
-    let model_profile_json = req
-        .model_profile
-        .and_then(|p| serde_json::to_value(p).ok());
+    let model_profile_json = req.model_profile.and_then(|p| serde_json::to_value(p).ok());
     let input = UpdateLlmModel {
         model_id: req.model_id,
         display_name: req.display_name,
