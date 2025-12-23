@@ -58,8 +58,8 @@ pub use llm::{
 
 // Tool abstraction re-exports
 pub use tools::{
-    EchoTool, FailingTool, GetCurrentTime, Tool, ToolExecutionResult, ToolInternalError,
-    ToolRegistry, ToolRegistryBuilder,
+    EchoTool, FailingTool, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry,
+    ToolRegistryBuilder,
 };
 
 // Capability re-exports

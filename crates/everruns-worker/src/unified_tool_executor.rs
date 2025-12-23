@@ -14,12 +14,12 @@ use tracing::{error, info};
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::{ToolRegistry, GetCurrentTime, EchoTool};
+/// use everruns_core::{ToolRegistry, GetCurrentTimeTool, EchoTool};
 /// use everruns_worker::unified_tool_executor::UnifiedToolExecutor;
 ///
 /// // Create registry with built-in tools
 /// let registry = ToolRegistry::builder()
-///     .tool(GetCurrentTime)
+///     .tool(GetCurrentTimeTool)
 ///     .tool(EchoTool)
 ///     .build();
 ///
@@ -52,7 +52,7 @@ impl UnifiedToolExecutor {
     /// - TaskList tools: write_todos
     pub fn with_default_tools() -> Self {
         let registry = ToolRegistry::builder()
-            .tool(everruns_core::GetCurrentTime)
+            .tool(everruns_core::GetCurrentTimeTool)
             .tool(everruns_core::EchoTool)
             // TestMath capability tools
             .tool(everruns_core::AddTool)
@@ -119,12 +119,12 @@ impl ToolExecutor for UnifiedToolExecutor {
 mod tests {
     use super::*;
     use everruns_contracts::tools::{BuiltinTool, ToolPolicy};
-    use everruns_core::{EchoTool, FailingTool, GetCurrentTime};
+    use everruns_core::{EchoTool, FailingTool, GetCurrentTimeTool};
     use serde_json::json;
 
     #[tokio::test]
     async fn test_execute_builtin_tool_from_registry() {
-        let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
+        let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
         let executor = UnifiedToolExecutor::new(registry);
 
         let tool_call = ToolCall {

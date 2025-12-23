@@ -457,62 +457,6 @@ impl Default for ToolRegistryBuilder {
 // Built-in Tools
 // ============================================================================
 
-/// A simple tool that returns the current date and time.
-///
-/// This is a demo tool showing how to implement the Tool trait.
-pub struct GetCurrentTime;
-
-#[async_trait]
-impl Tool for GetCurrentTime {
-    fn name(&self) -> &str {
-        "get_current_time"
-    }
-
-    fn description(&self) -> &str {
-        "Get the current date and time. Returns the current timestamp in ISO 8601 format."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "format": {
-                    "type": "string",
-                    "description": "Output format: 'iso8601' (default), 'unix', or 'human'",
-                    "enum": ["iso8601", "unix", "human"]
-                }
-            },
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        let format = arguments
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("iso8601");
-
-        let now = chrono::Utc::now();
-
-        let result = match format {
-            "unix" => serde_json::json!({
-                "timestamp": now.timestamp(),
-                "format": "unix"
-            }),
-            "human" => serde_json::json!({
-                "datetime": now.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-                "format": "human"
-            }),
-            _ => serde_json::json!({
-                "datetime": now.to_rfc3339(),
-                "format": "iso8601"
-            }),
-        };
-
-        ToolExecutionResult::success(result)
-    }
-}
-
 /// A tool that echoes back its arguments (useful for testing)
 pub struct EchoTool;
 
@@ -617,33 +561,7 @@ impl Tool for FailingTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_get_current_time() {
-        let tool = GetCurrentTime;
-
-        // Test ISO8601 format (default)
-        let result = tool.execute(serde_json::json!({})).await;
-        assert!(result.is_success());
-
-        // Test Unix format
-        let result = tool.execute(serde_json::json!({"format": "unix"})).await;
-        if let ToolExecutionResult::Success(value) = result {
-            assert!(value.get("timestamp").is_some());
-            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "unix");
-        } else {
-            panic!("Expected success");
-        }
-
-        // Test human format
-        let result = tool.execute(serde_json::json!({"format": "human"})).await;
-        if let ToolExecutionResult::Success(value) = result {
-            assert!(value.get("datetime").is_some());
-            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "human");
-        } else {
-            panic!("Expected success");
-        }
-    }
+    use crate::capabilities::GetCurrentTimeTool;
 
     #[tokio::test]
     async fn test_echo_tool() {
@@ -717,7 +635,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_registry() {
         let mut registry = ToolRegistry::new();
-        registry.register(GetCurrentTime);
+        registry.register(GetCurrentTimeTool);
         registry.register(EchoTool);
 
         assert_eq!(registry.len(), 2);
@@ -732,7 +650,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_registry_builder() {
         let registry = ToolRegistry::builder()
-            .tool(GetCurrentTime)
+            .tool(GetCurrentTimeTool)
             .tool(EchoTool)
             .build();
 
@@ -759,7 +677,7 @@ mod tests {
 
     #[test]
     fn test_tool_to_definition() {
-        let tool = GetCurrentTime;
+        let tool = GetCurrentTimeTool;
         let def = tool.to_definition();
 
         let ToolDefinition::Builtin(builtin) = def;

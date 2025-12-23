@@ -6,9 +6,9 @@
 use async_trait::async_trait;
 use everruns_core::{
     memory::{InMemoryEventEmitter, InMemoryMessageStore, MockLlmProvider, MockLlmResponse},
-    tools::{EchoTool, FailingTool, GetCurrentTime, Tool, ToolExecutionResult, ToolRegistry},
+    tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
-    AgentConfig, AgentLoop, LoopEvent, Message, MessageRole,
+    AgentConfig, AgentLoop, GetCurrentTimeTool, LoopEvent, Message, MessageRole,
 };
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use serde_json::json;
@@ -24,7 +24,7 @@ use uuid::Uuid;
 async fn test_tool_registry_as_executor() {
     // Create a registry with built-in tools
     let registry = ToolRegistry::builder()
-        .tool(GetCurrentTime)
+        .tool(GetCurrentTimeTool)
         .tool(EchoTool)
         .build();
 
@@ -51,7 +51,7 @@ async fn test_tool_registry_as_executor() {
 
 #[tokio::test]
 async fn test_get_current_time_tool() {
-    let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
+    let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
 
     let tool_call = ToolCall {
         id: "call_time".to_string(),
@@ -191,7 +191,7 @@ async fn test_agent_loop_with_tool_execution() {
         })]);
 
     // Create a registry with built-in tools
-    let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
+    let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
 
     // Create in-memory backends
     let event_emitter = InMemoryEventEmitter::new();
@@ -223,7 +223,7 @@ async fn test_agent_loop_with_tool_execution() {
         ])
         .await;
 
-    let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
+    let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
     let event_emitter = InMemoryEventEmitter::new();
 
     let config = AgentConfig::new("You are a helpful assistant", "gpt-test")
@@ -354,7 +354,7 @@ async fn test_custom_tool_execution() {
 #[tokio::test]
 async fn test_multiple_tools_in_registry() {
     let registry = ToolRegistry::builder()
-        .tool(GetCurrentTime)
+        .tool(GetCurrentTimeTool)
         .tool(EchoTool)
         .build();
 
