@@ -332,6 +332,43 @@ impl Database {
         Ok(row)
     }
 
+    /// Create an agent if it doesn't exist, or return the existing one.
+    /// This is idempotent - calling it multiple times with the same name
+    /// will not create duplicate agents. Returns (agent, created) where
+    /// created is true if a new agent was created, false if existing was returned.
+    pub async fn create_or_get_agent(&self, input: CreateAgent) -> Result<(AgentRow, bool)> {
+        // Try to insert, ignoring conflicts on name
+        let inserted = sqlx::query_as::<_, AgentRow>(
+            r#"
+            INSERT INTO agents (name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, 'active')
+            ON CONFLICT (name) DO NOTHING
+            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            "#,
+        )
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.system_prompt)
+        .bind(input.default_model_id)
+        .bind(&input.tags)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match inserted {
+            Some(row) => Ok((row, true)),
+            None => {
+                // Agent already exists, fetch it
+                let existing = self.get_agent_by_name(&input.name).await?.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Agent with name '{}' should exist after conflict",
+                        input.name
+                    )
+                })?;
+                Ok((existing, false))
+            }
+        }
+    }
+
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
@@ -341,6 +378,21 @@ impl Database {
             "#,
         )
         .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
+        let row = sqlx::query_as::<_, AgentRow>(
+            r#"
+            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            FROM agents
+            WHERE name = $1
+            "#,
+        )
+        .bind(name)
         .fetch_optional(&self.pool)
         .await?;
 

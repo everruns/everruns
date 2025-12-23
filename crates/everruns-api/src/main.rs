@@ -57,6 +57,7 @@ struct HealthState {
 #[openapi(
     paths(
         agents::create_agent,
+        agents::create_or_get_agent,
         agents::list_agents,
         agents::get_agent,
         agents::update_agent,

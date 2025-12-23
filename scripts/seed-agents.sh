@@ -157,16 +157,23 @@ agent_exists() {
   echo "$existing_names" | grep -Fxq "$name"
 }
 
-# Create an agent from JSON payload
+# Create an agent from JSON payload (uses idempotent PUT endpoint)
+# Returns: "STATUS_CODE|RESPONSE_BODY"
 create_agent() {
   local payload="$1"
+  local http_code
   local response
 
-  response=$(curl -s -X POST "$API_URL/v1/agents" \
+  # Get both HTTP status code and response body
+  response=$(curl -s -w "\n%{http_code}" -X PUT "$API_URL/v1/agents" \
     -H "Content-Type: application/json" \
     -d "$payload")
 
-  echo "$response"
+  # Extract status code (last line) and body (everything else)
+  http_code=$(echo "$response" | tail -n1)
+  response=$(echo "$response" | sed '$d')
+
+  echo "${http_code}|${response}"
 }
 
 # Set capabilities for an agent
@@ -409,13 +416,6 @@ seed_agents() {
     tags=$(yq -o=json -I=0 ".agents[$i].tags // []" "$SEED_FILE")
     capabilities=$(yq -o=json -I=0 ".agents[$i].capabilities // []" "$SEED_FILE")
 
-    # Check if agent already exists
-    if agent_exists "$name"; then
-      echo "   ⏭️  Skipping '$name' (already exists)"
-      skipped=$((skipped + 1))
-      continue
-    fi
-
     # Build create payload
     local payload
     payload=$(jq -n \
@@ -430,10 +430,15 @@ seed_agents() {
       } + (if $description != "" then {description: $description} else {} end)'
     )
 
-    # Create the agent
-    echo "   🌱 Creating agent '$name'..."
+    # Create the agent using idempotent PUT endpoint
+    echo "   🌱 Seeding agent '$name'..."
+    local result
+    result=$(create_agent "$payload")
+
+    local http_code
     local response
-    response=$(create_agent "$payload")
+    http_code=$(echo "$result" | cut -d'|' -f1)
+    response=$(echo "$result" | cut -d'|' -f2-)
 
     local agent_id
     agent_id=$(echo "$response" | jq -r '.id // empty')
@@ -443,7 +448,14 @@ seed_agents() {
       continue
     fi
 
-    # Set capabilities if defined
+    # Check HTTP status to determine if agent was created or already existed
+    if [[ "$http_code" == "200" ]]; then
+      echo "      ⏭️  Already exists (skipped)"
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    # Set capabilities if defined (only for newly created agents)
     if [[ "$capabilities" != "[]" && "$capabilities" != "null" ]]; then
       local cap_payload
       cap_payload=$(echo "$capabilities" | jq '{capabilities: .}')

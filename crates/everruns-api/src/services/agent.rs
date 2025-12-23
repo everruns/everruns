@@ -23,6 +23,13 @@ impl AgentService {
         Ok(Self::row_to_agent(row))
     }
 
+    /// Create an agent if it doesn't exist, or return the existing one.
+    /// Returns (agent, created) where created is true if a new agent was created.
+    pub async fn create_or_get(&self, input: CreateAgent) -> Result<(Agent, bool)> {
+        let (row, created) = self.db.create_or_get_agent(input).await?;
+        Ok((Self::row_to_agent(row), created))
+    }
+
     pub async fn get(&self, id: Uuid) -> Result<Option<Agent>> {
         let row = self.db.get_agent(id).await?;
         Ok(row.map(Self::row_to_agent))
