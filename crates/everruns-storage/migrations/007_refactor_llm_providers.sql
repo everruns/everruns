@@ -1,11 +1,11 @@
--- Migration 007: Refactor LLM Providers
+-- Migration 006: Refactor LLM Providers
 --
 -- Changes:
 -- 1. Remove 'ollama' and 'custom' provider types (only openai, anthropic, azure_openai supported)
 -- 2. Add 'settings' JSONB column for provider-specific configuration
 --
--- Note: Any existing providers with type 'ollama' or 'custom' will be deleted by this migration.
--- If you need to preserve them, migrate or back them up before running this migration.
+-- Note: This migration will fail if there are existing providers with type 'ollama' or 'custom'.
+-- Those must be migrated or deleted before running this migration.
 
 -- First, delete any existing providers with deprecated types (for clean deployments)
 -- In production, you might want to migrate these instead
