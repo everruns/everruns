@@ -1,5 +1,7 @@
 # Everruns
 
+> **Note:** This repository is in **Heavy Vibecoding PoC Mode**. Expect rapid changes, experimental features, and unconventional approaches as we explore ideas quickly.
+
 Durable AI agent execution platform. Run long-running LLM agents reliably - if the service restarts, agents resume from where they left off.
 
 ## Overview
@@ -71,7 +73,7 @@ Services available at:
 
 1. Open http://localhost:9100/agents
 2. Click "New Agent"
-3. Enter name and select model (e.g., `gpt-4o`)
+3. Enter name and select model (e.g., `gpt-5.1`)
 4. Create a version with a system prompt
 
 ### Chat with an Agent
