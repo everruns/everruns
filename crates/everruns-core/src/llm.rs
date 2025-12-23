@@ -92,6 +92,26 @@ pub trait LlmProvider: Send + Sync {
     }
 }
 
+/// Implement LlmProvider for Box<dyn LlmProvider> to allow dynamic dispatch
+#[async_trait]
+impl LlmProvider for Box<dyn LlmProvider> {
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream> {
+        (**self).chat_completion_stream(messages, config).await
+    }
+
+    async fn chat_completion(
+        &self,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        (**self).chat_completion(messages, config).await
+    }
+}
+
 // ============================================================================
 // Message Types
 // ============================================================================

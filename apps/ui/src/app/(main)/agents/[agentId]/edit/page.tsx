@@ -10,6 +10,7 @@ import {
   useCapabilities,
   useAgentCapabilities,
   useSetAgentCapabilities,
+  useLlmModels,
 } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -20,6 +21,13 @@ import { PromptEditor } from "@/components/ui/prompt-editor";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ArrowLeft,
   Save,
@@ -48,6 +56,7 @@ interface FormData {
   description: string;
   system_prompt: string;
   tags: string;
+  default_model_id: string;
 }
 
 export default function EditAgentPage({
@@ -70,19 +79,23 @@ export default function EditAgentPage({
     useAgentCapabilities(agentId);
   const setCapabilities = useSetAgentCapabilities();
 
+  // LLM Models data
+  const { data: models = [] } = useLlmModels();
+
   // Form state - track user changes separately from initial values
   const [formChanges, setFormChanges] = useState<Partial<FormData>>({});
 
   // Compute initial values from agent data
   const initialFormData = useMemo((): FormData => {
     if (!agent) {
-      return { name: "", description: "", system_prompt: "", tags: "" };
+      return { name: "", description: "", system_prompt: "", tags: "", default_model_id: "" };
     }
     return {
       name: agent.name,
       description: agent.description || "",
       system_prompt: agent.system_prompt,
       tags: agent.tags.join(", "),
+      default_model_id: agent.default_model_id || "",
     };
   }, [agent]);
 
@@ -180,6 +193,7 @@ export default function EditAgentPage({
           description: formData.description || undefined,
           system_prompt: formData.system_prompt,
           tags,
+          default_model_id: formData.default_model_id || undefined,
         },
       });
 
@@ -307,6 +321,38 @@ export default function EditAgentPage({
                   />
                   <p className="text-xs text-muted-foreground">
                     Comma-separated list of tags
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="model">Model (optional)</Label>
+                  <Select
+                    value={formData.default_model_id || "none"}
+                    onValueChange={(value) =>
+                      handleFormChange("default_model_id", value === "none" ? "" : value)
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {formData.default_model_id
+                          ? models.find((m) => m.id === formData.default_model_id)?.display_name +
+                            " (" +
+                            models.find((m) => m.id === formData.default_model_id)?.provider_name +
+                            ")"
+                          : "Use default model"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Use default model</SelectItem>
+                      {models.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.display_name} ({model.provider_name})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Select a specific model or leave empty to use the default
                   </p>
                 </div>
 

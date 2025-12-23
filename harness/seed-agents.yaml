@@ -1,13 +1,63 @@
-# Seed Agents Configuration
-# Agents defined here will be seeded into the local development database.
-# Seeding is idempotent - agents with matching names will be skipped.
+# Seed Configuration
+# Providers and agents defined here will be seeded into the local development database.
+# Seeding is idempotent - items with matching names will be skipped.
 #
-# Schema:
+# Provider Schema:
+#   name: string (required) - Provider display name
+#   provider_type: string (required) - openai, anthropic, azure_openai
+#   api_key_env: string (optional) - Environment variable name for API key
+#   is_default: boolean (optional) - Set as default provider
+#   models: array (optional) - Models to create under this provider
+#     - model_id: string (required) - Model identifier (e.g., "gpt-4o")
+#       display_name: string (required) - Display name
+#       context_window: number (optional) - Context window size
+#       is_default: boolean (optional) - Set as default model
+#
+# Agent Schema:
 #   name: string (required) - Agent display name
 #   description: string (optional) - Agent description
 #   system_prompt: string (required) - System prompt for the LLM
 #   tags: string[] (optional) - Tags for organization
 #   capabilities: string[] (optional) - Capability IDs to enable
+
+providers:
+  - name: "OpenAI"
+    provider_type: "openai"
+    api_key_env: "OPENAI_API_KEY"
+    is_default: true
+    models:
+      - model_id: "gpt-5"
+        display_name: "GPT-5"
+        context_window: 200000
+        is_default: true
+      - model_id: "gpt-5-mini"
+        display_name: "GPT-5 Mini"
+        context_window: 200000
+      - model_id: "gpt-5-nano"
+        display_name: "GPT-5 Nano"
+        context_window: 128000
+      - model_id: "gpt-5.1"
+        display_name: "GPT-5.1"
+        context_window: 200000
+      - model_id: "gpt-4o"
+        display_name: "GPT-4o"
+        context_window: 128000
+      - model_id: "gpt-4o-mini"
+        display_name: "GPT-4o Mini"
+        context_window: 128000
+
+  - name: "Anthropic"
+    provider_type: "anthropic"
+    api_key_env: "ANTHROPIC_API_KEY"
+    is_default: false
+    models:
+      - model_id: "claude-sonnet-4-20250514"
+        display_name: "Claude Sonnet 4"
+        context_window: 200000
+        is_default: true
+      - model_id: "claude-3-5-haiku-20241022"
+        display_name: "Claude 3.5 Haiku"
+        context_window: 200000
 
 agents:
   - name: "Dad Jokes Agent"

@@ -2,24 +2,33 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateAgent } from "@/hooks";
+import { useCreateAgent, useLlmModels } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export default function NewAgentPage() {
   const router = useRouter();
   const createAgent = useCreateAgent();
+  const { data: models = [] } = useLlmModels();
 
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     system_prompt: "",
+    default_model_id: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,6 +39,7 @@ export default function NewAgentPage() {
         name: formData.name,
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
+        default_model_id: formData.default_model_id || undefined,
       });
 
       router.push(`/agents/${agent.id}`);
@@ -78,6 +88,38 @@ export default function NewAgentPage() {
                 }
                 rows={2}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="model">Model (optional)</Label>
+              <Select
+                value={formData.default_model_id || "none"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, default_model_id: value === "none" ? "" : value })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {formData.default_model_id
+                      ? models.find((m) => m.id === formData.default_model_id)?.display_name +
+                        " (" +
+                        models.find((m) => m.id === formData.default_model_id)?.provider_name +
+                        ")"
+                      : "Use default model"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Use default model</SelectItem>
+                  {models.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.display_name} ({model.provider_name})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select a specific model or leave empty to use the default
+              </p>
             </div>
 
             <div className="space-y-2">

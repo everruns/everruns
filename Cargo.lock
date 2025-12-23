@@ -757,6 +757,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-anthropic"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "eventsource-stream",
+ "everruns-contracts",
+ "everruns-core",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.22",
+]
+
+[[package]]
 name = "everruns-api"
 version = "0.2.0"
 dependencies = [
@@ -875,6 +894,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "everruns-anthropic",
  "everruns-contracts",
  "everruns-core",
  "everruns-openai",

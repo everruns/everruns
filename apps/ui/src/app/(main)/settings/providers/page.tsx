@@ -57,9 +57,21 @@ const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI" },
   { value: "anthropic", label: "Anthropic" },
   { value: "azure_openai", label: "Azure OpenAI" },
-  { value: "ollama", label: "Ollama" },
-  { value: "custom", label: "Custom" },
 ];
+
+// Get API key placeholder based on provider type
+function getApiKeyPlaceholder(providerType: LlmProviderType): string {
+  switch (providerType) {
+    case "openai":
+      return "sk-...";
+    case "anthropic":
+      return "sk-ant-api03-...";
+    case "azure_openai":
+      return "your-azure-api-key";
+    default:
+      return "your-api-key";
+  }
+}
 
 function ProviderCard({
   provider,
@@ -280,7 +292,7 @@ function AddProviderDialog({
               type="password"
               value={apiKey}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder={getApiKeyPlaceholder(providerType)}
             />
           </div>
           <div className="flex items-center gap-2">
@@ -348,7 +360,7 @@ function SetApiKeyDialog({
               type="password"
               value={apiKey}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder={provider ? getApiKeyPlaceholder(provider.provider_type) : "your-api-key"}
               required
             />
           </div>

@@ -73,7 +73,8 @@ When making changes that affect user-facing behavior or operations, update the r
 
 When running in cloud-hosted agent environments (e.g., Claude Code on the web), the following secrets are available:
 
-- `OPENAI_API_KEY`: Available for LLM-related operations
+- `OPENAI_API_KEY`: Available for LLM-related operations (OpenAI models)
+- `ANTHROPIC_API_KEY`: Available for LLM-related operations (Claude models)
 - `GITHUB_TOKEN`: Available for GitHub API operations (PRs, issues, repository access)
 
 These secrets are pre-configured in the environment and do not require manual setup.
