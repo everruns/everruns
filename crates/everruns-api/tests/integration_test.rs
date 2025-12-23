@@ -3,6 +3,7 @@
 
 use everruns_contracts::{Agent, Event, LlmModel, LlmProvider, Message, Session};
 use serde_json::json;
+use uuid::Uuid;
 
 const API_BASE_URL: &str = "http://localhost:9000";
 
@@ -312,7 +313,7 @@ async fn test_idempotent_agent_creation() {
 
     println!("Testing idempotent agent creation (PUT /v1/agents)...");
 
-    let unique_name = format!("Idempotent Test Agent {}", uuid::Uuid::new_v4());
+    let unique_name = format!("Idempotent Test Agent {}", Uuid::new_v4());
 
     // Step 1: Create agent using PUT (should return 201)
     println!("\nStep 1: First PUT request (should create)...");
