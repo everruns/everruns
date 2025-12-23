@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use everruns_storage::repositories::Database;
+use everruns_storage::{repositories::Database, EncryptionService};
 use temporal_sdk_core::protos::coresdk::{
     activity_result::{self, ActivityResult},
     activity_task::{activity_task, ActivityTask},
@@ -45,6 +45,8 @@ pub struct TemporalWorker {
     core: Arc<TemporalWorkerCore>,
     /// Database connection
     db: Database,
+    /// Encryption service for decrypting secrets
+    encryption: Arc<EncryptionService>,
     /// Worker configuration
     #[allow(dead_code)]
     config: RunnerConfig,
@@ -58,14 +60,19 @@ pub struct TemporalWorker {
 
 impl TemporalWorker {
     /// Create a new Temporal worker with default workflow registry
-    pub async fn new(config: RunnerConfig, db: Database) -> Result<Self> {
-        Self::with_registry(config, db, WorkflowRegistry::with_defaults()).await
+    pub async fn new(
+        config: RunnerConfig,
+        db: Database,
+        encryption: EncryptionService,
+    ) -> Result<Self> {
+        Self::with_registry(config, db, encryption, WorkflowRegistry::with_defaults()).await
     }
 
     /// Create a new Temporal worker with a custom workflow registry
     pub async fn with_registry(
         config: RunnerConfig,
         db: Database,
+        encryption: EncryptionService,
         registry: WorkflowRegistry,
     ) -> Result<Self> {
         let core = TemporalWorkerCore::new(config.clone())
@@ -77,6 +84,7 @@ impl TemporalWorker {
         Ok(Self {
             core: Arc::new(core),
             db,
+            encryption: Arc::new(encryption),
             config,
             registry: Arc::new(registry),
             shutdown_tx,
@@ -100,8 +108,12 @@ impl TemporalWorker {
         );
 
         // Spawn activity task poller
-        let activity_handle =
-            spawn_activity_poller(self.core.clone(), self.db.clone(), self.shutdown_rx.clone());
+        let activity_handle = spawn_activity_poller(
+            self.core.clone(),
+            self.db.clone(),
+            self.encryption.clone(),
+            self.shutdown_rx.clone(),
+        );
 
         // Wait for shutdown signal
         let mut shutdown_rx = self.shutdown_rx.clone();
@@ -168,6 +180,7 @@ fn spawn_workflow_poller(
 fn spawn_activity_poller(
     core: Arc<TemporalWorkerCore>,
     db: Database,
+    encryption: Arc<EncryptionService>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -177,7 +190,7 @@ fn spawn_activity_poller(
                     info!("Activity poller shutting down");
                     break;
                 }
-                result = poll_and_process_activity_task(&core, &db) => {
+                result = poll_and_process_activity_task(&core, &db, &encryption) => {
                     if let Err(e) = result {
                         match e.downcast_ref::<PollActivityError>() {
                             Some(PollActivityError::ShutDown) => {
@@ -472,7 +485,11 @@ fn action_to_command(
 }
 
 /// Poll and process a single activity task
-async fn poll_and_process_activity_task(core: &TemporalWorkerCore, db: &Database) -> Result<()> {
+async fn poll_and_process_activity_task(
+    core: &TemporalWorkerCore,
+    db: &Database,
+    encryption: &EncryptionService,
+) -> Result<()> {
     // Poll for activity task
     let task = core.core().poll_activity_task().await?;
 
@@ -492,7 +509,7 @@ async fn poll_and_process_activity_task(core: &TemporalWorkerCore, db: &Database
     );
 
     // Process activity
-    let result = process_activity(&task, db).await;
+    let result = process_activity(&task, db, encryption).await;
 
     // Complete the activity
     let completion = ActivityTaskCompletion {
@@ -506,7 +523,11 @@ async fn poll_and_process_activity_task(core: &TemporalWorkerCore, db: &Database
 }
 
 /// Process an activity task and return the result
-async fn process_activity(task: &ActivityTask, db: &Database) -> ActivityResult {
+async fn process_activity(
+    task: &ActivityTask,
+    db: &Database,
+    encryption: &EncryptionService,
+) -> ActivityResult {
     match &task.variant {
         Some(activity_task::Variant::Start(start)) => {
             // Check for empty activity type - this can happen with synthetic tasks
@@ -545,7 +566,7 @@ async fn process_activity(task: &ActivityTask, db: &Database) -> ActivityResult 
                 .map(|p| p.data.clone())
                 .unwrap_or_default();
 
-            let result = execute_activity(db, &start.activity_type, &input_data).await;
+            let result = execute_activity(db, encryption, &start.activity_type, &input_data).await;
 
             match result {
                 Ok(output) => {
@@ -612,13 +633,14 @@ async fn process_activity(task: &ActivityTask, db: &Database) -> ActivityResult 
 /// Execute an activity by type
 async fn execute_activity(
     db: &Database,
+    encryption: &EncryptionService,
     activity_type: &str,
     input_data: &[u8],
 ) -> Result<serde_json::Value> {
     match activity_type {
         activity_types::LOAD_AGENT => {
             let input: LoadAgentInput = serde_json::from_slice(input_data)?;
-            let output = load_agent_activity(db.clone(), input).await?;
+            let output = load_agent_activity(db.clone(), encryption.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
         activity_types::CALL_MODEL => {

@@ -12,8 +12,13 @@ Comprehensive smoke testing for API, UI, database, and system integration.
 Start the development environment before running tests:
 
 ```bash
+# From repo root - uses Docker
 ./scripts/dev.sh start-all
 ```
+
+**Note on paths:** This document references two types of scripts:
+- **Repo root scripts** (e.g., `./scripts/dev.sh`) - Run from the repository root directory
+- **Skill scripts** (e.g., `run-no-docker.sh`) - Located in `.claude/skills/smoke-test/scripts/`
 
 ## Test Checklist
 
@@ -220,7 +225,11 @@ Expected: 200
 For environments without Docker (Cloud Agent, CI):
 
 ```bash
-./scripts/run-no-docker.sh
+# Run from skill scripts directory
+.claude/skills/smoke-test/scripts/run-no-docker.sh
+
+# Or from the skill scripts directory
+cd .claude/skills/smoke-test/scripts && ./run-no-docker.sh
 ```
 
 This script:
@@ -233,14 +242,22 @@ This script:
 
 **Important**: The Temporal worker is required for workflow execution. Without it, sending messages won't trigger LLM responses.
 
-### Scripts
+### Skill Scripts (relative to `.claude/skills/smoke-test/scripts/`)
 
 | Script | Description |
 |--------|-------------|
-| `scripts/run-no-docker.sh` | Entry point for no-Docker environments |
-| `scripts/_setup-postgres.sh` | PostgreSQL cluster setup - auto-detects system install (internal) |
-| `scripts/_setup-temporal.sh` | Temporal CLI install from GitHub releases (internal) |
-| `scripts/_utils.sh` | Shared utilities and configuration (internal) |
+| `run-no-docker.sh` | Entry point for no-Docker environments |
+| `_setup-postgres.sh` | PostgreSQL cluster setup - auto-detects system install (internal) |
+| `_setup-temporal.sh` | Temporal CLI install from GitHub releases (internal) |
+| `_utils.sh` | Shared utilities and configuration (internal) |
+| `tool-calling-tests.sh` | Automated tool calling scenario tests |
+
+### Repo Root Scripts (relative to repository root)
+
+| Script | Description |
+|--------|-------------|
+| `./scripts/dev.sh` | Development environment manager (Docker-based) |
+| `./scripts/seed-agents.sh` | Seed database with sample agents |
 
 ### Log Files
 

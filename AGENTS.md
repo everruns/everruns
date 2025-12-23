@@ -69,6 +69,28 @@ When making changes that affect user-facing behavior or operations, update the r
   - macOS: `brew install protobuf`
   - Or download from https://github.com/protocolbuffers/protobuf/releases
 
+### Smoke test prerequisites
+
+Before running smoke tests, ensure these tools are installed:
+
+1. **PostgreSQL** - Database for storing agents, sessions, messages
+   - Debian/Ubuntu: `apt-get install postgresql postgresql-contrib`
+   - macOS: `brew install postgresql`
+   - Verify: `psql --version`
+
+2. **Temporal CLI** - Workflow orchestration server
+   - Install: `curl -sSf https://temporal.download/cli.sh | sh`
+   - Add to PATH: `export PATH="$PATH:$HOME/.temporalio/bin"`
+   - Verify: `temporal --version`
+
+3. **protoc** - Protocol Buffers compiler (see above)
+
+4. **jq** - JSON processor for test scripts
+   - Debian/Ubuntu: `apt-get install jq`
+   - macOS: `brew install jq`
+
+The no-Docker smoke test scripts (`.claude/skills/smoke-test/scripts/`) can auto-install some of these, but having them pre-installed speeds up testing.
+
 ### Cloud Agent environments
 
 When running in cloud-hosted agent environments (e.g., Claude Code on the web), the following secrets are available:

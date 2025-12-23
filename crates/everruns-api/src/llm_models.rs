@@ -94,7 +94,7 @@ fn row_to_model_with_provider(
         created_at: row.created_at,
         updated_at: row.updated_at,
         provider_name: row.provider_name.clone(),
-        provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Custom),
+        provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Openai),
     }
 }
 

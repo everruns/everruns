@@ -288,9 +288,7 @@ export interface RefreshTokenRequest {
 export type LlmProviderType =
   | "openai"
   | "anthropic"
-  | "azure_openai"
-  | "ollama"
-  | "custom";
+  | "azure_openai";
 
 export type LlmProviderStatus = "active" | "disabled";
 export type LlmModelStatus = "active" | "disabled";

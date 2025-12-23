@@ -11,8 +11,6 @@ pub enum LlmProviderType {
     Openai,
     Anthropic,
     AzureOpenai,
-    Ollama,
-    Custom,
 }
 
 impl std::fmt::Display for LlmProviderType {
@@ -21,8 +19,6 @@ impl std::fmt::Display for LlmProviderType {
             LlmProviderType::Openai => write!(f, "openai"),
             LlmProviderType::Anthropic => write!(f, "anthropic"),
             LlmProviderType::AzureOpenai => write!(f, "azure_openai"),
-            LlmProviderType::Ollama => write!(f, "ollama"),
-            LlmProviderType::Custom => write!(f, "custom"),
         }
     }
 }
@@ -35,8 +31,6 @@ impl std::str::FromStr for LlmProviderType {
             "openai" => Ok(LlmProviderType::Openai),
             "anthropic" => Ok(LlmProviderType::Anthropic),
             "azure_openai" => Ok(LlmProviderType::AzureOpenai),
-            "ollama" => Ok(LlmProviderType::Ollama),
-            "custom" => Ok(LlmProviderType::Custom),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
     }

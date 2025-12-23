@@ -2,6 +2,9 @@
 //
 // Factory for creating LlmProvider instances based on provider type and configuration.
 // This enables dynamic provider selection at runtime based on model/provider configuration.
+//
+// IMPORTANT: API keys must be provided from the database. This factory does NOT read
+// from environment variables. Keys should be decrypted and passed via ProviderConfig.
 
 use crate::anthropic::AnthropicLlmProvider;
 use crate::error::{AgentLoopError, Result};
@@ -14,8 +17,6 @@ pub enum ProviderType {
     OpenAI,
     Anthropic,
     AzureOpenAI,
-    Ollama,
-    Custom,
 }
 
 impl std::str::FromStr for ProviderType {
@@ -26,8 +27,6 @@ impl std::str::FromStr for ProviderType {
             "openai" => Ok(ProviderType::OpenAI),
             "anthropic" => Ok(ProviderType::Anthropic),
             "azure_openai" => Ok(ProviderType::AzureOpenAI),
-            "ollama" => Ok(ProviderType::Ollama),
-            "custom" => Ok(ProviderType::Custom),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
     }
@@ -39,8 +38,6 @@ impl std::fmt::Display for ProviderType {
             ProviderType::OpenAI => write!(f, "openai"),
             ProviderType::Anthropic => write!(f, "anthropic"),
             ProviderType::AzureOpenAI => write!(f, "azure_openai"),
-            ProviderType::Ollama => write!(f, "ollama"),
-            ProviderType::Custom => write!(f, "custom"),
         }
     }
 }
@@ -84,80 +81,30 @@ pub type BoxedLlmProvider = Box<dyn LlmProvider>;
 
 /// Create an LLM provider based on configuration
 ///
-/// If no API key is provided, falls back to environment variables.
+/// API keys must be provided in the config. This function does NOT fall back to
+/// environment variables. Keys should be decrypted from the database and passed here.
 pub fn create_provider(config: &ProviderConfig) -> Result<BoxedLlmProvider> {
+    // API key is required - it should be decrypted from the database
+    let api_key = config.api_key.as_ref().ok_or_else(|| {
+        AgentLoopError::llm("API key is required. Configure the API key in provider settings.")
+    })?;
+
     match config.provider_type {
         ProviderType::OpenAI | ProviderType::AzureOpenAI => {
-            let provider = match (&config.api_key, &config.base_url) {
-                (Some(key), Some(url)) => OpenAIProtocolLlmProvider::with_base_url(key, url),
-                (Some(key), None) => OpenAIProtocolLlmProvider::new(key),
-                (None, Some(url)) => {
-                    // Get key from env since none was provided
-                    let key = std::env::var("OPENAI_API_KEY").map_err(|_| {
-                        AgentLoopError::llm("OPENAI_API_KEY environment variable not set")
-                    })?;
-                    OpenAIProtocolLlmProvider::with_base_url(key, url)
-                }
-                (None, None) => OpenAIProtocolLlmProvider::from_env()?,
+            let provider = match &config.base_url {
+                Some(url) => OpenAIProtocolLlmProvider::with_base_url(api_key, url),
+                None => OpenAIProtocolLlmProvider::new(api_key),
             };
             Ok(Box::new(provider))
         }
         ProviderType::Anthropic => {
-            let provider = match (&config.api_key, &config.base_url) {
-                (Some(key), Some(url)) => AnthropicLlmProvider::with_base_url(key, url),
-                (Some(key), None) => AnthropicLlmProvider::new(key),
-                (None, Some(url)) => {
-                    let key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
-                        AgentLoopError::llm("ANTHROPIC_API_KEY environment variable not set")
-                    })?;
-                    AnthropicLlmProvider::with_base_url(key, url)
-                }
-                (None, None) => AnthropicLlmProvider::from_env()?,
+            let provider = match &config.base_url {
+                Some(url) => AnthropicLlmProvider::with_base_url(api_key, url),
+                None => AnthropicLlmProvider::new(api_key),
             };
             Ok(Box::new(provider))
         }
-        ProviderType::Ollama => {
-            // Ollama uses OpenAI-compatible API
-            let api_key = config
-                .api_key
-                .clone()
-                .unwrap_or_else(|| "ollama".to_string());
-            let base_url = config
-                .base_url
-                .clone()
-                .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".to_string());
-            let provider = OpenAIProtocolLlmProvider::with_base_url(api_key, base_url);
-            Ok(Box::new(provider))
-        }
-        ProviderType::Custom => {
-            // Custom providers use OpenAI-compatible API with required base_url
-            let base_url = config
-                .base_url
-                .as_ref()
-                .ok_or_else(|| AgentLoopError::llm("Custom provider requires base_url"))?;
-            let api_key = config
-                .api_key
-                .clone()
-                .or_else(|| std::env::var("CUSTOM_LLM_API_KEY").ok())
-                .unwrap_or_else(|| "custom".to_string());
-            let provider = OpenAIProtocolLlmProvider::with_base_url(api_key, base_url);
-            Ok(Box::new(provider))
-        }
     }
-}
-
-/// Create a provider from environment variables based on provider type
-pub fn create_provider_from_env(provider_type: &str) -> Result<BoxedLlmProvider> {
-    let ptype: ProviderType = provider_type
-        .parse()
-        .map_err(|e: String| AgentLoopError::llm(e))?;
-
-    create_provider(&ProviderConfig::new(ptype))
-}
-
-/// Create the default provider (OpenAI from environment)
-pub fn create_default_provider() -> Result<BoxedLlmProvider> {
-    create_provider(&ProviderConfig::new(ProviderType::OpenAI))
 }
 
 #[cfg(test)]
@@ -178,20 +125,16 @@ mod tests {
             "azure_openai".parse::<ProviderType>().unwrap(),
             ProviderType::AzureOpenAI
         );
-        assert_eq!(
-            "ollama".parse::<ProviderType>().unwrap(),
-            ProviderType::Ollama
-        );
-        assert_eq!(
-            "custom".parse::<ProviderType>().unwrap(),
-            ProviderType::Custom
-        );
+        // Ollama and Custom are no longer supported
+        assert!("ollama".parse::<ProviderType>().is_err());
+        assert!("custom".parse::<ProviderType>().is_err());
     }
 
     #[test]
     fn test_provider_type_display() {
         assert_eq!(ProviderType::OpenAI.to_string(), "openai");
         assert_eq!(ProviderType::Anthropic.to_string(), "anthropic");
+        assert_eq!(ProviderType::AzureOpenAI.to_string(), "azure_openai");
     }
 
     #[test]
@@ -203,5 +146,18 @@ mod tests {
         assert_eq!(config.provider_type, ProviderType::Anthropic);
         assert_eq!(config.api_key, Some("test-key".to_string()));
         assert_eq!(config.base_url, Some("https://custom.api.com".to_string()));
+    }
+
+    #[test]
+    fn test_create_provider_requires_api_key() {
+        // Provider without API key should fail
+        let config = ProviderConfig::new(ProviderType::OpenAI);
+        let result = create_provider(&config);
+        assert!(result.is_err());
+
+        // Provider with API key should succeed
+        let config_with_key = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
+        let result = create_provider(&config_with_key);
+        assert!(result.is_ok());
     }
 }

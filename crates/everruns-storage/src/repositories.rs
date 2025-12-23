@@ -642,12 +642,13 @@ impl Database {
 
     pub async fn create_llm_provider(&self, input: CreateLlmProvider) -> Result<LlmProviderRow> {
         let api_key_set = input.api_key_encrypted.is_some();
+        let settings = input.settings.unwrap_or(serde_json::json!({}));
 
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            INSERT INTO llm_providers (name, provider_type, base_url, api_key_encrypted, api_key_set, is_default)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, created_at, updated_at
+            INSERT INTO llm_providers (name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, settings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
             "#,
         )
         .bind(&input.name)
@@ -656,6 +657,7 @@ impl Database {
         .bind(&input.api_key_encrypted)
         .bind(api_key_set)
         .bind(input.is_default)
+        .bind(&settings)
         .fetch_one(&self.pool)
         .await?;
 
@@ -665,7 +667,7 @@ impl Database {
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, created_at, updated_at
+            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
             FROM llm_providers
             WHERE id = $1
             "#,
@@ -680,7 +682,7 @@ impl Database {
     pub async fn list_llm_providers(&self) -> Result<Vec<LlmProviderRow>> {
         let rows = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, created_at, updated_at
+            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
             FROM llm_providers
             ORDER BY created_at DESC
             "#,
@@ -710,9 +712,10 @@ impl Database {
                 api_key_set = COALESCE($6, api_key_set),
                 is_default = COALESCE($7, is_default),
                 status = COALESCE($8, status),
+                settings = COALESCE($9, settings),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, created_at, updated_at
+            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -723,6 +726,7 @@ impl Database {
         .bind(api_key_set)
         .bind(input.is_default)
         .bind(&input.status)
+        .bind(&input.settings)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -741,7 +745,7 @@ impl Database {
     pub async fn get_default_llm_provider(&self) -> Result<Option<LlmProviderRow>> {
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, created_at, updated_at
+            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
             FROM llm_providers
             WHERE is_default = TRUE AND status = 'active'
             "#,
@@ -750,6 +754,33 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    /// Get a provider with its decrypted API key for use in LLM calls.
+    /// This should only be called by worker activities that need to make LLM requests.
+    pub fn get_provider_with_api_key(
+        &self,
+        provider: &LlmProviderRow,
+        encryption: &crate::EncryptionService,
+    ) -> Result<LlmProviderWithApiKey> {
+        let api_key = if let Some(ref encrypted) = provider.api_key_encrypted {
+            Some(encryption.decrypt_to_string(encrypted)?)
+        } else {
+            None
+        };
+
+        // Convert settings from sqlx JsonValue to serde_json::Value
+        let settings: serde_json::Value =
+            serde_json::from_str(&provider.settings.to_string()).unwrap_or_default();
+
+        Ok(LlmProviderWithApiKey {
+            id: provider.id,
+            name: provider.name.clone(),
+            provider_type: provider.provider_type.clone(),
+            base_url: provider.base_url.clone(),
+            api_key,
+            settings,
+        })
     }
 
     // ============================================
