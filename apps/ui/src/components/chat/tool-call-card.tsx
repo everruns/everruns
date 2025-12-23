@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Wrench, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from "lucide-react";
-import type { Message } from "@/lib/api/types";
+import type { Message, ContentPart } from "@/lib/api/types";
+import { isToolCallPart, isToolResultPart } from "@/lib/api/types";
 
 interface ToolCallContent {
   id: string;
@@ -18,6 +19,33 @@ interface ToolResultContent {
   error?: string;
 }
 
+// Extract tool call content from ContentPart array
+function extractToolCallContent(content: ContentPart[]): ToolCallContent | null {
+  for (const part of content) {
+    if (isToolCallPart(part)) {
+      return {
+        id: part.id,
+        name: part.name,
+        arguments: part.arguments,
+      };
+    }
+  }
+  return null;
+}
+
+// Extract tool result content from ContentPart array
+function extractToolResultContent(content: ContentPart[]): ToolResultContent | null {
+  for (const part of content) {
+    if (isToolResultPart(part)) {
+      return {
+        result: part.result,
+        error: part.error,
+      };
+    }
+  }
+  return null;
+}
+
 interface ToolCallCardProps {
   toolCall: Message;
   toolResult?: Message;
@@ -26,11 +54,22 @@ interface ToolCallCardProps {
 export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const content = toolCall.content as unknown as ToolCallContent;
-  const resultContent = toolResult?.content as unknown as ToolResultContent | undefined;
+  // Handle new ContentPart[] format
+  const content = Array.isArray(toolCall.content)
+    ? extractToolCallContent(toolCall.content)
+    : (toolCall.content as unknown as ToolCallContent);
+
+  const resultContent = toolResult?.content && Array.isArray(toolResult.content)
+    ? extractToolResultContent(toolResult.content)
+    : (toolResult?.content as unknown as ToolResultContent | undefined);
 
   const isComplete = !!toolResult;
   const hasError = resultContent?.error !== undefined && resultContent?.error !== null;
+
+  // Handle missing content gracefully
+  if (!content) {
+    return null;
+  }
 
   return (
     <div className="flex justify-start">

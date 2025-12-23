@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Send, User, Bot, Loader2 } from "lucide-react";
 import type { Message } from "@/lib/api/types";
+import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 
 export default function SessionDetailPage({
@@ -82,14 +83,10 @@ export default function SessionDetailPage({
     }
   };
 
-  // Extract message content
+  // Extract message content - handles new ContentPart[] format
   const getMessageContent = (message: Message): string => {
-    if (typeof message.content === "object" && message.content !== null) {
-      const content = message.content as Record<string, unknown>;
-      if (content.text) return String(content.text);
-      if (Array.isArray(content)) {
-        return content.map((c: { text?: string }) => c.text || "").join("");
-      }
+    if (Array.isArray(message.content)) {
+      return getTextFromContent(message.content);
     }
     return JSON.stringify(message.content);
   };
@@ -102,11 +99,14 @@ export default function SessionDetailPage({
     }
   });
 
-  // Get tool call ID from message content
+  // Get tool call ID from message content - handles new ContentPart[] format
   const getToolCallId = (message: Message): string | null => {
-    if (typeof message.content === "object" && message.content !== null) {
-      const content = message.content as Record<string, unknown>;
-      if (content.id) return String(content.id);
+    if (Array.isArray(message.content)) {
+      for (const part of message.content) {
+        if (isToolCallPart(part)) {
+          return part.id;
+        }
+      }
     }
     return null;
   };
@@ -114,11 +114,8 @@ export default function SessionDetailPage({
   // Check if assistant message has embedded tool_calls (for LLM context only, not UI display)
   const hasEmbeddedToolCalls = (message: Message): boolean => {
     if (message.role !== "assistant") return false;
-    if (typeof message.content === "object" && message.content !== null) {
-      const content = message.content as Record<string, unknown>;
-      if (Array.isArray(content.tool_calls) && content.tool_calls.length > 0) {
-        return true;
-      }
+    if (Array.isArray(message.content)) {
+      return message.content.some(isToolCallPart);
     }
     return false;
   };

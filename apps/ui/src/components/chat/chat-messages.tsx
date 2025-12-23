@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Bot, User, Wrench, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/api/types";
+import { getTextFromContent } from "@/lib/api/types";
 import type { AggregatedMessage, AggregatedToolCall } from "@/hooks/use-sse-events";
 
 interface ChatMessagesProps {
@@ -123,8 +124,8 @@ export function ChatMessages({
           <MessageBubble
             key={msg.id}
             role={msg.role}
-            content={typeof msg.content === "object" && msg.content !== null && "text" in msg.content
-              ? String(msg.content.text)
+            content={Array.isArray(msg.content)
+              ? getTextFromContent(msg.content)
               : JSON.stringify(msg.content)}
           />
         ))}
