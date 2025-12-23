@@ -214,7 +214,11 @@ pub async fn create_runner(config: &RunnerConfig, db: Database) -> Result<Arc<dy
 ///
 /// This function starts the worker that polls Temporal for tasks and executes activities.
 /// It should be run in a separate process from the API.
-pub async fn run_worker(config: &RunnerConfig, db: Database) -> Result<()> {
+pub async fn run_worker(
+    config: &RunnerConfig,
+    db: Database,
+    encryption: everruns_storage::EncryptionService,
+) -> Result<()> {
     info!(
         address = %config.temporal_address(),
         namespace = %config.temporal_namespace(),
@@ -222,7 +226,7 @@ pub async fn run_worker(config: &RunnerConfig, db: Database) -> Result<()> {
         "Starting Temporal worker"
     );
 
-    let worker = TemporalWorker::new(config.clone(), db).await?;
+    let worker = TemporalWorker::new(config.clone(), db, encryption).await?;
 
     info!("Temporal worker started, polling for tasks...");
 

@@ -60,7 +60,11 @@ pub struct TemporalWorker {
 
 impl TemporalWorker {
     /// Create a new Temporal worker with default workflow registry
-    pub async fn new(config: RunnerConfig, db: Database, encryption: EncryptionService) -> Result<Self> {
+    pub async fn new(
+        config: RunnerConfig,
+        db: Database,
+        encryption: EncryptionService,
+    ) -> Result<Self> {
         Self::with_registry(config, db, encryption, WorkflowRegistry::with_defaults()).await
     }
 
@@ -104,8 +108,12 @@ impl TemporalWorker {
         );
 
         // Spawn activity task poller
-        let activity_handle =
-            spawn_activity_poller(self.core.clone(), self.db.clone(), self.encryption.clone(), self.shutdown_rx.clone());
+        let activity_handle = spawn_activity_poller(
+            self.core.clone(),
+            self.db.clone(),
+            self.encryption.clone(),
+            self.shutdown_rx.clone(),
+        );
 
         // Wait for shutdown signal
         let mut shutdown_rx = self.shutdown_rx.clone();
@@ -477,7 +485,11 @@ fn action_to_command(
 }
 
 /// Poll and process a single activity task
-async fn poll_and_process_activity_task(core: &TemporalWorkerCore, db: &Database, encryption: &EncryptionService) -> Result<()> {
+async fn poll_and_process_activity_task(
+    core: &TemporalWorkerCore,
+    db: &Database,
+    encryption: &EncryptionService,
+) -> Result<()> {
     // Poll for activity task
     let task = core.core().poll_activity_task().await?;
 
@@ -511,7 +523,11 @@ async fn poll_and_process_activity_task(core: &TemporalWorkerCore, db: &Database
 }
 
 /// Process an activity task and return the result
-async fn process_activity(task: &ActivityTask, db: &Database, encryption: &EncryptionService) -> ActivityResult {
+async fn process_activity(
+    task: &ActivityTask,
+    db: &Database,
+    encryption: &EncryptionService,
+) -> ActivityResult {
     match &task.variant {
         Some(activity_task::Variant::Start(start)) => {
             // Check for empty activity type - this can happen with synthetic tasks

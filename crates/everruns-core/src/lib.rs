@@ -96,9 +96,6 @@ pub use ag_ui::{
 pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
 
 // Provider factory re-exports
-pub use provider_factory::{
-    create_default_provider, create_provider, create_provider_from_env, BoxedLlmProvider,
-    ProviderConfig, ProviderType,
-};
+pub use provider_factory::{create_provider, BoxedLlmProvider, ProviderConfig, ProviderType};
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module

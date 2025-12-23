@@ -107,7 +107,6 @@ pub fn create_provider(config: &ProviderConfig) -> Result<BoxedLlmProvider> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
