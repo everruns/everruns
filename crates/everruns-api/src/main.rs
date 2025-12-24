@@ -92,8 +92,8 @@ struct HealthState {
         schemas(
             Agent, AgentStatus,
             Session, SessionStatus, Event,
-            CreateAgentRequest, UpdateAgentRequest,
-            CreateSessionRequest, UpdateSessionRequest,
+            agents::CreateAgentRequest, agents::UpdateAgentRequest,
+            sessions::CreateSessionRequest, sessions::UpdateSessionRequest,
             messages::Message, messages::MessageRole, messages::ContentPart, messages::InputContentPart,
             messages::CreateMessageRequest, messages::InputMessage,
             messages::Controls, messages::ReasoningConfig,

@@ -1,4 +1,5 @@
 // Agent DTOs (configuration for agentic loop)
+// Note: Request types (CreateAgentRequest, UpdateAgentRequest) are in everruns-api crate
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -46,34 +47,4 @@ pub struct Agent {
     pub status: AgentStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-/// Request to create a new agent
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateAgentRequest {
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub system_prompt: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_model_id: Option<Uuid>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-}
-
-/// Request to update an agent
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct UpdateAgentRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_prompt: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_model_id: Option<Uuid>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<AgentStatus>,
 }

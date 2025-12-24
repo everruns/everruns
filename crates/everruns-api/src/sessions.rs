@@ -6,13 +6,35 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{CreateSessionRequest, ListResponse, Session, UpdateSessionRequest};
+use everruns_contracts::{ListResponse, Session};
 use everruns_storage::{
     models::{CreateSessionRow, UpdateSession},
     Database,
 };
+use serde::Deserialize;
 use std::sync::Arc;
+use utoipa::ToSchema;
 use uuid::Uuid;
+
+/// Request to create a session
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateSessionRequest {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub model_id: Option<Uuid>,
+}
+
+/// Request to update a session
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateSessionRequest {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+}
 
 use crate::services::SessionService;
 

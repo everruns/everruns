@@ -6,13 +6,45 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{Agent, CreateAgentRequest, ListResponse, UpdateAgentRequest};
+use everruns_contracts::{Agent, AgentStatus, ListResponse};
 use everruns_storage::{
     models::{CreateAgentRow, UpdateAgent},
     Database,
 };
+use serde::Deserialize;
 use std::sync::Arc;
+use utoipa::ToSchema;
 use uuid::Uuid;
+
+/// Request to create a new agent
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateAgentRequest {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub system_prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_model_id: Option<Uuid>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+/// Request to update an agent
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateAgentRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_model_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<AgentStatus>,
+}
 
 use crate::services::AgentService;
 
