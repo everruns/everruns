@@ -41,7 +41,6 @@ base64.workspace = true
 reqwest.workspace = true
 time.workspace = true
 
-everruns-contracts = { path = "../everruns-contracts" }
 everruns-core = { path = "../everruns-core", features = ["openapi"] }
 everruns-storage = { path = "../everruns-storage" }
 everruns-worker = { path = "../everruns-worker" }

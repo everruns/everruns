@@ -12,13 +12,21 @@
 // - ToolRegistry implements ToolExecutor for easy tool management
 // - Error handling distinguishes between user-visible and internal errors
 // - Capabilities provide modular functionality units for composing agent behavior
-// - This crate has NO dependency on storage/contracts - it's purely runtime abstractions
+// - Domain entity types (Agent, Session, LlmProvider, etc.) are defined here
 // - AG-UI events and tool types are defined here as runtime types
 
 // Runtime types (AG-UI protocol events, tool definitions, capability types)
 pub mod ag_ui;
 pub mod capability_types;
 pub mod tool_types;
+
+// Domain entity types (moved from everruns-contracts)
+// These are DB-agnostic entity types used by both API and worker
+pub mod agent;
+pub mod capability_dto;
+pub mod event;
+pub mod llm_entities;
+pub mod session;
 
 pub mod atoms;
 pub mod capabilities;
@@ -102,3 +110,14 @@ pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResu
 pub use provider_factory::{create_provider, BoxedLlmProvider, ProviderConfig, ProviderType};
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
+
+// Domain entity re-exports (from everruns-contracts migration)
+// Note: LlmProvider entity is in llm_entities module (not re-exported at root to avoid
+// conflict with LlmProvider trait). Import as: everruns_core::llm_entities::LlmProvider
+pub use agent::{Agent, AgentStatus};
+pub use capability_dto::{AgentCapability, CapabilityInfo};
+pub use event::Event;
+pub use llm_entities::{
+    LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType,
+};
+pub use session::{Session, SessionStatus};

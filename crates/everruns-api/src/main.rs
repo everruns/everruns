@@ -5,6 +5,7 @@
 mod agents;
 mod auth;
 mod capabilities;
+mod common;
 mod events;
 mod llm_models;
 mod llm_providers;
@@ -16,7 +17,12 @@ mod users;
 use anyhow::{Context, Result};
 use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
-use everruns_contracts::*;
+use common::{ListResponse, UpdateAgentCapabilitiesRequest};
+use everruns_core::llm_entities::LlmProvider;
+use everruns_core::{
+    Agent, AgentCapability, AgentStatus, CapabilityInfo, Event, LlmModel, LlmModelStatus,
+    LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Session, SessionStatus,
+};
 use everruns_storage::{Database, EncryptionService};
 use everruns_worker::{create_runner, RunnerConfig};
 use serde::Serialize;

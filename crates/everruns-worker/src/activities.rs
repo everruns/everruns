@@ -10,13 +10,13 @@
 // Atoms handle message loading/storage internally via MessageStore trait.
 
 use anyhow::{Context, Result};
-use everruns_contracts::tools::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use everruns_core::atoms::{
     Atom, CallModelAtom, CallModelInput as AtomCallModelInput, ExecuteToolAtom,
     ExecuteToolInput as AtomExecuteToolInput,
 };
 use everruns_core::config::AgentConfigBuilder;
 use everruns_core::provider_factory::{create_provider, ProviderConfig, ProviderType};
+use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use everruns_storage::{repositories::Database, EncryptionService};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

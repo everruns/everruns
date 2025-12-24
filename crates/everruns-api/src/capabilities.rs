@@ -10,10 +10,10 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use everruns_contracts::{
-    AgentCapability, Capability, CapabilityId, ListResponse, UpdateAgentCapabilitiesRequest,
-};
+use everruns_core::{AgentCapability, CapabilityId, CapabilityInfo};
 use everruns_storage::Database;
+
+use crate::common::{ListResponse, UpdateAgentCapabilitiesRequest};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -50,11 +50,11 @@ pub fn routes(state: AppState) -> Router {
     get,
     path = "/v1/capabilities",
     responses(
-        (status = 200, description = "List of available capabilities", body = ListResponse<Capability>),
+        (status = 200, description = "List of available capabilities", body = ListResponse<CapabilityInfo>),
     ),
     tag = "capabilities"
 )]
-pub async fn list_capabilities(State(state): State<AppState>) -> Json<ListResponse<Capability>> {
+pub async fn list_capabilities(State(state): State<AppState>) -> Json<ListResponse<CapabilityInfo>> {
     let capabilities = state.service.list_all();
     Json(ListResponse::new(capabilities))
 }
@@ -67,7 +67,7 @@ pub async fn list_capabilities(State(state): State<AppState>) -> Json<ListRespon
         ("capability_id" = String, Path, description = "Capability ID")
     ),
     responses(
-        (status = 200, description = "Capability found", body = Capability),
+        (status = 200, description = "Capability found", body = CapabilityInfo),
         (status = 404, description = "Capability not found"),
     ),
     tag = "capabilities"
@@ -75,7 +75,7 @@ pub async fn list_capabilities(State(state): State<AppState>) -> Json<ListRespon
 pub async fn get_capability(
     State(state): State<AppState>,
     Path(capability_id): Path<String>,
-) -> Result<Json<Capability>, StatusCode> {
+) -> Result<Json<CapabilityInfo>, StatusCode> {
     let cap_id = CapabilityId::new(&capability_id);
 
     let capability = state.service.get(&cap_id).ok_or(StatusCode::NOT_FOUND)?;

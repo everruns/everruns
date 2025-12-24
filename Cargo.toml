@@ -8,7 +8,6 @@ resolver = "2"
 members = [
     "crates/everruns-api",
     "crates/everruns-worker",
-    "crates/everruns-contracts",
     "crates/everruns-storage",
     "crates/everruns-core",
     "crates/everruns-openai",

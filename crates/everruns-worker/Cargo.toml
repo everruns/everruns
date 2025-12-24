@@ -15,7 +15,6 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 sqlx.workspace = true
 
-everruns-contracts = { path = "../everruns-contracts" }
 everruns-storage = { path = "../everruns-storage" }
 everruns-core = { path = "../everruns-core" }
 everruns-openai = { path = "../everruns-openai" }

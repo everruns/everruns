@@ -10,11 +10,11 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 
 1. **Monorepo Structure**: Single repository with Cargo workspace containing multiple crates
 2. **Crate Separation**:
-   - `everruns-api` - HTTP API server (axum), SSE streaming, health endpoints
+   - `everruns-api` - HTTP API server (axum), SSE streaming, health endpoints, API-only DTOs
    - `everruns-worker` - Temporal worker, workflows, activities, database adapters
-   - `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities)
+   - `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities, domain entities)
    - `everruns-openai` - OpenAI LLM provider implementation
-   - `everruns-contracts` - DTOs, AG-UI events, OpenAPI schemas
+   - `everruns-anthropic` - Anthropic LLM provider implementation
    - `everruns-storage` - PostgreSQL (sqlx), migrations, repositories
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
 
@@ -106,7 +106,9 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 2. **Core Layer** (`everruns-core`):
    - Contains shared domain types used across layers (e.g., `ContentPart`, `Controls`, `Message`)
-   - Provides trait definitions (`MessageStore`, `EventEmitter`, `LlmProvider`, `ToolExecutor`)
+   - Contains domain entity types (e.g., `Agent`, `Session`, `LlmProvider`, `Event`, `Capability`)
+   - Provides trait definitions (`MessageStore`, `EventEmitter`, `LlmProvider` trait, `ToolExecutor`)
+   - Provides tool types (`ToolDefinition`, `ToolCall`, `ToolResult`, `BuiltinTool`)
    - Domain types are DB-agnostic and serializable
    - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 

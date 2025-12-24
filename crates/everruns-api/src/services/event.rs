@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 
 use anyhow::Result;
-use everruns_contracts::Event;
+use everruns_core::Event;
 use everruns_storage::{models::CreateEventRow, Database};
 use std::sync::Arc;
 use uuid::Uuid;

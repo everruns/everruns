@@ -33,7 +33,6 @@ tracing.workspace = true
 
 # Internal dependencies
 everruns-core = { path = "../everruns-core" }
-everruns-contracts = { path = "../everruns-contracts" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

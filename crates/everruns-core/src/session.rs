@@ -1,13 +1,18 @@
-// Session DTOs (instance of agentic loop execution)
-// Note: Request types (CreateSessionRequest, UpdateSessionRequest) are in everruns-api crate
+// Session domain types
+//
+// These types represent the Session entity and its status.
+// Used by both API and worker crates.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 /// Session status
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
     Pending,
@@ -39,7 +44,8 @@ impl From<&str> for SessionStatus {
 }
 
 /// Session - instance of agentic loop execution
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Session {
     pub id: Uuid,
     pub agent_id: Uuid,

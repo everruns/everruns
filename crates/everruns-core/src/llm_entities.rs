@@ -1,11 +1,18 @@
-// LLM Provider and Model public DTOs
+// LLM Provider and Model entity types
+//
+// These types represent the database entities for LLM providers and models.
+// Note: This is separate from llm.rs which defines the LlmProvider trait.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
+/// LLM provider type
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmProviderType {
     Openai,
@@ -36,22 +43,28 @@ impl std::str::FromStr for LlmProviderType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// LLM provider status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmProviderStatus {
     Active,
     Disabled,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// LLM model status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmModelStatus {
     Active,
     Disabled,
 }
 
-/// LLM Provider (API keys never exposed)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// LLM Provider entity (API keys never exposed)
+/// Note: This is the entity struct, separate from the LlmProvider trait in llm.rs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmProvider {
     pub id: Uuid,
     pub name: String,
@@ -66,8 +79,9 @@ pub struct LlmProvider {
     pub updated_at: DateTime<Utc>,
 }
 
-/// LLM Model
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// LLM Model entity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmModel {
     pub id: Uuid,
     pub provider_id: Uuid,
@@ -83,7 +97,8 @@ pub struct LlmModel {
 }
 
 /// LLM Model with provider info
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmModelWithProvider {
     pub id: Uuid,
     pub provider_id: Uuid,

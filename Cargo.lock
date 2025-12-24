@@ -763,7 +763,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "eventsource-stream",
- "everruns-contracts",
  "everruns-core",
  "futures",
  "reqwest",
@@ -785,7 +784,6 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dotenvy",
- "everruns-contracts",
  "everruns-core",
  "everruns-storage",
  "everruns-worker",
@@ -809,18 +807,6 @@ dependencies = [
  "tracing-subscriber 0.3.22",
  "utoipa",
  "utoipa-swagger-ui",
- "uuid 1.19.0",
-]
-
-[[package]]
-name = "everruns-contracts"
-version = "0.2.0"
-dependencies = [
- "chrono",
- "everruns-core",
- "serde",
- "serde_json",
- "utoipa",
  "uuid 1.19.0",
 ]
 
@@ -852,7 +838,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "eventsource-stream",
- "everruns-contracts",
  "everruns-core",
  "futures",
  "reqwest",
@@ -874,7 +859,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
- "everruns-contracts",
  "everruns-core",
  "hex",
  "rand 0.8.5",
@@ -896,7 +880,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-anthropic",
- "everruns-contracts",
  "everruns-core",
  "everruns-openai",
  "everruns-storage",

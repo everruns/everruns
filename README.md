@@ -144,10 +144,9 @@ smoke-test    # Run smoke tests
 everruns/
 ├── apps/ui/              # Next.js Management UI
 ├── crates/
-│   ├── everruns-api/     # HTTP API (axum)
+│   ├── everruns-api/     # HTTP API (axum), API DTOs
 │   ├── everruns-worker/  # Temporal worker
-│   ├── everruns-core/    # Core business logic
-│   ├── everruns-contracts/  # DTOs and events
+│   ├── everruns-core/    # Core abstractions, domain entities, tools
 │   ├── everruns-storage/ # Database layer
 │   ├── everruns-openai/  # OpenAI provider
 │   └── everruns-anthropic/  # Anthropic provider

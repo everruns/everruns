@@ -4,8 +4,8 @@
 // for capability definitions.
 
 use anyhow::Result;
-use everruns_contracts::{AgentCapability, Capability, CapabilityId};
 use everruns_core::capabilities::CapabilityRegistry;
+use everruns_core::{AgentCapability, CapabilityId, CapabilityInfo};
 use everruns_storage::Database;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -24,19 +24,19 @@ impl CapabilityService {
     }
 
     /// List all available capabilities (public info only)
-    pub fn list_all(&self) -> Vec<Capability> {
+    pub fn list_all(&self) -> Vec<CapabilityInfo> {
         self.registry
             .list()
             .into_iter()
-            .map(|cap| Capability::from_core(cap.as_ref()))
+            .map(|cap| CapabilityInfo::from_core(cap.as_ref()))
             .collect()
     }
 
     /// Get a specific capability by ID
-    pub fn get(&self, id: &CapabilityId) -> Option<Capability> {
+    pub fn get(&self, id: &CapabilityId) -> Option<CapabilityInfo> {
         self.registry
             .get(id.as_str())
-            .map(|cap| Capability::from_core(cap.as_ref()))
+            .map(|cap| CapabilityInfo::from_core(cap.as_ref()))
     }
 
     /// Check if a capability exists in the registry

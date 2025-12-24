@@ -2,7 +2,6 @@
 // Spec: https://docs.ag-ui.com/concepts/events
 //
 // These are runtime types used by the agent loop and event streaming.
-// They are re-exported by everruns-contracts for backward compatibility.
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};

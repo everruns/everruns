@@ -1,7 +1,7 @@
 // Session service for business logic (M2)
 
 use anyhow::Result;
-use everruns_contracts::{Session, SessionStatus};
+use everruns_core::{Session, SessionStatus};
 use everruns_storage::{
     models::{CreateSessionRow, UpdateSession},
     Database,

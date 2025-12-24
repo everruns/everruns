@@ -6,8 +6,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{Agent, AgentStatus, ListResponse};
+use everruns_core::{Agent, AgentStatus};
 use everruns_storage::Database;
+
+use crate::common::ListResponse;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
