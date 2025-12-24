@@ -90,13 +90,15 @@ struct HealthState {
     components(
         schemas(
             Agent, AgentStatus,
-            Session, SessionStatus, Message, MessageRole, Event,
+            Session, SessionStatus, Event,
             CreateAgentRequest, UpdateAgentRequest,
             CreateSessionRequest, UpdateSessionRequest,
-            CreateMessageRequest,
+            messages::Message, messages::MessageRole, messages::ContentPart,
+            messages::CreateMessageRequest, messages::MessageInput,
+            messages::Controls, messages::ReasoningConfig,
             ListResponse<Agent>,
             ListResponse<Session>,
-            ListResponse<Message>,
+            ListResponse<messages::Message>,
             ListResponse<Event>,
             LlmProvider, LlmProviderType, LlmProviderStatus,
             LlmModel, LlmModelWithProvider, LlmModelStatus,

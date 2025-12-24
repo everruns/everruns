@@ -1,4 +1,4 @@
-// Message HTTP routes
+// Message HTTP routes and API contracts
 // Messages are PRIMARY data store, Events are SSE notifications
 
 use axum::{
@@ -8,17 +8,210 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use everruns_contracts::{CreateMessageRequest, ListResponse, Message};
+use chrono::{DateTime, Utc};
+use everruns_contracts::ListResponse;
 use everruns_storage::{models::CreateEvent, Database};
 use everruns_worker::AgentRunner;
 use futures::{
     stream::{self, Stream},
     StreamExt,
 };
-use std::{convert::Infallible, sync::Arc, time::Duration};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, convert::Infallible, sync::Arc, time::Duration};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::services::{EventService, MessageService, SessionService};
+
+// ============================================
+// Message API Contracts
+// ============================================
+
+/// Message role
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageRole {
+    User,
+    Assistant,
+    ToolCall,
+    ToolResult,
+    System,
+}
+
+impl std::fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Assistant => write!(f, "assistant"),
+            MessageRole::ToolCall => write!(f, "tool_call"),
+            MessageRole::ToolResult => write!(f, "tool_result"),
+            MessageRole::System => write!(f, "system"),
+        }
+    }
+}
+
+impl From<&str> for MessageRole {
+    fn from(s: &str) -> Self {
+        match s {
+            "assistant" => MessageRole::Assistant,
+            "tool_call" => MessageRole::ToolCall,
+            "tool_result" => MessageRole::ToolResult,
+            "system" => MessageRole::System,
+            _ => MessageRole::User,
+        }
+    }
+}
+
+/// A part of message content - can be text, image, tool_call, or tool_result
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentPart {
+    /// Text content
+    Text { text: String },
+    /// Image content (base64 or URL)
+    Image {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        base64: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        media_type: Option<String>,
+    },
+    /// Tool call content (assistant requesting tool execution)
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+    },
+    /// Tool result content (result of tool execution)
+    ToolResult {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+}
+
+impl ContentPart {
+    /// Create a text content part
+    #[allow(dead_code)]
+    pub fn text(text: impl Into<String>) -> Self {
+        ContentPart::Text { text: text.into() }
+    }
+
+    /// Get text if this is a text part
+    #[allow(dead_code)]
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            ContentPart::Text { text } => Some(text),
+            _ => None,
+        }
+    }
+}
+
+/// Reasoning configuration for the model
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReasoningConfig {
+    /// Effort level for reasoning (low, medium, high)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+}
+
+/// Runtime controls for message processing
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
+pub struct Controls {
+    /// Model ID to use for this message (format: "provider/model-name")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+
+    /// Reasoning configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningConfig>,
+
+    /// Maximum tokens to generate
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<i32>,
+
+    /// Temperature for generation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+}
+
+/// Message - primary conversation data (API response)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Message {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub sequence: i32,
+    pub role: MessageRole,
+    /// Array of content parts
+    pub content: Vec<ContentPart>,
+    /// Message-level metadata (locale, etc.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Message input for creating a message
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MessageInput {
+    /// Message role
+    pub role: MessageRole,
+    /// Array of content parts
+    pub content: Vec<ContentPart>,
+    /// Message-level metadata (locale, etc.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+    /// Tool call ID (for tool_result messages)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+/// Request to create a message
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateMessageRequest {
+    /// The message to create
+    pub message: MessageInput,
+    /// Runtime controls (model, reasoning, etc.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Controls>,
+    /// Request-level metadata
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+    /// Tags for the message
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+}
+
+impl CreateMessageRequest {
+    /// Create a simple text message request
+    #[allow(dead_code)]
+    pub fn text(role: MessageRole, text: impl Into<String>) -> Self {
+        Self {
+            message: MessageInput {
+                role,
+                content: vec![ContentPart::text(text)],
+                metadata: None,
+                tool_call_id: None,
+            },
+            controls: None,
+            metadata: None,
+            tags: None,
+        }
+    }
+
+    /// Create a user message with text
+    #[allow(dead_code)]
+    pub fn user(text: impl Into<String>) -> Self {
+        Self::text(MessageRole::User, text)
+    }
+}
+
+// ============================================
+// App State and Routes
+// ============================================
 
 /// App state for messages routes
 #[derive(Clone)]
@@ -57,6 +250,10 @@ pub fn routes(state: AppState) -> Router {
         )
         .with_state(state)
 }
+
+// ============================================
+// HTTP Handlers
+// ============================================
 
 /// POST /v1/agents/{agent_id}/sessions/{session_id}/messages - Create message (user message triggers workflow)
 #[utoipa::path(
@@ -108,7 +305,7 @@ pub async fn create_message(
     })?;
 
     // If this is a user message, start the session workflow
-    if message.role == everruns_contracts::MessageRole::User {
+    if message.role == MessageRole::User {
         // Emit a user message event for SSE
         let event_input = CreateEvent {
             session_id,
@@ -251,4 +448,56 @@ pub async fn stream_events(
     .flatten();
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+// ============================================
+// Tests
+// ============================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_content_part_text_serialization() {
+        let part = ContentPart::text("Hello, world!");
+        let json = serde_json::to_string(&part).unwrap();
+        assert!(json.contains(r#""type":"text""#));
+        assert!(json.contains(r#""text":"Hello, world!""#));
+    }
+
+    #[test]
+    fn test_content_part_deserialization() {
+        let json = r#"{"type":"text","text":"Hello!"}"#;
+        let part: ContentPart = serde_json::from_str(json).unwrap();
+        assert_eq!(part.as_text(), Some("Hello!"));
+    }
+
+    #[test]
+    fn test_create_message_request_user() {
+        let req = CreateMessageRequest::user("Hello, how are you?");
+        assert_eq!(req.message.role, MessageRole::User);
+        assert_eq!(req.message.content.len(), 1);
+        assert_eq!(
+            req.message.content[0].as_text(),
+            Some("Hello, how are you?")
+        );
+    }
+
+    #[test]
+    fn test_message_role_display() {
+        assert_eq!(MessageRole::User.to_string(), "user");
+        assert_eq!(MessageRole::Assistant.to_string(), "assistant");
+        assert_eq!(MessageRole::ToolCall.to_string(), "tool_call");
+        assert_eq!(MessageRole::ToolResult.to_string(), "tool_result");
+        assert_eq!(MessageRole::System.to_string(), "system");
+    }
+
+    #[test]
+    fn test_message_role_from_str() {
+        assert_eq!(MessageRole::from("user"), MessageRole::User);
+        assert_eq!(MessageRole::from("assistant"), MessageRole::Assistant);
+        assert_eq!(MessageRole::from("tool_call"), MessageRole::ToolCall);
+        assert_eq!(MessageRole::from("unknown"), MessageRole::User);
+    }
 }

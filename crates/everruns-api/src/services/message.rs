@@ -1,11 +1,11 @@
-// Message service for business logic (M2)
+// Message service for business logic
 // Messages are the PRIMARY conversation data store
 //
-// The new message contract uses ContentPart arrays for flexible content types.
+// The message contract uses ContentPart arrays for flexible content types.
 // This service handles conversion between the API contract and database storage.
 
+use crate::messages::{ContentPart, Message, MessageRole};
 use anyhow::Result;
-use everruns_contracts::{ContentPart, Message, MessageRole};
 use everruns_storage::{models::CreateMessage, Database};
 use std::collections::HashMap;
 use std::sync::Arc;
