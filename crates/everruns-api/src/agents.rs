@@ -7,10 +7,7 @@ use axum::{
     Json, Router,
 };
 use everruns_contracts::{Agent, AgentStatus, ListResponse};
-use everruns_storage::{
-    models::{CreateAgentRow, UpdateAgent},
-    Database,
-};
+use everruns_storage::Database;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -88,15 +85,7 @@ pub async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), StatusCode> {
-    let input = CreateAgentRow {
-        name: req.name,
-        description: req.description,
-        system_prompt: req.system_prompt,
-        default_model_id: req.default_model_id,
-        tags: req.tags,
-    };
-
-    let agent = state.service.create(input).await.map_err(|e| {
+    let agent = state.service.create(req).await.map_err(|e| {
         tracing::error!("Failed to create agent: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -176,18 +165,9 @@ pub async fn update_agent(
     Path(agent_id): Path<Uuid>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> Result<Json<Agent>, StatusCode> {
-    let input = UpdateAgent {
-        name: req.name,
-        description: req.description,
-        system_prompt: req.system_prompt,
-        default_model_id: req.default_model_id,
-        tags: req.tags,
-        status: req.status.map(|s| s.to_string()),
-    };
-
     let agent = state
         .service
-        .update(agent_id, input)
+        .update(agent_id, req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to update agent: {}", e);

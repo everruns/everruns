@@ -7,10 +7,7 @@ use axum::{
     Json, Router,
 };
 use everruns_contracts::{ListResponse, Session};
-use everruns_storage::{
-    models::{CreateSessionRow, UpdateSession},
-    Database,
-};
+use everruns_storage::Database;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -88,17 +85,14 @@ pub async fn create_session(
     Path(agent_id): Path<Uuid>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), StatusCode> {
-    let input = CreateSessionRow {
-        agent_id,
-        title: req.title,
-        tags: req.tags,
-        model_id: req.model_id,
-    };
-
-    let session = state.session_service.create(input).await.map_err(|e| {
-        tracing::error!("Failed to create session: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let session = state
+        .session_service
+        .create(agent_id, req)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to create session: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok((StatusCode::CREATED, Json(session)))
 }
@@ -181,15 +175,9 @@ pub async fn update_session(
     Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateSessionRequest>,
 ) -> Result<Json<Session>, StatusCode> {
-    let input = UpdateSession {
-        title: req.title,
-        tags: req.tags,
-        ..Default::default()
-    };
-
     let session = state
         .session_service
-        .update(session_id, input)
+        .update(session_id, req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to update session: {}", e);

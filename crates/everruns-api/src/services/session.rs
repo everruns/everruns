@@ -9,6 +9,8 @@ use everruns_storage::{
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::sessions::{CreateSessionRequest, UpdateSessionRequest};
+
 pub struct SessionService {
     db: Arc<Database>,
 }
@@ -18,7 +20,13 @@ impl SessionService {
         Self { db }
     }
 
-    pub async fn create(&self, input: CreateSessionRow) -> Result<Session> {
+    pub async fn create(&self, agent_id: Uuid, req: CreateSessionRequest) -> Result<Session> {
+        let input = CreateSessionRow {
+            agent_id,
+            title: req.title,
+            tags: req.tags,
+            model_id: req.model_id,
+        };
         let row = self.db.create_session(input).await?;
         Ok(Self::row_to_session(row))
     }
@@ -33,7 +41,12 @@ impl SessionService {
         Ok(rows.into_iter().map(Self::row_to_session).collect())
     }
 
-    pub async fn update(&self, id: Uuid, input: UpdateSession) -> Result<Option<Session>> {
+    pub async fn update(&self, id: Uuid, req: UpdateSessionRequest) -> Result<Option<Session>> {
+        let input = UpdateSession {
+            title: req.title,
+            tags: req.tags,
+            ..Default::default()
+        };
         let row = self.db.update_session(id, input).await?;
         Ok(row.map(Self::row_to_session))
     }
