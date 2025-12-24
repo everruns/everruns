@@ -20,7 +20,7 @@ pub mod ag_ui;
 pub mod capability_types;
 pub mod tool_types;
 
-// Domain entity types (moved from everruns-contracts)
+// Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
 pub mod capability_dto;
@@ -111,7 +111,7 @@ pub use provider_factory::{create_provider, BoxedLlmProvider, ProviderConfig, Pr
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
 
-// Domain entity re-exports (from everruns-contracts migration)
+// Domain entity re-exports
 // Note: LlmProvider entity is in llm_entities module (not re-exported at root to avoid
 // conflict with LlmProvider trait). Import as: everruns_core::llm_entities::LlmProvider
 pub use agent::{Agent, AgentStatus};
