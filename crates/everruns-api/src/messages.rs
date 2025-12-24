@@ -62,7 +62,41 @@ impl From<&str> for MessageRole {
     }
 }
 
-/// A part of message content - can be text, image, tool_call, or tool_result
+/// Input content part - only text and image (for user input)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum InputContentPart {
+    /// Text content
+    Text { text: String },
+    /// Image content (base64 or URL)
+    Image {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        base64: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        media_type: Option<String>,
+    },
+}
+
+impl InputContentPart {
+    /// Create a text content part
+    #[allow(dead_code)]
+    pub fn text(text: impl Into<String>) -> Self {
+        InputContentPart::Text { text: text.into() }
+    }
+
+    /// Get text content if this is a Text part
+    #[allow(dead_code)]
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            InputContentPart::Text { text } => Some(text),
+            _ => None,
+        }
+    }
+}
+
+/// A part of message content - can be text, image, tool_call, or tool_result (for responses)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPart {
@@ -159,8 +193,8 @@ pub struct Message {
 pub struct InputMessage {
     /// Message role
     pub role: MessageRole,
-    /// Array of content parts
-    pub content: Vec<ContentPart>,
+    /// Array of content parts (text and image only)
+    pub content: Vec<InputContentPart>,
 }
 
 /// Request to create a message
@@ -186,7 +220,7 @@ impl CreateMessageRequest {
         Self {
             message: InputMessage {
                 role,
-                content: vec![ContentPart::text(text)],
+                content: vec![InputContentPart::text(text)],
             },
             controls: None,
             metadata: None,
@@ -267,11 +301,11 @@ pub async fn create_message(
     Path((agent_id, session_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), StatusCode> {
-    use crate::services::message::content_parts_to_json;
+    use crate::services::message::input_content_parts_to_json;
     use everruns_storage::models::CreateMessage;
 
-    // Convert ContentPart array to JSON for storage
-    let content = content_parts_to_json(&req.message.role, &req.message.content);
+    // Convert InputContentPart array to JSON for storage
+    let content = input_content_parts_to_json(&req.message.content);
 
     // Convert request metadata to JSON for storage
     let metadata = req.metadata.and_then(|m| serde_json::to_value(m).ok());

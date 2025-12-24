@@ -93,7 +93,7 @@ struct HealthState {
             Session, SessionStatus, Event,
             CreateAgentRequest, UpdateAgentRequest,
             CreateSessionRequest, UpdateSessionRequest,
-            messages::Message, messages::MessageRole, messages::ContentPart,
+            messages::Message, messages::MessageRole, messages::ContentPart, messages::InputContentPart,
             messages::CreateMessageRequest, messages::InputMessage,
             messages::Controls, messages::ReasoningConfig,
             ListResponse<Agent>,

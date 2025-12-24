@@ -4,7 +4,7 @@
 // The message contract uses ContentPart arrays for flexible content types.
 // This service handles conversion between the API contract and database storage.
 
-use crate::messages::{ContentPart, Message, MessageRole};
+use crate::messages::{ContentPart, InputContentPart, Message, MessageRole};
 use anyhow::Result;
 use everruns_storage::{models::CreateMessage, Database};
 use std::collections::HashMap;
@@ -128,72 +128,18 @@ impl MessageService {
     }
 }
 
-/// Convert ContentPart array to stored JSON content
-pub fn content_parts_to_json(role: &MessageRole, parts: &[ContentPart]) -> serde_json::Value {
-    match role {
-        MessageRole::User | MessageRole::Assistant | MessageRole::System => {
-            // Collect text parts and tool call parts
-            let mut texts = Vec::new();
-            let mut tool_calls = Vec::new();
+/// Convert InputContentPart array to stored JSON content (for user input)
+pub fn input_content_parts_to_json(parts: &[InputContentPart]) -> serde_json::Value {
+    // User input only contains text and images
+    let mut texts = Vec::new();
 
-            for part in parts {
-                match part {
-                    ContentPart::Text { text } => texts.push(text.clone()),
-                    ContentPart::ToolCall {
-                        id,
-                        name,
-                        arguments,
-                    } => {
-                        tool_calls.push(serde_json::json!({
-                            "id": id,
-                            "name": name,
-                            "arguments": arguments
-                        }));
-                    }
-                    _ => {} // Skip image and tool_result in user/assistant/system messages
-                }
-            }
-
-            let combined_text = texts.join("\n");
-
-            if tool_calls.is_empty() {
-                serde_json::json!({ "text": combined_text })
-            } else {
-                serde_json::json!({
-                    "text": combined_text,
-                    "tool_calls": tool_calls
-                })
-            }
+    for part in parts {
+        if let InputContentPart::Text { text } = part {
+            texts.push(text.clone());
         }
-        MessageRole::ToolCall => {
-            // Find the first tool call part
-            for part in parts {
-                if let ContentPart::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                } = part
-                {
-                    return serde_json::json!({
-                        "id": id,
-                        "name": name,
-                        "arguments": arguments
-                    });
-                }
-            }
-            serde_json::json!({})
-        }
-        MessageRole::ToolResult => {
-            // Find the first tool result part
-            for part in parts {
-                if let ContentPart::ToolResult { result, error } = part {
-                    return serde_json::json!({
-                        "result": result,
-                        "error": error
-                    });
-                }
-            }
-            serde_json::json!({})
-        }
+        // TODO: Handle images when image storage is implemented
     }
+
+    let combined_text = texts.join("\n");
+    serde_json::json!({ "text": combined_text })
 }
