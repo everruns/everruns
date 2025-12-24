@@ -25,6 +25,7 @@ impl<T> From<Vec<T>> for ListResponse<T> {
 }
 
 /// Request to create an event (for internal use)
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateEventRequest {
     pub event_type: String,

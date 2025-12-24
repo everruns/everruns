@@ -54,7 +54,9 @@ pub fn routes(state: AppState) -> Router {
     ),
     tag = "capabilities"
 )]
-pub async fn list_capabilities(State(state): State<AppState>) -> Json<ListResponse<CapabilityInfo>> {
+pub async fn list_capabilities(
+    State(state): State<AppState>,
+) -> Json<ListResponse<CapabilityInfo>> {
     let capabilities = state.service.list_all();
     Json(ListResponse::new(capabilities))
 }
