@@ -53,8 +53,9 @@ The primary conversation data. Stores all conversation content including user me
 | `sequence` | integer | Order within session (auto-increment per session) |
 | `role` | enum | `user`, `assistant`, `tool_call`, `tool_result`, `system` |
 | `content` | ContentPart[] | Array of content parts (see below) |
+| `controls` | Controls? | Runtime controls for message processing |
 | `metadata` | object? | Message-level metadata (e.g., locale) |
-| `tool_call_id` | string? | For tool_result, references the tool_call id |
+| `tags` | string[] | Tags for organization/filtering |
 | `created_at` | timestamp | Creation time |
 
 **ContentPart types (discriminated by `type` field):**
@@ -79,10 +80,24 @@ The primary conversation data. Stores all conversation content including user me
 // type=tool_result (result of tool execution)
 {
   "type": "tool_result",
+  "tool_call_id": "call_abc123",
   "result": { "matches": [...] },
   "error": null
 }
 ```
+
+**Controls structure:**
+
+```json
+{
+  "model_id": "openai/gpt-4o",
+  "reasoning": {
+    "effort": "medium"
+  }
+}
+```
+
+Controls are optional and allow per-message overrides for model selection and reasoning configuration.
 
 **CreateMessageRequest structure:**
 
@@ -91,38 +106,48 @@ The primary conversation data. Stores all conversation content including user me
   "message": {
     "role": "user",
     "content": [
-      { "type": "text", "text": "Compare these two images." }
-    ],
-    "metadata": {
-      "locale": "en-US"
-    }
+      { "type": "text", "text": "Compare these two images." },
+      { "type": "image", "url": "https://example.com/image1.png" }
+    ]
   },
   "controls": {
-    "model_id": "provider/model-name",
-    "reasoning": { "effort": "medium" },
-    "max_tokens": 4096,
-    "temperature": 0.7
+    "model_id": "openai/gpt-4o",
+    "reasoning": { "effort": "medium" }
   },
   "metadata": {
+    "locale": "en-US",
     "request_id": "req_123"
   },
   "tags": ["important", "review"]
 }
 ```
 
-**Legacy content storage (internal):**
+**Note:** The `message.role` field defaults to `"user"` and can be omitted. Only `user` messages can be created via the API; `assistant`, `tool_call`, `tool_result`, and `system` messages are created internally by the system.
 
-For backwards compatibility, content is stored in the database as JSON:
+**InputContentPart types (allowed in user messages):**
 
-```json
-// role=user, assistant, or system
-{ "text": "Hello, how are you?" }
+Only text and image content can be sent by users:
+- `{ "type": "text", "text": "..." }`
+- `{ "type": "image", "url": "..." }` or `{ "type": "image", "base64": "...", "media_type": "image/png" }`
 
-// role=tool_call
-{ "id": "call_abc123", "name": "search", "arguments": {...} }
+Tool calls and tool results are system-generated and cannot be created via the API.
 
-// role=tool_result
-{ "result": {...}, "error": null }
+**Database storage:**
+
+Message content is stored as JSONB array of ContentPart objects. The storage format matches the API format exactly - no conversion is needed between layers.
+
+```sql
+-- Example stored content for a user message
+[{"type": "text", "text": "Hello, how are you?"}]
+
+-- Example stored content for an assistant message with tool calls
+[
+  {"type": "text", "text": "Let me search for that."},
+  {"type": "tool_call", "id": "call_abc123", "name": "search", "arguments": {"query": "test"}}
+]
+
+-- Example stored content for a tool result message
+[{"type": "tool_result", "tool_call_id": "call_abc123", "result": {"matches": [...]}, "error": null}]
 ```
 
 ### Event
