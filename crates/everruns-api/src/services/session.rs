@@ -3,7 +3,7 @@
 use anyhow::Result;
 use everruns_contracts::{Session, SessionStatus};
 use everruns_storage::{
-    models::{CreateSession, UpdateSession},
+    models::{CreateSessionRow, UpdateSession},
     Database,
 };
 use std::sync::Arc;
@@ -18,7 +18,7 @@ impl SessionService {
         Self { db }
     }
 
-    pub async fn create(&self, input: CreateSession) -> Result<Session> {
+    pub async fn create(&self, input: CreateSessionRow) -> Result<Session> {
         let row = self.db.create_session(input).await?;
         Ok(Self::row_to_session(row))
     }

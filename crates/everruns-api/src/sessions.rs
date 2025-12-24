@@ -8,7 +8,7 @@ use axum::{
 };
 use everruns_contracts::{CreateSessionRequest, ListResponse, Session, UpdateSessionRequest};
 use everruns_storage::{
-    models::{CreateSession, UpdateSession},
+    models::{CreateSessionRow, UpdateSession},
     Database,
 };
 use std::sync::Arc;
@@ -66,7 +66,7 @@ pub async fn create_session(
     Path(agent_id): Path<Uuid>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), StatusCode> {
-    let input = CreateSession {
+    let input = CreateSessionRow {
         agent_id,
         title: req.title,
         tags: req.tags,

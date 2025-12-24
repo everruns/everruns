@@ -31,7 +31,7 @@ impl Database {
     // Users
     // ============================================
 
-    pub async fn create_user(&self, input: CreateUser) -> Result<UserRow> {
+    pub async fn create_user(&self, input: CreateUserRow) -> Result<UserRow> {
         let roles_json = serde_json::to_value(&input.roles)?;
 
         let row = sqlx::query_as::<_, UserRow>(
@@ -172,7 +172,7 @@ impl Database {
     // API Keys
     // ============================================
 
-    pub async fn create_api_key(&self, input: CreateApiKey) -> Result<ApiKeyRow> {
+    pub async fn create_api_key(&self, input: CreateApiKeyRow) -> Result<ApiKeyRow> {
         let scopes_json = serde_json::to_value(&input.scopes)?;
 
         let row = sqlx::query_as::<_, ApiKeyRow>(
@@ -248,7 +248,10 @@ impl Database {
     // Refresh Tokens
     // ============================================
 
-    pub async fn create_refresh_token(&self, input: CreateRefreshToken) -> Result<RefreshTokenRow> {
+    pub async fn create_refresh_token(
+        &self,
+        input: CreateRefreshTokenRow,
+    ) -> Result<RefreshTokenRow> {
         let row = sqlx::query_as::<_, RefreshTokenRow>(
             r#"
             INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
@@ -313,7 +316,7 @@ impl Database {
     // Agents (configuration for agentic loop)
     // ============================================
 
-    pub async fn create_agent(&self, input: CreateAgent) -> Result<AgentRow> {
+    pub async fn create_agent(&self, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
             INSERT INTO agents (name, description, system_prompt, default_model_id, tags, status)
@@ -411,7 +414,7 @@ impl Database {
     // Sessions (instance of agentic loop)
     // ============================================
 
-    pub async fn create_session(&self, input: CreateSession) -> Result<SessionRow> {
+    pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             INSERT INTO sessions (agent_id, title, tags, model_id, status)
@@ -645,7 +648,7 @@ impl Database {
     // LLM Providers
     // ============================================
 
-    pub async fn create_llm_provider(&self, input: CreateLlmProvider) -> Result<LlmProviderRow> {
+    pub async fn create_llm_provider(&self, input: CreateLlmProviderRow) -> Result<LlmProviderRow> {
         let api_key_set = input.api_key_encrypted.is_some();
         let settings = input.settings.unwrap_or(serde_json::json!({}));
 
@@ -792,7 +795,7 @@ impl Database {
     // LLM Models
     // ============================================
 
-    pub async fn create_llm_model(&self, input: CreateLlmModel) -> Result<LlmModelRow> {
+    pub async fn create_llm_model(&self, input: CreateLlmModelRow) -> Result<LlmModelRow> {
         let capabilities_json = serde_json::to_value(&input.capabilities)?;
 
         let row = sqlx::query_as::<_, LlmModelRow>(
@@ -995,7 +998,7 @@ impl Database {
     /// Add a single capability to an agent
     pub async fn add_agent_capability(
         &self,
-        input: CreateAgentCapability,
+        input: CreateAgentCapabilityRow,
     ) -> Result<AgentCapabilityRow> {
         let row = sqlx::query_as::<_, AgentCapabilityRow>(
             r#"

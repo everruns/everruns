@@ -3,7 +3,7 @@
 use anyhow::Result;
 use everruns_contracts::{Agent, AgentStatus};
 use everruns_storage::{
-    models::{CreateAgent, UpdateAgent},
+    models::{CreateAgentRow, UpdateAgent},
     Database,
 };
 use std::sync::Arc;
@@ -18,7 +18,7 @@ impl AgentService {
         Self { db }
     }
 
-    pub async fn create(&self, input: CreateAgent) -> Result<Agent> {
+    pub async fn create(&self, input: CreateAgentRow) -> Result<Agent> {
         let row = self.db.create_agent(input).await?;
         Ok(Self::row_to_agent(row))
     }

@@ -8,7 +8,7 @@ use axum::{
 };
 use everruns_contracts::{LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType};
 use everruns_storage::{
-    models::{CreateLlmModel, UpdateLlmModel},
+    models::{CreateLlmModelRow, UpdateLlmModel},
     Database,
 };
 use serde::{Deserialize, Serialize};
@@ -118,7 +118,7 @@ pub async fn create_model(
     Path(provider_id): Path<Uuid>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<LlmModel>), (StatusCode, Json<ErrorResponse>)> {
-    let input = CreateLlmModel {
+    let input = CreateLlmModelRow {
         provider_id,
         model_id: req.model_id,
         display_name: req.display_name,

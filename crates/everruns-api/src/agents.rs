@@ -8,7 +8,7 @@ use axum::{
 };
 use everruns_contracts::{Agent, CreateAgentRequest, ListResponse, UpdateAgentRequest};
 use everruns_storage::{
-    models::{CreateAgent, UpdateAgent},
+    models::{CreateAgentRow, UpdateAgent},
     Database,
 };
 use std::sync::Arc;
@@ -56,7 +56,7 @@ pub async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), StatusCode> {
-    let input = CreateAgent {
+    let input = CreateAgentRow {
         name: req.name,
         description: req.description,
         system_prompt: req.system_prompt,

@@ -8,7 +8,7 @@ use axum::{
 };
 use everruns_contracts::{LlmProvider, LlmProviderStatus, LlmProviderType};
 use everruns_storage::{
-    models::{CreateLlmProvider, UpdateLlmProvider},
+    models::{CreateLlmProviderRow, UpdateLlmProvider},
     Database, EncryptionService,
 };
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,7 @@ pub async fn create_provider(
         None
     };
 
-    let input = CreateLlmProvider {
+    let input = CreateLlmProviderRow {
         name: req.name,
         provider_type: req.provider_type.to_string(),
         base_url: req.base_url,
