@@ -13,7 +13,6 @@ use crate::messages::{
 use anyhow::Result;
 use everruns_storage::{models::CreateEventRow, models::CreateMessageRow, Database};
 use everruns_worker::AgentRunner;
-use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -27,8 +26,13 @@ impl MessageService {
         Self { db, runner }
     }
 
-    /// Create a message from API request
-    /// Handles conversion, event emission, and workflow triggering
+    /// Create a user message from API request
+    ///
+    /// Only user messages can be created via the API. This method:
+    /// - Converts input content to storage format
+    /// - Persists the message to the database
+    /// - Emits an SSE event for the user message
+    /// - Triggers workflow execution for the session
     pub async fn create(
         &self,
         agent_id: Uuid,
@@ -38,28 +42,24 @@ impl MessageService {
         // Convert InputContentPart array to ContentPart array for storage
         let content = input_content_parts_to_content_parts(&req.message.content);
 
-        // Convert request metadata to JSON for storage
-        let metadata = req.metadata.and_then(|m| serde_json::to_value(m).ok());
-
         // Get tags from request (empty if not provided)
         let tags = req.tags.unwrap_or_default();
 
+        // API only creates user messages
         let input = CreateMessageRow {
             session_id,
-            role: req.message.role.to_string(),
+            role: MessageRole::User.to_string(),
             content,
-            metadata,
+            metadata: req.metadata,
             tags,
         };
 
         let row = self.db.create_message(input).await?;
         let message = Self::row_to_message(row);
 
-        // If this is a user message, emit event and start workflow
-        if message.role == MessageRole::User {
-            self.emit_user_message_event(session_id, &message).await;
-            self.start_workflow(agent_id, session_id).await;
-        }
+        // Emit event and start workflow for user message
+        self.emit_user_message_event(session_id, &message).await;
+        self.start_workflow(agent_id, session_id).await;
 
         Ok(message)
     }
@@ -93,12 +93,6 @@ impl MessageService {
         }
     }
 
-    #[allow(dead_code)] // Will be used by future endpoints
-    pub async fn get(&self, id: Uuid) -> Result<Option<Message>> {
-        let row = self.db.get_message(id).await?;
-        Ok(row.map(Self::row_to_message))
-    }
-
     pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {
         let rows = self.db.list_messages(session_id).await?;
         Ok(rows.into_iter().map(Self::row_to_message).collect())
@@ -106,18 +100,13 @@ impl MessageService {
 
     /// Convert database row to API Message
     fn row_to_message(row: everruns_storage::MessageRow) -> Message {
-        let role = MessageRole::from(row.role.as_str());
-        let metadata = row
-            .metadata
-            .and_then(|m| serde_json::from_value::<HashMap<String, serde_json::Value>>(m).ok());
-
         Message {
             id: row.id,
             session_id: row.session_id,
             sequence: row.sequence,
-            role,
-            content: row.content, // Already Vec<ContentPart> from database
-            metadata,
+            role: MessageRole::from(row.role.as_str()),
+            content: row.content,
+            metadata: row.metadata,
             created_at: row.created_at,
         }
     }

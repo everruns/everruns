@@ -185,7 +185,7 @@ pub struct UpdateSession {
 // ============================================
 
 /// Message row from database
-/// Note: content is stored as JSONB in the database but typed as Vec<ContentPart> here.
+/// Note: content and metadata are stored as JSONB in the database.
 /// The `sqlx(json)` attribute handles serialization/deserialization.
 #[derive(Debug, Clone, FromRow)]
 pub struct MessageRow {
@@ -195,7 +195,8 @@ pub struct MessageRow {
     pub role: String,
     #[sqlx(json)]
     pub content: Vec<ContentPart>,
-    pub metadata: Option<serde_json::Value>,
+    #[sqlx(json)]
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
     pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
@@ -206,7 +207,7 @@ pub struct CreateMessageRow {
     pub session_id: Uuid,
     pub role: String,
     pub content: Vec<ContentPart>,
-    pub metadata: Option<serde_json::Value>,
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
     pub tags: Vec<String>,
 }
 

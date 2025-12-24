@@ -110,11 +110,12 @@ pub struct Message {
     pub created_at: DateTime<Utc>,
 }
 
-/// Input message for creating a message
+/// Input message for creating a user message
+///
+/// Only user messages can be created via the API. Assistant, tool_call,
+/// tool_result, and system messages are created internally by the system.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InputMessage {
-    /// Message role
-    pub role: MessageRole,
     /// Array of content parts (text and image only)
     pub content: Vec<InputContentPart>,
 }
@@ -135,25 +136,18 @@ pub struct CreateMessageRequest {
     pub tags: Option<Vec<String>>,
 }
 
+#[cfg(test)]
 impl CreateMessageRequest {
-    /// Create a simple text message request
-    #[allow(dead_code)]
-    pub fn text(role: MessageRole, text: impl Into<String>) -> Self {
+    /// Create a user message with text (for tests)
+    pub fn user(text: impl Into<String>) -> Self {
         Self {
             message: InputMessage {
-                role,
                 content: vec![InputContentPart::text(text)],
             },
             controls: None,
             metadata: None,
             tags: None,
         }
-    }
-
-    /// Create a user message with text
-    #[allow(dead_code)]
-    pub fn user(text: impl Into<String>) -> Self {
-        Self::text(MessageRole::User, text)
     }
 }
 
@@ -287,7 +281,6 @@ mod tests {
     #[test]
     fn test_create_message_request_user() {
         let req = CreateMessageRequest::user("Hello, how are you?");
-        assert_eq!(req.message.role, MessageRole::User);
         assert_eq!(req.message.content.len(), 1);
         assert_eq!(
             req.message.content[0].as_text(),
