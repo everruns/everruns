@@ -240,14 +240,18 @@ pub async fn load_agent_activity(
 ///
 /// This activity:
 /// 1. Loads messages from the database via MessageStore
-/// 2. Calls the LLM with the agent configuration
-/// 3. Stores the assistant response and any tool call messages
-/// 4. Returns the text and tool calls
+/// 2. Reads controls from the latest user message (reasoning_effort, etc.)
+/// 3. Calls the LLM with the agent configuration (controls override agent defaults)
+/// 4. Stores the assistant response and any tool call messages
+/// 5. Returns the text and tool calls
 pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<CallModelOutput> {
     let session_id: Uuid = input
         .session_id
         .parse()
         .context("Invalid session_id UUID")?;
+
+    // Get controls from the latest user message (if any)
+    let message_controls = get_message_controls(&db, session_id).await;
 
     // Create LLM provider based on agent config
     let provider_type: ProviderType = input
@@ -260,6 +264,7 @@ pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<
         session_id = %session_id,
         model = %input.agent_config.model,
         provider_type = %provider_type,
+        message_reasoning_effort = ?message_controls.as_ref().and_then(|c| c.reasoning_effort.as_ref()),
         "Creating LLM provider for call_model_activity"
     );
 
@@ -278,7 +283,8 @@ pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<
     let message_store = DbMessageStore::new(db);
 
     // Build AgentConfig from the workflow's AgentConfigData
-    let agent_config = build_agent_config(&input.agent_config);
+    // Message controls override agent defaults
+    let agent_config = build_agent_config_with_controls(&input.agent_config, message_controls);
 
     // Create and execute CallModelAtom
     let atom = CallModelAtom::new(message_store, llm_provider);
@@ -371,23 +377,6 @@ pub async fn execute_tool_activity(
 // Helper Functions
 // ============================================================================
 
-/// Build AgentConfig from workflow's AgentConfigData
-fn build_agent_config(data: &AgentConfigData) -> everruns_core::AgentConfig {
-    let tools: Vec<ToolDefinition> = data.tools.iter().map(convert_tool_definition).collect();
-
-    let mut builder = AgentConfigBuilder::new()
-        .model(&data.model)
-        .system_prompt(data.system_prompt.as_deref().unwrap_or(""))
-        .tools(tools)
-        .max_iterations(data.max_iterations as usize);
-
-    if let Some(ref effort) = data.reasoning_effort {
-        builder = builder.reasoning_effort(effort);
-    }
-
-    builder.build()
-}
-
 /// Convert workflow's ToolDefinitionData to core's ToolDefinition
 fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
     ToolDefinition::Builtin(BuiltinTool {
@@ -414,6 +403,72 @@ fn detect_provider_type(model_id: &str) -> String {
         // Default to OpenAI for all other models (including GPT, O1, O3, etc.)
         "openai".to_string()
     }
+}
+
+/// Parsed controls from user message metadata
+#[derive(Debug, Clone, Default)]
+struct MessageControls {
+    /// Reasoning effort level (low, medium, high)
+    reasoning_effort: Option<String>,
+    /// Model ID override (not currently used but available for future)
+    #[allow(dead_code)]
+    model_id: Option<String>,
+}
+
+/// Get controls from the latest user message's metadata
+///
+/// Returns None if no user message exists or if no controls are set.
+async fn get_message_controls(db: &Database, session_id: Uuid) -> Option<MessageControls> {
+    let msg = db.get_latest_user_message(session_id).await.ok()??;
+
+    // Extract __controls from metadata
+    let metadata = msg.metadata?;
+    let controls = metadata.get("__controls")?;
+
+    // Parse reasoning.effort from controls
+    let reasoning_effort = controls
+        .get("reasoning")
+        .and_then(|r| r.get("effort"))
+        .and_then(|e| e.as_str())
+        .map(String::from);
+
+    // Parse model_id from controls (for future use)
+    let model_id = controls
+        .get("model_id")
+        .and_then(|m| m.as_str())
+        .map(String::from);
+
+    Some(MessageControls {
+        reasoning_effort,
+        model_id,
+    })
+}
+
+/// Build AgentConfig from workflow's AgentConfigData with message controls override
+///
+/// Message controls take precedence over agent config defaults.
+fn build_agent_config_with_controls(
+    data: &AgentConfigData,
+    controls: Option<MessageControls>,
+) -> everruns_core::AgentConfig {
+    let tools: Vec<ToolDefinition> = data.tools.iter().map(convert_tool_definition).collect();
+
+    let mut builder = AgentConfigBuilder::new()
+        .model(&data.model)
+        .system_prompt(data.system_prompt.as_deref().unwrap_or(""))
+        .tools(tools)
+        .max_iterations(data.max_iterations as usize);
+
+    // Determine reasoning_effort: message controls override agent config
+    let reasoning_effort = controls
+        .and_then(|c| c.reasoning_effort)
+        .or_else(|| data.reasoning_effort.clone());
+
+    if let Some(ref effort) = reasoning_effort {
+        builder = builder.reasoning_effort(effort);
+    }
+
+    builder.build()
 }
 
 // ============================================================================
@@ -496,11 +551,38 @@ mod tests {
             reasoning_effort: None,
         };
 
-        let config = build_agent_config(&data);
+        let config = build_agent_config_with_controls(&data, None);
         assert_eq!(config.model, "gpt-4o");
         assert_eq!(config.system_prompt, "Test prompt");
         assert_eq!(config.tools.len(), 1);
         assert_eq!(config.max_iterations, 10);
+    }
+
+    #[test]
+    fn test_build_agent_config_with_message_controls() {
+        let data = AgentConfigData {
+            model: "o1".into(),
+            provider_type: "openai".into(),
+            api_key: None,
+            base_url: None,
+            system_prompt: Some("Test prompt".into()),
+            tools: vec![],
+            max_iterations: 10,
+            reasoning_effort: Some("medium".into()), // Agent default
+        };
+
+        // Message controls should override agent config
+        let controls = Some(MessageControls {
+            reasoning_effort: Some("high".into()),
+            model_id: None,
+        });
+
+        let config = build_agent_config_with_controls(&data, controls);
+        assert_eq!(config.reasoning_effort, Some("high".to_string()));
+
+        // When no message controls, use agent config default
+        let config_no_controls = build_agent_config_with_controls(&data, None);
+        assert_eq!(config_no_controls.reasoning_effort, Some("medium".to_string()));
     }
 
     #[test]

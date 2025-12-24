@@ -266,11 +266,30 @@ pub async fn create_message(
     // Convert ContentPart array to JSON for storage
     let content = content_parts_to_json(&req.message.role, &req.message.content);
 
-    // Convert message metadata to JSON
-    let metadata = req
-        .message
-        .metadata
-        .and_then(|m| serde_json::to_value(m).ok());
+    // Build metadata: merge message metadata with controls
+    // Controls are stored as __controls key so they can be read by the workflow
+    let mut metadata_map = serde_json::Map::new();
+
+    // Add message metadata if present
+    if let Some(msg_metadata) = req.message.metadata {
+        for (k, v) in msg_metadata {
+            metadata_map.insert(k, v);
+        }
+    }
+
+    // Add controls if present (stored under __controls key)
+    if let Some(controls) = &req.controls {
+        if let Ok(controls_value) = serde_json::to_value(controls) {
+            metadata_map.insert("__controls".to_string(), controls_value);
+        }
+    }
+
+    // Convert to Option<Value> - only Some if we have data
+    let metadata = if metadata_map.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(metadata_map))
+    };
 
     // Get tags from request (empty if not provided)
     let tags = req.tags.unwrap_or_default();

@@ -579,6 +579,25 @@ impl Database {
         Ok(rows)
     }
 
+    /// Get the latest user message in a session
+    /// Returns the most recent user message with its metadata (which may contain controls)
+    pub async fn get_latest_user_message(&self, session_id: Uuid) -> Result<Option<MessageRow>> {
+        let row = sqlx::query_as::<_, MessageRow>(
+            r#"
+            SELECT id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
+            FROM messages
+            WHERE session_id = $1 AND role = 'user'
+            ORDER BY sequence DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     // ============================================
     // Events (SSE notification stream for UI)
     // ============================================
