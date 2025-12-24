@@ -434,10 +434,7 @@ async fn test_message_store_preserves_tool_calls() {
     assert_eq!(loaded_msg.text(), Some("Let me check that for you."));
 
     // Verify tool_calls are preserved - this is the key assertion
-    let loaded_tool_calls = loaded_msg
-        .tool_calls
-        .as_ref()
-        .expect("tool_calls should be present");
+    let loaded_tool_calls = loaded_msg.tool_calls();
     assert_eq!(loaded_tool_calls.len(), 2);
     assert_eq!(loaded_tool_calls[0].id, "call_weather");
     assert_eq!(loaded_tool_calls[0].name, "get_weather");
@@ -502,19 +499,19 @@ async fn test_message_store_full_tool_conversation() {
 
     // Verify the assistant message with tool calls has them preserved
     let assistant_msg = &messages[1];
+    let tool_calls = assistant_msg.tool_calls();
     assert!(
-        assistant_msg.tool_calls.is_some(),
+        !tool_calls.is_empty(),
         "Assistant message should have tool_calls"
     );
-    let tool_calls = assistant_msg.tool_calls.as_ref().unwrap();
     assert_eq!(tool_calls.len(), 1);
     assert_eq!(tool_calls[0].name, "get_weather");
 
     // Verify the tool result has correct content
-    assert_eq!(messages[2].tool_call_id, Some("call_123".to_string()));
+    assert_eq!(messages[2].tool_call_id(), Some("call_123"));
 
     // Verify final response doesn't have tool_calls
-    assert!(messages[3].tool_calls.is_none());
+    assert!(messages[3].tool_calls().is_empty());
 }
 
 #[tokio::test]
@@ -572,7 +569,7 @@ async fn test_message_store_parallel_tool_calls() {
 
     // Verify all 3 tool calls are preserved in assistant message
     let assistant_msg = &messages[0];
-    let loaded_calls = assistant_msg.tool_calls.as_ref().unwrap();
+    let loaded_calls = assistant_msg.tool_calls();
     assert_eq!(loaded_calls.len(), 3);
 
     // Verify each tool call

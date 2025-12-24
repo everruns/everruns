@@ -46,7 +46,10 @@ pub use config::AgentConfig;
 pub use error::{AgentLoopError, Result};
 pub use events::LoopEvent;
 pub use executor::AgentLoop;
-pub use message::{Message, MessageRole};
+pub use message::{
+    ContentPart, ContentType, ImageContentPart, InputContentPart, Message, MessageRole,
+    TextContentPart, ToolCallContentPart, ToolResultContentPart,
+};
 pub use step::{LoopStep, StepKind, StepResult};
 pub use traits::{EventEmitter, MessageStore, ToolExecutor};
 

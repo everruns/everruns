@@ -6,7 +6,10 @@
 // - Event emission for SSE notifications
 // - Workflow triggering for user messages
 
-use crate::messages::{ContentPart, CreateMessageRequest, InputContentPart, Message, MessageRole};
+use crate::messages::{
+    ContentPart, CreateMessageRequest, ImageContentPart, InputContentPart, Message, MessageRole,
+    TextContentPart,
+};
 use anyhow::Result;
 use everruns_storage::{models::CreateEventRow, models::CreateMessageRow, Database};
 use everruns_worker::AgentRunner;
@@ -32,8 +35,8 @@ impl MessageService {
         session_id: Uuid,
         req: CreateMessageRequest,
     ) -> Result<Message> {
-        // Convert InputContentPart array to JSON for storage
-        let content = input_content_parts_to_json(&req.message.content);
+        // Convert InputContentPart array to ContentPart array for storage
+        let content = input_content_parts_to_content_parts(&req.message.content);
 
         // Convert request metadata to JSON for storage
         let metadata = req.metadata.and_then(|m| serde_json::to_value(m).ok());
@@ -105,7 +108,6 @@ impl MessageService {
     /// Convert database row to API Message
     fn row_to_message(row: everruns_storage::MessageRow) -> Message {
         let role = MessageRole::from(row.role.as_str());
-        let content = Self::json_to_content_parts(&role, &row.content);
         let metadata = row
             .metadata
             .and_then(|m| serde_json::from_value::<HashMap<String, serde_json::Value>>(m).ok());
@@ -115,138 +117,27 @@ impl MessageService {
             session_id: row.session_id,
             sequence: row.sequence,
             role,
-            content,
+            content: row.content, // Already Vec<ContentPart> from database
             metadata,
             tool_call_id: row.tool_call_id,
             created_at: row.created_at,
         }
     }
-
-    /// Convert stored JSON content to ContentPart array
-    /// Supports both new array format and legacy object format for backward compatibility
-    fn json_to_content_parts(role: &MessageRole, content: &serde_json::Value) -> Vec<ContentPart> {
-        // New format: array of typed parts [{"type": "text", "text": "..."}, ...]
-        if let Some(arr) = content.as_array() {
-            return arr
-                .iter()
-                .filter_map(|part| {
-                    let part_type = part.get("type").and_then(|t| t.as_str())?;
-                    match part_type {
-                        "text" => {
-                            let text = part
-                                .get("text")
-                                .and_then(|t| t.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            Some(ContentPart::Text { text })
-                        }
-                        "image" => Some(ContentPart::Image {
-                            url: part.get("url").and_then(|v| v.as_str()).map(String::from),
-                            base64: part
-                                .get("base64")
-                                .and_then(|v| v.as_str())
-                                .map(String::from),
-                            media_type: part
-                                .get("media_type")
-                                .and_then(|v| v.as_str())
-                                .map(String::from),
-                        }),
-                        "tool_call" => {
-                            let id = part.get("id").and_then(|v| v.as_str())?.to_string();
-                            let name = part.get("name").and_then(|v| v.as_str())?.to_string();
-                            let arguments = part
-                                .get("arguments")
-                                .cloned()
-                                .unwrap_or(serde_json::json!({}));
-                            Some(ContentPart::ToolCall {
-                                id,
-                                name,
-                                arguments,
-                            })
-                        }
-                        "tool_result" => Some(ContentPart::ToolResult {
-                            result: part.get("result").cloned(),
-                            error: part.get("error").and_then(|v| v.as_str()).map(String::from),
-                        }),
-                        _ => None,
-                    }
-                })
-                .collect();
-        }
-
-        // Legacy format: object with specific fields based on role
-        match role {
-            MessageRole::User | MessageRole::Assistant | MessageRole::System => {
-                // Legacy text content: { "text": "..." }
-                let text = content
-                    .get("text")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("")
-                    .to_string();
-
-                let mut parts = vec![ContentPart::Text { text }];
-
-                // For assistant messages, also include any tool_calls
-                if *role == MessageRole::Assistant {
-                    if let Some(tool_calls) = content.get("tool_calls").and_then(|tc| tc.as_array())
-                    {
-                        for tc in tool_calls {
-                            if let (Some(id), Some(name), Some(args)) = (
-                                tc.get("id").and_then(|v| v.as_str()),
-                                tc.get("name").and_then(|v| v.as_str()),
-                                tc.get("arguments"),
-                            ) {
-                                parts.push(ContentPart::ToolCall {
-                                    id: id.to_string(),
-                                    name: name.to_string(),
-                                    arguments: args.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-
-                parts
-            }
-            MessageRole::ToolCall => {
-                // Legacy tool call content: { "id": "...", "name": "...", "arguments": {...} }
-                let id = content
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let name = content
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let arguments = content
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or(serde_json::json!({}));
-
-                vec![ContentPart::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                }]
-            }
-            MessageRole::ToolResult => {
-                // Legacy tool result content: { "result": {...}, "error": "..." }
-                let result = content.get("result").cloned();
-                let error = content
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-
-                vec![ContentPart::ToolResult { result, error }]
-            }
-        }
-    }
 }
 
-/// Convert InputContentPart array to stored JSON content (for user input)
-/// Stores as array: [{"type": "text", "text": "..."}, {"type": "image", ...}]
-fn input_content_parts_to_json(parts: &[InputContentPart]) -> serde_json::Value {
-    serde_json::to_value(parts).unwrap_or_else(|_| serde_json::json!([]))
+/// Convert InputContentPart array to ContentPart array (for storage)
+fn input_content_parts_to_content_parts(parts: &[InputContentPart]) -> Vec<ContentPart> {
+    parts
+        .iter()
+        .map(|part| match part {
+            InputContentPart::Text(t) => ContentPart::Text(TextContentPart {
+                text: t.text.clone(),
+            }),
+            InputContentPart::Image(i) => ContentPart::Image(ImageContentPart {
+                url: i.url.clone(),
+                base64: i.base64.clone(),
+                media_type: i.media_type.clone(),
+            }),
+        })
+        .collect()
 }

@@ -1,5 +1,8 @@
 // Message HTTP routes and API contracts
 // Messages are PRIMARY data store, Events are SSE notifications
+//
+// ContentPart and InputContentPart are defined in everruns-core.
+// We re-export them here with ToSchema for OpenAPI documentation.
 
 use axum::{
     extract::{Path, State},
@@ -17,6 +20,13 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::services::{MessageService, SessionService};
+
+// Re-export core types with ToSchema for OpenAPI
+#[allow(unused_imports)]
+pub use everruns_core::{
+    ContentPart, ContentType, ImageContentPart, InputContentPart, TextContentPart,
+    ToolCallContentPart, ToolResultContentPart,
+};
 
 // ============================================
 // Message API Contracts
@@ -53,87 +63,6 @@ impl From<&str> for MessageRole {
             "tool_result" => MessageRole::ToolResult,
             "system" => MessageRole::System,
             _ => MessageRole::User,
-        }
-    }
-}
-
-/// Input content part - only text and image (for user input)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum InputContentPart {
-    /// Text content
-    Text { text: String },
-    /// Image content (base64 or URL)
-    Image {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        url: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        base64: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        media_type: Option<String>,
-    },
-}
-
-impl InputContentPart {
-    /// Create a text content part
-    #[allow(dead_code)]
-    pub fn text(text: impl Into<String>) -> Self {
-        InputContentPart::Text { text: text.into() }
-    }
-
-    /// Get text content if this is a Text part
-    #[allow(dead_code)]
-    pub fn as_text(&self) -> Option<&str> {
-        match self {
-            InputContentPart::Text { text } => Some(text),
-            _ => None,
-        }
-    }
-}
-
-/// A part of message content - can be text, image, tool_call, or tool_result (for responses)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ContentPart {
-    /// Text content
-    Text { text: String },
-    /// Image content (base64 or URL)
-    Image {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        url: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        base64: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        media_type: Option<String>,
-    },
-    /// Tool call content (assistant requesting tool execution)
-    ToolCall {
-        id: String,
-        name: String,
-        arguments: serde_json::Value,
-    },
-    /// Tool result content (result of tool execution)
-    ToolResult {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        result: Option<serde_json::Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-    },
-}
-
-impl ContentPart {
-    /// Create a text content part
-    #[allow(dead_code)]
-    pub fn text(text: impl Into<String>) -> Self {
-        ContentPart::Text { text: text.into() }
-    }
-
-    /// Get text if this is a text part
-    #[allow(dead_code)]
-    pub fn as_text(&self) -> Option<&str> {
-        match self {
-            ContentPart::Text { text } => Some(text),
-            _ => None,
         }
     }
 }

@@ -506,6 +506,9 @@ impl Database {
     // ============================================
 
     pub async fn create_message(&self, input: CreateMessageRow) -> Result<MessageRow> {
+        // Serialize content to JSON for storage
+        let content_json = serde_json::to_value(&input.content)?;
+
         // Get next sequence number for this session
         let row = sqlx::query_as::<_, MessageRow>(
             r#"
@@ -516,7 +519,7 @@ impl Database {
         )
         .bind(input.session_id)
         .bind(&input.role)
-        .bind(&input.content)
+        .bind(&content_json)
         .bind(&input.metadata)
         .bind(&input.tags)
         .bind(&input.tool_call_id)

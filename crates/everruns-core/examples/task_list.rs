@@ -18,7 +18,7 @@ use everruns_core::{
     capabilities::{CapabilityId, CapabilityRegistry},
     config::AgentConfig,
     memory::{InMemoryEventEmitter, InMemoryMessageStore},
-    message::{Message, MessageContent, MessageRole},
+    message::{Message, MessageRole},
     openai::OpenAIProtocolLlmProvider,
     AgentLoop,
 };
@@ -33,53 +33,47 @@ fn print_conversation_steps(messages: &[Message]) {
     for (i, msg) in messages.iter().enumerate() {
         match msg.role {
             MessageRole::User => {
-                println!("    {}. [User] {}", i + 1, msg.content.to_llm_string());
+                println!("    {}. [User] {}", i + 1, msg.content_to_llm_string());
             }
             MessageRole::Assistant => {
-                let text = msg.content.to_llm_string();
-                if let Some(ref tool_calls) = msg.tool_calls {
-                    if !tool_calls.is_empty() {
-                        println!("    {}. [Assistant] Calling tool(s):", i + 1);
-                        for tc in tool_calls {
-                            if tc.name == "write_todos" {
-                                // Pretty print write_todos arguments
-                                if let Ok(todos) = serde_json::from_value::<serde_json::Value>(
-                                    tc.arguments.clone(),
-                                ) {
-                                    if let Some(todo_list) =
-                                        todos.get("todos").and_then(|t| t.as_array())
-                                    {
-                                        println!(
-                                            "       -> write_todos({} tasks):",
-                                            todo_list.len()
-                                        );
-                                        for (idx, todo) in todo_list.iter().enumerate() {
-                                            let content = todo
-                                                .get("content")
-                                                .and_then(|c| c.as_str())
-                                                .unwrap_or("?");
-                                            let status = todo
-                                                .get("status")
-                                                .and_then(|s| s.as_str())
-                                                .unwrap_or("?");
-                                            let icon = match status {
-                                                "completed" => "[x]",
-                                                "in_progress" => "[>]",
-                                                _ => "[ ]",
-                                            };
-                                            println!("          {} {} {}", icon, idx + 1, content);
-                                        }
+                let text = msg.content_to_llm_string();
+                let tool_calls = msg.tool_calls();
+                if !tool_calls.is_empty() {
+                    println!("    {}. [Assistant] Calling tool(s):", i + 1);
+                    for tc in tool_calls {
+                        if tc.name == "write_todos" {
+                            // Pretty print write_todos arguments
+                            if let Ok(todos) =
+                                serde_json::from_value::<serde_json::Value>(tc.arguments.clone())
+                            {
+                                if let Some(todo_list) =
+                                    todos.get("todos").and_then(|t| t.as_array())
+                                {
+                                    println!("       -> write_todos({} tasks):", todo_list.len());
+                                    for (idx, todo) in todo_list.iter().enumerate() {
+                                        let content = todo
+                                            .get("content")
+                                            .and_then(|c| c.as_str())
+                                            .unwrap_or("?");
+                                        let status = todo
+                                            .get("status")
+                                            .and_then(|s| s.as_str())
+                                            .unwrap_or("?");
+                                        let icon = match status {
+                                            "completed" => "[x]",
+                                            "in_progress" => "[>]",
+                                            _ => "[ ]",
+                                        };
+                                        println!("          {} {} {}", icon, idx + 1, content);
                                     }
                                 }
-                            } else {
-                                println!("       -> {}({})", tc.name, tc.arguments);
                             }
+                        } else {
+                            println!("       -> {}({})", tc.name, tc.arguments);
                         }
-                        if !text.is_empty() {
-                            println!("       Text: {}", text);
-                        }
-                    } else if !text.is_empty() {
-                        println!("    {}. [Assistant] {}", i + 1, text);
+                    }
+                    if !text.is_empty() {
+                        println!("       Text: {}", text);
                     }
                 } else if !text.is_empty() {
                     println!("    {}. [Assistant] {}", i + 1, text);
@@ -89,10 +83,10 @@ fn print_conversation_steps(messages: &[Message]) {
                 // Skip - already shown in assistant message
             }
             MessageRole::ToolResult => {
-                if let MessageContent::ToolResult { result, error } = &msg.content {
-                    if let Some(err) = error {
+                if let Some(tr) = msg.tool_result_content() {
+                    if let Some(ref err) = tr.error {
                         println!("    {}. [Tool Result] Error: {}", i + 1, err);
-                    } else if let Some(res) = result {
+                    } else if let Some(ref res) = tr.result {
                         // Pretty print write_todos result
                         if let Some(obj) = res.as_object() {
                             if obj.contains_key("todos") {
