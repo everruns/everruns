@@ -60,6 +60,21 @@ check_openai_key() {
     log_info "OPENAI_API_KEY is set"
 }
 
+# Check/generate SECRETS_ENCRYPTION_KEY
+check_encryption_key() {
+    if [ -z "$SECRETS_ENCRYPTION_KEY" ]; then
+        # Generate a test encryption key for smoke testing
+        local key_bytes
+        key_bytes=$(python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())" 2>/dev/null || \
+                   openssl rand -base64 32 2>/dev/null || \
+                   head -c 32 /dev/urandom | base64)
+        export SECRETS_ENCRYPTION_KEY="kek-test:$key_bytes"
+        log_info "Generated test SECRETS_ENCRYPTION_KEY"
+    else
+        log_info "SECRETS_ENCRYPTION_KEY is set"
+    fi
+}
+
 # Get project root (relative to skill scripts folder)
 get_project_root() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"

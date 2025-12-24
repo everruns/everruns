@@ -21,6 +21,14 @@ source "$SCRIPT_DIR/_setup-temporal.sh"
 
 # Project root is 4 levels up from scripts folder
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+
+# Load .env file if it exists (for API keys, encryption key, etc.)
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    set -a
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
 API_PID=""
 WORKER_PID=""
 TEMPORAL_PID=""
@@ -136,6 +144,7 @@ main() {
 
     # Pre-flight checks
     check_openai_key
+    check_encryption_key
     check_root
 
     echo ""
