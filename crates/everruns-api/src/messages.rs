@@ -91,8 +91,15 @@ pub struct Message {
 /// tool_result, and system messages are created internally by the system.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InputMessage {
+    /// Message role (always "user" for API-created messages)
+    #[serde(default = "default_user_role")]
+    pub role: MessageRole,
     /// Array of content parts (text and image only)
     pub content: Vec<InputContentPart>,
+}
+
+fn default_user_role() -> MessageRole {
+    MessageRole::User
 }
 
 /// Request to create a message
@@ -117,6 +124,7 @@ impl CreateMessageRequest {
     pub fn user(text: impl Into<String>) -> Self {
         Self {
             message: InputMessage {
+                role: MessageRole::User,
                 content: vec![InputContentPart::text(text)],
             },
             controls: None,
