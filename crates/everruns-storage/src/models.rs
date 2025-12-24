@@ -189,8 +189,8 @@ pub struct MessageRow {
     pub session_id: Uuid,
     pub sequence: i32,
     pub role: String,
-    pub content: sqlx::types::JsonValue,
-    pub metadata: Option<sqlx::types::JsonValue>,
+    pub content: serde_json::Value,
+    pub metadata: Option<serde_json::Value>,
     pub tags: Vec<String>,
     pub tool_call_id: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -216,7 +216,7 @@ pub struct EventRow {
     pub session_id: Uuid,
     pub sequence: i32,
     pub event_type: String,
-    pub data: sqlx::types::JsonValue,
+    pub data: serde_json::Value,
     pub created_at: DateTime<Utc>,
 }
 
