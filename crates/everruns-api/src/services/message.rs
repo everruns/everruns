@@ -123,10 +123,61 @@ impl MessageService {
     }
 
     /// Convert stored JSON content to ContentPart array
+    /// Supports both new array format and legacy object format for backward compatibility
     fn json_to_content_parts(role: &MessageRole, content: &serde_json::Value) -> Vec<ContentPart> {
+        // New format: array of typed parts [{"type": "text", "text": "..."}, ...]
+        if let Some(arr) = content.as_array() {
+            return arr
+                .iter()
+                .filter_map(|part| {
+                    let part_type = part.get("type").and_then(|t| t.as_str())?;
+                    match part_type {
+                        "text" => {
+                            let text = part
+                                .get("text")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            Some(ContentPart::Text { text })
+                        }
+                        "image" => Some(ContentPart::Image {
+                            url: part.get("url").and_then(|v| v.as_str()).map(String::from),
+                            base64: part
+                                .get("base64")
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
+                            media_type: part
+                                .get("media_type")
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
+                        }),
+                        "tool_call" => {
+                            let id = part.get("id").and_then(|v| v.as_str())?.to_string();
+                            let name = part.get("name").and_then(|v| v.as_str())?.to_string();
+                            let arguments = part
+                                .get("arguments")
+                                .cloned()
+                                .unwrap_or(serde_json::json!({}));
+                            Some(ContentPart::ToolCall {
+                                id,
+                                name,
+                                arguments,
+                            })
+                        }
+                        "tool_result" => Some(ContentPart::ToolResult {
+                            result: part.get("result").cloned(),
+                            error: part.get("error").and_then(|v| v.as_str()).map(String::from),
+                        }),
+                        _ => None,
+                    }
+                })
+                .collect();
+        }
+
+        // Legacy format: object with specific fields based on role
         match role {
             MessageRole::User | MessageRole::Assistant | MessageRole::System => {
-                // Text content: { "text": "..." }
+                // Legacy text content: { "text": "..." }
                 let text = content
                     .get("text")
                     .and_then(|t| t.as_str())
@@ -158,7 +209,7 @@ impl MessageService {
                 parts
             }
             MessageRole::ToolCall => {
-                // Tool call content: { "id": "...", "name": "...", "arguments": {...} }
+                // Legacy tool call content: { "id": "...", "name": "...", "arguments": {...} }
                 let id = content
                     .get("id")
                     .and_then(|v| v.as_str())
@@ -181,7 +232,7 @@ impl MessageService {
                 }]
             }
             MessageRole::ToolResult => {
-                // Tool result content: { "result": {...}, "error": "..." }
+                // Legacy tool result content: { "result": {...}, "error": "..." }
                 let result = content.get("result").cloned();
                 let error = content
                     .get("error")
@@ -195,17 +246,7 @@ impl MessageService {
 }
 
 /// Convert InputContentPart array to stored JSON content (for user input)
+/// Stores as array: [{"type": "text", "text": "..."}, {"type": "image", ...}]
 fn input_content_parts_to_json(parts: &[InputContentPart]) -> serde_json::Value {
-    // User input only contains text and images
-    let mut texts = Vec::new();
-
-    for part in parts {
-        if let InputContentPart::Text { text } = part {
-            texts.push(text.clone());
-        }
-        // TODO: Handle images when image storage is implemented
-    }
-
-    let combined_text = texts.join("\n");
-    serde_json::json!({ "text": combined_text })
+    serde_json::to_value(parts).unwrap_or_else(|_| serde_json::json!([]))
 }
