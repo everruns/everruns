@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Send, User, Bot, Loader2, Brain } from "lucide-react";
+import { ArrowLeft, Send, User, Bot, Loader2, Brain, Cpu } from "lucide-react";
 import type { Message, ReasoningLevel } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
@@ -187,9 +187,27 @@ export default function SessionDetailPage({
             <h1 className="text-xl font-bold">
               {session.title || `Session ${session.id.slice(0, 8)}`}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Started {new Date(session.created_at).toLocaleString()}
-            </p>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span>Started {new Date(session.created_at).toLocaleString()}</span>
+              {currentModel && (
+                <span className="flex items-center gap-1">
+                  <Cpu className="w-3 h-3" />
+                  {currentModel.display_name || currentModel.model_id}
+                </span>
+              )}
+              {!currentModel && currentModelId && (
+                <span className="flex items-center gap-1 text-yellow-600">
+                  <Cpu className="w-3 h-3" />
+                  Model not configured
+                </span>
+              )}
+              {!currentModelId && (
+                <span className="flex items-center gap-1 text-yellow-600">
+                  <Cpu className="w-3 h-3" />
+                  No model selected
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {session.status === "running" && (
