@@ -1,27 +1,30 @@
-// Capability DTOs - defines agent capabilities that add functionality
+// Capability DTO types
 //
-// Runtime types (CapabilityId, CapabilityStatus) are defined in everruns-core
-// and re-exported here. This file defines the API/DTO types with ToSchema.
+// These types are API/DTO types for capabilities with ToSchema support.
+// Runtime types (CapabilityId, CapabilityStatus) are in capability_types.rs.
 
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-// Re-export capability types from core
-pub use everruns_core::capability_types::{CapabilityId, CapabilityStatus};
+use crate::capability_types::{CapabilityId, CapabilityStatus};
 
 /// Public capability information (without internal details)
 /// This is what gets returned from the API
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct Capability {
+/// Named CapabilityInfo to distinguish from the Capability trait
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct CapabilityInfo {
     /// Unique capability identifier
-    #[schema(value_type = String)]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub id: CapabilityId,
     /// Display name
     pub name: String,
     /// Description of what this capability provides
     pub description: String,
     /// Current status
-    #[schema(value_type = String)]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub status: CapabilityStatus,
     /// Icon name (for UI rendering)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -31,9 +34,9 @@ pub struct Capability {
     pub category: Option<String>,
 }
 
-impl Capability {
-    /// Create a Capability DTO from a core Capability trait object
-    pub fn from_core(cap: &dyn everruns_core::capabilities::Capability) -> Self {
+impl CapabilityInfo {
+    /// Create a CapabilityInfo DTO from a core Capability trait object
+    pub fn from_core(cap: &dyn crate::capabilities::Capability) -> Self {
         Self {
             id: CapabilityId::new(cap.id()),
             name: cap.name().to_string(),
@@ -46,22 +49,14 @@ impl Capability {
 }
 
 /// Agent capability assignment with ordering
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AgentCapability {
     /// The capability ID
-    #[schema(value_type = String)]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub capability_id: CapabilityId,
     /// Position in the chain (lower = earlier)
     pub position: i32,
-}
-
-/// Request to update agent capabilities
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct UpdateAgentCapabilitiesRequest {
-    /// List of capability IDs in desired order
-    /// Position is determined by array index
-    #[schema(value_type = Vec<String>)]
-    pub capabilities: Vec<CapabilityId>,
 }
 
 #[cfg(test)]
@@ -69,8 +64,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_capability_serialization() {
-        let cap = Capability {
+    fn test_capability_info_serialization() {
+        let cap = CapabilityInfo {
             id: CapabilityId::research(),
             name: "Research".to_string(),
             description: "Deep research capability".to_string(),

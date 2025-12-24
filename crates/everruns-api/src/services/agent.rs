@@ -1,7 +1,7 @@
 // Agent service for business logic (M2)
 
 use anyhow::Result;
-use everruns_contracts::{Agent, AgentStatus};
+use everruns_core::{Agent, AgentStatus};
 use everruns_storage::{
     models::{CreateAgentRow, UpdateAgent},
     Database,

@@ -6,7 +6,7 @@
 // 2. Run migrations: ./scripts/dev.sh migrate
 // 3. Start the API: ./scripts/dev.sh api (in another terminal)
 
-use everruns_contracts::Agent;
+use everruns_core::Agent;
 use serde_json::json;
 
 const API_BASE_URL: &str = "http://localhost:9000";

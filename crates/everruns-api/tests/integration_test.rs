@@ -1,7 +1,8 @@
 // Integration tests for Everruns API (M2)
 // Run with: cargo test --test integration_test
 
-use everruns_contracts::{Agent, Event, LlmModel, LlmProvider, Session};
+use everruns_core::llm_entities::LlmProvider;
+use everruns_core::{Agent, Event, LlmModel, Session};
 use serde_json::{json, Value};
 
 const API_BASE_URL: &str = "http://localhost:9000";

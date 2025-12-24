@@ -1,8 +1,8 @@
 # Core Agent Abstractions
 # Decision: Keep the loop logic DB-agnostic via traits (EventEmitter, MessageStore, ToolExecutor)
 # Decision: Use async_trait for trait definitions to support async operations
-# Decision: AG-UI events and tool types are defined here (runtime types)
-# Decision: This crate has NO dependency on storage/contracts (purely runtime abstractions)
+# Decision: AG-UI events, tool types, and domain entities are defined here (runtime types)
+# Decision: Domain entities (Agent, Session, LlmProvider, etc.) are in core for shared use by API and worker
 # Decision: Use OpenAI Protocol as the base for LLM Provider abstractions
 
 [package]

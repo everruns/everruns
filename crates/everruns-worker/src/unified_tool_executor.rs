@@ -4,8 +4,9 @@
 // All tools are registered at creation time and executed via the registry.
 
 use async_trait::async_trait;
-use everruns_contracts::tools::{ToolCall, ToolDefinition, ToolResult};
-use everruns_core::{traits::ToolExecutor, Result, ToolRegistry};
+use everruns_core::{
+    traits::ToolExecutor, Result, ToolCall, ToolDefinition, ToolRegistry, ToolResult,
+};
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -118,8 +119,7 @@ impl ToolExecutor for UnifiedToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::tools::{BuiltinTool, ToolPolicy};
-    use everruns_core::{EchoTool, FailingTool, GetCurrentTimeTool};
+    use everruns_core::{BuiltinTool, EchoTool, FailingTool, GetCurrentTimeTool, ToolPolicy};
     use serde_json::json;
 
     #[tokio::test]

@@ -1,7 +1,7 @@
 // LLM Model service for business logic
 
 use anyhow::Result;
-use everruns_contracts::{LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType};
+use everruns_core::{LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType};
 use everruns_storage::{
     models::{CreateLlmModelRow, LlmModelRow, LlmModelWithProviderRow, UpdateLlmModel},
     Database,

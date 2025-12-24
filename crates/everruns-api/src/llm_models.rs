@@ -6,7 +6,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{LlmModel, LlmModelStatus, LlmModelWithProvider};
+use everruns_core::{LlmModel, LlmModelStatus, LlmModelWithProvider};
 use everruns_storage::Database;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

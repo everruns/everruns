@@ -1,4 +1,4 @@
-// TypeScript types mirroring Rust contracts from everruns-contracts
+// TypeScript types mirroring Rust types from everruns-core
 // M2: Agent/Session/Messages model with Events as SSE notifications
 
 // ============================================

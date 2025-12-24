@@ -1,13 +1,18 @@
-// Agent DTOs (configuration for agentic loop)
-// Note: Request types (CreateAgentRequest, UpdateAgentRequest) are in everruns-api crate
+// Agent domain types
+//
+// These types represent the Agent entity and its status.
+// Used by both API and worker crates.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 /// Agent status
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum AgentStatus {
     Active,
@@ -33,7 +38,8 @@ impl From<&str> for AgentStatus {
 }
 
 /// Agent configuration for agentic loop
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Agent {
     pub id: Uuid,
     pub name: String,
