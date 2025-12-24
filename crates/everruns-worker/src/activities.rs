@@ -582,7 +582,10 @@ mod tests {
 
         // When no message controls, use agent config default
         let config_no_controls = build_agent_config_with_controls(&data, None);
-        assert_eq!(config_no_controls.reasoning_effort, Some("medium".to_string()));
+        assert_eq!(
+            config_no_controls.reasoning_effort,
+            Some("medium".to_string())
+        );
     }
 
     #[test]
