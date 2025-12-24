@@ -9,6 +9,7 @@ pub mod session;
 
 pub use agent::AgentService;
 pub use capability::CapabilityService;
+#[allow(unused_imports)]
 pub use event::EventService;
 pub use message::MessageService;
 pub use session::SessionService;

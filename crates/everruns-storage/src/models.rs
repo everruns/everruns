@@ -1,6 +1,7 @@
 // Database models (internal, may differ from public DTOs)
 
 use chrono::{DateTime, Utc};
+use everruns_core::{ContentPart, Controls};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -183,27 +184,33 @@ pub struct UpdateSession {
 // Message models (PRIMARY conversation data)
 // ============================================
 
+/// Message row from database
+/// Note: content, controls, and metadata are stored as JSONB in the database.
+/// The `sqlx(json)` attribute handles serialization/deserialization.
+/// For nullable JSONB columns, we use `Option<sqlx::types::Json<T>>` to handle NULL.
 #[derive(Debug, Clone, FromRow)]
 pub struct MessageRow {
     pub id: Uuid,
     pub session_id: Uuid,
     pub sequence: i32,
     pub role: String,
-    pub content: sqlx::types::JsonValue,
-    pub metadata: Option<sqlx::types::JsonValue>,
+    #[sqlx(json)]
+    pub content: Vec<ContentPart>,
+    pub controls: Option<sqlx::types::Json<Controls>>,
+    pub metadata: Option<sqlx::types::Json<std::collections::HashMap<String, serde_json::Value>>>,
     pub tags: Vec<String>,
-    pub tool_call_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
+/// Input for creating a message
 #[derive(Debug, Clone)]
-pub struct CreateMessage {
+pub struct CreateMessageRow {
     pub session_id: Uuid,
     pub role: String,
-    pub content: serde_json::Value,
-    pub metadata: Option<serde_json::Value>,
+    pub content: Vec<ContentPart>,
+    pub controls: Option<Controls>,
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
     pub tags: Vec<String>,
-    pub tool_call_id: Option<String>,
 }
 
 // ============================================
@@ -216,12 +223,12 @@ pub struct EventRow {
     pub session_id: Uuid,
     pub sequence: i32,
     pub event_type: String,
-    pub data: sqlx::types::JsonValue,
+    pub data: serde_json::Value,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateEvent {
+pub struct CreateEventRow {
     pub session_id: Uuid,
     pub event_type: String,
     pub data: serde_json::Value,

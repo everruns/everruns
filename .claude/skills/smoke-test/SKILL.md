@@ -124,13 +124,16 @@ Expected: Session object with matching ID
 MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
   -H "Content-Type: application/json" \
   -d '{
-    "role": "user",
-    "content": {"text": "Hello, world!"}
+    "message": {
+      "content": [{"type": "text", "text": "Hello, world!"}]
+    }
   }')
 MESSAGE_ID=$(echo $MESSAGE | jq -r '.id')
 echo "Message ID: $MESSAGE_ID"
 ```
 Expected: Valid UUID returned, role "user"
+
+**Note:** The message format uses `Vec<ContentPart>` for content. The `role` field defaults to `"user"` and can be omitted.
 
 #### 9. List Messages
 ```bash
@@ -150,8 +153,8 @@ curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID" | jq '.
 Expected: `"pending"` (workflow completed)
 
 ```bash
-# Check for assistant response
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data[] | select(.role == "assistant") | .content.text'
+# Check for assistant response (content is now an array of ContentPart)
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data[] | select(.role == "assistant") | .content[] | select(.type == "text") | .text'
 ```
 Expected: Non-empty assistant response text
 
@@ -356,12 +359,12 @@ SESSION_ID=$(echo $SESSION | jq -r '.id')
 # 3. Send message (this triggers the agent_workflow)
 curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
   -H "Content-Type: application/json" \
-  -d '{"role": "user", "content": {"text": "Hello!"}}'
+  -d '{"message": {"content": [{"type": "text", "text": "Hello!"}]}}'
 
 # 4. Wait and check for response
 sleep 10
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
-  jq '.data[] | select(.role == "assistant") | .content.text'
+  jq '.data[] | select(.role == "assistant") | .content[] | select(.type == "text") | .text'
 ```
 
 Expected: An assistant message with LLM-generated text

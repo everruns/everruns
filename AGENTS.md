@@ -107,6 +107,62 @@ These secrets are pre-configured in the environment and do not require manual se
 - Run `cargo fmt` and `cargo clippy -- -D warnings` for touched crates.
 - Prefer `axum`/`tower` for HTTP, `sqlx` for Postgres, `serde` for DTOs.
 
+### Code organization conventions
+
+The codebase follows a layered architecture with clear boundaries. See `specs/architecture.md` for full details.
+
+#### Layer separation
+
+1. **Storage Layer** (`everruns-storage`):
+   - Database models use `Row` suffix: `MessageRow`, `AgentRow`, `SessionRow`
+   - Create input structs: `CreateMessageRow`, `CreateAgentRow`
+   - Update structs: `UpdateAgent`, `UpdateSession`
+   - Repositories handle raw database operations only
+
+2. **Core Layer** (`everruns-core`):
+   - Shared domain types: `ContentPart`, `Controls`, `Message`, `ToolCall`
+   - Trait definitions: `MessageStore`, `EventEmitter`, `LlmProvider`
+   - Types are DB-agnostic and serializable
+   - OpenAPI support via feature flag: `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
+
+3. **API Layer** (`everruns-api`):
+   - API contracts collocated with routes (e.g., `messages.rs` has routes + DTOs)
+   - Services accept API DTOs, transform to storage types, store in database
+   - Input types: `InputMessage`, `InputContentPart` (for user-facing input)
+   - Request wrappers: `CreateMessageRequest`, `CreateAgentRequest`
+
+#### Naming conventions
+
+| Layer | Pattern | Example |
+|-------|---------|---------|
+| Storage Row | `{Entity}Row` | `MessageRow`, `AgentRow` |
+| Storage Create | `Create{Entity}Row` | `CreateMessageRow` |
+| Storage Update | `Update{Entity}` | `UpdateAgent` |
+| Core Domain | `{Entity}` | `Message`, `ContentPart` |
+| API Input | `Input{Entity}` | `InputMessage`, `InputContentPart` |
+| API Request | `{Action}{Entity}Request` | `CreateMessageRequest` |
+
+#### Type flow
+
+```
+API Request → API DTO → Service → Storage Row → Database
+                ↓
+         Core types (shared)
+```
+
+For example, creating a message:
+1. API receives `CreateMessageRequest` with `InputMessage`
+2. Service converts `InputContentPart[]` → `ContentPart[]` (core types)
+3. Service creates `CreateMessageRow` (storage type)
+4. Repository stores to database
+
+#### Content types
+
+Message content uses unified `Vec<ContentPart>` across all layers:
+- `ContentPart` - Full enum: text, image, tool_call, tool_result
+- `InputContentPart` - Restricted for user input: text, image only
+- `From<InputContentPart> for ContentPart` - Safe conversion
+
 ### API error handling
 
 - **Never expose internal error details to API clients.** Database errors, connection failures, and other internal errors must return a generic `500 Internal Server Error` with message "Internal server error".

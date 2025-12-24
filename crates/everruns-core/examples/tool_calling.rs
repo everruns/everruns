@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use everruns_core::{
     config::AgentConfig,
     memory::{InMemoryEventEmitter, InMemoryMessageStore},
-    message::{Message, MessageContent, MessageRole},
+    message::{Message, MessageRole},
     openai::OpenAIProtocolLlmProvider,
     tools::{Tool, ToolExecutionResult, ToolRegistry},
     AgentLoop,
@@ -211,21 +211,18 @@ fn print_conversation_steps(messages: &[Message]) {
     for (i, msg) in messages.iter().enumerate() {
         match msg.role {
             MessageRole::User => {
-                println!("    {}. [User] {}", i + 1, msg.content.to_llm_string());
+                println!("    {}. [User] {}", i + 1, msg.content_to_llm_string());
             }
             MessageRole::Assistant => {
-                let text = msg.content.to_llm_string();
-                if let Some(ref tool_calls) = msg.tool_calls {
-                    if !tool_calls.is_empty() {
-                        println!("    {}. [Assistant] Calling tool(s):", i + 1);
-                        for tc in tool_calls {
-                            println!("       -> {}({})", tc.name, tc.arguments);
-                        }
-                        if !text.is_empty() {
-                            println!("       Text: {}", text);
-                        }
-                    } else if !text.is_empty() {
-                        println!("    {}. [Assistant] {}", i + 1, text);
+                let text = msg.content_to_llm_string();
+                let tool_calls = msg.tool_calls();
+                if !tool_calls.is_empty() {
+                    println!("    {}. [Assistant] Calling tool(s):", i + 1);
+                    for tc in tool_calls {
+                        println!("       -> {}({})", tc.name, tc.arguments);
+                    }
+                    if !text.is_empty() {
+                        println!("       Text: {}", text);
                     }
                 } else if !text.is_empty() {
                     println!("    {}. [Assistant] {}", i + 1, text);
@@ -235,10 +232,10 @@ fn print_conversation_steps(messages: &[Message]) {
                 // Skip - already shown in assistant message
             }
             MessageRole::ToolResult => {
-                if let MessageContent::ToolResult { result, error } = &msg.content {
-                    if let Some(err) = error {
+                if let Some(tr) = msg.tool_result_content() {
+                    if let Some(ref err) = tr.error {
                         println!("    {}. [Tool Result] Error: {}", i + 1, err);
-                    } else if let Some(res) = result {
+                    } else if let Some(ref res) = tr.result {
                         println!("    {}. [Tool Result] {}", i + 1, res);
                     }
                 }

@@ -283,11 +283,26 @@ impl From<&crate::message::Message> for LlmMessage {
             crate::message::MessageRole::ToolResult => LlmMessageRole::Tool,
         };
 
+        // Convert tool calls from ContentPart format to ToolCall format
+        let tool_calls: Vec<ToolCall> = msg
+            .tool_calls()
+            .into_iter()
+            .map(|tc| ToolCall {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                arguments: tc.arguments.clone(),
+            })
+            .collect();
+
         LlmMessage {
             role,
-            content: LlmMessageContent::Text(msg.content.to_llm_string()),
-            tool_calls: msg.tool_calls.clone(),
-            tool_call_id: msg.tool_call_id.clone(),
+            content: LlmMessageContent::Text(msg.content_to_llm_string()),
+            tool_calls: if tool_calls.is_empty() {
+                None
+            } else {
+                Some(tool_calls)
+            },
+            tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
         }
     }
 }

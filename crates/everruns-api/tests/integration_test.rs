@@ -1,8 +1,8 @@
 // Integration tests for Everruns API (M2)
 // Run with: cargo test --test integration_test
 
-use everruns_contracts::{Agent, Event, LlmModel, LlmProvider, Message, Session};
-use serde_json::json;
+use everruns_contracts::{Agent, Event, LlmModel, LlmProvider, Session};
+use serde_json::{json, Value};
 
 const API_BASE_URL: &str = "http://localhost:9000";
 
@@ -123,12 +123,12 @@ async fn test_full_agent_session_workflow() {
         .expect("Failed to create message");
 
     assert_eq!(message_response.status(), 201);
-    let message: Message = message_response
+    let message: Value = message_response
         .json()
         .await
         .expect("Failed to parse message");
-    println!("Created message: {}", message.id);
-    assert_eq!(message.role.to_string(), "user");
+    println!("Created message: {}", message["id"]);
+    assert_eq!(message["role"], "user");
 
     // Step 7: List messages
     println!("\nStep 7: Listing messages...");
@@ -142,9 +142,10 @@ async fn test_full_agent_session_workflow() {
         .expect("Failed to list messages");
 
     assert_eq!(messages_response.status(), 200);
-    let response: serde_json::Value = messages_response.json().await.expect("Failed to parse");
-    let messages: Vec<Message> =
-        serde_json::from_value(response["data"].clone()).expect("Failed to parse messages");
+    let response: Value = messages_response.json().await.expect("Failed to parse");
+    let messages = response["data"]
+        .as_array()
+        .expect("Expected array of messages");
     println!("Found {} message(s)", messages.len());
     assert_eq!(messages.len(), 1);
 

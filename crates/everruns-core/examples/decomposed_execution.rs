@@ -211,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
             "  {}. [{:?}] {}",
             i + 1,
             msg.role,
-            truncate(&msg.content.to_llm_string(), 60)
+            truncate(&msg.content_to_llm_string(), 60)
         );
     }
 

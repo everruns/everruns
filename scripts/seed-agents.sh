@@ -10,6 +10,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 SEED_FILE="$PROJECT_ROOT/harness/seed-agents.yaml"
 
+# Load .env file if it exists (for API keys, etc.)
+if [ -f "$PROJECT_ROOT/.env" ]; then
+  set -a
+  source "$PROJECT_ROOT/.env"
+  set +a
+fi
+
 API_URL="${API_URL:-http://localhost:9000}"
 
 # Parse command line arguments

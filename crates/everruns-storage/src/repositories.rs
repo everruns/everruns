@@ -505,21 +505,26 @@ impl Database {
     // Messages (PRIMARY conversation data)
     // ============================================
 
-    pub async fn create_message(&self, input: CreateMessage) -> Result<MessageRow> {
+    pub async fn create_message(&self, input: CreateMessageRow) -> Result<MessageRow> {
+        // Serialize content, controls, and metadata to JSON for storage
+        let content_json = serde_json::to_value(&input.content)?;
+        let controls_json = input.controls.map(serde_json::to_value).transpose()?;
+        let metadata_json = input.metadata.map(serde_json::to_value).transpose()?;
+
         // Get next sequence number for this session
         let row = sqlx::query_as::<_, MessageRow>(
             r#"
-            INSERT INTO messages (session_id, sequence, role, content, metadata, tags, tool_call_id)
+            INSERT INTO messages (session_id, sequence, role, content, controls, metadata, tags)
             VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM messages WHERE session_id = $1), 1), $2, $3, $4, $5, $6)
-            RETURNING id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
+            RETURNING id, session_id, sequence, role, content, controls, metadata, tags, created_at
             "#,
         )
         .bind(input.session_id)
         .bind(&input.role)
-        .bind(&input.content)
-        .bind(&input.metadata)
+        .bind(&content_json)
+        .bind(&controls_json)
+        .bind(&metadata_json)
         .bind(&input.tags)
-        .bind(&input.tool_call_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -529,7 +534,7 @@ impl Database {
     pub async fn get_message(&self, id: Uuid) -> Result<Option<MessageRow>> {
         let row = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
+            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
             FROM messages
             WHERE id = $1
             "#,
@@ -544,7 +549,7 @@ impl Database {
     pub async fn list_messages(&self, session_id: Uuid) -> Result<Vec<MessageRow>> {
         let rows = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
+            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
             FROM messages
             WHERE session_id = $1
             ORDER BY sequence ASC
@@ -565,7 +570,7 @@ impl Database {
     ) -> Result<Vec<MessageRow>> {
         let rows = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, metadata, tags, tool_call_id, created_at
+            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
             FROM messages
             WHERE session_id = $1 AND role = $2
             ORDER BY sequence ASC
@@ -583,7 +588,7 @@ impl Database {
     // Events (SSE notification stream for UI)
     // ============================================
 
-    pub async fn create_event(&self, input: CreateEvent) -> Result<EventRow> {
+    pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
         // Get next sequence number for this session
         let row = sqlx::query_as::<_, EventRow>(
             r#"

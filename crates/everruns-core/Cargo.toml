@@ -35,6 +35,9 @@ chrono.workspace = true
 # Tracing
 tracing.workspace = true
 
+# OpenAPI schema generation (optional, enabled by everruns-api)
+utoipa = { workspace = true, optional = true }
+
 # Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
 # AG-UI events and tool types are defined locally in this crate
 
@@ -42,6 +45,10 @@ tracing.workspace = true
 # Note: We need "default" features for system proxy detection from environment variables
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
 eventsource-stream = "0.2"
+
+[features]
+default = []
+openapi = ["utoipa"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

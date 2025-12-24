@@ -93,3 +93,64 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 1. **Local Development**: Docker Compose in `harness/` for Postgres, Temporal, Temporal UI
 2. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
 3. **License Compliance**: cargo-deny for dependency license checking
+
+### Code Organization Conventions
+
+#### Layer Separation
+
+1. **Storage Layer** (`everruns-storage`):
+   - Database models use `Row` suffix (e.g., `MessageRow`, `AgentRow`, `SessionRow`)
+   - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateMessageRow`)
+   - Update structs use `Update` prefix (e.g., `UpdateAgent`)
+   - Repositories handle raw database operations only
+
+2. **Core Layer** (`everruns-core`):
+   - Contains shared domain types used across layers (e.g., `ContentPart`, `Controls`, `Message`)
+   - Provides trait definitions (`MessageStore`, `EventEmitter`, `LlmProvider`, `ToolExecutor`)
+   - Domain types are DB-agnostic and serializable
+   - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
+
+3. **API Layer** (`everruns-api`):
+   - API contracts (DTOs) are collocated with their routes
+   - API types can reference and re-export core types
+   - Services accept API DTOs, transform to storage layer types, and store in database
+   - Input types for user-facing APIs use `Input` prefix (e.g., `InputMessage`, `InputContentPart`)
+   - Request/response wrappers use `Request`/`Response` suffix
+
+#### Type Flow Example
+
+```
+API Request → API DTO → Service → Storage Row → Database
+                ↓
+         Core types (shared)
+```
+
+For messages:
+- `CreateMessageRequest` (API) → contains `InputMessage` with `InputContentPart[]`
+- Service converts `InputContentPart` → `ContentPart` (core type)
+- Service creates `CreateMessageRow` (storage) with `Vec<ContentPart>`
+- Repository stores to database
+
+#### Naming Conventions
+
+| Layer | Pattern | Example |
+|-------|---------|---------|
+| Storage Row | `{Entity}Row` | `MessageRow`, `AgentRow` |
+| Storage Create | `Create{Entity}Row` | `CreateMessageRow` |
+| Storage Update | `Update{Entity}` | `UpdateAgent` |
+| Core Domain | `{Entity}` | `Message`, `ContentPart` |
+| API Input | `Input{Entity}` | `InputMessage`, `InputContentPart` |
+| API Request | `{Action}{Entity}Request` | `CreateMessageRequest` |
+
+#### Content Types
+
+Message content uses a unified `Vec<ContentPart>` representation across all layers:
+
+- `ContentPart` - Core enum for all content types (text, image, tool_call, tool_result)
+- `InputContentPart` - Restricted enum for user input (text, image only)
+- `From<InputContentPart> for ContentPart` - Safe conversion from input to full type
+
+This ensures:
+- Users can only send allowed content types (text, images)
+- System can store all content types (including tool calls, results)
+- No conversion needed between storage and core layers

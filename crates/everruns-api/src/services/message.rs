@@ -1,34 +1,99 @@
-// Message service for business logic (M2)
+// Message service for business logic
 // Messages are the PRIMARY conversation data store
 //
-// The new message contract uses ContentPart arrays for flexible content types.
-// This service handles conversion between the API contract and database storage.
+// The service accepts API entities (CreateMessageRequest) and handles:
+// - Conversion to database entities
+// - Event emission for SSE notifications
+// - Workflow triggering for user messages
 
+use crate::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use anyhow::Result;
-use everruns_contracts::{ContentPart, Message, MessageRole};
-use everruns_storage::{models::CreateMessage, Database};
-use std::collections::HashMap;
+use everruns_storage::{models::CreateEventRow, models::CreateMessageRow, Database};
+use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct MessageService {
     db: Arc<Database>,
+    runner: Arc<dyn AgentRunner>,
 }
 
 impl MessageService {
-    pub fn new(db: Arc<Database>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
+        Self { db, runner }
     }
 
-    pub async fn create(&self, input: CreateMessage) -> Result<Message> {
+    /// Create a user message from API request
+    ///
+    /// Only user messages can be created via the API. This method:
+    /// - Converts input content to storage format
+    /// - Persists the message to the database
+    /// - Emits an SSE event for the user message
+    /// - Triggers workflow execution for the session
+    pub async fn create(
+        &self,
+        agent_id: Uuid,
+        session_id: Uuid,
+        req: CreateMessageRequest,
+    ) -> Result<Message> {
+        // Convert InputContentPart array to ContentPart array for storage
+        let content: Vec<ContentPart> = req
+            .message
+            .content
+            .into_iter()
+            .map(ContentPart::from)
+            .collect();
+
+        // Get tags from request (empty if not provided)
+        let tags = req.tags.unwrap_or_default();
+
+        // API only creates user messages
+        let input = CreateMessageRow {
+            session_id,
+            role: MessageRole::User.to_string(),
+            content,
+            controls: req.controls,
+            metadata: req.metadata,
+            tags,
+        };
+
         let row = self.db.create_message(input).await?;
-        Ok(Self::row_to_message(row))
+        let message = Self::row_to_message(row);
+
+        // Emit event and start workflow for user message
+        self.emit_user_message_event(session_id, &message).await;
+        self.start_workflow(agent_id, session_id).await;
+
+        Ok(message)
     }
 
-    #[allow(dead_code)] // Will be used by future endpoints
-    pub async fn get(&self, id: Uuid) -> Result<Option<Message>> {
-        let row = self.db.get_message(id).await?;
-        Ok(row.map(Self::row_to_message))
+    /// Emit SSE event for user message
+    async fn emit_user_message_event(&self, session_id: Uuid, message: &Message) {
+        let event_input = CreateEventRow {
+            session_id,
+            event_type: "message.user".to_string(),
+            data: serde_json::json!({
+                "message_id": message.id,
+                "content": message.content
+            }),
+        };
+        if let Err(e) = self.db.create_event(event_input).await {
+            tracing::warn!("Failed to emit user message event: {}", e);
+        }
+    }
+
+    /// Start workflow execution for the session
+    async fn start_workflow(&self, agent_id: Uuid, session_id: Uuid) {
+        if let Err(e) = self
+            .runner
+            .start_run(session_id, agent_id, session_id)
+            .await
+        {
+            tracing::error!("Failed to start session workflow: {}", e);
+            // Don't fail the request, message is already persisted
+        } else {
+            tracing::info!(session_id = %session_id, "Session workflow started");
+        }
     }
 
     pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {
@@ -38,162 +103,15 @@ impl MessageService {
 
     /// Convert database row to API Message
     fn row_to_message(row: everruns_storage::MessageRow) -> Message {
-        let role = MessageRole::from(row.role.as_str());
-        let content = Self::json_to_content_parts(&role, &row.content);
-        let metadata = row
-            .metadata
-            .and_then(|m| serde_json::from_value::<HashMap<String, serde_json::Value>>(m).ok());
-
         Message {
             id: row.id,
             session_id: row.session_id,
             sequence: row.sequence,
-            role,
-            content,
-            metadata,
-            tool_call_id: row.tool_call_id,
+            role: MessageRole::from(row.role.as_str()),
+            content: row.content,
+            controls: row.controls.map(|j| j.0),
+            metadata: row.metadata.map(|j| j.0),
             created_at: row.created_at,
-        }
-    }
-
-    /// Convert stored JSON content to ContentPart array
-    fn json_to_content_parts(role: &MessageRole, content: &serde_json::Value) -> Vec<ContentPart> {
-        match role {
-            MessageRole::User | MessageRole::Assistant | MessageRole::System => {
-                // Text content: { "text": "..." }
-                let text = content
-                    .get("text")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("")
-                    .to_string();
-
-                let mut parts = vec![ContentPart::Text { text }];
-
-                // For assistant messages, also include any tool_calls
-                if *role == MessageRole::Assistant {
-                    if let Some(tool_calls) = content.get("tool_calls").and_then(|tc| tc.as_array())
-                    {
-                        for tc in tool_calls {
-                            if let (Some(id), Some(name), Some(args)) = (
-                                tc.get("id").and_then(|v| v.as_str()),
-                                tc.get("name").and_then(|v| v.as_str()),
-                                tc.get("arguments"),
-                            ) {
-                                parts.push(ContentPart::ToolCall {
-                                    id: id.to_string(),
-                                    name: name.to_string(),
-                                    arguments: args.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-
-                parts
-            }
-            MessageRole::ToolCall => {
-                // Tool call content: { "id": "...", "name": "...", "arguments": {...} }
-                let id = content
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let name = content
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let arguments = content
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or(serde_json::json!({}));
-
-                vec![ContentPart::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                }]
-            }
-            MessageRole::ToolResult => {
-                // Tool result content: { "result": {...}, "error": "..." }
-                let result = content.get("result").cloned();
-                let error = content
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-
-                vec![ContentPart::ToolResult { result, error }]
-            }
-        }
-    }
-}
-
-/// Convert ContentPart array to stored JSON content
-pub fn content_parts_to_json(role: &MessageRole, parts: &[ContentPart]) -> serde_json::Value {
-    match role {
-        MessageRole::User | MessageRole::Assistant | MessageRole::System => {
-            // Collect text parts and tool call parts
-            let mut texts = Vec::new();
-            let mut tool_calls = Vec::new();
-
-            for part in parts {
-                match part {
-                    ContentPart::Text { text } => texts.push(text.clone()),
-                    ContentPart::ToolCall {
-                        id,
-                        name,
-                        arguments,
-                    } => {
-                        tool_calls.push(serde_json::json!({
-                            "id": id,
-                            "name": name,
-                            "arguments": arguments
-                        }));
-                    }
-                    _ => {} // Skip image and tool_result in user/assistant/system messages
-                }
-            }
-
-            let combined_text = texts.join("\n");
-
-            if tool_calls.is_empty() {
-                serde_json::json!({ "text": combined_text })
-            } else {
-                serde_json::json!({
-                    "text": combined_text,
-                    "tool_calls": tool_calls
-                })
-            }
-        }
-        MessageRole::ToolCall => {
-            // Find the first tool call part
-            for part in parts {
-                if let ContentPart::ToolCall {
-                    id,
-                    name,
-                    arguments,
-                } = part
-                {
-                    return serde_json::json!({
-                        "id": id,
-                        "name": name,
-                        "arguments": arguments
-                    });
-                }
-            }
-            serde_json::json!({})
-        }
-        MessageRole::ToolResult => {
-            // Find the first tool result part
-            for part in parts {
-                if let ContentPart::ToolResult { result, error } = part {
-                    return serde_json::json!({
-                        "result": result,
-                        "error": error
-                    });
-                }
-            }
-            serde_json::json!({})
         }
     }
 }
