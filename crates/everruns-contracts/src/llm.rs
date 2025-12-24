@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 // Re-export model profile types from core
-pub use everruns_core::model_profile_types::{ModelProfile, ReasoningEffortConfig, ReasoningLevel};
+pub use everruns_core::model_profiles::{ModelProfile, ReasoningEffortConfig, ReasoningLevel};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]

@@ -18,7 +18,7 @@
 // Runtime types (AG-UI protocol events, tool definitions, capability types, model profiles)
 pub mod ag_ui;
 pub mod capability_types;
-pub mod model_profile_types;
+pub mod model_profiles;
 pub mod tool_types;
 
 pub mod atoms;
@@ -41,10 +41,6 @@ pub mod memory;
 pub mod anthropic;
 pub mod openai;
 pub mod provider_factory;
-
-// Known model profiles (hardcoded capabilities for common models)
-// Based on data from https://models.dev/api.json
-pub mod known_model_profiles;
 
 // Re-exports for convenience
 pub use config::AgentConfig;
@@ -100,13 +96,13 @@ pub use ag_ui::{
 // Tool types (runtime types defined in this crate)
 pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
 
-// Model profile types (runtime types defined in this crate)
-pub use model_profile_types::{ModelProfile, ReasoningEffortConfig, ReasoningLevel};
+// Model profile types and known profiles (runtime types defined in this crate)
+pub use model_profiles::{
+    get_effective_model_profile, get_known_model_profile, ModelProfile, ReasoningEffortConfig,
+    ReasoningLevel,
+};
 
 // Provider factory re-exports
 pub use provider_factory::{create_provider, BoxedLlmProvider, ProviderConfig, ProviderType};
-
-// Known model profiles re-exports
-pub use known_model_profiles::{get_effective_model_profile, get_known_model_profile};
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module

@@ -10,6 +10,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
+use tracing::debug;
 
 use crate::error::{AgentLoopError, Result};
 use crate::llm::{
@@ -185,6 +186,12 @@ impl LlmProvider for OpenAIProtocolLlmProvider {
             tools,
             reasoning_effort: config.reasoning_effort.clone(),
         };
+
+        debug!(
+            api_url = %self.api_url,
+            request = %serde_json::to_string_pretty(&request).unwrap_or_else(|_| format!("{:?}", request)),
+            "Sending request to OpenAI"
+        );
 
         let response = self
             .client

@@ -20,7 +20,7 @@ use crate::error::{AgentLoopError, Result};
 use crate::llm::{
     LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider, LlmStreamEvent,
 };
-use crate::message::{Message, MessageRole};
+use crate::message::Message;
 use crate::traits::{MessageStore, ToolExecutor};
 
 // ============================================================================
@@ -239,11 +239,7 @@ where
             });
         }
 
-        // Add conversation messages (skip tool_call messages - they're in assistant messages)
         for msg in &messages {
-            if msg.role == MessageRole::ToolCall {
-                continue;
-            }
             llm_messages.push(msg.into());
         }
 
