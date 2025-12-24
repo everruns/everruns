@@ -164,9 +164,6 @@ pub struct MessageInput {
     /// Message-level metadata (locale, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
-    /// Tool call ID (for tool_result messages)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>,
 }
 
 /// Request to create a message
@@ -194,7 +191,6 @@ impl CreateMessageRequest {
                 role,
                 content: vec![ContentPart::text(text)],
                 metadata: None,
-                tool_call_id: None,
             },
             controls: None,
             metadata: None,
@@ -296,7 +292,7 @@ pub async fn create_message(
         content,
         metadata,
         tags,
-        tool_call_id: req.message.tool_call_id,
+        tool_call_id: None, // Tool call ID is derived from content for tool_result messages
     };
 
     let message = state.message_service.create(input).await.map_err(|e| {
