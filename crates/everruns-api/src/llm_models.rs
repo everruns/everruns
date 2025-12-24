@@ -7,9 +7,9 @@ use axum::{
     Json, Router,
 };
 use everruns_contracts::{
-    get_effective_model_profile, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType,
-    ModelProfile,
+    LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType, ModelProfile,
 };
+use everruns_core::get_effective_model_profile;
 use everruns_storage::{
     models::{CreateLlmModel, UpdateLlmModel},
     Database,

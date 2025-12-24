@@ -9,7 +9,7 @@
 //
 // When a model has a profile in the database, it takes precedence over these defaults.
 
-use crate::llm::{ModelProfile, ReasoningEffortConfig, ReasoningLevel};
+use crate::model_profile_types::{ModelProfile, ReasoningEffortConfig, ReasoningLevel};
 
 /// Get a known model profile by model ID.
 ///

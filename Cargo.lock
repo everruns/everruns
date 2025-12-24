@@ -841,6 +841,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "tracing-subscriber 0.3.22",
+ "utoipa",
  "uuid 1.19.0",
 ]
 

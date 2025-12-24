@@ -2,8 +2,8 @@
 # Decision: Keep the loop logic DB-agnostic via traits (EventEmitter, MessageStore, ToolExecutor)
 # Decision: Use async_trait for trait definitions to support async operations
 # Decision: AG-UI events and tool types are defined here (runtime types)
-# Decision: This crate has NO dependency on storage/contracts (purely runtime abstractions)
 # Decision: Use OpenAI Protocol as the base for LLM Provider abstractions
+# Decision: Depends on contracts for shared DTOs (ModelProfile, etc.) but NOT on storage
 
 [package]
 name = "everruns-core"
@@ -35,8 +35,8 @@ chrono.workspace = true
 # Tracing
 tracing.workspace = true
 
-# Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
-# AG-UI events and tool types are defined locally in this crate
+# API documentation (for ToSchema on shared types)
+utoipa.workspace = true
 
 # OpenAI Protocol provider
 # Note: We need "default" features for system proxy detection from environment variables
