@@ -8,7 +8,7 @@
 
 use anyhow::Result;
 use everruns_contracts::Event;
-use everruns_storage::{models::CreateEvent, Database};
+use everruns_storage::{models::CreateEventRow, Database};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -21,7 +21,7 @@ impl EventService {
         Self { db }
     }
 
-    pub async fn create(&self, input: CreateEvent) -> Result<Event> {
+    pub async fn create(&self, input: CreateEventRow) -> Result<Event> {
         let row = self.db.create_event(input).await?;
         Ok(Self::row_to_event(row))
     }

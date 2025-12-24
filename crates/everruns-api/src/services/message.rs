@@ -8,7 +8,7 @@
 
 use crate::messages::{ContentPart, CreateMessageRequest, InputContentPart, Message, MessageRole};
 use anyhow::Result;
-use everruns_storage::{models::CreateEvent, models::CreateMessage, Database};
+use everruns_storage::{models::CreateEventRow, models::CreateMessageRow, Database};
 use everruns_worker::AgentRunner;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -41,7 +41,7 @@ impl MessageService {
         // Get tags from request (empty if not provided)
         let tags = req.tags.unwrap_or_default();
 
-        let input = CreateMessage {
+        let input = CreateMessageRow {
             session_id,
             role: req.message.role.to_string(),
             content,
@@ -64,7 +64,7 @@ impl MessageService {
 
     /// Emit SSE event for user message
     async fn emit_user_message_event(&self, session_id: Uuid, message: &Message) {
-        let event_input = CreateEvent {
+        let event_input = CreateEventRow {
             session_id,
             event_type: "message.user".to_string(),
             data: serde_json::json!({

@@ -197,7 +197,7 @@ pub struct MessageRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateMessage {
+pub struct CreateMessageRow {
     pub session_id: Uuid,
     pub role: String,
     pub content: serde_json::Value,
@@ -221,7 +221,7 @@ pub struct EventRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateEvent {
+pub struct CreateEventRow {
     pub session_id: Uuid,
     pub event_type: String,
     pub data: serde_json::Value,

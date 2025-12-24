@@ -13,7 +13,7 @@ use everruns_core::{
 };
 use uuid::Uuid;
 
-use crate::models::CreateMessage;
+use crate::models::CreateMessageRow;
 use crate::repositories::Database;
 
 // ============================================================================
@@ -142,7 +142,7 @@ impl MessageStore for DbMessageStore {
         let role = message.role.to_string();
         let content = serialize_message_content(&message);
 
-        let create_msg = CreateMessage {
+        let create_msg = CreateMessageRow {
             session_id,
             role,
             content,

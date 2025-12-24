@@ -505,7 +505,7 @@ impl Database {
     // Messages (PRIMARY conversation data)
     // ============================================
 
-    pub async fn create_message(&self, input: CreateMessage) -> Result<MessageRow> {
+    pub async fn create_message(&self, input: CreateMessageRow) -> Result<MessageRow> {
         // Get next sequence number for this session
         let row = sqlx::query_as::<_, MessageRow>(
             r#"
@@ -583,7 +583,7 @@ impl Database {
     // Events (SSE notification stream for UI)
     // ============================================
 
-    pub async fn create_event(&self, input: CreateEvent) -> Result<EventRow> {
+    pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
         // Get next sequence number for this session
         let row = sqlx::query_as::<_, EventRow>(
             r#"
