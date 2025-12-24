@@ -197,7 +197,6 @@ pub struct MessageRow {
     pub content: Vec<ContentPart>,
     pub metadata: Option<serde_json::Value>,
     pub tags: Vec<String>,
-    pub tool_call_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -209,7 +208,6 @@ pub struct CreateMessageRow {
     pub content: Vec<ContentPart>,
     pub metadata: Option<serde_json::Value>,
     pub tags: Vec<String>,
-    pub tool_call_id: Option<String>,
 }
 
 // ============================================

@@ -35,16 +35,12 @@ impl DbMessageStore {
 #[async_trait]
 impl MessageStore for DbMessageStore {
     async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
-        // Extract tool_call_id from content for database column (for queryability)
-        let tool_call_id = message.tool_call_id().map(|s| s.to_string());
-
         let create_msg = CreateMessageRow {
             session_id,
             role: message.role.to_string(),
             content: message.content, // Direct pass-through - both are Vec<ContentPart>
             metadata: None,           // Core messages don't have metadata currently
             tags: vec![],             // Core messages don't have tags currently
-            tool_call_id,             // Extracted from content for backwards compatibility
         };
 
         self.db

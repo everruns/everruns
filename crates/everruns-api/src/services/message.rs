@@ -50,7 +50,6 @@ impl MessageService {
             content,
             metadata,
             tags,
-            tool_call_id: None, // Tool call ID is derived from content for tool_result messages
         };
 
         let row = self.db.create_message(input).await?;
@@ -119,7 +118,6 @@ impl MessageService {
             role,
             content: row.content, // Already Vec<ContentPart> from database
             metadata,
-            tool_call_id: row.tool_call_id,
             created_at: row.created_at,
         }
     }

@@ -107,8 +107,6 @@ pub struct Message {
     /// Message-level metadata (locale, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
