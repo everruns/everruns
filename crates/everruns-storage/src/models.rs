@@ -1,7 +1,7 @@
 // Database models (internal, may differ from public DTOs)
 
 use chrono::{DateTime, Utc};
-use everruns_core::ContentPart;
+use everruns_core::{ContentPart, Controls};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -185,7 +185,7 @@ pub struct UpdateSession {
 // ============================================
 
 /// Message row from database
-/// Note: content and metadata are stored as JSONB in the database.
+/// Note: content, controls, and metadata are stored as JSONB in the database.
 /// The `sqlx(json)` attribute handles serialization/deserialization.
 #[derive(Debug, Clone, FromRow)]
 pub struct MessageRow {
@@ -195,6 +195,8 @@ pub struct MessageRow {
     pub role: String,
     #[sqlx(json)]
     pub content: Vec<ContentPart>,
+    #[sqlx(json)]
+    pub controls: Option<Controls>,
     #[sqlx(json)]
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
     pub tags: Vec<String>,
@@ -207,6 +209,7 @@ pub struct CreateMessageRow {
     pub session_id: Uuid,
     pub role: String,
     pub content: Vec<ContentPart>,
+    pub controls: Option<Controls>,
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
     pub tags: Vec<String>,
 }

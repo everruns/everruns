@@ -39,8 +39,9 @@ impl MessageStore for DbMessageStore {
             session_id,
             role: message.role.to_string(),
             content: message.content, // Direct pass-through - both are Vec<ContentPart>
-            metadata: None,           // Core messages don't have metadata currently
-            tags: vec![],             // Core messages don't have tags currently
+            controls: message.controls,
+            metadata: message.metadata,
+            tags: vec![], // Core messages don't have tags currently
         };
 
         self.db
@@ -65,6 +66,8 @@ impl MessageStore for DbMessageStore {
                 id: msg.id,
                 role: MessageRole::from(msg.role.as_str()),
                 content: msg.content, // Direct pass-through - tool_call_id is in ToolResultContentPart
+                controls: msg.controls,
+                metadata: msg.metadata,
                 created_at: msg.created_at,
             })
             .collect();

@@ -6,10 +6,7 @@
 // - Event emission for SSE notifications
 // - Workflow triggering for user messages
 
-use crate::messages::{
-    ContentPart, CreateMessageRequest, ImageContentPart, InputContentPart, Message, MessageRole,
-    TextContentPart,
-};
+use crate::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use anyhow::Result;
 use everruns_storage::{models::CreateEventRow, models::CreateMessageRow, Database};
 use everruns_worker::AgentRunner;
@@ -40,7 +37,12 @@ impl MessageService {
         req: CreateMessageRequest,
     ) -> Result<Message> {
         // Convert InputContentPart array to ContentPart array for storage
-        let content = input_content_parts_to_content_parts(&req.message.content);
+        let content: Vec<ContentPart> = req
+            .message
+            .content
+            .into_iter()
+            .map(ContentPart::from)
+            .collect();
 
         // Get tags from request (empty if not provided)
         let tags = req.tags.unwrap_or_default();
@@ -50,6 +52,7 @@ impl MessageService {
             session_id,
             role: MessageRole::User.to_string(),
             content,
+            controls: req.controls,
             metadata: req.metadata,
             tags,
         };
@@ -106,25 +109,9 @@ impl MessageService {
             sequence: row.sequence,
             role: MessageRole::from(row.role.as_str()),
             content: row.content,
+            controls: row.controls,
             metadata: row.metadata,
             created_at: row.created_at,
         }
     }
-}
-
-/// Convert InputContentPart array to ContentPart array (for storage)
-fn input_content_parts_to_content_parts(parts: &[InputContentPart]) -> Vec<ContentPart> {
-    parts
-        .iter()
-        .map(|part| match part {
-            InputContentPart::Text(t) => ContentPart::Text(TextContentPart {
-                text: t.text.clone(),
-            }),
-            InputContentPart::Image(i) => ContentPart::Image(ImageContentPart {
-                url: i.url.clone(),
-                base64: i.base64.clone(),
-                media_type: i.media_type.clone(),
-            }),
-        })
-        .collect()
 }

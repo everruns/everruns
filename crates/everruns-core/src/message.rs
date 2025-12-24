@@ -54,6 +54,32 @@ impl From<&str> for MessageRole {
     }
 }
 
+// ============================================
+// Controls (runtime options for message processing)
+// ============================================
+
+/// Reasoning configuration for the model
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ReasoningConfig {
+    /// Effort level for reasoning (low, medium, high)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+}
+
+/// Runtime controls for message processing
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct Controls {
+    /// Model ID to use for this message (format: "provider/model-name")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+
+    /// Reasoning configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningConfig>,
+}
+
 /// A message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -65,6 +91,14 @@ pub struct Message {
 
     /// Message content as array of content parts (text, images, tool calls, tool results)
     pub content: Vec<ContentPart>,
+
+    /// Runtime controls (model, reasoning, etc.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Controls>,
+
+    /// Message-level metadata
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
 
     /// Timestamp when the message was created
     pub created_at: DateTime<Utc>,
@@ -303,6 +337,15 @@ pub enum InputContentPart {
     Image(ImageContentPart),
 }
 
+impl From<InputContentPart> for ContentPart {
+    fn from(input: InputContentPart) -> Self {
+        match input {
+            InputContentPart::Text(t) => ContentPart::Text(t),
+            InputContentPart::Image(i) => ContentPart::Image(i),
+        }
+    }
+}
+
 impl InputContentPart {
     /// Create a text content part
     pub fn text(text: impl Into<String>) -> Self {
@@ -338,6 +381,8 @@ impl Message {
             id: Uuid::now_v7(),
             role: MessageRole::User,
             content: vec![ContentPart::text(content)],
+            controls: None,
+            metadata: None,
             created_at: Utc::now(),
         }
     }
@@ -348,6 +393,8 @@ impl Message {
             id: Uuid::now_v7(),
             role: MessageRole::Assistant,
             content: vec![ContentPart::text(content)],
+            controls: None,
+            metadata: None,
             created_at: Utc::now(),
         }
     }
@@ -372,6 +419,8 @@ impl Message {
             id: Uuid::now_v7(),
             role: MessageRole::Assistant,
             content: parts,
+            controls: None,
+            metadata: None,
             created_at: Utc::now(),
         }
     }
@@ -382,6 +431,8 @@ impl Message {
             id: Uuid::now_v7(),
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
+            controls: None,
+            metadata: None,
             created_at: Utc::now(),
         }
     }
@@ -396,6 +447,8 @@ impl Message {
                 name: tool_call.name.clone(),
                 arguments: tool_call.arguments.clone(),
             })],
+            controls: None,
+            metadata: None,
             created_at: Utc::now(),
         }
     }
@@ -415,6 +468,8 @@ impl Message {
                 result,
                 error,
             ))],
+            controls: None,
+            metadata: None,
             created_at: Utc::now(),
         }
     }

@@ -24,8 +24,8 @@ use crate::services::{MessageService, SessionService};
 // Re-export core types with ToSchema for OpenAPI
 #[allow(unused_imports)]
 pub use everruns_core::{
-    ContentPart, ContentType, ImageContentPart, InputContentPart, TextContentPart,
-    ToolCallContentPart, ToolResultContentPart,
+    ContentPart, ContentType, Controls, ImageContentPart, InputContentPart, ReasoningConfig,
+    TextContentPart, ToolCallContentPart, ToolResultContentPart,
 };
 
 // ============================================
@@ -67,34 +67,6 @@ impl From<&str> for MessageRole {
     }
 }
 
-/// Reasoning configuration for the model
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ReasoningConfig {
-    /// Effort level for reasoning (low, medium, high)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub effort: Option<String>,
-}
-
-/// Runtime controls for message processing
-#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
-pub struct Controls {
-    /// Model ID to use for this message (format: "provider/model-name")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<String>,
-
-    /// Reasoning configuration
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<ReasoningConfig>,
-
-    /// Maximum tokens to generate
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<i32>,
-
-    /// Temperature for generation
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f32>,
-}
-
 /// Message - primary conversation data (API response)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Message {
@@ -104,6 +76,9 @@ pub struct Message {
     pub role: MessageRole,
     /// Array of content parts
     pub content: Vec<ContentPart>,
+    /// Runtime controls (model, reasoning, etc.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Controls>,
     /// Message-level metadata (locale, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
