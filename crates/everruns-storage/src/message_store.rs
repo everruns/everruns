@@ -1,11 +1,10 @@
-// Database-backed adapters for core traits
+// Database-backed MessageStore implementation
 //
-// These implementations connect the core agent-loop abstraction to the
-// actual database used in production.
+// This module implements the core MessageStore trait for persisting
+// conversation messages to the database during workflow execution.
 //
 // Note: The database stores content as JSONB with a flexible schema.
 // The core Message type uses MessageContent enum for type safety.
-// The API contracts use ContentPart array for the new message contract.
 
 use async_trait::async_trait;
 use everruns_core::{
