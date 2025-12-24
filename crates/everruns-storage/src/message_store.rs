@@ -35,9 +35,14 @@ impl DbMessageStore {
 #[async_trait]
 impl MessageStore for DbMessageStore {
     async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
+        // Messages created by atoms (assistant, tool_call, tool_result) are immediately processed
+        // User messages are created via API with "pending" status and marked processed by workflow
+        let status = "processed".to_string();
+
         let create_msg = CreateMessageRow {
             session_id,
             role: message.role.to_string(),
+            status,
             content: message.content, // Direct pass-through - both are Vec<ContentPart>
             controls: message.controls,
             metadata: message.metadata,

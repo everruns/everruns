@@ -36,6 +36,31 @@ pub struct LoadAgentInput {
     pub agent_id: String,
 }
 
+/// Input for process-pending-messages activity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessPendingMessagesInput {
+    /// Session ID (UUID string)
+    pub session_id: String,
+}
+
+/// Data for a pending message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingMessageData {
+    /// Message ID
+    pub id: String,
+    /// Message content parts
+    pub content: Vec<serde_json::Value>,
+}
+
+/// Output from process-pending-messages activity
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProcessPendingMessagesOutput {
+    /// Number of messages processed
+    pub messages_processed: usize,
+    /// IDs of messages that were processed
+    pub message_ids: Vec<String>,
+}
+
 /// Input for call-model activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallModelInput {
@@ -366,6 +391,87 @@ pub async fn execute_tool_activity(
     })
 }
 
+/// Process pending user messages
+///
+/// This activity:
+/// 1. Loads pending messages from the database
+/// 2. Emits SSE events for each message (message.user)
+/// 3. Marks them as processed
+/// 4. Returns the count and IDs of processed messages
+pub async fn process_pending_messages_activity(
+    db: Database,
+    input: ProcessPendingMessagesInput,
+) -> Result<ProcessPendingMessagesOutput> {
+    use everruns_storage::models::CreateEventRow;
+
+    let session_id: Uuid = input
+        .session_id
+        .parse()
+        .context("Invalid session_id UUID")?;
+
+    tracing::info!(session_id = %session_id, "Processing pending messages");
+
+    // Load pending messages from database
+    let pending_messages = db
+        .list_pending_messages(session_id)
+        .await
+        .context("Failed to load pending messages")?;
+
+    if pending_messages.is_empty() {
+        tracing::info!(session_id = %session_id, "No pending messages to process");
+        return Ok(ProcessPendingMessagesOutput::default());
+    }
+
+    tracing::info!(
+        session_id = %session_id,
+        message_count = pending_messages.len(),
+        "Found pending messages to process"
+    );
+
+    let mut message_ids = Vec::with_capacity(pending_messages.len());
+
+    // Emit SSE events for each pending message and collect IDs
+    for msg in &pending_messages {
+        // Emit message.user event
+        let event_input = CreateEventRow {
+            session_id,
+            event_type: "message.user".to_string(),
+            data: serde_json::json!({
+                "message_id": msg.id.to_string(),
+                "content": msg.content
+            }),
+        };
+
+        if let Err(e) = db.create_event(event_input).await {
+            tracing::warn!(
+                message_id = %msg.id,
+                error = %e,
+                "Failed to emit user message event"
+            );
+        }
+
+        message_ids.push(msg.id.to_string());
+    }
+
+    // Mark all messages as processed
+    let ids: Vec<Uuid> = pending_messages.iter().map(|m| m.id).collect();
+    let processed_count = db
+        .mark_messages_processed(&ids)
+        .await
+        .context("Failed to mark messages as processed")?;
+
+    tracing::info!(
+        session_id = %session_id,
+        processed_count = processed_count,
+        "Processed pending messages"
+    );
+
+    Ok(ProcessPendingMessagesOutput {
+        messages_processed: processed_count as usize,
+        message_ids,
+    })
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -419,6 +525,7 @@ pub mod activity_types {
     pub const CALL_MODEL: &str = "call-model";
     pub const EXECUTE_TOOL: &str = "execute-tool";
     pub const LOAD_AGENT: &str = "load-agent";
+    pub const PROCESS_PENDING_MESSAGES: &str = "process-pending-messages";
 }
 
 // ============================================================================

@@ -122,6 +122,12 @@ pub enum WorkflowState {
     /// Loading agent configuration
     LoadingAgent { pending_activity: String },
 
+    /// Processing pending user messages (emit events, mark as processed)
+    ProcessingPendingMessages {
+        pending_activity: String,
+        agent_config: AgentConfigData,
+    },
+
     /// Waiting for LLM response (atoms load messages from DB)
     CallingModel {
         pending_activity: String,
@@ -153,6 +159,7 @@ pub enum WorkflowState {
 
 mod activity_names {
     pub const LOAD_AGENT: &str = "load-agent";
+    pub const PROCESS_PENDING_MESSAGES: &str = "process-pending-messages";
     pub const CALL_MODEL: &str = "call-model";
     pub const EXECUTE_TOOL: &str = "execute-tool";
 }
@@ -193,6 +200,15 @@ impl AgentWorkflow {
 
     fn handle_agent_loaded(&mut self, result: serde_json::Value) -> Vec<WorkflowAction> {
         let agent_config: AgentConfigData = serde_json::from_value(result).unwrap_or_default();
+        // Transition to processing pending messages before calling the model
+        self.transition_to_process_pending_messages(agent_config)
+    }
+
+    fn handle_pending_messages_processed(
+        &mut self,
+        agent_config: AgentConfigData,
+    ) -> Vec<WorkflowAction> {
+        // After processing pending messages, transition to calling the model
         self.transition_to_model_call(agent_config, 1)
     }
 
@@ -316,6 +332,13 @@ impl Workflow for AgentWorkflow {
                 self.handle_agent_loaded(result)
             }
 
+            WorkflowState::ProcessingPendingMessages {
+                pending_activity,
+                agent_config,
+            } if pending_activity == activity_id => {
+                self.handle_pending_messages_processed(agent_config)
+            }
+
             WorkflowState::CallingModel {
                 pending_activity,
                 agent_config,
@@ -355,6 +378,26 @@ impl Workflow for AgentWorkflow {
 
 // Helper methods for state transitions
 impl AgentWorkflow {
+    fn transition_to_process_pending_messages(
+        &mut self,
+        agent_config: AgentConfigData,
+    ) -> Vec<WorkflowAction> {
+        let activity_id = self.next_activity_id(activity_names::PROCESS_PENDING_MESSAGES);
+
+        self.state = WorkflowState::ProcessingPendingMessages {
+            pending_activity: activity_id.clone(),
+            agent_config: agent_config.clone(),
+        };
+
+        vec![WorkflowAction::ScheduleActivity {
+            activity_id,
+            activity_type: activity_names::PROCESS_PENDING_MESSAGES.to_string(),
+            input: json!({
+                "session_id": self.session_id(),
+            }),
+        }]
+    }
+
     fn transition_to_model_call(
         &mut self,
         agent_config: AgentConfigData,
@@ -465,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_loaded_goes_to_model_call() {
+    fn test_agent_loaded_goes_to_process_pending() {
         let input = AgentWorkflowInput {
             session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
@@ -484,7 +527,41 @@ mod tests {
             }),
         );
 
-        // Should schedule only call-model (no emit-event)
+        // Should schedule process-pending-messages first
+        assert_eq!(actions.len(), 1);
+        assert!(find_activity_id(&actions, "process-pending-messages").is_some());
+    }
+
+    #[test]
+    fn test_pending_messages_processed_goes_to_model_call() {
+        let input = AgentWorkflowInput {
+            session_id: Uuid::now_v7(),
+            agent_id: Uuid::now_v7(),
+        };
+
+        let mut workflow = AgentWorkflow::new(input);
+        let actions = workflow.on_start();
+        let load_agent_id = find_activity_id(&actions, "load-agent").unwrap();
+
+        let actions = workflow.on_activity_completed(
+            &load_agent_id,
+            json!({
+                "model": "gpt-5.2",
+                "tools": [],
+                "max_iterations": 5
+            }),
+        );
+        let process_pending_id = find_activity_id(&actions, "process-pending-messages").unwrap();
+
+        let actions = workflow.on_activity_completed(
+            &process_pending_id,
+            json!({
+                "messages_processed": 1,
+                "message_ids": ["msg-123"]
+            }),
+        );
+
+        // Should schedule call-model after processing pending messages
         assert_eq!(actions.len(), 1);
         assert!(find_activity_id(&actions, "call-model").is_some());
     }
@@ -507,6 +584,12 @@ mod tests {
                 "tools": [{"name": "get_time", "description": "Get time", "parameters": {}}],
                 "max_iterations": 5
             }),
+        );
+        let process_pending_id = find_activity_id(&actions, "process-pending-messages").unwrap();
+
+        let actions = workflow.on_activity_completed(
+            &process_pending_id,
+            json!({ "messages_processed": 1, "message_ids": [] }),
         );
         let call_model_id = find_activity_id(&actions, "call-model").unwrap();
 
@@ -543,6 +626,12 @@ mod tests {
                 "tools": [],
                 "max_iterations": 5
             }),
+        );
+        let process_pending_id = find_activity_id(&actions, "process-pending-messages").unwrap();
+
+        let actions = workflow.on_activity_completed(
+            &process_pending_id,
+            json!({ "messages_processed": 1, "message_ids": [] }),
         );
         let call_model_id = find_activity_id(&actions, "call-model").unwrap();
 

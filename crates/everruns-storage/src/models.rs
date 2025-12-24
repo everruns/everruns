@@ -194,6 +194,7 @@ pub struct MessageRow {
     pub session_id: Uuid,
     pub sequence: i32,
     pub role: String,
+    pub status: String,
     #[sqlx(json)]
     pub content: Vec<ContentPart>,
     pub controls: Option<sqlx::types::Json<Controls>>,
@@ -207,6 +208,7 @@ pub struct MessageRow {
 pub struct CreateMessageRow {
     pub session_id: Uuid,
     pub role: String,
+    pub status: String,
     pub content: Vec<ContentPart>,
     pub controls: Option<Controls>,
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,

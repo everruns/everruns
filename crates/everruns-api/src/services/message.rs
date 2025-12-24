@@ -3,12 +3,17 @@
 //
 // The service accepts API entities (CreateMessageRequest) and handles:
 // - Conversion to database entities
-// - Event emission for SSE notifications
+// - Message status management (pending -> processed)
 // - Workflow triggering for user messages
+//
+// Design: User messages are saved with "pending" status. If the workflow is
+// already running, it will pick up the pending message. If not running,
+// a new workflow is started. The workflow processes pending messages,
+// emits SSE events, and marks them as processed.
 
 use crate::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use anyhow::Result;
-use everruns_storage::{models::CreateEventRow, models::CreateMessageRow, Database};
+use everruns_storage::{models::CreateMessageRow, Database};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -27,9 +32,8 @@ impl MessageService {
     ///
     /// Only user messages can be created via the API. This method:
     /// - Converts input content to storage format
-    /// - Persists the message to the database
-    /// - Emits an SSE event for the user message
-    /// - Triggers workflow execution for the session
+    /// - Persists the message to the database with "pending" status
+    /// - Starts workflow if not already running (workflow will emit SSE events)
     pub async fn create(
         &self,
         agent_id: Uuid,
@@ -47,10 +51,12 @@ impl MessageService {
         // Get tags from request (empty if not provided)
         let tags = req.tags.unwrap_or_default();
 
-        // API only creates user messages
+        // API creates user messages with "pending" status
+        // Workflow will process them and emit events
         let input = CreateMessageRow {
             session_id,
             role: MessageRole::User.to_string(),
+            status: "pending".to_string(),
             content,
             controls: req.controls,
             metadata: req.metadata,
@@ -60,26 +66,23 @@ impl MessageService {
         let row = self.db.create_message(input).await?;
         let message = Self::row_to_message(row);
 
-        // Emit event and start workflow for user message
-        self.emit_user_message_event(session_id, &message).await;
-        self.start_workflow(agent_id, session_id).await;
+        // Check if workflow is already running
+        let is_running = self.runner.is_running(session_id).await;
+
+        if is_running {
+            tracing::info!(
+                session_id = %session_id,
+                message_id = %message.id,
+                "Workflow already running, message will be picked up by process-pending-messages"
+            );
+            // Workflow is running - it will pick up the pending message
+            // No need to start a new workflow
+        } else {
+            // Workflow not running - start it
+            self.start_workflow(agent_id, session_id).await;
+        }
 
         Ok(message)
-    }
-
-    /// Emit SSE event for user message
-    async fn emit_user_message_event(&self, session_id: Uuid, message: &Message) {
-        let event_input = CreateEventRow {
-            session_id,
-            event_type: "message.user".to_string(),
-            data: serde_json::json!({
-                "message_id": message.id,
-                "content": message.content
-            }),
-        };
-        if let Err(e) = self.db.create_event(event_input).await {
-            tracing::warn!("Failed to emit user message event: {}", e);
-        }
     }
 
     /// Start workflow execution for the session

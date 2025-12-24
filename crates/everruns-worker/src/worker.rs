@@ -31,7 +31,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::activities::{
     activity_types, call_model_activity, execute_tool_activity, load_agent_activity,
-    CallModelInput, ExecuteToolInput, LoadAgentInput,
+    process_pending_messages_activity, CallModelInput, ExecuteToolInput, LoadAgentInput,
+    ProcessPendingMessagesInput,
 };
 use crate::client::TemporalWorkerCore;
 use crate::runner::RunnerConfig;
@@ -653,10 +654,15 @@ async fn execute_activity(
             let output = execute_tool_activity(db.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
+        activity_types::PROCESS_PENDING_MESSAGES => {
+            let input: ProcessPendingMessagesInput = serde_json::from_slice(input_data)?;
+            let output = process_pending_messages_activity(db.clone(), input).await?;
+            Ok(serde_json::to_value(output)?)
+        }
         _ => {
             // Provide a helpful error message with known activity types
             Err(anyhow::anyhow!(
-                "Unknown activity type: '{}'. Known activities: load-agent, call-model, execute-tool. \
+                "Unknown activity type: '{}'. Known activities: load-agent, call-model, execute-tool, process-pending-messages. \
                 This may indicate a workflow bug or version mismatch.",
                 activity_type
             ))

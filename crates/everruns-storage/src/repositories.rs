@@ -517,13 +517,14 @@ impl Database {
         // Get next sequence number for this session
         let row = sqlx::query_as::<_, MessageRow>(
             r#"
-            INSERT INTO messages (session_id, sequence, role, content, controls, metadata, tags)
-            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM messages WHERE session_id = $1), 1), $2, $3, $4, $5, $6)
-            RETURNING id, session_id, sequence, role, content, controls, metadata, tags, created_at
+            INSERT INTO messages (session_id, sequence, role, status, content, controls, metadata, tags)
+            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM messages WHERE session_id = $1), 1), $2, $3, $4, $5, $6, $7)
+            RETURNING id, session_id, sequence, role, status, content, controls, metadata, tags, created_at
             "#,
         )
         .bind(input.session_id)
         .bind(&input.role)
+        .bind(&input.status)
         .bind(&content_json)
         .bind(&controls_json)
         .bind(&metadata_json)
@@ -537,7 +538,7 @@ impl Database {
     pub async fn get_message(&self, id: Uuid) -> Result<Option<MessageRow>> {
         let row = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
+            SELECT id, session_id, sequence, role, status, content, controls, metadata, tags, created_at
             FROM messages
             WHERE id = $1
             "#,
@@ -552,7 +553,7 @@ impl Database {
     pub async fn list_messages(&self, session_id: Uuid) -> Result<Vec<MessageRow>> {
         let rows = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
+            SELECT id, session_id, sequence, role, status, content, controls, metadata, tags, created_at
             FROM messages
             WHERE session_id = $1
             ORDER BY sequence ASC
@@ -573,7 +574,7 @@ impl Database {
     ) -> Result<Vec<MessageRow>> {
         let rows = sqlx::query_as::<_, MessageRow>(
             r#"
-            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
+            SELECT id, session_id, sequence, role, status, content, controls, metadata, tags, created_at
             FROM messages
             WHERE session_id = $1 AND role = $2
             ORDER BY sequence ASC
@@ -585,6 +586,59 @@ impl Database {
         .await?;
 
         Ok(rows)
+    }
+
+    /// List pending messages for a session (awaiting workflow processing)
+    pub async fn list_pending_messages(&self, session_id: Uuid) -> Result<Vec<MessageRow>> {
+        let rows = sqlx::query_as::<_, MessageRow>(
+            r#"
+            SELECT id, session_id, sequence, role, status, content, controls, metadata, tags, created_at
+            FROM messages
+            WHERE session_id = $1 AND status = 'pending'
+            ORDER BY sequence ASC
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Mark a message as processed
+    pub async fn mark_message_processed(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE messages
+            SET status = 'processed'
+            WHERE id = $1 AND status = 'pending'
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Mark multiple messages as processed
+    pub async fn mark_messages_processed(&self, ids: &[Uuid]) -> Result<u64> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
+        let result = sqlx::query(
+            r#"
+            UPDATE messages
+            SET status = 'processed'
+            WHERE id = ANY($1) AND status = 'pending'
+            "#,
+        )
+        .bind(ids)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
     }
 
     // ============================================
