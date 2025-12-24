@@ -1,28 +1,94 @@
 // Message service for business logic
 // Messages are the PRIMARY conversation data store
 //
-// The message contract uses ContentPart arrays for flexible content types.
-// This service handles conversion between the API contract and database storage.
+// The service accepts API entities (CreateMessageRequest) and handles:
+// - Conversion to database entities
+// - Event emission for SSE notifications
+// - Workflow triggering for user messages
 
-use crate::messages::{ContentPart, InputContentPart, Message, MessageRole};
+use crate::messages::{ContentPart, CreateMessageRequest, InputContentPart, Message, MessageRole};
 use anyhow::Result;
-use everruns_storage::{models::CreateMessage, Database};
+use everruns_storage::{models::CreateEvent, models::CreateMessage, Database};
+use everruns_worker::AgentRunner;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct MessageService {
     db: Arc<Database>,
+    runner: Arc<dyn AgentRunner>,
 }
 
 impl MessageService {
-    pub fn new(db: Arc<Database>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
+        Self { db, runner }
     }
 
-    pub async fn create(&self, input: CreateMessage) -> Result<Message> {
+    /// Create a message from API request
+    /// Handles conversion, event emission, and workflow triggering
+    pub async fn create(
+        &self,
+        agent_id: Uuid,
+        session_id: Uuid,
+        req: CreateMessageRequest,
+    ) -> Result<Message> {
+        // Convert InputContentPart array to JSON for storage
+        let content = input_content_parts_to_json(&req.message.content);
+
+        // Convert request metadata to JSON for storage
+        let metadata = req.metadata.and_then(|m| serde_json::to_value(m).ok());
+
+        // Get tags from request (empty if not provided)
+        let tags = req.tags.unwrap_or_default();
+
+        let input = CreateMessage {
+            session_id,
+            role: req.message.role.to_string(),
+            content,
+            metadata,
+            tags,
+            tool_call_id: None, // Tool call ID is derived from content for tool_result messages
+        };
+
         let row = self.db.create_message(input).await?;
-        Ok(Self::row_to_message(row))
+        let message = Self::row_to_message(row);
+
+        // If this is a user message, emit event and start workflow
+        if message.role == MessageRole::User {
+            self.emit_user_message_event(session_id, &message).await;
+            self.start_workflow(agent_id, session_id).await;
+        }
+
+        Ok(message)
+    }
+
+    /// Emit SSE event for user message
+    async fn emit_user_message_event(&self, session_id: Uuid, message: &Message) {
+        let event_input = CreateEvent {
+            session_id,
+            event_type: "message.user".to_string(),
+            data: serde_json::json!({
+                "message_id": message.id,
+                "content": message.content
+            }),
+        };
+        if let Err(e) = self.db.create_event(event_input).await {
+            tracing::warn!("Failed to emit user message event: {}", e);
+        }
+    }
+
+    /// Start workflow execution for the session
+    async fn start_workflow(&self, agent_id: Uuid, session_id: Uuid) {
+        if let Err(e) = self
+            .runner
+            .start_run(session_id, agent_id, session_id)
+            .await
+        {
+            tracing::error!("Failed to start session workflow: {}", e);
+            // Don't fail the request, message is already persisted
+        } else {
+            tracing::info!(session_id = %session_id, "Session workflow started");
+        }
     }
 
     #[allow(dead_code)] // Will be used by future endpoints
@@ -129,7 +195,7 @@ impl MessageService {
 }
 
 /// Convert InputContentPart array to stored JSON content (for user input)
-pub fn input_content_parts_to_json(parts: &[InputContentPart]) -> serde_json::Value {
+fn input_content_parts_to_json(parts: &[InputContentPart]) -> serde_json::Value {
     // User input only contains text and images
     let mut texts = Vec::new();
 
