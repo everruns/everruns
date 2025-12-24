@@ -7,7 +7,8 @@ use axum::{
     Json, Router,
 };
 use everruns_contracts::{
-    LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType, ModelProfile,
+    get_effective_model_profile, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType,
+    ModelProfile,
 };
 use everruns_storage::{
     models::{CreateLlmModel, UpdateLlmModel},
@@ -65,8 +66,10 @@ pub struct ErrorResponse {
 fn row_to_model(row: &everruns_storage::models::LlmModelRow) -> LlmModel {
     let capabilities: Vec<String> =
         serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-    let model_profile: ModelProfile =
+    let db_profile: ModelProfile =
         serde_json::from_value(row.model_profile.clone()).unwrap_or_default();
+    // Merge database profile with known model profiles (known profiles as fallback)
+    let model_profile = get_effective_model_profile(&row.model_id, Some(&db_profile));
     LlmModel {
         id: row.id,
         provider_id: row.provider_id,
@@ -90,8 +93,10 @@ fn row_to_model_with_provider(
 ) -> LlmModelWithProvider {
     let capabilities: Vec<String> =
         serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-    let model_profile: ModelProfile =
+    let db_profile: ModelProfile =
         serde_json::from_value(row.model_profile.clone()).unwrap_or_default();
+    // Merge database profile with known model profiles (known profiles as fallback)
+    let model_profile = get_effective_model_profile(&row.model_id, Some(&db_profile));
     LlmModelWithProvider {
         id: row.id,
         provider_id: row.provider_id,
