@@ -7,6 +7,7 @@ mod auth;
 mod capabilities;
 mod llm_models;
 mod llm_providers;
+mod messages;
 mod services;
 mod sessions;
 mod users;
@@ -66,9 +67,9 @@ struct HealthState {
         sessions::get_session,
         sessions::update_session,
         sessions::delete_session,
-        sessions::create_message,
-        sessions::list_messages,
         sessions::stream_events,
+        messages::create_message,
+        messages::list_messages,
         llm_providers::create_provider,
         llm_providers::list_providers,
         llm_providers::get_provider,
@@ -196,7 +197,8 @@ async fn main() -> Result<()> {
 
     // Create module-specific states
     let agents_state = agents::AppState::new(db.clone());
-    let sessions_state = sessions::AppState::new(db.clone(), runner.clone());
+    let sessions_state = sessions::AppState::new(db.clone());
+    let messages_state = messages::AppState::new(db.clone(), runner.clone());
     let llm_providers_state = llm_providers::AppState {
         db: db.clone(),
         encryption: encryption.clone(),
@@ -240,6 +242,7 @@ async fn main() -> Result<()> {
     let api_routes = Router::new()
         .merge(agents::routes(agents_state))
         .merge(sessions::routes(sessions_state))
+        .merge(messages::routes(messages_state))
         .merge(llm_models::routes(llm_models_state))
         .merge(llm_providers::routes(llm_providers_state))
         .merge(capabilities::routes(capabilities_state))
