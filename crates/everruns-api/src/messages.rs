@@ -154,9 +154,9 @@ pub struct Message {
     pub created_at: DateTime<Utc>,
 }
 
-/// Message input for creating a message
+/// Input message for creating a message
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct MessageInput {
+pub struct InputMessage {
     /// Message role
     pub role: MessageRole,
     /// Array of content parts
@@ -170,7 +170,7 @@ pub struct MessageInput {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateMessageRequest {
     /// The message to create
-    pub message: MessageInput,
+    pub message: InputMessage,
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<Controls>,
@@ -187,7 +187,7 @@ impl CreateMessageRequest {
     #[allow(dead_code)]
     pub fn text(role: MessageRole, text: impl Into<String>) -> Self {
         Self {
-            message: MessageInput {
+            message: InputMessage {
                 role,
                 content: vec![ContentPart::text(text)],
                 metadata: None,
