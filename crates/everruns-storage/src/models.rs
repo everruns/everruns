@@ -187,6 +187,7 @@ pub struct UpdateSession {
 /// Message row from database
 /// Note: content, controls, and metadata are stored as JSONB in the database.
 /// The `sqlx(json)` attribute handles serialization/deserialization.
+/// For nullable JSONB columns, we use `Option<sqlx::types::Json<T>>` to handle NULL.
 #[derive(Debug, Clone, FromRow)]
 pub struct MessageRow {
     pub id: Uuid,
@@ -195,10 +196,8 @@ pub struct MessageRow {
     pub role: String,
     #[sqlx(json)]
     pub content: Vec<ContentPart>,
-    #[sqlx(json)]
-    pub controls: Option<Controls>,
-    #[sqlx(json)]
-    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+    pub controls: Option<sqlx::types::Json<Controls>>,
+    pub metadata: Option<sqlx::types::Json<std::collections::HashMap<String, serde_json::Value>>>,
     pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
 }

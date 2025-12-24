@@ -109,8 +109,8 @@ impl MessageService {
             sequence: row.sequence,
             role: MessageRole::from(row.role.as_str()),
             content: row.content,
-            controls: row.controls,
-            metadata: row.metadata,
+            controls: row.controls.map(|j| j.0),
+            metadata: row.metadata.map(|j| j.0),
             created_at: row.created_at,
         }
     }

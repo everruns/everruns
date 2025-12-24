@@ -66,8 +66,8 @@ impl MessageStore for DbMessageStore {
                 id: msg.id,
                 role: MessageRole::from(msg.role.as_str()),
                 content: msg.content, // Direct pass-through - tool_call_id is in ToolResultContentPart
-                controls: msg.controls,
-                metadata: msg.metadata,
+                controls: msg.controls.map(|j| j.0),
+                metadata: msg.metadata.map(|j| j.0),
                 created_at: msg.created_at,
             })
             .collect();
