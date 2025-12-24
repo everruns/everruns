@@ -24,7 +24,7 @@ use super::{
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
 use everruns_storage::{
-    models::{CreateApiKey, CreateRefreshToken, CreateUser},
+    models::{CreateApiKeyRow, CreateRefreshTokenRow, CreateUserRow},
     password::{hash_password, verify_password},
 };
 
@@ -273,7 +273,7 @@ pub async fn register(
     // Create user
     let user = state
         .db
-        .create_user(CreateUser {
+        .create_user(CreateUserRow {
             email: req.email.clone(),
             name: req.name.clone(),
             avatar_url: None,
@@ -492,7 +492,7 @@ pub async fn oauth_callback(
         // Create new user
         state
             .db
-            .create_user(CreateUser {
+            .create_user(CreateUserRow {
                 email: user_info.email.clone(),
                 name: user_info.name.clone(),
                 avatar_url: user_info.avatar_url.clone(),
@@ -579,7 +579,7 @@ pub async fn create_api_key_route(
 
     let key_row = state
         .db
-        .create_api_key(CreateApiKey {
+        .create_api_key(CreateApiKeyRow {
             user_id: user.id,
             name: req.name.clone(),
             key_hash: generated.key_hash.clone(),
@@ -651,7 +651,7 @@ async fn generate_token_response(
 
     state
         .db
-        .create_refresh_token(CreateRefreshToken {
+        .create_refresh_token(CreateRefreshTokenRow {
             user_id: user.id,
             token_hash: refresh_token_hash,
             expires_at,
@@ -719,7 +719,7 @@ async fn get_or_create_admin_user(
 
         state
             .db
-            .create_user(CreateUser {
+            .create_user(CreateUserRow {
                 email: admin.email.clone(),
                 name: "Admin".to_string(),
                 avatar_url: None,

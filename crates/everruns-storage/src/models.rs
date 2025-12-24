@@ -61,7 +61,7 @@ pub struct RefreshTokenRow {
 
 /// Input for creating a new user
 #[derive(Debug, Clone)]
-pub struct CreateUser {
+pub struct CreateUserRow {
     pub email: String,
     pub name: String,
     pub avatar_url: Option<String>,
@@ -84,7 +84,7 @@ pub struct UpdateUser {
 
 /// Input for creating an auth session (legacy)
 #[derive(Debug, Clone)]
-pub struct CreateAuthSession {
+pub struct CreateAuthSessionRow {
     pub user_id: Uuid,
     pub token: String,
     pub expires_at: DateTime<Utc>,
@@ -92,7 +92,7 @@ pub struct CreateAuthSession {
 
 /// Input for creating an API key
 #[derive(Debug, Clone)]
-pub struct CreateApiKey {
+pub struct CreateApiKeyRow {
     pub user_id: Uuid,
     pub name: String,
     pub key_hash: String,
@@ -103,7 +103,7 @@ pub struct CreateApiKey {
 
 /// Input for creating a refresh token
 #[derive(Debug, Clone)]
-pub struct CreateRefreshToken {
+pub struct CreateRefreshTokenRow {
     pub user_id: Uuid,
     pub token_hash: String,
     pub expires_at: DateTime<Utc>,
@@ -127,7 +127,7 @@ pub struct AgentRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateAgent {
+pub struct CreateAgentRow {
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
@@ -163,7 +163,7 @@ pub struct SessionRow {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct CreateSession {
+pub struct CreateSessionRow {
     pub agent_id: Uuid,
     pub title: Option<String>,
     pub tags: Vec<String>,
@@ -297,7 +297,7 @@ pub struct LlmProviderWithApiKey {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateLlmProvider {
+pub struct CreateLlmProviderRow {
     pub name: String,
     pub provider_type: String,
     pub base_url: Option<String>,
@@ -318,7 +318,7 @@ pub struct UpdateLlmProvider {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateLlmModel {
+pub struct CreateLlmModelRow {
     pub provider_id: Uuid,
     pub model_id: String,
     pub display_name: String,
@@ -351,7 +351,7 @@ pub struct AgentCapabilityRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateAgentCapability {
+pub struct CreateAgentCapabilityRow {
     pub agent_id: Uuid,
     pub capability_id: String,
     pub position: i32,

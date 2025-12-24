@@ -7,19 +7,25 @@ use axum::{
     Json, Router,
 };
 use everruns_contracts::{LlmProvider, LlmProviderStatus, LlmProviderType};
-use everruns_storage::{
-    models::{CreateLlmProvider, UpdateLlmProvider},
-    Database, EncryptionService,
-};
+use everruns_storage::{Database, EncryptionService};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::services::LlmProviderService;
+
 #[derive(Clone)]
 pub struct AppState {
-    pub db: Arc<Database>,
-    pub encryption: Option<Arc<EncryptionService>>,
+    pub service: Arc<LlmProviderService>,
+}
+
+impl AppState {
+    pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
+        Self {
+            service: Arc::new(LlmProviderService::new(db, encryption)),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -55,23 +61,6 @@ pub struct ErrorResponse {
     error: String,
 }
 
-fn row_to_provider(row: &everruns_storage::models::LlmProviderRow) -> LlmProvider {
-    LlmProvider {
-        id: row.id,
-        name: row.name.clone(),
-        provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Openai),
-        base_url: row.base_url.clone(),
-        api_key_set: row.api_key_set,
-        is_default: row.is_default,
-        status: match row.status.as_str() {
-            "active" => LlmProviderStatus::Active,
-            _ => LlmProviderStatus::Disabled,
-        },
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    }
-}
-
 /// Create a new LLM provider
 #[utoipa::path(
     post,
@@ -88,50 +77,25 @@ pub async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateLlmProviderRequest>,
 ) -> Result<(StatusCode, Json<LlmProvider>), (StatusCode, Json<ErrorResponse>)> {
-    // Encrypt API key if provided and encryption is available
-    let api_key_encrypted = if let Some(api_key) = &req.api_key {
-        if let Some(encryption) = &state.encryption {
-            Some(encryption.encrypt_string(api_key).map_err(|e| {
-                tracing::error!("Failed to encrypt API key: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
-            })?)
-        } else {
-            return Err((
+    let provider = state.service.create(req).await.map_err(|e| {
+        let error_msg = e.to_string();
+        if error_msg.contains("Encryption not configured") {
+            (
                 StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: error_msg }),
+            )
+        } else {
+            tracing::error!("Failed to create LLM provider: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: "Encryption not configured. Cannot store API key.".to_string(),
+                    error: "Internal server error".to_string(),
                 }),
-            ));
+            )
         }
-    } else {
-        None
-    };
-
-    let input = CreateLlmProvider {
-        name: req.name,
-        provider_type: req.provider_type.to_string(),
-        base_url: req.base_url,
-        api_key_encrypted,
-        is_default: req.is_default,
-        settings: None, // Default empty settings
-    };
-
-    let row = state.db.create_llm_provider(input).await.map_err(|e| {
-        tracing::error!("Failed to create LLM provider: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
     })?;
 
-    Ok((StatusCode::CREATED, Json(row_to_provider(&row))))
+    Ok((StatusCode::CREATED, Json(provider)))
 }
 
 /// List all LLM providers
@@ -146,7 +110,7 @@ pub async fn create_provider(
 pub async fn list_providers(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
-    let rows = state.db.list_llm_providers().await.map_err(|e| {
+    let providers = state.service.list().await.map_err(|e| {
         tracing::error!("Failed to list LLM providers: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -156,7 +120,7 @@ pub async fn list_providers(
         )
     })?;
 
-    Ok(Json(rows.iter().map(row_to_provider).collect()))
+    Ok(Json(providers))
 }
 
 /// Get a specific LLM provider
@@ -176,25 +140,29 @@ pub async fn get_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
-    let row = state.db.get_llm_provider(id).await.map_err(|e| {
-        tracing::error!("Failed to get LLM provider: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
-    })?;
+    let provider = state
+        .service
+        .get(id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get LLM provider: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Provider not found".to_string(),
+                }),
+            )
+        })?;
 
-    match row {
-        Some(r) => Ok(Json(row_to_provider(&r))),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Provider not found".to_string(),
-            }),
-        )),
-    }
+    Ok(Json(provider))
 }
 
 /// Update an LLM provider
@@ -216,62 +184,37 @@ pub async fn update_provider(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateLlmProviderRequest>,
 ) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
-    // Encrypt API key if provided
-    let api_key_encrypted = if let Some(api_key) = &req.api_key {
-        if let Some(encryption) = &state.encryption {
-            Some(encryption.encrypt_string(api_key).map_err(|e| {
-                tracing::error!("Failed to encrypt API key: {}", e);
+    let provider = state
+        .service
+        .update(id, req)
+        .await
+        .map_err(|e| {
+            let error_msg = e.to_string();
+            if error_msg.contains("Encryption not configured") {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: error_msg }),
+                )
+            } else {
+                tracing::error!("Failed to update LLM provider: {}", e);
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(ErrorResponse {
                         error: "Internal server error".to_string(),
                     }),
                 )
-            })?)
-        } else {
-            return Err((
-                StatusCode::BAD_REQUEST,
+            }
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
-                    error: "Encryption not configured. Cannot store API key.".to_string(),
+                    error: "Provider not found".to_string(),
                 }),
-            ));
-        }
-    } else {
-        None
-    };
+            )
+        })?;
 
-    let input = UpdateLlmProvider {
-        name: req.name,
-        provider_type: req.provider_type.map(|t| t.to_string()),
-        base_url: req.base_url,
-        api_key_encrypted,
-        is_default: req.is_default,
-        status: req.status.map(|s| match s {
-            LlmProviderStatus::Active => "active".to_string(),
-            LlmProviderStatus::Disabled => "disabled".to_string(),
-        }),
-        settings: None, // Settings updates not yet exposed via API
-    };
-
-    let row = state.db.update_llm_provider(id, input).await.map_err(|e| {
-        tracing::error!("Failed to update LLM provider: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
-    })?;
-
-    match row {
-        Some(r) => Ok(Json(row_to_provider(&r))),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Provider not found".to_string(),
-            }),
-        )),
-    }
+    Ok(Json(provider))
 }
 
 /// Delete an LLM provider
@@ -291,7 +234,7 @@ pub async fn delete_provider(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let deleted = state.db.delete_llm_provider(id).await.map_err(|e| {
+    let deleted = state.service.delete(id).await.map_err(|e| {
         tracing::error!("Failed to delete LLM provider: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,

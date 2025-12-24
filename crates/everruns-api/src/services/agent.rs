@@ -3,11 +3,13 @@
 use anyhow::Result;
 use everruns_contracts::{Agent, AgentStatus};
 use everruns_storage::{
-    models::{CreateAgent, UpdateAgent},
+    models::{CreateAgentRow, UpdateAgent},
     Database,
 };
 use std::sync::Arc;
 use uuid::Uuid;
+
+use crate::agents::{CreateAgentRequest, UpdateAgentRequest};
 
 pub struct AgentService {
     db: Arc<Database>,
@@ -18,7 +20,14 @@ impl AgentService {
         Self { db }
     }
 
-    pub async fn create(&self, input: CreateAgent) -> Result<Agent> {
+    pub async fn create(&self, req: CreateAgentRequest) -> Result<Agent> {
+        let input = CreateAgentRow {
+            name: req.name,
+            description: req.description,
+            system_prompt: req.system_prompt,
+            default_model_id: req.default_model_id,
+            tags: req.tags,
+        };
         let row = self.db.create_agent(input).await?;
         Ok(Self::row_to_agent(row))
     }
@@ -33,7 +42,15 @@ impl AgentService {
         Ok(rows.into_iter().map(Self::row_to_agent).collect())
     }
 
-    pub async fn update(&self, id: Uuid, input: UpdateAgent) -> Result<Option<Agent>> {
+    pub async fn update(&self, id: Uuid, req: UpdateAgentRequest) -> Result<Option<Agent>> {
+        let input = UpdateAgent {
+            name: req.name,
+            description: req.description,
+            system_prompt: req.system_prompt,
+            default_model_id: req.default_model_id,
+            tags: req.tags,
+            status: req.status.map(|s| s.to_string()),
+        };
         let row = self.db.update_agent(id, input).await?;
         Ok(row.map(Self::row_to_agent))
     }

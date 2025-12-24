@@ -6,19 +6,26 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType};
-use everruns_storage::{
-    models::{CreateLlmModel, UpdateLlmModel},
-    Database,
-};
+use everruns_contracts::{LlmModel, LlmModelStatus, LlmModelWithProvider};
+use everruns_storage::Database;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::services::LlmModelService;
+
 #[derive(Clone)]
 pub struct AppState {
-    pub db: Arc<Database>,
+    pub service: Arc<LlmModelService>,
+}
+
+impl AppState {
+    pub fn new(db: Arc<Database>) -> Self {
+        Self {
+            service: Arc::new(LlmModelService::new(db)),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -54,50 +61,6 @@ pub struct ErrorResponse {
     error: String,
 }
 
-fn row_to_model(row: &everruns_storage::models::LlmModelRow) -> LlmModel {
-    let capabilities: Vec<String> =
-        serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-    LlmModel {
-        id: row.id,
-        provider_id: row.provider_id,
-        model_id: row.model_id.clone(),
-        display_name: row.display_name.clone(),
-        capabilities,
-        context_window: row.context_window,
-        is_default: row.is_default,
-        status: match row.status.as_str() {
-            "active" => LlmModelStatus::Active,
-            _ => LlmModelStatus::Disabled,
-        },
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    }
-}
-
-fn row_to_model_with_provider(
-    row: &everruns_storage::models::LlmModelWithProviderRow,
-) -> LlmModelWithProvider {
-    let capabilities: Vec<String> =
-        serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-    LlmModelWithProvider {
-        id: row.id,
-        provider_id: row.provider_id,
-        model_id: row.model_id.clone(),
-        display_name: row.display_name.clone(),
-        capabilities,
-        context_window: row.context_window,
-        is_default: row.is_default,
-        status: match row.status.as_str() {
-            "active" => LlmModelStatus::Active,
-            _ => LlmModelStatus::Disabled,
-        },
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        provider_name: row.provider_name.clone(),
-        provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Openai),
-    }
-}
-
 /// Create a new model for a provider
 #[utoipa::path(
     post,
@@ -118,16 +81,7 @@ pub async fn create_model(
     Path(provider_id): Path<Uuid>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<LlmModel>), (StatusCode, Json<ErrorResponse>)> {
-    let input = CreateLlmModel {
-        provider_id,
-        model_id: req.model_id,
-        display_name: req.display_name,
-        capabilities: req.capabilities,
-        context_window: req.context_window,
-        is_default: req.is_default,
-    };
-
-    let row = state.db.create_llm_model(input).await.map_err(|e| {
+    let model = state.service.create(provider_id, req).await.map_err(|e| {
         tracing::error!("Failed to create LLM model: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -137,7 +91,7 @@ pub async fn create_model(
         )
     })?;
 
-    Ok((StatusCode::CREATED, Json(row_to_model(&row))))
+    Ok((StatusCode::CREATED, Json(model)))
 }
 
 /// List models for a specific provider
@@ -156,9 +110,9 @@ pub async fn list_provider_models(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
 ) -> Result<Json<Vec<LlmModel>>, (StatusCode, Json<ErrorResponse>)> {
-    let rows = state
-        .db
-        .list_llm_models_for_provider(provider_id)
+    let models = state
+        .service
+        .list_for_provider(provider_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to list LLM models for provider: {}", e);
@@ -170,7 +124,7 @@ pub async fn list_provider_models(
             )
         })?;
 
-    Ok(Json(rows.iter().map(row_to_model).collect()))
+    Ok(Json(models))
 }
 
 /// List all models across all providers
@@ -185,7 +139,7 @@ pub async fn list_provider_models(
 pub async fn list_all_models(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
-    let rows = state.db.list_all_llm_models().await.map_err(|e| {
+    let models = state.service.list_all().await.map_err(|e| {
         tracing::error!("Failed to list all LLM models: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -195,7 +149,7 @@ pub async fn list_all_models(
         )
     })?;
 
-    Ok(Json(rows.iter().map(row_to_model_with_provider).collect()))
+    Ok(Json(models))
 }
 
 /// Get a specific model
@@ -215,25 +169,29 @@ pub async fn get_model(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
-    let row = state.db.get_llm_model(id).await.map_err(|e| {
-        tracing::error!("Failed to get LLM model: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
-    })?;
+    let model = state
+        .service
+        .get(id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get LLM model: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Model not found".to_string(),
+                }),
+            )
+        })?;
 
-    match row {
-        Some(r) => Ok(Json(row_to_model(&r))),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Model not found".to_string(),
-            }),
-        )),
-    }
+    Ok(Json(model))
 }
 
 /// Update a model
@@ -255,37 +213,29 @@ pub async fn update_model(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateLlmModelRequest>,
 ) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
-    let input = UpdateLlmModel {
-        model_id: req.model_id,
-        display_name: req.display_name,
-        capabilities: req.capabilities,
-        context_window: req.context_window,
-        is_default: req.is_default,
-        status: req.status.map(|s| match s {
-            LlmModelStatus::Active => "active".to_string(),
-            LlmModelStatus::Disabled => "disabled".to_string(),
-        }),
-    };
+    let model = state
+        .service
+        .update(id, req)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update LLM model: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Model not found".to_string(),
+                }),
+            )
+        })?;
 
-    let row = state.db.update_llm_model(id, input).await.map_err(|e| {
-        tracing::error!("Failed to update LLM model: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
-    })?;
-
-    match row {
-        Some(r) => Ok(Json(row_to_model(&r))),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Model not found".to_string(),
-            }),
-        )),
-    }
+    Ok(Json(model))
 }
 
 /// Delete a model
@@ -305,7 +255,7 @@ pub async fn delete_model(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let deleted = state.db.delete_llm_model(id).await.map_err(|e| {
+    let deleted = state.service.delete(id).await.map_err(|e| {
         tracing::error!("Failed to delete LLM model: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,

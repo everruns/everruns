@@ -6,13 +6,42 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_contracts::{Agent, CreateAgentRequest, ListResponse, UpdateAgentRequest};
-use everruns_storage::{
-    models::{CreateAgent, UpdateAgent},
-    Database,
-};
+use everruns_contracts::{Agent, AgentStatus, ListResponse};
+use everruns_storage::Database;
+use serde::Deserialize;
 use std::sync::Arc;
+use utoipa::ToSchema;
 use uuid::Uuid;
+
+/// Request to create a new agent
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateAgentRequest {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub system_prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_model_id: Option<Uuid>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+/// Request to update an agent
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateAgentRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_model_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<AgentStatus>,
+}
 
 use crate::services::AgentService;
 
@@ -56,15 +85,7 @@ pub async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), StatusCode> {
-    let input = CreateAgent {
-        name: req.name,
-        description: req.description,
-        system_prompt: req.system_prompt,
-        default_model_id: req.default_model_id,
-        tags: req.tags,
-    };
-
-    let agent = state.service.create(input).await.map_err(|e| {
+    let agent = state.service.create(req).await.map_err(|e| {
         tracing::error!("Failed to create agent: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -144,18 +165,9 @@ pub async fn update_agent(
     Path(agent_id): Path<Uuid>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> Result<Json<Agent>, StatusCode> {
-    let input = UpdateAgent {
-        name: req.name,
-        description: req.description,
-        system_prompt: req.system_prompt,
-        default_model_id: req.default_model_id,
-        tags: req.tags,
-        status: req.status.map(|s| s.to_string()),
-    };
-
     let agent = state
         .service
-        .update(agent_id, input)
+        .update(agent_id, req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to update agent: {}", e);

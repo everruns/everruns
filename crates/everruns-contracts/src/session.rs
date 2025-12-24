@@ -1,4 +1,5 @@
 // Session DTOs (instance of agentic loop execution)
+// Note: Request types (CreateSessionRequest, UpdateSessionRequest) are in everruns-api crate
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -54,24 +55,4 @@ pub struct Session {
     pub started_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<DateTime<Utc>>,
-}
-
-/// Request to create a session
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateSessionRequest {
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub model_id: Option<Uuid>,
-}
-
-/// Request to update a session
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct UpdateSessionRequest {
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub tags: Option<Vec<String>>,
 }
