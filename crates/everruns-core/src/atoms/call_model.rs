@@ -1,4 +1,10 @@
 //! CallModelAtom - Atom for calling the LLM
+//!
+//! This module handles:
+//! 1. Loading messages from the store
+//! 2. Patching dangling tool calls (tool calls without results)
+//! 3. Calling the LLM with the messages
+//! 4. Storing the assistant response
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -14,6 +20,48 @@ use crate::llm::{
 use crate::message::{Message, MessageRole};
 use crate::tool_types::ToolCall;
 use crate::traits::MessageStore;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Patch dangling tool calls by adding synthetic "cancelled" results.
+///
+/// This ensures every tool call has a corresponding tool result,
+/// preventing LLM API errors (e.g., OpenAI requires every tool_call to have a result).
+///
+/// Based on langchain's patch_tool_calls middleware:
+/// https://github.com/langchain-ai/deepagents/blob/master/libs/deepagents/deepagents/middleware/patch_tool_calls.py
+fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
+    let mut result = Vec::new();
+
+    for (i, msg) in messages.iter().enumerate() {
+        result.push(msg.clone());
+
+        // After an assistant message with tool calls, add cancelled results for any missing ones
+        if msg.role == MessageRole::Assistant && msg.has_tool_calls() {
+            for tc in msg.tool_calls() {
+                // Look for a matching tool result in ALL subsequent messages
+                let has_result = messages[(i + 1)..]
+                    .iter()
+                    .any(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some(&tc.id));
+
+                if !has_result {
+                    result.push(Message::tool_result(
+                        &tc.id,
+                        None,
+                        Some(
+                            "cancelled - another message came in before it could be completed"
+                                .to_string(),
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    result
+}
 
 // ============================================================================
 // Input and Output Types
@@ -98,7 +146,10 @@ where
             return Err(AgentLoopError::NoMessages);
         }
 
-        // 2. Build LLM messages
+        // 2. Patch dangling tool calls (add cancelled results for tool calls without responses)
+        let patched_messages = patch_dangling_tool_calls(&messages);
+
+        // 3. Build LLM messages
         let mut llm_messages = Vec::new();
 
         // Add system prompt
@@ -111,15 +162,18 @@ where
             });
         }
 
-        // Add conversation messages (skip tool_call messages - they're in assistant messages)
-        for msg in &messages {
+        // Add conversation messages (user, assistant, tool calls, tool results)
+        // Note: ToolCall role messages are skipped as tool calls are already embedded
+        // in their corresponding Assistant messages via ContentPart::ToolCall.
+        // This avoids duplicate tool call information being sent to the LLM.
+        for msg in &patched_messages {
             if msg.role == MessageRole::ToolCall {
                 continue;
             }
             llm_messages.push(msg.into());
         }
 
-        // 3. Call LLM
+        // 4. Call LLM
         let llm_config = LlmCallConfig::from(&config);
         let mut stream = self
             .llm_provider
@@ -147,7 +201,7 @@ where
             }
         }
 
-        // 4. Store assistant message
+        // 5. Store assistant message
         let has_tool_calls = !tool_calls.is_empty();
         let assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -159,7 +213,7 @@ where
             .store(session_id, assistant_message.clone())
             .await?;
 
-        // 5. If there are tool calls, store tool_call messages too
+        // 6. If there are tool calls, store tool_call messages too
         if has_tool_calls {
             for tool_call in &tool_calls {
                 let tool_call_msg = Message::tool_call(tool_call);
@@ -194,5 +248,127 @@ mod tests {
         };
         assert_eq!(result.text, "Hello");
         assert!(!result.needs_tool_execution);
+    }
+
+    #[test]
+    fn test_patch_dangling_tool_calls_no_tool_calls() {
+        // Messages without tool calls should be unchanged
+        let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
+
+        let patched = patch_dangling_tool_calls(&messages);
+
+        assert_eq!(patched.len(), 2);
+        assert_eq!(patched[0].role, MessageRole::User);
+        assert_eq!(patched[1].role, MessageRole::Assistant);
+    }
+
+    #[test]
+    fn test_patch_dangling_tool_calls_with_result() {
+        // Tool call with matching result should not be patched
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: serde_json::json!({"city": "NYC"}),
+        };
+
+        let messages = vec![
+            Message::user("What's the weather?"),
+            Message::assistant_with_tools("Let me check", vec![tool_call]),
+            Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
+        ];
+
+        let patched = patch_dangling_tool_calls(&messages);
+
+        assert_eq!(patched.len(), 3);
+        assert_eq!(patched[0].role, MessageRole::User);
+        assert_eq!(patched[1].role, MessageRole::Assistant);
+        assert_eq!(patched[2].role, MessageRole::ToolResult);
+    }
+
+    #[test]
+    fn test_patch_dangling_tool_calls_missing_result() {
+        // Tool call without result should get a cancelled result added
+        let tool_call = ToolCall {
+            id: "call_456".to_string(),
+            name: "search_web".to_string(),
+            arguments: serde_json::json!({"query": "rust"}),
+        };
+
+        let messages = vec![
+            Message::user("Search for rust"),
+            Message::assistant_with_tools("Searching...", vec![tool_call]),
+            // No tool result - simulating interruption
+            Message::user("Actually, never mind"),
+        ];
+
+        let patched = patch_dangling_tool_calls(&messages);
+
+        // Should have added a cancelled result before the new user message
+        assert_eq!(patched.len(), 4);
+        assert_eq!(patched[0].role, MessageRole::User);
+        assert_eq!(patched[1].role, MessageRole::Assistant);
+        assert_eq!(patched[2].role, MessageRole::ToolResult);
+        assert_eq!(patched[2].tool_call_id(), Some("call_456"));
+        // Check the error message
+        let result_content = patched[2].tool_result_content().unwrap();
+        assert!(result_content.error.is_some());
+        assert!(result_content.error.as_ref().unwrap().contains("cancelled"));
+        assert_eq!(patched[3].role, MessageRole::User);
+    }
+
+    #[test]
+    fn test_patch_dangling_tool_calls_multiple_calls() {
+        // Multiple tool calls where one is missing result
+        let tool_call_1 = ToolCall {
+            id: "call_1".to_string(),
+            name: "tool_a".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let tool_call_2 = ToolCall {
+            id: "call_2".to_string(),
+            name: "tool_b".to_string(),
+            arguments: serde_json::json!({}),
+        };
+
+        let messages = vec![
+            Message::user("Do two things"),
+            Message::assistant_with_tools("On it", vec![tool_call_1, tool_call_2]),
+            Message::tool_result("call_1", Some(serde_json::json!("done")), None),
+            // call_2 has no result
+        ];
+
+        let patched = patch_dangling_tool_calls(&messages);
+
+        // Should have added a cancelled result for call_2 right after the assistant message
+        // Order: [0] user, [1] assistant, [2] cancelled call_2, [3] real result call_1
+        assert_eq!(patched.len(), 4);
+        assert_eq!(patched[2].role, MessageRole::ToolResult);
+        assert_eq!(patched[2].tool_call_id(), Some("call_2"));
+        // Verify the cancelled result has the error message
+        let result_content = patched[2].tool_result_content().unwrap();
+        assert!(result_content.error.as_ref().unwrap().contains("cancelled"));
+    }
+
+    #[test]
+    fn test_patch_dangling_tool_calls_at_end() {
+        // Dangling tool call at the end of conversation
+        let tool_call = ToolCall {
+            id: "call_end".to_string(),
+            name: "final_tool".to_string(),
+            arguments: serde_json::json!({}),
+        };
+
+        let messages = vec![
+            Message::user("Do something"),
+            Message::assistant_with_tools("Running tool", vec![tool_call]),
+            // Conversation ends without tool result
+        ];
+
+        let patched = patch_dangling_tool_calls(&messages);
+
+        // Should have added a cancelled result at the end
+        assert_eq!(patched.len(), 3);
+        assert_eq!(patched[2].role, MessageRole::ToolResult);
+        assert_eq!(patched[2].tool_call_id(), Some("call_end"));
     }
 }
