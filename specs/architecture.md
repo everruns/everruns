@@ -111,19 +111,35 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
    - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
 3. **API Layer** (`everruns-api`):
-   - API contracts (DTOs) are collocated with their routes
+   - API contracts (DTOs) are collocated with their routes in the same module
    - API types can reference and re-export core types
-   - Services accept API DTOs, transform to storage layer types, and store in database
+   - Controllers handle HTTP concerns only, delegating business logic to services
+   - Controllers should NOT import or know about storage Row types
    - Input types for user-facing APIs use `Input` prefix (e.g., `InputMessage`, `InputContentPart`)
    - Request/response wrappers use `Request`/`Response` suffix
+
+4. **Service Layer** (`everruns-api/services`):
+   - Services accept API contracts (request types) and return domain types
+   - Services handle conversion from API contracts to storage Row types
+   - Services own business logic, validation, and orchestration
+   - Services call repositories (via Database) for persistence
+   - Each controller module has a corresponding service (e.g., `agents.rs` → `AgentService`)
 
 #### Type Flow Example
 
 ```
-API Request → API DTO → Service → Storage Row → Database
-                ↓
-         Core types (shared)
+Controller (HTTP)  →  Service (Business Logic)  →  Repository (Storage)
+       ↓                      ↓                           ↓
+CreateAgentRequest  →   CreateAgentRow             →   Database
+       ↓                      ↓                           ↓
+      JSON              Core types used                  SQL
 ```
+
+For agents:
+- Controller receives `CreateAgentRequest` (API request type)
+- Controller passes request directly to `AgentService.create(req)`
+- Service converts `CreateAgentRequest` → `CreateAgentRow` (storage type)
+- Service calls repository to store and returns `Agent` (domain type)
 
 For messages:
 - `CreateMessageRequest` (API) → contains `InputMessage` with `InputContentPart[]`
@@ -141,6 +157,7 @@ For messages:
 | Core Domain | `{Entity}` | `Message`, `ContentPart` |
 | API Input | `Input{Entity}` | `InputMessage`, `InputContentPart` |
 | API Request | `{Action}{Entity}Request` | `CreateMessageRequest` |
+| Service | `{Entity}Service` | `AgentService`, `SessionService` |
 
 #### Content Types
 

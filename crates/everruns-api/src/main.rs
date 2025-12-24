@@ -203,11 +203,8 @@ async fn main() -> Result<()> {
     let sessions_state = sessions::AppState::new(db.clone());
     let messages_state = messages::AppState::new(db.clone(), runner.clone());
     let events_state = events::AppState::new(db.clone());
-    let llm_providers_state = llm_providers::AppState {
-        db: db.clone(),
-        encryption: encryption.clone(),
-    };
-    let llm_models_state = llm_models::AppState { db: db.clone() };
+    let llm_providers_state = llm_providers::AppState::new(db.clone(), encryption.clone());
+    let llm_models_state = llm_models::AppState::new(db.clone());
     let capabilities_state = capabilities::AppState::new(db.clone());
     let users_state = users::UsersState {
         db: db.clone(),
