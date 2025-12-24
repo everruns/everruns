@@ -161,9 +161,6 @@ pub struct InputMessage {
     pub role: MessageRole,
     /// Array of content parts
     pub content: Vec<ContentPart>,
-    /// Message-level metadata (locale, etc.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
 /// Request to create a message
@@ -190,7 +187,6 @@ impl CreateMessageRequest {
             message: InputMessage {
                 role,
                 content: vec![ContentPart::text(text)],
-                metadata: None,
             },
             controls: None,
             metadata: None,
@@ -277,11 +273,8 @@ pub async fn create_message(
     // Convert ContentPart array to JSON for storage
     let content = content_parts_to_json(&req.message.role, &req.message.content);
 
-    // Convert message metadata to JSON
-    let metadata = req
-        .message
-        .metadata
-        .and_then(|m| serde_json::to_value(m).ok());
+    // Convert request metadata to JSON for storage
+    let metadata = req.metadata.and_then(|m| serde_json::to_value(m).ok());
 
     // Get tags from request (empty if not provided)
     let tags = req.tags.unwrap_or_default();
