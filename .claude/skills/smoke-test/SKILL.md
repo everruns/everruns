@@ -176,6 +176,25 @@ curl -s http://localhost:9000/api-doc/openapi.json | jq '.info.title'
 ```
 Expected: "Everruns API"
 
+#### 12. LLM Providers and Models
+```bash
+# List LLM providers
+curl -s http://localhost:9000/v1/llm-providers | jq '.data | length'
+```
+Expected: At least 1 provider
+
+```bash
+# List all models with profile data
+curl -s http://localhost:9000/v1/llm-models | jq '.data[0]'
+```
+Expected: Model object with `profile` field (null for unknown models, object for known models like gpt-4o)
+
+```bash
+# Verify profile contains expected fields for known models
+curl -s http://localhost:9000/v1/llm-models | jq '.data[] | select(.profile != null) | {model_id: .model_id, profile_name: .profile.name, has_cost: (.profile.cost != null)}'
+```
+Expected: Models like gpt-4o, claude-3-5-sonnet show profile with name and cost data
+
 ### Scenario Tests
 
 Additional test scenarios are available in the `scenarios/` folder:

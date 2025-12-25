@@ -306,3 +306,138 @@ async fn test_llm_provider_and_model_workflow() {
 
     println!("All LLM provider and model tests passed!");
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_llm_model_profile() {
+    let client = reqwest::Client::new();
+
+    println!("Testing LLM Model Profile...");
+
+    // Step 1: Create an LLM provider
+    println!("\nStep 1: Creating OpenAI provider...");
+    let create_provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "Test Profile Provider",
+            "provider_type": "openai",
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create LLM provider");
+
+    let provider: LlmProvider = create_provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider response");
+
+    println!("Created provider: {} ({})", provider.name, provider.id);
+
+    // Step 2: Create a known model (gpt-4o) that has a profile
+    println!("\nStep 2: Creating gpt-4o model...");
+    let create_model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "gpt-4o",
+            "display_name": "GPT-4o",
+            "capabilities": ["chat", "vision"],
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    let model_json: Value = create_model_response
+        .json()
+        .await
+        .expect("Failed to parse model response");
+
+    println!("Created model: {}", model_json["display_name"]);
+
+    // Step 3: Get the model and verify profile is included
+    println!("\nStep 3: Getting model with profile...");
+    let get_model_response = client
+        .get(format!(
+            "{}/v1/llm-models/{}",
+            API_BASE_URL,
+            model_json["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .expect("Failed to get model");
+
+    let model_with_profile: Value = get_model_response
+        .json()
+        .await
+        .expect("Failed to parse model response");
+
+    // Verify profile exists and has expected fields
+    let profile = &model_with_profile["profile"];
+    assert!(!profile.is_null(), "Profile should not be null for gpt-4o");
+    assert_eq!(profile["name"], "GPT-4o", "Profile name should be GPT-4o");
+    assert_eq!(
+        profile["family"], "gpt-4o",
+        "Profile family should be gpt-4o"
+    );
+    assert!(
+        profile["tool_call"].as_bool().unwrap_or(false),
+        "GPT-4o should support tool calls"
+    );
+    assert!(
+        profile["cost"].is_object(),
+        "Profile should have cost information"
+    );
+    assert!(
+        profile["limits"].is_object(),
+        "Profile should have limits information"
+    );
+
+    println!("Profile verified: {:?}", profile);
+
+    // Step 4: List all models and verify profile data
+    println!("\nStep 4: Listing all models...");
+    let list_models_response = client
+        .get(format!("{}/v1/llm-models", API_BASE_URL))
+        .send()
+        .await
+        .expect("Failed to list models");
+
+    let models_response: Value = list_models_response
+        .json()
+        .await
+        .expect("Failed to parse models response");
+
+    let models = models_response["data"]
+        .as_array()
+        .expect("Expected array of models");
+    let gpt4o_model = models.iter().find(|m| m["model_id"] == "gpt-4o");
+    assert!(gpt4o_model.is_some(), "Should find gpt-4o in model list");
+    assert!(
+        !gpt4o_model.unwrap()["profile"].is_null(),
+        "Profile should be included in list response"
+    );
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!(
+            "{}/v1/llm-models/{}",
+            API_BASE_URL,
+            model_json["id"].as_str().unwrap()
+        ))
+        .send()
+        .await
+        .expect("Failed to delete model");
+
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("LLM Model Profile tests passed!");
+}
