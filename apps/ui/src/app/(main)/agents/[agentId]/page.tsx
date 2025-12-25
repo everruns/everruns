@@ -1,7 +1,7 @@
 "use client";
 
-import { use } from "react";
-import { useAgent, useSessions, useCreateSession, useAgentCapabilities, useCapabilities } from "@/hooks";
+import { use, useMemo } from "react";
+import { useAgent, useSessions, useCreateSession, useAgentCapabilities, useCapabilities, useLlmModels } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
   Search,
   Box,
   Folder,
+  Sparkles,
   LucideIcon,
 } from "lucide-react";
 import type { Capability } from "@/lib/api/types";
@@ -42,7 +43,14 @@ export default function AgentDetailPage({
   const { data: sessions, isLoading: sessionsLoading } = useSessions(agentId);
   const { data: agentCapabilities, isLoading: capabilitiesLoading } = useAgentCapabilities(agentId);
   const { data: allCapabilities } = useCapabilities();
+  const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
+
+  // Create a map of model_id -> model for quick lookups
+  const modelMap = useMemo(() => {
+    if (!llmModels) return new Map<string, string>();
+    return new Map(llmModels.map((m) => [m.id, m.display_name]));
+  }, [llmModels]);
 
   const handleNewSession = async () => {
     try {
@@ -166,9 +174,17 @@ export default function AgentDetailPage({
                           </p>
                         </div>
                       </div>
-                      {session.finished_at && (
-                        <Badge variant="outline">Completed</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {session.model_id && modelMap.get(session.model_id) && (
+                          <Badge variant="outline" className="gap-1 text-xs">
+                            <Sparkles className="w-3 h-3" />
+                            {modelMap.get(session.model_id)}
+                          </Badge>
+                        )}
+                        {session.finished_at && (
+                          <Badge variant="outline">Completed</Badge>
+                        )}
+                      </div>
                     </Link>
                   ))}
                 </div>

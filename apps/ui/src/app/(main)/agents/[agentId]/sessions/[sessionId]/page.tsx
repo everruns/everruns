@@ -1,14 +1,14 @@
 "use client";
 
 import { use, useState, useRef, useEffect } from "react";
-import { useAgent, useSession, useMessages, useSendMessage } from "@/hooks";
+import { useAgent, useSession, useMessages, useSendMessage, useLlmModel } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Send, User, Bot, Loader2 } from "lucide-react";
+import { ArrowLeft, Send, User, Bot, Loader2, Sparkles } from "lucide-react";
 import type { Message } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
@@ -30,6 +30,9 @@ export default function SessionDetailPage({
     sessionId
   );
   const sendMessage = useSendMessage();
+
+  // Fetch LLM model info if session has a model_id
+  const { data: llmModel } = useLlmModel(session?.model_id ?? "");
 
   // Determine if session is still processing
   const isActive = session?.status === "running" || session?.status === "pending";
@@ -166,6 +169,12 @@ export default function SessionDetailPage({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {llmModel && (
+              <Badge variant="outline" className="gap-1">
+                <Sparkles className="w-3 h-3" />
+                {llmModel.display_name}
+              </Badge>
+            )}
             {session.status === "running" && (
               <Badge variant="default">Processing...</Badge>
             )}

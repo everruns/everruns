@@ -224,3 +224,72 @@ pub async fn delete_session(
         Err(StatusCode::NOT_FOUND)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_session_request_minimal() {
+        // Test with minimal fields (all optional)
+        let json = r#"{}"#;
+        let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.title, None);
+        assert!(req.tags.is_empty());
+        assert_eq!(req.model_id, None);
+    }
+
+    #[test]
+    fn test_create_session_request_with_title() {
+        let json = r#"{"title": "Test Session"}"#;
+        let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.title, Some("Test Session".to_string()));
+        assert!(req.tags.is_empty());
+        assert_eq!(req.model_id, None);
+    }
+
+    #[test]
+    fn test_create_session_request_with_model_id() {
+        let model_uuid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let json = format!(r#"{{"model_id": "{}"}}"#, model_uuid);
+        let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req.model_id, Some(model_uuid));
+    }
+
+    #[test]
+    fn test_create_session_request_full() {
+        let model_uuid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
+        let json = format!(
+            r#"{{"title": "Full Session", "tags": ["tag1", "tag2"], "model_id": "{}"}}"#,
+            model_uuid
+        );
+        let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req.title, Some("Full Session".to_string()));
+        assert_eq!(req.tags, vec!["tag1", "tag2"]);
+        assert_eq!(req.model_id, Some(model_uuid));
+    }
+
+    #[test]
+    fn test_update_session_request_minimal() {
+        let json = r#"{}"#;
+        let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.title, None);
+        assert_eq!(req.tags, None);
+    }
+
+    #[test]
+    fn test_update_session_request_with_title() {
+        let json = r#"{"title": "Updated Title"}"#;
+        let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.title, Some("Updated Title".to_string()));
+        assert_eq!(req.tags, None);
+    }
+
+    #[test]
+    fn test_update_session_request_with_tags() {
+        let json = r#"{"tags": ["new-tag"]}"#;
+        let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.title, None);
+        assert_eq!(req.tags, Some(vec!["new-tag".to_string()]));
+    }
+}
