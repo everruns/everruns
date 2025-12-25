@@ -73,14 +73,16 @@ Virtual filesystem scoped to each session. See [session-filesystem.md](session-f
 |--------|------|-------------|
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs` | List root directory |
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Read file or list directory |
-| GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}?stat=true` | Get file metadata only |
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}/stat` | Get file metadata only |
 | POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Create file or directory |
 | PUT | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Update file content |
 | DELETE | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Delete file |
 | DELETE | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/move` | Move/rename file |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/copy` | Copy file |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/grep` | Search files by content |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_/move` | Move/rename file |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_/copy` | Copy file |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_/grep` | Search files by content |
+
+**Note:** Paths starting with `_` are reserved for system actions and cannot be used for file creation or updates.
 
 ### Events
 

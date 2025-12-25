@@ -1,13 +1,17 @@
 // Session Files (Virtual Filesystem) HTTP routes
 //
 // RESTful API design:
-// - GET    /fs/*path  - Read file content or list directory
-// - POST   /fs/*path  - Create file or directory
-// - PUT    /fs/*path  - Update file content
-// - DELETE /fs/*path  - Delete file or directory
-// - POST   /fs/_actions/move - Move/rename file
-// - POST   /fs/_actions/copy - Copy file
-// - POST   /fs/_actions/grep - Search files
+// - GET    /fs/*path       - Read file content or list directory
+// - GET    /fs/*path/stat  - Get file metadata (stat)
+// - POST   /fs/*path       - Create file or directory
+// - PUT    /fs/*path       - Update file content
+// - DELETE /fs/*path       - Delete file or directory
+// - POST   /fs/_/move      - Move/rename file
+// - POST   /fs/_/copy      - Copy file
+// - POST   /fs/_/grep      - Search files
+//
+// Note: Paths starting with "_" are reserved for actions and cannot be
+// used for file creation or updates.
 
 use axum::{
     extract::{Path, Query, State},
@@ -94,9 +98,6 @@ pub struct GetQuery {
     /// For directories: whether to list recursively
     #[serde(default)]
     pub recursive: bool,
-    /// Request stat info instead of content
-    #[serde(default)]
-    pub stat: bool,
 }
 
 /// Query parameters for DELETE requests
@@ -113,13 +114,12 @@ pub struct DeleteResponse {
     pub deleted: bool,
 }
 
-/// Unified response for GET that can be file, directory listing, or stat
+/// Unified response for GET that can be file or directory listing
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(untagged)]
 pub enum GetResponse {
     File(SessionFile),
     Listing(ListResponse<FileInfo>),
-    Stat(FileStat),
 }
 
 /// App state for session files routes
@@ -141,16 +141,25 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         // Actions (must be before wildcard to take precedence)
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/fs/_actions/move",
+            "/v1/agents/:agent_id/sessions/:session_id/fs/_/move",
             post(move_file),
         )
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/fs/_actions/copy",
+            "/v1/agents/:agent_id/sessions/:session_id/fs/_/copy",
             post(copy_file),
         )
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/fs/_actions/grep",
+            "/v1/agents/:agent_id/sessions/:session_id/fs/_/grep",
             post(grep_files),
+        )
+        // Stat endpoints (before wildcard)
+        .route(
+            "/v1/agents/:agent_id/sessions/:session_id/fs/stat",
+            get(get_root_stat),
+        )
+        .route(
+            "/v1/agents/:agent_id/sessions/:session_id/fs/*path/stat",
+            get(get_path_stat),
         )
         // File operations with path
         .route(
@@ -177,6 +186,12 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
+// Check if path is reserved (starts with _ which is used for actions)
+fn is_reserved_path(path: &str) -> bool {
+    let path = path.trim_start_matches('/');
+    path.starts_with('_') || path.split('/').any(|segment| segment.starts_with('_'))
+}
+
 /// GET /fs - Get root directory listing
 #[utoipa::path(
     get,
@@ -184,11 +199,10 @@ fn normalize_path(path: &str) -> String {
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID"),
-        ("recursive" = Option<bool>, Query, description = "List recursively"),
-        ("stat" = Option<bool>, Query, description = "Get stat info")
+        ("recursive" = Option<bool>, Query, description = "List recursively")
     ),
     responses(
-        (status = 200, description = "Directory listing or stat"),
+        (status = 200, description = "Directory listing"),
         (status = 500, description = "Internal server error")
     ),
     tag = "filesystem"
@@ -201,6 +215,27 @@ pub async fn get_root(
     get_path_impl(state, session_id, "/", query).await
 }
 
+/// GET /fs/stat - Get root stat
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/stat",
+    params(
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("session_id" = Uuid, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Root stat info", body = FileStat),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "filesystem"
+)]
+pub async fn get_root_stat(
+    State(state): State<AppState>,
+    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<FileStat>, StatusCode> {
+    get_stat_impl(state, session_id, "/").await
+}
+
 /// GET /fs/*path - Get file content or directory listing
 #[utoipa::path(
     get,
@@ -209,11 +244,10 @@ pub async fn get_root(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID"),
         ("path" = String, Path, description = "File or directory path"),
-        ("recursive" = Option<bool>, Query, description = "List recursively"),
-        ("stat" = Option<bool>, Query, description = "Get stat info")
+        ("recursive" = Option<bool>, Query, description = "List recursively")
     ),
     responses(
-        (status = 200, description = "File content, directory listing, or stat"),
+        (status = 200, description = "File content or directory listing"),
         (status = 404, description = "Not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -228,26 +262,53 @@ pub async fn get_path(
     get_path_impl(state, session_id, &normalized, query).await
 }
 
+/// GET /fs/*path/stat - Get file or directory stat
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}/stat",
+    params(
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("path" = String, Path, description = "File or directory path")
+    ),
+    responses(
+        (status = 200, description = "Stat info", body = FileStat),
+        (status = 404, description = "Not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "filesystem"
+)]
+pub async fn get_path_stat(
+    State(state): State<AppState>,
+    Path((_agent_id, session_id, path)): Path<(Uuid, Uuid, String)>,
+) -> Result<Json<FileStat>, StatusCode> {
+    let normalized = normalize_path(&path);
+    get_stat_impl(state, session_id, &normalized).await
+}
+
+async fn get_stat_impl(
+    state: AppState,
+    session_id: Uuid,
+    path: &str,
+) -> Result<Json<FileStat>, StatusCode> {
+    let stat = state
+        .file_service
+        .stat(session_id, path)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to stat: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(stat))
+}
+
 async fn get_path_impl(
     state: AppState,
     session_id: Uuid,
     path: &str,
     query: GetQuery,
 ) -> Result<Json<GetResponse>, StatusCode> {
-    // If stat requested, return stat info
-    if query.stat {
-        let stat = state
-            .file_service
-            .stat(session_id, path)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to stat: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .ok_or(StatusCode::NOT_FOUND)?;
-        return Ok(Json(GetResponse::Stat(stat)));
-    }
-
     // Check if path is a directory or file
     let stat = state
         .file_service
@@ -328,6 +389,14 @@ pub async fn create_path(
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
     let normalized = normalize_path(&path);
+
+    // Paths starting with _ are reserved for actions
+    if is_reserved_path(&normalized) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Paths starting with '_' are reserved for system actions".to_string(),
+        ));
+    }
 
     if req.is_directory.unwrap_or(false) {
         // Create directory
@@ -423,6 +492,14 @@ pub async fn update_path(
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
     let normalized = normalize_path(&path);
 
+    // Paths starting with _ are reserved for actions
+    if is_reserved_path(&normalized) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Paths starting with '_' are reserved for system actions".to_string(),
+        ));
+    }
+
     let input = UpdateFileInput {
         content: req.content,
         encoding: req.encoding,
@@ -502,10 +579,10 @@ pub async fn delete_path(
     Ok(Json(DeleteResponse { deleted }))
 }
 
-/// POST /fs/_actions/move - Move/rename file
+/// POST /fs/_/move - Move/rename file
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/move",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_/move",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
@@ -555,10 +632,10 @@ pub async fn move_file(
     Ok(Json(file))
 }
 
-/// POST /fs/_actions/copy - Copy file
+/// POST /fs/_/copy - Copy file
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/copy",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_/copy",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
@@ -608,10 +685,10 @@ pub async fn copy_file(
     Ok((StatusCode::CREATED, Json(file)))
 }
 
-/// POST /fs/_actions/grep - Search files
+/// POST /fs/_/grep - Search files
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/grep",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_/grep",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")

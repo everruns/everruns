@@ -702,7 +702,7 @@ async fn test_session_filesystem() {
     // Step 6: Get file stat
     println!("\nStep 6: Getting file stat...");
     let stat_response = client
-        .get(format!("{}/hello.txt?stat=true", fs_url))
+        .get(format!("{}/hello.txt/stat", fs_url))
         .send()
         .await
         .expect("Failed to get stat");
@@ -778,7 +778,7 @@ async fn test_session_filesystem() {
     // Step 11: Copy file
     println!("\nStep 11: Copying file...");
     let copy_response = client
-        .post(format!("{}/_actions/copy", fs_url))
+        .post(format!("{}/_/copy", fs_url))
         .json(&json!({
             "src_path": "/hello.txt",
             "dst_path": "/hello-copy.txt"
@@ -793,7 +793,7 @@ async fn test_session_filesystem() {
     // Step 12: Move file
     println!("\nStep 12: Moving file...");
     let move_response = client
-        .post(format!("{}/_actions/move", fs_url))
+        .post(format!("{}/_/move", fs_url))
         .json(&json!({
             "src_path": "/hello-copy.txt",
             "dst_path": "/renamed.txt"
@@ -808,7 +808,7 @@ async fn test_session_filesystem() {
     // Step 13: Grep search
     println!("\nStep 13: Searching files...");
     let grep_response = client
-        .post(format!("{}/_actions/grep", fs_url))
+        .post(format!("{}/_/grep", fs_url))
         .json(&json!({
             "pattern": "main"
         }))

@@ -39,7 +39,7 @@ Expected: `"Hello, World!"`
 
 ### 4. Get File Stat
 ```bash
-curl -s "$FS_URL/hello.txt?stat=true" | jq
+curl -s "$FS_URL/hello.txt/stat" | jq
 ```
 Expected: FileStat with `path`, `name`, `size_bytes`, `is_directory: false`
 
@@ -81,7 +81,7 @@ Expected: At least 3 files (hello.txt, docs, src/main.rs)
 
 ### 10. Copy File
 ```bash
-curl -s -X POST "$FS_URL/_actions/copy" \
+curl -s -X POST "$FS_URL/_/copy" \
   -H "Content-Type: application/json" \
   -d '{"src_path": "/hello.txt", "dst_path": "/hello-backup.txt"}' | jq '.path'
 ```
@@ -89,7 +89,7 @@ Expected: `"/hello-backup.txt"`
 
 ### 11. Move/Rename File
 ```bash
-curl -s -X POST "$FS_URL/_actions/move" \
+curl -s -X POST "$FS_URL/_/move" \
   -H "Content-Type: application/json" \
   -d '{"src_path": "/hello-backup.txt", "dst_path": "/renamed.txt"}' | jq '.path'
 ```
@@ -97,7 +97,7 @@ Expected: `"/renamed.txt"`
 
 ### 12. Grep Search
 ```bash
-curl -s -X POST "$FS_URL/_actions/grep" \
+curl -s -X POST "$FS_URL/_/grep" \
   -H "Content-Type: application/json" \
   -d '{"pattern": "main"}' | jq
 ```

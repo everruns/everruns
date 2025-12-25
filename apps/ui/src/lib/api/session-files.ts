@@ -1,14 +1,14 @@
 // Session Files (Virtual Filesystem) API functions
 //
 // RESTful API design:
-// - GET    /fs/{path}  - Read file or list directory
-// - GET    /fs/{path}?stat=true  - Get file metadata
-// - POST   /fs/{path}  - Create file or directory
-// - PUT    /fs/{path}  - Update file
-// - DELETE /fs/{path}  - Delete file or directory
-// - POST   /fs/_actions/move - Move/rename
-// - POST   /fs/_actions/copy - Copy
-// - POST   /fs/_actions/grep - Search
+// - GET    /fs/{path}      - Read file or list directory
+// - GET    /fs/{path}/stat - Get file metadata
+// - POST   /fs/{path}      - Create file or directory
+// - PUT    /fs/{path}      - Update file
+// - DELETE /fs/{path}      - Delete file or directory
+// - POST   /fs/_/move      - Move/rename
+// - POST   /fs/_/copy      - Copy
+// - POST   /fs/_/grep      - Search
 
 import { api } from "./client";
 import type {
@@ -98,7 +98,7 @@ export async function statFile(
   sessionId: string,
   path: string
 ): Promise<FileStat> {
-  const url = `${fsPath(agentId, sessionId, path)}?stat=true`;
+  const url = `${fsPath(agentId, sessionId, path)}/stat`;
   const response = await api.get<FileStat>(url);
   return response.data;
 }
@@ -145,7 +145,7 @@ export async function moveFile(
   request: MoveFileRequest
 ): Promise<SessionFile> {
   const response = await api.post<SessionFile>(
-    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_actions/move`,
+    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_/move`,
     request
   );
   return response.data;
@@ -158,7 +158,7 @@ export async function copyFile(
   request: CopyFileRequest
 ): Promise<SessionFile> {
   const response = await api.post<SessionFile>(
-    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_actions/copy`,
+    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_/copy`,
     request
   );
   return response.data;
@@ -175,7 +175,7 @@ export async function grepFiles(
   request: GrepRequest
 ): Promise<GrepResult[]> {
   const response = await api.post<ListResponse<GrepResult>>(
-    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_actions/grep`,
+    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_/grep`,
     request
   );
   return response.data.data;
