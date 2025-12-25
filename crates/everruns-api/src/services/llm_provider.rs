@@ -39,7 +39,6 @@ impl LlmProviderService {
             provider_type: req.provider_type.to_string(),
             base_url: req.base_url,
             api_key_encrypted,
-            is_default: req.is_default,
             settings: None,
         };
 
@@ -78,7 +77,6 @@ impl LlmProviderService {
             provider_type: req.provider_type.map(|t| t.to_string()),
             base_url: req.base_url,
             api_key_encrypted,
-            is_default: req.is_default,
             status: req.status.map(|s| match s {
                 LlmProviderStatus::Active => "active".to_string(),
                 LlmProviderStatus::Disabled => "disabled".to_string(),
@@ -101,7 +99,6 @@ impl LlmProviderService {
             provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Openai),
             base_url: row.base_url.clone(),
             api_key_set: row.api_key_set,
-            is_default: row.is_default,
             status: match row.status.as_str() {
                 "active" => LlmProviderStatus::Active,
                 _ => LlmProviderStatus::Disabled,

@@ -10,7 +10,6 @@ const mockProviders = [
     name: "OpenAI Production",
     provider_type: "openai",
     status: "active",
-    is_default: true,
     api_key_set: true,
     base_url: "https://api.openai.com/v1",
     created_at: "2024-01-01T00:00:00Z",
@@ -21,7 +20,6 @@ const mockProviders = [
     name: "Anthropic Dev",
     provider_type: "anthropic",
     status: "active",
-    is_default: false,
     api_key_set: false,
     base_url: null,
     created_at: "2024-01-01T00:00:00Z",
@@ -244,12 +242,12 @@ describe("ProvidersPage", () => {
     expect(headerButton).toBeDisabled();
   });
 
-  it("shows default star icon for default provider", () => {
+  it("shows default star icon for default model", () => {
     render(<ProvidersPage />, { wrapper });
 
-    // OpenAI Production is the default provider
-    const providerCard = screen.getByText("OpenAI Production").closest("div");
-    expect(providerCard).toBeInTheDocument();
+    // GPT-4 is the default model
+    const modelRow = screen.getByText("GPT-4").closest("div");
+    expect(modelRow).toBeInTheDocument();
     // Check for the star icon (it has fill-yellow-500 class)
     const starIcons = document.querySelectorAll('[class*="fill-yellow-500"]');
     expect(starIcons.length).toBeGreaterThan(0);

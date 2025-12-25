@@ -23,6 +23,11 @@ impl LlmModelService {
     }
 
     pub async fn create(&self, provider_id: Uuid, req: CreateLlmModelRequest) -> Result<LlmModel> {
+        // If setting this model as default, clear all other defaults first ("last wins")
+        if req.is_default {
+            self.db.clear_all_model_defaults().await?;
+        }
+
         let input = CreateLlmModelRow {
             provider_id,
             model_id: req.model_id,
@@ -51,6 +56,11 @@ impl LlmModelService {
     }
 
     pub async fn update(&self, id: Uuid, req: UpdateLlmModelRequest) -> Result<Option<LlmModel>> {
+        // If setting this model as default, clear all other defaults first ("last wins")
+        if req.is_default == Some(true) {
+            self.db.clear_all_model_defaults().await?;
+        }
+
         let input = UpdateLlmModel {
             model_id: req.model_id,
             display_name: req.display_name,

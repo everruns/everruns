@@ -38,8 +38,6 @@ pub struct CreateLlmProviderRequest {
     pub base_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
-    #[serde(default)]
-    pub is_default: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -52,8 +50,6 @@ pub struct UpdateLlmProviderRequest {
     pub base_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_default: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LlmProviderStatus>,
 }
