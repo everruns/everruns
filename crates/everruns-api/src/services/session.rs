@@ -21,11 +21,21 @@ impl SessionService {
     }
 
     pub async fn create(&self, agent_id: Uuid, req: CreateSessionRequest) -> Result<Session> {
+        // If model_id not provided, use the agent's default_model_id
+        let model_id = match req.model_id {
+            Some(id) => Some(id),
+            None => {
+                // Look up the agent to get its default_model_id
+                let agent = self.db.get_agent(agent_id).await?;
+                agent.and_then(|a| a.default_model_id)
+            }
+        };
+
         let input = CreateSessionRow {
             agent_id,
             title: req.title,
             tags: req.tags,
-            model_id: req.model_id,
+            model_id,
         };
         let row = self.db.create_session(input).await?;
         Ok(Self::row_to_session(row))
