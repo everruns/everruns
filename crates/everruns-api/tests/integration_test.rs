@@ -441,3 +441,173 @@ async fn test_llm_model_profile() {
 
     println!("LLM Model Profile tests passed!");
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_session_inherits_agent_default_model() {
+    let client = reqwest::Client::new();
+
+    println!("Testing session model_id inheritance from agent...");
+
+    // Step 1: Create an LLM provider
+    println!("\nStep 1: Creating LLM provider...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "Test Provider for Session Model",
+            "provider_type": "openai",
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created provider: {}", provider.id);
+
+    // Step 2: Create a model
+    println!("\nStep 2: Creating model...");
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "test-model",
+            "display_name": "Test Model",
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created model: {}", model.id);
+
+    // Step 3: Create an agent with default_model_id
+    println!("\nStep 3: Creating agent with default_model_id...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Agent with Default Model",
+            "system_prompt": "Test agent",
+            "default_model_id": model.id.to_string()
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!(
+        "Created agent: {} with default_model_id: {:?}",
+        agent.id, agent.default_model_id
+    );
+    assert_eq!(agent.default_model_id, Some(model.id));
+
+    // Step 4: Create a session WITHOUT specifying model_id
+    println!("\nStep 4: Creating session without model_id...");
+    let session_response = client
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .json(&json!({
+            "title": "Test Session"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!(
+        "Created session: {} with model_id: {:?}",
+        session.id, session.model_id
+    );
+
+    // Verify session inherited the agent's default_model_id
+    assert_eq!(
+        session.model_id,
+        Some(model.id),
+        "Session should inherit agent's default_model_id"
+    );
+
+    // Step 5: Create a session WITH explicit model_id (should override)
+    println!("\nStep 5: Creating session with explicit model_id...");
+
+    // Create another model
+    let model2_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "test-model-2",
+            "display_name": "Test Model 2",
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create second model");
+
+    let model2: LlmModel = model2_response
+        .json()
+        .await
+        .expect("Failed to parse second model");
+
+    let session2_response = client
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .json(&json!({
+            "title": "Test Session 2",
+            "model_id": model2.id.to_string()
+        }))
+        .send()
+        .await
+        .expect("Failed to create session with explicit model");
+
+    assert_eq!(session2_response.status(), 201);
+    let session2: Session = session2_response
+        .json()
+        .await
+        .expect("Failed to parse session2");
+    println!(
+        "Created session2: {} with model_id: {:?}",
+        session2.id, session2.model_id
+    );
+
+    // Verify explicit model_id overrides default
+    assert_eq!(
+        session2.model_id,
+        Some(model2.id),
+        "Session should use explicit model_id"
+    );
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+    client
+        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model2.id))
+        .send()
+        .await
+        .expect("Failed to delete model2");
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("Session model_id inheritance test passed!");
+}
