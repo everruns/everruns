@@ -69,6 +69,17 @@ export default function SessionDetailPage({
   const supportsReasoning = llmModel?.profile?.reasoning && llmModel?.profile?.reasoning_effort;
   const reasoningEffortConfig = llmModel?.profile?.reasoning_effort;
 
+  // Get display name for a reasoning effort value
+  const getReasoningEffortName = (value: string): string => {
+    const effort = reasoningEffortConfig?.values.find(e => e.value === value);
+    return effort?.name ?? value;
+  };
+
+  // Get the default effort display name
+  const defaultEffortName = reasoningEffortConfig?.default
+    ? getReasoningEffortName(reasoningEffortConfig.default)
+    : "Medium";
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -325,11 +336,15 @@ export default function SessionDetailPage({
               value={reasoningEffort}
               onValueChange={(value) => setReasoningEffort(value as ReasoningEffort | "")}
             >
-              <SelectTrigger size="sm" className="w-[140px]">
-                <SelectValue placeholder="Default" />
+              <SelectTrigger size="sm" className="w-[180px]">
+                <SelectValue>
+                  {reasoningEffort
+                    ? getReasoningEffortName(reasoningEffort)
+                    : `Default (${defaultEffortName})`}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Default</SelectItem>
+                <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
                 {reasoningEffortConfig.values.map((effort) => (
                   <SelectItem key={effort.value} value={effort.value}>
                     {effort.name}
