@@ -30,6 +30,13 @@ jest.mock("@/components/ui/prompt-editor", () => ({
   ),
 }));
 
+// Mock ProviderIcon to avoid Next.js Image issues
+jest.mock("@/components/providers/provider-icon", () => ({
+  ProviderIcon: ({ providerType }: { providerType: string }) => (
+    <span data-testid={`provider-icon-${providerType}`}>{providerType}</span>
+  ),
+}));
+
 // Mock data
 const mockAgent: Agent = {
   id: "agent-1",
@@ -229,5 +236,92 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     expect(
       screen.getByText("No sessions yet. Start a new session to begin chatting.")
     ).toBeInTheDocument();
+  });
+
+  it("displays provider icons for sessions with models", async () => {
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    // Provider icons should be rendered for sessions with models
+    expect(screen.getByTestId("provider-icon-openai")).toBeInTheDocument();
+    expect(screen.getByTestId("provider-icon-anthropic")).toBeInTheDocument();
+  });
+});
+
+describe("AgentDetailPage - Default Model Display in Configuration", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    mockUseSessions.mockReturnValue({ data: [], isLoading: false });
+    mockUseCreateSession.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockUseAgentCapabilities.mockReturnValue({ data: [], isLoading: false });
+    mockUseCapabilities.mockReturnValue({ data: [] });
+    mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
+  });
+
+  it("displays default model with provider icon when agent has default_model_id", async () => {
+    const agentWithDefaultModel: Agent = {
+      ...mockAgent,
+      default_model_id: "model-1",
+    };
+    mockUseAgent.mockReturnValue({ data: agentWithDefaultModel, isLoading: false });
+
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    // Check that default model section is visible
+    expect(screen.getByText("Default Model")).toBeInTheDocument();
+    expect(screen.getByText("GPT-4o")).toBeInTheDocument();
+    // Provider icon should be rendered
+    expect(screen.getByTestId("provider-icon-openai")).toBeInTheDocument();
+  });
+
+  it("displays Anthropic provider icon for Claude model", async () => {
+    const agentWithClaudeModel: Agent = {
+      ...mockAgent,
+      default_model_id: "model-2",
+    };
+    mockUseAgent.mockReturnValue({ data: agentWithClaudeModel, isLoading: false });
+
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    expect(screen.getByText("Default Model")).toBeInTheDocument();
+    expect(screen.getByText("Claude 3.5 Sonnet")).toBeInTheDocument();
+    expect(screen.getByTestId("provider-icon-anthropic")).toBeInTheDocument();
+  });
+
+  it("does not display default model section when agent has no default_model_id", async () => {
+    const agentWithoutDefaultModel: Agent = {
+      ...mockAgent,
+      default_model_id: null,
+    };
+    mockUseAgent.mockReturnValue({ data: agentWithoutDefaultModel, isLoading: false });
+
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    expect(screen.queryByText("Default Model")).not.toBeInTheDocument();
+  });
+
+  it("does not display default model section when model data is not loaded", async () => {
+    const agentWithDefaultModel: Agent = {
+      ...mockAgent,
+      default_model_id: "model-1",
+    };
+    mockUseAgent.mockReturnValue({ data: agentWithDefaultModel, isLoading: false });
+    mockUseLlmModels.mockReturnValue({ data: undefined });
+
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    expect(screen.queryByText("Default Model")).not.toBeInTheDocument();
+  });
+
+  it("does not display default model section when default_model_id has no matching model", async () => {
+    const agentWithUnknownModel: Agent = {
+      ...mockAgent,
+      default_model_id: "unknown-model-id",
+    };
+    mockUseAgent.mockReturnValue({ data: agentWithUnknownModel, isLoading: false });
+
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    expect(screen.queryByText("Default Model")).not.toBeInTheDocument();
   });
 });
