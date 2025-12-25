@@ -36,11 +36,6 @@ impl LlmModelService {
         Ok(Self::row_to_model(&row))
     }
 
-    pub async fn get(&self, id: Uuid) -> Result<Option<LlmModel>> {
-        let row = self.db.get_llm_model(id).await?;
-        Ok(row.as_ref().map(Self::row_to_model))
-    }
-
     pub async fn get_with_provider(&self, id: Uuid) -> Result<Option<LlmModelWithProvider>> {
         let row = self.db.get_llm_model_with_provider(id).await?;
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
