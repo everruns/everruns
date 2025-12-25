@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useRef, useEffect } from "react";
-import { useAgent, useSession, useMessages, useSendMessage, useLlmModel } from "@/hooks";
+import { useAgent, useSession, useEvents, useSendMessage, useLlmModel } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,8 +46,9 @@ export default function SessionDetailPage({
     refetchInterval: shouldPoll ? 1000 : false,
   });
 
-  // Poll for messages while waiting and session is active
-  const { data: messages, isLoading: messagesLoading } = useMessages(
+  // Poll for messages (from events) while waiting and session is active
+  // Uses events endpoint and transforms to Message format for display
+  const { data: messages, isLoading: messagesLoading } = useEvents(
     agentId,
     sessionId,
     { refetchInterval: shouldPoll ? 1000 : false }

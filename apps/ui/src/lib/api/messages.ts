@@ -4,6 +4,7 @@
 import { api } from "./client";
 import type {
   Message,
+  Event,
   CreateMessageRequest,
   ListResponse,
 } from "./types";
@@ -51,6 +52,17 @@ export async function sendUserMessage(
 // ============================================
 // Events (SSE notifications)
 // ============================================
+
+// List events for a session (polling alternative to SSE)
+export async function listEvents(
+  agentId: string,
+  sessionId: string
+): Promise<Event[]> {
+  const response = await api.get<ListResponse<Event>>(
+    `/v1/agents/${agentId}/sessions/${sessionId}/events/list`
+  );
+  return response.data.data;
+}
 
 // SSE event stream URL builder
 export function getEventStreamUrl(agentId: string, sessionId: string): string {
