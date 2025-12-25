@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
+import { ProviderIcon } from "@/components/providers/provider-icon";
 import {
   ArrowLeft,
   Plus,
@@ -19,10 +20,9 @@ import {
   Search,
   Box,
   Folder,
-  Sparkles,
   LucideIcon,
 } from "lucide-react";
-import type { Capability } from "@/lib/api/types";
+import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
 
 const iconMap: Record<string, LucideIcon> = {
   "circle-off": CircleOff,
@@ -48,9 +48,12 @@ export default function AgentDetailPage({
 
   // Create a map of model_id -> model for quick lookups
   const modelMap = useMemo(() => {
-    if (!llmModels) return new Map<string, string>();
-    return new Map(llmModels.map((m) => [m.id, m.display_name]));
+    if (!llmModels) return new Map<string, LlmModelWithProvider>();
+    return new Map(llmModels.map((m) => [m.id, m]));
   }, [llmModels]);
+
+  // Get the agent's default model
+  const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;
 
   const handleNewSession = async () => {
     try {
@@ -177,8 +180,12 @@ export default function AgentDetailPage({
                       <div className="flex items-center gap-2">
                         {session.model_id && modelMap.get(session.model_id) && (
                           <Badge variant="outline" className="gap-1 text-xs">
-                            <Sparkles className="w-3 h-3" />
-                            {modelMap.get(session.model_id)}
+                            <ProviderIcon
+                              providerType={modelMap.get(session.model_id)!.provider_type}
+                              size="sm"
+                              showBackground={false}
+                            />
+                            {modelMap.get(session.model_id)!.display_name}
                           </Badge>
                         )}
                         {session.finished_at && (
@@ -245,6 +252,19 @@ export default function AgentDetailPage({
               <CardTitle>Configuration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {defaultModel && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Default Model</p>
+                  <div className="flex items-center gap-2">
+                    <ProviderIcon
+                      providerType={defaultModel.provider_type}
+                      size="sm"
+                    />
+                    <span className="text-sm">{defaultModel.display_name}</span>
+                  </div>
+                </div>
+              )}
+
               {agent.description && (
                 <div>
                   <p className="text-sm font-medium">Description</p>
