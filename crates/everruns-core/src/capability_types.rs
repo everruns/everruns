@@ -34,6 +34,7 @@ impl CapabilityId {
     pub const TEST_MATH: &'static str = "test_math";
     pub const TEST_WEATHER: &'static str = "test_weather";
     pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
+    pub const WEB_FETCH: &'static str = "web_fetch";
 
     /// Create the noop capability ID
     pub fn noop() -> Self {
@@ -73,6 +74,11 @@ impl CapabilityId {
     /// Create the stateless_todo_list capability ID
     pub fn stateless_todo_list() -> Self {
         Self::new(Self::STATELESS_TODO_LIST)
+    }
+
+    /// Create the web_fetch capability ID
+    pub fn web_fetch() -> Self {
+        Self::new(Self::WEB_FETCH)
     }
 }
 
@@ -147,6 +153,7 @@ mod tests {
             CapabilityId::stateless_todo_list().to_string(),
             "stateless_todo_list"
         );
+        assert_eq!(CapabilityId::web_fetch().to_string(), "web_fetch");
     }
 
     #[test]
@@ -182,6 +189,10 @@ mod tests {
         assert_eq!(
             "stateless_todo_list".parse::<CapabilityId>().unwrap(),
             CapabilityId::stateless_todo_list()
+        );
+        assert_eq!(
+            "web_fetch".parse::<CapabilityId>().unwrap(),
+            CapabilityId::web_fetch()
         );
     }
 

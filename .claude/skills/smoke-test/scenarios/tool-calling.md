@@ -14,6 +14,7 @@ Tests for agent tool calling functionality via the API.
 |------------|-------|-------------|
 | `test_math` | add, subtract, multiply, divide | Calculator tools for math operations |
 | `test_weather` | get_weather, get_forecast | Mock weather data tools |
+| `web_fetch` | web_fetch | Fetch URLs and convert HTML to markdown/text |
 
 ## Running Tests
 
@@ -52,6 +53,8 @@ Run all tool calling tests automatically:
 | Parallel Tool Execution | Multiple `get_weather` calls in parallel |
 | Combined Capabilities | Using both `test_math` and `test_weather` |
 | Tool Error Handling | Division by zero error response |
+| WebFetch Capability Available | Verify `web_fetch` capability is registered |
+| WebFetch Tool (Input Validation) | Test `web_fetch` tool handles invalid URLs |
 
 ## Troubleshooting
 
