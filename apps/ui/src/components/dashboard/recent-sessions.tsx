@@ -11,16 +11,19 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Session, Agent } from "@/lib/api/types";
+import { Sparkles } from "lucide-react";
+import type { Session, Agent, LlmModelWithProvider } from "@/lib/api/types";
 
 interface RecentSessionsProps {
   sessions: Session[];
   agents: Agent[];
+  models?: LlmModelWithProvider[];
 }
 
-export function RecentSessions({ sessions, agents }: RecentSessionsProps) {
+export function RecentSessions({ sessions, agents, models = [] }: RecentSessionsProps) {
   const recentSessions = sessions.slice(0, 10);
   const agentMap = new Map(agents.map((a) => [a.id, a]));
+  const modelMap = new Map(models.map((m) => [m.id, m]));
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleString();
@@ -64,6 +67,7 @@ export function RecentSessions({ sessions, agents }: RecentSessionsProps) {
               <TableRow>
                 <TableHead>Session</TableHead>
                 <TableHead>Agent</TableHead>
+                <TableHead>Model</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Started</TableHead>
                 <TableHead>Duration</TableHead>
@@ -72,6 +76,7 @@ export function RecentSessions({ sessions, agents }: RecentSessionsProps) {
             <TableBody>
               {recentSessions.map((session) => {
                 const agent = agentMap.get(session.agent_id);
+                const model = session.model_id ? modelMap.get(session.model_id) : undefined;
                 return (
                   <TableRow key={session.id}>
                     <TableCell>
@@ -89,6 +94,16 @@ export function RecentSessions({ sessions, agents }: RecentSessionsProps) {
                       >
                         {agent?.name || "Unknown"}
                       </Link>
+                    </TableCell>
+                    <TableCell>
+                      {model ? (
+                        <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+                          <Sparkles className="w-3 h-3" />
+                          {model.display_name}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {getStatusBadge(session)}
