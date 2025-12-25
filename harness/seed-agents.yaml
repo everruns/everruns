@@ -26,19 +26,47 @@ providers:
     api_key_env: "OPENAI_API_KEY"
     is_default: true
     models:
-      - model_id: "gpt-5"
-        display_name: "GPT-5"
-        context_window: 200000
-        is_default: true
-      - model_id: "gpt-5-mini"
-        display_name: "GPT-5 Mini"
-        context_window: 200000
-      - model_id: "gpt-5-nano"
-        display_name: "GPT-5 Nano"
+      # GPT-5.2 models (latest, supports xhigh reasoning)
+      - model_id: "gpt-5.2"
+        display_name: "GPT-5.2"
         context_window: 128000
+        is_default: true
+      - model_id: "gpt-5.2-pro"
+        display_name: "GPT-5.2 Pro"
+        context_window: 128000
+      - model_id: "gpt-5.2-codex"
+        display_name: "GPT-5.2 Codex"
+        context_window: 128000
+      # GPT-5.1 models (default none reasoning, supports none/low/medium/high)
       - model_id: "gpt-5.1"
         display_name: "GPT-5.1"
-        context_window: 200000
+        context_window: 128000
+      - model_id: "gpt-5.1-codex"
+        display_name: "GPT-5.1 Codex"
+        context_window: 128000
+      - model_id: "gpt-5.1-codex-mini"
+        display_name: "GPT-5.1 Codex mini"
+        context_window: 128000
+      - model_id: "gpt-5.1-codex-max"
+        display_name: "GPT-5.1 Codex max"
+        context_window: 128000
+      # GPT-5 models (default medium reasoning, supports low/medium/high)
+      - model_id: "gpt-5"
+        display_name: "GPT-5"
+        context_window: 128000
+      - model_id: "gpt-5-mini"
+        display_name: "GPT-5 mini"
+        context_window: 128000
+      - model_id: "gpt-5-nano"
+        display_name: "GPT-5 nano"
+        context_window: 128000
+      - model_id: "gpt-5-pro"
+        display_name: "GPT-5 Pro"
+        context_window: 128000
+      - model_id: "gpt-5-codex"
+        display_name: "GPT-5 Codex"
+        context_window: 128000
+      # GPT-4 and reasoning models
       - model_id: "gpt-4o"
         display_name: "GPT-4o"
         context_window: 128000
