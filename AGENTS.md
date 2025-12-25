@@ -280,11 +280,11 @@ echo "feat: add new feature" | npx commitlint
 npx commitlint --from HEAD~1 --to HEAD
 ```
 
-### Pull request conventions
+### PR (Pull Request) conventions
 
 PR titles should follow Conventional Commits format. Use the PR template (`.github/pull_request_template.md`) for descriptions.
 
-**PR Description Template:**
+**PR Body Template:**
 
 ```markdown
 ## What
