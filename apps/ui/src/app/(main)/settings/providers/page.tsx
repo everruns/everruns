@@ -559,7 +559,6 @@ function AddModelDialog({
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [contextWindow, setContextWindow] = useState("");
   const [isDefault, setIsDefault] = useState(false);
 
   const createModel = useCreateLlmModel(providerId);
@@ -569,7 +568,6 @@ function AddModelDialog({
     const data: CreateLlmModelRequest = {
       model_id: modelId,
       display_name: displayName,
-      context_window: contextWindow ? parseInt(contextWindow) : undefined,
       is_default: isDefault,
     };
     await createModel.mutateAsync(data);
@@ -577,7 +575,6 @@ function AddModelDialog({
     setProviderId("");
     setModelId("");
     setDisplayName("");
-    setContextWindow("");
     setIsDefault(false);
   };
 
@@ -628,16 +625,6 @@ function AddModelDialog({
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisplayName(e.target.value)}
               placeholder="GPT-4o"
               required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="context-window">Context Window (optional)</Label>
-            <Input
-              id="context-window"
-              type="number"
-              value={contextWindow}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContextWindow(e.target.value)}
-              placeholder="128000"
             />
           </div>
           <div className="flex items-center gap-2">

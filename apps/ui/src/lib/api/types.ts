@@ -311,7 +311,6 @@ export interface LlmModel {
   model_id: string;
   display_name: string;
   capabilities: string[];
-  context_window?: number;
   is_default: boolean;
   status: LlmModelStatus;
   created_at: string;
@@ -436,7 +435,6 @@ export interface CreateLlmModelRequest {
   model_id: string;
   display_name: string;
   capabilities?: string[];
-  context_window?: number;
   is_default?: boolean;
 }
 
@@ -444,7 +442,6 @@ export interface UpdateLlmModelRequest {
   model_id?: string;
   display_name?: string;
   capabilities?: string[];
-  context_window?: number;
   is_default?: boolean;
   status?: LlmModelStatus;
 }

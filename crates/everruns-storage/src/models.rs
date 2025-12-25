@@ -260,7 +260,6 @@ pub struct LlmModelRow {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: sqlx::types::JsonValue,
-    pub context_window: Option<i32>,
     pub is_default: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -275,7 +274,6 @@ pub struct LlmModelWithProviderRow {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: sqlx::types::JsonValue,
-    pub context_window: Option<i32>,
     pub is_default: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -323,7 +321,6 @@ pub struct CreateLlmModelRow {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,
-    pub context_window: Option<i32>,
     pub is_default: bool,
 }
 
@@ -332,7 +329,6 @@ pub struct UpdateLlmModel {
     pub model_id: Option<String>,
     pub display_name: Option<String>,
     pub capabilities: Option<Vec<String>>,
-    pub context_window: Option<i32>,
     pub is_default: Option<bool>,
     pub status: Option<String>,
 }

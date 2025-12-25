@@ -42,7 +42,6 @@ function createLlmModel(overrides?: Partial<LlmModelWithProvider>): LlmModelWith
     model_id: "gpt-4o",
     display_name: "GPT-4o",
     capabilities: ["chat"],
-    context_window: 128000,
     is_default: false,
     status: "active",
     created_at: "2025-01-01T00:00:00Z",
