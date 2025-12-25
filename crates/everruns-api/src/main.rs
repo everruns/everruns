@@ -96,15 +96,14 @@ struct HealthState {
         capabilities::set_agent_capabilities,
         users::list_users,
         session_files::get_root,
-        session_files::get_root_stat,
         session_files::get_path,
-        session_files::get_path_stat,
         session_files::create_path,
         session_files::update_path,
         session_files::delete_path,
         session_files::move_file,
         session_files::copy_file,
         session_files::grep_files,
+        session_files::stat_file,
     ),
     components(
         schemas(

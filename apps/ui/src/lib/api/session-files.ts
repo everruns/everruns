@@ -1,14 +1,14 @@
 // Session Files (Virtual Filesystem) API functions
 //
 // RESTful API design:
-// - GET    /fs/{path}      - Read file or list directory
-// - GET    /fs/{path}/stat - Get file metadata
-// - POST   /fs/{path}      - Create file or directory
-// - PUT    /fs/{path}      - Update file
-// - DELETE /fs/{path}      - Delete file or directory
-// - POST   /fs/_/move      - Move/rename
-// - POST   /fs/_/copy      - Copy
-// - POST   /fs/_/grep      - Search
+// - GET    /fs/{path}  - Read file or list directory
+// - POST   /fs/{path}  - Create file or directory
+// - PUT    /fs/{path}  - Update file
+// - DELETE /fs/{path}  - Delete file or directory
+// - POST   /fs/_/move  - Move/rename
+// - POST   /fs/_/copy  - Copy
+// - POST   /fs/_/grep  - Search
+// - POST   /fs/_/stat  - Get file metadata
 
 import { api } from "./client";
 import type {
@@ -98,8 +98,10 @@ export async function statFile(
   sessionId: string,
   path: string
 ): Promise<FileStat> {
-  const url = `${fsPath(agentId, sessionId, path)}/stat`;
-  const response = await api.get<FileStat>(url);
+  const response = await api.post<FileStat>(
+    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_/stat`,
+    { path }
+  );
   return response.data;
 }
 

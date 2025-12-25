@@ -72,7 +72,6 @@ All endpoints under `/v1/agents/{agent_id}/sessions/{session_id}/fs`
 |--------|------|-------------|
 | GET | `/fs` | List root directory |
 | GET | `/fs/{path}` | Read file or list directory |
-| GET | `/fs/{path}/stat` | Get file metadata only |
 | POST | `/fs/{path}` | Create file or directory |
 | PUT | `/fs/{path}` | Update file content |
 | DELETE | `/fs/{path}` | Delete file |
@@ -82,6 +81,7 @@ All endpoints under `/v1/agents/{agent_id}/sessions/{session_id}/fs`
 
 | Method | Path | Description |
 |--------|------|-------------|
+| POST | `/fs/_/stat` | Get file metadata |
 | POST | `/fs/_/move` | Move/rename file |
 | POST | `/fs/_/copy` | Copy file |
 | POST | `/fs/_/grep` | Search files by content |

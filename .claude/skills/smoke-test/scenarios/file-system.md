@@ -39,7 +39,9 @@ Expected: `"Hello, World!"`
 
 ### 4. Get File Stat
 ```bash
-curl -s "$FS_URL/hello.txt/stat" | jq
+curl -s -X POST "$FS_URL/_/stat" \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/hello.txt"}' | jq
 ```
 Expected: FileStat with `path`, `name`, `size_bytes`, `is_directory: false`
 

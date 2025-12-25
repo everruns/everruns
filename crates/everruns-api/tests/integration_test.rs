@@ -702,7 +702,10 @@ async fn test_session_filesystem() {
     // Step 6: Get file stat
     println!("\nStep 6: Getting file stat...");
     let stat_response = client
-        .get(format!("{}/hello.txt/stat", fs_url))
+        .post(format!("{}/_/stat", fs_url))
+        .json(&json!({
+            "path": "/hello.txt"
+        }))
         .send()
         .await
         .expect("Failed to get stat");
