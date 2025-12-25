@@ -77,7 +77,7 @@ export type ContentPart =
   | { type: "text"; text: string }
   | { type: "image"; url?: string; base64?: string; media_type?: string }
   | { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> }
-  | { type: "tool_result"; result?: unknown; error?: string };
+  | { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string };
 
 // Helper type guards for ContentPart
 export function isTextPart(part: ContentPart): part is { type: "text"; text: string } {
@@ -88,7 +88,7 @@ export function isToolCallPart(part: ContentPart): part is { type: "tool_call"; 
   return part.type === "tool_call";
 }
 
-export function isToolResultPart(part: ContentPart): part is { type: "tool_result"; result?: unknown; error?: string } {
+export function isToolResultPart(part: ContentPart): part is { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string } {
   return part.type === "tool_result";
 }
 

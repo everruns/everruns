@@ -11,6 +11,7 @@ import {
   listEvents,
 } from "@/lib/api/sessions";
 import type { CreateSessionRequest, UpdateSessionRequest, Event, Message, ContentPart, Controls } from "@/lib/api/types";
+import { isToolResultPart } from "@/lib/api/types";
 
 export function useSessions(agentId: string | undefined) {
   return useQuery({
@@ -118,6 +119,18 @@ export function useSendMessage() {
 // ============================================
 
 /**
+ * Extract tool_call_id from content parts (for tool_result messages)
+ */
+function extractToolCallId(content: ContentPart[]): string | null {
+  for (const part of content) {
+    if (isToolResultPart(part)) {
+      return part.tool_call_id;
+    }
+  }
+  return null;
+}
+
+/**
  * Transform events to Message-like objects for UI rendering
  * This allows the UI to render from events while still displaying as "messages"
  */
@@ -147,6 +160,11 @@ function eventsToMessages(events: Event[]): Message[] {
       "message.tool_result": "tool_result",
     };
 
+    // Extract tool_call_id from content for tool_result messages
+    const toolCallId = event.event_type === "message.tool_result"
+      ? extractToolCallId(data.content)
+      : null;
+
     return {
       id: data.message_id,
       session_id: event.session_id,
@@ -154,7 +172,7 @@ function eventsToMessages(events: Event[]): Message[] {
       role: roleMap[event.event_type] ?? data.role as Message["role"],
       content: data.content,
       metadata: undefined,
-      tool_call_id: null, // Derived from content if needed
+      tool_call_id: toolCallId,
       created_at: data.created_at ?? event.created_at,
     };
   });

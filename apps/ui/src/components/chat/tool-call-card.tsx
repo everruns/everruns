@@ -15,6 +15,7 @@ interface ToolCallContent {
 }
 
 interface ToolResultContent {
+  tool_call_id: string;
   result?: unknown;
   error?: string;
 }
@@ -38,6 +39,7 @@ function extractToolResultContent(content: ContentPart[]): ToolResultContent | n
   for (const part of content) {
     if (isToolResultPart(part)) {
       return {
+        tool_call_id: part.tool_call_id,
         result: part.result,
         error: part.error,
       };
