@@ -14,6 +14,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::common::ListResponse;
 use crate::services::LlmProviderService;
 
 #[derive(Clone)]
@@ -104,13 +105,13 @@ pub async fn create_provider(
     get,
     path = "/v1/llm-providers",
     responses(
-        (status = 200, description = "List of providers", body = Vec<LlmProvider>)
+        (status = 200, description = "List of providers", body = ListResponse<LlmProvider>)
     ),
     tag = "llm-providers"
 )]
 pub async fn list_providers(
     State(state): State<AppState>,
-) -> Result<Json<Vec<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ListResponse<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
     let providers = state.service.list().await.map_err(|e| {
         tracing::error!("Failed to list LLM providers: {}", e);
         (
@@ -121,7 +122,7 @@ pub async fn list_providers(
         )
     })?;
 
-    Ok(Json(providers))
+    Ok(Json(ListResponse::new(providers)))
 }
 
 /// Get a specific LLM provider
