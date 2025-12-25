@@ -88,7 +88,7 @@ Idempotent activity functions:
 | `load_agent` | Load agent configuration from database | No |
 | `load_messages` | Load session messages | No |
 | `update_status` | Update session status in database | No |
-| `persist_event` | Persist AG-UI event to database | No |
+| `persist_event` | Persist event to database | No |
 | `call_llm` | Call LLM and stream response | Yes (every 10 chunks) |
 | `execute_tools` | Execute tool calls | Yes (per tool) |
 | `save_message` | Save message to session | No |
@@ -134,7 +134,7 @@ TEMPORAL_TASK_QUEUE=everruns-agent-runs  # Task queue name
 
 ### Workflow Failures
 - Workflow failures are recorded in database
-- AG-UI `SESSION_ERROR` event emitted
+- `SESSION_ERROR` event emitted
 - Session status updated to "failed"
 
 ## Activity Heartbeats
@@ -163,7 +163,7 @@ const MAX_TOOL_ITERATIONS: u32 = 5;
 | Table | Usage |
 |-------|-------|
 | `sessions` | Status updates, workflow_id recording |
-| `session_events` | AG-UI event persistence for streaming |
+| `session_events` | Event persistence for streaming |
 | `messages` | Session message storage |
 | `agents` | Agent configuration loading |
 

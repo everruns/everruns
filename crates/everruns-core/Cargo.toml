@@ -1,7 +1,7 @@
 # Core Agent Abstractions
 # Decision: Keep the loop logic DB-agnostic via traits (EventEmitter, MessageStore, ToolExecutor)
 # Decision: Use async_trait for trait definitions to support async operations
-# Decision: AG-UI events, tool types, and domain entities are defined here (runtime types)
+# Decision: Tool types and domain entities are defined here (runtime types)
 # Decision: Domain entities (Agent, Session, LlmProvider, etc.) are in core for shared use by API and worker
 # Decision: Use OpenAI Protocol as the base for LLM Provider abstractions
 
@@ -39,7 +39,7 @@ tracing.workspace = true
 utoipa = { workspace = true, optional = true }
 
 # Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
-# AG-UI events and tool types are defined locally in this crate
+# Tool types are defined locally in this crate
 
 # OpenAI Protocol provider
 # Note: We need "default" features for system proxy detection from environment variables

@@ -8,7 +8,6 @@
 
 use std::sync::Arc;
 
-use crate::ag_ui::{AgUiEvent, AgUiMessageRole};
 use futures::StreamExt;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -115,13 +114,6 @@ where
         // Emit loop started event
         self.event_emitter
             .emit(LoopEvent::loop_started(session_id.to_string()))
-            .await?;
-
-        // Emit AG-UI session started event
-        self.event_emitter
-            .emit(LoopEvent::ag_ui(AgUiEvent::session_started(
-                session_id.to_string(),
-            )))
             .await?;
 
         // Load existing messages
@@ -261,13 +253,6 @@ where
         // Emit loop completed
         self.event_emitter
             .emit(LoopEvent::loop_completed(session_id.to_string(), iteration))
-            .await?;
-
-        // Emit AG-UI session finished event
-        self.event_emitter
-            .emit(LoopEvent::ag_ui(AgUiEvent::session_finished(
-                session_id.to_string(),
-            )))
             .await?;
 
         info!(
@@ -427,14 +412,7 @@ where
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
 
-        // Emit text message start
         let message_id = Uuid::now_v7().to_string();
-        self.event_emitter
-            .emit(LoopEvent::ag_ui(AgUiEvent::text_message_start(
-                &message_id,
-                AgUiMessageRole::Assistant,
-            )))
-            .await?;
 
         // Process stream
         let mut text = String::new();
@@ -454,24 +432,12 @@ where
                                 &delta,
                             ))
                             .await?;
-
-                        // Emit AG-UI text content
-                        self.event_emitter
-                            .emit(LoopEvent::ag_ui(AgUiEvent::text_message_content(
-                                &message_id,
-                                &delta,
-                            )))
-                            .await?;
                     }
                 }
                 LlmStreamEvent::ToolCalls(calls) => {
                     tool_calls = Some(calls);
                 }
                 LlmStreamEvent::Done(_metadata) => {
-                    // Emit text message end
-                    self.event_emitter
-                        .emit(LoopEvent::ag_ui(AgUiEvent::text_message_end(&message_id)))
-                        .await?;
                     break;
                 }
                 LlmStreamEvent::Error(err) => {
@@ -502,26 +468,6 @@ where
                 ))
                 .await?;
 
-            // Emit AG-UI tool call events
-            self.event_emitter
-                .emit(LoopEvent::ag_ui(AgUiEvent::tool_call_start(
-                    &tool_call.id,
-                    &tool_call.name,
-                )))
-                .await?;
-
-            let args_json = serde_json::to_string(&tool_call.arguments).unwrap_or_default();
-            self.event_emitter
-                .emit(LoopEvent::ag_ui(AgUiEvent::tool_call_args(
-                    &tool_call.id,
-                    args_json,
-                )))
-                .await?;
-
-            self.event_emitter
-                .emit(LoopEvent::ag_ui(AgUiEvent::tool_call_end(&tool_call.id)))
-                .await?;
-
             // Find tool definition
             let tool_def = self
                 .config
@@ -540,16 +486,6 @@ where
             // Execute tool
             let result = self.tool_executor.execute(tool_call, tool_def).await?;
             let success = result.error.is_none();
-
-            // Emit AG-UI tool result
-            let result_message_id = Uuid::now_v7().to_string();
-            self.event_emitter
-                .emit(LoopEvent::ag_ui(AgUiEvent::tool_call_result(
-                    &result_message_id,
-                    &tool_call.id,
-                    result.result.clone().unwrap_or(serde_json::Value::Null),
-                )))
-                .await?;
 
             // Emit tool completed
             self.event_emitter
