@@ -8,8 +8,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Send, User, Bot, Loader2, Sparkles } from "lucide-react";
-import type { Message } from "@/lib/api/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ArrowLeft, Send, User, Bot, Loader2, Sparkles, Brain } from "lucide-react";
+import type { Message, Controls, ReasoningEffort } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 
@@ -55,7 +62,12 @@ export default function SessionDetailPage({
   );
 
   const [inputValue, setInputValue] = useState("");
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Check if the model supports reasoning effort
+  const supportsReasoning = llmModel?.profile?.reasoning && llmModel?.profile?.reasoning_effort;
+  const reasoningEffortConfig = llmModel?.profile?.reasoning_effort;
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -66,11 +78,17 @@ export default function SessionDetailPage({
     e.preventDefault();
     if (!inputValue.trim() || sendMessage.isPending) return;
 
+    // Build controls with reasoning effort if selected
+    const controls: Controls | undefined = reasoningEffort
+      ? { reasoning: { effort: reasoningEffort } }
+      : undefined;
+
     try {
       await sendMessage.mutateAsync({
         agentId,
         sessionId,
         content: inputValue.trim(),
+        controls,
       });
       setInputValue("");
       // Start polling for the response
@@ -234,6 +252,10 @@ export default function SessionDetailPage({
               );
             }
 
+            // Extract metadata for assistant messages
+            const messageModel = isAssistant ? (message.metadata?.model as string | undefined) : undefined;
+            const messageReasoningEffort = isAssistant ? (message.metadata?.reasoning_effort as string | undefined) : undefined;
+
             // Render user and assistant messages
             return (
               <div
@@ -253,9 +275,28 @@ export default function SessionDetailPage({
                         <Bot className="w-5 h-5 mt-0.5 flex-shrink-0" />
                       )}
                       <div className="space-y-1">
-                        <p className="text-xs font-medium opacity-70">
-                          {isUser ? "You" : isAssistant ? "Assistant" : message.role}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-medium opacity-70">
+                            {isUser ? "You" : isAssistant ? "Assistant" : message.role}
+                          </p>
+                          {/* Show model and reasoning info for assistant messages */}
+                          {isAssistant && (messageModel || messageReasoningEffort) && (
+                            <div className="flex items-center gap-1">
+                              {messageModel && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
+                                  <Sparkles className="w-2.5 h-2.5" />
+                                  {messageModel}
+                                </Badge>
+                              )}
+                              {messageReasoningEffort && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
+                                  <Brain className="w-2.5 h-2.5" />
+                                  {messageReasoningEffort}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <p className="text-sm whitespace-pre-wrap">
                           {getMessageContent(message)}
                         </p>
@@ -275,6 +316,29 @@ export default function SessionDetailPage({
 
       {/* Input area */}
       <div className="border-t p-4">
+        {/* Reasoning effort selector - only shown when model supports it */}
+        {supportsReasoning && reasoningEffortConfig && (
+          <div className="flex items-center gap-2 mb-2">
+            <Brain className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Reasoning:</span>
+            <Select
+              value={reasoningEffort}
+              onValueChange={(value) => setReasoningEffort(value as ReasoningEffort | "")}
+            >
+              <SelectTrigger size="sm" className="w-[140px]">
+                <SelectValue placeholder="Default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Default</SelectItem>
+                {reasoningEffortConfig.values.map((effort) => (
+                  <SelectItem key={effort.value} value={effort.value}>
+                    {effort.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea
             value={inputValue}

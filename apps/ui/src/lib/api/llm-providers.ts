@@ -54,8 +54,8 @@ export async function getLlmProviderModels(
   return apiClient<LlmModel[]>(`/v1/llm-providers/${providerId}/models`);
 }
 
-export async function getLlmModel(modelId: string): Promise<LlmModel> {
-  return apiClient<LlmModel>(`/v1/llm-models/${modelId}`);
+export async function getLlmModel(modelId: string): Promise<LlmModelWithProvider> {
+  return apiClient<LlmModelWithProvider>(`/v1/llm-models/${modelId}`);
 }
 
 export async function createLlmModel(

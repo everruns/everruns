@@ -146,10 +146,19 @@ where
             return Err(AgentLoopError::NoMessages);
         }
 
-        // 2. Patch dangling tool calls (add cancelled results for tool calls without responses)
+        // 2. Extract reasoning effort from the last user message's controls
+        let reasoning_effort = messages
+            .iter()
+            .rev()
+            .find(|m| m.role == MessageRole::User)
+            .and_then(|m| m.controls.as_ref())
+            .and_then(|c| c.reasoning.as_ref())
+            .and_then(|r| r.effort.clone());
+
+        // 3. Patch dangling tool calls (add cancelled results for tool calls without responses)
         let patched_messages = patch_dangling_tool_calls(&messages);
 
-        // 3. Build LLM messages
+        // 4. Build LLM messages
         let mut llm_messages = Vec::new();
 
         // Add system prompt
@@ -173,8 +182,10 @@ where
             llm_messages.push(msg.into());
         }
 
-        // 4. Call LLM
-        let llm_config = LlmCallConfig::from(&config);
+        // 5. Call LLM with reasoning effort
+        let mut llm_config = LlmCallConfig::from(&config);
+        llm_config.reasoning_effort = reasoning_effort.clone();
+
         let mut stream = self
             .llm_provider
             .chat_completion_stream(llm_messages, &llm_config)
@@ -201,19 +212,33 @@ where
             }
         }
 
-        // 5. Store assistant message
+        // 6. Build metadata with model and reasoning effort info
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert(
+            "model".to_string(),
+            serde_json::Value::String(config.model.clone()),
+        );
+        if let Some(ref effort) = reasoning_effort {
+            metadata.insert(
+                "reasoning_effort".to_string(),
+                serde_json::Value::String(effort.clone()),
+            );
+        }
+
+        // 7. Store assistant message with metadata
         let has_tool_calls = !tool_calls.is_empty();
-        let assistant_message = if has_tool_calls {
+        let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
         } else {
             Message::assistant(&text)
         };
+        assistant_message.metadata = Some(metadata);
 
         self.message_store
             .store(session_id, assistant_message.clone())
             .await?;
 
-        // 6. If there are tool calls, store tool_call messages too
+        // 8. If there are tool calls, store tool_call messages too
         if has_tool_calls {
             for tool_call in &tool_calls {
                 let tool_call_msg = Message::tool_call(tool_call);
