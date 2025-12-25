@@ -1,7 +1,9 @@
 // LLM Model service for business logic
 
 use anyhow::Result;
-use everruns_core::{LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType};
+use everruns_core::{
+    get_model_profile, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType,
+};
 use everruns_storage::{
     models::{CreateLlmModelRow, LlmModelRow, LlmModelWithProviderRow, UpdateLlmModel},
     Database,
@@ -93,6 +95,12 @@ impl LlmModelService {
     fn row_to_model_with_provider(row: &LlmModelWithProviderRow) -> LlmModelWithProvider {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
+        let provider_type: LlmProviderType =
+            row.provider_type.parse().unwrap_or(LlmProviderType::Openai);
+
+        // Look up profile based on provider_type and model_id (readonly, not from DB)
+        let profile = get_model_profile(&provider_type, &row.model_id);
+
         LlmModelWithProvider {
             id: row.id,
             provider_id: row.provider_id,
@@ -108,7 +116,8 @@ impl LlmModelService {
             created_at: row.created_at,
             updated_at: row.updated_at,
             provider_name: row.provider_name.clone(),
-            provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Openai),
+            provider_type,
+            profile,
         }
     }
 }

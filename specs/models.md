@@ -293,6 +293,70 @@ Configuration for a specific model within a provider.
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
 
+### LLM Model Profile
+
+Read-only metadata describing model capabilities, costs, and limits. Profiles are computed at runtime (not stored in database) and attached to model responses.
+
+**Data Source:** https://models.dev/api.json
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Display name (e.g., "GPT-4o") |
+| `family` | string | Model family (e.g., "gpt-4o") |
+| `release_date` | string? | Release date (YYYY-MM-DD) |
+| `last_updated` | string? | Last update date (YYYY-MM-DD) |
+| `attachment` | boolean | Supports file attachments |
+| `reasoning` | boolean | Is a reasoning model |
+| `temperature` | boolean | Supports temperature parameter |
+| `knowledge` | string? | Knowledge cutoff date |
+| `tool_call` | boolean | Supports tool/function calling |
+| `structured_output` | boolean | Supports structured output |
+| `open_weights` | boolean | Has open weights |
+| `cost` | LlmModelCost? | Pricing per million tokens |
+| `limits` | LlmModelLimits? | Context and output limits |
+| `modalities` | LlmModelModalities? | Input/output modalities |
+| `reasoning_effort` | ReasoningEffortConfig? | Reasoning effort options |
+
+**LlmModelCost:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `input` | float | Input cost per million tokens (USD) |
+| `output` | float | Output cost per million tokens (USD) |
+| `cache_read` | float? | Cached input cost per million tokens |
+
+**LlmModelLimits:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `context` | integer | Maximum context window tokens |
+| `output` | integer | Maximum output tokens |
+
+**LlmModelModalities:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `input` | Modality[] | Supported input types (text, image, audio, video) |
+| `output` | Modality[] | Supported output types |
+
+**ReasoningEffortConfig:**
+
+Configuration for reasoning models (OpenAI o1, o1-mini, o3-mini, o1-pro).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `values` | ReasoningEffortValue[] | Available effort levels |
+| `default` | ReasoningEffort | Default effort level |
+
+**ReasoningEffort enum:** `none`, `minimal`, `low`, `medium`, `high`, `xhigh`
+
+**Supported Models:**
+
+- **OpenAI:** gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini
+- **Anthropic:** claude-sonnet-4, claude-opus-4, claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku
+
+Profiles are matched by provider_type + model_id with version normalization (e.g., "gpt-4o-2024-11-20" → "gpt-4o").
+
 ## Design Decisions
 
 | Question | Decision |
