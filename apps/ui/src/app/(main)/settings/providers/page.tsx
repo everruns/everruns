@@ -284,7 +284,7 @@ function ModelRow({
       {/* Expanded profile details */}
       {expanded && profile && (
         <div className="border-t bg-muted/30 p-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
             {/* Limits */}
             {profile.limits && (
               <div>
@@ -352,6 +352,17 @@ function ModelRow({
                 </div>
               )}
             </div>
+          </div>
+          <div className="text-xs text-muted-foreground border-t pt-2 mt-2">
+            Profile data from{" "}
+            <a
+              href="https://models.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              models.dev
+            </a>
           </div>
         </div>
       )}
