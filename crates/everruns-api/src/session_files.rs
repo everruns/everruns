@@ -1,9 +1,18 @@
 // Session Files (Virtual Filesystem) HTTP routes
+//
+// RESTful API design:
+// - GET    /fs/*path  - Read file content or list directory
+// - POST   /fs/*path  - Create file or directory
+// - PUT    /fs/*path  - Update file content
+// - DELETE /fs/*path  - Delete file or directory
+// - POST   /fs/_actions/move - Move/rename file
+// - POST   /fs/_actions/copy - Copy file
+// - POST   /fs/_actions/grep - Search files
 
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
@@ -15,13 +24,14 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::services::SessionFileService;
+use crate::services::session_file::{
+    CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput,
+    SessionFileService, UpdateFileInput,
+};
 
 /// Request to create a file
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateFileRequest {
-    /// File path (e.g., "/folder/file.txt")
-    pub path: String,
     /// File content (text or base64-encoded)
     #[serde(default)]
     pub content: Option<String>,
@@ -31,13 +41,9 @@ pub struct CreateFileRequest {
     /// Whether file is read-only
     #[serde(default)]
     pub is_readonly: Option<bool>,
-}
-
-/// Request to create a directory
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct CreateDirectoryRequest {
-    /// Directory path (e.g., "/folder/subfolder")
-    pub path: String,
+    /// Whether to create a directory instead of a file
+    #[serde(default)]
+    pub is_directory: Option<bool>,
 }
 
 /// Request to update a file
@@ -82,40 +88,20 @@ pub struct GrepRequest {
     pub path_pattern: Option<String>,
 }
 
-/// Query parameters for listing files
+/// Query parameters for GET requests
 #[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct ListFilesQuery {
-    /// Directory path to list (defaults to "/")
-    #[serde(default = "default_root")]
-    pub path: String,
-    /// Whether to list recursively
+pub struct GetQuery {
+    /// For directories: whether to list recursively
     #[serde(default)]
     pub recursive: bool,
+    /// Request stat info instead of content
+    #[serde(default)]
+    pub stat: bool,
 }
 
-fn default_root() -> String {
-    "/".to_string()
-}
-
-/// Query parameters for reading files
+/// Query parameters for DELETE requests
 #[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct ReadFileQuery {
-    /// File path to read
-    pub path: String,
-}
-
-/// Query parameters for stat
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct StatQuery {
-    /// File/directory path
-    pub path: String,
-}
-
-/// Query parameters for deleting files
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct DeleteFileQuery {
-    /// File/directory path
-    pub path: String,
+pub struct DeleteQuery {
     /// Whether to delete recursively
     #[serde(default)]
     pub recursive: bool,
@@ -125,6 +111,15 @@ pub struct DeleteFileQuery {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DeleteResponse {
     pub deleted: bool,
+}
+
+/// Unified response for GET that can be file, directory listing, or stat
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[serde(untagged)]
+pub enum GetResponse {
+    File(SessionFile),
+    Listing(ListResponse<FileInfo>),
+    Stat(FileStat),
 }
 
 /// App state for session files routes
@@ -141,199 +136,307 @@ impl AppState {
     }
 }
 
-/// Create session files routes (nested under sessions)
+/// Create session files routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        // File operations
+        // Actions (must be before wildcard to take precedence)
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files",
-            get(list_files).post(create_file),
-        )
-        .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files/read",
-            get(read_file),
-        )
-        .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files/write",
-            put(update_file),
-        )
-        .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files/stat",
-            get(stat_file),
-        )
-        .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files/delete",
-            delete(delete_file),
-        )
-        // Directory operations
-        .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files/mkdir",
-            post(create_directory),
-        )
-        // File management operations
-        .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files/move",
+            "/v1/agents/:agent_id/sessions/:session_id/fs/_actions/move",
             post(move_file),
         )
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files/copy",
+            "/v1/agents/:agent_id/sessions/:session_id/fs/_actions/copy",
             post(copy_file),
         )
-        // Search
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/files/grep",
+            "/v1/agents/:agent_id/sessions/:session_id/fs/_actions/grep",
             post(grep_files),
+        )
+        // File operations with path
+        .route(
+            "/v1/agents/:agent_id/sessions/:session_id/fs",
+            get(get_root).post(create_root).delete(delete_root),
+        )
+        .route(
+            "/v1/agents/:agent_id/sessions/:session_id/fs/*path",
+            get(get_path)
+                .post(create_path)
+                .put(update_path)
+                .delete(delete_path),
         )
         .with_state(state)
 }
 
-/// GET /v1/agents/{agent_id}/sessions/{session_id}/files - List files
+// Helper to normalize path from URL
+fn normalize_path(path: &str) -> String {
+    let path = path.trim_start_matches('/');
+    if path.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", path)
+    }
+}
+
+/// GET /fs - Get root directory listing
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID"),
-        ("path" = Option<String>, Query, description = "Directory path to list"),
-        ("recursive" = Option<bool>, Query, description = "List recursively")
+        ("recursive" = Option<bool>, Query, description = "List recursively"),
+        ("stat" = Option<bool>, Query, description = "Get stat info")
     ),
     responses(
-        (status = 200, description = "List of files", body = ListResponse<FileInfo>),
+        (status = 200, description = "Directory listing or stat"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "files"
+    tag = "filesystem"
 )]
-pub async fn list_files(
+pub async fn get_root(
     State(state): State<AppState>,
     Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
-    Query(query): Query<ListFilesQuery>,
-) -> Result<Json<ListResponse<FileInfo>>, StatusCode> {
-    let files = if query.recursive {
-        state.file_service.list_all(session_id).await
-    } else {
-        state
-            .file_service
-            .list_directory(session_id, &query.path)
-            .await
-    }
-    .map_err(|e| {
-        tracing::error!("Failed to list files: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    Ok(Json(ListResponse::new(files)))
+    Query(query): Query<GetQuery>,
+) -> Result<Json<GetResponse>, StatusCode> {
+    get_path_impl(state, session_id, "/", query).await
 }
 
-/// POST /v1/agents/{agent_id}/sessions/{session_id}/files - Create file
+/// GET /fs/*path - Get file content or directory listing
 #[utoipa::path(
-    post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files",
+    get,
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("path" = String, Path, description = "File or directory path"),
+        ("recursive" = Option<bool>, Query, description = "List recursively"),
+        ("stat" = Option<bool>, Query, description = "Get stat info")
+    ),
+    responses(
+        (status = 200, description = "File content, directory listing, or stat"),
+        (status = 404, description = "Not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "filesystem"
+)]
+pub async fn get_path(
+    State(state): State<AppState>,
+    Path((_agent_id, session_id, path)): Path<(Uuid, Uuid, String)>,
+    Query(query): Query<GetQuery>,
+) -> Result<Json<GetResponse>, StatusCode> {
+    let normalized = normalize_path(&path);
+    get_path_impl(state, session_id, &normalized, query).await
+}
+
+async fn get_path_impl(
+    state: AppState,
+    session_id: Uuid,
+    path: &str,
+    query: GetQuery,
+) -> Result<Json<GetResponse>, StatusCode> {
+    // If stat requested, return stat info
+    if query.stat {
+        let stat = state
+            .file_service
+            .stat(session_id, path)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to stat: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
+        return Ok(Json(GetResponse::Stat(stat)));
+    }
+
+    // Check if path is a directory or file
+    let stat = state
+        .file_service
+        .stat(session_id, path)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to stat: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    match stat {
+        Some(s) if s.is_directory => {
+            // List directory
+            let files = if query.recursive {
+                state.file_service.list_all(session_id).await
+            } else {
+                state.file_service.list_directory(session_id, path).await
+            }
+            .map_err(|e| {
+                tracing::error!("Failed to list: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            Ok(Json(GetResponse::Listing(ListResponse::new(files))))
+        }
+        Some(_) => {
+            // Read file
+            let file = state
+                .file_service
+                .read_file(session_id, path)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to read file: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?
+                .ok_or(StatusCode::NOT_FOUND)?;
+            Ok(Json(GetResponse::File(file)))
+        }
+        None => {
+            // For root path, return empty listing
+            if path == "/" {
+                Ok(Json(GetResponse::Listing(ListResponse::new(vec![]))))
+            } else {
+                Err(StatusCode::NOT_FOUND)
+            }
+        }
+    }
+}
+
+/// POST /fs - Create at root (not allowed)
+pub async fn create_root() -> (StatusCode, String) {
+    (
+        StatusCode::BAD_REQUEST,
+        "Cannot create at root path, specify a path".to_string(),
+    )
+}
+
+/// POST /fs/*path - Create file or directory
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}",
+    params(
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("path" = String, Path, description = "File or directory path")
     ),
     request_body = CreateFileRequest,
     responses(
-        (status = 201, description = "File created successfully", body = SessionFile),
+        (status = 201, description = "Created successfully", body = SessionFile),
         (status = 400, description = "Invalid request"),
-        (status = 409, description = "File already exists"),
+        (status = 409, description = "Already exists"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "files"
+    tag = "filesystem"
 )]
-pub async fn create_file(
+pub async fn create_path(
     State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_agent_id, session_id, path)): Path<(Uuid, Uuid, String)>,
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
-    let file = state
-        .file_service
-        .create_file(session_id, req)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to create file: {}", e);
-            let msg = e.to_string();
-            if msg.contains("already exists") {
-                (StatusCode::CONFLICT, msg)
-            } else if msg.contains("Invalid") || msg.contains("cannot") {
-                (StatusCode::BAD_REQUEST, msg)
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                )
-            }
-        })?;
+    let normalized = normalize_path(&path);
 
-    Ok((StatusCode::CREATED, Json(file)))
+    if req.is_directory.unwrap_or(false) {
+        // Create directory
+        let dir = state
+            .file_service
+            .create_directory(session_id, CreateDirectoryInput { path: normalized })
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to create directory: {}", e);
+                let msg = e.to_string();
+                if msg.contains("file exists") || msg.contains("Invalid") {
+                    (StatusCode::BAD_REQUEST, msg)
+                } else if msg.contains("already exists") {
+                    (StatusCode::CONFLICT, msg)
+                } else {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal server error".to_string(),
+                    )
+                }
+            })?;
+        // Convert FileInfo to SessionFile for consistent response
+        Ok((
+            StatusCode::CREATED,
+            Json(SessionFile {
+                id: dir.id,
+                session_id: dir.session_id,
+                path: dir.path,
+                name: dir.name,
+                content: None,
+                encoding: "text".to_string(),
+                is_directory: true,
+                is_readonly: dir.is_readonly,
+                size_bytes: 0,
+                created_at: dir.created_at,
+                updated_at: dir.updated_at,
+            }),
+        ))
+    } else {
+        // Create file
+        let file = state
+            .file_service
+            .create_file(
+                session_id,
+                CreateFileInput {
+                    path: normalized,
+                    content: req.content,
+                    encoding: req.encoding,
+                    is_readonly: req.is_readonly,
+                },
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to create file: {}", e);
+                let msg = e.to_string();
+                if msg.contains("already exists") {
+                    (StatusCode::CONFLICT, msg)
+                } else if msg.contains("Invalid") || msg.contains("cannot") {
+                    (StatusCode::BAD_REQUEST, msg)
+                } else {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal server error".to_string(),
+                    )
+                }
+            })?;
+        Ok((StatusCode::CREATED, Json(file)))
+    }
 }
 
-/// GET /v1/agents/{agent_id}/sessions/{session_id}/files/read - Read file
-#[utoipa::path(
-    get,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files/read",
-    params(
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
-        ("path" = String, Query, description = "File path to read")
-    ),
-    responses(
-        (status = 200, description = "File content", body = SessionFile),
-        (status = 404, description = "File not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "files"
-)]
-pub async fn read_file(
-    State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
-    Query(query): Query<ReadFileQuery>,
-) -> Result<Json<SessionFile>, StatusCode> {
-    let file = state
-        .file_service
-        .read_file(session_id, &query.path)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to read file: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    Ok(Json(file))
-}
-
-/// PUT /v1/agents/{agent_id}/sessions/{session_id}/files/write - Update file
+/// PUT /fs/*path - Update file content
 #[utoipa::path(
     put,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files/write",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID"),
-        ("path" = String, Query, description = "File path to update")
+        ("path" = String, Path, description = "File path")
     ),
     request_body = UpdateFileRequest,
     responses(
-        (status = 200, description = "File updated successfully", body = SessionFile),
-        (status = 400, description = "Cannot modify readonly file"),
-        (status = 404, description = "File not found"),
+        (status = 200, description = "Updated successfully", body = SessionFile),
+        (status = 400, description = "Cannot modify readonly file or directory"),
+        (status = 404, description = "Not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "files"
+    tag = "filesystem"
 )]
-pub async fn update_file(
+pub async fn update_path(
     State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
-    Query(query): Query<ReadFileQuery>,
+    Path((_agent_id, session_id, path)): Path<(Uuid, Uuid, String)>,
     Json(req): Json<UpdateFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
+    let normalized = normalize_path(&path);
+
+    let input = UpdateFileInput {
+        content: req.content,
+        encoding: req.encoding,
+        is_readonly: req.is_readonly,
+    };
+
     let file = state
         .file_service
-        .update_file(session_id, &query.path, req)
+        .update_file(session_id, &normalized, input)
         .await
         .map_err(|e| {
             tracing::error!("Failed to update file: {}", e);
             let msg = e.to_string();
-            if msg.contains("readonly") {
+            if msg.contains("readonly") || msg.contains("directory") {
                 (StatusCode::BAD_REQUEST, msg)
             } else {
                 (
@@ -347,68 +450,44 @@ pub async fn update_file(
     Ok(Json(file))
 }
 
-/// GET /v1/agents/{agent_id}/sessions/{session_id}/files/stat - Get file stat
-#[utoipa::path(
-    get,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files/stat",
-    params(
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
-        ("path" = String, Query, description = "File/directory path")
-    ),
-    responses(
-        (status = 200, description = "File stat", body = FileStat),
-        (status = 404, description = "File not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "files"
-)]
-pub async fn stat_file(
-    State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
-    Query(query): Query<StatQuery>,
-) -> Result<Json<FileStat>, StatusCode> {
-    let stat = state
-        .file_service
-        .stat(session_id, &query.path)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to stat file: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    Ok(Json(stat))
+/// DELETE /fs - Delete root (not allowed)
+pub async fn delete_root() -> (StatusCode, String) {
+    (
+        StatusCode::BAD_REQUEST,
+        "Cannot delete root directory".to_string(),
+    )
 }
 
-/// DELETE /v1/agents/{agent_id}/sessions/{session_id}/files/delete - Delete file
+/// DELETE /fs/*path - Delete file or directory
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files/delete",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID"),
-        ("path" = String, Query, description = "File/directory path"),
+        ("path" = String, Path, description = "File or directory path"),
         ("recursive" = Option<bool>, Query, description = "Delete recursively")
     ),
     responses(
-        (status = 200, description = "Delete result", body = DeleteResponse),
+        (status = 200, description = "Deleted", body = DeleteResponse),
         (status = 400, description = "Directory not empty"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "files"
+    tag = "filesystem"
 )]
-pub async fn delete_file(
+pub async fn delete_path(
     State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
-    Query(query): Query<DeleteFileQuery>,
+    Path((_agent_id, session_id, path)): Path<(Uuid, Uuid, String)>,
+    Query(query): Query<DeleteQuery>,
 ) -> Result<Json<DeleteResponse>, (StatusCode, String)> {
+    let normalized = normalize_path(&path);
+
     let deleted = state
         .file_service
-        .delete(session_id, &query.path, query.recursive)
+        .delete(session_id, &normalized, query.recursive)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to delete file: {}", e);
+            tracing::error!("Failed to delete: {}", e);
             let msg = e.to_string();
             if msg.contains("not empty") || msg.contains("Cannot delete root") {
                 (StatusCode::BAD_REQUEST, msg)
@@ -423,73 +502,37 @@ pub async fn delete_file(
     Ok(Json(DeleteResponse { deleted }))
 }
 
-/// POST /v1/agents/{agent_id}/sessions/{session_id}/files/mkdir - Create directory
+/// POST /fs/_actions/move - Move/rename file
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files/mkdir",
-    params(
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
-    ),
-    request_body = CreateDirectoryRequest,
-    responses(
-        (status = 201, description = "Directory created successfully", body = FileInfo),
-        (status = 400, description = "Invalid path or file exists at path"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "files"
-)]
-pub async fn create_directory(
-    State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
-    Json(req): Json<CreateDirectoryRequest>,
-) -> Result<(StatusCode, Json<FileInfo>), (StatusCode, String)> {
-    let dir = state
-        .file_service
-        .create_directory(session_id, req)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to create directory: {}", e);
-            let msg = e.to_string();
-            if msg.contains("file exists") || msg.contains("Invalid") {
-                (StatusCode::BAD_REQUEST, msg)
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                )
-            }
-        })?;
-
-    Ok((StatusCode::CREATED, Json(dir)))
-}
-
-/// POST /v1/agents/{agent_id}/sessions/{session_id}/files/move - Move/rename file
-#[utoipa::path(
-    post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files/move",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/move",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
     request_body = MoveFileRequest,
     responses(
-        (status = 200, description = "File moved successfully", body = SessionFile),
+        (status = 200, description = "Moved successfully", body = SessionFile),
         (status = 400, description = "Invalid path"),
         (status = 404, description = "Source not found"),
         (status = 409, description = "Destination exists"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "files"
+    tag = "filesystem"
 )]
 pub async fn move_file(
     State(state): State<AppState>,
     Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<MoveFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
+    let input = MoveFileInput {
+        src_path: req.src_path,
+        dst_path: req.dst_path,
+    };
+
     let file = state
         .file_service
-        .move_file(session_id, req)
+        .move_file(session_id, input)
         .await
         .map_err(|e| {
             tracing::error!("Failed to move file: {}", e);
@@ -512,32 +555,37 @@ pub async fn move_file(
     Ok(Json(file))
 }
 
-/// POST /v1/agents/{agent_id}/sessions/{session_id}/files/copy - Copy file
+/// POST /fs/_actions/copy - Copy file
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files/copy",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/copy",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
     request_body = CopyFileRequest,
     responses(
-        (status = 201, description = "File copied successfully", body = SessionFile),
+        (status = 201, description = "Copied successfully", body = SessionFile),
         (status = 400, description = "Cannot copy directories"),
         (status = 404, description = "Source not found"),
         (status = 409, description = "Destination exists"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "files"
+    tag = "filesystem"
 )]
 pub async fn copy_file(
     State(state): State<AppState>,
     Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<CopyFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
+    let input = CopyFileInput {
+        src_path: req.src_path,
+        dst_path: req.dst_path,
+    };
+
     let file = state
         .file_service
-        .copy_file(session_id, req)
+        .copy_file(session_id, input)
         .await
         .map_err(|e| {
             tracing::error!("Failed to copy file: {}", e);
@@ -560,10 +608,10 @@ pub async fn copy_file(
     Ok((StatusCode::CREATED, Json(file)))
 }
 
-/// POST /v1/agents/{agent_id}/sessions/{session_id}/files/grep - Search files
+/// POST /fs/_actions/grep - Search files
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/files/grep",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/grep",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
@@ -574,16 +622,21 @@ pub async fn copy_file(
         (status = 400, description = "Invalid regex pattern"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "files"
+    tag = "filesystem"
 )]
 pub async fn grep_files(
     State(state): State<AppState>,
     Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResult>>, (StatusCode, String)> {
+    let input = GrepInput {
+        pattern: req.pattern,
+        path_pattern: req.path_pattern,
+    };
+
     let results = state
         .file_service
-        .grep(session_id, req)
+        .grep(session_id, input)
         .await
         .map_err(|e| {
             tracing::error!("Failed to grep files: {}", e);

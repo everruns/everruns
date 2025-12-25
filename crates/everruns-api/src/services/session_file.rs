@@ -10,10 +10,43 @@ use regex::Regex;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::session_files::{
-    CopyFileRequest, CreateDirectoryRequest, CreateFileRequest, GrepRequest, MoveFileRequest,
-    UpdateFileRequest,
-};
+/// Input for creating a file
+pub struct CreateFileInput {
+    pub path: String,
+    pub content: Option<String>,
+    pub encoding: Option<String>,
+    pub is_readonly: Option<bool>,
+}
+
+/// Input for creating a directory
+pub struct CreateDirectoryInput {
+    pub path: String,
+}
+
+/// Input for updating a file
+pub struct UpdateFileInput {
+    pub content: Option<String>,
+    pub encoding: Option<String>,
+    pub is_readonly: Option<bool>,
+}
+
+/// Input for moving a file
+pub struct MoveFileInput {
+    pub src_path: String,
+    pub dst_path: String,
+}
+
+/// Input for copying a file
+pub struct CopyFileInput {
+    pub src_path: String,
+    pub dst_path: String,
+}
+
+/// Input for grep search
+pub struct GrepInput {
+    pub pattern: String,
+    pub path_pattern: Option<String>,
+}
 
 pub struct SessionFileService {
     db: Arc<Database>,
@@ -70,11 +103,7 @@ impl SessionFileService {
     }
 
     /// Create a new file
-    pub async fn create_file(
-        &self,
-        session_id: Uuid,
-        req: CreateFileRequest,
-    ) -> Result<SessionFile> {
+    pub async fn create_file(&self, session_id: Uuid, req: CreateFileInput) -> Result<SessionFile> {
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
 
@@ -112,7 +141,7 @@ impl SessionFileService {
     pub async fn create_directory(
         &self,
         session_id: Uuid,
-        req: CreateDirectoryRequest,
+        req: CreateDirectoryInput,
     ) -> Result<FileInfo> {
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
@@ -120,22 +149,7 @@ impl SessionFileService {
         // Check if already exists
         if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
             if existing.is_directory {
-                return Ok(Self::row_to_file_info_from_info(
-                    self.db
-                        .get_session_file(session_id, &path)
-                        .await?
-                        .map(|r| SessionFileInfoRow {
-                            id: r.id,
-                            session_id: r.session_id,
-                            path: r.path,
-                            is_directory: r.is_directory,
-                            is_readonly: r.is_readonly,
-                            size_bytes: r.size_bytes,
-                            created_at: r.created_at,
-                            updated_at: r.updated_at,
-                        })
-                        .ok_or_else(|| anyhow!("Directory not found"))?,
-                ));
+                return Ok(Self::row_to_file_info(existing));
             } else {
                 return Err(anyhow!("A file exists at path: {}", path));
             }
@@ -264,12 +278,15 @@ impl SessionFileService {
         &self,
         session_id: Uuid,
         path: &str,
-        req: UpdateFileRequest,
+        req: UpdateFileInput,
     ) -> Result<Option<SessionFile>> {
         let path = Self::normalize_path(path);
 
-        // Check if file is readonly
+        // Check if file exists and is not readonly
         if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
+            if existing.is_directory {
+                return Err(anyhow!("Cannot update directory: {}", path));
+            }
             if existing.is_readonly && req.content.is_some() {
                 return Err(anyhow!("Cannot modify readonly file: {}", path));
             }
@@ -344,7 +361,7 @@ impl SessionFileService {
     pub async fn move_file(
         &self,
         session_id: Uuid,
-        req: MoveFileRequest,
+        req: MoveFileInput,
     ) -> Result<Option<SessionFile>> {
         let src_path = Self::normalize_path(&req.src_path);
         let dst_path = Self::normalize_path(&req.dst_path);
@@ -378,7 +395,7 @@ impl SessionFileService {
     pub async fn copy_file(
         &self,
         session_id: Uuid,
-        req: CopyFileRequest,
+        req: CopyFileInput,
     ) -> Result<Option<SessionFile>> {
         let src_path = Self::normalize_path(&req.src_path);
         let dst_path = Self::normalize_path(&req.dst_path);
@@ -413,7 +430,7 @@ impl SessionFileService {
     }
 
     /// Search files using grep-like pattern matching
-    pub async fn grep(&self, session_id: Uuid, req: GrepRequest) -> Result<Vec<GrepResult>> {
+    pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
         // Validate regex pattern
         let regex = Regex::new(&req.pattern)?;
 

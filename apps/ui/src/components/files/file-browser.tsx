@@ -13,7 +13,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Folder,
@@ -117,9 +116,7 @@ export function FileBrowser({
       await createDir.mutateAsync({
         agentId,
         sessionId,
-        request: {
-          path: joinPath(currentPath, newDirName),
-        },
+        path: joinPath(currentPath, newDirName),
       });
       setIsCreateDirOpen(false);
       setNewDirName("");
@@ -167,17 +164,16 @@ export function FileBrowser({
             >
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="New folder"
+              onClick={() => setIsCreateDirOpen(true)}
+            >
+              <FolderPlus className="h-3.5 w-3.5" />
+            </Button>
             <Dialog open={isCreateDirOpen} onOpenChange={setIsCreateDirOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  title="New folder"
-                >
-                  <FolderPlus className="h-3.5 w-3.5" />
-                </Button>
-              </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Create Folder</DialogTitle>
@@ -201,17 +197,16 @@ export function FileBrowser({
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="New file"
+              onClick={() => setIsCreateFileOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
             <Dialog open={isCreateFileOpen} onOpenChange={setIsCreateFileOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  title="New file"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Create File</DialogTitle>

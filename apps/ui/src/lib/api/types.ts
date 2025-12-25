@@ -539,17 +539,14 @@ export interface GrepResult {
   matches: GrepMatch[];
 }
 
-/** Request to create a file */
+/** Request to create a file or directory */
 export interface CreateFileRequest {
   path: string;
   content?: string;
   encoding?: string;
   is_readonly?: boolean;
-}
-
-/** Request to create a directory */
-export interface CreateDirectoryRequest {
-  path: string;
+  /** Set to true to create a directory instead of a file */
+  is_directory?: boolean;
 }
 
 /** Request to update a file */

@@ -19,7 +19,6 @@ import type {
   MoveFileRequest,
   CopyFileRequest,
   GrepRequest,
-  CreateDirectoryRequest,
 } from "@/lib/api/types";
 
 // Query key factory
@@ -111,12 +110,12 @@ export function useCreateDirectory() {
     mutationFn: ({
       agentId,
       sessionId,
-      request,
+      path,
     }: {
       agentId: string;
       sessionId: string;
-      request: CreateDirectoryRequest;
-    }) => mkdir(agentId, sessionId, request),
+      path: string;
+    }) => mkdir(agentId, sessionId, path),
     onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: fileKeys.all(agentId, sessionId),

@@ -1,4 +1,14 @@
 // Session Files (Virtual Filesystem) API functions
+//
+// RESTful API design:
+// - GET    /fs/{path}  - Read file or list directory
+// - GET    /fs/{path}?stat=true  - Get file metadata
+// - POST   /fs/{path}  - Create file or directory
+// - PUT    /fs/{path}  - Update file
+// - DELETE /fs/{path}  - Delete file or directory
+// - POST   /fs/_actions/move - Move/rename
+// - POST   /fs/_actions/copy - Copy
+// - POST   /fs/_actions/grep - Search
 
 import { api } from "./client";
 import type {
@@ -7,7 +17,6 @@ import type {
   FileStat,
   GrepResult,
   CreateFileRequest,
-  CreateDirectoryRequest,
   UpdateFileRequest,
   MoveFileRequest,
   CopyFileRequest,
@@ -16,9 +25,13 @@ import type {
   ListResponse,
 } from "./types";
 
-// Base path for session files
-function filesPath(agentId: string, sessionId: string): string {
-  return `/v1/agents/${agentId}/sessions/${sessionId}/files`;
+// Base path for filesystem
+function fsPath(agentId: string, sessionId: string, path?: string): string {
+  const base = `/v1/agents/${agentId}/sessions/${sessionId}/fs`;
+  if (!path || path === "/") return base;
+  // Ensure path doesn't have double slashes
+  const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+  return `${base}/${normalizedPath}`;
 }
 
 // ============================================
@@ -32,10 +45,10 @@ export async function listFiles(
   path: string = "/",
   recursive: boolean = false
 ): Promise<FileInfo[]> {
-  const response = await api.get<ListResponse<FileInfo>>(
-    filesPath(agentId, sessionId),
-    { params: { path, recursive } }
-  );
+  const url = recursive
+    ? `${fsPath(agentId, sessionId, path)}?recursive=true`
+    : fsPath(agentId, sessionId, path);
+  const response = await api.get<ListResponse<FileInfo>>(url);
   return response.data.data;
 }
 
@@ -45,9 +58,10 @@ export async function createFile(
   sessionId: string,
   request: CreateFileRequest
 ): Promise<SessionFile> {
+  const { path, ...body } = request;
   const response = await api.post<SessionFile>(
-    filesPath(agentId, sessionId),
-    request
+    fsPath(agentId, sessionId, path),
+    body
   );
   return response.data;
 }
@@ -59,8 +73,7 @@ export async function readFile(
   path: string
 ): Promise<SessionFile> {
   const response = await api.get<SessionFile>(
-    `${filesPath(agentId, sessionId)}/read`,
-    { params: { path } }
+    fsPath(agentId, sessionId, path)
   );
   return response.data;
 }
@@ -73,9 +86,8 @@ export async function updateFile(
   request: UpdateFileRequest
 ): Promise<SessionFile> {
   const response = await api.put<SessionFile>(
-    `${filesPath(agentId, sessionId)}/write`,
-    request,
-    { params: { path } }
+    fsPath(agentId, sessionId, path),
+    request
   );
   return response.data;
 }
@@ -86,10 +98,8 @@ export async function statFile(
   sessionId: string,
   path: string
 ): Promise<FileStat> {
-  const response = await api.get<FileStat>(
-    `${filesPath(agentId, sessionId)}/stat`,
-    { params: { path } }
-  );
+  const url = `${fsPath(agentId, sessionId, path)}?stat=true`;
+  const response = await api.get<FileStat>(url);
   return response.data;
 }
 
@@ -100,10 +110,10 @@ export async function deleteFile(
   path: string,
   recursive: boolean = false
 ): Promise<boolean> {
-  const response = await api.delete<DeleteFileResponse>(
-    `${filesPath(agentId, sessionId)}/delete`,
-    { params: { path, recursive } }
-  );
+  const url = recursive
+    ? `${fsPath(agentId, sessionId, path)}?recursive=true`
+    : fsPath(agentId, sessionId, path);
+  const response = await api.delete<DeleteFileResponse>(url);
   return response.data.deleted;
 }
 
@@ -115,11 +125,11 @@ export async function deleteFile(
 export async function mkdir(
   agentId: string,
   sessionId: string,
-  request: CreateDirectoryRequest
-): Promise<FileInfo> {
-  const response = await api.post<FileInfo>(
-    `${filesPath(agentId, sessionId)}/mkdir`,
-    request
+  path: string
+): Promise<SessionFile> {
+  const response = await api.post<SessionFile>(
+    fsPath(agentId, sessionId, path),
+    { is_directory: true }
   );
   return response.data;
 }
@@ -135,7 +145,7 @@ export async function moveFile(
   request: MoveFileRequest
 ): Promise<SessionFile> {
   const response = await api.post<SessionFile>(
-    `${filesPath(agentId, sessionId)}/move`,
+    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_actions/move`,
     request
   );
   return response.data;
@@ -148,7 +158,7 @@ export async function copyFile(
   request: CopyFileRequest
 ): Promise<SessionFile> {
   const response = await api.post<SessionFile>(
-    `${filesPath(agentId, sessionId)}/copy`,
+    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_actions/copy`,
     request
   );
   return response.data;
@@ -165,7 +175,7 @@ export async function grepFiles(
   request: GrepRequest
 ): Promise<GrepResult[]> {
   const response = await api.post<ListResponse<GrepResult>>(
-    `${filesPath(agentId, sessionId)}/grep`,
+    `/v1/agents/${agentId}/sessions/${sessionId}/fs/_actions/grep`,
     request
   );
   return response.data.data;
