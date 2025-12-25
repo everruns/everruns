@@ -42,6 +42,7 @@ import {
   LucideIcon,
 } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
+import { ProviderIcon } from "@/components/providers/provider-icon";
 
 const iconMap: Record<string, LucideIcon> = {
   "circle-off": CircleOff,
@@ -334,19 +335,38 @@ export default function EditAgentPage({
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue>
-                        {formData.default_model_id
-                          ? models.find((m) => m.id === formData.default_model_id)?.display_name +
-                            " (" +
-                            models.find((m) => m.id === formData.default_model_id)?.provider_name +
-                            ")"
-                          : "Use default model"}
+                        {(() => {
+                          const selectedModel = models.find((m) => m.id === formData.default_model_id);
+                          if (!selectedModel) return "Use default model";
+                          return (
+                            <div className="flex items-center gap-2">
+                              <ProviderIcon
+                                providerType={selectedModel.provider_type}
+                                size="sm"
+                                showBackground={false}
+                              />
+                              <span>
+                                {selectedModel.display_name} ({selectedModel.provider_name})
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Use default model</SelectItem>
                       {models.map((model) => (
                         <SelectItem key={model.id} value={model.id}>
-                          {model.display_name} ({model.provider_name})
+                          <div className="flex items-center gap-2">
+                            <ProviderIcon
+                              providerType={model.provider_type}
+                              size="sm"
+                              showBackground={false}
+                            />
+                            <span>
+                              {model.display_name} ({model.provider_name})
+                            </span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
