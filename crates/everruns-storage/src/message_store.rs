@@ -5,12 +5,15 @@
 //
 // Note: Message.content is Vec<ContentPart> in both core and storage,
 // so no conversion is needed - data passes through directly.
+//
+// Events: When messages are stored, corresponding events are emitted
+// for SSE streaming. This allows the UI to render from events.
 
 use async_trait::async_trait;
 use everruns_core::{traits::MessageStore, AgentLoopError, Message, MessageRole, Result};
 use uuid::Uuid;
 
-use crate::models::CreateMessageRow;
+use crate::models::{CreateEventRow, CreateMessageRow};
 use crate::repositories::Database;
 
 // ============================================================================
@@ -35,6 +38,9 @@ impl DbMessageStore {
 #[async_trait]
 impl MessageStore for DbMessageStore {
     async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
+        let role = message.role.clone();
+        let content = message.content.clone();
+
         let create_msg = CreateMessageRow {
             session_id,
             role: message.role.to_string(),
@@ -44,10 +50,37 @@ impl MessageStore for DbMessageStore {
             tags: vec![], // Core messages don't have tags currently
         };
 
-        self.db
+        let stored_msg = self
+            .db
             .create_message(create_msg)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+        // Emit event for SSE streaming
+        // Note: user messages are handled by MessageService in the API layer
+        let event_type = match role {
+            MessageRole::Assistant => Some("message.assistant"),
+            MessageRole::ToolCall => Some("message.tool_call"),
+            MessageRole::ToolResult => Some("message.tool_result"),
+            MessageRole::User | MessageRole::System => None, // User messages handled by API
+        };
+
+        if let Some(event_type) = event_type {
+            let event_input = CreateEventRow {
+                session_id,
+                event_type: event_type.to_string(),
+                data: serde_json::json!({
+                    "message_id": stored_msg.id,
+                    "role": role.to_string(),
+                    "content": content,
+                    "sequence": stored_msg.sequence,
+                    "created_at": stored_msg.created_at,
+                }),
+            };
+            if let Err(e) = self.db.create_event(event_input).await {
+                tracing::warn!("Failed to emit {} event: {}", event_type, e);
+            }
+        }
 
         Ok(())
     }

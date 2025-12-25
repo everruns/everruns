@@ -6,9 +6,13 @@ use axum::{
     http::StatusCode,
     response::sse::{Event as SseEvent, KeepAlive, Sse},
     routing::get,
-    Router,
+    Json, Router,
 };
 use everruns_storage::Database;
+use serde::Serialize;
+use utoipa::ToSchema;
+
+use crate::common::ListResponse;
 use futures::{
     stream::{self, Stream},
     StreamExt,
@@ -44,6 +48,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/agents/:agent_id/sessions/:session_id/events",
             get(stream_events),
+        )
+        .route(
+            "/v1/agents/:agent_id/sessions/:session_id/events/list",
+            get(list_events),
         )
         .with_state(state)
 }
@@ -127,4 +135,71 @@ pub async fn stream_events(
     .flatten();
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+// ============================================
+// List Events (JSON response for polling)
+// ============================================
+
+/// Event response type for SSE/polling
+#[derive(Debug, Serialize, ToSchema)]
+pub struct Event {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub sequence: i32,
+    pub event_type: String,
+    pub data: serde_json::Value,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// GET /v1/agents/{agent_id}/sessions/{session_id}/events/list - List events (JSON)
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/events/list",
+    params(
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("session_id" = Uuid, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Events list", body = ListResponse<Event>),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
+pub async fn list_events(
+    State(state): State<AppState>,
+    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ListResponse<Event>>, StatusCode> {
+    // Verify session exists
+    let _session = state
+        .session_service
+        .get(session_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get session: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Fetch all events for the session
+    let event_rows = state.db.list_events(session_id, None).await.map_err(|e| {
+        tracing::error!("Failed to list events: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Convert to Event response type
+    let events: Vec<Event> = event_rows
+        .into_iter()
+        .map(|row| Event {
+            id: row.id,
+            session_id: row.session_id,
+            sequence: row.sequence,
+            event_type: row.event_type,
+            data: row.data,
+            created_at: row.created_at,
+        })
+        .collect();
+
+    Ok(Json(ListResponse { data: events }))
 }

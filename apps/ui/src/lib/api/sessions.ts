@@ -13,6 +13,7 @@ export {
   createMessage,
   listMessages,
   sendUserMessage,
+  listEvents,
   getEventStreamUrl,
 } from "./messages";
 

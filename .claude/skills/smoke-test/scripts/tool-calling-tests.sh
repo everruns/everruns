@@ -185,6 +185,14 @@ get_messages() {
     curl -s "$API_URL/v1/agents/$agent_id/sessions/$session_id/messages"
 }
 
+# Helper to get events
+get_events() {
+    local agent_id="$1"
+    local session_id="$2"
+
+    curl -s "$API_URL/v1/agents/$agent_id/sessions/$session_id/events/list"
+}
+
 # ============================================================================
 # Test: API Health Check
 # ============================================================================
@@ -446,6 +454,76 @@ test_tool_error_handling() {
 }
 
 # ============================================================================
+# Test: Events and Messages Sync
+# ============================================================================
+test_events_sync() {
+    log_verbose "Creating agent for events sync test..."
+    local agent_id=$(create_agent "Events Sync Agent" "You are a helpful assistant." "Events sync test")
+
+    if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
+        log_error "Failed to create agent"
+        return 1
+    fi
+
+    log_verbose "Agent ID: $agent_id"
+
+    local session_id=$(create_session "$agent_id" "Events Sync Test")
+
+    if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
+        log_error "Failed to create session"
+        return 1
+    fi
+
+    log_verbose "Sending message: Say hello in one word"
+    send_message "$agent_id" "$session_id" "Say hello in one word"
+
+    # Get messages
+    local messages=$(get_messages "$agent_id" "$session_id")
+    local message_count=$(echo "$messages" | jq '.data | length')
+    log_verbose "Messages count: $message_count"
+
+    # Get events
+    local events=$(get_events "$agent_id" "$session_id")
+    local event_count=$(echo "$events" | jq '.data | length')
+    log_verbose "Events count: $event_count"
+
+    # Should have at least 2 events: message.user and message.assistant
+    if [ "$event_count" -lt 2 ]; then
+        log_error "Expected at least 2 events, got $event_count"
+        return 1
+    fi
+
+    # Check for message.user event
+    local user_events=$(echo "$events" | jq '[.data[] | select(.event_type == "message.user")] | length')
+    if [ "$user_events" -lt 1 ]; then
+        log_error "Expected at least 1 message.user event"
+        return 1
+    fi
+    log_verbose "User events: $user_events"
+
+    # Check for message.assistant event
+    local assistant_events=$(echo "$events" | jq '[.data[] | select(.event_type == "message.assistant")] | length')
+    if [ "$assistant_events" -lt 1 ]; then
+        log_error "Expected at least 1 message.assistant event"
+        return 1
+    fi
+    log_verbose "Assistant events: $assistant_events"
+
+    # Verify event data contains message info
+    local first_user_event=$(echo "$events" | jq '.data[] | select(.event_type == "message.user") | .data')
+    local has_message_id=$(echo "$first_user_event" | jq 'has("message_id")')
+    local has_content=$(echo "$first_user_event" | jq 'has("content")')
+
+    if [ "$has_message_id" != "true" ] || [ "$has_content" != "true" ]; then
+        log_error "Event data missing required fields (message_id, content)"
+        return 1
+    fi
+
+    log_verbose "Events contain required message data"
+    return 0
+}
+
+# ============================================================================
 # Main Test Runner
 # ============================================================================
 main() {
@@ -487,6 +565,9 @@ main() {
     echo ""
 
     run_test "Tool Error Handling (Division by Zero)" test_tool_error_handling || true
+    echo ""
+
+    run_test "Events and Messages Sync" test_events_sync || true
     echo ""
 
     # Summary
