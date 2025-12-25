@@ -27,6 +27,7 @@ pub mod event;
 pub mod llm_entities;
 pub mod model_profiles;
 pub mod session;
+pub mod session_file;
 
 pub mod atoms;
 pub mod capabilities;
@@ -112,3 +113,4 @@ pub use llm_entities::{
 };
 pub use model_profiles::get_model_profile;
 pub use session::{Session, SessionStatus};
+pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};

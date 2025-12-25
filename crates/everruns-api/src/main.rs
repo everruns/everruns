@@ -11,6 +11,7 @@ mod llm_models;
 mod llm_providers;
 mod messages;
 mod services;
+mod session_files;
 mod sessions;
 mod users;
 
@@ -20,8 +21,9 @@ use axum::{extract::State, routing::get, Json, Router};
 use common::{ListResponse, UpdateAgentCapabilitiesRequest};
 use everruns_core::llm_entities::LlmProvider;
 use everruns_core::{
-    Agent, AgentCapability, AgentStatus, CapabilityInfo, Event, LlmModel, LlmModelStatus,
-    LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Session, SessionStatus,
+    Agent, AgentCapability, AgentStatus, CapabilityInfo, Event, FileInfo, FileStat, GrepMatch,
+    GrepResult, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType,
+    Session, SessionFile, SessionStatus,
 };
 use everruns_storage::{Database, EncryptionService};
 use everruns_worker::{create_runner, RunnerConfig};
@@ -93,6 +95,16 @@ struct HealthState {
         capabilities::get_agent_capabilities,
         capabilities::set_agent_capabilities,
         users::list_users,
+        session_files::list_files,
+        session_files::create_file,
+        session_files::read_file,
+        session_files::update_file,
+        session_files::stat_file,
+        session_files::delete_file,
+        session_files::create_directory,
+        session_files::move_file,
+        session_files::copy_file,
+        session_files::grep_files,
     ),
     components(
         schemas(
@@ -120,6 +132,13 @@ struct HealthState {
             users::User,
             users::ListUsersQuery,
             ListResponse<users::User>,
+            SessionFile, FileInfo, FileStat, GrepMatch, GrepResult,
+            session_files::CreateFileRequest, session_files::CreateDirectoryRequest,
+            session_files::UpdateFileRequest, session_files::MoveFileRequest,
+            session_files::CopyFileRequest, session_files::GrepRequest,
+            session_files::DeleteResponse,
+            ListResponse<FileInfo>,
+            ListResponse<GrepResult>,
         )
     ),
     tags(
@@ -130,7 +149,8 @@ struct HealthState {
         (name = "llm-providers", description = "LLM Provider management endpoints"),
         (name = "llm-models", description = "LLM Model management endpoints"),
         (name = "capabilities", description = "Capability management endpoints"),
-        (name = "users", description = "User management endpoints")
+        (name = "users", description = "User management endpoints"),
+        (name = "files", description = "Session virtual filesystem endpoints")
     ),
     info(
         title = "Everruns API",
@@ -212,6 +232,7 @@ async fn main() -> Result<()> {
     let llm_providers_state = llm_providers::AppState::new(db.clone(), encryption.clone());
     let llm_models_state = llm_models::AppState::new(db.clone());
     let capabilities_state = capabilities::AppState::new(db.clone());
+    let session_files_state = session_files::AppState::new(db.clone());
     let users_state = users::UsersState {
         db: db.clone(),
         auth: auth_state.clone(),
@@ -254,6 +275,7 @@ async fn main() -> Result<()> {
         .merge(llm_models::routes(llm_models_state))
         .merge(llm_providers::routes(llm_providers_state))
         .merge(capabilities::routes(capabilities_state))
+        .merge(session_files::routes(session_files_state))
         .merge(users::routes(users_state))
         .merge(auth::routes(auth_state));
 

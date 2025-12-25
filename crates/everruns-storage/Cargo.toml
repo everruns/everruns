@@ -21,5 +21,6 @@ argon2.workspace = true
 sha2.workspace = true
 hex.workspace = true
 async-trait.workspace = true
+regex.workspace = true
 
 everruns-core = { path = "../everruns-core" }

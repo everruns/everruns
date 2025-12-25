@@ -489,3 +489,95 @@ export interface User {
 export interface ListUsersQuery {
   search?: string;
 }
+
+// ============================================
+// Session File types (Virtual Filesystem)
+// ============================================
+
+/** File metadata without content */
+export interface FileInfo {
+  id: string;
+  session_id: string;
+  path: string;
+  name: string;
+  is_directory: boolean;
+  is_readonly: boolean;
+  size_bytes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Full file with content */
+export interface SessionFile extends FileInfo {
+  /** File content (text or base64 encoded) */
+  content?: string;
+  /** Content encoding: "text" or "base64" */
+  encoding: string;
+}
+
+/** File stat information */
+export interface FileStat {
+  path: string;
+  name: string;
+  is_directory: boolean;
+  is_readonly: boolean;
+  size_bytes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Grep match in a single line */
+export interface GrepMatch {
+  path: string;
+  line_number: number;
+  line: string;
+}
+
+/** Grep results for a file */
+export interface GrepResult {
+  path: string;
+  matches: GrepMatch[];
+}
+
+/** Request to create a file */
+export interface CreateFileRequest {
+  path: string;
+  content?: string;
+  encoding?: string;
+  is_readonly?: boolean;
+}
+
+/** Request to create a directory */
+export interface CreateDirectoryRequest {
+  path: string;
+}
+
+/** Request to update a file */
+export interface UpdateFileRequest {
+  content?: string;
+  encoding?: string;
+  is_readonly?: boolean;
+}
+
+/** Request to move/rename a file */
+export interface MoveFileRequest {
+  src_path: string;
+  dst_path: string;
+}
+
+/** Request to copy a file */
+export interface CopyFileRequest {
+  src_path: string;
+  dst_path: string;
+}
+
+/** Request to search files */
+export interface GrepRequest {
+  pattern: string;
+  path_pattern?: string;
+}
+
+/** Delete response */
+export interface DeleteFileResponse {
+  deleted: boolean;
+}

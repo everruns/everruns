@@ -8,6 +8,7 @@ pub mod llm_model;
 pub mod llm_provider;
 pub mod message;
 pub mod session;
+pub mod session_file;
 
 pub use agent::AgentService;
 pub use capability::CapabilityService;
@@ -17,3 +18,4 @@ pub use llm_model::LlmModelService;
 pub use llm_provider::LlmProviderService;
 pub use message::MessageService;
 pub use session::SessionService;
+pub use session_file::SessionFileService;
