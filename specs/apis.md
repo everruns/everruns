@@ -65,6 +65,23 @@ Messages store all conversation content (user, assistant, tool calls, tool resul
 | POST | `/v1/agents/{agent_id}/sessions/{session_id}/messages` | Create message (triggers workflow) |
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}/messages` | List messages |
 
+### Session Filesystem
+
+Virtual filesystem scoped to each session. See [session-filesystem.md](session-filesystem.md) for full specification.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs` | List root directory |
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Read file or list directory |
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}?stat=true` | Get file metadata only |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Create file or directory |
+| PUT | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Update file content |
+| DELETE | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Delete file |
+| DELETE | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/move` | Move/rename file |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/copy` | Copy file |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_actions/grep` | Search files by content |
+
 ### Events
 
 Server-Sent Events (SSE) for real-time UI updates.

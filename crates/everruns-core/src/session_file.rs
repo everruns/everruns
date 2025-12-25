@@ -160,4 +160,75 @@ mod tests {
         assert!(SessionFile::is_text_content(b"line1\nline2\n"));
         assert!(!SessionFile::is_text_content(b"hello\0world"));
     }
+
+    #[test]
+    fn test_encode_content_text() {
+        let (content, encoding) = SessionFile::encode_content(b"hello world");
+        assert_eq!(content, "hello world");
+        assert_eq!(encoding, "text");
+    }
+
+    #[test]
+    fn test_encode_content_binary() {
+        // Binary data with null byte
+        let binary = b"\x89PNG\r\n\x1a\n\0";
+        let (content, encoding) = SessionFile::encode_content(binary);
+        assert_eq!(encoding, "base64");
+        assert!(!content.is_empty());
+    }
+
+    #[test]
+    fn test_decode_content_text() {
+        let decoded = SessionFile::decode_content("hello world", "text").unwrap();
+        assert_eq!(decoded, b"hello world");
+    }
+
+    #[test]
+    fn test_decode_content_base64() {
+        let decoded = SessionFile::decode_content("aGVsbG8=", "base64").unwrap();
+        assert_eq!(decoded, b"hello");
+    }
+
+    #[test]
+    fn test_encode_decode_roundtrip() {
+        let original = b"Test content with special chars: \xc3\xa9\xc3\xa0";
+        let (encoded, encoding) = SessionFile::encode_content(original);
+        let decoded = SessionFile::decode_content(&encoded, &encoding).unwrap();
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn test_file_info_serialization() {
+        let file_info = FileInfo {
+            id: Uuid::nil(),
+            session_id: Uuid::nil(),
+            path: "/test.txt".to_string(),
+            name: "test.txt".to_string(),
+            is_directory: false,
+            is_readonly: false,
+            size_bytes: 100,
+            created_at: DateTime::default(),
+            updated_at: DateTime::default(),
+        };
+
+        let json = serde_json::to_string(&file_info).unwrap();
+        assert!(json.contains("\"path\":\"/test.txt\""));
+        assert!(json.contains("\"is_directory\":false"));
+    }
+
+    #[test]
+    fn test_grep_result_serialization() {
+        let result = GrepResult {
+            path: "/test.txt".to_string(),
+            matches: vec![GrepMatch {
+                path: "/test.txt".to_string(),
+                line_number: 1,
+                line: "hello world".to_string(),
+            }],
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"line_number\":1"));
+        assert!(json.contains("\"line\":\"hello world\""));
+    }
 }

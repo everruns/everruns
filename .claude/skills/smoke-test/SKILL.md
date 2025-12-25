@@ -223,6 +223,7 @@ Additional test scenarios are available in the `scenarios/` folder:
 
 - **[Tool Calling](scenarios/tool-calling.md)** - Tests for agent tool calling functionality (TestMath, TestWeather capabilities)
 - **[Task List](scenarios/task-list.md)** - Tests for task management capability (TaskList capability with write_todos tool)
+- **[File System](scenarios/file-system.md)** - Tests for session virtual filesystem (create, read, update, delete files/directories)
 
 ### UI Tests
 
