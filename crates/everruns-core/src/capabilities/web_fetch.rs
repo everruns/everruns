@@ -748,10 +748,8 @@ mod tests {
         }
     }
 
-    // Note: Integration tests that actually make HTTP requests should be in
-    // a separate integration test file or marked with #[ignore]
+    // Integration tests that make HTTP requests
     #[tokio::test]
-    #[ignore = "requires network access"]
     async fn test_web_fetch_real_request() {
         let tool = WebFetchTool;
         let result = tool
@@ -773,7 +771,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires network access"]
     async fn test_web_fetch_head_request() {
         let tool = WebFetchTool;
         let result = tool
