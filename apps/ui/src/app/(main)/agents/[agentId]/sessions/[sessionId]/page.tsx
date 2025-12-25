@@ -327,33 +327,6 @@ export default function SessionDetailPage({
 
       {/* Input area */}
       <div className="border-t p-4">
-        {/* Reasoning effort selector - only shown when model supports it */}
-        {supportsReasoning && reasoningEffortConfig && (
-          <div className="flex items-center gap-2 mb-2">
-            <Brain className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Reasoning:</span>
-            <Select
-              value={reasoningEffort}
-              onValueChange={(value) => setReasoningEffort(value as ReasoningEffort | "")}
-            >
-              <SelectTrigger size="sm" className="w-[180px]">
-                <SelectValue>
-                  {reasoningEffort
-                    ? getReasoningEffortName(reasoningEffort)
-                    : `Default (${defaultEffortName})`}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
-                {reasoningEffortConfig.values.map((effort) => (
-                  <SelectItem key={effort.value} value={effort.value}>
-                    {effort.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea
             value={inputValue}
@@ -380,6 +353,33 @@ export default function SessionDetailPage({
             )}
           </Button>
         </form>
+        {/* Reasoning effort selector - only shown when model supports it */}
+        {supportsReasoning && reasoningEffortConfig && (
+          <div className="flex items-center gap-2 mt-2">
+            <Brain className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Reasoning:</span>
+            <Select
+              value={reasoningEffort}
+              onValueChange={(value) => setReasoningEffort(value as ReasoningEffort | "")}
+            >
+              <SelectTrigger size="sm" className="w-[180px]">
+                <SelectValue>
+                  {reasoningEffort
+                    ? getReasoningEffortName(reasoningEffort)
+                    : `Default (${defaultEffortName})`}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
+                {reasoningEffortConfig.values.map((effort) => (
+                  <SelectItem key={effort.value} value={effort.value}>
+                    {effort.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {session.status === "failed" && (
           <p className="text-xs text-muted-foreground text-center mt-2">
             This session has failed. Start a new session to continue chatting.
