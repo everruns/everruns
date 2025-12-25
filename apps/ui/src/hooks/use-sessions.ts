@@ -8,7 +8,6 @@ import {
   listSessions,
   updateSession,
   sendUserMessage,
-  listMessages,
   listEvents,
 } from "@/lib/api/sessions";
 import type { CreateSessionRequest, UpdateSessionRequest, Event, Message, ContentPart } from "@/lib/api/types";
@@ -104,27 +103,11 @@ export function useSendMessage() {
       content: string;
     }) => sendUserMessage(agentId, sessionId, content),
     onSuccess: (_, { agentId, sessionId }) => {
-      // Invalidate both messages and events queries for backward compatibility
-      queryClient.invalidateQueries({
-        queryKey: ["messages", agentId, sessionId],
-      });
+      // Invalidate events query to refresh the message list
       queryClient.invalidateQueries({
         queryKey: ["events", agentId, sessionId],
       });
     },
-  });
-}
-
-export function useMessages(
-  agentId: string | undefined,
-  sessionId: string | undefined,
-  options?: { refetchInterval?: number | false }
-) {
-  return useQuery({
-    queryKey: ["messages", agentId, sessionId],
-    queryFn: () => listMessages(agentId!, sessionId!),
-    enabled: !!agentId && !!sessionId,
-    refetchInterval: options?.refetchInterval,
   });
 }
 
