@@ -66,14 +66,14 @@ const mockLlmModel: LlmModelWithProvider = {
 // Mock hooks module
 const mockUseAgent = jest.fn();
 const mockUseSession = jest.fn();
-const mockUseMessages = jest.fn();
+const mockUseEvents = jest.fn();
 const mockUseSendMessage = jest.fn();
 const mockUseLlmModel = jest.fn();
 
 jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
   useSession: (...args: unknown[]) => mockUseSession(...args),
-  useMessages: (...args: unknown[]) => mockUseMessages(...args),
+  useEvents: (...args: unknown[]) => mockUseEvents(...args),
   useSendMessage: () => mockUseSendMessage(),
   useLlmModel: (...args: unknown[]) => mockUseLlmModel(...args),
 }));
@@ -100,7 +100,7 @@ describe("SessionDetailPage - LLM Model Display", () => {
     // Default mock implementations
     mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
     mockUseSession.mockReturnValue({ data: mockSession, isLoading: false });
-    mockUseMessages.mockReturnValue({ data: [], isLoading: false });
+    mockUseEvents.mockReturnValue({ data: [], isLoading: false });
     mockUseSendMessage.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseLlmModel.mockReturnValue({ data: mockLlmModel, isLoading: false });
   });
