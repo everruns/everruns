@@ -18,7 +18,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import {
   Dialog,
@@ -53,6 +52,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import type {
   LlmProvider,
   LlmModelWithProvider,
@@ -90,17 +90,11 @@ function ProviderCard({
   onDelete: (id: string) => void;
   onSetApiKey: (provider: LlmProvider) => void;
 }) {
-  const providerLabel =
-    PROVIDER_TYPES.find((t) => t.value === provider.provider_type)?.label ||
-    provider.provider_type;
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Server className="h-5 w-5 text-primary" />
-          </div>
+          <ProviderIcon providerType={provider.provider_type} size="md" />
           <div>
             <CardTitle className="text-lg flex items-center gap-2">
               {provider.name}
@@ -108,7 +102,9 @@ function ProviderCard({
                 <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
               )}
             </CardTitle>
-            <CardDescription className="text-sm">{providerLabel}</CardDescription>
+            <CardDescription className="text-sm">
+              {getProviderLabel(provider.provider_type)}
+            </CardDescription>
           </div>
         </div>
         <Badge
@@ -189,7 +185,12 @@ function ModelRow({
     <div className="border rounded-lg overflow-hidden">
       <div className="flex items-center justify-between p-3">
         <div className="flex items-center gap-3">
-          <Cpu className="h-5 w-5 text-muted-foreground" />
+          <ProviderIcon
+            providerType={model.provider_type}
+            size="sm"
+            showBackground={false}
+            className="text-muted-foreground"
+          />
           <div>
             <div className="font-medium flex items-center gap-2">
               {model.display_name}
@@ -427,12 +428,18 @@ function AddProviderDialog({
             <Label htmlFor="provider-type">Provider Type</Label>
             <Select value={providerType} onValueChange={(v) => setProviderType(v as LlmProviderType)}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select provider type" />
+                <div className="flex items-center gap-2">
+                  <ProviderIcon providerType={providerType} size="sm" showBackground={false} />
+                  <span>{getProviderLabel(providerType)}</span>
+                </div>
               </SelectTrigger>
               <SelectContent>
                 {PROVIDER_TYPES.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
-                    {type.label}
+                    <div className="flex items-center gap-2">
+                      <ProviderIcon providerType={type.value} size="sm" showBackground={false} />
+                      <span>{type.label}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
