@@ -10,7 +10,38 @@
 
 use crate::llm_entities::{
     LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmProviderType, Modality,
+    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
+
+// Helper functions for creating reasoning effort configurations
+
+fn effort(value: ReasoningEffort, name: &str) -> ReasoningEffortValue {
+    ReasoningEffortValue {
+        value,
+        name: name.into(),
+    }
+}
+
+/// Standard reasoning efforts for pre-gpt-5.1 models (o1, o1-mini, o3-mini)
+/// Default: medium, supports: low, medium, high
+fn reasoning_effort_standard() -> ReasoningEffortConfig {
+    ReasoningEffortConfig {
+        values: vec![
+            effort(ReasoningEffort::Low, "Low"),
+            effort(ReasoningEffort::Medium, "Medium"),
+            effort(ReasoningEffort::High, "High"),
+        ],
+        default: ReasoningEffort::Medium,
+    }
+}
+
+/// Reasoning effort for o1-pro (only high)
+fn reasoning_effort_high_only() -> ReasoningEffortConfig {
+    ReasoningEffortConfig {
+        values: vec![effort(ReasoningEffort::High, "High")],
+        default: ReasoningEffort::High,
+    }
+}
 
 /// Get a model profile by matching provider_type and model_id
 /// Returns None if no matching profile is found
@@ -55,6 +86,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image, Modality::Audio],
                 output: vec![Modality::Text, Modality::Audio],
             }),
+            reasoning_effort: None,
         }),
 
         "gpt-4o-mini" => Some(LlmModelProfile {
@@ -82,6 +114,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: None,
         }),
 
         "o1" => Some(LlmModelProfile {
@@ -109,6 +142,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: Some(reasoning_effort_standard()),
         }),
 
         "o1-mini" => Some(LlmModelProfile {
@@ -136,6 +170,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: Some(reasoning_effort_standard()),
         }),
 
         "o1-pro" => Some(LlmModelProfile {
@@ -163,6 +198,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: Some(reasoning_effort_high_only()),
         }),
 
         "o3-mini" => Some(LlmModelProfile {
@@ -190,6 +226,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: Some(reasoning_effort_standard()),
         }),
 
         _ => None,
@@ -226,6 +263,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: None,
         }),
 
         "claude-opus-4" => Some(LlmModelProfile {
@@ -253,6 +291,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: None, // Anthropic uses extended thinking, not reasoning effort
         }),
 
         "claude-3-5-sonnet" => Some(LlmModelProfile {
@@ -280,6 +319,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: None,
         }),
 
         "claude-3-5-haiku" => Some(LlmModelProfile {
@@ -307,6 +347,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: None,
         }),
 
         "claude-3-opus" => Some(LlmModelProfile {
@@ -334,6 +375,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: None,
         }),
 
         "claude-3-sonnet" => Some(LlmModelProfile {
@@ -361,6 +403,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: None,
         }),
 
         "claude-3-haiku" => Some(LlmModelProfile {
@@ -388,6 +431,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
+            reasoning_effort: None,
         }),
 
         _ => None,

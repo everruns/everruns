@@ -120,7 +120,8 @@ pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use event::Event;
 pub use llm_entities::{
     LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelStatus,
-    LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality,
+    LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality, ReasoningEffort,
+    ReasoningEffortConfig, ReasoningEffortValue,
 };
 pub use model_profiles::get_model_profile;
 pub use session::{Session, SessionStatus};

@@ -359,6 +359,25 @@ export interface LlmModelModalities {
   output: Modality[];
 }
 
+/** Reasoning effort level for models that support it */
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+/** Named reasoning effort value for UI display */
+export interface ReasoningEffortValue {
+  /** The API value (e.g., "low", "medium") */
+  value: ReasoningEffort;
+  /** Display name (e.g., "Low", "Medium") */
+  name: string;
+}
+
+/** Reasoning effort configuration for a model */
+export interface ReasoningEffortConfig {
+  /** Available reasoning effort values for this model */
+  values: ReasoningEffortValue[];
+  /** Default reasoning effort for this model */
+  default: ReasoningEffort;
+}
+
 /**
  * LLM Model Profile describing model capabilities
  * Based on models.dev structure (https://models.dev/api.json)
@@ -392,6 +411,8 @@ export interface LlmModelProfile {
   limits?: LlmModelLimits;
   /** Supported modalities */
   modalities?: LlmModelModalities;
+  /** Reasoning effort configuration (for reasoning models) */
+  reasoning_effort?: ReasoningEffortConfig;
 }
 
 export interface CreateLlmProviderRequest {

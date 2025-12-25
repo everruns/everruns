@@ -167,6 +167,39 @@ pub struct LlmModelModalities {
     pub output: Vec<Modality>,
 }
 
+/// Reasoning effort level for models that support it
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningEffort {
+    None,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+}
+
+/// Named reasoning effort value for UI display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ReasoningEffortValue {
+    /// The API value (e.g., "low", "medium")
+    pub value: ReasoningEffort,
+    /// Display name (e.g., "Low", "Medium")
+    pub name: String,
+}
+
+/// Reasoning effort configuration for a model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ReasoningEffortConfig {
+    /// Available reasoning effort values for this model
+    pub values: Vec<ReasoningEffortValue>,
+    /// Default reasoning effort for this model
+    pub default: ReasoningEffort,
+}
+
 /// LLM Model Profile describing model capabilities
 /// Based on models.dev structure (https://models.dev/api.json)
 ///
@@ -212,4 +245,7 @@ pub struct LlmModelProfile {
     /// Supported modalities
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modalities: Option<LlmModelModalities>,
+    /// Reasoning effort configuration (for reasoning models)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffortConfig>,
 }
