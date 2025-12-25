@@ -1,19 +1,15 @@
 // Loop events for streaming
 //
-// LoopEvent wraps AG-UI events with additional loop-specific context.
-// This allows the loop to emit standard AG-UI events while also providing
-// higher-level loop status events.
+// LoopEvent provides loop-specific events for SSE streaming.
+// These events track loop execution lifecycle, LLM calls, tool executions,
+// and text streaming.
 
-use crate::ag_ui::AgUiEvent;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Events emitted during loop execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LoopEvent {
-    /// AG-UI protocol event (for SSE streaming compatibility)
-    AgUi(AgUiEvent),
-
     /// Loop started
     LoopStarted {
         session_id: String,
@@ -204,32 +200,9 @@ impl LoopEvent {
         }
     }
 
-    /// Wrap an AG-UI event
-    pub fn ag_ui(event: AgUiEvent) -> Self {
-        LoopEvent::AgUi(event)
-    }
-
     /// Get the session ID for this event
     pub fn session_id(&self) -> &str {
         match self {
-            LoopEvent::AgUi(e) => match e {
-                AgUiEvent::RunStarted(e) => &e.thread_id,
-                AgUiEvent::RunFinished(e) => &e.thread_id,
-                AgUiEvent::RunError(_) => "",
-                AgUiEvent::StepStarted(_) => "",
-                AgUiEvent::StepFinished(_) => "",
-                AgUiEvent::TextMessageStart(e) => &e.message_id,
-                AgUiEvent::TextMessageContent(e) => &e.message_id,
-                AgUiEvent::TextMessageEnd(e) => &e.message_id,
-                AgUiEvent::ToolCallStart(e) => &e.tool_call_id,
-                AgUiEvent::ToolCallArgs(e) => &e.tool_call_id,
-                AgUiEvent::ToolCallEnd(e) => &e.tool_call_id,
-                AgUiEvent::ToolCallResult(e) => &e.tool_call_id,
-                AgUiEvent::StateSnapshot(_) => "",
-                AgUiEvent::StateDelta(_) => "",
-                AgUiEvent::MessagesSnapshot(_) => "",
-                AgUiEvent::Custom(_) => "",
-            },
             LoopEvent::LoopStarted { session_id, .. } => session_id,
             LoopEvent::IterationStarted { session_id, .. } => session_id,
             LoopEvent::LlmCallStarted { session_id, .. } => session_id,

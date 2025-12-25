@@ -18,9 +18,9 @@ Available specs:
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
 - `specs/models.md` - Data models (Agent, Thread, Run, etc.)
 - `specs/apis.md` - HTTP API endpoints
-- `specs/ag-ui-protocol.md` - AG-UI protocol integration
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system for modular functionality
+- `specs/dismissed-options.md` - Technical options considered but dismissed
 
 Specification format: Abstract and Requirements sections.
 

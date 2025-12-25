@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Everruns is a durable AI agent execution platform built on Rust and Temporal. It provides APIs for managing agents, threads, and runs with streaming event output via the AG-UI protocol. The architecture prioritizes durability, observability, and developer experience.
+Everruns is a durable AI agent execution platform built on Rust and Temporal. It provides APIs for managing agents, threads, and runs with streaming event output via SSE. The architecture prioritizes durability, observability, and developer experience.
 
 ## Requirements
 
@@ -30,7 +30,7 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 1. **Runner Abstraction**: `AgentRunner` trait provides the execution backend interface
 2. **Temporal Execution**: All agent workflows run via Temporal for durability and reliability
 3. **Workflow Isolation**: Temporal concepts (workflow IDs, task queues) never exposed in public API
-4. **Event Streaming**: AG-UI protocol over SSE for real-time event delivery via database-backed events
+4. **Event Streaming**: SSE for real-time event delivery via database-backed events
 
 See [specs/temporal-integration.md](temporal-integration.md) for detailed Temporal architecture.
 
