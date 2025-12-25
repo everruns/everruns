@@ -10,7 +10,7 @@ import {
   sendUserMessage,
   listEvents,
 } from "@/lib/api/sessions";
-import type { CreateSessionRequest, UpdateSessionRequest, Event, Message, ContentPart } from "@/lib/api/types";
+import type { CreateSessionRequest, UpdateSessionRequest, Event, Message, ContentPart, Controls } from "@/lib/api/types";
 
 export function useSessions(agentId: string | undefined) {
   return useQuery({
@@ -97,11 +97,13 @@ export function useSendMessage() {
       agentId,
       sessionId,
       content,
+      controls,
     }: {
       agentId: string;
       sessionId: string;
       content: string;
-    }) => sendUserMessage(agentId, sessionId, content),
+      controls?: Controls;
+    }) => sendUserMessage(agentId, sessionId, content, controls),
     onSuccess: (_, { agentId, sessionId }) => {
       // Invalidate events query to refresh the message list
       queryClient.invalidateQueries({

@@ -7,6 +7,7 @@ import type {
   Event,
   CreateMessageRequest,
   ListResponse,
+  Controls,
 } from "./types";
 
 // ============================================
@@ -39,13 +40,15 @@ export async function listMessages(
 export async function sendUserMessage(
   agentId: string,
   sessionId: string,
-  content: string
+  content: string,
+  controls?: Controls
 ): Promise<Message> {
   return createMessage(agentId, sessionId, {
     message: {
       role: "user",
       content: [{ type: "text", text: content }],
     },
+    controls,
   });
 }
 

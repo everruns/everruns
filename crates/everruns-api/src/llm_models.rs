@@ -148,7 +148,7 @@ pub async fn list_all_models(
     Ok(Json(models))
 }
 
-/// Get a specific model
+/// Get a specific model with provider info and profile
 #[utoipa::path(
     get,
     path = "/v1/llm-models/{id}",
@@ -156,7 +156,7 @@ pub async fn list_all_models(
         ("id" = Uuid, Path, description = "Model ID")
     ),
     responses(
-        (status = 200, description = "Model found", body = LlmModel),
+        (status = 200, description = "Model found", body = LlmModelWithProvider),
         (status = 404, description = "Model not found")
     ),
     tag = "llm-models"
@@ -164,10 +164,10 @@ pub async fn list_all_models(
 pub async fn get_model(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<LlmModelWithProvider>, (StatusCode, Json<ErrorResponse>)> {
     let model = state
         .service
-        .get(id)
+        .get_with_provider(id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get LLM model: {}", e);

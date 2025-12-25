@@ -213,6 +213,12 @@ impl LlmProvider for AnthropicLlmProvider {
             Some(Self::convert_tools(&config.tools))
         };
 
+        // Build thinking config from reasoning effort
+        let thinking = config
+            .reasoning_effort
+            .as_ref()
+            .and_then(|e| AnthropicThinking::from_effort(e));
+
         let mut request = AnthropicRequest {
             model: config.model.clone(),
             messages: anthropic_messages,
@@ -221,6 +227,7 @@ impl LlmProvider for AnthropicLlmProvider {
             system: system_prompt,
             stream: true,
             tools,
+            thinking,
         };
 
         // Ensure max_tokens is set (required by Anthropic)
@@ -417,6 +424,34 @@ struct AnthropicRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<AnthropicTool>>,
+    /// Extended thinking configuration (for Claude models that support it)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<AnthropicThinking>,
+}
+
+/// Extended thinking configuration for Claude
+#[derive(Debug, Serialize)]
+struct AnthropicThinking {
+    r#type: String,
+    /// Budget tokens for thinking (varies by effort level)
+    budget_tokens: u32,
+}
+
+impl AnthropicThinking {
+    /// Create thinking config from reasoning effort level
+    fn from_effort(effort: &str) -> Option<Self> {
+        let budget = match effort.to_lowercase().as_str() {
+            "low" => 1024,
+            "medium" => 4096,
+            "high" => 16384,
+            "xhigh" => 32768,
+            _ => return None,
+        };
+        Some(Self {
+            r#type: "enabled".to_string(),
+            budget_tokens: budget,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

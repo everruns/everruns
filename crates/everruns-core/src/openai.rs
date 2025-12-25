@@ -173,6 +173,7 @@ impl LlmProvider for OpenAIProtocolLlmProvider {
             max_tokens: config.max_tokens,
             stream: true,
             tools,
+            reasoning_effort: config.reasoning_effort.clone(),
         };
 
         let response = self
@@ -336,6 +337,9 @@ struct OpenAiRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<OpenAiTool>>,
+    /// Reasoning effort for o1/o3 models (low, medium, high)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
 }
 
 /// Content can be either a simple string or an array of content parts

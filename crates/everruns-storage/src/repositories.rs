@@ -831,6 +831,26 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_llm_model_with_provider(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<LlmModelWithProviderRow>> {
+        let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
+            r#"
+            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.context_window, m.is_default, m.status, m.created_at, m.updated_at,
+                   p.name as provider_name, p.provider_type
+            FROM llm_models m
+            JOIN llm_providers p ON m.provider_id = p.id
+            WHERE m.id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn list_llm_models_for_provider(
         &self,
         provider_id: Uuid,
