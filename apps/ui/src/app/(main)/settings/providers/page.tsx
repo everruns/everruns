@@ -44,6 +44,14 @@ import {
   Key,
   Star,
   Cpu,
+  Brain,
+  Wrench,
+  Image,
+  DollarSign,
+  Layers,
+  Info,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type {
   LlmProvider,
@@ -147,6 +155,26 @@ function ProviderCard({
   );
 }
 
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    return `${(tokens / 1_000_000).toFixed(1)}M`;
+  }
+  if (tokens >= 1_000) {
+    return `${(tokens / 1_000).toFixed(0)}K`;
+  }
+  return tokens.toString();
+}
+
+function formatCost(cost: number): string {
+  if (cost >= 100) {
+    return `$${cost.toFixed(0)}`;
+  }
+  if (cost >= 1) {
+    return `$${cost.toFixed(2)}`;
+  }
+  return `$${cost.toFixed(3)}`;
+}
+
 function ModelRow({
   model,
   onDelete,
@@ -154,56 +182,179 @@ function ModelRow({
   model: LlmModelWithProvider;
   onDelete: (id: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const profile = model.profile;
+
   return (
-    <div className="flex items-center justify-between p-3 border rounded-lg">
-      <div className="flex items-center gap-3">
-        <Cpu className="h-5 w-5 text-muted-foreground" />
-        <div>
-          <div className="font-medium flex items-center gap-2">
-            {model.display_name}
-            {model.is_default && (
-              <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-            )}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {model.model_id} - {model.provider_name}
+    <div className="border rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between p-3">
+        <div className="flex items-center gap-3">
+          <Cpu className="h-5 w-5 text-muted-foreground" />
+          <div>
+            <div className="font-medium flex items-center gap-2">
+              {model.display_name}
+              {model.is_default && (
+                <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+              )}
+              {profile && (
+                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                  {profile.family}
+                </Badge>
+              )}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {model.model_id} - {model.provider_name}
+            </div>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          {/* Profile capability badges */}
+          {profile && (
+            <div className="flex gap-1">
+              {profile.reasoning && (
+                <Badge variant="secondary" className="text-xs" title="Reasoning">
+                  <Brain className="h-3 w-3 mr-1" />
+                  Reasoning
+                </Badge>
+              )}
+              {profile.tool_call && (
+                <Badge variant="secondary" className="text-xs" title="Tool Calling">
+                  <Wrench className="h-3 w-3 mr-1" />
+                  Tools
+                </Badge>
+              )}
+              {profile.attachment && (
+                <Badge variant="secondary" className="text-xs" title="Attachments">
+                  <Image className="h-3 w-3 mr-1" />
+                  Vision
+                </Badge>
+              )}
+            </div>
+          )}
+          {/* Legacy capabilities (only show if no profile) */}
+          {!profile && model.capabilities.length > 0 && (
+            <div className="flex gap-1">
+              {model.capabilities.slice(0, 2).map((cap) => (
+                <Badge key={cap} variant="secondary" className="text-xs">
+                  {cap}
+                </Badge>
+              ))}
+              {model.capabilities.length > 2 && (
+                <Badge variant="secondary" className="text-xs">
+                  +{model.capabilities.length - 2}
+                </Badge>
+              )}
+            </div>
+          )}
+          <Badge
+            variant="outline"
+            className={
+              model.status === "active"
+                ? "bg-green-100 text-green-800"
+                : "bg-gray-100 text-gray-800"
+            }
+          >
+            {model.status}
+          </Badge>
+          {profile && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpanded(!expanded)}
+              title={expanded ? "Collapse" : "Expand profile details"}
+            >
+              {expanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive"
+            onClick={() => onDelete(model.id)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        {model.capabilities.length > 0 && (
-          <div className="flex gap-1">
-            {model.capabilities.slice(0, 2).map((cap) => (
-              <Badge key={cap} variant="secondary" className="text-xs">
-                {cap}
-              </Badge>
-            ))}
-            {model.capabilities.length > 2 && (
-              <Badge variant="secondary" className="text-xs">
-                +{model.capabilities.length - 2}
-              </Badge>
+
+      {/* Expanded profile details */}
+      {expanded && profile && (
+        <div className="border-t bg-muted/30 p-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {/* Limits */}
+            {profile.limits && (
+              <div>
+                <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                  <Layers className="h-3.5 w-3.5" />
+                  Token Limits
+                </div>
+                <div>Context: {formatTokens(profile.limits.context)}</div>
+                <div>Output: {formatTokens(profile.limits.output)}</div>
+              </div>
             )}
+
+            {/* Cost */}
+            {profile.cost && (
+              <div>
+                <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                  <DollarSign className="h-3.5 w-3.5" />
+                  Cost / 1M Tokens
+                </div>
+                <div>Input: {formatCost(profile.cost.input)}</div>
+                <div>Output: {formatCost(profile.cost.output)}</div>
+                {profile.cost.cache_read && (
+                  <div>Cache: {formatCost(profile.cost.cache_read)}</div>
+                )}
+              </div>
+            )}
+
+            {/* Capabilities */}
+            <div>
+              <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                <Wrench className="h-3.5 w-3.5" />
+                Capabilities
+              </div>
+              <div className="space-y-0.5">
+                <div className={profile.tool_call ? "text-green-700" : "text-muted-foreground"}>
+                  {profile.tool_call ? "✓" : "✗"} Tool Calling
+                </div>
+                <div className={profile.structured_output ? "text-green-700" : "text-muted-foreground"}>
+                  {profile.structured_output ? "✓" : "✗"} Structured Output
+                </div>
+                <div className={profile.reasoning ? "text-green-700" : "text-muted-foreground"}>
+                  {profile.reasoning ? "✓" : "✗"} Reasoning
+                </div>
+                <div className={profile.attachment ? "text-green-700" : "text-muted-foreground"}>
+                  {profile.attachment ? "✓" : "✗"} Attachments
+                </div>
+              </div>
+            </div>
+
+            {/* Info */}
+            <div>
+              <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                <Info className="h-3.5 w-3.5" />
+                Model Info
+              </div>
+              {profile.knowledge && (
+                <div>Knowledge: {profile.knowledge}</div>
+              )}
+              {profile.release_date && (
+                <div>Released: {profile.release_date}</div>
+              )}
+              {profile.modalities && (
+                <div>
+                  Input: {profile.modalities.input.join(", ")}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-        <Badge
-          variant="outline"
-          className={
-            model.status === "active"
-              ? "bg-green-100 text-green-800"
-              : "bg-gray-100 text-gray-800"
-          }
-        >
-          {model.status}
-        </Badge>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-destructive"
-          onClick={() => onDelete(model.id)}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

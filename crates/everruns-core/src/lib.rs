@@ -26,6 +26,7 @@ pub mod agent;
 pub mod capability_dto;
 pub mod event;
 pub mod llm_entities;
+pub mod model_profiles;
 pub mod session;
 
 pub mod atoms;
@@ -118,6 +119,8 @@ pub use agent::{Agent, AgentStatus};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use event::Event;
 pub use llm_entities::{
-    LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType,
+    LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelStatus,
+    LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality,
 };
+pub use model_profiles::get_model_profile;
 pub use session::{Session, SessionStatus};
