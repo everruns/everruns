@@ -40,6 +40,7 @@ hex.workspace = true
 base64.workspace = true
 reqwest.workspace = true
 time.workspace = true
+regex.workspace = true
 
 everruns-core = { path = "../everruns-core", features = ["openapi"] }
 everruns-storage = { path = "../everruns-storage" }

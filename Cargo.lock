@@ -792,6 +792,7 @@ dependencies = [
  "http-body-util",
  "jsonwebtoken",
  "rand 0.8.5",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -816,6 +817,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "eventsource-stream",
  "futures",
@@ -862,6 +864,7 @@ dependencies = [
  "everruns-core",
  "hex",
  "rand 0.8.5",
+ "regex",
  "serde",
  "serde_json",
  "sha2",

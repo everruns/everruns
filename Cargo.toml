@@ -73,6 +73,7 @@ sha2 = "0.10"
 hex = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 eventsource-stream = "0.2"
+regex = "1.11"
 time = "0.3"
 
 # Temporal SDK (used when AGENT_RUNNER_MODE=temporal)

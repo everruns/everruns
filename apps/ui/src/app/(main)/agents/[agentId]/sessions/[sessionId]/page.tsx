@@ -15,10 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Send, User, Bot, Loader2, Sparkles, Brain } from "lucide-react";
-import type { Message, Controls, ReasoningEffort } from "@/lib/api/types";
+import { ArrowLeft, Send, User, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder } from "lucide-react";
+import type { Message, Controls, ReasoningEffort, FileInfo } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
+import { FileBrowser, FileViewer } from "@/components/files";
 
 export default function SessionDetailPage({
   params,
@@ -64,6 +65,10 @@ export default function SessionDetailPage({
   const [inputValue, setInputValue] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Tab and file viewer state
+  const [activeTab, setActiveTab] = useState<"chat" | "files">("chat");
+  const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 
   // Check if the model supports reasoning effort
   const supportsReasoning = llmModel?.profile?.reasoning && llmModel?.profile?.reasoning_effort;
@@ -216,176 +221,231 @@ export default function SessionDetailPage({
             )}
           </div>
         </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mt-4">
+          <Button
+            variant={activeTab === "chat" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("chat")}
+            className="gap-2"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Chat
+          </Button>
+          <Button
+            variant={activeTab === "files" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("files")}
+            className="gap-2"
+          >
+            <Folder className="h-4 w-4" />
+            File System
+          </Button>
+        </div>
       </div>
 
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messagesLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-20 w-3/4" />
-            <Skeleton className="h-20 w-3/4 ml-auto" />
-            <Skeleton className="h-20 w-3/4" />
-          </div>
-        ) : messages?.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-            <Bot className="w-12 h-12 mb-4 opacity-50" />
-            <p className="text-lg font-medium">No messages yet</p>
-            <p className="text-sm">Send a message to start the conversation</p>
-          </div>
-        ) : (
-          messages?.map((message) => {
-            const isUser = message.role === "user";
-            const isAssistant = message.role === "assistant";
-            const isToolCall = message.role === "tool_call";
-            const isToolResult = message.role === "tool_result";
+      {/* Chat Tab Content */}
+      {activeTab === "chat" && (
+        <>
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messagesLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-20 w-3/4" />
+                <Skeleton className="h-20 w-3/4 ml-auto" />
+                <Skeleton className="h-20 w-3/4" />
+              </div>
+            ) : messages?.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                <Bot className="w-12 h-12 mb-4 opacity-50" />
+                <p className="text-lg font-medium">No messages yet</p>
+                <p className="text-sm">Send a message to start the conversation</p>
+              </div>
+            ) : (
+              messages?.map((message) => {
+                const isUser = message.role === "user";
+                const isAssistant = message.role === "assistant";
+                const isToolCall = message.role === "tool_call";
+                const isToolResult = message.role === "tool_result";
 
-            // Skip tool_result messages - they're rendered with their tool_call
-            if (isToolResult) {
-              return null;
-            }
+                // Skip tool_result messages - they're rendered with their tool_call
+                if (isToolResult) {
+                  return null;
+                }
 
-            // Skip assistant messages with embedded tool_calls - they're for LLM context only
-            // The actual tool calls are rendered as separate ToolCallCard components
-            if (hasEmbeddedToolCalls(message)) {
-              return null;
-            }
+                // Skip assistant messages with embedded tool_calls - they're for LLM context only
+                // The actual tool calls are rendered as separate ToolCallCard components
+                if (hasEmbeddedToolCalls(message)) {
+                  return null;
+                }
 
-            // Render tool calls with their results
-            if (isToolCall) {
-              const toolCallId = getToolCallId(message);
-              const toolResult = toolCallId ? toolResultsMap.get(toolCallId) : undefined;
-              return (
-                <ToolCallCard
-                  key={message.id}
-                  toolCall={message}
-                  toolResult={toolResult}
-                />
-              );
-            }
+                // Render tool calls with their results
+                if (isToolCall) {
+                  const toolCallId = getToolCallId(message);
+                  const toolResult = toolCallId ? toolResultsMap.get(toolCallId) : undefined;
+                  return (
+                    <ToolCallCard
+                      key={message.id}
+                      toolCall={message}
+                      toolResult={toolResult}
+                    />
+                  );
+                }
 
-            // Extract metadata for assistant messages
-            const messageModel = isAssistant ? (message.metadata?.model as string | undefined) : undefined;
-            const messageReasoningEffort = isAssistant ? (message.metadata?.reasoning_effort as string | undefined) : undefined;
+                // Extract metadata for assistant messages
+                const messageModel = isAssistant ? (message.metadata?.model as string | undefined) : undefined;
+                const messageReasoningEffort = isAssistant ? (message.metadata?.reasoning_effort as string | undefined) : undefined;
 
-            // Render user and assistant messages
-            return (
-              <div
-                key={message.id}
-                className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-              >
-                <Card
-                  className={`max-w-[80%] ${
-                    isUser
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-start gap-2">
-                      {!isUser && (
-                        <Bot className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                      )}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-medium opacity-70">
-                            {isUser ? "You" : isAssistant ? "Assistant" : message.role}
-                          </p>
-                          {/* Show model and reasoning info for assistant messages */}
-                          {isAssistant && (messageModel || messageReasoningEffort) && (
-                            <div className="flex items-center gap-1">
-                              {messageModel && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
-                                  <Sparkles className="w-2.5 h-2.5" />
-                                  {messageModel}
-                                </Badge>
-                              )}
-                              {messageReasoningEffort && (
-                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
-                                  <Brain className="w-2.5 h-2.5" />
-                                  {messageReasoningEffort}
-                                </Badge>
+                // Render user and assistant messages
+                return (
+                  <div
+                    key={message.id}
+                    className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                  >
+                    <Card
+                      className={`max-w-[80%] ${
+                        isUser
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted"
+                      }`}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-start gap-2">
+                          {!isUser && (
+                            <Bot className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                          )}
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-medium opacity-70">
+                                {isUser ? "You" : isAssistant ? "Assistant" : message.role}
+                              </p>
+                              {/* Show model and reasoning info for assistant messages */}
+                              {isAssistant && (messageModel || messageReasoningEffort) && (
+                                <div className="flex items-center gap-1">
+                                  {messageModel && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
+                                      <Sparkles className="w-2.5 h-2.5" />
+                                      {messageModel}
+                                    </Badge>
+                                  )}
+                                  {messageReasoningEffort && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
+                                      <Brain className="w-2.5 h-2.5" />
+                                      {messageReasoningEffort}
+                                    </Badge>
+                                  )}
+                                </div>
                               )}
                             </div>
+                            <p className="text-sm whitespace-pre-wrap">
+                              {getMessageContent(message)}
+                            </p>
+                          </div>
+                          {isUser && (
+                            <User className="w-5 h-5 mt-0.5 flex-shrink-0" />
                           )}
                         </div>
-                        <p className="text-sm whitespace-pre-wrap">
-                          {getMessageContent(message)}
-                        </p>
-                      </div>
-                      {isUser && (
-                        <User className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            );
-          })
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input area */}
-      <div className="border-t p-4">
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <Textarea
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-            className="flex-1 min-h-[60px] max-h-[200px] resize-none"
-            disabled={sendMessage.isPending || session.status === "failed"}
-          />
-          <Button
-            type="submit"
-            size="icon"
-            className="h-[60px] w-[60px]"
-            disabled={
-              !inputValue.trim() ||
-              sendMessage.isPending ||
-              session.status === "failed"
-            }
-          >
-            {sendMessage.isPending ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Send className="h-5 w-5" />
+                      </CardContent>
+                    </Card>
+                  </div>
+                );
+              })
             )}
-          </Button>
-        </form>
-        {/* Reasoning effort selector - only shown when model supports it */}
-        {supportsReasoning && reasoningEffortConfig && (
-          <div className="flex items-center gap-2 mt-2">
-            <Brain className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Reasoning:</span>
-            <Select
-              value={reasoningEffort}
-              onValueChange={(value) => setReasoningEffort(value as ReasoningEffort | "")}
-            >
-              <SelectTrigger size="sm" className="w-[180px]">
-                <SelectValue>
-                  {reasoningEffort
-                    ? getReasoningEffortName(reasoningEffort)
-                    : `Default (${defaultEffortName})`}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
-                {reasoningEffortConfig.values.map((effort) => (
-                  <SelectItem key={effort.value} value={effort.value}>
-                    {effort.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div ref={messagesEndRef} />
           </div>
-        )}
-        {session.status === "failed" && (
-          <p className="text-xs text-muted-foreground text-center mt-2">
-            This session has failed. Start a new session to continue chatting.
-          </p>
-        )}
-      </div>
+
+          {/* Input area */}
+          <div className="border-t p-4">
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              <Textarea
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+                className="flex-1 min-h-[60px] max-h-[200px] resize-none"
+                disabled={sendMessage.isPending || session.status === "failed"}
+              />
+              <Button
+                type="submit"
+                size="icon"
+                className="h-[60px] w-[60px]"
+                disabled={
+                  !inputValue.trim() ||
+                  sendMessage.isPending ||
+                  session.status === "failed"
+                }
+              >
+                {sendMessage.isPending ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
+              </Button>
+            </form>
+            {/* Reasoning effort selector - only shown when model supports it */}
+            {supportsReasoning && reasoningEffortConfig && (
+              <div className="flex items-center gap-2 mt-2">
+                <Brain className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Reasoning:</span>
+                <Select
+                  value={reasoningEffort}
+                  onValueChange={(value) => setReasoningEffort(value as ReasoningEffort | "")}
+                >
+                  <SelectTrigger size="sm" className="w-[180px]">
+                    <SelectValue>
+                      {reasoningEffort
+                        ? getReasoningEffortName(reasoningEffort)
+                        : `Default (${defaultEffortName})`}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
+                    {reasoningEffortConfig.values.map((effort) => (
+                      <SelectItem key={effort.value} value={effort.value}>
+                        {effort.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {session.status === "failed" && (
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                This session has failed. Start a new session to continue chatting.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Files Tab Content */}
+      {activeTab === "files" && (
+        <div className="flex-1 flex overflow-hidden">
+          <div className="w-1/3 border-r overflow-y-auto">
+            <FileBrowser
+              agentId={agentId}
+              sessionId={sessionId}
+              onFileSelect={setSelectedFile}
+              selectedPath={selectedFile?.path}
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {selectedFile && !selectedFile.is_directory ? (
+              <FileViewer
+                agentId={agentId}
+                sessionId={sessionId}
+                file={selectedFile}
+                onClose={() => setSelectedFile(null)}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <p>Select a file to view its contents</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

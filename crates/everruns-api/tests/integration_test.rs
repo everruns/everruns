@@ -2,7 +2,7 @@
 // Run with: cargo test --test integration_test
 
 use everruns_core::llm_entities::LlmProvider;
-use everruns_core::{Agent, Event, LlmModel, Session};
+use everruns_core::{Agent, Event, LlmModel, Session, SessionFile};
 use serde_json::{json, Value};
 
 const API_BASE_URL: &str = "http://localhost:9000";
@@ -609,4 +609,253 @@ async fn test_session_inherits_agent_default_model() {
         .expect("Failed to delete provider");
 
     println!("Session model_id inheritance test passed!");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_session_filesystem() {
+    let client = reqwest::Client::new();
+
+    println!("Testing session filesystem...");
+
+    // Step 1: Create an agent
+    println!("\nStep 1: Creating agent...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Filesystem Test Agent",
+            "system_prompt": "Test agent for filesystem"
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.id);
+
+    // Step 2: Create a session
+    println!("\nStep 2: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .json(&json!({
+            "title": "Filesystem Test Session"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    let fs_url = format!(
+        "{}/v1/agents/{}/sessions/{}/fs",
+        API_BASE_URL, agent.id, session.id
+    );
+
+    // Step 3: List root directory (should be empty)
+    println!("\nStep 3: Listing root directory...");
+    let list_response = client
+        .get(&fs_url)
+        .send()
+        .await
+        .expect("Failed to list files");
+
+    assert_eq!(list_response.status(), 200);
+    let list_result: Value = list_response.json().await.expect("Failed to parse");
+    assert_eq!(list_result["data"].as_array().unwrap().len(), 0);
+    println!("Root directory is empty");
+
+    // Step 4: Create a file
+    println!("\nStep 4: Creating file...");
+    let create_response = client
+        .post(format!("{}/hello.txt", fs_url))
+        .json(&json!({
+            "content": "Hello, World!",
+            "encoding": "text"
+        }))
+        .send()
+        .await
+        .expect("Failed to create file");
+
+    assert_eq!(create_response.status(), 201);
+    let file: SessionFile = create_response.json().await.expect("Failed to parse file");
+    println!("Created file: {}", file.path);
+    assert_eq!(file.path, "/hello.txt");
+    assert!(!file.is_directory);
+
+    // Step 5: Read file
+    println!("\nStep 5: Reading file...");
+    let read_response = client
+        .get(format!("{}/hello.txt", fs_url))
+        .send()
+        .await
+        .expect("Failed to read file");
+
+    assert_eq!(read_response.status(), 200);
+    let file: SessionFile = read_response.json().await.expect("Failed to parse file");
+    assert_eq!(file.content.as_deref(), Some("Hello, World!"));
+    println!("File content: {:?}", file.content);
+
+    // Step 6: Get file stat
+    println!("\nStep 6: Getting file stat...");
+    let stat_response = client
+        .post(format!("{}/_/stat", fs_url))
+        .json(&json!({
+            "path": "/hello.txt"
+        }))
+        .send()
+        .await
+        .expect("Failed to get stat");
+
+    assert_eq!(stat_response.status(), 200);
+    let stat: Value = stat_response.json().await.expect("Failed to parse stat");
+    assert_eq!(stat["path"], "/hello.txt");
+    assert_eq!(stat["is_directory"], false);
+    println!("File stat: size={}", stat["size_bytes"]);
+
+    // Step 7: Update file
+    println!("\nStep 7: Updating file...");
+    let update_response = client
+        .put(format!("{}/hello.txt", fs_url))
+        .json(&json!({
+            "content": "Updated content"
+        }))
+        .send()
+        .await
+        .expect("Failed to update file");
+
+    assert_eq!(update_response.status(), 200);
+    let file: SessionFile = update_response.json().await.expect("Failed to parse file");
+    assert_eq!(file.content.as_deref(), Some("Updated content"));
+    println!("File updated");
+
+    // Step 8: Create directory
+    println!("\nStep 8: Creating directory...");
+    let dir_response = client
+        .post(format!("{}/docs", fs_url))
+        .json(&json!({
+            "is_directory": true
+        }))
+        .send()
+        .await
+        .expect("Failed to create directory");
+
+    assert_eq!(dir_response.status(), 201);
+    let dir: SessionFile = dir_response.json().await.expect("Failed to parse dir");
+    assert!(dir.is_directory);
+    println!("Created directory: {}", dir.path);
+
+    // Step 9: Create file in directory (auto-creates parent)
+    println!("\nStep 9: Creating nested file...");
+    let nested_response = client
+        .post(format!("{}/src/main.rs", fs_url))
+        .json(&json!({
+            "content": "fn main() {}"
+        }))
+        .send()
+        .await
+        .expect("Failed to create nested file");
+
+    assert_eq!(nested_response.status(), 201);
+    let nested: SessionFile = nested_response.json().await.expect("Failed to parse");
+    assert_eq!(nested.path, "/src/main.rs");
+    println!("Created nested file: {}", nested.path);
+
+    // Step 10: List all files
+    println!("\nStep 10: Listing all files...");
+    let list_all_response = client
+        .get(format!("{}?recursive=true", fs_url))
+        .send()
+        .await
+        .expect("Failed to list all files");
+
+    assert_eq!(list_all_response.status(), 200);
+    let list_all: Value = list_all_response.json().await.expect("Failed to parse");
+    let files = list_all["data"].as_array().unwrap();
+    assert!(files.len() >= 3); // hello.txt, docs, src/main.rs
+    println!("Found {} files", files.len());
+
+    // Step 11: Copy file
+    println!("\nStep 11: Copying file...");
+    let copy_response = client
+        .post(format!("{}/_/copy", fs_url))
+        .json(&json!({
+            "src_path": "/hello.txt",
+            "dst_path": "/hello-copy.txt"
+        }))
+        .send()
+        .await
+        .expect("Failed to copy file");
+
+    assert_eq!(copy_response.status(), 201);
+    println!("File copied");
+
+    // Step 12: Move file
+    println!("\nStep 12: Moving file...");
+    let move_response = client
+        .post(format!("{}/_/move", fs_url))
+        .json(&json!({
+            "src_path": "/hello-copy.txt",
+            "dst_path": "/renamed.txt"
+        }))
+        .send()
+        .await
+        .expect("Failed to move file");
+
+    assert_eq!(move_response.status(), 200);
+    println!("File moved/renamed");
+
+    // Step 13: Grep search
+    println!("\nStep 13: Searching files...");
+    let grep_response = client
+        .post(format!("{}/_/grep", fs_url))
+        .json(&json!({
+            "pattern": "main"
+        }))
+        .send()
+        .await
+        .expect("Failed to grep");
+
+    assert_eq!(grep_response.status(), 200);
+    let grep_result: Value = grep_response.json().await.expect("Failed to parse");
+    let results = grep_result["data"].as_array().unwrap();
+    assert!(!results.is_empty());
+    println!("Found {} files with matches", results.len());
+
+    // Step 14: Delete file
+    println!("\nStep 14: Deleting file...");
+    let delete_response = client
+        .delete(format!("{}/renamed.txt", fs_url))
+        .send()
+        .await
+        .expect("Failed to delete file");
+
+    assert_eq!(delete_response.status(), 200);
+    let delete_result: Value = delete_response.json().await.expect("Failed to parse");
+    assert_eq!(delete_result["deleted"], true);
+    println!("File deleted");
+
+    // Step 15: Delete directory recursively
+    println!("\nStep 15: Deleting directory recursively...");
+    let delete_dir_response = client
+        .delete(format!("{}/src?recursive=true", fs_url))
+        .send()
+        .await
+        .expect("Failed to delete directory");
+
+    assert_eq!(delete_dir_response.status(), 200);
+    println!("Directory deleted");
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("Session filesystem test passed!");
 }
