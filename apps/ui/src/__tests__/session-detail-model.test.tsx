@@ -19,7 +19,8 @@ jest.mock("next/navigation", () => ({
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+    // Using span instead of anchor to avoid lint errors in tests
+    <span data-href={href}>{children}</span>
   ),
 }));
 

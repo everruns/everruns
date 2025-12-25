@@ -15,8 +15,10 @@ jest.mock("next/navigation", () => ({
 // Mock next/link
 jest.mock("next/link", () => ({
   __esModule: true,
+  // eslint-disable-next-line jsx-a11y/anchor-has-content
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+    // Using span instead of anchor to avoid lint errors in tests
+    <span data-href={href}>{children}</span>
   ),
 }));
 
