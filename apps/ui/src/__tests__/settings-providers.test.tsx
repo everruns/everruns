@@ -39,7 +39,6 @@ const mockModels = [
     status: "active",
     is_default: true,
     capabilities: ["chat", "function_calling"],
-    context_window: 128000,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
   },

@@ -320,12 +320,10 @@ seed_models_for_provider() {
   for j in $(seq 0 $((model_count - 1))); do
     local model_id
     local display_name
-    local context_window
     local is_default
 
     model_id=$(yq ".providers[$provider_index].models[$j].model_id" "$SEED_FILE")
     display_name=$(yq ".providers[$provider_index].models[$j].display_name" "$SEED_FILE")
-    context_window=$(yq ".providers[$provider_index].models[$j].context_window // 0" "$SEED_FILE")
     is_default=$(yq ".providers[$provider_index].models[$j].is_default // false" "$SEED_FILE")
 
     # Check if model already exists
@@ -336,31 +334,16 @@ seed_models_for_provider() {
 
     # Build model payload
     local payload
-    if [[ "$context_window" -gt 0 ]]; then
-      payload=$(jq -n \
-        --arg model_id "$model_id" \
-        --arg display_name "$display_name" \
-        --argjson context_window "$context_window" \
-        --argjson is_default "$is_default" \
-        '{
-          model_id: $model_id,
-          display_name: $display_name,
-          context_window: $context_window,
-          is_default: $is_default
-        }'
-      )
-    else
-      payload=$(jq -n \
-        --arg model_id "$model_id" \
-        --arg display_name "$display_name" \
-        --argjson is_default "$is_default" \
-        '{
-          model_id: $model_id,
-          display_name: $display_name,
-          is_default: $is_default
-        }'
-      )
-    fi
+    payload=$(jq -n \
+      --arg model_id "$model_id" \
+      --arg display_name "$display_name" \
+      --argjson is_default "$is_default" \
+      '{
+        model_id: $model_id,
+        display_name: $display_name,
+        is_default: $is_default
+      }'
+    )
 
     # Create the model
     local response

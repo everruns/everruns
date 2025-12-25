@@ -28,7 +28,6 @@ impl LlmModelService {
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
-            context_window: req.context_window,
             is_default: req.is_default,
         };
 
@@ -56,7 +55,6 @@ impl LlmModelService {
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
-            context_window: req.context_window,
             is_default: req.is_default,
             status: req.status.map(|s| match s {
                 LlmModelStatus::Active => "active".to_string(),
@@ -81,7 +79,6 @@ impl LlmModelService {
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,
-            context_window: row.context_window,
             is_default: row.is_default,
             status: match row.status.as_str() {
                 "active" => LlmModelStatus::Active,
@@ -107,7 +104,6 @@ impl LlmModelService {
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,
-            context_window: row.context_window,
             is_default: row.is_default,
             status: match row.status.as_str() {
                 "active" => LlmModelStatus::Active,

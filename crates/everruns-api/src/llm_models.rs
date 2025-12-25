@@ -34,8 +34,6 @@ pub struct CreateLlmModelRequest {
     pub display_name: String,
     #[serde(default)]
     pub capabilities: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub context_window: Option<i32>,
     #[serde(default)]
     pub is_default: bool,
 }
@@ -48,8 +46,6 @@ pub struct UpdateLlmModelRequest {
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub context_window: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_default: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

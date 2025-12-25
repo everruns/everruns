@@ -271,7 +271,6 @@ async fn test_llm_provider_and_model_workflow() {
             "model_id": "gpt-5.2",
             "display_name": "GPT-5.2",
             "capabilities": ["chat", "vision"],
-            "context_window": 128000,
             "is_default": true
         }))
         .send()

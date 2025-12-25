@@ -88,8 +88,6 @@ pub struct LlmModel {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub context_window: Option<i32>,
     pub is_default: bool,
     pub status: LlmModelStatus,
     pub created_at: DateTime<Utc>,
@@ -105,8 +103,6 @@ pub struct LlmModelWithProvider {
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub context_window: Option<i32>,
     pub is_default: bool,
     pub status: LlmModelStatus,
     pub created_at: DateTime<Utc>,
