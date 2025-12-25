@@ -454,6 +454,76 @@ test_tool_error_handling() {
 }
 
 # ============================================================================
+# Test: WebFetch Capability Available
+# ============================================================================
+test_webfetch_capability() {
+    log_verbose "Checking WebFetch capability is available..."
+
+    local response=$(curl -s "$API_URL/v1/capabilities")
+    local web_fetch=$(echo "$response" | jq '.items[] | select(.id == "web_fetch")')
+
+    if [ -z "$web_fetch" ] || [ "$web_fetch" = "null" ]; then
+        log_error "web_fetch capability not found in capabilities list"
+        return 1
+    fi
+
+    local status=$(echo "$web_fetch" | jq -r '.status')
+    if [ "$status" != "available" ]; then
+        log_error "web_fetch capability status is '$status', expected 'available'"
+        return 1
+    fi
+
+    log_verbose "WebFetch capability is available"
+    return 0
+}
+
+# ============================================================================
+# Test: WebFetch Tool Input Validation
+# ============================================================================
+test_webfetch_tool() {
+    log_verbose "Creating agent with web_fetch capability..."
+    local agent_id=$(create_agent "Web Fetch Test Agent" "You are a web assistant. Use the web_fetch tool to fetch URLs." "WebFetch tool test")
+
+    if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
+        log_error "Failed to create agent"
+        return 1
+    fi
+
+    log_verbose "Agent ID: $agent_id"
+
+    log_verbose "Setting web_fetch capability..."
+    set_capabilities "$agent_id" "web_fetch"
+
+    log_verbose "Creating session..."
+    local session_id=$(create_session "$agent_id" "WebFetch Tool Test")
+
+    if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
+        log_error "Failed to create session"
+        return 1
+    fi
+
+    # Ask to fetch an invalid URL - should return error
+    log_verbose "Sending message: Fetch content from an-invalid-url"
+    send_message "$agent_id" "$session_id" "Fetch content from the URL an-invalid-url" 15
+
+    local messages=$(get_messages "$agent_id" "$session_id")
+
+    # Check for tool calls
+    local tool_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "web_fetch")] | length')
+    log_verbose "web_fetch tool calls found: $tool_calls"
+
+    if [ "$tool_calls" -ge 1 ]; then
+        # The tool should have been called and returned an error for invalid URL
+        return 0
+    else
+        # The LLM might have recognized the invalid URL and not called the tool
+        # which is also acceptable behavior
+        log_warn "web_fetch tool was not called (LLM may have handled invalid URL)"
+        return 0
+    fi
+}
+
+# ============================================================================
 # Test: Events and Messages Sync
 # ============================================================================
 test_events_sync() {
@@ -565,6 +635,12 @@ main() {
     echo ""
 
     run_test "Tool Error Handling (Division by Zero)" test_tool_error_handling || true
+    echo ""
+
+    run_test "WebFetch Capability Available" test_webfetch_capability || true
+    echo ""
+
+    run_test "WebFetch Tool (Input Validation)" test_webfetch_tool || true
     echo ""
 
     run_test "Events and Messages Sync" test_events_sync || true

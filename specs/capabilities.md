@@ -76,12 +76,14 @@ impl CapabilityId {
     pub const TEST_MATH: &'static str = "test_math";
     pub const TEST_WEATHER: &'static str = "test_weather";
     pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
+    pub const WEB_FETCH: &'static str = "web_fetch";
 
     // Factory methods
     pub fn new(id: impl Into<String>) -> Self;
     pub fn noop() -> Self;
     pub fn current_time() -> Self;
     pub fn stateless_todo_list() -> Self;
+    pub fn web_fetch() -> Self;
     // ... etc
 }
 ```
@@ -186,6 +188,50 @@ The `CapabilityRegistry` in core holds all registered capability implementations
 - **Tools**: To be added (read, write, grep, glob)
 - **Icon**: "folder"
 - **Category**: "File Operations"
+
+#### WebFetch
+
+- **Status**: Available
+- **ID**: `web_fetch`
+- **Purpose**: Fetch content from URLs and convert HTML to markdown or plain text
+- **System Prompt**: None (this capability does not add to the system prompt)
+- **Tools**:
+  - `web_fetch` - Fetch content from a URL
+    - Parameters:
+      - `url`: string (required) - The URL to fetch, must start with http:// or https://
+      - `method`: enum (GET, HEAD) - HTTP method, defaults to GET
+      - `as_markdown`: boolean - Convert HTML response to markdown format
+      - `as_text`: boolean - Convert HTML response to plain text (ignored if as_markdown is true)
+    - Returns: Object containing:
+      - `url`: The requested URL
+      - `status_code`: HTTP status code
+      - `content_type`: Response content type
+      - `format`: "markdown", "text", or "raw" depending on conversion
+      - `content`: The fetched content (not present for HEAD requests)
+    - Error handling:
+      - Binary content (images, PDFs, etc.) returns an error - only textual content supported
+      - Invalid URLs return validation errors
+      - Network errors return appropriate error messages
+    - Policy: Auto
+- **Icon**: "globe"
+- **Category**: "Network"
+
+##### Design Decision: No System Prompt
+
+This capability intentionally does not contribute to the system prompt. The tool is self-documenting through its parameter schema and description. Agents can discover and use the tool without additional instructions.
+
+##### Design Decision: Binary Content Not Supported
+
+Binary content (images, PDFs, audio, video, etc.) is explicitly not supported and will return an error. This keeps the implementation simple and focused on textual content that agents can process. Future versions may add binary support with appropriate handling.
+
+##### Design Decision: Built-in HTML Conversion
+
+The capability includes built-in HTML to markdown/text conversion rather than requiring external dependencies. This provides:
+- Consistent behavior across deployments
+- No external library licensing concerns
+- Predictable output format
+
+The conversion handles common HTML elements (headings, lists, emphasis, code blocks, etc.) and strips script/style content.
 
 #### StatelessTodoList
 
@@ -301,6 +347,14 @@ Response:
       "category": "Utilities"
     },
     {
+      "id": "web_fetch",
+      "name": "Web Fetch",
+      "description": "Fetch content from URLs and convert HTML responses to markdown or plain text.",
+      "status": "available",
+      "icon": "globe",
+      "category": "Network"
+    },
+    {
       "id": "stateless_todo_list",
       "name": "Task Management",
       "description": "Enables agents to create and manage structured task lists for tracking multi-step work progress. State is maintained in conversation history.",
@@ -317,7 +371,7 @@ Response:
       "category": "AI"
     }
   ],
-  "total": 8
+  "total": 9
 }
 ```
 

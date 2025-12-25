@@ -35,6 +35,7 @@ mod sandbox;
 mod stateless_todo_list;
 mod test_math;
 mod test_weather;
+mod web_fetch;
 
 // Re-export capabilities
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
@@ -45,6 +46,7 @@ pub use sandbox::SandboxCapability;
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
+pub use web_fetch::{WebFetchCapability, WebFetchTool};
 
 // ============================================================================
 // Capability Trait
@@ -172,6 +174,7 @@ impl CapabilityRegistry {
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
+        registry.register(WebFetchCapability);
         registry
     }
 
@@ -406,7 +409,8 @@ mod tests {
         assert!(registry.has(CapabilityId::TEST_MATH));
         assert!(registry.has(CapabilityId::TEST_WEATHER));
         assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
-        assert_eq!(registry.len(), 8);
+        assert!(registry.has(CapabilityId::WEB_FETCH));
+        assert_eq!(registry.len(), 9);
     }
 
     #[test]
@@ -877,5 +881,91 @@ mod tests {
         assert!(applied.config.system_prompt.contains("write_todos"));
         assert!(applied.tool_registry.has("write_todos"));
         assert_eq!(applied.tool_registry.len(), 1);
+    }
+
+    // WebFetch capability tests
+    #[test]
+    fn test_web_fetch_capability_has_tools() {
+        let registry = CapabilityRegistry::with_builtins();
+        let capability = registry.get(CapabilityId::WEB_FETCH).unwrap();
+        let tools = capability.tools();
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name(), "web_fetch");
+    }
+
+    #[test]
+    fn test_web_fetch_capability_no_system_prompt() {
+        let registry = CapabilityRegistry::with_builtins();
+        let capability = registry.get(CapabilityId::WEB_FETCH).unwrap();
+
+        // WebFetch should not have a system prompt addition
+        assert!(capability.system_prompt_addition().is_none());
+    }
+
+    #[test]
+    fn test_web_fetch_capability_metadata() {
+        let registry = CapabilityRegistry::with_builtins();
+        let capability = registry.get(CapabilityId::WEB_FETCH).unwrap();
+
+        assert_eq!(capability.name(), "Web Fetch");
+        assert_eq!(capability.icon(), Some("globe"));
+        assert_eq!(capability.category(), Some("Network"));
+        assert_eq!(capability.status(), CapabilityStatus::Available);
+    }
+
+    #[test]
+    fn test_apply_capabilities_web_fetch() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(
+            base_config.clone(),
+            &[CapabilityId::WEB_FETCH.to_string()],
+            &registry,
+        );
+
+        // WebFetch has no system prompt addition but has 1 tool
+        assert_eq!(applied.config.system_prompt, base_config.system_prompt);
+        assert!(applied.tool_registry.has("web_fetch"));
+        assert_eq!(applied.tool_registry.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_tool_missing_url() {
+        let tool = WebFetchTool;
+        let result = tool.execute(serde_json::json!({})).await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("url"));
+        } else {
+            panic!("Expected tool error for missing URL");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_tool_invalid_url() {
+        let tool = WebFetchTool;
+        let result = tool.execute(serde_json::json!({"url": "not-a-url"})).await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("Invalid URL"));
+        } else {
+            panic!("Expected tool error for invalid URL");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_tool_invalid_method() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({"url": "https://example.com", "method": "DELETE"}))
+            .await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("Invalid method"));
+        } else {
+            panic!("Expected tool error for invalid method");
+        }
     }
 }

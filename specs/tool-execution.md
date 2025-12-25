@@ -38,6 +38,7 @@ pub trait Tool: Send + Sync {
 Tools can also be provided by Capabilities (see [capabilities.md](capabilities.md)). When an agent has capabilities enabled, their tools are merged into the agent's tool set:
 
 - `CurrentTime` capability provides `get_current_time` tool
+- `WebFetch` capability provides `web_fetch` tool for fetching URL content and converting HTML to markdown/text
 - `Research` capability will provide scratchpad and search tools
 - `Sandbox` capability will provide `execute_code` tool
 - `FileSystem` capability will provide read/write/search files tools
