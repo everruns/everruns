@@ -16,12 +16,14 @@ use everruns_core::atoms::{
 };
 use everruns_core::config::AgentConfigBuilder;
 use everruns_core::provider_factory::{create_provider, ProviderConfig, ProviderType};
+use everruns_core::traits::ToolContext;
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolRegistry};
 use everruns_storage::{repositories::Database, EncryptionService};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::adapters::DbMessageStore;
+use crate::adapters::{DbMessageStore, DbSessionFileStore};
 use crate::agent_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
 
 // ============================================================================
@@ -349,8 +351,12 @@ pub async fn execute_tool_activity(
         .context("Invalid session_id UUID")?;
 
     // Create atom dependencies
-    let message_store = DbMessageStore::new(db);
+    let message_store = DbMessageStore::new(db.clone());
     let tool_executor = ToolRegistry::with_defaults();
+
+    // Create file store and tool context for context-aware tools (like filesystem tools)
+    let file_store = Arc::new(DbSessionFileStore::new(db));
+    let tool_context = ToolContext::with_file_store(session_id, file_store);
 
     // Convert tool call data
     let tool_call = ToolCall {
@@ -373,6 +379,7 @@ pub async fn execute_tool_activity(
             session_id,
             tool_call: tool_call.clone(),
             tool_definitions,
+            tool_context: Some(tool_context),
         })
         .await
         .context("ExecuteToolAtom execution failed")?;

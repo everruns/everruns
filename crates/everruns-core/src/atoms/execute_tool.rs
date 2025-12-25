@@ -8,7 +8,7 @@ use super::Atom;
 use crate::error::{AgentLoopError, Result};
 use crate::message::Message;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{MessageStore, ToolExecutor};
+use crate::traits::{MessageStore, ToolContext, ToolExecutor};
 
 // ============================================================================
 // Input and Output Types
@@ -23,6 +23,8 @@ pub struct ExecuteToolInput {
     pub tool_call: ToolCall,
     /// Available tool definitions for resolution
     pub tool_definitions: Vec<ToolDefinition>,
+    /// Optional tool context for context-aware tools (like filesystem tools)
+    pub tool_context: Option<ToolContext>,
 }
 
 /// Result of executing a single tool
@@ -86,6 +88,7 @@ where
             session_id,
             tool_call,
             tool_definitions,
+            tool_context,
         } = input;
 
         // Resolve tool definition
@@ -102,11 +105,16 @@ where
                 AgentLoopError::tool(format!("Tool definition not found: {}", tool_call.name))
             })?;
 
-        // Execute tool
-        let result = self
-            .tool_executor
-            .execute(&tool_call, &tool_definition)
-            .await?;
+        // Execute tool - use context if provided, otherwise fall back to basic execute
+        let result = if let Some(context) = tool_context {
+            self.tool_executor
+                .execute_with_context(&tool_call, &tool_definition, &context)
+                .await?
+        } else {
+            self.tool_executor
+                .execute(&tool_call, &tool_definition)
+                .await?
+        };
 
         // Store tool result message
         let message =

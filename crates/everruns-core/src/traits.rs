@@ -5,8 +5,10 @@
 // - Database implementations for production
 // - Channel-based implementations for streaming
 
+use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::Result;
@@ -93,8 +95,25 @@ pub trait MessageStore: Send + Sync {
 /// - Mock execution for testing
 #[async_trait]
 pub trait ToolExecutor: Send + Sync {
-    /// Execute a single tool call
+    /// Execute a single tool call (without context)
+    ///
+    /// This is the legacy method that doesn't provide context to tools.
+    /// Use `execute_with_context` when context is available.
     async fn execute(&self, tool_call: &ToolCall, tool_def: &ToolDefinition) -> Result<ToolResult>;
+
+    /// Execute a single tool call with context
+    ///
+    /// This method provides runtime context to tools that need it (like filesystem tools).
+    /// The default implementation delegates to `execute()`.
+    async fn execute_with_context(
+        &self,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        _context: &ToolContext,
+    ) -> Result<ToolResult> {
+        // Default: delegate to execute(), ignoring context
+        self.execute(tool_call, tool_def).await
+    }
 
     /// Execute multiple tool calls (default: sequential)
     async fn execute_batch(
@@ -166,5 +185,98 @@ pub trait ToolExecutor: Send + Sync {
 
         let results = join_all(futures).await;
         results.into_iter().collect()
+    }
+}
+
+// ============================================================================
+// SessionFileStore - For session filesystem operations
+// ============================================================================
+
+/// Trait for session filesystem operations
+///
+/// This trait abstracts file operations for tools that need to interact with
+/// the session's virtual filesystem. Implementations can:
+/// - Store files in a database (production)
+/// - Use an in-memory filesystem for testing
+#[async_trait]
+pub trait SessionFileStore: Send + Sync {
+    /// Read a file by path
+    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>>;
+
+    /// Write/create a file
+    async fn write_file(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<SessionFile>;
+
+    /// Delete a file or directory
+    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool>;
+
+    /// List files in a directory
+    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>>;
+
+    /// Get file metadata
+    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>>;
+
+    /// Search files by pattern (grep)
+    async fn grep_files(
+        &self,
+        session_id: Uuid,
+        pattern: &str,
+        path_pattern: Option<&str>,
+    ) -> Result<Vec<GrepMatch>>;
+
+    /// Create a directory
+    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo>;
+}
+
+// ============================================================================
+// ToolContext - Runtime context for tool execution
+// ============================================================================
+
+/// Runtime context provided to tools during execution.
+///
+/// This context contains:
+/// - Session ID for scoping operations
+/// - Optional stores for tools that need external access
+///
+/// Tools that need context-aware execution (like filesystem tools) can use
+/// the `execute_with_context` method on the Tool trait.
+#[derive(Clone)]
+pub struct ToolContext {
+    /// The session ID for the current execution
+    pub session_id: Uuid,
+
+    /// Optional file store for filesystem operations
+    pub file_store: Option<Arc<dyn SessionFileStore>>,
+}
+
+impl ToolContext {
+    /// Create a new tool context with just a session ID
+    pub fn new(session_id: Uuid) -> Self {
+        Self {
+            session_id,
+            file_store: None,
+        }
+    }
+
+    /// Create a context with a file store
+    pub fn with_file_store(session_id: Uuid, file_store: Arc<dyn SessionFileStore>) -> Self {
+        Self {
+            session_id,
+            file_store: Some(file_store),
+        }
+    }
+}
+
+impl std::fmt::Debug for ToolContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolContext")
+            .field("session_id", &self.session_id)
+            .field("file_store", &self.file_store.is_some())
+            .finish()
     }
 }

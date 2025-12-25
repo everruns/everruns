@@ -176,6 +176,7 @@ where
                             session_id,
                             tool_call,
                             tool_definitions: tool_defs,
+                            tool_context: None, // Context-aware tools need Temporal execution
                         })
                         .await
                     }
