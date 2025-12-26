@@ -9,6 +9,7 @@ use axum::{
 use everruns_core::{LlmModel, LlmModelStatus, LlmModelWithProvider};
 use everruns_storage::Database;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -28,26 +29,46 @@ impl AppState {
     }
 }
 
+/// Request to create a new LLM model for a provider
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateLlmModelRequest {
+    /// The model identifier used by the provider's API (e.g., "gpt-4", "claude-3-opus").
+    #[schema(example = "gpt-4o")]
     pub model_id: String,
+    /// Human-readable display name for the model.
+    #[schema(example = "GPT-4o")]
     pub display_name: String,
+    /// List of capabilities this model supports (e.g., "chat", "vision", "tools").
     #[serde(default)]
+    #[schema(example = json!(["chat", "vision", "tools"]))]
     pub capabilities: Vec<String>,
+    /// Whether this model should be the default for the provider.
+    /// Only one model per provider can be the default.
     #[serde(default)]
+    #[schema(example = false)]
     pub is_default: bool,
 }
 
+/// Request to update an LLM model. Only provided fields will be updated.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateLlmModelRequest {
+    /// The model identifier used by the provider's API.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "gpt-4o-mini")]
     pub model_id: Option<String>,
+    /// Human-readable display name for the model.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "GPT-4o Mini")]
     pub display_name: Option<String>,
+    /// List of capabilities this model supports.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!(["chat", "tools"]))]
     pub capabilities: Option<Vec<String>>,
+    /// Whether this model should be the default for the provider.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = true)]
     pub is_default: Option<bool>,
+    /// The status of the model. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LlmModelStatus>,
 }

@@ -30,26 +30,44 @@ impl AppState {
     }
 }
 
+/// Request to create a new LLM provider
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateLlmProviderRequest {
+    /// Display name for the provider.
+    #[schema(example = "OpenAI Production")]
     pub name: String,
+    /// The type of LLM provider (e.g., openai, anthropic).
     pub provider_type: LlmProviderType,
+    /// Base URL for the provider's API. Required for custom endpoints.
+    /// For standard providers, this can be omitted to use the default URL.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "https://api.openai.com/v1")]
     pub base_url: Option<String>,
+    /// API key for authenticating with the provider.
+    /// Will be encrypted at rest if encryption is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
 }
 
+/// Request to update an LLM provider. Only provided fields will be updated.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateLlmProviderRequest {
+    /// Display name for the provider.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "OpenAI Development")]
     pub name: Option<String>,
+    /// The type of LLM provider (e.g., openai, anthropic).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_type: Option<LlmProviderType>,
+    /// Base URL for the provider's API.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "https://api.openai.com/v1")]
     pub base_url: Option<String>,
+    /// API key for authenticating with the provider.
+    /// Will be encrypted at rest if encryption is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// The status of the provider. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LlmProviderStatus>,
 }
