@@ -16,14 +16,13 @@ use everruns_core::atoms::{
 };
 use everruns_core::config::AgentConfigBuilder;
 use everruns_core::provider_factory::{create_provider, ProviderConfig, ProviderType};
-use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
+use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolRegistry};
 use everruns_storage::{repositories::Database, EncryptionService};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::adapters::DbMessageStore;
 use crate::agent_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
-use crate::unified_tool_executor::UnifiedToolExecutor;
 
 // ============================================================================
 // Activity Input/Output Types
@@ -351,7 +350,7 @@ pub async fn execute_tool_activity(
 
     // Create atom dependencies
     let message_store = DbMessageStore::new(db);
-    let tool_executor = UnifiedToolExecutor::with_default_tools();
+    let tool_executor = ToolRegistry::with_defaults();
 
     // Convert tool call data
     let tool_call = ToolCall {

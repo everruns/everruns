@@ -307,6 +307,36 @@ impl ToolRegistry {
         }
     }
 
+    /// Create a tool registry with default built-in tools.
+    ///
+    /// This includes:
+    /// - `get_current_time`: Returns the current date and time
+    /// - `echo`: Echoes back the provided message
+    /// - TestMath tools: add, subtract, multiply, divide
+    /// - TestWeather tools: get_weather, get_forecast
+    /// - TaskList tools: write_todos
+    pub fn with_defaults() -> Self {
+        use crate::capabilities::{
+            AddTool, DivideTool, GetCurrentTimeTool, GetForecastTool, GetWeatherTool, MultiplyTool,
+            SubtractTool, WriteTodosTool,
+        };
+
+        ToolRegistry::builder()
+            .tool(GetCurrentTimeTool)
+            .tool(EchoTool)
+            // TestMath capability tools
+            .tool(AddTool)
+            .tool(SubtractTool)
+            .tool(MultiplyTool)
+            .tool(DivideTool)
+            // TestWeather capability tools
+            .tool(GetWeatherTool)
+            .tool(GetForecastTool)
+            // TaskList capability tools
+            .tool(WriteTodosTool)
+            .build()
+    }
+
     /// Register a tool with the registry.
     ///
     /// If a tool with the same name already exists, it will be replaced.
@@ -683,5 +713,70 @@ mod tests {
         let ToolDefinition::Builtin(builtin) = def;
         assert_eq!(builtin.name, "get_current_time");
         assert_eq!(builtin.policy, ToolPolicy::Auto);
+    }
+
+    #[test]
+    fn test_with_defaults_has_expected_tools() {
+        let registry = ToolRegistry::with_defaults();
+
+        // Core tools
+        assert!(
+            registry.has("get_current_time"),
+            "should have get_current_time"
+        );
+        assert!(registry.has("echo"), "should have echo");
+
+        // TestMath capability tools
+        assert!(registry.has("add"), "should have add");
+        assert!(registry.has("subtract"), "should have subtract");
+        assert!(registry.has("multiply"), "should have multiply");
+        assert!(registry.has("divide"), "should have divide");
+
+        // TestWeather capability tools
+        assert!(registry.has("get_weather"), "should have get_weather");
+        assert!(registry.has("get_forecast"), "should have get_forecast");
+
+        // TaskList capability tools
+        assert!(registry.has("write_todos"), "should have write_todos");
+
+        // Total count
+        assert_eq!(registry.len(), 9, "should have 9 default tools");
+    }
+
+    #[tokio::test]
+    async fn test_with_defaults_tools_are_executable() {
+        let registry = ToolRegistry::with_defaults();
+
+        // Test echo tool execution
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "echo".to_string(),
+            arguments: serde_json::json!({"message": "hello from defaults"}),
+        };
+
+        let tool_def = registry.get("echo").unwrap().to_definition();
+        let result = registry.execute(&tool_call, &tool_def).await.unwrap();
+
+        assert!(result.error.is_none());
+        assert_eq!(result.result.unwrap()["echoed"], "hello from defaults");
+    }
+
+    #[tokio::test]
+    async fn test_with_defaults_math_tools() {
+        let registry = ToolRegistry::with_defaults();
+
+        // Test add tool
+        let tool_call = ToolCall {
+            id: "call_add".to_string(),
+            name: "add".to_string(),
+            arguments: serde_json::json!({"a": 5, "b": 3}),
+        };
+
+        let tool_def = registry.get("add").unwrap().to_definition();
+        let result = registry.execute(&tool_call, &tool_def).await.unwrap();
+
+        assert!(result.error.is_none());
+        // AddTool returns floats, so compare as f64
+        assert_eq!(result.result.unwrap()["result"].as_f64().unwrap(), 8.0);
     }
 }
