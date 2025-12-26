@@ -148,6 +148,14 @@ main() {
     check_root
 
     echo ""
+    echo "--- Dependencies ---"
+    echo ""
+
+    # Check and install required tools
+    check_protoc
+    check_jq
+
+    echo ""
     echo "--- Infrastructure Setup ---"
     echo ""
 
@@ -175,21 +183,26 @@ main() {
     echo ""
     echo "Services running:"
     if [ "$USE_SYSTEM_POSTGRES" = "true" ]; then
-        echo "  - PostgreSQL: localhost:5432 (system install)"
+        echo "  - PostgreSQL: localhost:5432 (system install via pg_ctlcluster)"
+    elif [ "$USE_DIRECT_POSTGRES" = "true" ]; then
+        echo "  - PostgreSQL: localhost:5432 (direct pg_ctl, version $PG_VERSION)"
     else
         echo "  - PostgreSQL: $PGDATA (socket)"
     fi
-    echo "  - Temporal:   localhost:7233"
-    echo "  - API:        http://localhost:9000"
+    echo "  - Temporal:   localhost:7233 (PID: $TEMPORAL_PID)"
+    echo "  - API:        http://localhost:9000 (PID: $API_PID)"
     echo "  - Worker:     PID $WORKER_PID"
     echo ""
     echo "Logs:"
     echo "  - API:        $API_LOG"
     echo "  - Worker:     $WORKER_LOG"
     echo "  - Temporal:   $TEMPORAL_LOG"
+    if [ -f "$PG_LOGFILE" ]; then
+        echo "  - PostgreSQL: $PG_LOGFILE"
+    fi
     echo ""
     echo "Run smoke tests using the checklist in:"
-    echo "  .claude/skills/smoke-tests/SKILL.md"
+    echo "  .claude/skills/smoke-test/SKILL.md"
     echo ""
     echo "Press Ctrl+C to stop all services."
     echo ""

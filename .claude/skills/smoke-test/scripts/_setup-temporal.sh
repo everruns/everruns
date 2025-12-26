@@ -40,26 +40,28 @@ install_temporal() {
 }
 
 # Start Temporal dev server
-# Returns the PID of the started process
+# Returns the PID of the started process via stdout (only the PID, no logs)
+# All status messages go to stderr so they don't pollute the PID output
 start_temporal() {
-    log_info "Starting Temporal dev server..."
+    log_info "Starting Temporal dev server..." >&2
 
     # Start Temporal dev server in background (uses in-memory SQLite)
     "$TEMPORAL_BIN" server start-dev --headless > "$TEMPORAL_LOG" 2>&1 &
     local pid=$!
-    echo $pid
 
     # Wait for Temporal to be ready
     for i in {1..30}; do
         if nc -z localhost 7233 2>/dev/null; then
-            check_pass "Temporal server - started on localhost:7233"
+            check_pass "Temporal server - started on localhost:7233 (PID: $pid)" >&2
+            # Output ONLY the PID to stdout
+            echo "$pid"
             return 0
         fi
         sleep 1
     done
 
-    check_fail "Temporal server" "failed to start (see $TEMPORAL_LOG)"
-    cat "$TEMPORAL_LOG"
+    check_fail "Temporal server" "failed to start (see $TEMPORAL_LOG)" >&2
+    tail -20 "$TEMPORAL_LOG" >&2
     exit 1
 }
 

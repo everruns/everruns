@@ -267,25 +267,39 @@ Expected: 200
 
 ## No-Docker Mode
 
-For environments without Docker (Cloud Agent, CI):
+For environments without Docker (Cloud Agent, CI, containers):
 
 ```bash
-# Run from skill scripts directory
+# Run from repo root
 .claude/skills/smoke-test/scripts/run-no-docker.sh
-
-# Or from the skill scripts directory
-cd .claude/skills/smoke-test/scripts && ./run-no-docker.sh
 ```
 
-This script:
-1. Detects or installs PostgreSQL (supports pre-installed versions via `pg_ctlcluster`)
-2. Installs Temporal CLI from GitHub releases
-3. Starts local PostgreSQL cluster and Temporal dev server
-4. Runs database migrations
-5. Starts API server AND Temporal worker (both required for workflow execution)
-6. Keeps services running until Ctrl+C
+This script automatically handles:
+1. **Dependencies** - Installs protoc (required for building) and jq if not present
+2. **PostgreSQL detection** - Supports three modes:
+   - System install with `pg_ctlcluster` (Debian/Ubuntu standard)
+   - Direct binaries (containers without pg_ctlcluster)
+   - Fresh install from PGDG repository (if nothing found)
+3. **Temporal CLI** - Downloads from GitHub releases if not installed
+4. **Database setup** - Initializes cluster, creates user/database, runs migrations
+5. **Application** - Builds and starts API server and Temporal worker
+6. **Cleanup** - Stops all services on Ctrl+C
+
+**Requirements**:
+- Root access (for PostgreSQL initialization)
+- Either `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` environment variable
+- Internet access (for downloading dependencies)
 
 **Important**: The Temporal worker is required for workflow execution. Without it, sending messages won't trigger LLM responses.
+
+### Cloud Environment Compatibility
+
+The no-Docker mode is specifically designed for cloud agent environments like Claude Code on the web:
+
+- **Auto-detects PostgreSQL** even without `pg_ctlcluster` command
+- **Installs protoc automatically** (required for Temporal SDK)
+- **Works in containers** by using direct `pg_ctl` instead of systemd
+- **Supports both API keys** (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`)
 
 ### Skill Scripts (relative to `.claude/skills/smoke-test/scripts/`)
 
@@ -339,14 +353,25 @@ docker exec everruns-postgres psql -U everruns -d everruns -c "SELECT 1;"
 
 ### No-Docker Issues
 
-**"OPENAI_API_KEY not set"**: Export the key before running:
+**"OPENAI_API_KEY not set"**: Export either key before running:
 ```bash
 export OPENAI_API_KEY=your-key
+# OR
+export ANTHROPIC_API_KEY=your-key
 ```
 
 **"must be run as root"**: The PostgreSQL setup requires root access:
 ```bash
-sudo ./scripts/run-no-docker.sh
+sudo .claude/skills/smoke-test/scripts/run-no-docker.sh
+```
+
+**"protoc not found" during build**: The script auto-installs protoc, but if it fails:
+```bash
+# Debian/Ubuntu
+apt-get update && apt-get install -y protobuf-compiler
+
+# Verify
+protoc --version
 ```
 
 **Messages sent but no assistant response**: Ensure the Temporal worker is running:
@@ -373,13 +398,18 @@ mv /tmp/temporal_extract/temporal /usr/local/bin/temporal
 chmod +x /usr/local/bin/temporal
 ```
 
-**PostgreSQL already running**: The script auto-detects system PostgreSQL via `pg_ctlcluster`. If you have a custom setup:
+**PostgreSQL already running**: The script auto-detects system PostgreSQL. If port 5432 is in use:
 ```bash
 # Check what's using port 5432
 lsof -i :5432
 
-# Use system PostgreSQL
-pg_ctlcluster 16 main start  # or whatever version you have
+# Kill existing postgres if needed
+pkill -9 postgres
+```
+
+**PostgreSQL fails to start in containers**: The script supports containers without pg_ctlcluster by using direct pg_ctl. Check logs:
+```bash
+cat /tmp/pgdata/pg.log
 ```
 
 ### Workflow Verification

@@ -19,7 +19,26 @@ fi
 
 # Check if PostgreSQL is installed via system packages (pg_ctlcluster available)
 is_system_postgres() {
-    command -v pg_ctlcluster &> /dev/null
+    # Check if pg_ctlcluster exists AND works (not just in PATH)
+    if command -v pg_ctlcluster &> /dev/null; then
+        pg_ctlcluster --help &> /dev/null
+        return $?
+    fi
+    return 1
+}
+
+# Check if PostgreSQL binaries are available directly (without pg_ctlcluster)
+has_postgres_binaries() {
+    local pg_version
+    if [ -d "/etc/postgresql" ]; then
+        pg_version=$(ls /etc/postgresql 2>/dev/null | sort -V | tail -1)
+        if [ -n "$pg_version" ] && [ -f "/usr/lib/postgresql/$pg_version/bin/pg_ctl" ]; then
+            export PG_VERSION="$pg_version"
+            export PG_BIN="/usr/lib/postgresql/$pg_version/bin"
+            return 0
+        fi
+    fi
+    return 1
 }
 
 # Get installed PostgreSQL version from system
@@ -63,6 +82,13 @@ check_postgres() {
         fi
     fi
 
+    # Check for PostgreSQL binaries directly (common in containers without pg_ctlcluster)
+    if has_postgres_binaries; then
+        export USE_DIRECT_POSTGRES="true"
+        check_pass "PostgreSQL install - found binaries (version $PG_VERSION)"
+        return 0
+    fi
+
     # Check for PostgreSQL binaries in expected location
     if [ -f "$PG_BIN/initdb" ]; then
         check_pass "PostgreSQL install - found at $PG_BIN"
@@ -100,7 +126,7 @@ start_system_postgres() {
 
 # Initialize PostgreSQL cluster (for non-system installs)
 init_postgres() {
-    # Skip if using system PostgreSQL
+    # Skip if using system PostgreSQL with pg_ctlcluster
     if [ "$USE_SYSTEM_POSTGRES" = "true" ]; then
         log_info "Using system PostgreSQL, skipping init..."
         return 0
@@ -111,28 +137,79 @@ init_postgres() {
     # Clean up previous data
     rm -rf "$PGDATA"
     mkdir -p "$PGDATA"
+
+    # Check if postgres user exists, create if not
+    if ! id postgres &> /dev/null; then
+        log_info "Creating postgres user..."
+        useradd -r -s /bin/bash postgres 2>/dev/null || true
+    fi
+
     chown postgres:postgres "$PGDATA"
 
     # Initialize cluster
     su - postgres -c "export PATH=$PG_BIN:\$PATH && initdb -D $PGDATA --auth=trust" > /dev/null 2>&1
 
-    # Configure socket directory
-    su - postgres -c "echo \"unix_socket_directories = '$PGDATA'\" >> $PGDATA/postgresql.conf"
+    # Configure socket directory and allow localhost connections
+    cat >> "$PGDATA/postgresql.conf" <<EOF
+unix_socket_directories = '$PGDATA'
+listen_addresses = 'localhost'
+EOF
+
+    # Configure pg_hba.conf for local connections
+    cat >> "$PGDATA/pg_hba.conf" <<EOF
+# Allow local socket and TCP connections
+local   all             all                                     trust
+host    all             all             127.0.0.1/32            trust
+host    all             all             ::1/128                 trust
+EOF
 
     check_pass "PostgreSQL cluster - initialized at $PGDATA"
 }
 
+# Start PostgreSQL using direct pg_ctl (for containers without pg_ctlcluster)
+start_direct_postgres() {
+    log_info "Starting PostgreSQL directly with pg_ctl..."
+
+    # Create log file with correct permissions
+    mkdir -p "$(dirname "$PG_LOGFILE")"
+    touch "$PG_LOGFILE"
+    chown postgres:postgres "$PG_LOGFILE"
+
+    # Start server
+    su - postgres -c "export PATH=$PG_BIN:\$PATH && pg_ctl -D $PGDATA -l $PG_LOGFILE start" > /dev/null 2>&1
+
+    # Wait for startup (check both socket and localhost)
+    for i in {1..15}; do
+        if pg_isready -h localhost > /dev/null 2>&1 || pg_isready -h "$PGDATA" > /dev/null 2>&1; then
+            check_pass "PostgreSQL cluster - started (direct mode)"
+            return 0
+        fi
+        sleep 1
+    done
+
+    check_fail "PostgreSQL cluster" "failed to start (see $PG_LOGFILE)"
+    tail -20 "$PG_LOGFILE" 2>/dev/null || true
+    exit 1
+}
+
 # Start PostgreSQL
 start_postgres() {
-    # Use system method if available
+    # Use system method if available (pg_ctlcluster)
     if [ "$USE_SYSTEM_POSTGRES" = "true" ]; then
         start_system_postgres
+        return $?
+    fi
+
+    # Use direct pg_ctl method
+    if [ "$USE_DIRECT_POSTGRES" = "true" ]; then
+        start_direct_postgres
         return $?
     fi
 
     log_info "Starting PostgreSQL..."
 
     # Create log file with correct permissions
+    mkdir -p "$(dirname "$PG_LOGFILE")"
     touch "$PG_LOGFILE"
     chown postgres:postgres "$PG_LOGFILE"
 
@@ -140,8 +217,8 @@ start_postgres() {
     su - postgres -c "export PATH=$PG_BIN:\$PATH && pg_ctl -D $PGDATA -l $PG_LOGFILE start" > /dev/null 2>&1
 
     # Wait for startup
-    for i in {1..10}; do
-        if pg_isready -h "$PGDATA" > /dev/null 2>&1; then
+    for i in {1..15}; do
+        if pg_isready -h "$PGDATA" > /dev/null 2>&1 || pg_isready -h localhost > /dev/null 2>&1; then
             check_pass "PostgreSQL cluster - started and ready"
             return 0
         fi
@@ -149,7 +226,7 @@ start_postgres() {
     done
 
     check_fail "PostgreSQL cluster" "failed to start (see $PG_LOGFILE)"
-    cat "$PG_LOGFILE"
+    tail -20 "$PG_LOGFILE" 2>/dev/null || true
     exit 1
 }
 
@@ -161,6 +238,7 @@ stop_postgres() {
         return 0
     fi
 
+    # For direct mode or custom installs, use pg_ctl
     if [ -d "$PGDATA" ]; then
         su - postgres -c "export PATH=$PG_BIN:\$PATH && pg_ctl -D $PGDATA stop -m fast" 2>/dev/null || true
         log_info "Stopped PostgreSQL"
@@ -174,6 +252,9 @@ setup_database() {
     local psql_host
     if [ "$USE_SYSTEM_POSTGRES" = "true" ]; then
         psql_host="/var/run/postgresql"
+    elif [ "$USE_DIRECT_POSTGRES" = "true" ]; then
+        # For direct mode, prefer localhost TCP connection
+        psql_host="localhost"
     else
         psql_host="$PGDATA"
     fi
@@ -188,9 +269,11 @@ setup_database() {
 
 # Get the database URL based on install type
 get_database_url() {
-    if [ "$USE_SYSTEM_POSTGRES" = "true" ]; then
+    if [ "$USE_SYSTEM_POSTGRES" = "true" ] || [ "$USE_DIRECT_POSTGRES" = "true" ]; then
+        # Both system and direct modes use localhost TCP
         echo "postgres://everruns:everruns@localhost:5432/everruns"
     else
+        # Custom cluster uses socket in PGDATA
         echo "postgres://everruns:everruns@%2Ftmp%2Fpgdata/everruns"
     fi
 }
