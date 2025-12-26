@@ -5,12 +5,16 @@ import { Header } from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import Link from "next/link";
 import {
   CircleOff,
   Clock,
   Search,
   Box,
   Folder,
+  Calculator,
+  Globe,
+  ListChecks,
   LucideIcon,
   CheckCircle2,
   AlertCircle,
@@ -24,6 +28,9 @@ const iconMap: Record<string, LucideIcon> = {
   search: Search,
   box: Box,
   folder: Folder,
+  calculator: Calculator,
+  globe: Globe,
+  "list-checks": ListChecks,
 };
 
 function getStatusBadgeVariant(
@@ -56,34 +63,36 @@ function CapabilityCard({ capability }: { capability: Capability }) {
     : CircleOff;
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-muted rounded-lg">
-            <IconComponent className="w-5 h-5" />
+    <Link href={`/capabilities/${capability.id}`}>
+      <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-muted rounded-lg">
+              <IconComponent className="w-5 h-5" />
+            </div>
+            <div>
+              <CardTitle className="text-lg">{capability.name}</CardTitle>
+              <p className="text-sm text-muted-foreground font-mono">
+                {capability.id}
+              </p>
+            </div>
           </div>
-          <div>
-            <CardTitle className="text-lg">{capability.name}</CardTitle>
-            <p className="text-sm text-muted-foreground font-mono">
-              {capability.id}
-            </p>
-          </div>
-        </div>
-        <Badge variant={getStatusBadgeVariant(capability.status)}>
-          {getStatusLabel(capability.status)}
-        </Badge>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground mb-4">
-          {capability.description}
-        </p>
-        {capability.category && (
-          <Badge variant="outline" className="text-xs">
-            {capability.category}
+          <Badge variant={getStatusBadgeVariant(capability.status)}>
+            {getStatusLabel(capability.status)}
           </Badge>
-        )}
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            {capability.description}
+          </p>
+          {capability.category && (
+            <Badge variant="outline" className="text-xs">
+              {capability.category}
+            </Badge>
+          )}
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 

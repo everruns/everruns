@@ -54,6 +54,7 @@ Run all tool calling tests automatically:
 | Combined Capabilities | Using both `test_math` and `test_weather` |
 | Tool Error Handling | Division by zero error response |
 | WebFetch Capability Available | Verify `web_fetch` capability is registered |
+| Capability Detail Endpoint | Verify capability details include `system_prompt` and `tool_definitions` |
 | WebFetch Tool (Input Validation) | Test `web_fetch` tool handles invalid URLs |
 
 ## Troubleshooting

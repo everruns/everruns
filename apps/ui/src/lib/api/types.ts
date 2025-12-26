@@ -191,16 +191,21 @@ export interface ListResponse<T> {
 
 export type ToolPolicy = "auto" | "requires_approval";
 
-export type ToolDefinition = BuiltinTool;
-
+/** Tool definition - builtin tool configuration */
 export interface BuiltinTool {
   type: "builtin";
+  /** Tool name (used by LLM and for registry lookup) */
   name: string;
+  /** Tool description for LLM */
   description: string;
+  /** JSON schema for tool parameters */
   parameters: Record<string, unknown>;
-  kind: "http_get" | "http_post" | "read_file" | "write_file" | "current_time";
+  /** Tool policy (auto or requires_approval) */
   policy?: ToolPolicy;
 }
+
+/** Tool definition - currently only supports builtin tools */
+export type ToolDefinition = BuiltinTool;
 
 // ============================================
 // Health check
@@ -447,7 +452,8 @@ export interface UpdateLlmModelRequest {
 // Capability types
 // ============================================
 
-export type CapabilityId = "noop" | "current_time" | "research" | "sandbox" | "file_system";
+/** Capability ID - extensible string-based identifier */
+export type CapabilityId = string;
 
 export type CapabilityStatus = "available" | "coming_soon" | "deprecated";
 
@@ -458,6 +464,10 @@ export interface Capability {
   status: CapabilityStatus;
   icon?: string;
   category?: string;
+  /** System prompt addition contributed by this capability */
+  system_prompt?: string;
+  /** Tool definitions provided by this capability */
+  tool_definitions?: ToolDefinition[];
 }
 
 export interface AgentCapability {

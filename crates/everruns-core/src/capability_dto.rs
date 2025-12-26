@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::capability_types::{CapabilityId, CapabilityStatus};
+use crate::tool_types::ToolDefinition;
 
 /// Public capability information (without internal details)
 /// This is what gets returned from the API
@@ -32,6 +33,13 @@ pub struct CapabilityInfo {
     /// Category for grouping in UI
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    /// System prompt addition contributed by this capability
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    /// Tool definitions provided by this capability
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
+    pub tool_definitions: Vec<ToolDefinition>,
 }
 
 impl CapabilityInfo {
@@ -44,6 +52,8 @@ impl CapabilityInfo {
             status: cap.status(),
             icon: cap.icon().map(|s| s.to_string()),
             category: cap.category().map(|s| s.to_string()),
+            system_prompt: cap.system_prompt_addition().map(|s| s.to_string()),
+            tool_definitions: cap.tool_definitions(),
         }
     }
 }
@@ -72,11 +82,14 @@ mod tests {
             status: CapabilityStatus::Available,
             icon: Some("search".to_string()),
             category: Some("AI".to_string()),
+            system_prompt: Some("You have research capabilities.".to_string()),
+            tool_definitions: vec![],
         };
 
         let json = serde_json::to_string(&cap).unwrap();
         assert!(json.contains("\"id\":\"research\""));
         assert!(json.contains("\"status\":\"available\""));
+        assert!(json.contains("\"system_prompt\":\"You have research capabilities.\""));
     }
 
     #[test]

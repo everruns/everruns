@@ -478,6 +478,64 @@ test_webfetch_capability() {
 }
 
 # ============================================================================
+# Test: Capability Detail Endpoint
+# ============================================================================
+test_capability_detail() {
+    log_verbose "Testing capability detail endpoint..."
+
+    # Test with test_math capability which has system_prompt and tools
+    local response=$(curl -s "$API_URL/v1/capabilities/test_math")
+
+    local id=$(echo "$response" | jq -r '.id')
+    if [ "$id" != "test_math" ]; then
+        log_error "Expected capability id 'test_math', got '$id'"
+        return 1
+    fi
+
+    local name=$(echo "$response" | jq -r '.name')
+    if [ -z "$name" ] || [ "$name" = "null" ]; then
+        log_error "Capability name is missing"
+        return 1
+    fi
+    log_verbose "Capability name: $name"
+
+    # Check system_prompt is present (test_math has one)
+    local system_prompt=$(echo "$response" | jq -r '.system_prompt // empty')
+    if [ -z "$system_prompt" ]; then
+        log_error "system_prompt is missing for test_math capability"
+        return 1
+    fi
+    log_verbose "system_prompt present (${#system_prompt} chars)"
+
+    # Check tool_definitions array is present and not empty
+    local tool_count=$(echo "$response" | jq '.tool_definitions | length')
+    if [ "$tool_count" -lt 1 ]; then
+        log_error "Expected at least 1 tool_definition, got $tool_count"
+        return 1
+    fi
+    log_verbose "tool_definitions count: $tool_count"
+
+    # Verify tool has expected fields
+    local first_tool=$(echo "$response" | jq '.tool_definitions[0]')
+    local tool_name=$(echo "$first_tool" | jq -r '.name')
+    local tool_desc=$(echo "$first_tool" | jq -r '.description')
+
+    if [ -z "$tool_name" ] || [ "$tool_name" = "null" ]; then
+        log_error "Tool name is missing"
+        return 1
+    fi
+    log_verbose "First tool: $tool_name"
+
+    if [ -z "$tool_desc" ] || [ "$tool_desc" = "null" ]; then
+        log_error "Tool description is missing"
+        return 1
+    fi
+
+    log_verbose "Capability detail endpoint working correctly"
+    return 0
+}
+
+# ============================================================================
 # Test: WebFetch Tool Input Validation
 # ============================================================================
 test_webfetch_tool() {
@@ -638,6 +696,9 @@ main() {
     echo ""
 
     run_test "WebFetch Capability Available" test_webfetch_capability || true
+    echo ""
+
+    run_test "Capability Detail Endpoint" test_capability_detail || true
     echo ""
 
     run_test "WebFetch Tool (Input Validation)" test_webfetch_tool || true
