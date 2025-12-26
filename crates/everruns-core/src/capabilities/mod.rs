@@ -39,7 +39,10 @@ mod web_fetch;
 
 // Re-export capabilities
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
-pub use file_system::FileSystemCapability;
+pub use file_system::{
+    DeleteFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool, ReadFileTool,
+    StatFileTool, WriteFileTool,
+};
 pub use noop::NoopCapability;
 pub use research::ResearchCapability;
 pub use sandbox::SandboxCapability;

@@ -60,7 +60,7 @@ pub use message::{
     ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
 };
 pub use step::{LoopStep, StepKind, StepResult};
-pub use traits::{EventEmitter, MessageStore, ToolExecutor};
+pub use traits::{EventEmitter, MessageStore, SessionFileStore, ToolContext, ToolExecutor};
 
 // LLM types re-exports
 pub use llm::{
@@ -77,10 +77,11 @@ pub use tools::{
 // Capability re-exports
 pub use capabilities::{
     apply_capabilities, AddTool, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
-    CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, DivideTool,
-    FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetWeatherTool, MultiplyTool,
-    NoopCapability, ResearchCapability, SandboxCapability, StatelessTodoListCapability,
-    SubtractTool, TestMathCapability, TestWeatherCapability, WriteTodosTool,
+    CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, DeleteFileTool, DivideTool,
+    FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetWeatherTool, GrepFilesTool,
+    ListDirectoryTool, MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability,
+    SandboxCapability, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
+    TestWeatherCapability, WriteFileTool, WriteTodosTool,
 };
 
 // Atoms re-exports (stateless atomic operations)

@@ -72,7 +72,7 @@ impl CapabilityId {
     pub const CURRENT_TIME: &'static str = "current_time";
     pub const RESEARCH: &'static str = "research";
     pub const SANDBOX: &'static str = "sandbox";
-    pub const FILE_SYSTEM: &'static str = "file_system";
+    pub const FILE_SYSTEM: &'static str = "session_file_system";
     pub const TEST_MATH: &'static str = "test_math";
     pub const TEST_WEATHER: &'static str = "test_weather";
     pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
@@ -180,14 +180,63 @@ The `CapabilityRegistry` in core holds all registered capability implementations
 - **Icon**: "box"
 - **Category**: "Execution"
 
-#### FileSystem (Coming Soon)
+#### FileSystem
 
-- **Status**: ComingSoon
-- **Purpose**: File system access tools
-- **System Prompt**: "You have access to file system tools. You can read, write, and search files."
-- **Tools**: To be added (read, write, grep, glob)
+- **Status**: Available
+- **ID**: `session_file_system`
+- **Purpose**: Tools to access and manipulate files in the session file system
+- **System Prompt**: Guidance on using file system tools, best practices for exploration and file operations
+- **Tools**:
+  - `read_file` - Read file content by path
+    - Parameters:
+      - `path`: string (required) - Absolute path to the file (e.g., '/docs/readme.txt')
+    - Returns: Object containing path, content, encoding, size_bytes
+    - Policy: Auto
+  - `write_file` - Create or update a file
+    - Parameters:
+      - `path`: string (required) - Absolute path for the file
+      - `content`: string (required) - Content to write
+      - `encoding`: enum (text, base64) - Content encoding, defaults to text
+    - Returns: Object containing path, size_bytes, created status
+    - Policy: Auto
+  - `list_directory` - List files and directories at a path
+    - Parameters:
+      - `path`: string - Directory path to list, defaults to root '/'
+    - Returns: Object containing path, entries array, count
+    - Policy: Auto
+  - `grep_files` - Search file contents using regex
+    - Parameters:
+      - `pattern`: string (required) - Regex pattern to search for
+      - `path_pattern`: string - Optional path pattern filter (e.g., '*.txt')
+    - Returns: Object containing pattern, matches array, match_count
+    - Policy: Auto
+  - `delete_file` - Delete a file or directory
+    - Parameters:
+      - `path`: string (required) - Path to file or directory
+      - `recursive`: boolean - If true, delete directories recursively, defaults to false
+    - Returns: Object containing path, deleted status
+    - Policy: Auto
+  - `stat_file` - Get file or directory metadata
+    - Parameters:
+      - `path`: string (required) - Path to the file or directory
+    - Returns: Object containing path, name, exists, is_directory, is_readonly, size_bytes, timestamps
+    - Policy: Auto
 - **Icon**: "folder"
 - **Category**: "File Operations"
+
+##### Design Decision: Context-Aware Tools
+
+FileSystem tools require session context to access the isolated virtual filesystem. Each tool implements `requires_context() -> true` and uses `execute_with_context()` instead of the standard `execute()`. The `ToolContext` provides:
+- `session_id`: The session whose filesystem to access
+- `file_store`: A `SessionFileStore` trait implementation for file operations
+
+##### Design Decision: Session Isolation
+
+Each session has its own isolated filesystem stored in PostgreSQL. Files are session-scoped and cannot be accessed across sessions. This provides security isolation and clean separation between conversations.
+
+##### Design Decision: Auto-Create Parents
+
+When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are automatically created if they don't exist. This follows common filesystem patterns and reduces tool call overhead.
 
 #### WebFetch
 

@@ -174,6 +174,7 @@ async fn main() -> anyhow::Result<()> {
                     session_id,
                     tool_call: tool_call.clone(),
                     tool_definitions: config.tools.clone(),
+                    tool_context: None, // Example doesn't use context-aware tools
                 })
                 .await?;
 

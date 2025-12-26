@@ -17,6 +17,7 @@ use std::sync::Arc;
 use tracing::error;
 
 use crate::tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
+use crate::traits::ToolContext;
 
 use crate::error::Result;
 use crate::traits::ToolExecutor;
@@ -246,6 +247,39 @@ pub trait Tool: Send + Sync {
     /// A `ToolExecutionResult` indicating success, tool error, or internal error.
     async fn execute(&self, arguments: Value) -> ToolExecutionResult;
 
+    /// Execute the tool with context.
+    ///
+    /// This method provides access to runtime context like session ID and
+    /// optional stores (file store, etc.). Override this method for tools
+    /// that need access to session context or external resources.
+    ///
+    /// The default implementation simply calls `execute()`, ignoring the context.
+    ///
+    /// # Arguments
+    ///
+    /// * `arguments` - The arguments passed to the tool as a JSON value.
+    /// * `context` - Runtime context containing session ID and optional stores.
+    ///
+    /// # Returns
+    ///
+    /// A `ToolExecutionResult` indicating success, tool error, or internal error.
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        _context: &ToolContext,
+    ) -> ToolExecutionResult {
+        // Default: delegate to execute(), ignoring context
+        self.execute(arguments).await
+    }
+
+    /// Returns true if this tool requires context for execution.
+    ///
+    /// Tools that need session context (like filesystem tools) should
+    /// override this to return true.
+    fn requires_context(&self) -> bool {
+        false
+    }
+
     /// Returns the tool policy (auto or requires_approval).
     ///
     /// Default is `Auto` which means the tool executes immediately.
@@ -315,10 +349,12 @@ impl ToolRegistry {
     /// - TestMath tools: add, subtract, multiply, divide
     /// - TestWeather tools: get_weather, get_forecast
     /// - TaskList tools: write_todos
+    /// - FileSystem tools: read_file, write_file, list_directory, grep_files, delete_file, stat_file
     pub fn with_defaults() -> Self {
         use crate::capabilities::{
-            AddTool, DivideTool, GetCurrentTimeTool, GetForecastTool, GetWeatherTool, MultiplyTool,
-            SubtractTool, WriteTodosTool,
+            AddTool, DeleteFileTool, DivideTool, GetCurrentTimeTool, GetForecastTool,
+            GetWeatherTool, GrepFilesTool, ListDirectoryTool, MultiplyTool, ReadFileTool,
+            StatFileTool, SubtractTool, WriteFileTool, WriteTodosTool,
         };
 
         ToolRegistry::builder()
@@ -334,6 +370,13 @@ impl ToolRegistry {
             .tool(GetForecastTool)
             // TaskList capability tools
             .tool(WriteTodosTool)
+            // FileSystem capability tools
+            .tool(ReadFileTool)
+            .tool(WriteFileTool)
+            .tool(ListDirectoryTool)
+            .tool(GrepFilesTool)
+            .tool(DeleteFileTool)
+            .tool(StatFileTool)
             .build()
     }
 
@@ -423,6 +466,24 @@ impl ToolExecutor for ToolRegistry {
         })?;
 
         let result = tool.execute(tool_call.arguments.clone()).await;
+        Ok(result.into_tool_result(&tool_call.id, &tool_call.name))
+    }
+
+    async fn execute_with_context(
+        &self,
+        tool_call: &ToolCall,
+        _tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> Result<ToolResult> {
+        let tool = self.tools.get(&tool_call.name).ok_or_else(|| {
+            crate::error::AgentLoopError::tool(format!("Tool not found: {}", tool_call.name))
+        })?;
+
+        // Use execute_with_context for all tools - context-aware tools will use it,
+        // regular tools will delegate to execute() via the default implementation
+        let result = tool
+            .execute_with_context(tool_call.arguments.clone(), context)
+            .await;
         Ok(result.into_tool_result(&tool_call.id, &tool_call.name))
     }
 }
@@ -739,8 +800,16 @@ mod tests {
         // TaskList capability tools
         assert!(registry.has("write_todos"), "should have write_todos");
 
+        // FileSystem capability tools
+        assert!(registry.has("read_file"), "should have read_file");
+        assert!(registry.has("write_file"), "should have write_file");
+        assert!(registry.has("list_directory"), "should have list_directory");
+        assert!(registry.has("grep_files"), "should have grep_files");
+        assert!(registry.has("delete_file"), "should have delete_file");
+        assert!(registry.has("stat_file"), "should have stat_file");
+
         // Total count
-        assert_eq!(registry.len(), 9, "should have 9 default tools");
+        assert_eq!(registry.len(), 15, "should have 15 default tools");
     }
 
     #[tokio::test]
