@@ -116,8 +116,10 @@ async fn test_full_agent_session_workflow() {
             API_BASE_URL, agent.id, session.id
         ))
         .json(&json!({
-            "role": "user",
-            "content": {"text": "Hello!"}
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "Hello!"}]
+            }
         }))
         .send()
         .await
