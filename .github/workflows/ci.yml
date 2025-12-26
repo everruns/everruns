@@ -364,6 +364,127 @@ jobs:
       - name: Type check & build
         run: npm run build
 
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
+      TEMPORAL_ADDRESS: localhost:7233
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Start Temporal
+        run: |
+          # Get the postgres container's network
+          POSTGRES_CONTAINER=$(docker ps --filter "ancestor=postgres:17-alpine" -q)
+          NETWORK=$(docker inspect $POSTGRES_CONTAINER --format '{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}')
+          echo "Postgres container: $POSTGRES_CONTAINER on network: $NETWORK"
+
+          # Get postgres container IP
+          POSTGRES_IP=$(docker inspect $POSTGRES_CONTAINER --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+          echo "Postgres IP: $POSTGRES_IP"
+
+          # Start Temporal on the same network
+          docker run -d --name temporal \
+            --network $NETWORK \
+            -p 7233:7233 \
+            -e DB=postgres12 \
+            -e DB_PORT=5432 \
+            -e POSTGRES_USER=everruns \
+            -e POSTGRES_PWD=everruns \
+            -e POSTGRES_SEEDS=$POSTGRES_IP \
+            temporalio/auto-setup:latest
+
+          # Wait for Temporal to be ready by checking if it accepts connections
+          echo "Waiting for Temporal to start..."
+          for i in $(seq 1 90); do
+            # Check if Temporal's gRPC port is accepting connections
+            if nc -z localhost 7233 2>/dev/null; then
+              echo "Temporal port 7233 is accepting connections"
+              # Give it a few more seconds to fully initialize
+              sleep 5
+              echo "Temporal is ready"
+              exit 0
+            fi
+            echo "Waiting... ($i/90)"
+            sleep 2
+          done
+          echo "Temporal failed to start"
+          docker logs temporal
+          exit 1
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-integration-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
+
+      - name: Cache sqlx-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-sqlx-cli-0.8
+
+      - name: Install sqlx-cli
+        run: |
+          if [ ! -f ~/.cargo/bin/sqlx ]; then
+            cargo install sqlx-cli --no-default-features --features postgres
+          fi
+
+      - name: Run migrations
+        run: sqlx migrate run --source crates/everruns-storage/migrations
+
+      - name: Build API
+        run: cargo build -p everruns-api
+
+      - name: Start API server
+        run: |
+          cargo run -p everruns-api &
+          API_PID=$!
+          echo "API_PID=$API_PID" >> $GITHUB_ENV
+          # Wait for API to be ready
+          timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
+          echo "API is ready"
+
+      - name: Run integration tests
+        run: cargo test --test integration_test -- --ignored --test-threads=1
+
+      - name: Stop API server
+        if: always()
+        run: kill $API_PID || true
+
+      - name: Stop Temporal
+        if: always()
+        run: docker stop temporal || true
+
   # Docker builds using matrix for parallel execution
   docker-build:
     name: Docker Build (${{ matrix.target }})
