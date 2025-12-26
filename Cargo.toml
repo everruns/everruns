@@ -77,8 +77,10 @@ regex = "1.11"
 time = "0.3"
 
 # Temporal SDK (used when AGENT_RUNNER_MODE=temporal)
-temporal-sdk-core = "0.1.0-alpha.1"
-temporal-sdk-core-protos = "0.1.0-alpha.1"
+# Using git dependency for latest code (crates.io version is 3+ years old)
+# Package renamed from temporal-sdk-core to temporalio-sdk-core in newer versions
+temporal-sdk-core = { git = "https://github.com/temporalio/sdk-core", branch = "master", package = "temporalio-sdk-core" }
+temporalio-common = { git = "https://github.com/temporalio/sdk-core", branch = "master" }
 prost = "0.13"
 prost-types = "0.13"
 

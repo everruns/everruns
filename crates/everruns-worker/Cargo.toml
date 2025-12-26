@@ -30,7 +30,7 @@ url = "2.5"
 
 # Temporal SDK dependencies
 temporal-sdk-core.workspace = true
-temporal-sdk-core-protos.workspace = true
+temporalio-common.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 tonic = "0.12"
