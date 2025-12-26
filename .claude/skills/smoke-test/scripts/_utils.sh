@@ -52,12 +52,18 @@ check_root() {
 
 # Check for required environment variables
 check_openai_key() {
-    if [ -z "$OPENAI_API_KEY" ]; then
-        log_error "OPENAI_API_KEY environment variable is not set"
-        log_error "Export it before running: export OPENAI_API_KEY=your-key"
-        exit 1
+    # Check for OPENAI_API_KEY or ANTHROPIC_API_KEY
+    if [ -n "$OPENAI_API_KEY" ]; then
+        log_info "OPENAI_API_KEY is set"
+        return 0
     fi
-    log_info "OPENAI_API_KEY is set"
+    if [ -n "$ANTHROPIC_API_KEY" ]; then
+        log_info "ANTHROPIC_API_KEY is set (will use Claude models)"
+        return 0
+    fi
+    log_error "Neither OPENAI_API_KEY nor ANTHROPIC_API_KEY environment variable is set"
+    log_error "Export one before running: export OPENAI_API_KEY=your-key"
+    exit 1
 }
 
 # Check/generate SECRETS_ENCRYPTION_KEY
@@ -73,6 +79,66 @@ check_encryption_key() {
     else
         log_info "SECRETS_ENCRYPTION_KEY is set"
     fi
+}
+
+# Check and install protoc (required for building Temporal SDK)
+check_protoc() {
+    if command -v protoc &> /dev/null; then
+        check_pass "protoc install - $(protoc --version)"
+        return 0
+    fi
+
+    log_info "protoc not found, installing..."
+
+    # Try apt-get (Debian/Ubuntu)
+    if command -v apt-get &> /dev/null; then
+        apt-get update -qq > /dev/null 2>&1
+        apt-get install -y -qq protobuf-compiler > /dev/null 2>&1
+        if command -v protoc &> /dev/null; then
+            check_pass "protoc install - $(protoc --version)"
+            return 0
+        fi
+    fi
+
+    # Try downloading from GitHub releases
+    log_info "Installing protoc from GitHub releases..."
+    local protoc_version="25.1"
+    local protoc_url="https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-x86_64.zip"
+
+    curl -L --insecure "$protoc_url" -o /tmp/protoc.zip > /dev/null 2>&1
+    unzip -q /tmp/protoc.zip -d /tmp/protoc_extract > /dev/null 2>&1
+    mv /tmp/protoc_extract/bin/protoc /usr/local/bin/protoc
+    chmod +x /usr/local/bin/protoc
+    rm -rf /tmp/protoc.zip /tmp/protoc_extract
+
+    if command -v protoc &> /dev/null; then
+        check_pass "protoc install - $(protoc --version)"
+        return 0
+    fi
+
+    check_fail "protoc install" "could not install protoc"
+    exit 1
+}
+
+# Check and install jq (required for tests)
+check_jq() {
+    if command -v jq &> /dev/null; then
+        return 0
+    fi
+
+    log_info "jq not found, installing..."
+    if command -v apt-get &> /dev/null; then
+        apt-get update -qq > /dev/null 2>&1
+        apt-get install -y -qq jq > /dev/null 2>&1
+    fi
+
+    if command -v jq &> /dev/null; then
+        check_pass "jq install - installed"
+        return 0
+    fi
+
+    check_fail "jq install" "could not install jq"
+    exit 1
 }
 
 # Get project root (relative to skill scripts folder)
