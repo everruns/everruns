@@ -72,7 +72,7 @@ impl CapabilityId {
     pub const CURRENT_TIME: &'static str = "current_time";
     pub const RESEARCH: &'static str = "research";
     pub const SANDBOX: &'static str = "sandbox";
-    pub const FILE_SYSTEM: &'static str = "file_system";
+    pub const FILE_SYSTEM: &'static str = "session_file_system";
     pub const TEST_MATH: &'static str = "test_math";
     pub const TEST_WEATHER: &'static str = "test_weather";
     pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
@@ -183,8 +183,8 @@ The `CapabilityRegistry` in core holds all registered capability implementations
 #### FileSystem
 
 - **Status**: Available
-- **ID**: `file_system`
-- **Purpose**: Session-level virtual file system access tools
+- **ID**: `session_file_system`
+- **Purpose**: Tools to access and manipulate files in the session file system
 - **System Prompt**: Guidance on using file system tools, best practices for exploration and file operations
 - **Tools**:
   - `read_file` - Read file content by path

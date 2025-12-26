@@ -1,7 +1,7 @@
-//! FileSystem Capability - for file system access
+//! Session File System Capability
 //!
-//! This capability provides tools for interacting with the session's virtual
-//! filesystem. Each session has its own isolated filesystem stored in the database.
+//! This capability provides tools for interacting with the session file system.
+//! Each session has its own isolated filesystem stored in the database.
 //!
 //! Tools provided:
 //! - `read_file`: Read file content
@@ -17,7 +17,7 @@ use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-/// FileSystem capability - for file system access
+/// Session File System capability - provides file operations for session storage
 pub struct FileSystemCapability;
 
 impl Capability for FileSystemCapability {
@@ -26,11 +26,11 @@ impl Capability for FileSystemCapability {
     }
 
     fn name(&self) -> &str {
-        "File System Access"
+        "File System"
     }
 
     fn description(&self) -> &str {
-        "Adds tools to access and manipulate files - read, write, list, grep, and more."
+        "Tools to access and manipulate files in the session file system - read, write, list, grep, and more."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -47,7 +47,7 @@ impl Capability for FileSystemCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to file system tools for working with the session's virtual filesystem.
+            r#"You have access to file system tools for working with the session file system. Each session has its own isolated filesystem stored in the database.
 
 Available tools:
 - `read_file`: Read the content of a file by path
@@ -627,7 +627,7 @@ mod tests {
     fn test_capability_metadata() {
         let cap = FileSystemCapability;
         assert_eq!(cap.id(), CapabilityId::FILE_SYSTEM);
-        assert_eq!(cap.name(), "File System Access");
+        assert_eq!(cap.name(), "File System");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("folder"));
         assert_eq!(cap.category(), Some("File Operations"));

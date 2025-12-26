@@ -39,10 +39,10 @@ AGENT=$(curl -s -X POST "$BASE_URL/v1/agents" \
   }')
 AGENT_ID=$(echo $AGENT | jq -r '.id')
 
-# Set the file_system capability
+# Set the session_file_system capability
 curl -s -X PUT "$BASE_URL/v1/agents/$AGENT_ID/capabilities" \
   -H "Content-Type: application/json" \
-  -d '{"capabilities": ["file_system"]}' | jq
+  -d '{"capabilities": ["session_file_system"]}' | jq
 
 # Create a session
 SESSION=$(curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions" \

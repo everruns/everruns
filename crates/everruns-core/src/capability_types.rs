@@ -30,7 +30,7 @@ impl CapabilityId {
     pub const CURRENT_TIME: &'static str = "current_time";
     pub const RESEARCH: &'static str = "research";
     pub const SANDBOX: &'static str = "sandbox";
-    pub const FILE_SYSTEM: &'static str = "file_system";
+    pub const FILE_SYSTEM: &'static str = "session_file_system";
     pub const TEST_MATH: &'static str = "test_math";
     pub const TEST_WEATHER: &'static str = "test_weather";
     pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
@@ -146,7 +146,10 @@ mod tests {
         assert_eq!(CapabilityId::current_time().to_string(), "current_time");
         assert_eq!(CapabilityId::research().to_string(), "research");
         assert_eq!(CapabilityId::sandbox().to_string(), "sandbox");
-        assert_eq!(CapabilityId::file_system().to_string(), "file_system");
+        assert_eq!(
+            CapabilityId::file_system().to_string(),
+            "session_file_system"
+        );
         assert_eq!(CapabilityId::test_math().to_string(), "test_math");
         assert_eq!(CapabilityId::test_weather().to_string(), "test_weather");
         assert_eq!(
@@ -175,7 +178,7 @@ mod tests {
             CapabilityId::sandbox()
         );
         assert_eq!(
-            "file_system".parse::<CapabilityId>().unwrap(),
+            "session_file_system".parse::<CapabilityId>().unwrap(),
             CapabilityId::file_system()
         );
         assert_eq!(
