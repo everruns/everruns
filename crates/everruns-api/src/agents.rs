@@ -18,29 +18,50 @@ use uuid::Uuid;
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateAgentRequest {
+    /// The name of the agent. Used for display purposes.
+    #[schema(example = "Customer Support Agent")]
     pub name: String,
+    /// A human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Handles customer inquiries and support tickets")]
     pub description: Option<String>,
+    /// The system prompt that defines the agent's behavior and capabilities.
+    /// This is sent as the first message in every conversation.
+    #[schema(example = "You are a helpful customer support agent. Be polite and professional.")]
     pub system_prompt: String,
+    /// The ID of the default LLM model to use for this agent.
+    /// If not specified, the system default model will be used.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_model_id: Option<Uuid>,
+    /// Tags for organizing and filtering agents.
     #[serde(default)]
+    #[schema(example = json!(["support", "customer-facing"]))]
     pub tags: Vec<String>,
 }
 
-/// Request to update an agent
+/// Request to update an agent. Only provided fields will be updated.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateAgentRequest {
+    /// The name of the agent. Used for display purposes.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Updated Support Agent")]
     pub name: Option<String>,
+    /// A human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Updated description for the agent")]
     pub description: Option<String>,
+    /// The system prompt that defines the agent's behavior and capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "You are an updated helpful assistant.")]
     pub system_prompt: Option<String>,
+    /// The ID of the default LLM model to use for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_model_id: Option<Uuid>,
+    /// Tags for organizing and filtering agents.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!(["updated-tag"]))]
     pub tags: Option<Vec<String>>,
+    /// The status of the agent. Set to "archived" to soft-delete.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<AgentStatus>,
 }

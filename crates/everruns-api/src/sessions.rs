@@ -18,20 +18,30 @@ use uuid::Uuid;
 /// Request to create a session
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
+    /// Human-readable title for the session.
     #[serde(default)]
+    #[schema(example = "Debug login issue")]
     pub title: Option<String>,
+    /// Tags for organizing and filtering sessions.
     #[serde(default)]
+    #[schema(example = json!(["debugging", "urgent"]))]
     pub tags: Vec<String>,
+    /// The ID of the LLM model to use for this session.
+    /// Overrides the agent's default model if specified.
     #[serde(default)]
     pub model_id: Option<Uuid>,
 }
 
-/// Request to update a session
+/// Request to update a session. Only provided fields will be updated.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateSessionRequest {
+    /// Human-readable title for the session.
     #[serde(default)]
+    #[schema(example = "Updated session title")]
     pub title: Option<String>,
+    /// Tags for organizing and filtering sessions.
     #[serde(default)]
+    #[schema(example = json!(["resolved"]))]
     pub tags: Option<Vec<String>>,
 }
 
