@@ -132,7 +132,7 @@ export function useSSEEvents({
       return;
     }
 
-    const url = `${API_BASE}/v1/agents/${agentId}/sessions/${sessionId}/events`;
+    const url = `${API_BASE}/v1/agents/${agentId}/sessions/${sessionId}/sse`;
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 

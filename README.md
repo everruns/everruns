@@ -110,8 +110,11 @@ curl -X POST http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/me
 # Get messages (poll for response)
 curl http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/messages
 
-# Stream events (real-time updates)
+# List events (JSON)
 curl http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/events
+
+# Stream events (real-time SSE updates)
+curl http://localhost:9000/v1/agents/{agent_id}/sessions/{session_id}/sse
 ```
 
 ## Development

@@ -168,23 +168,23 @@ Expected: Logs showing `workflow_type: "agent_workflow"` and activities like `lo
 After workflow completes, verify events are created alongside messages:
 ```bash
 # List events for the session
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events/list" | jq '.data | length'
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data | length'
 ```
 Expected: At least 2 events (message.user and message.assistant)
 
 ```bash
 # Check for message.user event
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events/list" | jq '.data[] | select(.event_type == "message.user")'
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.user")'
 ```
 Expected: Event with `event_type: "message.user"` and `data` containing `message_id`, `content`
 
 ```bash
 # Check for message.assistant event
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events/list" | jq '.data[] | select(.event_type == "message.assistant")'
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.assistant")'
 ```
 Expected: Event with `event_type: "message.assistant"` and `data` containing `message_id`, `role`, `content`
 
-**Note:** The UI uses the events endpoint to render messages. Events contain the same data as messages but are used for SSE/polling to provide real-time updates.
+**Note:** The UI uses the `/sse` endpoint for real-time streaming and the `/events` endpoint for polling/listing events.
 
 #### 10. List Sessions
 ```bash

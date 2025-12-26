@@ -46,11 +46,11 @@ impl AppState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/events",
-            get(stream_events),
+            "/v1/agents/:agent_id/sessions/:session_id/sse",
+            get(stream_sse),
         )
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/events/list",
+            "/v1/agents/:agent_id/sessions/:session_id/events",
             get(list_events),
         )
         .with_state(state)
@@ -60,10 +60,10 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// GET /v1/agents/{agent_id}/sessions/{session_id}/events - Stream events (SSE notifications)
+/// GET /v1/agents/{agent_id}/sessions/{session_id}/sse - Stream events (SSE notifications)
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/events",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/sse",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
@@ -75,7 +75,7 @@ pub fn routes(state: AppState) -> Router {
     ),
     tag = "events"
 )]
-pub async fn stream_events(
+pub async fn stream_sse(
     State(state): State<AppState>,
     Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
@@ -152,10 +152,10 @@ pub struct Event {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// GET /v1/agents/{agent_id}/sessions/{session_id}/events/list - List events (JSON)
+/// GET /v1/agents/{agent_id}/sessions/{session_id}/events - List events (JSON)
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/events/list",
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/events",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
