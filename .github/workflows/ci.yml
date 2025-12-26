@@ -475,7 +475,7 @@ jobs:
           echo "API is ready"
 
       - name: Run integration tests
-        run: cargo test --test integration_test -- --ignored --test-threads=1
+        run: cargo test -p everruns-api --test integration_test -- --ignored --test-threads=1
 
       - name: Stop API server
         if: always()
