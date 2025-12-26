@@ -1,5 +1,5 @@
 // Temporal worker implementation
-// Decision: Use the temporal-sdk-core's Core trait for polling and completion
+// Decision: Use the temporal-sdk-core's Worker trait for polling and completion
 //
 // This worker:
 // 1. Polls for workflow tasks and drives workflow state machines
@@ -13,18 +13,20 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use everruns_storage::{repositories::Database, EncryptionService};
-use temporal_sdk_core::protos::coresdk::{
-    activity_result::{self, ActivityResult},
+use temporalio_common::protos::coresdk::{
+    activity_result::{self, ActivityExecutionResult},
     activity_task::{activity_task, ActivityTask},
-    common::Payload,
-    workflow_activation::{wf_activation_job, WfActivation},
+    workflow_activation::{workflow_activation_job, WorkflowActivation},
     workflow_commands::{
         workflow_command, CompleteWorkflowExecution, FailWorkflowExecution, ScheduleActivity,
     },
-    workflow_completion::{self, WfActivationCompletion},
+    workflow_completion::{self, WorkflowActivationCompletion},
     ActivityTaskCompletion,
 };
-use temporal_sdk_core::{PollActivityError, PollWfError};
+use temporalio_common::protos::temporal::api::common::v1::Payload;
+use temporalio_common::protos::temporal::api::failure::v1::Failure;
+use temporalio_common::errors::PollError;
+use temporalio_common::Worker as WorkerTrait;
 use tokio::sync::{watch, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -158,17 +160,15 @@ fn spawn_workflow_poller(
                 }
                 result = poll_and_process_workflow_task(&core, &db, &registry, workflows.clone()) => {
                     if let Err(e) = result {
-                        match e.downcast_ref::<PollWfError>() {
-                            Some(PollWfError::ShutDown) => {
+                        if let Some(poll_err) = e.downcast_ref::<PollError>() {
+                            if matches!(poll_err, PollError::ShutDown) {
                                 info!("Workflow poller received shutdown");
                                 break;
                             }
-                            _ => {
-                                error!(error = %e, "Workflow task processing error");
-                                // Brief pause before retry
-                                tokio::time::sleep(Duration::from_secs(1)).await;
-                            }
                         }
+                        error!(error = %e, "Workflow task processing error");
+                        // Brief pause before retry
+                        tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
             }
@@ -192,17 +192,15 @@ fn spawn_activity_poller(
                 }
                 result = poll_and_process_activity_task(&core, &db, &encryption) => {
                     if let Err(e) = result {
-                        match e.downcast_ref::<PollActivityError>() {
-                            Some(PollActivityError::ShutDown) => {
+                        if let Some(poll_err) = e.downcast_ref::<PollError>() {
+                            if matches!(poll_err, PollError::ShutDown) {
                                 info!("Activity poller received shutdown");
                                 break;
                             }
-                            _ => {
-                                error!(error = %e, "Activity task processing error");
-                                // Brief pause before retry
-                                tokio::time::sleep(Duration::from_secs(1)).await;
-                            }
                         }
+                        error!(error = %e, "Activity task processing error");
+                        // Brief pause before retry
+                        tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
             }
@@ -217,21 +215,21 @@ async fn poll_and_process_workflow_task(
     registry: &WorkflowRegistry,
     workflows: Arc<Mutex<HashMap<String, Box<dyn Workflow>>>>,
 ) -> Result<()> {
-    // Poll for workflow task
-    let task = core.core().poll_workflow_task().await?;
+    // Poll for workflow activation
+    let task = core.worker().poll_workflow_activation().await?;
 
     debug!(
         run_id = %task.run_id,
         jobs = task.jobs.len(),
-        "Received workflow task"
+        "Received workflow activation"
     );
 
-    // Check if this is only a RemoveFromCache job - if so, just remove and don't complete
+    // Check if this is only an eviction job - if so, just remove and don't complete
     let is_only_eviction = task.jobs.len() == 1
         && task.jobs.first().is_some_and(|j| {
             matches!(
                 j.variant,
-                Some(wf_activation_job::Variant::RemoveFromCache(_))
+                Some(workflow_activation_job::Variant::RemoveFromCache(_))
             )
         });
 
@@ -246,35 +244,31 @@ async fn poll_and_process_workflow_task(
     // Process workflow activation
     let commands = process_workflow_activation(&task, registry, workflows).await?;
 
-    // Build completion
+    // Build completion using run_id (new API)
     let completion = if commands.is_empty() {
-        WfActivationCompletion {
-            task_token: task.task_token,
-            status: Some(
-                workflow_completion::wf_activation_completion::Status::Successful(
-                    workflow_completion::Success { commands: vec![] },
-                ),
-            ),
-        }
+        WorkflowActivationCompletion::empty(&task.run_id)
     } else {
         // Convert commands to variants
         let variants: Vec<workflow_command::Variant> =
             commands.into_iter().filter_map(|cmd| cmd.variant).collect();
-        WfActivationCompletion::ok_from_cmds(variants, task.task_token)
+        WorkflowActivationCompletion::from_cmds(&task.run_id, variants)
     };
 
-    // Complete the workflow task
-    core.core().complete_workflow_task(completion).await?;
+    // Complete the workflow activation
+    core.worker().complete_workflow_activation(completion).await?;
 
     Ok(())
 }
 
 /// Process workflow activation and return commands
 async fn process_workflow_activation(
-    task: &WfActivation,
+    task: &WorkflowActivation,
     registry: &WorkflowRegistry,
     workflows: Arc<Mutex<HashMap<String, Box<dyn Workflow>>>>,
-) -> Result<Vec<temporal_sdk_core::protos::coresdk::workflow_commands::WorkflowCommand>> {
+) -> Result<Vec<temporalio_common::protos::coresdk::workflow_commands::WorkflowCommand>> {
+    use temporalio_common::protos::coresdk::activity_result::ActivityResolution;
+    use temporalio_common::protos::coresdk::activity_result::activity_resolution::Status as ActivityStatus;
+
     let mut workflows_guard = workflows.lock().await;
     let mut commands = vec![];
 
@@ -282,17 +276,17 @@ async fn process_workflow_activation(
         run_id = %task.run_id,
         job_count = task.jobs.len(),
         jobs = ?task.jobs.iter().map(|j| match &j.variant {
-            Some(wf_activation_job::Variant::StartWorkflow(_)) => "StartWorkflow",
-            Some(wf_activation_job::Variant::ResolveActivity(r)) => &r.activity_id,
-            Some(wf_activation_job::Variant::RemoveFromCache(_)) => "RemoveFromCache",
-            _ => "Other",
+            Some(workflow_activation_job::Variant::InitializeWorkflow(_)) => "InitializeWorkflow".to_string(),
+            Some(workflow_activation_job::Variant::ResolveActivity(r)) => format!("ResolveActivity(seq={})", r.seq),
+            Some(workflow_activation_job::Variant::RemoveFromCache(_)) => "RemoveFromCache".to_string(),
+            _ => "Other".to_string(),
         }).collect::<Vec<_>>(),
         "Processing workflow activation"
     );
 
     for job in &task.jobs {
         match &job.variant {
-            Some(wf_activation_job::Variant::StartWorkflow(start)) => {
+            Some(workflow_activation_job::Variant::InitializeWorkflow(start)) => {
                 info!(
                     workflow_id = %start.workflow_id,
                     workflow_type = %start.workflow_type,
@@ -325,39 +319,41 @@ async fn process_workflow_activation(
                 workflows_guard.insert(task.run_id.clone(), workflow);
             }
 
-            Some(wf_activation_job::Variant::ResolveActivity(resolve)) => {
+            Some(workflow_activation_job::Variant::ResolveActivity(resolve)) => {
+                // Activity is identified by seq now (sequence number)
+                let activity_seq = resolve.seq.to_string();
+
                 // Log the activity result status
                 let result_status = match &resolve.result {
-                    Some(ActivityResult {
-                        status: Some(activity_result::activity_result::Status::Completed(_)),
+                    Some(ActivityResolution {
+                        status: Some(ActivityStatus::Completed(_)),
                     }) => "Completed",
-                    Some(ActivityResult {
-                        status: Some(activity_result::activity_result::Status::Failed(f)),
+                    Some(ActivityResolution {
+                        status: Some(ActivityStatus::Failed(f)),
                     }) => {
                         debug!(
-                            activity_id = %resolve.activity_id,
+                            activity_seq = %activity_seq,
                             failure_message = ?f.failure.as_ref().map(|f| &f.message),
                             "Activity failed"
                         );
                         "Failed"
                     }
-                    Some(ActivityResult {
-                        status: Some(activity_result::activity_result::Status::Canceled(_)),
+                    Some(ActivityResolution {
+                        status: Some(ActivityStatus::Cancelled(_)),
                     }) => "Canceled",
                     _ => "Unknown",
                 };
 
                 debug!(
-                    activity_id = %resolve.activity_id,
+                    activity_seq = %activity_seq,
                     result_status = %result_status,
                     "Activity resolved"
                 );
 
                 if let Some(workflow) = workflows_guard.get_mut(&task.run_id) {
                     let actions = match &resolve.result {
-                        Some(ActivityResult {
-                            status:
-                                Some(activity_result::activity_result::Status::Completed(success)),
+                        Some(ActivityResolution {
+                            status: Some(ActivityStatus::Completed(success)),
                         }) => {
                             let result = success
                                 .result
@@ -365,14 +361,14 @@ async fn process_workflow_activation(
                                 .map(|p| serde_json::from_slice(&p.data).unwrap_or_default())
                                 .unwrap_or_default();
                             debug!(
-                                activity_id = %resolve.activity_id,
+                                activity_seq = %activity_seq,
                                 result = %result,
                                 "Activity completed with result"
                             );
-                            workflow.on_activity_completed(&resolve.activity_id, result)
+                            workflow.on_activity_completed(&activity_seq, result)
                         }
-                        Some(ActivityResult {
-                            status: Some(activity_result::activity_result::Status::Failed(failure)),
+                        Some(ActivityResolution {
+                            status: Some(ActivityStatus::Failed(failure)),
                         }) => {
                             let error = failure
                                 .failure
@@ -380,15 +376,15 @@ async fn process_workflow_activation(
                                 .map(|f| f.message.clone())
                                 .unwrap_or_else(|| "Unknown error".to_string());
                             error!(
-                                activity_id = %resolve.activity_id,
+                                activity_seq = %activity_seq,
                                 error = %error,
                                 "Activity FAILED - calling on_activity_failed"
                             );
-                            workflow.on_activity_failed(&resolve.activity_id, &error)
+                            workflow.on_activity_failed(&activity_seq, &error)
                         }
                         _ => {
                             warn!(
-                                activity_id = %resolve.activity_id,
+                                activity_seq = %activity_seq,
                                 "Unexpected activity result status"
                             );
                             vec![]
@@ -403,13 +399,13 @@ async fn process_workflow_activation(
                 } else {
                     warn!(
                         run_id = %task.run_id,
-                        activity_id = %resolve.activity_id,
+                        activity_seq = %activity_seq,
                         "Workflow not found in cache for activity resolution"
                     );
                 }
             }
 
-            Some(wf_activation_job::Variant::RemoveFromCache(_)) => {
+            Some(workflow_activation_job::Variant::RemoveFromCache(_)) => {
                 // RemoveFromCache is handled at the task level for eviction-only tasks
                 // For mixed tasks, we defer removal until after processing
                 debug!(run_id = %task.run_id, "RemoveFromCache job received (deferring removal)");
@@ -424,11 +420,19 @@ async fn process_workflow_activation(
     Ok(commands)
 }
 
+/// Convert std::time::Duration to prost Duration
+fn to_prost_duration(d: Duration) -> prost_types::Duration {
+    prost_types::Duration {
+        seconds: d.as_secs() as i64,
+        nanos: d.subsec_nanos() as i32,
+    }
+}
+
 /// Convert WorkflowAction to Temporal command
 fn action_to_command(
     action: WorkflowAction,
-) -> Option<temporal_sdk_core::protos::coresdk::workflow_commands::WorkflowCommand> {
-    use temporal_sdk_core::protos::coresdk::workflow_commands::WorkflowCommand;
+) -> Option<temporalio_common::protos::coresdk::workflow_commands::WorkflowCommand> {
+    use temporalio_common::protos::coresdk::workflow_commands::WorkflowCommand;
 
     match action {
         WorkflowAction::ScheduleActivity {
@@ -447,12 +451,13 @@ fn action_to_command(
                             data: input_bytes,
                             metadata: Default::default(),
                         }],
-                        schedule_to_start_timeout: Some(Duration::from_secs(60).into()),
-                        start_to_close_timeout: Some(Duration::from_secs(300).into()),
-                        heartbeat_timeout: Some(Duration::from_secs(30).into()),
+                        schedule_to_start_timeout: Some(to_prost_duration(Duration::from_secs(60))),
+                        start_to_close_timeout: Some(to_prost_duration(Duration::from_secs(300))),
+                        heartbeat_timeout: Some(to_prost_duration(Duration::from_secs(30))),
                         ..Default::default()
                     },
                 )),
+                user_metadata: None,
             })
         }
         WorkflowAction::CompleteWorkflow { result } => {
@@ -466,19 +471,19 @@ fn action_to_command(
                         result: result_payload,
                     },
                 )),
+                user_metadata: None,
             })
         }
         WorkflowAction::FailWorkflow { reason } => Some(WorkflowCommand {
             variant: Some(workflow_command::Variant::FailWorkflowExecution(
                 FailWorkflowExecution {
-                    failure: Some(
-                        temporal_sdk_core::protos::coresdk::common::UserCodeFailure {
-                            message: reason,
-                            ..Default::default()
-                        },
-                    ),
+                    failure: Some(Failure {
+                        message: reason,
+                        ..Default::default()
+                    }),
                 },
             )),
+            user_metadata: None,
         }),
         WorkflowAction::None => None,
     }
@@ -491,7 +496,7 @@ async fn poll_and_process_activity_task(
     encryption: &EncryptionService,
 ) -> Result<()> {
     // Poll for activity task
-    let task = core.core().poll_activity_task().await?;
+    let task = core.worker().poll_activity_task().await?;
 
     // Check for empty task token (invalid task)
     if task.task_token.is_empty() {
@@ -517,7 +522,7 @@ async fn poll_and_process_activity_task(
         result: Some(result),
     };
 
-    core.core().complete_activity_task(completion).await?;
+    core.worker().complete_activity_task(completion).await?;
 
     Ok(())
 }
@@ -527,7 +532,9 @@ async fn process_activity(
     task: &ActivityTask,
     db: &Database,
     encryption: &EncryptionService,
-) -> ActivityResult {
+) -> ActivityExecutionResult {
+    use activity_result::activity_execution_result::Status as ExecStatus;
+
     match &task.variant {
         Some(activity_task::Variant::Start(start)) => {
             // Check for empty activity type - this can happen with synthetic tasks
@@ -537,18 +544,16 @@ async fn process_activity(
                     workflow_type = %start.workflow_type,
                     "Received activity task with empty activity_type - this may indicate a Temporal SDK issue or workflow bug"
                 );
-                return ActivityResult {
-                    status: Some(activity_result::activity_result::Status::Failed(
+                return ActivityExecutionResult {
+                    status: Some(ExecStatus::Failed(
                         activity_result::Failure {
-                            failure: Some(
-                                temporal_sdk_core::protos::coresdk::common::UserCodeFailure {
-                                    message: format!(
-                                        "Activity task has empty activity_type (workflow_type: {})",
-                                        start.workflow_type
-                                    ),
-                                    ..Default::default()
-                                },
-                            ),
+                            failure: Some(Failure {
+                                message: format!(
+                                    "Activity task has empty activity_type (workflow_type: {})",
+                                    start.workflow_type
+                                ),
+                                ..Default::default()
+                            }),
                         },
                     )),
                 };
@@ -571,7 +576,7 @@ async fn process_activity(
             match result {
                 Ok(output) => {
                     let output_bytes = serde_json::to_vec(&output).unwrap_or_default();
-                    ActivityResult::ok(Payload {
+                    ActivityExecutionResult::ok(Payload {
                         data: output_bytes,
                         metadata: Default::default(),
                     })
@@ -589,15 +594,13 @@ async fn process_activity(
                     // Include the full error message in the Temporal failure
                     // This will be visible in Temporal UI and propagated to the workflow
                     let full_error = format!("{:#}", e);
-                    ActivityResult {
-                        status: Some(activity_result::activity_result::Status::Failed(
+                    ActivityExecutionResult {
+                        status: Some(ExecStatus::Failed(
                             activity_result::Failure {
-                                failure: Some(
-                                    temporal_sdk_core::protos::coresdk::common::UserCodeFailure {
-                                        message: full_error,
-                                        ..Default::default()
-                                    },
-                                ),
+                                failure: Some(Failure {
+                                    message: full_error,
+                                    ..Default::default()
+                                }),
                             },
                         )),
                     }
@@ -606,23 +609,21 @@ async fn process_activity(
         }
         Some(activity_task::Variant::Cancel(_)) => {
             warn!("Activity cancellation requested");
-            ActivityResult {
-                status: Some(activity_result::activity_result::Status::Canceled(
-                    activity_result::Cancelation { details: None },
+            ActivityExecutionResult {
+                status: Some(ExecStatus::Cancelled(
+                    activity_result::Cancellation { details: None },
                 )),
             }
         }
         None => {
             error!("Activity task has no variant");
-            ActivityResult {
-                status: Some(activity_result::activity_result::Status::Failed(
+            ActivityExecutionResult {
+                status: Some(ExecStatus::Failed(
                     activity_result::Failure {
-                        failure: Some(
-                            temporal_sdk_core::protos::coresdk::common::UserCodeFailure {
-                                message: "Activity task has no variant".to_string(),
-                                ..Default::default()
-                            },
-                        ),
+                        failure: Some(Failure {
+                            message: "Activity task has no variant".to_string(),
+                            ..Default::default()
+                        }),
                     },
                 )),
             }

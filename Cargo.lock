@@ -958,6 +958,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx",
+ "temporalio-client",
  "temporalio-common",
  "temporalio-sdk-core",
  "thiserror 2.0.17",

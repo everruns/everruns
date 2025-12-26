@@ -81,6 +81,7 @@ time = "0.3"
 # Package renamed from temporal-sdk-core to temporalio-sdk-core in newer versions
 temporal-sdk-core = { git = "https://github.com/temporalio/sdk-core", branch = "master", package = "temporalio-sdk-core" }
 temporalio-common = { git = "https://github.com/temporalio/sdk-core", branch = "master" }
+temporalio-client = { git = "https://github.com/temporalio/sdk-core", branch = "master" }
 prost = "0.13"
 prost-types = "0.13"
 

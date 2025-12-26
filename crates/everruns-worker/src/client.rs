@@ -8,17 +8,13 @@
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::info;
 
-use temporal_sdk_core::{
-    protos::temporal::api::{
-        common::v1::{Payloads, WorkflowType},
-        taskqueue::v1::TaskQueue,
-        workflowservice::v1::{StartWorkflowExecutionRequest, StartWorkflowExecutionResponse},
-    },
-    Core, CoreInitOptions, ServerGateway, ServerGatewayApis, ServerGatewayOptions, Url,
-};
+use temporal_sdk_core::{CoreRuntime, RuntimeOptions, Worker, WorkerConfig, init_worker};
+use temporalio_client::{ClientOptions, RetryClient, Client, WorkflowClientTrait, WorkflowOptions};
+use temporalio_common::protos::temporal::api::common::v1::Payload;
+use temporalio_common::protos::temporal::api::workflowservice::v1::StartWorkflowExecutionResponse;
+use temporalio_common::Worker as WorkerTrait;
 
 use crate::agent_workflow::AgentWorkflowInput;
 use crate::runner::RunnerConfig;
@@ -27,24 +23,16 @@ use crate::types::workflow_names;
 /// Client for interacting with Temporal server
 /// Used by the API to start workflows
 pub struct TemporalClient {
-    gateway: Arc<ServerGateway>,
+    client: RetryClient<Client>,
     config: RunnerConfig,
 }
 
 impl TemporalClient {
     /// Create a new Temporal client connected to the server
     pub async fn new(config: RunnerConfig) -> Result<Self> {
-        let target_url = Url::parse(&format!("http://{}", config.temporal_address()))
+        let target_url: url::Url = format!("http://{}", config.temporal_address())
+            .parse()
             .context("Invalid Temporal address")?;
-
-        let gateway_opts = ServerGatewayOptions {
-            target_url,
-            namespace: config.temporal_namespace(),
-            task_queue: config.temporal_task_queue(),
-            identity: format!("everruns-api-{}", uuid::Uuid::now_v7()),
-            worker_binary_id: env!("CARGO_PKG_VERSION").to_string(),
-            long_poll_timeout: Duration::from_secs(60),
-        };
 
         info!(
             address = %config.temporal_address(),
@@ -53,17 +41,21 @@ impl TemporalClient {
             "Connecting to Temporal server"
         );
 
-        let gateway = gateway_opts
-            .connect()
+        let client_opts = ClientOptions::builder()
+            .target_url(target_url)
+            .client_name("everruns-api")
+            .client_version(env!("CARGO_PKG_VERSION"))
+            .identity(format!("everruns-api-{}", uuid::Uuid::now_v7()))
+            .build();
+
+        let client = client_opts
+            .connect(config.temporal_namespace(), None)
             .await
             .context("Failed to connect to Temporal server")?;
 
         info!("Connected to Temporal server");
 
-        Ok(Self {
-            gateway: Arc::new(gateway),
-            config,
-        })
+        Ok(Self { client, config })
     }
 
     /// Start a new agent workflow
@@ -83,38 +75,24 @@ impl TemporalClient {
         // Serialize workflow input
         let input_bytes =
             serde_json::to_vec(input).context("Failed to serialize workflow input")?;
-        let input_payload = temporal_sdk_core::protos::temporal::api::common::v1::Payload {
+        let input_payload = Payload {
             metadata: Default::default(),
             data: input_bytes,
         };
 
-        // Build request with input
-        let request = StartWorkflowExecutionRequest {
-            namespace: self.config.temporal_namespace(),
-            workflow_id: workflow_id.clone(),
-            workflow_type: Some(WorkflowType {
-                name: workflow_names::AGENT_WORKFLOW.to_string(),
-            }),
-            task_queue: Some(TaskQueue {
-                name: self.config.temporal_task_queue(),
-                kind: 0,
-            }),
-            input: Some(Payloads {
-                payloads: vec![input_payload],
-            }),
-            request_id: uuid::Uuid::now_v7().to_string(),
-            ..Default::default()
-        };
-
-        // Call service directly to pass input
+        // Start workflow using the client trait method
         let response = self
-            .gateway
-            .service
-            .clone()
-            .start_workflow_execution(request)
+            .client
+            .start_workflow(
+                vec![input_payload],
+                self.config.temporal_task_queue(),
+                workflow_id.clone(),
+                workflow_names::AGENT_WORKFLOW.to_string(),
+                None, // request_id
+                WorkflowOptions::default(),
+            )
             .await
-            .context("Failed to start workflow")?
-            .into_inner();
+            .context("Failed to start workflow")?;
 
         info!(
             workflow_id = %workflow_id,
@@ -130,15 +108,17 @@ impl TemporalClient {
         format!("session-{}", session_id)
     }
 
-    /// Get the underlying gateway for advanced operations
-    pub fn gateway(&self) -> Arc<dyn ServerGatewayApis> {
-        self.gateway.clone() as Arc<dyn ServerGatewayApis>
+    /// Get the underlying client for advanced operations
+    pub fn client(&self) -> &RetryClient<Client> {
+        &self.client
     }
 }
 
 /// Worker-side Temporal core for polling and processing tasks
 pub struct TemporalWorkerCore {
-    core: Box<dyn Core>,
+    worker: Worker,
+    #[allow(dead_code)]
+    runtime: Arc<CoreRuntime>,
     #[allow(dead_code)]
     config: RunnerConfig,
 }
@@ -146,17 +126,9 @@ pub struct TemporalWorkerCore {
 impl TemporalWorkerCore {
     /// Create a new Temporal worker core
     pub async fn new(config: RunnerConfig) -> Result<Self> {
-        let target_url = Url::parse(&format!("http://{}", config.temporal_address()))
+        let target_url: url::Url = format!("http://{}", config.temporal_address())
+            .parse()
             .context("Invalid Temporal address")?;
-
-        let gateway_opts = ServerGatewayOptions {
-            target_url,
-            namespace: config.temporal_namespace(),
-            task_queue: config.temporal_task_queue(),
-            identity: format!("everruns-worker-{}", uuid::Uuid::now_v7()),
-            worker_binary_id: env!("CARGO_PKG_VERSION").to_string(),
-            long_poll_timeout: Duration::from_secs(60),
-        };
 
         info!(
             address = %config.temporal_address(),
@@ -165,34 +137,69 @@ impl TemporalWorkerCore {
             "Initializing Temporal worker core"
         );
 
-        let init_opts = CoreInitOptions {
-            gateway_opts,
-            evict_after_pending_cleared: true,
-            max_outstanding_workflow_tasks: 100,
-            max_outstanding_activities: 100,
-        };
+        // Create runtime options with defaults
+        let runtime_opts = RuntimeOptions::default();
 
-        let core = temporal_sdk_core::init(init_opts)
+        // Create core runtime
+        let runtime = CoreRuntime::new_assume_tokio(runtime_opts)
+            .context("Failed to create core runtime")?;
+        let runtime = Arc::new(runtime);
+
+        // Build client options
+        let client_opts = ClientOptions::builder()
+            .target_url(target_url)
+            .client_name("everruns-worker")
+            .client_version(env!("CARGO_PKG_VERSION"))
+            .identity(format!("everruns-worker-{}", uuid::Uuid::now_v7()))
+            .build();
+
+        // Connect client
+        let client = client_opts
+            .connect(config.temporal_namespace(), None)
             .await
-            .context("Failed to initialize Temporal core")?;
+            .context("Failed to connect to Temporal server")?;
+
+        // Build worker config with required fields
+        use temporalio_common::worker::{WorkerTaskTypes, WorkerVersioningStrategy};
+        let worker_config = WorkerConfig::builder()
+            .namespace(config.temporal_namespace())
+            .task_queue(config.temporal_task_queue())
+            .max_cached_workflows(100_usize)
+            .max_outstanding_workflow_tasks(100_usize)
+            .max_outstanding_activities(100_usize)
+            .task_types(WorkerTaskTypes {
+                enable_workflows: true,
+                enable_local_activities: false,
+                enable_remote_activities: true,
+                enable_nexus: false,
+            })
+            .versioning_strategy(WorkerVersioningStrategy::None { build_id: String::new() })
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to build worker config: {}", e))?;
+
+        // Initialize worker
+        let worker = init_worker(&runtime, worker_config, client)
+            .context("Failed to initialize Temporal worker")?;
 
         info!("Temporal worker core initialized");
 
         Ok(Self {
-            core: Box::new(core),
+            worker,
+            runtime,
             config,
         })
     }
 
-    /// Get a reference to the core for polling
-    pub fn core(&self) -> &dyn Core {
-        self.core.as_ref()
+    /// Get a reference to the worker for polling
+    pub fn worker(&self) -> &Worker {
+        &self.worker
     }
 
     /// Shutdown the worker gracefully
     pub async fn shutdown(&self) {
         info!("Shutting down Temporal worker core");
-        self.core.shutdown().await;
+        WorkerTrait::initiate_shutdown(&self.worker);
+        WorkerTrait::shutdown(&self.worker).await;
     }
 }
 
