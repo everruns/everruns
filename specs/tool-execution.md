@@ -46,23 +46,16 @@ Tools can also be provided by Capabilities (see [capabilities.md](capabilities.m
 **ToolRegistry:**
 Manages multiple tools and implements `ToolExecutor` trait for integration with `AgentLoop`:
 ```rust
+// Create with default built-in tools (includes get_current_time, echo, math tools, etc.)
+let registry = ToolRegistry::with_defaults();
+
+// Or build a custom registry
 let registry = ToolRegistry::builder()
     .tool(GetCurrentTime)
     .tool(MyCustomTool)
     .build();
 
 let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
-```
-
-**UnifiedToolExecutor:**
-Production executor that uses `ToolRegistry` for all tool execution:
-```rust
-// Creates executor with default built-in tools
-let executor = UnifiedToolExecutor::with_default_tools();
-
-// Or with custom registry
-let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
-let executor = UnifiedToolExecutor::new(registry);
 ```
 
 ### Tool Definition Schema

@@ -5,7 +5,6 @@ pub mod client;
 pub mod runner;
 pub mod traits;
 pub mod types;
-pub mod unified_tool_executor;
 pub mod worker;
 pub mod workflow_registry;
 
@@ -19,9 +18,6 @@ pub use workflow_registry::{WorkflowFactory, WorkflowRegistry, WorkflowRegistryB
 
 // Re-export adapters
 pub use adapters::{create_db_message_store, DbMessageStore};
-
-// Re-export unified tool executor
-pub use unified_tool_executor::UnifiedToolExecutor;
 
 // Re-export OpenAI provider from the openai crate
 pub use everruns_openai::OpenAiProvider;
