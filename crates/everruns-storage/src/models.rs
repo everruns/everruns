@@ -246,7 +246,6 @@ pub struct LlmProviderRow {
     pub base_url: Option<String>,
     pub api_key_encrypted: Option<Vec<u8>>,
     pub api_key_set: bool,
-    pub is_default: bool,
     pub status: String,
     pub settings: sqlx::types::JsonValue,
     pub created_at: DateTime<Utc>,
@@ -300,7 +299,6 @@ pub struct CreateLlmProviderRow {
     pub provider_type: String,
     pub base_url: Option<String>,
     pub api_key_encrypted: Option<Vec<u8>>,
-    pub is_default: bool,
     pub settings: Option<serde_json::Value>,
 }
 
@@ -310,7 +308,6 @@ pub struct UpdateLlmProvider {
     pub provider_type: Option<String>,
     pub base_url: Option<String>,
     pub api_key_encrypted: Option<Vec<u8>>,
-    pub is_default: Option<bool>,
     pub status: Option<String>,
     pub settings: Option<serde_json::Value>,
 }

@@ -299,7 +299,6 @@ export interface LlmProvider {
   provider_type: LlmProviderType;
   base_url?: string;
   api_key_set: boolean;
-  is_default: boolean;
   status: LlmProviderStatus;
   created_at: string;
   updated_at: string;
@@ -419,7 +418,6 @@ export interface CreateLlmProviderRequest {
   provider_type: LlmProviderType;
   base_url?: string;
   api_key?: string;
-  is_default?: boolean;
 }
 
 export interface UpdateLlmProviderRequest {
@@ -427,7 +425,6 @@ export interface UpdateLlmProviderRequest {
   provider_type?: LlmProviderType;
   base_url?: string;
   api_key?: string;
-  is_default?: boolean;
   status?: LlmProviderStatus;
 }
 

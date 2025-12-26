@@ -52,6 +52,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+// Note: Star is still used in ModelRow for default model indicator
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import type {
   LlmProvider,
@@ -98,9 +99,6 @@ function ProviderCard({
           <div>
             <CardTitle className="text-lg flex items-center gap-2">
               {provider.name}
-              {provider.is_default && (
-                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-              )}
             </CardTitle>
             <CardDescription className="text-sm">
               {getProviderLabel(provider.provider_type)}
@@ -382,7 +380,6 @@ function AddProviderDialog({
   const [providerType, setProviderType] = useState<LlmProviderType>("openai");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [isDefault, setIsDefault] = useState(false);
 
   const createProvider = useCreateLlmProvider();
 
@@ -393,7 +390,6 @@ function AddProviderDialog({
       provider_type: providerType,
       base_url: baseUrl || undefined,
       api_key: apiKey || undefined,
-      is_default: isDefault,
     };
     await createProvider.mutateAsync(data);
     onOpenChange(false);
@@ -401,7 +397,6 @@ function AddProviderDialog({
     setProviderType("openai");
     setBaseUrl("");
     setApiKey("");
-    setIsDefault(false);
   };
 
   return (
@@ -463,16 +458,6 @@ function AddProviderDialog({
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
               placeholder={getApiKeyPlaceholder(providerType)}
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="is-default"
-              checked={isDefault}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIsDefault(e.target.checked)}
-              className="h-4 w-4"
-            />
-            <Label htmlFor="is-default">Set as default provider</Label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -635,7 +620,7 @@ function AddModelDialog({
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIsDefault(e.target.checked)}
               className="h-4 w-4"
             />
-            <Label htmlFor="model-is-default">Set as default for this provider</Label>
+            <Label htmlFor="model-is-default">Set as default model</Label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

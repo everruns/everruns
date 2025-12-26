@@ -73,7 +73,6 @@ pub struct LlmProvider {
     pub base_url: Option<String>,
     /// Whether an API key is configured (key is never returned)
     pub api_key_set: bool,
-    pub is_default: bool,
     pub status: LlmProviderStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

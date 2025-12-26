@@ -654,9 +654,9 @@ impl Database {
 
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            INSERT INTO llm_providers (name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, settings)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
+            INSERT INTO llm_providers (name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             "#,
         )
         .bind(&input.name)
@@ -664,7 +664,6 @@ impl Database {
         .bind(&input.base_url)
         .bind(&input.api_key_encrypted)
         .bind(api_key_set)
-        .bind(input.is_default)
         .bind(&settings)
         .fetch_one(&self.pool)
         .await?;
@@ -675,7 +674,7 @@ impl Database {
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
+            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             FROM llm_providers
             WHERE id = $1
             "#,
@@ -690,7 +689,7 @@ impl Database {
     pub async fn list_llm_providers(&self) -> Result<Vec<LlmProviderRow>> {
         let rows = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
+            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             FROM llm_providers
             ORDER BY created_at DESC
             "#,
@@ -718,12 +717,11 @@ impl Database {
                 base_url = COALESCE($4, base_url),
                 api_key_encrypted = COALESCE($5, api_key_encrypted),
                 api_key_set = COALESCE($6, api_key_set),
-                is_default = COALESCE($7, is_default),
-                status = COALESCE($8, status),
-                settings = COALESCE($9, settings),
+                status = COALESCE($7, status),
+                settings = COALESCE($8, settings),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
+            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -732,7 +730,6 @@ impl Database {
         .bind(&input.base_url)
         .bind(&input.api_key_encrypted)
         .bind(api_key_set)
-        .bind(input.is_default)
         .bind(&input.status)
         .bind(&input.settings)
         .fetch_optional(&self.pool)
@@ -750,18 +747,32 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn get_default_llm_provider(&self) -> Result<Option<LlmProviderRow>> {
-        let row = sqlx::query_as::<_, LlmProviderRow>(
+    /// Get the default LLM model with provider info.
+    /// Returns the model marked as default (is_default = true) with its provider info.
+    pub async fn get_default_llm_model(&self) -> Result<Option<LlmModelWithProviderRow>> {
+        let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, is_default, status, settings, created_at, updated_at
-            FROM llm_providers
-            WHERE is_default = TRUE AND status = 'active'
+            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.status, m.created_at, m.updated_at,
+                   p.name as provider_name, p.provider_type
+            FROM llm_models m
+            JOIN llm_providers p ON m.provider_id = p.id
+            WHERE m.is_default = TRUE AND m.status = 'active' AND p.status = 'active'
             "#,
         )
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
+    }
+
+    /// Clear all model defaults (set is_default = false for all models).
+    /// Used to implement "last wins" default logic.
+    pub async fn clear_all_model_defaults(&self) -> Result<()> {
+        sqlx::query("UPDATE llm_models SET is_default = FALSE WHERE is_default = TRUE")
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
     }
 
     /// Get a provider with its decrypted API key for use in LLM calls.
