@@ -3,7 +3,6 @@
 // These types are shared across multiple API endpoints.
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use utoipa::ToSchema;
 
 /// Response wrapper for list endpoints.

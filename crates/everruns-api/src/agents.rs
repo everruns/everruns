@@ -11,7 +11,6 @@ use everruns_storage::Database;
 
 use crate::common::ListResponse;
 use serde::Deserialize;
-use serde_json::json;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
