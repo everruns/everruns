@@ -86,11 +86,12 @@ Virtual filesystem scoped to each session. See [session-filesystem.md](session-f
 
 ### Events
 
-Server-Sent Events (SSE) for real-time UI updates.
+Server-Sent Events (SSE) for real-time UI updates and event listing.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/agents/{agent_id}/sessions/{session_id}/events` | Stream events (SSE) |
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}/sse` | Stream events (SSE) |
+| GET | `/v1/agents/{agent_id}/sessions/{session_id}/events` | List events (JSON) |
 
 ### LLM Providers
 

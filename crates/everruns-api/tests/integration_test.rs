@@ -2,7 +2,7 @@
 // Run with: cargo test --test integration_test
 
 use everruns_core::llm_entities::LlmProvider;
-use everruns_core::{Agent, Event, LlmModel, Session, SessionFile};
+use everruns_core::{Agent, LlmModel, Session, SessionFile};
 use serde_json::{json, Value};
 
 const API_BASE_URL: &str = "http://localhost:9000";
@@ -169,25 +169,25 @@ async fn test_full_agent_session_workflow() {
     println!("Fetched session: {}", fetched_session.id);
     assert_eq!(fetched_session.id, session.id);
 
-    // Step 9: Create event (for SSE notifications)
-    println!("\nStep 9: Creating event...");
+    // Step 9: List events (events are created internally when messages are processed)
+    println!("\nStep 9: Listing events...");
     let event_response = client
-        .post(format!(
+        .get(format!(
             "{}/v1/agents/{}/sessions/{}/events",
             API_BASE_URL, agent.id, session.id
         ))
-        .json(&json!({
-            "event_type": "status.update",
-            "data": {"status": "processing"}
-        }))
         .send()
         .await
-        .expect("Failed to create event");
+        .expect("Failed to list events");
 
-    assert_eq!(event_response.status(), 201);
-    let event: Event = event_response.json().await.expect("Failed to parse event");
-    println!("Created event: {}", event.id);
-    assert_eq!(event.event_type, "status.update");
+    assert_eq!(event_response.status(), 200);
+    let events_data: Value = event_response.json().await.expect("Failed to parse events");
+    let events = events_data["data"]
+        .as_array()
+        .expect("Expected events array");
+    println!("Found {} event(s)", events.len());
+    // Events are created when messages are processed by the workflow
+    // For this basic test, we just verify the endpoint works
 
     println!("\nAll tests passed!");
 }

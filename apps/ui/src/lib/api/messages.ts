@@ -62,7 +62,7 @@ export async function listEvents(
   sessionId: string
 ): Promise<Event[]> {
   const response = await api.get<ListResponse<Event>>(
-    `/v1/agents/${agentId}/sessions/${sessionId}/events/list`
+    `/v1/agents/${agentId}/sessions/${sessionId}/events`
   );
   return response.data.data;
 }
@@ -70,5 +70,5 @@ export async function listEvents(
 // SSE event stream URL builder
 export function getEventStreamUrl(agentId: string, sessionId: string): string {
   const baseUrl = api.defaults.baseURL || "";
-  return `${baseUrl}/v1/agents/${agentId}/sessions/${sessionId}/events`;
+  return `${baseUrl}/v1/agents/${agentId}/sessions/${sessionId}/sse`;
 }

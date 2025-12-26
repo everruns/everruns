@@ -190,7 +190,7 @@ get_events() {
     local agent_id="$1"
     local session_id="$2"
 
-    curl -s "$API_URL/v1/agents/$agent_id/sessions/$session_id/events/list"
+    curl -s "$API_URL/v1/agents/$agent_id/sessions/$session_id/events"
 }
 
 # ============================================================================
