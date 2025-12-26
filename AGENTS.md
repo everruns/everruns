@@ -114,10 +114,11 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
 #### Layer separation
 
 1. **Storage Layer** (`everruns-storage`):
-   - Database models use `Row` suffix: `MessageRow`, `AgentRow`, `SessionRow`
-   - Create input structs: `CreateMessageRow`, `CreateAgentRow`
+   - Database models use `Row` suffix: `AgentRow`, `SessionRow`, `EventRow`
+   - Create input structs: `CreateAgentRow`, `CreateEventRow`
    - Update structs: `UpdateAgent`, `UpdateSession`
    - Repositories handle raw database operations only
+   - Note: Messages are stored as events (see `specs/models.md`)
 
 2. **Core Layer** (`everruns-core`):
    - Shared domain types: `ContentPart`, `Controls`, `Message`, `ToolCall`
@@ -135,8 +136,8 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
 
 | Layer | Pattern | Example |
 |-------|---------|---------|
-| Storage Row | `{Entity}Row` | `MessageRow`, `AgentRow` |
-| Storage Create | `Create{Entity}Row` | `CreateMessageRow` |
+| Storage Row | `{Entity}Row` | `AgentRow`, `EventRow` |
+| Storage Create | `Create{Entity}Row` | `CreateEventRow` |
 | Storage Update | `Update{Entity}` | `UpdateAgent` |
 | Core Domain | `{Entity}` | `Message`, `ContentPart` |
 | API Input | `Input{Entity}` | `InputMessage`, `InputContentPart` |
@@ -153,8 +154,8 @@ API Request → API DTO → Service → Storage Row → Database
 For example, creating a message:
 1. API receives `CreateMessageRequest` with `InputMessage`
 2. Service converts `InputContentPart[]` → `ContentPart[]` (core types)
-3. Service creates `CreateMessageRow` (storage type)
-4. Repository stores to database
+3. Service creates `CreateEventRow` with message data as JSON
+4. Repository stores event to database (messages stored as events)
 
 #### Content types
 
