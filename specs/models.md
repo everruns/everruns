@@ -44,19 +44,21 @@ Sessions work indefinitely - after processing a message, status returns to `pend
 
 ### Message
 
-The primary conversation data. Stores all conversation content including user messages, assistant responses, tool calls, and tool results.
+Conversation data stored as events in the `events` table with `event_type` prefixed by `message.`. Messages are reconstructed from events when loaded.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `session_id` | UUID v7 | Parent session reference |
-| `sequence` | integer | Order within session (auto-increment per session) |
-| `role` | enum | `user`, `assistant`, `tool_call`, `tool_result`, `system` |
+| `id` | UUID v7 | Unique identifier (stored in event.data.message_id) |
+| `session_id` | UUID v7 | Parent session reference (from event.session_id) |
+| `sequence` | integer | Order within session (from event.sequence) |
+| `role` | enum | `user`, `assistant`, `tool_call`, `tool_result` |
 | `content` | ContentPart[] | Array of content parts (see below) |
 | `controls` | Controls? | Runtime controls for message processing |
 | `metadata` | object? | Message-level metadata (e.g., locale) |
 | `tags` | string[] | Tags for organization/filtering |
-| `created_at` | timestamp | Creation time |
+| `created_at` | timestamp | Creation time (from event.created_at) |
+
+**Note:** Messages are stored as events with types `message.user`, `message.assistant`, `message.tool_call`, `message.tool_result`. System messages are handled internally and not persisted to events.
 
 **ContentPart types (discriminated by `type` field):**
 
@@ -134,25 +136,36 @@ Tool calls and tool results are system-generated and cannot be created via the A
 
 **Database storage:**
 
-Message content is stored as JSONB array of ContentPart objects. The storage format matches the API format exactly - no conversion is needed between layers.
+Messages are stored in the `events` table with the full content in the `data` JSONB field:
 
-```sql
--- Example stored content for a user message
-[{"type": "text", "text": "Hello, how are you?"}]
+```json
+// Event for a user message (event_type: "message.user")
+{
+  "message_id": "01234567-89ab-cdef-0123-456789abcdef",
+  "role": "user",
+  "content": [{"type": "text", "text": "Hello, how are you?"}],
+  "controls": null,
+  "metadata": null,
+  "tags": []
+}
 
--- Example stored content for an assistant message with tool calls
-[
-  {"type": "text", "text": "Let me search for that."},
-  {"type": "tool_call", "id": "call_abc123", "name": "search", "arguments": {"query": "test"}}
-]
-
--- Example stored content for a tool result message
-[{"type": "tool_result", "tool_call_id": "call_abc123", "result": {"matches": [...]}, "error": null}]
+// Event for an assistant message with tool calls (event_type: "message.assistant")
+{
+  "message_id": "...",
+  "role": "assistant",
+  "content": [
+    {"type": "text", "text": "Let me search for that."},
+    {"type": "tool_call", "id": "call_abc123", "name": "search", "arguments": {"query": "test"}}
+  ],
+  "controls": null,
+  "metadata": null,
+  "tags": []
+}
 ```
 
 ### Event
 
-SSE notification stream for real-time UI updates. **Not the primary data store** - use Messages for that.
+The primary data store for conversation messages and SSE notifications.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -165,15 +178,17 @@ SSE notification stream for real-time UI updates. **Not the primary data store**
 
 **Event Types:**
 
-1. **Step Events** - Workflow progress notifications
+1. **Message Events** - Primary conversation data (stored in `data` field)
+   - `message.user` - User message
+   - `message.assistant` - Assistant response
+   - `message.tool_call` - Tool call request
+   - `message.tool_result` - Tool execution result
+
+2. **Step Events** - Workflow progress notifications
    - `step.started` - Started processing (e.g., LLM call began)
    - `step.generating` - Generation in progress (streaming delta)
    - `step.generated` - Generation complete
    - `step.error` - Step failed
-
-2. **Message Events** - Notifications about messages
-   - `message.created` - A new message was created
-   - `message.delta` - Streaming content update
 
 3. **Tool Events** - Tool execution notifications
    - `tool.started` - Tool execution began
@@ -361,11 +376,11 @@ Profiles are matched by provider_type + model_id with version normalization (e.g
 
 | Question | Decision |
 |----------|----------|
-| What stores conversation? | **Messages** table - primary data |
-| What are Events for? | SSE notifications for real-time UI updates |
-| Where are tool calls stored? | Messages with role=tool_call |
-| Where are tool results stored? | Messages with role=tool_result |
-| Session status? | Explicit status field (pending, running, completed, failed) |
+| What stores conversation? | **Events** table with `event_type` = `message.*` |
+| What are Events for? | Primary data store for messages AND SSE notifications |
+| Where are tool calls stored? | Events with `event_type` = `message.tool_call` |
+| Where are tool results stored? | Events with `event_type` = `message.tool_result` |
+| Session status? | Explicit status field (pending, running, failed) |
 | Where are capabilities defined? | In-memory registry in API layer |
 | How are capabilities applied? | Resolved at API/service layer, merged into AgentConfig |
 | Where are API keys stored? | Encrypted in database (llm_providers.api_key_encrypted), decrypted at runtime |

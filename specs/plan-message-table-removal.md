@@ -1,5 +1,7 @@
 # Plan: Message Table Removal
 
+**Status: IMPLEMENTED**
+
 ## Abstract
 
 This document analyzes removing the `messages` table and using the `events` table as the sole source of truth for conversation data.

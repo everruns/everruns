@@ -505,91 +505,11 @@ impl Database {
     }
 
     // ============================================
-    // Messages (PRIMARY conversation data)
+    // Events (source of truth for messages)
     // ============================================
-
-    pub async fn create_message(&self, input: CreateMessageRow) -> Result<MessageRow> {
-        // Serialize content, controls, and metadata to JSON for storage
-        let content_json = serde_json::to_value(&input.content)?;
-        let controls_json = input.controls.map(serde_json::to_value).transpose()?;
-        let metadata_json = input.metadata.map(serde_json::to_value).transpose()?;
-
-        // Get next sequence number for this session
-        let row = sqlx::query_as::<_, MessageRow>(
-            r#"
-            INSERT INTO messages (session_id, sequence, role, content, controls, metadata, tags)
-            VALUES ($1, COALESCE((SELECT MAX(sequence) + 1 FROM messages WHERE session_id = $1), 1), $2, $3, $4, $5, $6)
-            RETURNING id, session_id, sequence, role, content, controls, metadata, tags, created_at
-            "#,
-        )
-        .bind(input.session_id)
-        .bind(&input.role)
-        .bind(&content_json)
-        .bind(&controls_json)
-        .bind(&metadata_json)
-        .bind(&input.tags)
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
-    pub async fn get_message(&self, id: Uuid) -> Result<Option<MessageRow>> {
-        let row = sqlx::query_as::<_, MessageRow>(
-            r#"
-            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
-            FROM messages
-            WHERE id = $1
-            "#,
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
-    pub async fn list_messages(&self, session_id: Uuid) -> Result<Vec<MessageRow>> {
-        let rows = sqlx::query_as::<_, MessageRow>(
-            r#"
-            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
-            FROM messages
-            WHERE session_id = $1
-            ORDER BY sequence ASC
-            "#,
-        )
-        .bind(session_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
-    }
-
-    /// List messages by role
-    pub async fn list_messages_by_role(
-        &self,
-        session_id: Uuid,
-        role: &str,
-    ) -> Result<Vec<MessageRow>> {
-        let rows = sqlx::query_as::<_, MessageRow>(
-            r#"
-            SELECT id, session_id, sequence, role, content, controls, metadata, tags, created_at
-            FROM messages
-            WHERE session_id = $1 AND role = $2
-            ORDER BY sequence ASC
-            "#,
-        )
-        .bind(session_id)
-        .bind(role)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
-    }
-
-    // ============================================
-    // Events (SSE notification stream for UI)
-    // ============================================
+    //
+    // Messages are stored as events with type "message.*"
+    // Use list_message_events() to load conversation messages.
 
     pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
         // Get next sequence number for this session
@@ -640,6 +560,27 @@ impl Database {
             .fetch_all(&self.pool)
             .await?
         };
+
+        Ok(rows)
+    }
+
+    /// List only message events for a session (for MessageStore implementation)
+    ///
+    /// Returns events with types: message.user, message.assistant, message.tool_call, message.tool_result
+    /// Ordered by sequence for conversation reconstruction.
+    pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
+        let rows = sqlx::query_as::<_, EventRow>(
+            r#"
+            SELECT id, session_id, sequence, event_type, data, created_at
+            FROM events
+            WHERE session_id = $1
+              AND event_type IN ('message.user', 'message.assistant', 'message.tool_call', 'message.tool_result')
+            ORDER BY sequence ASC
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
 
         Ok(rows)
     }

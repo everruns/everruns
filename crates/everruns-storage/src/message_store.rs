@@ -1,28 +1,29 @@
-// Database-backed MessageStore implementation
+// Event-based MessageStore implementation
 //
-// This module implements the core MessageStore trait for persisting
-// conversation messages to the database during workflow execution.
+// This module implements the core MessageStore trait using the events table
+// as the sole source of truth for conversation messages.
 //
-// Note: Message.content is Vec<ContentPart> in both core and storage,
-// so no conversion is needed - data passes through directly.
-//
-// Events: When messages are stored, corresponding events are emitted
-// for SSE streaming. This allows the UI to render from events.
+// Messages are stored as events with type "message.*" and reconstructed
+// from the event data when loaded.
 
 use async_trait::async_trait;
-use everruns_core::{traits::MessageStore, AgentLoopError, Message, MessageRole, Result};
+use chrono::{DateTime, Utc};
+use everruns_core::{
+    traits::MessageStore, AgentLoopError, ContentPart, Controls, Message, MessageRole, Result,
+};
+use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::models::{CreateEventRow, CreateMessageRow};
+use crate::models::CreateEventRow;
 use crate::repositories::Database;
 
 // ============================================================================
-// DbMessageStore - Stores messages in database
+// DbMessageStore - Stores messages as events
 // ============================================================================
 
-/// Database-backed message store
+/// Event-based message store
 ///
-/// Stores conversation messages in the messages table.
+/// Stores conversation messages as events in the events table.
 /// Used by activities to load/store messages during workflow execution.
 #[derive(Clone)]
 pub struct DbMessageStore {
@@ -38,87 +39,130 @@ impl DbMessageStore {
 #[async_trait]
 impl MessageStore for DbMessageStore {
     async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
-        let role = message.role.clone();
-        let content = message.content.clone();
-
-        let create_msg = CreateMessageRow {
-            session_id,
-            role: message.role.to_string(),
-            content: message.content, // Direct pass-through - both are Vec<ContentPart>
-            controls: message.controls,
-            metadata: message.metadata,
-            tags: vec![], // Core messages don't have tags currently
-        };
-
-        let stored_msg = self
-            .db
-            .create_message(create_msg)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
-
-        // Emit event for SSE streaming
+        // Determine event type from message role
         // Note: user messages are handled by MessageService in the API layer
-        let event_type = match role {
+        // System messages are not emitted as events (per design decision)
+        let event_type = match message.role {
             MessageRole::Assistant => Some("message.assistant"),
             MessageRole::ToolCall => Some("message.tool_call"),
             MessageRole::ToolResult => Some("message.tool_result"),
-            MessageRole::User | MessageRole::System => None, // User messages handled by API
+            MessageRole::User | MessageRole::System => None,
         };
 
         if let Some(event_type) = event_type {
+            // Generate a new message ID
+            let message_id = Uuid::now_v7();
+
             let event_input = CreateEventRow {
                 session_id,
                 event_type: event_type.to_string(),
                 data: serde_json::json!({
-                    "message_id": stored_msg.id,
-                    "role": role.to_string(),
-                    "content": content,
-                    "sequence": stored_msg.sequence,
-                    "created_at": stored_msg.created_at,
+                    "message_id": message_id,
+                    "role": message.role.to_string(),
+                    "content": message.content,
+                    "controls": message.controls,
+                    "metadata": message.metadata,
+                    "tags": [],
                 }),
             };
-            if let Err(e) = self.db.create_event(event_input).await {
-                tracing::warn!("Failed to emit {} event: {}", event_type, e);
-            }
+
+            self.db
+                .create_event(event_input)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?;
         }
 
         Ok(())
     }
 
     async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
-        let messages = self
+        let events = self
             .db
-            .list_messages(session_id)
+            .list_message_events(session_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
-        // Message.tool_call_id is now derived from content - no need to set it separately
-        let converted: Vec<Message> = messages
-            .into_iter()
-            .map(|msg| Message {
-                id: msg.id,
-                role: MessageRole::from(msg.role.as_str()),
-                content: msg.content, // Direct pass-through - tool_call_id is in ToolResultContentPart
-                controls: msg.controls.map(|j| j.0),
-                metadata: msg.metadata.map(|j| j.0),
-                created_at: msg.created_at,
-            })
-            .collect();
+        let mut messages = Vec::with_capacity(events.len());
 
-        Ok(converted)
+        for event in events {
+            match event_to_message(&event.data, event.created_at) {
+                Ok(message) => messages.push(message),
+                Err(e) => {
+                    tracing::warn!("Failed to parse message from event {}: {}", event.id, e);
+                    // Skip malformed events rather than failing the entire load
+                }
+            }
+        }
+
+        Ok(messages)
     }
 
     async fn count(&self, session_id: Uuid) -> Result<usize> {
-        let messages = self.load(session_id).await?;
-        Ok(messages.len())
+        let events = self
+            .db
+            .list_message_events(session_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        Ok(events.len())
     }
+}
+
+/// Convert event data to a Message
+fn event_to_message(
+    data: &serde_json::Value,
+    created_at: DateTime<Utc>,
+) -> std::result::Result<Message, String> {
+    // Extract message_id
+    let id = data
+        .get("message_id")
+        .and_then(|v| v.as_str())
+        .ok_or("missing message_id")?
+        .parse::<Uuid>()
+        .map_err(|e| format!("invalid message_id: {}", e))?;
+
+    // Extract role
+    let role_str = data
+        .get("role")
+        .and_then(|v| v.as_str())
+        .ok_or("missing role")?;
+    let role = MessageRole::from(role_str);
+
+    // Extract content
+    let content: Vec<ContentPart> = data
+        .get("content")
+        .cloned()
+        .map(|v| serde_json::from_value(v).unwrap_or_default())
+        .unwrap_or_default();
+
+    // Extract optional controls
+    let controls: Option<Controls> = data
+        .get("controls")
+        .filter(|v| !v.is_null())
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok());
+
+    // Extract optional metadata
+    let metadata: Option<HashMap<String, serde_json::Value>> = data
+        .get("metadata")
+        .filter(|v| !v.is_null())
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok());
+
+    Ok(Message {
+        id,
+        role,
+        content,
+        controls,
+        metadata,
+        created_at,
+    })
 }
 
 // ============================================================================
 // Factory functions
 // ============================================================================
 
-/// Create a database-backed message store
+/// Create an event-based message store
 pub fn create_db_message_store(db: Database) -> DbMessageStore {
     DbMessageStore::new(db)
 }
@@ -384,5 +428,51 @@ mod tests {
         } else {
             panic!("Expected ToolResult content part");
         }
+    }
+
+    // ========================================================================
+    // Test: Event to Message conversion
+    // ========================================================================
+
+    #[test]
+    fn test_event_to_message_basic() {
+        let data = json!({
+            "message_id": "01234567-89ab-cdef-0123-456789abcdef",
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Hello!"}],
+            "controls": null,
+            "metadata": null,
+            "tags": []
+        });
+
+        let result = event_to_message(&data, Utc::now());
+        assert!(result.is_ok());
+
+        let message = result.unwrap();
+        assert_eq!(message.role, MessageRole::Assistant);
+        assert_eq!(message.content.len(), 1);
+    }
+
+    #[test]
+    fn test_event_to_message_with_controls() {
+        let data = json!({
+            "message_id": "01234567-89ab-cdef-0123-456789abcdef",
+            "role": "user",
+            "content": [{"type": "text", "text": "Test"}],
+            "controls": {"model_id": "openai/gpt-4o"},
+            "metadata": {"locale": "en-US"},
+            "tags": []
+        });
+
+        let result = event_to_message(&data, Utc::now());
+        assert!(result.is_ok());
+
+        let message = result.unwrap();
+        assert!(message.controls.is_some());
+        assert_eq!(
+            message.controls.as_ref().unwrap().model_id,
+            Some("openai/gpt-4o".to_string())
+        );
+        assert!(message.metadata.is_some());
     }
 }
