@@ -145,8 +145,45 @@ jobs:
       - name: Build
         run: cargo build --all-features --release
 
-  smoke-test:
-    name: API Smoke Test
+  ui-build:
+    name: UI Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/ui
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: apps/ui/.next/cache
+          # Generate a new cache whenever packages or source files change
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-${{ hashFiles('apps/ui/src/**/*', 'apps/ui/app/**/*') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-
+            ${{ runner.os }}-nextjs-
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check & build
+        run: npm run build
+
+  integration-test:
+    name: Integration Tests
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -173,8 +210,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install jq and protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y jq protobuf-compiler
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Start Temporal
         run: |
@@ -223,9 +260,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-smoke-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-smoke-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-integration-
             ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
 
       - name: Cache sqlx-cli
@@ -255,69 +292,8 @@ jobs:
           timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
           echo "API is ready"
 
-      - name: Run smoke tests
-        run: |
-          echo "Testing health endpoint..."
-          curl -s http://localhost:9000/health | jq -e '.status == "ok"'
-
-          echo "Creating agent..."
-          AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
-            -H 'Content-Type: application/json' \
-            -d '{"name":"CI Test Agent","system_prompt":"You are a helpful assistant"}')
-          echo "Agent response: $AGENT"
-          AGENT_ID=$(echo "$AGENT" | jq -r '.id')
-          echo "Agent ID: $AGENT_ID"
-
-          if [ "$AGENT_ID" == "null" ] || [ -z "$AGENT_ID" ]; then
-            echo "ERROR: Failed to create agent"
-            exit 1
-          fi
-
-          echo "Creating session..."
-          SESSION_HTTP=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions" \
-            -H 'Content-Type: application/json' \
-            -d '{"title":"CI Test Session"}')
-          SESSION_CODE=$(echo "$SESSION_HTTP" | grep "HTTP_CODE:" | cut -d: -f2)
-          SESSION=$(echo "$SESSION_HTTP" | sed '/HTTP_CODE:/d')
-          echo "Session HTTP code: $SESSION_CODE"
-          echo "Session response: $SESSION"
-          SESSION_ID=$(echo "$SESSION" | jq -r '.id')
-          echo "Session ID: $SESSION_ID"
-
-          if [ "$SESSION_ID" == "null" ] || [ -z "$SESSION_ID" ]; then
-            echo "ERROR: Failed to create session (HTTP $SESSION_CODE)"
-            exit 1
-          fi
-
-          echo "Creating message..."
-          MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
-            -H 'Content-Type: application/json' \
-            -d '{"message":{"role":"user","content":[{"type":"text","text":"Hello, world!"}]}}')
-          echo "Message response: $MESSAGE"
-          MESSAGE_ID=$(echo "$MESSAGE" | jq -r '.id')
-          echo "Message ID: $MESSAGE_ID"
-
-          if [ "$MESSAGE_ID" == "null" ] || [ -z "$MESSAGE_ID" ]; then
-            echo "ERROR: Failed to create message"
-            exit 1
-          fi
-
-          echo "Listing messages..."
-          MESSAGES=$(curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages")
-          MESSAGE_COUNT=$(echo "$MESSAGES" | jq '.data | length')
-          echo "Message count: $MESSAGE_COUNT"
-
-          if [ "$MESSAGE_COUNT" -lt 1 ]; then
-            echo "ERROR: Expected at least 1 message"
-            exit 1
-          fi
-
-          echo "Checking session status..."
-          SESSION_STATUS=$(curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID")
-          STATUS=$(echo "$SESSION_STATUS" | jq -r '.status')
-          echo "Session status: $STATUS"
-
-          echo "All smoke tests passed!"
+      - name: Run integration tests
+        run: cargo test -p everruns-api --test integration_test -- --ignored --test-threads=1
 
       - name: Stop API server
         if: always()
@@ -326,43 +302,6 @@ jobs:
       - name: Stop Temporal
         if: always()
         run: docker stop temporal || true
-
-  ui-build:
-    name: UI Build & Lint
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: apps/ui
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: apps/ui/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Cache Next.js build
-        uses: actions/cache@v4
-        with:
-          path: apps/ui/.next/cache
-          # Generate a new cache whenever packages or source files change
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-${{ hashFiles('apps/ui/src/**/*', 'apps/ui/app/**/*') }}
-          restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-
-            ${{ runner.os }}-nextjs-
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Type check & build
-        run: npm run build
 
   # Docker builds using matrix for parallel execution
   docker-build:
