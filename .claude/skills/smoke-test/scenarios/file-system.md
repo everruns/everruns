@@ -2,9 +2,14 @@
 
 Tests for the session-level virtual filesystem functionality.
 
+This scenario covers two testing approaches:
+1. **REST API Tests** - Direct HTTP calls to the filesystem endpoints
+2. **Capability Tool Tests** - Testing tools via agent workflow (LLM tool calling)
+
 ## Prerequisites
 
 - API server running at `http://localhost:9000`
+- Temporal worker running (for capability tests)
 - An existing agent and session (from main smoke tests)
 
 ```bash
@@ -15,7 +20,180 @@ BASE_URL="http://localhost:9000"
 FS_URL="$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/fs"
 ```
 
-## API Tests
+---
+
+## Capability Tool Tests
+
+These tests verify the FileSystem capability tools work correctly through the agent workflow.
+
+### Setup: Create Agent with FileSystem Capability
+
+```bash
+# Create agent with file_system capability
+AGENT=$(curl -s -X POST "$BASE_URL/v1/agents" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "FileSystem Test Agent",
+    "system_prompt": "You are a helpful assistant with file system access.",
+    "description": "Agent for testing FileSystem capability"
+  }')
+AGENT_ID=$(echo $AGENT | jq -r '.id')
+
+# Set the file_system capability
+curl -s -X PUT "$BASE_URL/v1/agents/$AGENT_ID/capabilities" \
+  -H "Content-Type: application/json" \
+  -d '{"capabilities": ["file_system"]}' | jq
+
+# Create a session
+SESSION=$(curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "FileSystem Test Session"}')
+SESSION_ID=$(echo $SESSION | jq -r '.id')
+echo "Agent: $AGENT_ID, Session: $SESSION_ID"
+```
+
+### Test: write_file Tool
+
+```bash
+# Send message to trigger write_file tool
+curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "content": [{"type": "text", "text": "Please create a file at /hello.txt with the content \"Hello from FileSystem capability!\""}]
+    }
+  }'
+
+# Wait for workflow
+sleep 10
+
+# Check for assistant response with tool usage
+curl -s "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
+  jq '.data[] | select(.role == "assistant")'
+```
+Expected: Assistant message indicating file was created, with tool_call content part for write_file
+
+### Test: read_file Tool
+
+```bash
+# Ask agent to read the file
+curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "content": [{"type": "text", "text": "Read the content of /hello.txt"}]
+    }
+  }'
+
+sleep 10
+
+# Check response includes the file content
+curl -s "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
+  jq '.data[-1]'
+```
+Expected: Assistant reads and reports file content "Hello from FileSystem capability!"
+
+### Test: list_directory Tool
+
+```bash
+# Ask agent to list files
+curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "content": [{"type": "text", "text": "List all files in the root directory /"}]
+    }
+  }'
+
+sleep 10
+
+curl -s "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
+  jq '.data[-1]'
+```
+Expected: Assistant lists /hello.txt
+
+### Test: stat_file Tool
+
+```bash
+# Ask for file metadata
+curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "content": [{"type": "text", "text": "Get the metadata for /hello.txt including size and timestamps"}]
+    }
+  }'
+
+sleep 10
+
+curl -s "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
+  jq '.data[-1]'
+```
+Expected: Assistant reports file exists, size, creation/update times
+
+### Test: grep_files Tool
+
+```bash
+# First create more files
+curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "content": [{"type": "text", "text": "Create /notes/todo.txt with content \"Buy groceries\nCall mom\nFinish project\" and /notes/done.txt with \"Completed: Clean room\""}]
+    }
+  }'
+
+sleep 15
+
+# Search for pattern
+curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "content": [{"type": "text", "text": "Search all files for the word \"project\""}]
+    }
+  }'
+
+sleep 10
+
+curl -s "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
+  jq '.data[-1]'
+```
+Expected: Assistant finds "Finish project" in /notes/todo.txt
+
+### Test: delete_file Tool
+
+```bash
+# Delete a file
+curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "content": [{"type": "text", "text": "Delete the file /notes/done.txt"}]
+    }
+  }'
+
+sleep 10
+
+# Verify deletion via list
+curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "content": [{"type": "text", "text": "List files in /notes directory"}]
+    }
+  }'
+
+sleep 10
+
+curl -s "$BASE_URL/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
+  jq '.data[-1]'
+```
+Expected: Only todo.txt remains in /notes
+
+---
+
+## REST API Tests
 
 ### 1. List Root Directory (Empty)
 ```bash
