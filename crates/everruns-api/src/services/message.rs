@@ -1,15 +1,17 @@
 // Message service for business logic
-// Messages are the PRIMARY conversation data store
 //
-// The service accepts API entities (CreateMessageRequest) and handles:
-// - Conversion to database entities
-// - Event emission for SSE notifications
+// Messages are stored as events in the events table. This service handles:
+// - Creating user message events
+// - Listing messages by querying message events
 // - Workflow triggering for user messages
 
 use crate::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use anyhow::Result;
-use everruns_storage::{models::CreateEventRow, models::CreateMessageRow, Database};
+use chrono::{DateTime, Utc};
+use everruns_core::Controls;
+use everruns_storage::{models::CreateEventRow, Database};
 use everruns_worker::AgentRunner;
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -26,9 +28,7 @@ impl MessageService {
     /// Create a user message from API request
     ///
     /// Only user messages can be created via the API. This method:
-    /// - Converts input content to storage format
-    /// - Persists the message to the database
-    /// - Emits an SSE event for the user message
+    /// - Creates a message event in the events table
     /// - Triggers workflow execution for the session
     pub async fn create(
         &self,
@@ -36,7 +36,7 @@ impl MessageService {
         session_id: Uuid,
         req: CreateMessageRequest,
     ) -> Result<Message> {
-        // Convert InputContentPart array to ContentPart array for storage
+        // Convert InputContentPart array to ContentPart array
         let content: Vec<ContentPart> = req
             .message
             .content
@@ -44,42 +44,43 @@ impl MessageService {
             .map(ContentPart::from)
             .collect();
 
-        // Get tags from request (empty if not provided)
+        // Generate a new message ID
+        let message_id = Uuid::now_v7();
         let tags = req.tags.unwrap_or_default();
 
-        // API only creates user messages
-        let input = CreateMessageRow {
+        // Create the event
+        let event = self
+            .db
+            .create_event(CreateEventRow {
+                session_id,
+                event_type: "message.user".to_string(),
+                data: serde_json::json!({
+                    "message_id": message_id,
+                    "role": "user",
+                    "content": &content,
+                    "controls": &req.controls,
+                    "metadata": &req.metadata,
+                    "tags": &tags,
+                }),
+            })
+            .await?;
+
+        // Construct Message from the event
+        let message = Message {
+            id: message_id,
             session_id,
-            role: MessageRole::User.to_string(),
+            sequence: event.sequence,
+            role: MessageRole::User,
             content,
             controls: req.controls,
             metadata: req.metadata,
-            tags,
+            created_at: event.created_at,
         };
 
-        let row = self.db.create_message(input).await?;
-        let message = Self::row_to_message(row);
-
-        // Emit event and start workflow for user message
-        self.emit_user_message_event(session_id, &message).await;
+        // Start workflow for user message
         self.start_workflow(agent_id, session_id).await;
 
         Ok(message)
-    }
-
-    /// Emit SSE event for user message
-    async fn emit_user_message_event(&self, session_id: Uuid, message: &Message) {
-        let event_input = CreateEventRow {
-            session_id,
-            event_type: "message.user".to_string(),
-            data: serde_json::json!({
-                "message_id": message.id,
-                "content": message.content
-            }),
-        };
-        if let Err(e) = self.db.create_event(event_input).await {
-            tracing::warn!("Failed to emit user message event: {}", e);
-        }
     }
 
     /// Start workflow execution for the session
@@ -97,21 +98,74 @@ impl MessageService {
     }
 
     pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {
-        let rows = self.db.list_messages(session_id).await?;
-        Ok(rows.into_iter().map(Self::row_to_message).collect())
+        let events = self.db.list_message_events(session_id).await?;
+        let mut messages = Vec::with_capacity(events.len());
+
+        for event in events {
+            match Self::event_to_message(session_id, &event.data, event.sequence, event.created_at)
+            {
+                Ok(message) => messages.push(message),
+                Err(e) => {
+                    tracing::warn!("Failed to parse message from event {}: {}", event.id, e);
+                }
+            }
+        }
+
+        Ok(messages)
     }
 
-    /// Convert database row to API Message
-    fn row_to_message(row: everruns_storage::MessageRow) -> Message {
-        Message {
-            id: row.id,
-            session_id: row.session_id,
-            sequence: row.sequence,
-            role: MessageRole::from(row.role.as_str()),
-            content: row.content,
-            controls: row.controls.map(|j| j.0),
-            metadata: row.metadata.map(|j| j.0),
-            created_at: row.created_at,
-        }
+    /// Convert event data to API Message
+    fn event_to_message(
+        session_id: Uuid,
+        data: &serde_json::Value,
+        sequence: i32,
+        created_at: DateTime<Utc>,
+    ) -> std::result::Result<Message, String> {
+        // Extract message_id
+        let id = data
+            .get("message_id")
+            .and_then(|v| v.as_str())
+            .ok_or("missing message_id")?
+            .parse::<Uuid>()
+            .map_err(|e| format!("invalid message_id: {}", e))?;
+
+        // Extract role
+        let role_str = data
+            .get("role")
+            .and_then(|v| v.as_str())
+            .ok_or("missing role")?;
+        let role = MessageRole::from(role_str);
+
+        // Extract content
+        let content: Vec<ContentPart> = data
+            .get("content")
+            .cloned()
+            .map(|v| serde_json::from_value(v).unwrap_or_default())
+            .unwrap_or_default();
+
+        // Extract optional controls
+        let controls: Option<Controls> = data
+            .get("controls")
+            .filter(|v| !v.is_null())
+            .cloned()
+            .and_then(|v| serde_json::from_value(v).ok());
+
+        // Extract optional metadata
+        let metadata: Option<HashMap<String, serde_json::Value>> = data
+            .get("metadata")
+            .filter(|v| !v.is_null())
+            .cloned()
+            .and_then(|v| serde_json::from_value(v).ok());
+
+        Ok(Message {
+            id,
+            session_id,
+            sequence,
+            role,
+            content,
+            controls,
+            metadata,
+            created_at,
+        })
     }
 }

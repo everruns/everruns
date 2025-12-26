@@ -99,10 +99,11 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 #### Layer Separation
 
 1. **Storage Layer** (`everruns-storage`):
-   - Database models use `Row` suffix (e.g., `MessageRow`, `AgentRow`, `SessionRow`)
-   - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateMessageRow`)
+   - Database models use `Row` suffix (e.g., `AgentRow`, `SessionRow`, `EventRow`)
+   - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateEventRow`)
    - Update structs use `Update` prefix (e.g., `UpdateAgent`)
    - Repositories handle raw database operations only
+   - Note: Messages are stored as events (see `specs/models.md`)
 
 2. **Core Layer** (`everruns-core`):
    - Contains shared domain types used across layers (e.g., `ContentPart`, `Controls`, `Message`)
@@ -146,15 +147,15 @@ For agents:
 For messages:
 - `CreateMessageRequest` (API) → contains `InputMessage` with `InputContentPart[]`
 - Service converts `InputContentPart` → `ContentPart` (core type)
-- Service creates `CreateMessageRow` (storage) with `Vec<ContentPart>`
-- Repository stores to database
+- Service creates `CreateEventRow` (storage) with message data as JSON
+- Repository stores event to database (messages stored as events)
 
 #### Naming Conventions
 
 | Layer | Pattern | Example |
 |-------|---------|---------|
-| Storage Row | `{Entity}Row` | `MessageRow`, `AgentRow` |
-| Storage Create | `Create{Entity}Row` | `CreateMessageRow` |
+| Storage Row | `{Entity}Row` | `AgentRow`, `EventRow` |
+| Storage Create | `Create{Entity}Row` | `CreateEventRow` |
 | Storage Update | `Update{Entity}` | `UpdateAgent` |
 | Core Domain | `{Entity}` | `Message`, `ContentPart` |
 | API Input | `Input{Entity}` | `InputMessage`, `InputContentPart` |
