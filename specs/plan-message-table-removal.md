@@ -1,231 +1,246 @@
-# Plan: Message Table Removal Analysis
+# Plan: Message Table Removal
 
 ## Abstract
 
-This document analyzes the feasibility of removing the `messages` table and using the `events` table as the sole source of truth for conversation data. This would implement an event-sourcing pattern where events are the primary data store and messages are materialized views.
+This document analyzes removing the `messages` table and using the `events` table as the sole source of truth for conversation data.
 
-## Current Architecture
+## Current State Analysis
 
-### Messages Table (Primary Data)
+### Key Finding: Events Already Mirror Messages
 
-The `messages` table is the **primary conversation data store**:
+The `events` table currently **only contains message events**. Every message stored creates:
+1. A row in `messages` table (via `db.create_message()`)
+2. A row in `events` table (via `db.create_event()`)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `session_id` | UUID | Foreign key to sessions |
-| `sequence` | INTEGER | Order within session (unique per session) |
-| `role` | VARCHAR | user, assistant, tool_call, tool_result, system |
-| `content` | JSONB | Array of ContentPart (text, image, tool_call, tool_result) |
-| `controls` | JSONB | Runtime controls (model_id, reasoning) |
-| `metadata` | JSONB | Message-level metadata |
-| `tags` | TEXT[] | Message tags |
-| `created_at` | TIMESTAMPTZ | Creation time |
+This dual write is redundant. The events table already has the full message content.
 
-**Usage patterns:**
-- API: `GET /messages` lists all messages for a session
-- API: `POST /messages` creates a user message
-- Worker: `MessageStore.load()` loads full conversation for LLM context
-- Worker: `MessageStore.store()` saves assistant/tool messages
+### Current Event Data Payload
 
-### Events Table (SSE Notifications)
-
-The `events` table is the **secondary notification stream**:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `session_id` | UUID | Foreign key to sessions |
-| `sequence` | INTEGER | Order within session |
-| `event_type` | VARCHAR | message.user, message.assistant, etc. |
-| `data` | JSONB | Event payload (includes full content) |
-| `created_at` | TIMESTAMPTZ | Event time |
-
-**Current event payload for message events:**
 ```json
 {
   "message_id": "uuid",
   "role": "assistant",
-  "content": [...],  // Full ContentPart array
+  "content": [...],      // Full Vec<ContentPart>
   "sequence": 5,
   "created_at": "2024-12-26T..."
 }
 ```
 
-**Missing from events:** `controls`, `metadata`, `tags`
+**Missing from events:** `controls`, `metadata`, `tags` (but `tags` is always empty in worker context)
 
-## Key Finding: Events Already Contain Full Content
+### Usage Patterns
 
-When a message is stored, `DbMessageStore.store()` emits an event with the complete message content (`crates/everruns-storage/src/message_store.rs:59-82`). The UI already transforms events back to messages via `eventsToMessages()` in `apps/ui/src/hooks/use-sessions.ts`.
+| Consumer | Operation | Current Implementation |
+|----------|-----------|----------------------|
+| Worker | Load messages for LLM | `db.list_messages(session_id)` |
+| Worker | Store message | `db.create_message()` + `db.create_event()` |
+| API | Create user message | `db.create_message()` + `db.create_event()` |
+| API | List messages | `db.list_messages(session_id)` (rarely used) |
+| UI | Display messages | Fetches events, transforms to messages |
 
-## Feasibility Analysis
+**The UI already uses events as source of truth** via `eventsToMessages()`.
 
-### Option A: Remove Messages Table (Event-Sourcing)
+## Recommendation: Remove Messages Table
 
-Make events the primary store, reconstruct messages from events.
+Given:
+- ✅ Events already contain full message content
+- ✅ UI already works from events
+- ✅ Message APIs have almost no use cases
+- ✅ Dual write is redundant overhead
+- ✅ Events table only contains message events currently
 
-**Required Changes:**
+**The messages table can be removed.**
 
-1. **Extend Event Data** - Add missing fields:
-   ```json
-   {
-     "message_id": "uuid",
-     "role": "assistant",
-     "content": [...],
-     "controls": {...},      // NEW
-     "metadata": {...},      // NEW
-     "tags": [...],          // NEW
-     "sequence": 5,
-     "created_at": "..."
-   }
-   ```
+## Implementation Plan
 
-2. **New MessageStore Implementation** - Query events instead of messages:
-   ```rust
-   impl MessageStore for EventBasedMessageStore {
-     async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
-       // SELECT * FROM events
-       // WHERE session_id = ?
-       //   AND event_type IN ('message.user', 'message.assistant', ...)
-       // ORDER BY sequence
-     }
-   }
-   ```
+### Phase 1: Extend Event Payload (Non-Breaking)
 
-3. **Remove Messages Table** - Drop table after migration
+Add missing fields to event data:
 
-4. **Update API** - `GET /messages` queries events, `POST /messages` only creates events
-
-**Pros:**
-- ✅ Single source of truth (event-sourcing pattern)
-- ✅ Natural audit log of all changes
-- ✅ Simpler schema (one less table)
-- ✅ UI already works with events
-
-**Cons:**
-- ❌ **Query performance** - Every message load filters by event_type
-- ❌ **Index overhead** - Need composite index (session_id, event_type, sequence)
-- ❌ **Larger storage** - Events contain more metadata per row
-- ❌ **Breaking change** - Documented architecture explicitly says "Messages = primary data"
-- ❌ **Mixed concerns** - Events table would contain both messages and workflow events
-- ❌ **Pagination complexity** - Can't simply paginate messages, need event filtering
-
-### Option B: Keep Messages, Make Events Derived (Current)
-
-Keep the current architecture where messages are primary and events are notifications.
-
-**Pros:**
-- ✅ Clear separation of concerns (data vs notifications)
-- ✅ Optimal query performance for message retrieval
-- ✅ Simple pagination and filtering on messages
-- ✅ Events can be pruned/archived without affecting messages
-
-**Cons:**
-- ❌ Dual write (message + event on every store)
-- ❌ Potential inconsistency if event emission fails
-
-### Option C: Materialized View Pattern
-
-Keep events as source of truth but add a materialized view or cache for messages.
-
-**Implementation:**
-1. Events are the write model (append-only)
-2. Messages view/cache is the read model (computed from events)
-3. Refresh view on event insert via trigger or async worker
-
-**Pros:**
-- ✅ Event-sourcing semantics (auditability, replay)
-- ✅ Fast reads from materialized view
-- ✅ Can rebuild messages from events if needed
-
-**Cons:**
-- ❌ More complexity (triggers, cache invalidation)
-- ❌ Eventual consistency between events and view
-- ❌ Two storage mechanisms to maintain
-
-## Performance Comparison
-
-### Current (Messages Table)
-
-```sql
--- Load messages for LLM context
-SELECT * FROM messages WHERE session_id = ? ORDER BY sequence;
--- Uses idx_messages_session_sequence, O(n) where n = messages in session
+```rust
+// In message_store.rs, update event creation:
+data: serde_json::json!({
+    "message_id": stored_msg.id,
+    "role": role.to_string(),
+    "content": content,
+    "controls": message.controls,      // NEW
+    "metadata": message.metadata,      // NEW
+    "sequence": stored_msg.sequence,
+    "created_at": stored_msg.created_at,
+}),
 ```
 
-### Event-Based (Option A)
+Also update `services/message.rs` for user messages.
+
+**Files to modify:**
+- `crates/everruns-storage/src/message_store.rs` (lines 72-78)
+- `crates/everruns-api/src/services/message.rs` (lines 74-79)
+
+### Phase 2: Add Partial Index
+
+Create index for efficient message event queries:
 
 ```sql
--- Load messages from events
-SELECT * FROM events
-WHERE session_id = ?
-  AND event_type IN ('message.user', 'message.assistant', 'message.tool_call', 'message.tool_result')
-ORDER BY sequence;
--- Requires filtering by event_type, potentially more rows scanned
+-- Migration: add_message_events_index.sql
+CREATE INDEX idx_events_messages ON events(session_id, sequence)
+WHERE event_type IN ('message.user', 'message.assistant', 'message.tool_call', 'message.tool_result');
 ```
 
-**Performance Impact:**
-- Events table contains ALL event types (workflow events, tool events, etc.)
-- Message queries would scan non-message events and filter them out
-- Composite index `(session_id, event_type, sequence)` would help but adds overhead
+This makes `SELECT FROM events WHERE event_type IN (...) AND session_id = ?` as fast as the current messages query.
 
-## Recommendation
+### Phase 3: Implement Event-Based MessageStore
 
-**Recommended: Option B (Keep Current Architecture)**
+Create new implementation that reads from events:
 
-The current architecture is well-designed for this use case:
+```rust
+// New: EventMessageStore
+impl MessageStore for EventMessageStore {
+    async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
+        // Only create event, no message row
+        let event_type = match message.role {
+            MessageRole::User => "message.user",
+            MessageRole::Assistant => "message.assistant",
+            MessageRole::ToolCall => "message.tool_call",
+            MessageRole::ToolResult => "message.tool_result",
+            MessageRole::System => "message.system",
+        };
 
-1. **Messages are conversation data** - optimized for retrieval by session
-2. **Events are notifications** - optimized for streaming to UI
-3. **Dual write is acceptable** - both writes are to the same database in the same transaction (or could be)
-4. **Separation of concerns** - messages can evolve independently of event schema
+        let event = CreateEventRow {
+            session_id,
+            event_type: event_type.to_string(),
+            data: serde_json::json!({
+                "role": message.role.to_string(),
+                "content": message.content,
+                "controls": message.controls,
+                "metadata": message.metadata,
+            }),
+        };
+        self.db.create_event(event).await?;
+        Ok(())
+    }
 
-**If event-sourcing is desired in the future:**
+    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
+        let events = self.db.list_message_events(session_id).await?;
+        // Transform events to messages
+        events.into_iter().map(|e| {
+            let data = e.data;
+            Message {
+                id: data["message_id"].as_str().map(Uuid::parse_str).unwrap()?,
+                role: MessageRole::from(data["role"].as_str().unwrap()),
+                content: serde_json::from_value(data["content"].clone())?,
+                controls: data.get("controls").cloned().map(serde_json::from_value).transpose()?,
+                metadata: data.get("metadata").cloned().map(serde_json::from_value).transpose()?,
+                created_at: e.created_at,
+            }
+        }).collect()
+    }
+}
+```
 
-Consider Option C (Materialized View) which provides event-sourcing benefits while maintaining read performance. This would require:
-1. Making events the source of truth
-2. Creating a PostgreSQL materialized view for messages
-3. Adding a trigger to refresh on INSERT to events
-4. Or using a change data capture (CDC) pattern
+**New repository method:**
 
-## Migration Path (If Proceeding with Option A)
+```rust
+// In repositories.rs
+pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
+    sqlx::query_as::<_, EventRow>(
+        r#"
+        SELECT id, session_id, sequence, event_type, data, created_at
+        FROM events
+        WHERE session_id = $1
+          AND event_type IN ('message.user', 'message.assistant', 'message.tool_call', 'message.tool_result', 'message.system')
+        ORDER BY sequence ASC
+        "#,
+    )
+    .bind(session_id)
+    .fetch_all(&self.pool)
+    .await
+}
+```
 
-If the decision is made to proceed with event-sourcing:
+### Phase 4: Update API Layer
 
-### Phase 1: Extend Events (Non-Breaking)
-1. Add `controls`, `metadata`, `tags` to event data payload
-2. Update `DbMessageStore.store()` to include these fields
-3. Deploy and verify events contain all data
+Modify message service to use event-based store:
 
-### Phase 2: Create Event-Based MessageStore
-1. Implement `EventBasedMessageStore` that queries events
-2. Add feature flag to switch between implementations
-3. Test thoroughly in staging environment
+```rust
+// services/message.rs
+impl MessageService {
+    pub async fn create(&self, ...) -> Result<Message> {
+        // Create event only (no message row)
+        let event = self.db.create_event(CreateEventRow {
+            session_id,
+            event_type: "message.user".to_string(),
+            data: serde_json::json!({
+                "role": "user",
+                "content": content,
+                "controls": request.controls,
+                "metadata": request.metadata,
+            }),
+        }).await?;
 
-### Phase 3: Migrate API
-1. Update `GET /messages` to use event-based store
-2. Update `POST /messages` to only create events (no message row)
-3. Verify UI continues to work (already uses events)
+        // Transform event to message for response
+        Ok(event_to_message(event))
+    }
 
-### Phase 4: Remove Messages Table
-1. Stop writing to messages table
-2. Run migration to drop messages table
-3. Update specs and documentation
+    pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {
+        let events = self.db.list_message_events(session_id).await?;
+        Ok(events.into_iter().map(event_to_message).collect())
+    }
+}
+```
 
-### Risks
-- **Data loss** - If events are incomplete, message data is lost
-- **Performance regression** - Event queries may be slower
-- **Breaking changes** - External integrations using messages table directly
+### Phase 5: Migration - Drop Messages Table
+
+```sql
+-- Migration: drop_messages_table.sql
+DROP TABLE messages;
+```
+
+### Phase 6: Update Specs and Docs
+
+- Update `specs/models.md` - Remove Message table, update Event documentation
+- Update `specs/architecture.md` - Reflect event-sourced messages
+
+## File Changes Summary
+
+| File | Change |
+|------|--------|
+| `migrations/XXX_extend_event_payload.sql` | (optional) Add constraints/comments |
+| `migrations/XXX_add_message_events_index.sql` | Add partial index |
+| `migrations/XXX_drop_messages_table.sql` | Drop messages table |
+| `crates/everruns-storage/src/models.rs` | Remove `MessageRow`, `CreateMessageRow` |
+| `crates/everruns-storage/src/repositories.rs` | Remove message CRUD, add `list_message_events` |
+| `crates/everruns-storage/src/message_store.rs` | Rewrite to use events |
+| `crates/everruns-api/src/services/message.rs` | Use events instead of messages |
+| `crates/everruns-api/src/messages.rs` | Update types if needed |
+| `specs/models.md` | Update documentation |
+
+## Risks and Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Data loss during migration | Backfill events from messages before dropping table |
+| Event payload schema changes | Make changes in Phase 1, deploy, verify before proceeding |
+| Performance regression | Partial index ensures equivalent query performance |
+
+## Rollback Plan
+
+If issues arise after Phase 5:
+1. Re-run messages table creation migration
+2. Backfill messages from events (since events have full data)
+3. Revert code changes
 
 ## Open Questions
 
-1. **Event retention** - Should events be pruned? If so, how do we preserve messages?
-2. **Event replay** - Do we need to replay events to rebuild state?
-3. **External integrations** - Are there consumers of the messages table outside the API?
-4. **Audit requirements** - Is there a compliance need for event-sourcing?
+1. **System messages** - Currently no event emitted for `MessageRole::System`. Should we add `message.system` event type?
+2. **Message ID generation** - Events use their own UUID. Should message_id in data be the event id, or generate separately?
+3. **Tags** - Currently unused in worker context. Keep in event payload or remove?
 
 ## Conclusion
 
-The messages table serves a clear purpose as the primary conversation data store, while events provide real-time notifications. Removing the messages table is technically feasible but would add complexity and potential performance overhead without clear benefits.
+Removing the messages table is feasible and recommended given:
+- Events already contain full message content
+- UI already works from events
+- Dual write is unnecessary overhead
+- Clear migration path with rollback option
 
-**The current dual-table architecture is appropriate** for the use case. If event-sourcing semantics are required for audit/compliance reasons, consider the materialized view pattern (Option C) rather than eliminating the messages table entirely.
+The implementation can be done incrementally with each phase deployable independently.
