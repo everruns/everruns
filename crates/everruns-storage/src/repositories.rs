@@ -566,7 +566,7 @@ impl Database {
 
     /// List only message events for a session (for MessageStore implementation)
     ///
-    /// Returns events with types: message.user, message.assistant, message.tool_call, message.tool_result
+    /// Returns events with types: message.user, message.agent, message.tool_call, message.tool_result
     /// Ordered by sequence for conversation reconstruction.
     pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
         let rows = sqlx::query_as::<_, EventRow>(
@@ -574,7 +574,7 @@ impl Database {
             SELECT id, session_id, sequence, event_type, data, created_at
             FROM events
             WHERE session_id = $1
-              AND event_type IN ('message.user', 'message.assistant', 'message.tool_call', 'message.tool_result')
+              AND event_type IN ('message.user', 'message.agent', 'message.tool_call', 'message.tool_result')
             ORDER BY sequence ASC
             "#,
         )

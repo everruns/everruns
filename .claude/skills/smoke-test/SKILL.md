@@ -170,7 +170,7 @@ After workflow completes, verify events are created alongside messages:
 # List events for the session
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data | length'
 ```
-Expected: At least 2 events (message.user and message.assistant)
+Expected: At least 2 events (message.user and message.agent)
 
 ```bash
 # Check for message.user event
@@ -179,10 +179,10 @@ curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" 
 Expected: Event with `event_type: "message.user"` and `data` containing `message_id`, `content`
 
 ```bash
-# Check for message.assistant event
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.assistant")'
+# Check for message.agent event
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.agent")'
 ```
-Expected: Event with `event_type: "message.assistant"` and `data` containing `message_id`, `role`, `content`
+Expected: Event with `event_type: "message.agent"` and `data` containing `message_id`, `role`, `content`
 
 **Note:** The UI uses the `/sse` endpoint for real-time streaming and the `/events` endpoint for polling/listing events.
 

@@ -138,7 +138,7 @@ function eventsToMessages(events: Event[]): Message[] {
   // Filter only message events and transform them
   const messageEvents = events.filter(e =>
     e.event_type === "message.user" ||
-    e.event_type === "message.assistant" ||
+    e.event_type === "message.agent" ||
     e.event_type === "message.tool_call" ||
     e.event_type === "message.tool_result"
   );
@@ -155,7 +155,7 @@ function eventsToMessages(events: Event[]): Message[] {
     // Map event type to message role
     const roleMap: Record<string, Message["role"]> = {
       "message.user": "user",
-      "message.assistant": "assistant",
+      "message.agent": "assistant",
       "message.tool_call": "tool_call",
       "message.tool_result": "tool_result",
     };
