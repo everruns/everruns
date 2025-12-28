@@ -191,8 +191,9 @@ Before creating a pull request, ensure:
 4. **UI Linting**: Run `npm run lint` in `apps/ui/` to check for oxlint issues
 5. **UI Build**: Run `npm run build` in `apps/ui/` to verify TypeScript and build
 6. **Smoke tests**: Run smoke tests to verify the system works end-to-end
-7. **Update specs**: If your changes affect system behavior, update the relevant specs in `specs/`
-8. **Update docs**: If your changes affect usage or configuration, update public docs in `./docs` folder
+7. **Examples**: If adding or modifying examples, validate they run successfully against a running API
+8. **Update specs**: If your changes affect system behavior, update the relevant specs in `specs/`
+9. **Update docs**: If your changes affect usage or configuration, update public docs in `./docs` folder
 
 ```bash
 # Quick pre-PR check (Rust)
