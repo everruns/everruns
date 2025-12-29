@@ -7,15 +7,10 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus } from "lucide-react";
 import { AgentCard } from "@/components/agents";
-import { useAgentCapabilitiesBulk } from "@/hooks/use-agent-capabilities-bulk";
 
 export default function AgentsPage() {
   const { data: agents, isLoading, error } = useAgents();
   const { data: allCapabilities } = useCapabilities();
-
-  // Get agent IDs for bulk capabilities fetch
-  const agentIds = agents?.map((a) => a.id) || [];
-  const { data: agentCapabilitiesMap } = useAgentCapabilitiesBulk(agentIds);
 
   if (error) {
     return (
@@ -69,7 +64,6 @@ export default function AgentsPage() {
             <AgentCard
               key={agent.id}
               agent={agent}
-              capabilities={agentCapabilitiesMap?.[agent.id]}
               allCapabilities={allCapabilities}
               showEditButton
             />

@@ -1,13 +1,14 @@
 // Capability hooks
+//
+// Note: Agent-specific capabilities are now part of the agent resource.
+// Use useAgent() to get an agent with its capabilities included.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
-  getAgentCapabilities,
   getCapability,
   listCapabilities,
-  setAgentCapabilities,
 } from "@/lib/api/capabilities";
-import type { CapabilityId, UpdateAgentCapabilitiesRequest } from "@/lib/api/types";
+import type { CapabilityId } from "@/lib/api/types";
 
 export function useCapabilities() {
   return useQuery({
@@ -21,30 +22,5 @@ export function useCapability(capabilityId: CapabilityId | undefined) {
     queryKey: ["capability", capabilityId],
     queryFn: () => getCapability(capabilityId!),
     enabled: !!capabilityId,
-  });
-}
-
-export function useAgentCapabilities(agentId: string | undefined) {
-  return useQuery({
-    queryKey: ["agent-capabilities", agentId],
-    queryFn: () => getAgentCapabilities(agentId!),
-    enabled: !!agentId,
-  });
-}
-
-export function useSetAgentCapabilities() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({
-      agentId,
-      request,
-    }: {
-      agentId: string;
-      request: UpdateAgentCapabilitiesRequest;
-    }) => setAgentCapabilities(agentId, request),
-    onSuccess: (_, { agentId }) => {
-      queryClient.invalidateQueries({ queryKey: ["agent-capabilities", agentId] });
-    },
   });
 }

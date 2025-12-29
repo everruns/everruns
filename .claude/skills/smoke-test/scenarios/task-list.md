@@ -19,33 +19,29 @@ Tests for the StatelessTodoList capability that enables agents to create and man
 ### 1. Create Agent with StatelessTodoList Capability
 
 ```bash
-# Create agent
+# Create agent with stateless_todo_list capability
 AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Task Manager Agent",
     "system_prompt": "You are a helpful assistant that uses task lists to track your work. When working on multi-step problems, create a todo list first.",
-    "description": "Agent with task management capability"
+    "description": "Agent with task management capability",
+    "capabilities": ["stateless_todo_list"]
   }')
 AGENT_ID=$(echo $AGENT | jq -r '.id')
 echo "Agent ID: $AGENT_ID"
-
-# Enable stateless_todo_list capability
-curl -s -X PUT "http://localhost:9000/v1/agents/$AGENT_ID/capabilities" \
-  -H "Content-Type: application/json" \
-  -d '{"capabilities": ["stateless_todo_list"]}' | jq
 ```
 
-Expected: Agent created with `stateless_todo_list` capability assigned
+Expected: Agent created with `stateless_todo_list` capability
 
-### 2. Verify Capability Tools Available
+### 2. Verify Capability is Assigned
 
 ```bash
-# Get capabilities to verify stateless_todo_list is enabled
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/capabilities" | jq
+# Get agent to verify stateless_todo_list is in capabilities
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID" | jq '.capabilities'
 ```
 
-Expected: Shows `stateless_todo_list` capability with position
+Expected: Shows `["stateless_todo_list"]` in agent capabilities
 
 ### 3. Create Session and Trigger Task List Usage
 
@@ -114,7 +110,7 @@ Expected: Tool result showing:
 
 1. Check that the capability is set on the agent:
    ```bash
-   curl -s "http://localhost:9000/v1/agents/$AGENT_ID/capabilities" | jq
+   curl -s "http://localhost:9000/v1/agents/$AGENT_ID" | jq '.capabilities'
    ```
 
 2. Verify the system prompt includes task management instructions:

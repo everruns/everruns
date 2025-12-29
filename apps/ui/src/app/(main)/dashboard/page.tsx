@@ -1,6 +1,6 @@
 "use client";
 
-import { useAgents, useCapabilities, useAgentCapabilitiesBulk } from "@/hooks";
+import { useAgents, useCapabilities } from "@/hooks";
 import { Header } from "@/components/layout/header";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { AgentListWidget } from "@/components/dashboard/agent-list-widget";
@@ -13,10 +13,6 @@ import { Plus, Boxes } from "lucide-react";
 export default function DashboardPage() {
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const { data: allCapabilities } = useCapabilities();
-
-  // Get agent IDs for bulk capabilities fetch
-  const agentIds = agents?.map((a) => a.id) || [];
-  const { data: agentCapabilitiesMap } = useAgentCapabilitiesBulk(agentIds);
 
   if (agentsLoading) {
     return (
@@ -48,7 +44,6 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2">
           <AgentListWidget
             agents={agents}
-            agentCapabilitiesMap={agentCapabilitiesMap}
             allCapabilities={allCapabilities}
           />
 

@@ -6,7 +6,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_core::{Agent, AgentStatus};
+use everruns_core::{Agent, AgentStatus, CapabilityId};
 use everruns_storage::Database;
 
 use crate::common::ListResponse;
@@ -37,6 +37,11 @@ pub struct CreateAgentRequest {
     #[serde(default)]
     #[schema(example = json!(["support", "customer-facing"]))]
     pub tags: Vec<String>,
+    /// Capabilities to enable for this agent.
+    /// Capabilities provide tools and system prompt additions.
+    #[serde(default)]
+    #[schema(example = json!(["current_time", "web_fetch"]), value_type = Vec<String>)]
+    pub capabilities: Vec<CapabilityId>,
 }
 
 /// Request to update an agent. Only provided fields will be updated.
@@ -61,6 +66,10 @@ pub struct UpdateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!(["updated-tag"]))]
     pub tags: Option<Vec<String>>,
+    /// Capabilities to enable for this agent. Replaces existing capabilities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!(["current_time", "web_fetch"]), value_type = Option<Vec<String>>)]
+    pub capabilities: Option<Vec<CapabilityId>>,
     /// The status of the agent. Set to "archived" to soft-delete.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<AgentStatus>,

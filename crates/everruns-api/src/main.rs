@@ -18,12 +18,12 @@ mod users;
 use anyhow::{Context, Result};
 use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
-use common::{ListResponse, UpdateAgentCapabilitiesRequest};
+use common::ListResponse;
 use everruns_core::llm_entities::LlmProvider;
 use everruns_core::{
-    Agent, AgentCapability, AgentStatus, CapabilityInfo, Event, FileInfo, FileStat, GrepMatch,
-    GrepResult, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType,
-    Session, SessionFile, SessionStatus,
+    Agent, AgentStatus, CapabilityInfo, Event, FileInfo, FileStat, GrepMatch, GrepResult, LlmModel,
+    LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Session, SessionFile,
+    SessionStatus,
 };
 use everruns_storage::{Database, EncryptionService};
 use everruns_worker::{create_runner, RunnerConfig};
@@ -93,8 +93,6 @@ struct HealthState {
         llm_models::delete_model,
         capabilities::list_capabilities,
         capabilities::get_capability,
-        capabilities::get_agent_capabilities,
-        capabilities::set_agent_capabilities,
         users::list_users,
         session_files::get_root,
         session_files::get_path,
@@ -126,9 +124,7 @@ struct HealthState {
             llm_models::CreateLlmModelRequest,
             llm_models::UpdateLlmModelRequest,
             CapabilityInfo,  // CapabilityId and CapabilityStatus use value_type = String in schemas
-            AgentCapability, UpdateAgentCapabilitiesRequest,
             ListResponse<CapabilityInfo>,
-            ListResponse<AgentCapability>,
             users::User,
             users::ListUsersQuery,
             ListResponse<users::User>,
@@ -231,7 +227,8 @@ async fn main() -> Result<()> {
     let events_state = events::AppState::new(db.clone());
     let llm_providers_state = llm_providers::AppState::new(db.clone(), encryption.clone());
     let llm_models_state = llm_models::AppState::new(db.clone());
-    let capabilities_state = capabilities::AppState::new(db.clone());
+    let capability_service = Arc::new(services::CapabilityService::new(db.clone()));
+    let capabilities_state = capabilities::AppState::new(capability_service);
     let session_files_state = session_files::AppState::new(db.clone());
     let users_state = users::UsersState {
         db: db.clone(),

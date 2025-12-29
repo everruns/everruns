@@ -29,20 +29,16 @@ These tests verify the FileSystem capability tools work correctly through the ag
 ### Setup: Create Agent with FileSystem Capability
 
 ```bash
-# Create agent with file_system capability
+# Create agent with session_file_system capability
 AGENT=$(curl -s -X POST "$BASE_URL/v1/agents" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "FileSystem Test Agent",
     "system_prompt": "You are a helpful assistant with file system access.",
-    "description": "Agent for testing FileSystem capability"
+    "description": "Agent for testing FileSystem capability",
+    "capabilities": ["session_file_system"]
   }')
 AGENT_ID=$(echo $AGENT | jq -r '.id')
-
-# Set the session_file_system capability
-curl -s -X PUT "$BASE_URL/v1/agents/$AGENT_ID/capabilities" \
-  -H "Content-Type: application/json" \
-  -d '{"capabilities": ["session_file_system"]}' | jq
 
 # Create a session
 SESSION=$(curl -s -X POST "$BASE_URL/v1/agents/$AGENT_ID/sessions" \

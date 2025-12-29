@@ -7,6 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::capability_types::CapabilityId;
+
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
@@ -63,6 +65,11 @@ pub struct Agent {
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Capabilities enabled for this agent.
+    /// Capabilities add tools and system prompt modifications.
+    #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
+    pub capabilities: Vec<CapabilityId>,
     /// Current lifecycle status of the agent.
     pub status: AgentStatus,
     /// Timestamp when the agent was created.

@@ -118,12 +118,12 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 
 Capabilities are modular functionality units that can be enabled on agents. See [capabilities.md](capabilities.md) for full specification.
 
+Capabilities are managed as part of the agent resource. When creating or updating an agent, you can specify the capabilities to enable. The agent response includes the list of enabled capabilities.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/capabilities` | List all available capabilities |
 | GET | `/v1/capabilities/{capability_id}` | Get capability details |
-| GET | `/v1/agents/{agent_id}/capabilities` | Get capabilities for an agent |
-| PUT | `/v1/agents/{agent_id}/capabilities` | Set capabilities for an agent |
 
 **Request/Response Examples:**
 
@@ -145,11 +145,34 @@ GET /v1/capabilities
 }
 ```
 
-Set agent capabilities:
+Create agent with capabilities:
 ```json
-PUT /v1/agents/{agent_id}/capabilities
+POST /v1/agents
 {
-  "capabilities": ["current_time", "research"]
+  "name": "Research Assistant",
+  "system_prompt": "You are a helpful research assistant.",
+  "capabilities": ["current_time", "web_fetch"]
+}
+```
+
+Update agent capabilities:
+```json
+PATCH /v1/agents/{agent_id}
+{
+  "capabilities": ["current_time", "web_fetch", "session_file_system"]
+}
+```
+
+Agent response includes capabilities:
+```json
+GET /v1/agents/{agent_id}
+{
+  "id": "...",
+  "name": "Research Assistant",
+  "system_prompt": "You are a helpful research assistant.",
+  "capabilities": ["current_time", "web_fetch"],
+  "status": "active",
+  ...
 }
 ```
 

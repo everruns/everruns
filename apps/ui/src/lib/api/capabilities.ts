@@ -1,12 +1,13 @@
 // Capability API functions
+//
+// Note: Agent-specific capabilities are managed through the agents API.
+// See agents.ts for createAgent/updateAgent with capabilities.
 
 import { api } from "./client";
 import type {
-  AgentCapability,
   Capability,
   CapabilityId,
   ListResponse,
-  UpdateAgentCapabilitiesRequest,
 } from "./types";
 
 export async function listCapabilities(): Promise<Capability[]> {
@@ -21,24 +22,4 @@ export async function getCapability(
     `/v1/capabilities/${capabilityId}`
   );
   return response.data;
-}
-
-export async function getAgentCapabilities(
-  agentId: string
-): Promise<AgentCapability[]> {
-  const response = await api.get<ListResponse<AgentCapability>>(
-    `/v1/agents/${agentId}/capabilities`
-  );
-  return response.data.data;
-}
-
-export async function setAgentCapabilities(
-  agentId: string,
-  request: UpdateAgentCapabilitiesRequest
-): Promise<AgentCapability[]> {
-  const response = await api.put<ListResponse<AgentCapability>>(
-    `/v1/agents/${agentId}/capabilities`,
-    request
-  );
-  return response.data.data;
 }

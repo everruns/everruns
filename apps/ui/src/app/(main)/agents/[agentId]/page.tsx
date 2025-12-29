@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useMemo } from "react";
-import { useAgent, useSessions, useCreateSession, useAgentCapabilities, useCapabilities, useLlmModels } from "@/hooks";
+import { useAgent, useSessions, useCreateSession, useCapabilities, useLlmModels } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,6 @@ export default function AgentDetailPage({
   const router = useRouter();
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const { data: sessions, isLoading: sessionsLoading } = useSessions(agentId);
-  const { data: agentCapabilities, isLoading: capabilitiesLoading } = useAgentCapabilities(agentId);
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
@@ -70,9 +69,8 @@ export default function AgentDetailPage({
   const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
 
-  const sortedCapabilities = agentCapabilities
-    ? [...agentCapabilities].sort((a, b) => a.position - b.position)
-    : [];
+  // Capabilities are now part of the agent resource
+  const agentCapabilities = agent?.capabilities ?? [];
 
   if (agentLoading) {
     return (
@@ -206,12 +204,7 @@ export default function AgentDetailPage({
               <CardTitle>Capabilities</CardTitle>
             </CardHeader>
             <CardContent>
-              {capabilitiesLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-8 w-full" />
-                  <Skeleton className="h-8 w-full" />
-                </div>
-              ) : sortedCapabilities.length === 0 ? (
+              {agentCapabilities.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No capabilities enabled.{" "}
                   <Link href={`/agents/${agentId}/edit`} className="text-primary hover:underline">
@@ -220,8 +213,8 @@ export default function AgentDetailPage({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {sortedCapabilities.map((ac) => {
-                    const cap = getCapabilityInfo(ac.capability_id);
+                  {agentCapabilities.map((capId) => {
+                    const cap = getCapabilityInfo(capId);
                     if (!cap) return null;
                     const IconComponent = cap.icon
                       ? iconMap[cap.icon] || CircleOff
@@ -229,7 +222,7 @@ export default function AgentDetailPage({
 
                     return (
                       <div
-                        key={ac.capability_id}
+                        key={capId}
                         className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
                       >
                         <IconComponent className="w-4 h-4" />
