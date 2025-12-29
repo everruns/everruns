@@ -350,11 +350,12 @@ impl ToolRegistry {
     /// - TestWeather tools: get_weather, get_forecast
     /// - TaskList tools: write_todos
     /// - FileSystem tools: read_file, write_file, list_directory, grep_files, delete_file, stat_file
+    /// - WebFetch tools: web_fetch
     pub fn with_defaults() -> Self {
         use crate::capabilities::{
             AddTool, DeleteFileTool, DivideTool, GetCurrentTimeTool, GetForecastTool,
             GetWeatherTool, GrepFilesTool, ListDirectoryTool, MultiplyTool, ReadFileTool,
-            StatFileTool, SubtractTool, WriteFileTool, WriteTodosTool,
+            StatFileTool, SubtractTool, WebFetchTool, WriteFileTool, WriteTodosTool,
         };
 
         ToolRegistry::builder()
@@ -377,6 +378,8 @@ impl ToolRegistry {
             .tool(GrepFilesTool)
             .tool(DeleteFileTool)
             .tool(StatFileTool)
+            // WebFetch capability tools
+            .tool(WebFetchTool)
             .build()
     }
 
@@ -808,8 +811,11 @@ mod tests {
         assert!(registry.has("delete_file"), "should have delete_file");
         assert!(registry.has("stat_file"), "should have stat_file");
 
+        // WebFetch capability tools
+        assert!(registry.has("web_fetch"), "should have web_fetch");
+
         // Total count
-        assert_eq!(registry.len(), 15, "should have 15 default tools");
+        assert_eq!(registry.len(), 16, "should have 16 default tools");
     }
 
     #[tokio::test]
