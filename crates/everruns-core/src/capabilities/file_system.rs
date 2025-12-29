@@ -38,7 +38,7 @@ impl Capability for FileSystemCapability {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some("folder")
+        Some("hard-drive")
     }
 
     fn category(&self) -> Option<&str> {
@@ -629,7 +629,7 @@ mod tests {
         assert_eq!(cap.id(), CapabilityId::FILE_SYSTEM);
         assert_eq!(cap.name(), "File System");
         assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("folder"));
+        assert_eq!(cap.icon(), Some("hard-drive"));
         assert_eq!(cap.category(), Some("File Operations"));
     }
 
