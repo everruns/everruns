@@ -58,7 +58,7 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 | `tags` | string[] | Tags for organization/filtering |
 | `created_at` | timestamp | Creation time (from event.created_at) |
 
-**Note:** Messages are stored as events with types `message.user`, `message.assistant`, `message.tool_call`, `message.tool_result`. System messages are handled internally and not persisted to events.
+**Note:** Messages are stored as events with types `message.user`, `message.agent`, `message.tool_call`, `message.tool_result`. System messages are handled internally and not persisted to events.
 
 **ContentPart types (discriminated by `type` field):**
 
@@ -149,7 +149,7 @@ Messages are stored in the `events` table with the full content in the `data` JS
   "tags": []
 }
 
-// Event for an assistant message with tool calls (event_type: "message.assistant")
+// Event for an agent message with tool calls (event_type: "message.agent")
 {
   "message_id": "...",
   "role": "assistant",
@@ -176,11 +176,19 @@ The primary data store for conversation messages and SSE notifications.
 | `data` | JSON | Event-specific payload |
 | `created_at` | timestamp | Event time |
 
+**Event Type Naming Convention:**
+
+Event types follow the pattern `{entity}.{action}` where:
+- `entity` - The domain entity (e.g., `message`, `step`, `tool`, `session`)
+- `action` - The action or state (e.g., `user`, `agent`, `started`, `completed`)
+
+This convention ensures consistent, predictable event type names across the system.
+
 **Event Types:**
 
 1. **Message Events** - Primary conversation data (stored in `data` field)
    - `message.user` - User message
-   - `message.assistant` - Assistant response
+   - `message.agent` - Agent response (from LLM)
    - `message.tool_call` - Tool call request
    - `message.tool_result` - Tool execution result
 

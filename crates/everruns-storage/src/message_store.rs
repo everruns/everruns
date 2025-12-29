@@ -43,7 +43,7 @@ impl MessageStore for DbMessageStore {
         // Note: user messages are handled by MessageService in the API layer
         // System messages are not emitted as events (per design decision)
         let event_type = match message.role {
-            MessageRole::Assistant => Some("message.assistant"),
+            MessageRole::Assistant => Some("message.agent"),
             MessageRole::ToolCall => Some("message.tool_call"),
             MessageRole::ToolResult => Some("message.tool_result"),
             MessageRole::User | MessageRole::System => None,

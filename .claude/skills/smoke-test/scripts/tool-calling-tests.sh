@@ -615,7 +615,7 @@ test_events_sync() {
     local event_count=$(echo "$events" | jq '.data | length')
     log_verbose "Events count: $event_count"
 
-    # Should have at least 2 events: message.user and message.assistant
+    # Should have at least 2 events: message.user and message.agent
     if [ "$event_count" -lt 2 ]; then
         log_error "Expected at least 2 events, got $event_count"
         return 1
@@ -629,13 +629,13 @@ test_events_sync() {
     fi
     log_verbose "User events: $user_events"
 
-    # Check for message.assistant event
-    local assistant_events=$(echo "$events" | jq '[.data[] | select(.event_type == "message.assistant")] | length')
-    if [ "$assistant_events" -lt 1 ]; then
-        log_error "Expected at least 1 message.assistant event"
+    # Check for message.agent event
+    local agent_events=$(echo "$events" | jq '[.data[] | select(.event_type == "message.agent")] | length')
+    if [ "$agent_events" -lt 1 ]; then
+        log_error "Expected at least 1 message.agent event"
         return 1
     fi
-    log_verbose "Assistant events: $assistant_events"
+    log_verbose "Agent events: $agent_events"
 
     # Verify event data contains message info
     local first_user_event=$(echo "$events" | jq '.data[] | select(.event_type == "message.user") | .data')
