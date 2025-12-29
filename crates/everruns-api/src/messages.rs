@@ -39,7 +39,6 @@ pub use everruns_core::{
 pub enum MessageRole {
     User,
     Assistant,
-    ToolCall,
     ToolResult,
     System,
 }
@@ -49,7 +48,6 @@ impl std::fmt::Display for MessageRole {
         match self {
             MessageRole::User => write!(f, "user"),
             MessageRole::Assistant => write!(f, "assistant"),
-            MessageRole::ToolCall => write!(f, "tool_call"),
             MessageRole::ToolResult => write!(f, "tool_result"),
             MessageRole::System => write!(f, "system"),
         }
@@ -60,7 +58,6 @@ impl From<&str> for MessageRole {
     fn from(s: &str) -> Self {
         match s {
             "assistant" => MessageRole::Assistant,
-            "tool_call" => MessageRole::ToolCall,
             "tool_result" => MessageRole::ToolResult,
             "system" => MessageRole::System,
             _ => MessageRole::User,
@@ -88,7 +85,7 @@ pub struct Message {
 
 /// Input message for creating a user message
 ///
-/// Only user messages can be created via the API. Assistant, tool_call,
+/// Only user messages can be created via the API. Assistant,
 /// tool_result, and system messages are created internally by the system.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InputMessage {
@@ -276,7 +273,6 @@ mod tests {
     fn test_message_role_display() {
         assert_eq!(MessageRole::User.to_string(), "user");
         assert_eq!(MessageRole::Assistant.to_string(), "assistant");
-        assert_eq!(MessageRole::ToolCall.to_string(), "tool_call");
         assert_eq!(MessageRole::ToolResult.to_string(), "tool_result");
         assert_eq!(MessageRole::System.to_string(), "system");
     }
@@ -285,7 +281,7 @@ mod tests {
     fn test_message_role_from_str() {
         assert_eq!(MessageRole::from("user"), MessageRole::User);
         assert_eq!(MessageRole::from("assistant"), MessageRole::Assistant);
-        assert_eq!(MessageRole::from("tool_call"), MessageRole::ToolCall);
+        assert_eq!(MessageRole::from("tool_result"), MessageRole::ToolResult);
         assert_eq!(MessageRole::from("unknown"), MessageRole::User);
     }
 }

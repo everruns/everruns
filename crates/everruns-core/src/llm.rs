@@ -282,7 +282,6 @@ impl From<&crate::message::Message> for LlmMessage {
             crate::message::MessageRole::System => LlmMessageRole::System,
             crate::message::MessageRole::User => LlmMessageRole::User,
             crate::message::MessageRole::Assistant => LlmMessageRole::Assistant,
-            crate::message::MessageRole::ToolCall => LlmMessageRole::Assistant,
             crate::message::MessageRole::ToolResult => LlmMessageRole::Tool,
         };
 

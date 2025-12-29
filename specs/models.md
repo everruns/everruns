@@ -51,14 +51,14 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 | `id` | UUID v7 | Unique identifier (stored in event.data.message_id) |
 | `session_id` | UUID v7 | Parent session reference (from event.session_id) |
 | `sequence` | integer | Order within session (from event.sequence) |
-| `role` | enum | `user`, `assistant`, `tool_call`, `tool_result` |
+| `role` | enum | `user`, `assistant`, `tool_result` |
 | `content` | ContentPart[] | Array of content parts (see below) |
 | `controls` | Controls? | Runtime controls for message processing |
 | `metadata` | object? | Message-level metadata (e.g., locale) |
 | `tags` | string[] | Tags for organization/filtering |
 | `created_at` | timestamp | Creation time (from event.created_at) |
 
-**Note:** Messages are stored as events with types `message.user`, `message.agent`, `message.tool_call`, `message.tool_result`. System messages are handled internally and not persisted to events.
+**Note:** Messages are stored as events with types `message.user`, `message.agent`, `message.tool_result`. Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. System messages are handled internally and not persisted to events.
 
 **ContentPart types (discriminated by `type` field):**
 
@@ -124,7 +124,7 @@ Controls are optional and allow per-message overrides for model selection and re
 }
 ```
 
-**Note:** The `message.role` field defaults to `"user"` and can be omitted. Only `user` messages can be created via the API; `assistant`, `tool_call`, `tool_result`, and `system` messages are created internally by the system.
+**Note:** The `message.role` field defaults to `"user"` and can be omitted. Only `user` messages can be created via the API; `assistant`, `tool_result`, and `system` messages are created internally by the system.
 
 **InputContentPart types (allowed in user messages):**
 
@@ -188,8 +188,7 @@ This convention ensures consistent, predictable event type names across the syst
 
 1. **Message Events** - Primary conversation data (stored in `data` field)
    - `message.user` - User message
-   - `message.agent` - Agent response (from LLM)
-   - `message.tool_call` - Tool call request
+   - `message.agent` - Agent response (from LLM, may contain tool calls in content)
    - `message.tool_result` - Tool execution result
 
 2. **Step Events** - Workflow progress notifications
@@ -386,7 +385,7 @@ Profiles are matched by provider_type + model_id with version normalization (e.g
 |----------|----------|
 | What stores conversation? | **Events** table with `event_type` = `message.*` |
 | What are Events for? | Primary data store for messages AND SSE notifications |
-| Where are tool calls stored? | Events with `event_type` = `message.tool_call` |
+| Where are tool calls stored? | In `message.agent` events as `ContentPart::ToolCall` |
 | Where are tool results stored? | Events with `event_type` = `message.tool_result` |
 | Session status? | Explicit status field (pending, running, failed) |
 | Where are capabilities defined? | In-memory registry in API layer |

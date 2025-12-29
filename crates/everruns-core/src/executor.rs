@@ -18,7 +18,7 @@ use crate::events::LoopEvent;
 use crate::llm::{
     LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider, LlmStreamEvent,
 };
-use crate::message::{Message, MessageRole};
+use crate::message::Message;
 use crate::step::{LoopStep, StepInput, StepOutput, StepResult};
 use crate::traits::{EventEmitter, MessageStore, ToolExecutor};
 
@@ -200,15 +200,7 @@ where
             if has_tool_calls {
                 let tool_calls = llm_result.tool_calls.unwrap();
 
-                // Store tool call messages
-                for tool_call in &tool_calls {
-                    let tool_call_msg = Message::tool_call(tool_call);
-                    self.message_store
-                        .store(session_id, tool_call_msg.clone())
-                        .await?;
-                    messages.push(tool_call_msg);
-                }
-
+                // Tool calls are already embedded in the assistant message content
                 // Execute tools
                 let tool_results = self.execute_tools(session_id, &tool_calls).await?;
 
@@ -334,12 +326,8 @@ where
         });
 
         if has_tool_calls {
-            // Add tool call messages
+            // Tool calls are embedded in the assistant message content
             let tool_calls = llm_result.tool_calls.unwrap();
-            for tool_call in &tool_calls {
-                messages.push(Message::tool_call(tool_call));
-            }
-
             Ok(StepOutput::continue_with(step, messages, tool_calls))
         } else {
             Ok(StepOutput::complete(step, messages))
@@ -395,11 +383,8 @@ where
         }
 
         // Add conversation messages
+        // Tool calls are embedded in assistant messages via ContentPart::ToolCall
         for msg in messages {
-            // Skip tool_call messages as they're represented in assistant messages
-            if msg.role == MessageRole::ToolCall {
-                continue;
-            }
             llm_messages.push(msg.into());
         }
 

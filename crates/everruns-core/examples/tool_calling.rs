@@ -228,9 +228,6 @@ fn print_conversation_steps(messages: &[Message]) {
                     println!("    {}. [Assistant] {}", i + 1, text);
                 }
             }
-            MessageRole::ToolCall => {
-                // Skip - already shown in assistant message
-            }
             MessageRole::ToolResult => {
                 if let Some(tr) = msg.tool_result_content() {
                     if let Some(ref err) = tr.error {

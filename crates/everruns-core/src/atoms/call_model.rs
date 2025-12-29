@@ -171,14 +171,9 @@ where
             });
         }
 
-        // Add conversation messages (user, assistant, tool calls, tool results)
-        // Note: ToolCall role messages are skipped as tool calls are already embedded
-        // in their corresponding Assistant messages via ContentPart::ToolCall.
-        // This avoids duplicate tool call information being sent to the LLM.
+        // Add conversation messages (user, assistant, tool results)
+        // Tool calls are embedded in Assistant messages via ContentPart::ToolCall.
         for msg in &patched_messages {
-            if msg.role == MessageRole::ToolCall {
-                continue;
-            }
             llm_messages.push(msg.into());
         }
 
@@ -237,14 +232,6 @@ where
         self.message_store
             .store(session_id, assistant_message.clone())
             .await?;
-
-        // 8. If there are tool calls, store tool_call messages too
-        if has_tool_calls {
-            for tool_call in &tool_calls {
-                let tool_call_msg = Message::tool_call(tool_call);
-                self.message_store.store(session_id, tool_call_msg).await?;
-            }
-        }
 
         Ok(CallModelResult {
             text,

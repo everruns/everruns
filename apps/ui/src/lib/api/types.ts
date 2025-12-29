@@ -76,7 +76,7 @@ export interface UpdateSessionRequest {
 // Message types (M2) - PRIMARY data
 // ============================================
 
-export type MessageRole = "user" | "assistant" | "tool_call" | "tool_result" | "system";
+export type MessageRole = "user" | "assistant" | "tool_result" | "system";
 
 // ContentPart discriminated union - message content parts
 export type ContentPart =

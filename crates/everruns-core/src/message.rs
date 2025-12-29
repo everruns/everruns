@@ -21,10 +21,8 @@ pub enum MessageRole {
     System,
     /// User message
     User,
-    /// Assistant response
+    /// Assistant response (may contain tool calls in content)
     Assistant,
-    /// Tool call request from assistant
-    ToolCall,
     /// Tool execution result
     ToolResult,
 }
@@ -35,7 +33,6 @@ impl std::fmt::Display for MessageRole {
             MessageRole::System => write!(f, "system"),
             MessageRole::User => write!(f, "user"),
             MessageRole::Assistant => write!(f, "assistant"),
-            MessageRole::ToolCall => write!(f, "tool_call"),
             MessageRole::ToolResult => write!(f, "tool_result"),
         }
     }
@@ -47,7 +44,6 @@ impl From<&str> for MessageRole {
             "system" => MessageRole::System,
             "user" => MessageRole::User,
             "assistant" => MessageRole::Assistant,
-            "tool_call" => MessageRole::ToolCall,
             "tool_result" => MessageRole::ToolResult,
             _ => MessageRole::User,
         }
@@ -431,22 +427,6 @@ impl Message {
             id: Uuid::now_v7(),
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
-            controls: None,
-            metadata: None,
-            created_at: Utc::now(),
-        }
-    }
-
-    /// Create a tool call message
-    pub fn tool_call(tool_call: &crate::tool_types::ToolCall) -> Self {
-        Self {
-            id: Uuid::now_v7(),
-            role: MessageRole::ToolCall,
-            content: vec![ContentPart::ToolCall(ToolCallContentPart {
-                id: tool_call.id.clone(),
-                name: tool_call.name.clone(),
-                arguments: tool_call.arguments.clone(),
-            })],
             controls: None,
             metadata: None,
             created_at: Utc::now(),

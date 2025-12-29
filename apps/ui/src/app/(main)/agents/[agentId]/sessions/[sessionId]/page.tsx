@@ -137,25 +137,14 @@ export default function SessionDetailPage({
     }
   });
 
-  // Get tool call ID from message content - handles new ContentPart[] format
-  const getToolCallId = (message: Message): string | null => {
-    if (Array.isArray(message.content)) {
-      for (const part of message.content) {
-        if (isToolCallPart(part)) {
-          return part.id;
-        }
-      }
+  // Get tool calls from assistant message content
+  const getToolCallsFromMessage = (message: Message): Array<{ id: string; name: string; arguments: Record<string, unknown> }> => {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) {
+      return [];
     }
-    return null;
-  };
-
-  // Check if assistant message has embedded tool_calls (for LLM context only, not UI display)
-  const hasEmbeddedToolCalls = (message: Message): boolean => {
-    if (message.role !== "assistant") return false;
-    if (Array.isArray(message.content)) {
-      return message.content.some(isToolCallPart);
-    }
-    return false;
+    return message.content
+      .filter(isToolCallPart)
+      .map(part => ({ id: part.id, name: part.name, arguments: part.arguments }));
   };
 
   if (sessionLoading) {
@@ -266,7 +255,6 @@ export default function SessionDetailPage({
               messages?.map((message) => {
                 const isUser = message.role === "user";
                 const isAssistant = message.role === "assistant";
-                const isToolCall = message.role === "tool_call";
                 const isToolResult = message.role === "tool_result";
 
                 // Skip tool_result messages - they're rendered with their tool_call
@@ -274,80 +262,91 @@ export default function SessionDetailPage({
                   return null;
                 }
 
-                // Skip assistant messages with embedded tool_calls - they're for LLM context only
-                // The actual tool calls are rendered as separate ToolCallCard components
-                if (hasEmbeddedToolCalls(message)) {
-                  return null;
-                }
-
-                // Render tool calls with their results
-                if (isToolCall) {
-                  const toolCallId = getToolCallId(message);
-                  const toolResult = toolCallId ? toolResultsMap.get(toolCallId) : undefined;
-                  return (
-                    <ToolCallCard
-                      key={message.id}
-                      toolCall={message}
-                      toolResult={toolResult}
-                    />
-                  );
-                }
+                // For assistant messages, get any embedded tool calls
+                const toolCalls = getToolCallsFromMessage(message);
 
                 // Extract metadata for assistant messages
                 const messageModel = isAssistant ? (message.metadata?.model as string | undefined) : undefined;
                 const messageReasoningEffort = isAssistant ? (message.metadata?.reasoning_effort as string | undefined) : undefined;
 
+                // Get text content (may be empty if only tool calls)
+                const textContent = getMessageContent(message);
+
                 // Render user and assistant messages
                 return (
-                  <div
-                    key={message.id}
-                    className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                  >
-                    <Card
-                      className={`max-w-[80%] ${
-                        isUser
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
-                      }`}
-                    >
-                      <CardContent className="p-3">
-                        <div className="flex items-start gap-2">
-                          {!isUser && (
-                            <Bot className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                          )}
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-medium opacity-70">
-                                {isUser ? "You" : isAssistant ? "Assistant" : message.role}
-                              </p>
-                              {/* Show model and reasoning info for assistant messages */}
-                              {isAssistant && (messageModel || messageReasoningEffort) && (
-                                <div className="flex items-center gap-1">
-                                  {messageModel && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
-                                      <Sparkles className="w-2.5 h-2.5" />
-                                      {messageModel}
-                                    </Badge>
-                                  )}
-                                  {messageReasoningEffort && (
-                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
-                                      <Brain className="w-2.5 h-2.5" />
-                                      {messageReasoningEffort}
-                                    </Badge>
+                  <div key={message.id} className="space-y-2">
+                    {/* Render text content if present */}
+                    {textContent && (
+                      <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                        <Card
+                          className={`max-w-[80%] ${
+                            isUser
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted"
+                          }`}
+                        >
+                          <CardContent className="p-3">
+                            <div className="flex items-start gap-2">
+                              {!isUser && (
+                                <Bot className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs font-medium opacity-70">
+                                    {isUser ? "You" : "Assistant"}
+                                  </p>
+                                  {/* Show model and reasoning info for assistant messages */}
+                                  {isAssistant && (messageModel || messageReasoningEffort) && (
+                                    <div className="flex items-center gap-1">
+                                      {messageModel && (
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
+                                          <Sparkles className="w-2.5 h-2.5" />
+                                          {messageModel}
+                                        </Badge>
+                                      )}
+                                      {messageReasoningEffort && (
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
+                                          <Brain className="w-2.5 h-2.5" />
+                                          {messageReasoningEffort}
+                                        </Badge>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
+                                <p className="text-sm whitespace-pre-wrap">
+                                  {textContent}
+                                </p>
+                              </div>
+                              {isUser && (
+                                <User className="w-5 h-5 mt-0.5 flex-shrink-0" />
                               )}
                             </div>
-                            <p className="text-sm whitespace-pre-wrap">
-                              {getMessageContent(message)}
-                            </p>
-                          </div>
-                          {isUser && (
-                            <User className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )}
+
+                    {/* Render tool calls from assistant message */}
+                    {toolCalls.map((tc) => {
+                      const toolResult = toolResultsMap.get(tc.id);
+                      // Create a synthetic message for ToolCallCard
+                      const toolCallMessage: Message = {
+                        id: `${message.id}-tc-${tc.id}`,
+                        session_id: message.session_id,
+                        sequence: message.sequence,
+                        role: "assistant",
+                        content: [{ type: "tool_call", id: tc.id, name: tc.name, arguments: tc.arguments }],
+                        tool_call_id: null,
+                        created_at: message.created_at,
+                      };
+                      return (
+                        <ToolCallCard
+                          key={tc.id}
+                          toolCall={toolCallMessage}
+                          toolResult={toolResult}
+                        />
+                      );
+                    })}
                   </div>
                 );
               })

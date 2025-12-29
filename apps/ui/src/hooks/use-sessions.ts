@@ -136,10 +136,10 @@ function extractToolCallId(content: ContentPart[]): string | null {
  */
 function eventsToMessages(events: Event[]): Message[] {
   // Filter only message events and transform them
+  // Note: Tool calls are embedded in message.agent events via ContentPart::ToolCall
   const messageEvents = events.filter(e =>
     e.event_type === "message.user" ||
     e.event_type === "message.agent" ||
-    e.event_type === "message.tool_call" ||
     e.event_type === "message.tool_result"
   );
 
@@ -153,10 +153,10 @@ function eventsToMessages(events: Event[]): Message[] {
     };
 
     // Map event type to message role
+    // Note: Tool calls are embedded in message.agent content, not separate events
     const roleMap: Record<string, Message["role"]> = {
       "message.user": "user",
       "message.agent": "assistant",
-      "message.tool_call": "tool_call",
       "message.tool_result": "tool_result",
     };
 

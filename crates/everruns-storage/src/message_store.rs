@@ -42,9 +42,9 @@ impl MessageStore for DbMessageStore {
         // Determine event type from message role
         // Note: user messages are handled by MessageService in the API layer
         // System messages are not emitted as events (per design decision)
+        // Tool calls are embedded in assistant messages via ContentPart::ToolCall
         let event_type = match message.role {
             MessageRole::Assistant => Some("message.agent"),
-            MessageRole::ToolCall => Some("message.tool_call"),
             MessageRole::ToolResult => Some("message.tool_result"),
             MessageRole::User | MessageRole::System => None,
         };
@@ -262,26 +262,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_call_message_content() {
-        let tool_call = ToolCall {
-            id: "call_xyz".to_string(),
-            name: "add".to_string(),
-            arguments: json!({"a": 10, "b": 20}),
-        };
-        let message = Message::tool_call(&tool_call);
-
-        assert_eq!(message.content.len(), 1);
-        if let ContentPart::ToolCall(tc) = &message.content[0] {
-            assert_eq!(tc.id, "call_xyz");
-            assert_eq!(tc.name, "add");
-            assert_eq!(tc.arguments["a"], 10);
-            assert_eq!(tc.arguments["b"], 20);
-        } else {
-            panic!("Expected ToolCall content part");
-        }
-    }
-
-    #[test]
     fn test_tool_result_success() {
         let message = Message::tool_result(
             "call_123",
@@ -375,32 +355,6 @@ mod tests {
     // ========================================================================
     // Test: Complex content preservation
     // ========================================================================
-
-    #[test]
-    fn test_tool_call_with_complex_arguments() {
-        let tool_call = ToolCall {
-            id: "call_complex".to_string(),
-            name: "search".to_string(),
-            arguments: json!({
-                "query": "rust programming",
-                "filters": {
-                    "date_range": {"start": "2024-01-01", "end": "2024-12-31"},
-                    "categories": ["tutorials", "documentation"],
-                    "max_results": 10
-                },
-                "include_metadata": true
-            }),
-        };
-        let message = Message::tool_call(&tool_call);
-
-        if let ContentPart::ToolCall(tc) = &message.content[0] {
-            assert_eq!(tc.arguments["query"], "rust programming");
-            assert_eq!(tc.arguments["filters"]["categories"][0], "tutorials");
-            assert_eq!(tc.arguments["filters"]["max_results"], 10);
-        } else {
-            panic!("Expected ToolCall content part");
-        }
-    }
 
     #[test]
     fn test_tool_result_with_complex_nested_result() {
