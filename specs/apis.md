@@ -124,8 +124,6 @@ Capabilities are managed as part of the agent resource. When creating or updatin
 |--------|------|-------------|
 | GET | `/v1/capabilities` | List all available capabilities |
 | GET | `/v1/capabilities/{capability_id}` | Get capability details |
-| GET | `/v1/agents/{agent_id}/capabilities` | Get capabilities for an agent (legacy) |
-| PUT | `/v1/agents/{agent_id}/capabilities` | Set capabilities for an agent (legacy) |
 
 **Request/Response Examples:**
 

@@ -475,15 +475,6 @@ export interface Capability {
   tool_definitions?: ToolDefinition[];
 }
 
-export interface AgentCapability {
-  capability_id: CapabilityId;
-  position: number;
-}
-
-export interface UpdateAgentCapabilitiesRequest {
-  capabilities: CapabilityId[];
-}
-
 // ============================================
 // User types (for members management)
 // ============================================

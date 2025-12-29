@@ -35,13 +35,3 @@ pub struct CreateEventRequest {
     /// Event payload as JSON. Structure depends on event_type.
     pub data: serde_json::Value,
 }
-
-/// Request to update agent capabilities.
-/// Replaces the agent's current capabilities with the provided list.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct UpdateAgentCapabilitiesRequest {
-    /// List of capability IDs in desired order.
-    /// Position is determined by array index.
-    #[schema(value_type = Vec<String>, example = json!(["file_operations", "web_search"]))]
-    pub capabilities: Vec<everruns_core::CapabilityId>,
-}

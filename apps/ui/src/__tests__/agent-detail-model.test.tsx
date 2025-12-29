@@ -45,6 +45,7 @@ const mockAgent: Agent = {
   system_prompt: "You are helpful",
   default_model_id: null,
   tags: ["test"],
+  capabilities: [],
   status: "active",
   created_at: "2025-01-01T00:00:00Z",
   updated_at: "2025-01-01T00:00:00Z",
@@ -119,7 +120,6 @@ const mockLlmModels: LlmModelWithProvider[] = [
 const mockUseAgent = jest.fn();
 const mockUseSessions = jest.fn();
 const mockUseCreateSession = jest.fn();
-const mockUseAgentCapabilities = jest.fn();
 const mockUseCapabilities = jest.fn();
 const mockUseLlmModels = jest.fn();
 
@@ -127,7 +127,6 @@ jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
   useSessions: (...args: unknown[]) => mockUseSessions(...args),
   useCreateSession: () => mockUseCreateSession(),
-  useAgentCapabilities: (...args: unknown[]) => mockUseAgentCapabilities(...args),
   useCapabilities: () => mockUseCapabilities(),
   useLlmModels: () => mockUseLlmModels(),
 }));
@@ -155,7 +154,6 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
     mockUseSessions.mockReturnValue({ data: mockSessions, isLoading: false });
     mockUseCreateSession.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
-    mockUseAgentCapabilities.mockReturnValue({ data: [], isLoading: false });
     mockUseCapabilities.mockReturnValue({ data: [] });
     mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
   });
@@ -251,7 +249,6 @@ describe("AgentDetailPage - Default Model Display in Configuration", () => {
 
     mockUseSessions.mockReturnValue({ data: [], isLoading: false });
     mockUseCreateSession.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
-    mockUseAgentCapabilities.mockReturnValue({ data: [], isLoading: false });
     mockUseCapabilities.mockReturnValue({ data: [] });
     mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
   });
