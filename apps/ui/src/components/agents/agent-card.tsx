@@ -19,7 +19,7 @@ import {
   Folder,
   LucideIcon,
 } from "lucide-react";
-import type { Agent, AgentCapability, Capability } from "@/lib/api/types";
+import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 
 const iconMap: Record<string, LucideIcon> = {
   "circle-off": CircleOff,
@@ -31,7 +31,6 @@ const iconMap: Record<string, LucideIcon> = {
 
 interface AgentCardProps {
   agent: Agent;
-  capabilities?: AgentCapability[];
   allCapabilities?: Capability[];
   showEditButton?: boolean;
   compact?: boolean;
@@ -39,19 +38,16 @@ interface AgentCardProps {
 
 export function AgentCard({
   agent,
-  capabilities,
   allCapabilities,
   showEditButton = false,
   compact = false,
 }: AgentCardProps) {
   // Get capability info for display
-  const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
+  const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
 
-  // Sort capabilities by position
-  const sortedCapabilities = capabilities
-    ? [...capabilities].sort((a, b) => a.position - b.position)
-    : [];
+  // Capabilities are now directly on the agent
+  const agentCapabilities = agent.capabilities ?? [];
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -76,18 +72,18 @@ export function AgentCard({
         </p>
 
         {/* Capabilities display */}
-        {sortedCapabilities.length > 0 && (
+        {agentCapabilities.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             <TooltipProvider>
-              {sortedCapabilities.map((ac) => {
-                const cap = getCapabilityInfo(ac.capability_id);
+              {agentCapabilities.map((capId) => {
+                const cap = getCapabilityInfo(capId);
                 if (!cap) return null;
                 const IconComponent = cap.icon
                   ? iconMap[cap.icon] || CircleOff
                   : CircleOff;
 
                 return (
-                  <Tooltip key={ac.capability_id}>
+                  <Tooltip key={capId}>
                     <TooltipTrigger className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-xs cursor-default">
                       <IconComponent className="w-3 h-3" />
                       {!compact && <span>{cap.name}</span>}

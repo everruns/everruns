@@ -7,6 +7,9 @@
 
 export type AgentStatus = "active" | "archived";
 
+/** Capability ID - extensible string-based identifier */
+export type CapabilityId = string;
+
 export interface Agent {
   id: string;
   name: string;
@@ -14,6 +17,7 @@ export interface Agent {
   system_prompt: string;
   default_model_id: string | null;
   tags: string[];
+  capabilities: CapabilityId[];
   status: AgentStatus;
   created_at: string;
   updated_at: string;
@@ -25,6 +29,7 @@ export interface CreateAgentRequest {
   system_prompt: string;
   default_model_id?: string;
   tags?: string[];
+  capabilities?: CapabilityId[];
 }
 
 export interface UpdateAgentRequest {
@@ -33,6 +38,7 @@ export interface UpdateAgentRequest {
   system_prompt?: string;
   default_model_id?: string;
   tags?: string[];
+  capabilities?: CapabilityId[];
   status?: AgentStatus;
 }
 
@@ -452,8 +458,7 @@ export interface UpdateLlmModelRequest {
 // Capability types
 // ============================================
 
-/** Capability ID - extensible string-based identifier */
-export type CapabilityId = string;
+// NOTE: CapabilityId is defined with Agent types above for proper ordering
 
 export type CapabilityStatus = "available" | "coming_soon" | "deprecated";
 

@@ -8,8 +8,6 @@ import {
   useUpdateAgent,
   useDeleteAgent,
   useCapabilities,
-  useAgentCapabilities,
-  useSetAgentCapabilities,
   useLlmModels,
 } from "@/hooks";
 import { Button } from "@/components/ui/button";
@@ -76,9 +74,6 @@ export default function EditAgentPage({
   // Capabilities data
   const { data: allCapabilities, isLoading: capabilitiesLoading } =
     useCapabilities();
-  const { data: agentCapabilities, isLoading: agentCapabilitiesLoading } =
-    useAgentCapabilities(agentId);
-  const setCapabilities = useSetAgentCapabilities();
 
   // LLM Models data
   const { data: models = [] } = useLlmModels();
@@ -113,13 +108,10 @@ export default function EditAgentPage({
     []
   );
 
-  // Capabilities state
+  // Capabilities state - now included directly in agent response
   const initialCapabilities = useMemo(() => {
-    if (!agentCapabilities) return [];
-    return agentCapabilities
-      .sort((a, b) => a.position - b.position)
-      .map((ac) => ac.capability_id);
-  }, [agentCapabilities]);
+    return agent?.capabilities ?? [];
+  }, [agent?.capabilities]);
 
   const [localCapabilities, setLocalCapabilities] = useState<
     CapabilityId[] | null
@@ -186,7 +178,12 @@ export default function EditAgentPage({
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
 
-      // Update agent
+      // Get capabilities to save
+      const capabilitiesToSave = localCapabilities ?? initialCapabilities;
+      const capabilitiesChanged =
+        JSON.stringify(capabilitiesToSave) !== JSON.stringify(initialCapabilities);
+
+      // Update agent (capabilities are now part of the agent resource)
       await updateAgent.mutateAsync({
         agentId,
         request: {
@@ -195,20 +192,10 @@ export default function EditAgentPage({
           system_prompt: formData.system_prompt,
           tags,
           default_model_id: formData.default_model_id || undefined,
+          // Only include capabilities if they changed
+          ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
         },
       });
-
-      // Update capabilities if changed
-      const capabilitiesToSave = localCapabilities ?? initialCapabilities;
-      if (
-        JSON.stringify(capabilitiesToSave) !==
-        JSON.stringify(initialCapabilities)
-      ) {
-        await setCapabilities.mutateAsync({
-          agentId,
-          request: { capabilities: capabilitiesToSave },
-        });
-      }
 
       router.push(`/agents/${agentId}`);
     } catch (error) {
@@ -230,9 +217,8 @@ export default function EditAgentPage({
     }
   };
 
-  const isLoading =
-    agentLoading || capabilitiesLoading || agentCapabilitiesLoading;
-  const isSaving = updateAgent.isPending || setCapabilities.isPending;
+  const isLoading = agentLoading || capabilitiesLoading;
+  const isSaving = updateAgent.isPending;
 
   if (isLoading) {
     return (
@@ -579,10 +565,9 @@ export default function EditAgentPage({
               </Button>
             </div>
 
-            {(updateAgent.error || setCapabilities.error) && (
+            {updateAgent.error && (
               <p className="text-sm text-destructive">
-                Error:{" "}
-                {updateAgent.error?.message || setCapabilities.error?.message}
+                Error: {updateAgent.error.message}
               </p>
             )}
           </div>

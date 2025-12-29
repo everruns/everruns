@@ -20,7 +20,7 @@ import {
   Folder,
   LucideIcon,
 } from "lucide-react";
-import type { Agent, AgentCapability, Capability } from "@/lib/api/types";
+import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 
 const iconMap: Record<string, LucideIcon> = {
   "circle-off": CircleOff,
@@ -32,18 +32,16 @@ const iconMap: Record<string, LucideIcon> = {
 
 interface AgentListWidgetProps {
   agents: Agent[];
-  agentCapabilitiesMap?: Record<string, AgentCapability[]>;
   allCapabilities?: Capability[];
 }
 
 export function AgentListWidget({
   agents,
-  agentCapabilitiesMap,
   allCapabilities,
 }: AgentListWidgetProps) {
   const activeAgents = agents.filter((a) => a.status === "active").slice(0, 5);
 
-  const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
+  const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
 
   return (
@@ -69,10 +67,8 @@ export function AgentListWidget({
         ) : (
           <div className="space-y-3">
             {activeAgents.map((agent) => {
-              const capabilities = agentCapabilitiesMap?.[agent.id] || [];
-              const sortedCapabilities = [...capabilities].sort(
-                (a, b) => a.position - b.position
-              );
+              // Capabilities are now directly on the agent
+              const agentCapabilities = agent.capabilities ?? [];
 
               return (
                 <Link
@@ -89,18 +85,18 @@ export function AgentListWidget({
                           {agent.id.slice(0, 8)}...
                         </p>
                         {/* Capabilities icons */}
-                        {sortedCapabilities.length > 0 && (
+                        {agentCapabilities.length > 0 && (
                           <TooltipProvider>
                             <div className="flex gap-0.5">
-                              {sortedCapabilities.slice(0, 3).map((ac) => {
-                                const cap = getCapabilityInfo(ac.capability_id);
+                              {agentCapabilities.slice(0, 3).map((capId) => {
+                                const cap = getCapabilityInfo(capId);
                                 if (!cap) return null;
                                 const IconComponent = cap.icon
                                   ? iconMap[cap.icon] || CircleOff
                                   : CircleOff;
 
                                 return (
-                                  <Tooltip key={ac.capability_id}>
+                                  <Tooltip key={capId}>
                                     <TooltipTrigger className="p-0.5 rounded bg-muted cursor-default">
                                       <IconComponent className="w-3 h-3 text-muted-foreground" />
                                     </TooltipTrigger>
@@ -110,9 +106,9 @@ export function AgentListWidget({
                                   </Tooltip>
                                 );
                               })}
-                              {sortedCapabilities.length > 3 && (
+                              {agentCapabilities.length > 3 && (
                                 <span className="text-xs text-muted-foreground ml-1">
-                                  +{sortedCapabilities.length - 3}
+                                  +{agentCapabilities.length - 3}
                                 </span>
                               )}
                             </div>
