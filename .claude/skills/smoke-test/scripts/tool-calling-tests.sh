@@ -112,18 +112,26 @@ run_test() {
     fi
 }
 
-# Helper to create agent
+# Helper to create agent with optional capabilities
 create_agent() {
     local name="$1"
     local system_prompt="$2"
     local description="$3"
+    shift 3
+    local capabilities=("$@")
+
+    local caps_json="[]"
+    if [ ${#capabilities[@]} -gt 0 ]; then
+        caps_json=$(printf '%s\n' "${capabilities[@]}" | jq -R . | jq -s .)
+    fi
 
     local response=$(curl -s -X POST "$API_URL/v1/agents" \
         -H "Content-Type: application/json" \
         -d "{
             \"name\": \"$name\",
             \"system_prompt\": \"$system_prompt\",
-            \"description\": \"$description\"
+            \"description\": \"$description\",
+            \"capabilities\": $caps_json
         }")
 
     local agent_id=$(echo "$response" | jq -r '.id')
@@ -135,19 +143,6 @@ create_agent() {
 
     AGENTS_TO_CLEANUP+=("$agent_id")
     echo "$agent_id"
-}
-
-# Helper to set capabilities
-set_capabilities() {
-    local agent_id="$1"
-    shift
-    local capabilities=("$@")
-
-    local caps_json=$(printf '%s\n' "${capabilities[@]}" | jq -R . | jq -s .)
-
-    curl -s -X PUT "$API_URL/v1/agents/$agent_id/capabilities" \
-        -H "Content-Type: application/json" \
-        -d "{\"capabilities\": $caps_json}" > /dev/null
 }
 
 # Helper to create session
@@ -205,8 +200,8 @@ test_api_health() {
 # Test: Single Tool (Math Add)
 # ============================================================================
 test_single_tool() {
-    log_verbose "Creating math agent..."
-    local agent_id=$(create_agent "Test Math Agent" "You are a math assistant. Use tools to calculate." "Single tool test")
+    log_verbose "Creating math agent with test_math capability..."
+    local agent_id=$(create_agent "Test Math Agent" "You are a math assistant. Use tools to calculate." "Single tool test" "test_math")
 
     if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
         log_error "Failed to create agent"
@@ -214,9 +209,6 @@ test_single_tool() {
     fi
 
     log_verbose "Agent ID: $agent_id"
-
-    log_verbose "Setting test_math capability..."
-    set_capabilities "$agent_id" "test_math"
 
     log_verbose "Creating session..."
     local session_id=$(create_session "$agent_id" "Single Tool Test")
@@ -256,13 +248,12 @@ test_single_tool() {
 # ============================================================================
 test_multiple_tools() {
     log_verbose "Creating math agent for multiple tools test..."
-    local agent_id=$(create_agent "Multi Tool Math Agent" "You are a math assistant. Use the appropriate tool for each calculation." "Multiple tools test")
+    local agent_id=$(create_agent "Multi Tool Math Agent" "You are a math assistant. Use the appropriate tool for each calculation." "Multiple tools test" "test_math")
 
     if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
         return 1
     fi
 
-    set_capabilities "$agent_id" "test_math"
     local session_id=$(create_session "$agent_id" "Multiple Tools Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -293,13 +284,12 @@ test_multiple_tools() {
 # ============================================================================
 test_weather_tools() {
     log_verbose "Creating weather agent..."
-    local agent_id=$(create_agent "Test Weather Agent" "You are a weather assistant. Use weather tools to get information." "Weather tools test")
+    local agent_id=$(create_agent "Test Weather Agent" "You are a weather assistant. Use weather tools to get information." "Weather tools test" "test_weather")
 
     if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
         return 1
     fi
 
-    set_capabilities "$agent_id" "test_weather"
     local session_id=$(create_session "$agent_id" "Weather Tools Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -330,13 +320,12 @@ test_weather_tools() {
 # ============================================================================
 test_parallel_tools() {
     log_verbose "Creating weather agent for parallel test..."
-    local agent_id=$(create_agent "Parallel Weather Agent" "You are a weather assistant. When asked about multiple cities, get all weather data at once." "Parallel tools test")
+    local agent_id=$(create_agent "Parallel Weather Agent" "You are a weather assistant. When asked about multiple cities, get all weather data at once." "Parallel tools test" "test_weather")
 
     if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
         return 1
     fi
 
-    set_capabilities "$agent_id" "test_weather"
     local session_id=$(create_session "$agent_id" "Parallel Tools Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -376,13 +365,12 @@ test_parallel_tools() {
 # ============================================================================
 test_combined_capabilities() {
     log_verbose "Creating agent with both math and weather capabilities..."
-    local agent_id=$(create_agent "Combo Agent" "You are a helpful assistant with math and weather tools." "Combined capabilities test")
+    local agent_id=$(create_agent "Combo Agent" "You are a helpful assistant with math and weather tools." "Combined capabilities test" "test_math" "test_weather")
 
     if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
         return 1
     fi
 
-    set_capabilities "$agent_id" "test_math" "test_weather"
     local session_id=$(create_session "$agent_id" "Combined Capabilities Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -413,13 +401,12 @@ test_combined_capabilities() {
 # ============================================================================
 test_tool_error_handling() {
     log_verbose "Creating math agent for error handling test..."
-    local agent_id=$(create_agent "Error Test Agent" "You are a math assistant. Use divide tool when asked." "Error handling test")
+    local agent_id=$(create_agent "Error Test Agent" "You are a math assistant. Use divide tool when asked." "Error handling test" "test_math")
 
     if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
         return 1
     fi
 
-    set_capabilities "$agent_id" "test_math"
     local session_id=$(create_session "$agent_id" "Error Handling Test")
 
     if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
@@ -540,7 +527,7 @@ test_capability_detail() {
 # ============================================================================
 test_webfetch_tool() {
     log_verbose "Creating agent with web_fetch capability..."
-    local agent_id=$(create_agent "Web Fetch Test Agent" "You are a web assistant. Use the web_fetch tool to fetch URLs." "WebFetch tool test")
+    local agent_id=$(create_agent "Web Fetch Test Agent" "You are a web assistant. Use the web_fetch tool to fetch URLs." "WebFetch tool test" "web_fetch")
 
     if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
         log_error "Failed to create agent"
@@ -548,9 +535,6 @@ test_webfetch_tool() {
     fi
 
     log_verbose "Agent ID: $agent_id"
-
-    log_verbose "Setting web_fetch capability..."
-    set_capabilities "$agent_id" "web_fetch"
 
     log_verbose "Creating session..."
     local session_id=$(create_session "$agent_id" "WebFetch Tool Test")

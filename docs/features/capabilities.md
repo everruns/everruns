@@ -71,20 +71,32 @@ The order of capabilities matters - capabilities are applied in the order shown,
 
 ### Via API
 
-Get agent capabilities:
+Create agent with capabilities:
 
 ```bash
-curl -X GET http://localhost:9000/v1/agents/{agent_id}/capabilities
-```
-
-Set agent capabilities (order determines priority):
-
-```bash
-curl -X PUT http://localhost:9000/v1/agents/{agent_id}/capabilities \
+curl -X POST http://localhost:9000/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
-    "capabilities": ["current_time", "noop"]
+    "name": "My Agent",
+    "system_prompt": "You are a helpful assistant.",
+    "capabilities": ["current_time", "web_fetch"]
   }'
+```
+
+Update agent capabilities:
+
+```bash
+curl -X PATCH http://localhost:9000/v1/agents/{agent_id} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "capabilities": ["current_time", "session_file_system"]
+  }'
+```
+
+Get agent (includes capabilities):
+
+```bash
+curl -X GET http://localhost:9000/v1/agents/{agent_id}
 ```
 
 List all available capabilities:

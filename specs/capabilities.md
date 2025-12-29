@@ -372,12 +372,17 @@ When a session executes:
 
 ### API Endpoints
 
+Capabilities are managed as part of the agent resource. When creating or updating an agent, you can specify the capabilities to enable. The agent response includes the list of enabled capabilities.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/capabilities` | List all available capabilities |
 | GET | `/v1/capabilities/{capability_id}` | Get capability details |
-| GET | `/v1/agents/{agent_id}/capabilities` | Get capabilities for an agent |
-| PUT | `/v1/agents/{agent_id}/capabilities` | Set capabilities for an agent |
+
+Agent capabilities are managed through the agents API:
+- `POST /v1/agents` - Create agent with capabilities
+- `PATCH /v1/agents/{id}` - Update agent capabilities
+- `GET /v1/agents/{id}` - Get agent (includes capabilities)
 
 #### List Capabilities
 
@@ -424,27 +429,49 @@ Response:
 }
 ```
 
-#### Set Agent Capabilities
+#### Create Agent with Capabilities
 
 ```http
-PUT /v1/agents/{agent_id}/capabilities
+POST /v1/agents
 Content-Type: application/json
 
 {
+  "name": "Research Assistant",
+  "system_prompt": "You are a helpful research assistant.",
   "capabilities": ["current_time", "test_math"]
 }
 
 Response:
 {
-  "items": [
-    { "capability_id": "current_time", "position": 0 },
-    { "capability_id": "test_math", "position": 1 }
-  ],
-  "total": 2
+  "id": "...",
+  "name": "Research Assistant",
+  "system_prompt": "You are a helpful research assistant.",
+  "capabilities": ["current_time", "test_math"],
+  "status": "active",
+  ...
 }
 ```
 
-The array order determines `position` (index becomes position value).
+#### Update Agent Capabilities
+
+```http
+PATCH /v1/agents/{agent_id}
+Content-Type: application/json
+
+{
+  "capabilities": ["current_time", "web_fetch", "session_file_system"]
+}
+
+Response:
+{
+  "id": "...",
+  "name": "Research Assistant",
+  "capabilities": ["current_time", "web_fetch", "session_file_system"],
+  ...
+}
+```
+
+The array order determines the priority (earlier capabilities' system prompt additions appear first).
 
 ### Database Schema
 

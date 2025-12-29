@@ -176,18 +176,6 @@ create_agent() {
   echo "$response"
 }
 
-# Set capabilities for an agent
-set_agent_capabilities() {
-  local agent_id="$1"
-  local capabilities="$2"
-
-  if [[ -n "$capabilities" && "$capabilities" != "null" && "$capabilities" != "[]" ]]; then
-    curl -s -X PUT "$API_URL/v1/agents/$agent_id/capabilities" \
-      -H "Content-Type: application/json" \
-      -d "$capabilities" > /dev/null
-  fi
-}
-
 # Seed providers from YAML file
 seed_providers() {
   if [[ ! -f "$SEED_FILE" ]]; then
@@ -406,17 +394,19 @@ seed_agents() {
       continue
     fi
 
-    # Build create payload
+    # Build create payload with capabilities
     local payload
     payload=$(jq -n \
       --arg name "$name" \
       --arg description "$description" \
       --arg system_prompt "$system_prompt" \
       --argjson tags "$tags" \
+      --argjson capabilities "$capabilities" \
       '{
         name: $name,
         system_prompt: $system_prompt,
-        tags: $tags
+        tags: $tags,
+        capabilities: $capabilities
       } + (if $description != "" then {description: $description} else {} end)'
     )
 
@@ -433,11 +423,7 @@ seed_agents() {
       continue
     fi
 
-    # Set capabilities if defined
     if [[ "$capabilities" != "[]" && "$capabilities" != "null" ]]; then
-      local cap_payload
-      cap_payload=$(echo "$capabilities" | jq '{capabilities: .}')
-      set_agent_capabilities "$agent_id" "$cap_payload"
       echo "      ✅ Created with capabilities: $capabilities"
     else
       echo "      ✅ Created (no capabilities)"
