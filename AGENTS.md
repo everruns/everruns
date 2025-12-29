@@ -353,3 +353,21 @@ cargo run --example create_agent
 - UI: http://localhost:9100
 - Health check: `curl http://localhost:9000/health`
 
+
+### Project Structure
+
+```
+everruns/
+├── apps/ui/              # Next.js Management UI
+├── crates/
+│   ├── everruns-api/     # HTTP API (axum), API DTOs
+│   ├── everruns-worker/  # Temporal worker
+│   ├── everruns-core/    # Core abstractions, domain entities, tools
+│   ├── everruns-storage/ # Database layer
+│   ├── everruns-openai/  # OpenAI provider
+│   └── everruns-anthropic/  # Anthropic provider
+├── harness/              # Docker Compose
+├── specs/                # Specifications
+└── scripts/              # Dev scripts
+```
+

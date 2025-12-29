@@ -23,6 +23,32 @@ This runs:
 2. **Event sourcing**: All run events are persisted for replay via SSE
 3. **Restart-safe**: All state in Postgres, workflows are durable
 
+
+## Development Scripts
+
+```bash
+./scripts/dev.sh <command>
+
+# Lifecycle
+start-all     # Start everything
+stop-all      # Stop all services
+start         # Start Docker services only
+stop          # Stop Docker services
+
+# Services
+api           # Start API server
+ui            # Start UI dev server
+
+# Database
+migrate       # Run migrations
+reset         # Reset database
+
+# Quality
+check         # Run format, lint, tests
+smoke-test    # Run smoke tests
+```
+
+
 ## Coding Guidelines
 
 ### Rust
