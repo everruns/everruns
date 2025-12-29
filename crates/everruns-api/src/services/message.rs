@@ -83,7 +83,7 @@ impl MessageService {
 
         // Emit checkpoint event after user message
         // This marks a safe resumption point: "user message received"
-        self.emit_checkpoint(session_id, "user_message_received", event.sequence)
+        self.emit_checkpoint(session_id, "user_message_received", event.id)
             .await;
 
         // Start workflow for user message
@@ -95,8 +95,8 @@ impl MessageService {
     /// Emit a checkpoint event for durable stream semantics
     ///
     /// Checkpoint events allow clients to track safe resumption points.
-    /// They include the last sequence number and a status hint.
-    async fn emit_checkpoint(&self, session_id: Uuid, status: &str, last_sequence: i32) {
+    /// They include the last event ID (UUID7) for offset-based resumption.
+    async fn emit_checkpoint(&self, session_id: Uuid, status: &str, last_event_id: Uuid) {
         if let Err(e) = self
             .db
             .create_event(CreateEventRow {
@@ -104,7 +104,7 @@ impl MessageService {
                 event_type: EVENT_TYPE_CHECKPOINT.to_string(),
                 data: serde_json::json!({
                     "status": status,
-                    "last_sequence": last_sequence,
+                    "last_event_id": last_event_id,
                 }),
             })
             .await

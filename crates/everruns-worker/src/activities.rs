@@ -344,11 +344,12 @@ pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<
 /// Emit a checkpoint event for durable stream semantics
 ///
 /// Checkpoint events allow clients to track safe resumption points.
+/// Uses UUID7 for offset-based resumption (time-ordered).
 async fn emit_checkpoint(db: &Database, session_id: Uuid, status: &str) {
-    // Get the current max sequence for this session
-    let last_sequence = match db.list_events(session_id, None).await {
-        Ok(events) => events.last().map(|e| e.sequence).unwrap_or(0),
-        Err(_) => 0,
+    // Get the last event ID for this session (UUID7 is time-ordered)
+    let last_event_id = match db.list_events(session_id, None).await {
+        Ok(events) => events.last().map(|e| e.id),
+        Err(_) => None,
     };
 
     if let Err(e) = db
@@ -357,7 +358,7 @@ async fn emit_checkpoint(db: &Database, session_id: Uuid, status: &str) {
             event_type: "checkpoint".to_string(),
             data: serde_json::json!({
                 "status": status,
-                "last_sequence": last_sequence,
+                "last_event_id": last_event_id,
             }),
         })
         .await

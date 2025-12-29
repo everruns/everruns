@@ -2,9 +2,15 @@
 // Events are notifications streamed to clients, NOT primary data storage
 //
 // Durable streams design:
-// - Offset-based resumption: Clients can resume from any offset
-// - next_offset in response: Clients know where to continue
+// - Offset-based resumption using UUID7: Clients can resume from any event ID
+// - next_offset in response: UUID7 of last event for continuation
 // - Cache-Control for historical reads: Immutable past events are cacheable
+//
+// Why UUID7 for offsets:
+// - UUID7 is time-ordered (first 48 bits are Unix timestamp in ms)
+// - Already stored as event ID, no separate sequence needed
+// - Globally unique across sessions
+// - Comparison works correctly: WHERE id > $uuid
 
 use axum::{
     extract::{Path, Query, State},
@@ -70,19 +76,19 @@ pub fn routes(state: AppState) -> Router {
 /// Query parameters for SSE streaming
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct SseQuery {
-    /// Resume from this offset (sequence number). Events with sequence > offset are returned.
-    /// Use 0 or omit to start from the beginning.
-    #[param(example = 0)]
-    pub offset: Option<i32>,
+    /// Resume from this offset (event UUID7). Events with id > offset are returned.
+    /// Omit to start from the beginning.
+    #[param(example = "01945c8a-0000-7000-8000-000000000000")]
+    pub offset: Option<Uuid>,
 }
 
 /// Query parameters for events list
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct EventsQuery {
-    /// Resume from this offset (sequence number). Events with sequence > offset are returned.
-    /// Use 0 or omit to start from the beginning.
-    #[param(example = 0)]
-    pub offset: Option<i32>,
+    /// Resume from this offset (event UUID7). Events with id > offset are returned.
+    /// Omit to start from the beginning.
+    #[param(example = "01945c8a-0000-7000-8000-000000000000")]
+    pub offset: Option<Uuid>,
     /// Maximum number of events to return. Defaults to 100 if not specified.
     #[param(example = 100)]
     pub limit: Option<i32>,
@@ -94,8 +100,8 @@ pub struct EventsQuery {
 
 /// GET /v1/agents/{agent_id}/sessions/{session_id}/sse - Stream events (SSE notifications)
 ///
-/// Supports offset-based resumption: provide `?offset=N` to resume from sequence N.
-/// The `id` field in each SSE event contains the sequence number for client-side tracking.
+/// Supports offset-based resumption: provide `?offset=UUID` to resume from that event ID.
+/// The `id` field in each SSE event contains the event UUID7 for client-side tracking.
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}/sessions/{session_id}/sse",
@@ -127,20 +133,20 @@ pub async fn stream_sse(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let initial_offset = query.offset.unwrap_or(0);
-    tracing::info!(session_id = %session_id, offset = initial_offset, "Starting event stream");
+    let initial_offset = query.offset;
+    tracing::info!(session_id = %session_id, offset = ?initial_offset, "Starting event stream");
 
     let db = state.db.clone();
 
-    // Create stream that replays events from the specified offset
-    let stream = stream::unfold(initial_offset, move |last_sequence| {
+    // Create stream that replays events from the specified offset (UUID7)
+    let stream = stream::unfold(initial_offset, move |last_id| {
         let db = db.clone();
         async move {
-            // Fetch events since last sequence
-            match db.list_events(session_id, Some(last_sequence)).await {
+            // Fetch events since last UUID
+            match db.list_events_after_id(session_id, last_id).await {
                 Ok(events) if !events.is_empty() => {
-                    // Get the last sequence number for next iteration
-                    let new_sequence = events.last().unwrap().sequence;
+                    // Get the last event ID for next iteration
+                    let new_id = events.last().unwrap().id;
 
                     // Convert events to SSE format
                     let sse_events: Vec<Result<SseEvent, Infallible>> = events
@@ -152,16 +158,16 @@ pub async fn stream_sse(
                             Ok(SseEvent::default()
                                 .event(&event_row.event_type)
                                 .data(json)
-                                .id(event_row.sequence.to_string()))
+                                .id(event_row.id.to_string()))
                         })
                         .collect();
 
-                    Some((stream::iter(sse_events), new_sequence))
+                    Some((stream::iter(sse_events), Some(new_id)))
                 }
                 Ok(_) => {
                     // No new events, wait a bit before polling again
                     tokio::time::sleep(Duration::from_millis(100)).await;
-                    Some((stream::iter(vec![]), last_sequence))
+                    Some((stream::iter(vec![]), last_id))
                 }
                 Err(e) => {
                     tracing::error!("Failed to fetch events: {}", e);
@@ -201,9 +207,9 @@ pub struct Event {
 pub struct EventsResponse {
     /// Array of events.
     pub data: Vec<Event>,
-    /// Next offset to use for pagination. Pass this as `?offset=` to get the next page.
+    /// Next offset (event UUID7) to use for pagination. Pass this as `?offset=` to get the next page.
     /// If null, there are no more events (you've caught up).
-    pub next_offset: Option<i32>,
+    pub next_offset: Option<Uuid>,
     /// Whether more events may be available beyond this page.
     pub has_more: bool,
 }
@@ -214,9 +220,9 @@ const MAX_LIMIT: i32 = 1000;
 /// GET /v1/agents/{agent_id}/sessions/{session_id}/events - List events (JSON)
 ///
 /// Supports offset-based pagination for durable stream semantics:
-/// - Use `?offset=N` to get events with sequence > N
+/// - Use `?offset=UUID` to get events with id > UUID (UUID7 is time-ordered)
 /// - Use `?limit=M` to limit the number of events returned
-/// - Response includes `next_offset` for the next page
+/// - Response includes `next_offset` (UUID7) for the next page
 ///
 /// Cache-Control is set for historical reads when the session is not running.
 #[utoipa::path(
@@ -250,13 +256,13 @@ pub async fn list_events(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let offset = query.offset.unwrap_or(0);
+    let offset = query.offset;
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
 
-    // Fetch events with offset and limit+1 to detect has_more
+    // Fetch events with offset (UUID7) and limit+1 to detect has_more
     let event_rows = state
         .db
-        .list_events_paginated(session_id, offset, limit + 1)
+        .list_events_after_id_paginated(session_id, offset, limit + 1)
         .await
         .map_err(|e| {
             tracing::error!("Failed to list events: {}", e);
@@ -267,8 +273,8 @@ pub async fn list_events(
     let has_more = event_rows.len() > limit as usize;
     let event_rows: Vec<_> = event_rows.into_iter().take(limit as usize).collect();
 
-    // Calculate next_offset from the last event in the page
-    let next_offset = event_rows.last().map(|e| e.sequence);
+    // Calculate next_offset from the last event's UUID7
+    let next_offset = event_rows.last().map(|e| e.id);
 
     // Convert to Event response type
     let events: Vec<Event> = event_rows
