@@ -564,6 +564,34 @@ impl Database {
         Ok(rows)
     }
 
+    /// List events with offset-based pagination (for durable streams)
+    ///
+    /// Returns events with sequence > offset, limited to `limit` events.
+    /// This supports the durable streams pattern where clients resume from a known offset.
+    pub async fn list_events_paginated(
+        &self,
+        session_id: Uuid,
+        offset: i32,
+        limit: i32,
+    ) -> Result<Vec<EventRow>> {
+        let rows = sqlx::query_as::<_, EventRow>(
+            r#"
+            SELECT id, session_id, sequence, event_type, data, created_at
+            FROM events
+            WHERE session_id = $1 AND sequence > $2
+            ORDER BY sequence ASC
+            LIMIT $3
+            "#,
+        )
+        .bind(session_id)
+        .bind(offset)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     /// List only message events for a session (for MessageStore implementation)
     ///
     /// Returns events with types: message.user, message.agent, message.tool_call, message.tool_result

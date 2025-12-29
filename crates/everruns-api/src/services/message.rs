@@ -4,6 +4,7 @@
 // - Creating user message events
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
+// - Emitting checkpoint events for durable stream semantics
 
 use crate::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use anyhow::Result;
@@ -14,6 +15,9 @@ use everruns_worker::AgentRunner;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Checkpoint event type - emitted at key points to indicate safe resumption positions
+const EVENT_TYPE_CHECKPOINT: &str = "checkpoint";
 
 pub struct MessageService {
     db: Arc<Database>,
@@ -77,10 +81,37 @@ impl MessageService {
             created_at: event.created_at,
         };
 
+        // Emit checkpoint event after user message
+        // This marks a safe resumption point: "user message received"
+        self.emit_checkpoint(session_id, "user_message_received", event.sequence)
+            .await;
+
         // Start workflow for user message
         self.start_workflow(agent_id, session_id).await;
 
         Ok(message)
+    }
+
+    /// Emit a checkpoint event for durable stream semantics
+    ///
+    /// Checkpoint events allow clients to track safe resumption points.
+    /// They include the last sequence number and a status hint.
+    async fn emit_checkpoint(&self, session_id: Uuid, status: &str, last_sequence: i32) {
+        if let Err(e) = self
+            .db
+            .create_event(CreateEventRow {
+                session_id,
+                event_type: EVENT_TYPE_CHECKPOINT.to_string(),
+                data: serde_json::json!({
+                    "status": status,
+                    "last_sequence": last_sequence,
+                }),
+            })
+            .await
+        {
+            tracing::warn!("Failed to emit checkpoint event: {}", e);
+            // Don't fail the request if checkpoint emission fails
+        }
     }
 
     /// Start workflow execution for the session

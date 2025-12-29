@@ -18,7 +18,7 @@ use everruns_core::config::AgentConfigBuilder;
 use everruns_core::provider_factory::{create_provider, ProviderConfig, ProviderType};
 use everruns_core::traits::ToolContext;
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolRegistry};
-use everruns_storage::{repositories::Database, EncryptionService};
+use everruns_storage::{models::CreateEventRow, repositories::Database, EncryptionService};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -295,8 +295,8 @@ pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<
     let llm_provider =
         create_provider(&provider_config).context("Failed to create LLM provider")?;
 
-    // Create atom dependencies
-    let message_store = DbMessageStore::new(db);
+    // Create atom dependencies (clone db so we can use it later for checkpoint)
+    let message_store = DbMessageStore::new(db.clone());
 
     // Build AgentConfig from the workflow's AgentConfigData
     let agent_config = build_agent_config(&input.agent_config);
@@ -328,11 +328,43 @@ pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<
         )
     };
 
+    // Emit checkpoint event when no more tool execution is needed
+    // This marks a safe resumption point: "assistant response complete"
+    if !result.needs_tool_execution {
+        emit_checkpoint(&db, session_id, "assistant_response_complete").await;
+    }
+
     Ok(CallModelOutput {
         text: result.text,
         tool_calls,
         needs_tool_execution: result.needs_tool_execution,
     })
+}
+
+/// Emit a checkpoint event for durable stream semantics
+///
+/// Checkpoint events allow clients to track safe resumption points.
+async fn emit_checkpoint(db: &Database, session_id: Uuid, status: &str) {
+    // Get the current max sequence for this session
+    let last_sequence = match db.list_events(session_id, None).await {
+        Ok(events) => events.last().map(|e| e.sequence).unwrap_or(0),
+        Err(_) => 0,
+    };
+
+    if let Err(e) = db
+        .create_event(CreateEventRow {
+            session_id,
+            event_type: "checkpoint".to_string(),
+            data: serde_json::json!({
+                "status": status,
+                "last_sequence": last_sequence,
+            }),
+        })
+        .await
+    {
+        tracing::warn!("Failed to emit checkpoint event: {}", e);
+        // Don't fail the activity if checkpoint emission fails
+    }
 }
 
 /// Execute a single tool using ExecuteToolAtom
