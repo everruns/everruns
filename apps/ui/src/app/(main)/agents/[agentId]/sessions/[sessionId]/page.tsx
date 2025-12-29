@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useRef, useEffect } from "react";
-import { useAgent, useSession, useEvents, useSendMessage, useLlmModel } from "@/hooks";
+import { useAgent, useSession, useEvents, useRawEvents, useSendMessage, useLlmModel } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,11 +15,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Send, User, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder } from "lucide-react";
+import { ArrowLeft, Send, User, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder, Activity } from "lucide-react";
 import type { Message, Controls, ReasoningEffort, FileInfo } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { FileBrowser, FileViewer } from "@/components/files";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export default function SessionDetailPage({
   params,
@@ -67,8 +75,15 @@ export default function SessionDetailPage({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Tab and file viewer state
-  const [activeTab, setActiveTab] = useState<"chat" | "files">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "files" | "events">("chat");
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
+
+  // Fetch raw events for the Events tab (developer debugging)
+  const { data: rawEvents, isLoading: eventsLoading } = useRawEvents(
+    agentId,
+    sessionId,
+    { refetchInterval: shouldPoll ? 1000 : false }
+  );
 
   // Check if the model supports reasoning effort
   const supportsReasoning = llmModel?.profile?.reasoning && llmModel?.profile?.reasoning_effort;
@@ -241,6 +256,15 @@ export default function SessionDetailPage({
           >
             <Folder className="h-4 w-4" />
             File System
+          </Button>
+          <Button
+            variant={activeTab === "events" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("events")}
+            className="gap-2"
+          >
+            <Activity className="h-4 w-4" />
+            Events
           </Button>
         </div>
       </div>
@@ -444,6 +468,60 @@ export default function SessionDetailPage({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Events Tab Content */}
+      {activeTab === "events" && (
+        <div className="flex-1 overflow-y-auto p-4">
+          {eventsLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : rawEvents?.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+              <Activity className="w-12 h-12 mb-4 opacity-50" />
+              <p className="text-lg font-medium">No events yet</p>
+              <p className="text-sm">Events will appear here as the session runs</p>
+            </div>
+          ) : (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[80px]">Seq</TableHead>
+                    <TableHead className="w-[180px]">Type</TableHead>
+                    <TableHead className="w-[200px]">Timestamp</TableHead>
+                    <TableHead>Data</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rawEvents?.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell className="font-mono text-xs">
+                        {event.sequence}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-xs">
+                          {event.event_type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(event.created_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs max-w-[500px]">
+                        <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
+                          {JSON.stringify(event.data, null, 2)}
+                        </pre>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
       )}
     </div>
