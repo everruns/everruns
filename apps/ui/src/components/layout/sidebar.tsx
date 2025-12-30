@@ -26,13 +26,20 @@ import {
   User,
   Key,
   ChevronUp,
+  FlaskConical,
 } from "lucide-react";
+
+const isDev = process.env.NODE_ENV === "development";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
   { name: "Settings", href: "/settings", icon: Settings },
+];
+
+const devNavigation = [
+  { name: "Components", href: "/dev/components", icon: FlaskConical },
 ];
 
 function getInitials(name: string): string {
@@ -86,6 +93,33 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Dev-only navigation */}
+        {isDev && (
+          <>
+            <div className="my-3 border-t" />
+            <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Dev</p>
+            {devNavigation.map((item) => {
+              const isActive =
+                pathname === item.href || pathname.startsWith(`${item.href}/`);
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  )}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.name}
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* User menu / Footer */}
