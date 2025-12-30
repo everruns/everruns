@@ -24,9 +24,11 @@ pub trait Tool: Send + Sync {
 ```
 
 **Error Handling Contract:**
-- `ToolExecutionResult::Success(Value)` - Successful result returned to LLM
-- `ToolExecutionResult::ToolError(String)` - User-visible error shown to LLM (e.g., "City not found")
-- `ToolExecutionResult::InternalError` - System error logged but hidden from LLM (security)
+- `ToolExecutionResult::Success(Value)` - Successful result returned to LLM as `result` field
+- `ToolExecutionResult::ToolError(String)` - User-visible error packaged as `{"error": "..."}` in `result` field (e.g., `{"error": "City not found"}`)
+- `ToolExecutionResult::InternalError` - System error logged, generic message packaged as `{"error": "..."}` in `result` field (security)
+
+All error types continue the agent loop the same way as success - they are all packaged in the `result` field with no `error` field set. The LLM can interpret the `{"error": "..."}` payload and decide how to proceed.
 
 **Provided Tools:**
 - `GetCurrentTime` - Returns current timestamp in various formats (iso8601, unix, human)

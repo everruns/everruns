@@ -94,11 +94,14 @@ async fn test_tool_error_handling() {
         policy: ToolPolicy::Auto,
     });
 
-    // Execute and verify error is returned
+    // Execute and verify error is packaged as {"error": "..."} in result field
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
 
-    assert!(result.result.is_none());
-    assert_eq!(result.error, Some("Expected test failure".to_string()));
+    assert!(result.error.is_none());
+    assert_eq!(
+        result.result,
+        Some(json!({"error": "Expected test failure"}))
+    );
 }
 
 #[tokio::test]
@@ -121,14 +124,14 @@ async fn test_internal_error_is_hidden() {
         policy: ToolPolicy::Auto,
     });
 
-    // Execute and verify internal error is hidden
+    // Execute and verify internal error is hidden (packaged as {"error": "..."} with generic message)
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
 
-    assert!(result.result.is_none());
-    // Internal error message should be replaced with generic message
+    assert!(result.error.is_none());
+    // Internal error message should be replaced with generic message in result field
     assert_eq!(
-        result.error,
-        Some("An internal error occurred while executing the tool".to_string())
+        result.result,
+        Some(json!({"error": "An internal error occurred while executing the tool"}))
     );
 }
 
