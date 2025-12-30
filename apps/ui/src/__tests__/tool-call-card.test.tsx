@@ -2,18 +2,19 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import type { Message } from "@/lib/api/types";
 
-// Helper to create tool call message
+// Helper to create tool call message (as assistant message with tool_call in content)
 function createToolCallMessage(overrides?: Partial<Message>): Message {
   return {
     id: "msg-tool-call-1",
     session_id: "session-1",
     sequence: 1,
-    role: "tool_call",
-    content: {
+    role: "assistant",
+    content: [{
+      type: "tool_call" as const,
       id: "call_123",
       name: "get_current_time",
       arguments: { timezone: "UTC" },
-    },
+    }],
     tool_call_id: null,
     created_at: "2025-01-01T00:00:00Z",
     ...overrides,
@@ -27,9 +28,11 @@ function createToolResultMessage(overrides?: Partial<Message>): Message {
     session_id: "session-1",
     sequence: 2,
     role: "tool_result",
-    content: {
+    content: [{
+      type: "tool_result" as const,
+      tool_call_id: "call_123",
       result: "2025-01-01T12:00:00Z",
-    },
+    }],
     tool_call_id: "call_123",
     created_at: "2025-01-01T00:00:01Z",
     ...overrides,
@@ -61,11 +64,12 @@ describe("ToolCallCard", () => {
 
     it("does not render Arguments button when arguments are empty", () => {
       const toolCall = createToolCallMessage({
-        content: {
+        content: [{
+          type: "tool_call" as const,
           id: "call_123",
           name: "noop",
           arguments: {},
-        },
+        }],
       });
       render(<ToolCallCard toolCall={toolCall} />);
 
@@ -93,9 +97,11 @@ describe("ToolCallCard", () => {
     it("shows 'Failed' badge when tool result has error", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({
-        content: {
+        content: [{
+          type: "tool_result" as const,
+          tool_call_id: "call_123",
           error: "Something went wrong",
-        },
+        }],
       });
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
@@ -144,9 +150,11 @@ describe("ToolCallCard", () => {
     it("displays successful result", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({
-        content: {
+        content: [{
+          type: "tool_result" as const,
+          tool_call_id: "call_123",
           result: "2025-01-01T12:00:00Z",
-        },
+        }],
       });
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
@@ -157,9 +165,11 @@ describe("ToolCallCard", () => {
     it("displays JSON result for objects", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({
-        content: {
+        content: [{
+          type: "tool_result" as const,
+          tool_call_id: "call_123",
           result: { time: "12:00", date: "2025-01-01" },
-        },
+        }],
       });
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
@@ -170,9 +180,11 @@ describe("ToolCallCard", () => {
     it("displays error message when tool fails", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({
-        content: {
+        content: [{
+          type: "tool_result" as const,
+          tool_call_id: "call_123",
           error: "Network timeout occurred",
-        },
+        }],
       });
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
@@ -191,7 +203,8 @@ describe("ToolCallCard", () => {
   describe("different tool types", () => {
     it("renders tool with complex arguments", () => {
       const toolCall = createToolCallMessage({
-        content: {
+        content: [{
+          type: "tool_call" as const,
           id: "call_456",
           name: "http_get",
           arguments: {
@@ -202,7 +215,7 @@ describe("ToolCallCard", () => {
             },
             timeout: 5000,
           },
-        },
+        }],
       });
       render(<ToolCallCard toolCall={toolCall} />);
 
@@ -216,9 +229,11 @@ describe("ToolCallCard", () => {
     it("renders tool with no result value (null/undefined)", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({
-        content: {
+        content: [{
+          type: "tool_result" as const,
+          tool_call_id: "call_123",
           result: undefined,
-        },
+        }],
       });
       render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
