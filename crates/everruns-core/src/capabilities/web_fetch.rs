@@ -694,6 +694,8 @@ fn clean_whitespace(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn test_is_binary_content_type() {
@@ -877,13 +879,25 @@ mod tests {
         }
     }
 
-    // Integration tests that make HTTP requests
+    // Integration tests using wiremock
     #[tokio::test]
     async fn test_web_fetch_real_request() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("<html><body><p>Herman Melville - Moby Dick</p></body></html>")
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/html",
+                "url": format!("{}/html", mock_server.uri()),
                 "as_text": true
             }))
             .await;
@@ -901,10 +915,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_head_request() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("HEAD"))
+            .and(path("/html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/html")
+                    .insert_header("content-length", "100"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/html",
+                "url": format!("{}/html", mock_server.uri()),
                 "method": "HEAD"
             }))
             .await;
@@ -921,10 +947,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_response_includes_size() {
+        let mock_server = MockServer::start().await;
+        let body = "<html><body>Test content</body></html>";
+
+        Mock::given(method("GET"))
+            .and(path("/html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(body)
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/html"
+                "url": format!("{}/html", mock_server.uri())
             }))
             .await;
 
@@ -939,10 +978,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_binary_returns_metadata() {
+        let mock_server = MockServer::start().await;
+
+        // Simulate a PNG image response
+        Mock::given(method("GET"))
+            .and(path("/image/png"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(vec![0x89, 0x50, 0x4E, 0x47]) // PNG magic bytes
+                    .insert_header("content-type", "image/png")
+                    .insert_header("content-length", "4"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/image/png"
+                "url": format!("{}/image/png", mock_server.uri())
             }))
             .await;
 
@@ -1008,10 +1061,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_head_includes_metadata() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("HEAD"))
+            .and(path("/response-headers"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/html")
+                    .insert_header("content-length", "100"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/response-headers?Content-Length=100",
+                "url": format!("{}/response-headers", mock_server.uri()),
                 "method": "HEAD"
             }))
             .await;
@@ -1027,11 +1092,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_truncated_field() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("<html><body>Short content</body></html>")
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&mock_server)
+            .await;
+
         // Normal response should have truncated: false
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/html"
+                "url": format!("{}/html", mock_server.uri())
             }))
             .await;
 
@@ -1283,10 +1360,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_response_has_all_expected_fields() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("<html><body>Test</body></html>")
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/html"
+                "url": format!("{}/html", mock_server.uri())
             }))
             .await;
 
@@ -1316,10 +1405,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_head_response_structure() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("HEAD"))
+            .and(path("/html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/html")
+                    .insert_header("content-length", "100"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/html",
+                "url": format!("{}/html", mock_server.uri()),
                 "method": "HEAD"
             }))
             .await;
@@ -1340,10 +1441,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_binary_response_structure() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/image/jpeg"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(vec![0xFF, 0xD8, 0xFF, 0xE0]) // JPEG magic bytes
+                    .insert_header("content-type", "image/jpeg")
+                    .insert_header("content-length", "4"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/image/jpeg"
+                "url": format!("{}/image/jpeg", mock_server.uri())
             }))
             .await;
 
@@ -1367,10 +1481,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_as_markdown_format_field() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("<html><body><h1>Title</h1></body></html>")
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/html",
+                "url": format!("{}/html", mock_server.uri()),
                 "as_markdown": true
             }))
             .await;
@@ -1384,10 +1510,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_as_text_format_field() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/html"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("<html><body>Test</body></html>")
+                    .insert_header("content-type", "text/html"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/html",
+                "url": format!("{}/html", mock_server.uri()),
                 "as_text": true
             }))
             .await;
@@ -1401,10 +1539,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_raw_format_for_non_html() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/json"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("{\"key\": \"value\"}")
+                    .insert_header("content-type", "application/json"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/json"
+                "url": format!("{}/json", mock_server.uri())
             }))
             .await;
 
@@ -1417,16 +1567,28 @@ mod tests {
     }
 
     // ============================================================================
-    // Last-Modified header tests (using httpbin's response-headers endpoint)
+    // Last-Modified header tests
     // ============================================================================
 
     #[tokio::test]
     async fn test_web_fetch_last_modified_when_present() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/response-headers"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("OK")
+                    .insert_header("content-type", "text/plain")
+                    .insert_header("last-modified", "Tue, 01 Jan 2024 12:00:00 GMT"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
-        // Use httpbin to set a custom Last-Modified header
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/response-headers?Last-Modified=Tue%2C%2001%20Jan%202024%2012%3A00%3A00%20GMT"
+                "url": format!("{}/response-headers", mock_server.uri())
             }))
             .await;
 
@@ -1438,7 +1600,6 @@ mod tests {
                     "last_modified should be a string"
                 );
             }
-            // Note: httpbin might not always work perfectly, so we just verify the field exists
         } else {
             panic!("Expected successful response");
         }
@@ -1487,15 +1648,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_size_matches_content_length() {
+        let mock_server = MockServer::start().await;
+        let binary_bytes = vec![0u8; 100]; // 100 bytes of binary data
+
+        Mock::given(method("GET"))
+            .and(path("/bytes/100"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(binary_bytes)
+                    .insert_header("content-type", "application/octet-stream")
+                    .insert_header("content-length", "100"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/bytes/100"
+                "url": format!("{}/bytes/100", mock_server.uri())
             }))
             .await;
 
-        // httpbin /bytes/N returns exactly N random bytes
-        // But since it's binary, we'll get the metadata with size
+        // Binary content returns metadata with size
         if let ToolExecutionResult::Success(value) = result {
             // For binary content, size comes from Content-Length header
             if let Some(size) = value.get("size") {
@@ -1508,18 +1682,31 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_size_for_text_content() {
+        let mock_server = MockServer::start().await;
+        let content = "User-agent: *\nDisallow: /private/\n";
+
+        Mock::given(method("GET"))
+            .and(path("/robots.txt"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(content)
+                    .insert_header("content-type", "text/plain"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/robots.txt"
+                "url": format!("{}/robots.txt", mock_server.uri())
             }))
             .await;
 
         if let ToolExecutionResult::Success(value) = result {
             let size = value["size"].as_u64().unwrap();
-            let content = value["content"].as_str().unwrap();
+            let returned_content = value["content"].as_str().unwrap();
             // Size should match the content length
-            assert_eq!(size as usize, content.len());
+            assert_eq!(size as usize, returned_content.len());
         } else {
             panic!("Expected successful response");
         }
@@ -1531,10 +1718,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_404_returns_success_with_status() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/status/404"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/status/404"
+                "url": format!("{}/status/404", mock_server.uri())
             }))
             .await;
 
@@ -1548,10 +1743,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_500_returns_success_with_status() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/status/500"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://httpbin.org/status/500"
+                "url": format!("{}/status/500", mock_server.uri())
             }))
             .await;
 
@@ -1626,10 +1829,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_accepts_http_url() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/get"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("{\"url\": \"http://localhost/get\"}")
+                    .insert_header("content-type", "application/json"),
+            )
+            .mount(&mock_server)
+            .await;
+
         let tool = WebFetchTool;
+        // Note: mock_server.uri() returns http:// URL
         let result = tool
             .execute(serde_json::json!({
-                "url": "http://httpbin.org/get"
+                "url": format!("{}/get", mock_server.uri())
             }))
             .await;
 
@@ -1637,7 +1853,7 @@ mod tests {
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["status_code"], 200);
         } else {
-            // Some environments block plain HTTP, so this is acceptable too
+            panic!("Expected successful response for HTTP URL");
         }
     }
 }
