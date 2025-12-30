@@ -136,9 +136,16 @@ export default function SessionDetailPage({
   };
 
   // Extract message content - handles new ContentPart[] format
+  // Filters out "Tool call:" lines which are rendered separately
   const getMessageContent = (message: Message): string => {
     if (Array.isArray(message.content)) {
-      return getTextFromContent(message.content);
+      const text = getTextFromContent(message.content);
+      // Filter out lines that describe tool calls (these are rendered separately)
+      return text
+        .split("\n")
+        .filter(line => !line.trim().startsWith("Tool call:"))
+        .join("\n")
+        .trim();
     }
     return JSON.stringify(message.content);
   };
