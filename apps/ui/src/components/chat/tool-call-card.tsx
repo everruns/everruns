@@ -119,9 +119,9 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
           </div>
         ) : resultPreview ? (
           <div className="space-y-0.5">
-            <pre className="whitespace-pre-wrap">
+            <div className="whitespace-pre-wrap">
               &gt; {resultPreview.preview}
-            </pre>
+            </div>
             {(resultPreview.hasMore || isExpanded) && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
