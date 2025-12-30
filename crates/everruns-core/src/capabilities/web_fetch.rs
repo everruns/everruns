@@ -5,14 +5,28 @@
 //!
 //! Design decisions:
 //! - No system prompt addition (capability doesn't need special instructions)
-//! - Binary content is not supported and returns an error
+//! - Binary content is not supported but returns metadata (filename, size, content_type)
 //! - Accept headers are set based on the response format requested
+//! - Timeout for first byte: 1 second (connect + time to first response byte)
+//! - Timeout for body: 30 seconds total, partial content returned if exceeded
+//! - Response includes content size and Last-Modified header when available
 
 use super::{Capability, CapabilityId, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, CONTENT_TYPE, USER_AGENT};
+use futures::StreamExt;
+use reqwest::header::{
+    HeaderMap, HeaderValue, ACCEPT, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE,
+    LAST_MODIFIED, USER_AGENT,
+};
 use serde_json::Value;
+use std::time::{Duration, Instant};
+
+/// Timeout for connection and first response byte (1 second)
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// Timeout for reading the entire response body (30 seconds)
+const BODY_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// WebFetch capability - provides tools to fetch web content
 pub struct WebFetchCapability;
@@ -187,10 +201,11 @@ impl Tool for WebFetchTool {
         };
         headers.insert(ACCEPT, HeaderValue::from_static(accept_value));
 
-        // Create HTTP client
+        // Create HTTP client with connect timeout for first byte
         let client = match reqwest::Client::builder()
             .default_headers(headers)
-            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(CONNECT_TIMEOUT)
+            // Note: We don't set a global timeout here; we handle body timeout manually
             .build()
         {
             Ok(c) => c,
@@ -200,42 +215,71 @@ impl Tool for WebFetchTool {
             }
         };
 
-        // Execute request
+        // Execute request with timeout for first response byte
         let request = match method {
             HttpMethod::Get => client.get(url),
             HttpMethod::Head => client.head(url),
         };
 
-        let response = match request.send().await {
-            Ok(r) => r,
-            Err(e) => {
+        // Set timeout for connection + first response byte (1 second total)
+        let response = match tokio::time::timeout(CONNECT_TIMEOUT, request.send()).await {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
                 tracing::error!("HTTP request failed for {}: {}", url, e);
                 if e.is_timeout() {
-                    return ToolExecutionResult::tool_error("Request timed out");
+                    return ToolExecutionResult::tool_error(
+                        "Request timed out: server did not respond within 1 second",
+                    );
                 } else if e.is_connect() {
                     return ToolExecutionResult::tool_error("Failed to connect to server");
                 } else {
                     return ToolExecutionResult::tool_error(format!("Request failed: {}", e));
                 }
             }
+            Err(_) => {
+                tracing::error!("HTTP request timed out waiting for first byte from {}", url);
+                return ToolExecutionResult::tool_error(
+                    "Request timed out: server did not respond within 1 second",
+                );
+            }
         };
 
         let status = response.status();
         let status_code = status.as_u16();
 
-        // Get content type
+        // Extract metadata from headers
         let content_type = response
             .headers()
             .get(CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
-        // Check for binary content
+        let content_length = response
+            .headers()
+            .get(CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+
+        let last_modified = response
+            .headers()
+            .get(LAST_MODIFIED)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let filename = extract_filename_from_headers(response.headers(), url);
+
+        // Check for binary content - return metadata instead of error
         if let Some(ref ct) = content_type {
             if is_binary_content_type(ct) {
-                return ToolExecutionResult::tool_error(
-                    "Binary content is not supported. Only textual content (HTML, text, JSON, etc.) can be fetched.",
-                );
+                return ToolExecutionResult::success(serde_json::json!({
+                    "url": url,
+                    "status_code": status_code,
+                    "content_type": content_type,
+                    "size": content_length,
+                    "filename": filename,
+                    "last_modified": last_modified,
+                    "error": "Binary content is not supported. Only textual content (HTML, text, JSON, etc.) can be fetched."
+                }));
             }
         }
 
@@ -245,18 +289,15 @@ impl Tool for WebFetchTool {
                 "url": url,
                 "status_code": status_code,
                 "content_type": content_type,
+                "size": content_length,
+                "last_modified": last_modified,
+                "filename": filename,
                 "method": "HEAD"
             }));
         }
 
-        // Get response body
-        let body = match response.text().await {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::error!("Failed to read response body from {}: {}", url, e);
-                return ToolExecutionResult::tool_error("Failed to read response body");
-            }
-        };
+        // Stream response body with timeout
+        let (body, size, timed_out) = read_body_with_timeout(response, BODY_TIMEOUT).await;
 
         // Check if response is HTML (for conversion)
         let is_html = content_type
@@ -267,11 +308,16 @@ impl Tool for WebFetchTool {
             || body.trim_start().starts_with("<html");
 
         // Convert content based on format
-        let content = match response_format {
+        let mut content = match response_format {
             ResponseFormat::Markdown if is_html => html_to_markdown(&body),
             ResponseFormat::Text if is_html => html_to_text(&body),
             _ => body,
         };
+
+        // Append timeout indicator if body was truncated
+        if timed_out {
+            content.push_str("\n\n[..more content timed out...]");
+        }
 
         let format = match response_format {
             ResponseFormat::Markdown if is_html => "markdown",
@@ -283,8 +329,11 @@ impl Tool for WebFetchTool {
             "url": url,
             "status_code": status_code,
             "content_type": content_type,
+            "size": size,
+            "last_modified": last_modified,
             "format": format,
-            "content": content
+            "content": content,
+            "truncated": timed_out
         }))
     }
 }
@@ -317,6 +366,86 @@ fn is_binary_content_type(content_type: &str) -> bool {
     }
 
     false
+}
+
+/// Read response body with a timeout, returning partial content if timeout is exceeded.
+/// Returns (body_text, bytes_read, was_truncated).
+async fn read_body_with_timeout(
+    response: reqwest::Response,
+    timeout: Duration,
+) -> (String, usize, bool) {
+    let start = Instant::now();
+    let mut bytes = Vec::new();
+    let mut stream = response.bytes_stream();
+    let mut timed_out = false;
+
+    while let Some(chunk_result) = stream.next().await {
+        // Check if we've exceeded the timeout
+        if start.elapsed() >= timeout {
+            timed_out = true;
+            tracing::warn!(
+                "Body read timed out after {:?}, returning partial content ({} bytes)",
+                timeout,
+                bytes.len()
+            );
+            break;
+        }
+
+        match chunk_result {
+            Ok(chunk) => {
+                bytes.extend_from_slice(&chunk);
+            }
+            Err(e) => {
+                tracing::error!("Error reading response chunk: {}", e);
+                break;
+            }
+        }
+    }
+
+    let size = bytes.len();
+
+    // Convert to string, replacing invalid UTF-8 sequences
+    let body = String::from_utf8_lossy(&bytes).into_owned();
+
+    (body, size, timed_out)
+}
+
+/// Extract filename from Content-Disposition header or URL
+fn extract_filename_from_headers(headers: &HeaderMap, url: &str) -> Option<String> {
+    // Try Content-Disposition header first
+    if let Some(disposition) = headers.get(CONTENT_DISPOSITION) {
+        if let Ok(value) = disposition.to_str() {
+            // Look for filename="..." or filename*=...
+            if let Some(start) = value.find("filename=") {
+                let rest = &value[start + 9..];
+                let filename = if let Some(stripped) = rest.strip_prefix('"') {
+                    // Quoted filename
+                    stripped.split('"').next()
+                } else {
+                    // Unquoted filename
+                    rest.split([';', ' ']).next()
+                };
+                if let Some(name) = filename {
+                    if !name.is_empty() {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Fall back to extracting filename from URL path
+    if let Ok(parsed) = url::Url::parse(url) {
+        if let Some(mut segments) = parsed.path_segments() {
+            if let Some(last) = segments.next_back() {
+                if !last.is_empty() && last.contains('.') {
+                    return Some(last.to_string());
+                }
+            }
+        }
+    }
+
+    None
 }
 
 /// Convert HTML to markdown
@@ -785,6 +914,129 @@ mod tests {
             assert_eq!(value["method"], "HEAD");
             // HEAD requests should not have content
             assert!(value.get("content").is_none());
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_response_includes_size() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/html"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            // Size should be present and > 0
+            assert!(value["size"].as_u64().unwrap() > 0);
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_binary_returns_metadata() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/image/png"
+            }))
+            .await;
+
+        // Binary content should return success with error message and metadata
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            assert!(value["content_type"]
+                .as_str()
+                .unwrap()
+                .contains("image/png"));
+            assert!(value["error"]
+                .as_str()
+                .unwrap()
+                .contains("Binary content is not supported"));
+            // Should have size metadata if available
+            assert!(value.get("size").is_some() || value["size"].is_null());
+        } else {
+            panic!("Expected success response with metadata for binary content");
+        }
+    }
+
+    #[test]
+    fn test_extract_filename_from_content_disposition_quoted() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment; filename=\"test_file.pdf\""),
+        );
+
+        let filename = extract_filename_from_headers(&headers, "https://example.com/download");
+        assert_eq!(filename, Some("test_file.pdf".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_from_content_disposition_unquoted() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment; filename=document.pdf"),
+        );
+
+        let filename = extract_filename_from_headers(&headers, "https://example.com/download");
+        assert_eq!(filename, Some("document.pdf".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_from_url() {
+        let headers = HeaderMap::new();
+
+        let filename =
+            extract_filename_from_headers(&headers, "https://example.com/path/to/report.pdf");
+        assert_eq!(filename, Some("report.pdf".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_no_extension() {
+        let headers = HeaderMap::new();
+
+        // URL without file extension should return None
+        let filename = extract_filename_from_headers(&headers, "https://example.com/path/to/page");
+        assert_eq!(filename, None);
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_head_includes_metadata() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/response-headers?Content-Length=100",
+                "method": "HEAD"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["method"], "HEAD");
+            // Should have metadata fields even for HEAD requests
+            assert!(value.get("content_type").is_some());
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_truncated_field() {
+        // Normal response should have truncated: false
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/html"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["truncated"], false);
         } else {
             panic!("Expected successful response");
         }

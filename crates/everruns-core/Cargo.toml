@@ -38,6 +38,9 @@ tracing.workspace = true
 # Encoding
 base64.workspace = true
 
+# URL parsing
+url = "2"
+
 # OpenAPI schema generation (optional, enabled by everruns-api)
 utoipa = { workspace = true, optional = true }
 

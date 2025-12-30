@@ -244,6 +244,9 @@ When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are au
 - **ID**: `web_fetch`
 - **Purpose**: Fetch content from URLs and convert HTML to markdown or plain text
 - **System Prompt**: None (this capability does not add to the system prompt)
+- **Timeouts**:
+  - **First byte timeout**: 1 second - If server doesn't respond within 1 second, request fails
+  - **Body timeout**: 30 seconds - If body isn't fully read within 30 seconds, partial content is returned with `[..more content timed out...]` suffix
 - **Tools**:
   - `web_fetch` - Fetch content from a URL
     - Parameters:
@@ -255,12 +258,18 @@ When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are au
       - `url`: The requested URL
       - `status_code`: HTTP status code
       - `content_type`: Response content type
+      - `size`: Number of bytes received
+      - `last_modified`: Last-Modified header value (when available)
+      - `filename`: Extracted filename from Content-Disposition header or URL (when available)
       - `format`: "markdown", "text", or "raw" depending on conversion
-      - `content`: The fetched content (not present for HEAD requests)
+      - `content`: The fetched content (not present for HEAD requests or binary content)
+      - `truncated`: boolean - True if body was truncated due to timeout
+      - `error`: (for binary content) Error message explaining binary content is not supported
     - Error handling:
-      - Binary content (images, PDFs, etc.) returns an error - only textual content supported
+      - Binary content (images, PDFs, etc.) returns success with metadata and error message (not a tool error)
       - Invalid URLs return validation errors
       - Network errors return appropriate error messages
+      - First byte timeout returns "server did not respond within 1 second"
     - Policy: Auto
 - **Icon**: "globe"
 - **Category**: "Network"
@@ -269,9 +278,9 @@ When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are au
 
 This capability intentionally does not contribute to the system prompt. The tool is self-documenting through its parameter schema and description. Agents can discover and use the tool without additional instructions.
 
-##### Design Decision: Binary Content Not Supported
+##### Design Decision: Binary Content Metadata
 
-Binary content (images, PDFs, audio, video, etc.) is explicitly not supported and will return an error. This keeps the implementation simple and focused on textual content that agents can process. Future versions may add binary support with appropriate handling.
+Binary content (images, PDFs, audio, video, etc.) cannot be fetched as textual content. However, instead of returning a tool error, the response includes available metadata (content type, size, filename, last modified) along with an error message explaining binary content is not supported. This allows agents to understand what the resource is even though they cannot access its content.
 
 ##### Design Decision: Built-in HTML Conversion
 
