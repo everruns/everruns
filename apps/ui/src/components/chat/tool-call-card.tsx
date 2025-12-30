@@ -104,23 +104,23 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
     : null;
 
   return (
-    <div className="w-full bg-muted/30 rounded-lg p-3 space-y-1">
+    <div className="w-full space-y-0.5 text-sm text-muted-foreground">
       {/* Tool name and arguments */}
-      <div className="text-sm">
-        <span className="font-semibold">{content.name}:</span>
-        {argsPreview && <span className="text-muted-foreground ml-1">{argsPreview}</span>}
+      <div>
+        <span className="font-medium">{content.name}:</span>
+        {argsPreview && <span className="ml-1">{argsPreview}</span>}
       </div>
 
       {/* Result or executing state */}
       {isComplete ? (
         hasError ? (
-          <div className="text-sm text-red-600">
-            <span className="text-muted-foreground">&gt;</span> Error: {resultContent?.error}
+          <div className="text-red-600">
+            &gt; Error: {resultContent?.error}
           </div>
         ) : resultPreview ? (
           <div className="space-y-0.5">
-            <pre className="text-sm text-muted-foreground whitespace-pre-wrap">
-              <span>&gt; </span>{resultPreview.preview}
+            <pre className="whitespace-pre-wrap">
+              &gt; {resultPreview.preview}
             </pre>
             {(resultPreview.hasMore || isExpanded) && (
               <button
@@ -140,8 +140,8 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
           </div>
         ) : null
       ) : (
-        <div className="text-sm text-muted-foreground">
-          <span>&gt;</span> ... executing ...
+        <div>
+          &gt; ... executing ...
         </div>
       )}
     </div>
