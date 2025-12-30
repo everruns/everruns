@@ -59,6 +59,7 @@ openapi = ["utoipa"]
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
+wiremock = "0.6"
 
 [[example]]
 name = "tool_calling"

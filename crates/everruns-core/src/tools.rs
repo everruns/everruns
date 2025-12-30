@@ -92,7 +92,11 @@ impl ToolExecutionResult {
 
     /// Convert to a ToolResult for the agent loop
     ///
-    /// Internal errors are logged and replaced with a generic message.
+    /// Both tool errors and internal errors are packaged as `{"error": "..."}` in the
+    /// result field. This provides a consistent contract where the result field always
+    /// contains the payload, and the agent loop continues the same way for all outcomes.
+    ///
+    /// Internal errors are logged but replaced with a generic message when returned.
     pub fn into_tool_result(self, tool_call_id: &str, tool_name: &str) -> ToolResult {
         match self {
             ToolExecutionResult::Success(value) => ToolResult {
@@ -102,8 +106,8 @@ impl ToolExecutionResult {
             },
             ToolExecutionResult::ToolError(message) => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
-                result: None,
-                error: Some(message),
+                result: Some(serde_json::json!({ "error": message })),
+                error: None,
             },
             ToolExecutionResult::InternalError(err) => {
                 // Log the full error details for debugging
@@ -114,11 +118,13 @@ impl ToolExecutionResult {
                     "Tool internal error (details hidden from LLM)"
                 );
 
-                // Return generic error message to LLM
+                // Return generic error message to LLM, packaged as {"error": "..."}
                 ToolResult {
                     tool_call_id: tool_call_id.to_string(),
-                    result: None,
-                    error: Some("An internal error occurred while executing the tool".to_string()),
+                    result: Some(serde_json::json!({
+                        "error": "An internal error occurred while executing the tool"
+                    })),
+                    error: None,
                 }
             }
         }
@@ -710,19 +716,22 @@ mod tests {
         assert!(tool_result.error.is_none());
         assert_eq!(tool_result.result.unwrap()["value"], 42);
 
-        // Tool error (shown to LLM)
+        // Tool error (packaged as {"error": "..."} in result field)
         let result = ToolExecutionResult::tool_error("Invalid input");
         let tool_result = result.into_tool_result("call_2", "test_tool");
-        assert!(tool_result.result.is_none());
-        assert_eq!(tool_result.error.unwrap(), "Invalid input");
+        assert!(tool_result.error.is_none());
+        assert_eq!(
+            tool_result.result.unwrap(),
+            serde_json::json!({"error": "Invalid input"})
+        );
 
-        // Internal error (hidden from LLM)
+        // Internal error (packaged as {"error": "..."} with generic message)
         let result = ToolExecutionResult::internal_error_msg("Secret database error");
         let tool_result = result.into_tool_result("call_3", "test_tool");
-        assert!(tool_result.result.is_none());
+        assert!(tool_result.error.is_none());
         assert_eq!(
-            tool_result.error.unwrap(),
-            "An internal error occurred while executing the tool"
+            tool_result.result.unwrap(),
+            serde_json::json!({"error": "An internal error occurred while executing the tool"})
         );
     }
 
