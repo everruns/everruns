@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Message, ContentPart } from "@/lib/api/types";
 import { isToolCallPart, isToolResultPart } from "@/lib/api/types";
+import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 
 interface ToolCallContent {
   id: string;
@@ -102,6 +103,20 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
   const resultPreview = resultContent?.result !== undefined
     ? getResultPreview(resultContent.result)
     : null;
+
+  // Special rendering for write_todos tool
+  if (isWriteTodosTool(content.name)) {
+    return (
+      <div className="w-full">
+        <TodoListRenderer
+          arguments={content.arguments}
+          result={resultContent?.result}
+          isExecuting={!isComplete}
+          error={resultContent?.error}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-0.5 text-sm text-muted-foreground">
