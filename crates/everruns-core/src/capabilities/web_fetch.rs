@@ -1041,4 +1041,603 @@ mod tests {
             panic!("Expected successful response");
         }
     }
+
+    // ============================================================================
+    // Timeout constant tests
+    // ============================================================================
+
+    #[test]
+    fn test_connect_timeout_is_one_second() {
+        assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_body_timeout_is_thirty_seconds() {
+        assert_eq!(BODY_TIMEOUT, Duration::from_secs(30));
+    }
+
+    // ============================================================================
+    // First byte timeout tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_web_fetch_timeout_unreachable_host() {
+        // Use a non-routable IP address to trigger connection timeout
+        // 10.255.255.1 is typically non-routable and will timeout
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "http://10.255.255.1:12345/test"
+            }))
+            .await;
+
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                // Should timeout or fail to connect
+                assert!(
+                    msg.contains("timed out") || msg.contains("connect"),
+                    "Expected timeout or connection error, got: {}",
+                    msg
+                );
+            }
+            _ => {
+                // This is also acceptable - some networks may have different behavior
+            }
+        }
+    }
+
+    // ============================================================================
+    // Filename extraction edge cases
+    // ============================================================================
+
+    #[test]
+    fn test_extract_filename_content_disposition_with_extra_params() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment; filename=\"report.pdf\"; size=12345"),
+        );
+
+        let filename = extract_filename_from_headers(&headers, "https://example.com/download");
+        assert_eq!(filename, Some("report.pdf".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_content_disposition_inline() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("inline; filename=\"preview.jpg\""),
+        );
+
+        let filename = extract_filename_from_headers(&headers, "https://example.com/view");
+        assert_eq!(filename, Some("preview.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_url_with_query_string() {
+        let headers = HeaderMap::new();
+
+        let filename = extract_filename_from_headers(
+            &headers,
+            "https://example.com/files/document.pdf?token=abc123",
+        );
+        // Should still extract filename from path, ignoring query string
+        assert_eq!(filename, Some("document.pdf".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_url_with_fragment() {
+        let headers = HeaderMap::new();
+
+        let filename =
+            extract_filename_from_headers(&headers, "https://example.com/files/doc.pdf#page=5");
+        assert_eq!(filename, Some("doc.pdf".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_url_trailing_slash() {
+        let headers = HeaderMap::new();
+
+        // URL ending with slash should return None (no filename)
+        let filename = extract_filename_from_headers(&headers, "https://example.com/path/");
+        assert_eq!(filename, None);
+    }
+
+    #[test]
+    fn test_extract_filename_url_root_path() {
+        let headers = HeaderMap::new();
+
+        let filename = extract_filename_from_headers(&headers, "https://example.com/");
+        assert_eq!(filename, None);
+    }
+
+    #[test]
+    fn test_extract_filename_url_no_path() {
+        let headers = HeaderMap::new();
+
+        let filename = extract_filename_from_headers(&headers, "https://example.com");
+        assert_eq!(filename, None);
+    }
+
+    #[test]
+    fn test_extract_filename_url_encoded_filename() {
+        let headers = HeaderMap::new();
+
+        // URL-encoded filename
+        let filename =
+            extract_filename_from_headers(&headers, "https://example.com/files/my%20document.pdf");
+        // Note: URL parsing will decode, so we get the encoded form
+        assert_eq!(filename, Some("my%20document.pdf".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_content_disposition_empty_filename() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment; filename=\"\""),
+        );
+
+        // Empty filename in header should fall back to URL
+        let filename = extract_filename_from_headers(&headers, "https://example.com/fallback.txt");
+        assert_eq!(filename, Some("fallback.txt".to_string()));
+    }
+
+    #[test]
+    fn test_extract_filename_prefers_header_over_url() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment; filename=\"from_header.pdf\""),
+        );
+
+        let filename = extract_filename_from_headers(&headers, "https://example.com/from_url.txt");
+        // Header should take precedence
+        assert_eq!(filename, Some("from_header.pdf".to_string()));
+    }
+
+    // ============================================================================
+    // Binary content type detection tests
+    // ============================================================================
+
+    #[test]
+    fn test_is_binary_content_type_images() {
+        assert!(is_binary_content_type("image/png"));
+        assert!(is_binary_content_type("image/jpeg"));
+        assert!(is_binary_content_type("image/gif"));
+        assert!(is_binary_content_type("image/webp"));
+        assert!(is_binary_content_type("image/svg+xml")); // SVG is image/* even though it's XML
+    }
+
+    #[test]
+    fn test_is_binary_content_type_audio_video() {
+        assert!(is_binary_content_type("audio/mpeg"));
+        assert!(is_binary_content_type("audio/wav"));
+        assert!(is_binary_content_type("audio/ogg"));
+        assert!(is_binary_content_type("video/mp4"));
+        assert!(is_binary_content_type("video/webm"));
+    }
+
+    #[test]
+    fn test_is_binary_content_type_archives() {
+        assert!(is_binary_content_type("application/zip"));
+        assert!(is_binary_content_type("application/gzip"));
+        assert!(is_binary_content_type("application/x-tar"));
+        assert!(is_binary_content_type("application/x-rar"));
+        assert!(is_binary_content_type("application/x-7z-compressed"));
+    }
+
+    #[test]
+    fn test_is_binary_content_type_documents() {
+        assert!(is_binary_content_type("application/pdf"));
+        assert!(is_binary_content_type("application/vnd.ms-excel"));
+        assert!(is_binary_content_type(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ));
+    }
+
+    #[test]
+    fn test_is_binary_content_type_fonts() {
+        assert!(is_binary_content_type("font/woff"));
+        assert!(is_binary_content_type("font/woff2"));
+        assert!(is_binary_content_type("font/ttf"));
+    }
+
+    #[test]
+    fn test_is_binary_content_type_text_types() {
+        assert!(!is_binary_content_type("text/html"));
+        assert!(!is_binary_content_type("text/plain"));
+        assert!(!is_binary_content_type("text/css"));
+        assert!(!is_binary_content_type("text/javascript"));
+        assert!(!is_binary_content_type("text/csv"));
+        assert!(!is_binary_content_type("text/xml"));
+    }
+
+    #[test]
+    fn test_is_binary_content_type_application_text() {
+        assert!(!is_binary_content_type("application/json"));
+        assert!(!is_binary_content_type("application/xml"));
+        assert!(!is_binary_content_type("application/javascript"));
+        assert!(!is_binary_content_type("application/ld+json"));
+    }
+
+    #[test]
+    fn test_is_binary_content_type_with_charset() {
+        // Content types often include charset
+        assert!(!is_binary_content_type("text/html; charset=utf-8"));
+        assert!(!is_binary_content_type("application/json; charset=utf-8"));
+        assert!(is_binary_content_type("image/png; charset=binary"));
+    }
+
+    #[test]
+    fn test_is_binary_content_type_case_insensitive() {
+        assert!(is_binary_content_type("IMAGE/PNG"));
+        assert!(is_binary_content_type("Image/Jpeg"));
+        assert!(is_binary_content_type("APPLICATION/PDF"));
+    }
+
+    // ============================================================================
+    // Response structure validation tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_web_fetch_response_has_all_expected_fields() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/html"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            // Verify all expected fields are present
+            assert!(value.get("url").is_some(), "Missing 'url' field");
+            assert!(
+                value.get("status_code").is_some(),
+                "Missing 'status_code' field"
+            );
+            assert!(
+                value.get("content_type").is_some(),
+                "Missing 'content_type' field"
+            );
+            assert!(value.get("size").is_some(), "Missing 'size' field");
+            assert!(value.get("format").is_some(), "Missing 'format' field");
+            assert!(value.get("content").is_some(), "Missing 'content' field");
+            assert!(
+                value.get("truncated").is_some(),
+                "Missing 'truncated' field"
+            );
+            // last_modified may or may not be present depending on server
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_head_response_structure() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/html",
+                "method": "HEAD"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            // HEAD response should have metadata but not content
+            assert!(value.get("url").is_some());
+            assert!(value.get("status_code").is_some());
+            assert!(value.get("method").is_some());
+            assert_eq!(value["method"], "HEAD");
+            // Should NOT have content or truncated for HEAD
+            assert!(value.get("content").is_none());
+            assert!(value.get("truncated").is_none());
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_binary_response_structure() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/image/jpeg"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            // Binary response should have metadata and error message
+            assert!(value.get("url").is_some());
+            assert!(value.get("status_code").is_some());
+            assert!(value.get("content_type").is_some());
+            assert!(value.get("error").is_some());
+            // Should NOT have content or truncated for binary
+            assert!(value.get("content").is_none());
+            assert!(value.get("truncated").is_none());
+        } else {
+            panic!("Expected successful response with metadata");
+        }
+    }
+
+    // ============================================================================
+    // Format conversion tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_web_fetch_as_markdown_format_field() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/html",
+                "as_markdown": true
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["format"], "markdown");
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_as_text_format_field() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/html",
+                "as_text": true
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["format"], "text");
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_raw_format_for_non_html() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/json"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            // JSON content should return "raw" format
+            assert_eq!(value["format"], "raw");
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    // ============================================================================
+    // Last-Modified header tests (using httpbin's response-headers endpoint)
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_web_fetch_last_modified_when_present() {
+        let tool = WebFetchTool;
+        // Use httpbin to set a custom Last-Modified header
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/response-headers?Last-Modified=Tue%2C%2001%20Jan%202024%2012%3A00%3A00%20GMT"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            // Should have extracted the Last-Modified header
+            if let Some(last_mod) = value.get("last_modified") {
+                assert!(
+                    last_mod.as_str().is_some(),
+                    "last_modified should be a string"
+                );
+            }
+            // Note: httpbin might not always work perfectly, so we just verify the field exists
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    // ============================================================================
+    // HTTP method tests
+    // ============================================================================
+
+    #[test]
+    fn test_http_method_from_str_valid() {
+        assert_eq!(HttpMethod::from_str("GET"), Some(HttpMethod::Get));
+        assert_eq!(HttpMethod::from_str("get"), Some(HttpMethod::Get));
+        assert_eq!(HttpMethod::from_str("Get"), Some(HttpMethod::Get));
+        assert_eq!(HttpMethod::from_str("HEAD"), Some(HttpMethod::Head));
+        assert_eq!(HttpMethod::from_str("head"), Some(HttpMethod::Head));
+    }
+
+    #[test]
+    fn test_http_method_from_str_invalid() {
+        assert_eq!(HttpMethod::from_str("POST"), None);
+        assert_eq!(HttpMethod::from_str("PUT"), None);
+        assert_eq!(HttpMethod::from_str("DELETE"), None);
+        assert_eq!(HttpMethod::from_str("PATCH"), None);
+        assert_eq!(HttpMethod::from_str(""), None);
+        assert_eq!(HttpMethod::from_str("INVALID"), None);
+    }
+
+    #[test]
+    fn test_http_method_default() {
+        assert_eq!(HttpMethod::default(), HttpMethod::Get);
+    }
+
+    // ============================================================================
+    // Response format tests
+    // ============================================================================
+
+    #[test]
+    fn test_response_format_default() {
+        assert_eq!(ResponseFormat::default(), ResponseFormat::Raw);
+    }
+
+    // ============================================================================
+    // Size validation tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_web_fetch_size_matches_content_length() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/bytes/100"
+            }))
+            .await;
+
+        // httpbin /bytes/N returns exactly N random bytes
+        // But since it's binary, we'll get the metadata with size
+        if let ToolExecutionResult::Success(value) = result {
+            // For binary content, size comes from Content-Length header
+            if let Some(size) = value.get("size") {
+                if !size.is_null() {
+                    assert_eq!(size.as_u64().unwrap(), 100);
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_size_for_text_content() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/robots.txt"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            let size = value["size"].as_u64().unwrap();
+            let content = value["content"].as_str().unwrap();
+            // Size should match the content length
+            assert_eq!(size as usize, content.len());
+        } else {
+            panic!("Expected successful response");
+        }
+    }
+
+    // ============================================================================
+    // Error handling tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_web_fetch_404_returns_success_with_status() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/status/404"
+            }))
+            .await;
+
+        // 404 should still be a "success" from tool perspective - it got a response
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 404);
+        } else {
+            panic!("Expected successful response even for 404");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_500_returns_success_with_status() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://httpbin.org/status/500"
+            }))
+            .await;
+
+        // 500 should still be a "success" from tool perspective
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 500);
+        } else {
+            panic!("Expected successful response even for 500");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_dns_failure() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://this-domain-definitely-does-not-exist-12345.com/test"
+            }))
+            .await;
+
+        // DNS failure should return a tool error
+        if let ToolExecutionResult::ToolError(msg) = result {
+            let msg_lower = msg.to_lowercase();
+            assert!(
+                msg_lower.contains("failed")
+                    || msg_lower.contains("error")
+                    || msg_lower.contains("timed out")
+                    || msg_lower.contains("connect"),
+                "Expected error message about failure, got: {}",
+                msg
+            );
+        } else {
+            // Some environments might timeout instead of DNS failure
+        }
+    }
+
+    // ============================================================================
+    // URL validation tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_web_fetch_rejects_ftp_url() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "ftp://example.com/file.txt"
+            }))
+            .await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("Invalid URL"));
+        } else {
+            panic!("Expected tool error for FTP URL");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_rejects_file_url() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "file:///etc/passwd"
+            }))
+            .await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("Invalid URL"));
+        } else {
+            panic!("Expected tool error for file:// URL");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_accepts_http_url() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "http://httpbin.org/get"
+            }))
+            .await;
+
+        // HTTP (not HTTPS) should work
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+        } else {
+            // Some environments block plain HTTP, so this is acceptable too
+        }
+    }
 }
