@@ -197,3 +197,20 @@ export function useEvents(
     refetchInterval: options?.refetchInterval,
   });
 }
+
+/**
+ * Fetch raw events without transformation for developer debugging
+ * Returns all events including non-message events (step.*, tool.*, session.*)
+ */
+export function useRawEvents(
+  agentId: string | undefined,
+  sessionId: string | undefined,
+  options?: { refetchInterval?: number | false }
+) {
+  return useQuery({
+    queryKey: ["raw-events", agentId, sessionId],
+    queryFn: () => listEvents(agentId!, sessionId!),
+    enabled: !!agentId && !!sessionId,
+    refetchInterval: options?.refetchInterval,
+  });
+}
