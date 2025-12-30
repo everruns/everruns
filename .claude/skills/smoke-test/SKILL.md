@@ -186,6 +186,23 @@ Expected: Event with `event_type: "message.agent"` and `data` containing `messag
 
 **Note:** The UI uses the `/sse` endpoint for real-time streaming and the `/events` endpoint for polling/listing events.
 
+#### 9.7. Session Cancellation
+Test the session cancel endpoint:
+```bash
+# Cancel the session (works on both running and pending sessions)
+CANCEL_RESULT=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/cancel")
+echo $CANCEL_RESULT | jq '{id: .id, status: .status}'
+```
+Expected: Session object with `status: "pending"` (if session wasn't running) or session returned to pending state (if it was running)
+
+```bash
+# Check for cancellation event (only present if session was running when cancelled)
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "session.cancelled" or .event_type == "session.interrupted")'
+```
+Expected: Cancellation/interruption event with system message (if applicable)
+
+**Note:** The cancel endpoint terminates any running workflow and returns the session to `pending` status. When sending a new message to a running session, it is automatically interrupted first.
+
 #### 10. List Sessions
 ```bash
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions" | jq '.data | length'

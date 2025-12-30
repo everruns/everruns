@@ -838,3 +838,100 @@ async fn test_session_filesystem() {
 
     println!("Session filesystem test passed!");
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_session_cancellation() {
+    let client = reqwest::Client::new();
+
+    println!("Testing session cancellation...");
+
+    // Step 1: Create an agent
+    println!("\nStep 1: Creating agent...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Cancel Test Agent",
+            "system_prompt": "Test agent for cancellation"
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.id);
+
+    // Step 2: Create a session
+    println!("\nStep 2: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .json(&json!({
+            "title": "Cancel Test Session"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!(
+        "Created session: {} (status: {:?})",
+        session.id, session.status
+    );
+    assert_eq!(session.status.to_string(), "pending");
+
+    // Step 3: Cancel the session (should work even if not running)
+    println!("\nStep 3: Cancelling session...");
+    let cancel_response = client
+        .post(format!(
+            "{}/v1/agents/{}/sessions/{}/cancel",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to cancel session");
+
+    assert_eq!(cancel_response.status(), 200);
+    let cancelled_session: Session = cancel_response
+        .json()
+        .await
+        .expect("Failed to parse cancelled session");
+    println!(
+        "Cancelled session: {} (status: {:?})",
+        cancelled_session.id, cancelled_session.status
+    );
+    // Session should still be pending since it wasn't running
+    assert_eq!(cancelled_session.status.to_string(), "pending");
+
+    // Step 4: Verify events list includes cancellation event (only if session was running)
+    println!("\nStep 4: Checking events...");
+    let events_response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions/{}/events",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list events");
+
+    assert_eq!(events_response.status(), 200);
+    let events_data: Value = events_response
+        .json()
+        .await
+        .expect("Failed to parse events");
+    let events = events_data["data"].as_array().expect("Expected array");
+    println!("Found {} event(s)", events.len());
+    // Events may or may not include cancellation depending on implementation
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("Session cancellation test passed!");
+}

@@ -205,6 +205,8 @@ This convention ensures consistent, predictable event type names across the syst
    - `session.started` - Session began processing
    - `session.completed` - Session finished successfully
    - `session.failed` - Session encountered error
+   - `session.cancelled` - Session cancelled by user (explicit cancellation)
+   - `session.interrupted` - Session interrupted by new message
 
 ## Flow Example
 
