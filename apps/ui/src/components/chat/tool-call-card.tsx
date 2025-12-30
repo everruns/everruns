@@ -1,10 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Wrench, ChevronDown, ChevronRight, CheckCircle2, AlertCircle } from "lucide-react";
 import type { Message, ContentPart } from "@/lib/api/types";
 import { isToolCallPart, isToolResultPart } from "@/lib/api/types";
 
@@ -48,6 +44,35 @@ function extractToolResultContent(content: ContentPart[]): ToolResultContent | n
   return null;
 }
 
+// Format arguments as "arg1: value, arg2: value..." with truncation
+function formatArguments(args: Record<string, unknown>): string {
+  const entries = Object.entries(args);
+  if (entries.length === 0) return "";
+
+  const formatted = entries.map(([key, value]) => {
+    const strValue = typeof value === "string" ? value : JSON.stringify(value);
+    const truncated = strValue.length > 30 ? strValue.substring(0, 30) + "..." : strValue;
+    return `${key}: ${truncated}`;
+  }).join(", ");
+
+  return formatted.length > 80 ? formatted.substring(0, 80) + "..." : formatted;
+}
+
+// Get first N lines of result text, limited to maxChars
+function getResultPreview(result: unknown, maxLines: number = 2, maxChars: number = 360): { preview: string; hasMore: boolean } {
+  const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+  const lines = text.split("\n");
+  let preview = lines.slice(0, maxLines).join("\n");
+  const truncatedByLines = lines.length > maxLines;
+  const truncatedByChars = preview.length > maxChars;
+
+  if (truncatedByChars) {
+    preview = preview.substring(0, maxChars) + "...";
+  }
+
+  return { preview, hasMore: truncatedByLines || truncatedByChars || text.length > preview.length };
+}
+
 interface ToolCallCardProps {
   toolCall: Message;
   toolResult?: Message;
@@ -73,84 +98,52 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
     return null;
   }
 
+  const argsPreview = formatArguments(content.arguments);
+  const resultPreview = resultContent?.result !== undefined
+    ? getResultPreview(resultContent.result)
+    : null;
+
   return (
-    <div className="flex justify-start">
-      <Card className="max-w-[90%] bg-muted/50 border-purple-200">
-        <CardContent className="p-3">
-          <div className="flex items-start gap-2">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-              <Wrench className="w-4 h-4 text-purple-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium text-muted-foreground">Step</span>
-                <span className="font-medium text-sm">{content.name}</span>
-                {isComplete ? (
-                  hasError ? (
-                    <Badge variant="destructive" className="text-xs">
-                      <AlertCircle className="w-3 h-3 mr-1" />
-                      Failed
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      Done
-                    </Badge>
-                  )
-                ) : (
-                  <Badge variant="outline" className="text-xs">
-                    Running...
-                  </Badge>
-                )}
-              </div>
+    <div className="w-full space-y-0.5 text-sm text-muted-foreground">
+      {/* Tool name and arguments */}
+      <div>
+        <span className="font-medium">{content.name}:</span>
+        {argsPreview && <span className="ml-1">{argsPreview}</span>}
+      </div>
 
-              {/* Arguments section */}
-              {content.arguments && Object.keys(content.arguments).length > 0 && (
-                <div className="mt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => setIsExpanded(!isExpanded)}
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="w-3 h-3 mr-1" />
-                    ) : (
-                      <ChevronRight className="w-3 h-3 mr-1" />
-                    )}
-                    Arguments
-                  </Button>
-                  {isExpanded && (
-                    <pre className="mt-1 p-2 text-xs bg-white rounded border overflow-x-auto max-h-40">
-                      {JSON.stringify(content.arguments, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              )}
-
-              {/* Result section */}
-              {isComplete && resultContent && (
-                <div className="mt-2">
-                  {hasError ? (
-                    <div className="p-2 text-xs bg-red-50 text-red-700 rounded border border-red-200">
-                      {resultContent.error}
-                    </div>
-                  ) : resultContent.result !== undefined ? (
-                    <div className="mt-1">
-                      <span className="text-xs text-muted-foreground">Result:</span>
-                      <pre className="mt-1 p-2 text-xs bg-white rounded border overflow-x-auto max-h-40">
-                        {typeof resultContent.result === "string"
-                          ? resultContent.result
-                          : JSON.stringify(resultContent.result, null, 2)}
-                      </pre>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </div>
+      {/* Result or executing state */}
+      {isComplete ? (
+        hasError ? (
+          <div className="text-red-600">
+            &gt; Error: {resultContent?.error}
           </div>
-        </CardContent>
-      </Card>
+        ) : resultPreview ? (
+          <div className="space-y-0.5">
+            <div className="whitespace-pre-wrap">
+              &gt; {resultPreview.preview}
+            </div>
+            {(resultPreview.hasMore || isExpanded) && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                {isExpanded ? "show less" : "> see more..."}
+              </button>
+            )}
+            {isExpanded && resultContent?.result !== undefined && (
+              <pre className="text-xs bg-muted/50 p-2 rounded mt-1 overflow-x-auto max-h-60">
+                {typeof resultContent.result === "string"
+                  ? resultContent.result
+                  : JSON.stringify(resultContent.result, null, 2)}
+              </pre>
+            )}
+          </div>
+        ) : null
+      ) : (
+        <div>
+          &gt; ... executing ...
+        </div>
+      )}
     </div>
   );
 }
