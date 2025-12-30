@@ -76,6 +76,7 @@ struct HealthState {
         sessions::get_session,
         sessions::update_session,
         sessions::delete_session,
+        sessions::cancel_session,
         messages::create_message,
         messages::list_messages,
         events::stream_sse,
@@ -222,7 +223,7 @@ async fn main() -> Result<()> {
 
     // Create module-specific states
     let agents_state = agents::AppState::new(db.clone());
-    let sessions_state = sessions::AppState::new(db.clone());
+    let sessions_state = sessions::AppState::new(db.clone(), runner.clone());
     let messages_state = messages::AppState::new(db.clone(), runner.clone());
     let events_state = events::AppState::new(db.clone());
     let llm_providers_state = llm_providers::AppState::new(db.clone(), encryption.clone());

@@ -28,6 +28,7 @@ impl MessageService {
     /// Create a user message from API request
     ///
     /// Only user messages can be created via the API. This method:
+    /// - If session is running, cancels the current workflow (interruption)
     /// - Creates a message event in the events table
     /// - Triggers workflow execution for the session
     pub async fn create(
@@ -36,6 +37,45 @@ impl MessageService {
         session_id: Uuid,
         req: CreateMessageRequest,
     ) -> Result<Message> {
+        // Check if session is currently running and cancel if needed
+        if let Ok(Some(session)) = self.db.get_session(session_id).await {
+            if session.status == "running" {
+                tracing::info!(
+                    session_id = %session_id,
+                    "Session is running, cancelling before processing new message"
+                );
+                // Cancel the running workflow
+                if let Err(e) = self.runner.cancel_run(session_id).await {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %e,
+                        "Failed to cancel running workflow (continuing with message)"
+                    );
+                }
+                // Create interruption event
+                let interrupt_message_id = Uuid::now_v7();
+                let interrupt_event = CreateEventRow {
+                    session_id,
+                    event_type: "session.interrupted".to_string(),
+                    data: serde_json::json!({
+                        "message_id": interrupt_message_id,
+                        "role": "system",
+                        "content": [{
+                            "type": "text",
+                            "text": "Work interrupted by new message."
+                        }]
+                    }),
+                };
+                if let Err(e) = self.db.create_event(interrupt_event).await {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %e,
+                        "Failed to create interruption event"
+                    );
+                }
+            }
+        }
+
         // Convert InputContentPart array to ContentPart array
         let content: Vec<ContentPart> = req
             .message

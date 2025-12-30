@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createSession,
   deleteSession,
+  cancelSession,
   getSession,
   listSessions,
   updateSession,
@@ -90,6 +91,33 @@ export function useDeleteSession() {
   });
 }
 
+export function useCancelSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      agentId,
+      sessionId,
+    }: {
+      agentId: string;
+      sessionId: string;
+    }) => cancelSession(agentId, sessionId),
+    onSuccess: (_, { agentId, sessionId }) => {
+      // Invalidate session to refresh status
+      queryClient.invalidateQueries({
+        queryKey: ["session", agentId, sessionId],
+      });
+      // Invalidate events to refresh message list (for cancellation message)
+      queryClient.invalidateQueries({
+        queryKey: ["events", agentId, sessionId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["raw-events", agentId, sessionId],
+      });
+    },
+  });
+}
+
 export function useSendMessage() {
   const queryClient = useQueryClient();
 
@@ -135,12 +163,14 @@ function extractToolCallId(content: ContentPart[]): string | null {
  * This allows the UI to render from events while still displaying as "messages"
  */
 function eventsToMessages(events: Event[]): Message[] {
-  // Filter only message events and transform them
+  // Filter message events and system events (cancelled, interrupted)
   // Note: Tool calls are embedded in message.agent events via ContentPart::ToolCall
   const messageEvents = events.filter(e =>
     e.event_type === "message.user" ||
     e.event_type === "message.agent" ||
-    e.event_type === "message.tool_result"
+    e.event_type === "message.tool_result" ||
+    e.event_type === "session.cancelled" ||
+    e.event_type === "session.interrupted"
   );
 
   return messageEvents.map(event => {
@@ -154,10 +184,13 @@ function eventsToMessages(events: Event[]): Message[] {
 
     // Map event type to message role
     // Note: Tool calls are embedded in message.agent content, not separate events
+    // System events (cancelled, interrupted) are displayed as system messages
     const roleMap: Record<string, Message["role"]> = {
       "message.user": "user",
       "message.agent": "assistant",
       "message.tool_result": "tool_result",
+      "session.cancelled": "system",
+      "session.interrupted": "system",
     };
 
     // Extract tool_call_id from content for tool_result messages

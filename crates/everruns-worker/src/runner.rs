@@ -166,15 +166,30 @@ impl AgentRunner for TemporalRunner {
     async fn cancel_run(&self, session_id: Uuid) -> Result<()> {
         info!(session_id = %session_id, "Cancelling Temporal workflow");
 
-        // TODO: Implement workflow cancellation via Temporal API
-        // For now, we'll use signal-based cancellation when supported
-
-        let workflow_id = TemporalClient::workflow_id_for_session(session_id);
-        info!(
-            session_id = %session_id,
-            workflow_id = %workflow_id,
-            "Workflow cancellation requested (not yet implemented)"
-        );
+        // Terminate the workflow on Temporal server
+        // This stops any running activities immediately
+        if let Err(e) = self
+            .client
+            .terminate_workflow(session_id, "User requested cancellation")
+            .await
+        {
+            // Log error but don't fail - workflow may already be complete
+            // NotFound errors are expected if workflow is not running
+            let err_str = e.to_string();
+            if err_str.contains("NotFound") || err_str.contains("not found") {
+                info!(
+                    session_id = %session_id,
+                    "Workflow not found (may already be complete)"
+                );
+            } else {
+                error!(
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to terminate workflow"
+                );
+                return Err(e);
+            }
+        }
 
         Ok(())
     }

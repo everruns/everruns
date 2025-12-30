@@ -1,11 +1,13 @@
 // Session service for business logic (M2)
 
 use anyhow::Result;
+use chrono::Utc;
 use everruns_core::{Session, SessionStatus};
 use everruns_storage::{
-    models::{CreateSessionRow, UpdateSession},
+    models::{CreateEventRow, CreateSessionRow, UpdateSession},
     Database,
 };
+use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -63,6 +65,73 @@ impl SessionService {
 
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
         self.db.delete_session(id).await
+    }
+
+    /// Cancel a running session
+    ///
+    /// This will:
+    /// 1. Cancel the running workflow
+    /// 2. Update session status to pending
+    /// 3. Create a cancellation event with a system message
+    pub async fn cancel(&self, id: Uuid, runner: Arc<dyn AgentRunner>) -> Result<Option<Session>> {
+        // Get the session first
+        let session = self.db.get_session(id).await?;
+        let Some(session) = session else {
+            return Ok(None);
+        };
+
+        // Only cancel if session is running
+        if session.status != "running" {
+            tracing::info!(
+                session_id = %id,
+                status = %session.status,
+                "Session not running, nothing to cancel"
+            );
+            return Ok(Some(Self::row_to_session(session)));
+        }
+
+        // Cancel the workflow
+        if let Err(e) = runner.cancel_run(id).await {
+            tracing::warn!(
+                session_id = %id,
+                error = %e,
+                "Failed to cancel workflow (may already be complete)"
+            );
+            // Continue anyway - the workflow may have already finished
+        }
+
+        // Update session status to pending
+        let update = UpdateSession {
+            status: Some("pending".to_string()),
+            finished_at: Some(Utc::now()),
+            ..Default::default()
+        };
+        let updated = self.db.update_session(id, update).await?;
+
+        // Create a cancellation event with system message
+        let message_id = Uuid::now_v7();
+        let event_data = serde_json::json!({
+            "message_id": message_id,
+            "role": "system",
+            "content": [{
+                "type": "text",
+                "text": "Work cancelled by user."
+            }]
+        });
+
+        let event = CreateEventRow {
+            session_id: id,
+            event_type: "session.cancelled".to_string(),
+            data: event_data,
+        };
+        self.db.create_event(event).await?;
+
+        tracing::info!(
+            session_id = %id,
+            "Session cancelled successfully"
+        );
+
+        Ok(updated.map(Self::row_to_session))
     }
 
     fn row_to_session(row: everruns_storage::SessionRow) -> Session {

@@ -8,6 +8,7 @@ use axum::{
 };
 use everruns_core::Session;
 use everruns_storage::Database;
+use everruns_worker::AgentRunner;
 
 use crate::common::ListResponse;
 use serde::Deserialize;
@@ -51,12 +52,14 @@ use crate::services::SessionService;
 #[derive(Clone)]
 pub struct AppState {
     pub session_service: Arc<SessionService>,
+    pub runner: Arc<dyn AgentRunner>,
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db)),
+            runner,
         }
     }
 }
@@ -74,6 +77,11 @@ pub fn routes(state: AppState) -> Router {
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
+        )
+        // Session cancel endpoint
+        .route(
+            "/v1/agents/:agent_id/sessions/:session_id/cancel",
+            post(cancel_session),
         )
         .with_state(state)
 }
@@ -233,6 +241,39 @@ pub async fn delete_session(
     } else {
         Err(StatusCode::NOT_FOUND)
     }
+}
+
+/// POST /v1/agents/{agent_id}/sessions/{session_id}/cancel - Cancel a running session
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/cancel",
+    params(
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("session_id" = Uuid, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Session cancelled successfully", body = Session),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn cancel_session(
+    State(state): State<AppState>,
+    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Session>, StatusCode> {
+    // Cancel the session via the service
+    let session = state
+        .session_service
+        .cancel(session_id, state.runner.clone())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to cancel session: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    Ok(Json(session))
 }
 
 #[cfg(test)]
