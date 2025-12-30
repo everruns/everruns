@@ -564,6 +564,115 @@ impl Database {
         Ok(rows)
     }
 
+    /// List events with sequence-based pagination (legacy, for internal use)
+    #[allow(dead_code)]
+    pub async fn list_events_paginated(
+        &self,
+        session_id: Uuid,
+        offset: i32,
+        limit: i32,
+    ) -> Result<Vec<EventRow>> {
+        let rows = sqlx::query_as::<_, EventRow>(
+            r#"
+            SELECT id, session_id, sequence, event_type, data, created_at
+            FROM events
+            WHERE session_id = $1 AND sequence > $2
+            ORDER BY sequence ASC
+            LIMIT $3
+            "#,
+        )
+        .bind(session_id)
+        .bind(offset)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// List events after a given UUID7 (for SSE streaming)
+    ///
+    /// Returns all events with id > offset_id for the session.
+    /// UUID7 is time-ordered, so this works correctly for resumption.
+    pub async fn list_events_after_id(
+        &self,
+        session_id: Uuid,
+        after_id: Option<Uuid>,
+    ) -> Result<Vec<EventRow>> {
+        let rows = if let Some(id) = after_id {
+            sqlx::query_as::<_, EventRow>(
+                r#"
+                SELECT id, session_id, sequence, event_type, data, created_at
+                FROM events
+                WHERE session_id = $1 AND id > $2
+                ORDER BY id ASC
+                "#,
+            )
+            .bind(session_id)
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, EventRow>(
+                r#"
+                SELECT id, session_id, sequence, event_type, data, created_at
+                FROM events
+                WHERE session_id = $1
+                ORDER BY id ASC
+                "#,
+            )
+            .bind(session_id)
+            .fetch_all(&self.pool)
+            .await?
+        };
+
+        Ok(rows)
+    }
+
+    /// List events after a given UUID7 with pagination (for durable streams)
+    ///
+    /// Returns events with id > offset_id, limited to `limit` events.
+    /// UUID7 is time-ordered, making this efficient for offset-based resumption.
+    pub async fn list_events_after_id_paginated(
+        &self,
+        session_id: Uuid,
+        after_id: Option<Uuid>,
+        limit: i32,
+    ) -> Result<Vec<EventRow>> {
+        let rows = if let Some(id) = after_id {
+            sqlx::query_as::<_, EventRow>(
+                r#"
+                SELECT id, session_id, sequence, event_type, data, created_at
+                FROM events
+                WHERE session_id = $1 AND id > $2
+                ORDER BY id ASC
+                LIMIT $3
+                "#,
+            )
+            .bind(session_id)
+            .bind(id)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, EventRow>(
+                r#"
+                SELECT id, session_id, sequence, event_type, data, created_at
+                FROM events
+                WHERE session_id = $1
+                ORDER BY id ASC
+                LIMIT $2
+                "#,
+            )
+            .bind(session_id)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?
+        };
+
+        Ok(rows)
+    }
+
     /// List only message events for a session (for MessageStore implementation)
     ///
     /// Returns events with types: message.user, message.agent, message.tool_result
