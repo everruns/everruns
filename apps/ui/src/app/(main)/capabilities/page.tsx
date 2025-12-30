@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
+  HardDrive,
+  CloudSun,
 } from "lucide-react";
 import type { Capability, CapabilityStatus } from "@/lib/api/types";
 
@@ -31,6 +33,8 @@ const iconMap: Record<string, LucideIcon> = {
   calculator: Calculator,
   globe: Globe,
   "list-checks": ListChecks,
+  "hard-drive": HardDrive,
+  "cloud-sun": CloudSun,
 };
 
 function getStatusBadgeVariant(

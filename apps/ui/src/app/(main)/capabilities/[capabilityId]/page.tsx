@@ -21,6 +21,8 @@ import {
   Wrench,
   FileText,
   Code,
+  HardDrive,
+  CloudSun,
 } from "lucide-react";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 
@@ -33,6 +35,8 @@ const iconMap: Record<string, LucideIcon> = {
   calculator: Calculator,
   globe: Globe,
   "list-checks": ListChecks,
+  "hard-drive": HardDrive,
+  "cloud-sun": CloudSun,
 };
 
 function getStatusBadgeVariant(
