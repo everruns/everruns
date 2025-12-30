@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/api/types";
 import { getTextFromContent } from "@/lib/api/types";
 import type { AggregatedMessage, AggregatedToolCall } from "@/hooks/use-sse-events";
+import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 
 interface ChatMessagesProps {
   messages: Message[];
@@ -52,6 +53,27 @@ function MessageBubble({
 }
 
 function ToolCallBubble({ toolCall }: { toolCall: AggregatedToolCall }) {
+  // Special rendering for write_todos tool
+  if (isWriteTodosTool(toolCall.name)) {
+    return (
+      <div className="flex gap-3">
+        <Avatar className="h-8 w-8 shrink-0">
+          <AvatarFallback className="bg-purple-100">
+            <Wrench className="h-4 w-4 text-purple-600" />
+          </AvatarFallback>
+        </Avatar>
+        <div className="border rounded-lg p-3 max-w-[80%] bg-purple-50">
+          <TodoListRenderer
+            arguments={toolCall.arguments}
+            result={toolCall.result}
+            isExecuting={!toolCall.isComplete}
+            error={toolCall.error}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-3">
       <Avatar className="h-8 w-8 shrink-0">
