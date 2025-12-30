@@ -57,6 +57,20 @@ Adds tools to access and manipulate files - read, write, grep, and more.
 - **System Prompt**: Adds file system access instructions
 - **Use cases**: Agents that need to work with files
 
+### Web Fetch
+
+**Status**: Available
+
+Enables fetching content from URLs and converting HTML to markdown or plain text.
+
+- **Tool**: `web_fetch`
+- **Features**:
+  - Fetch web content with configurable timeouts (1s for first byte, 30s for body)
+  - Convert HTML to markdown or plain text
+  - Extract metadata (size, filename, last modified)
+  - Returns metadata for binary content (images, PDFs) instead of failing
+- **Use cases**: Agents that need to retrieve information from the web
+
 ## Managing Capabilities
 
 ### Via UI
