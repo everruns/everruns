@@ -301,11 +301,12 @@ export default function SessionDetailPage({
                             <p className="text-sm whitespace-pre-wrap">{textContent}</p>
                           </div>
                         ) : (
-                          /* Agent message - no box, subtle background, > prefix */
-                          <div className="w-full bg-muted/30 rounded-lg p-3">
-                            <p className="text-sm whitespace-pre-wrap text-muted-foreground">
-                              <span>&gt; </span>{textContent}
-                            </p>
+                          /* Agent message - darker background with robot icon */
+                          <div className="w-full bg-muted/60 rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                              <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+                              <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                            </div>
                           </div>
                         )}
                       </div>
