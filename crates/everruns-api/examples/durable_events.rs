@@ -34,7 +34,8 @@ struct EventsResponse {
 #[derive(Debug, Deserialize)]
 struct Event {
     id: String, // UUID7
-    sequence: i32,
+    #[allow(dead_code)]
+    sequence: i32, // Legacy field, kept for API compatibility
     event_type: String,
     data: serde_json::Value,
 }
