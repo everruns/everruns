@@ -301,15 +301,18 @@ export default function SessionDetailPage({
                             <p className="text-sm whitespace-pre-wrap">{textContent}</p>
                           </div>
                         ) : (
-                          /* Agent message - no box, subtle background */
+                          /* Agent message - no box, subtle background, > prefix */
                           <div className="w-full bg-muted/30 rounded-lg p-3">
-                            <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                            <p className="text-sm whitespace-pre-wrap text-muted-foreground">
+                              <span>&gt; </span>{textContent}
+                            </p>
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Render tool calls from assistant message */}
+                    {/* Render tool calls from assistant message - 25px left padding */}
+                    <div className="pl-[25px] space-y-2">
                     {toolCalls.map((tc) => {
                       const toolResult = toolResultsMap.get(tc.id);
                       // Create a synthetic message for ToolCallCard
@@ -330,6 +333,7 @@ export default function SessionDetailPage({
                         />
                       );
                     })}
+                    </div>
                   </div>
                 );
               })
