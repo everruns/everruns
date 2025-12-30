@@ -1,0 +1,104 @@
+{
+  "name": "Everruns Development",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "TZ": "${localEnv:TZ:UTC}",
+      "CLAUDE_CODE_VERSION": "latest",
+      "GIT_DELTA_VERSION": "0.18.2",
+      "ZSH_IN_DOCKER_VERSION": "1.2.0",
+      "JUST_VERSION": "1.36.0"
+    }
+  },
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW"
+  ],
+  "containerEnv": {
+    "DATABASE_URL": "postgres://everruns:everruns@localhost:5432/everruns",
+    "TEMPORAL_HOST": "localhost:7233",
+    "RUST_LOG": "info",
+    "RUST_BACKTRACE": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropics.claude-code",
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "eamodio.gitlens",
+        "bradlc.vscode-tailwindcss"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          },
+          "bash": {
+            "path": "/bin/bash"
+          }
+        },
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer",
+          "editor.formatOnSave": true
+        },
+        "[toml]": {
+          "editor.defaultFormatter": "tamasfe.even-better-toml"
+        },
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.check.extraArgs": ["--", "-D", "warnings"],
+        "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+        "files.watcherExclude": {
+          "**/target/**": true
+        }
+      }
+    }
+  },
+  "mounts": [
+    "source=${localWorkspaceFolderBasename}-commandhistory,target=/commandhistory,type=volume",
+    "source=${localWorkspaceFolderBasename}-cargo-cache,target=/home/developer/.cargo/registry,type=volume",
+    "source=${localWorkspaceFolderBasename}-cargo-git,target=/home/developer/.cargo/git,type=volume",
+    "source=${localWorkspaceFolderBasename}-target,target=/workspace/target,type=volume",
+    "source=${localWorkspaceFolderBasename}-node-modules,target=/workspace/apps/ui/node_modules,type=volume"
+  ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "developer",
+  "initializeCommand": "echo 'Initializing Everruns devcontainer...'",
+  "onCreateCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "postCreateCommand": "cd /workspace && npm install --prefix apps/ui",
+  "postStartCommand": "echo 'Everruns devcontainer ready! Run: just --list or ./scripts/dev.sh help'",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [9000, 9100, 5432, 7233, 8080],
+  "portsAttributes": {
+    "9000": {
+      "label": "Everruns API",
+      "onAutoForward": "notify"
+    },
+    "9100": {
+      "label": "Everruns UI",
+      "onAutoForward": "openBrowser"
+    },
+    "5432": {
+      "label": "PostgreSQL",
+      "onAutoForward": "silent"
+    },
+    "7233": {
+      "label": "Temporal",
+      "onAutoForward": "silent"
+    },
+    "8080": {
+      "label": "Temporal UI",
+      "onAutoForward": "notify"
+    }
+  }
+}
