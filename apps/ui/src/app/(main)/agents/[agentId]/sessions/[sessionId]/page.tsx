@@ -4,7 +4,6 @@ import { use, useState, useRef, useEffect } from "react";
 import { useAgent, useSession, useEvents, useRawEvents, useSendMessage, useLlmModel } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Send, User, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder, Activity } from "lucide-react";
+import { ArrowLeft, Send, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder, Activity } from "lucide-react";
 import type { Message, Controls, ReasoningEffort, FileInfo } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
@@ -278,20 +277,14 @@ export default function SessionDetailPage({
             ) : (
               messages?.map((message) => {
                 const isUser = message.role === "user";
-                const isAssistant = message.role === "assistant";
-                const isToolResult = message.role === "tool_result";
 
                 // Skip tool_result messages - they're rendered with their tool_call
-                if (isToolResult) {
+                if (message.role === "tool_result") {
                   return null;
                 }
 
                 // For assistant messages, get any embedded tool calls
                 const toolCalls = getToolCallsFromMessage(message);
-
-                // Extract metadata for assistant messages
-                const messageModel = isAssistant ? (message.metadata?.model as string | undefined) : undefined;
-                const messageReasoningEffort = isAssistant ? (message.metadata?.reasoning_effort as string | undefined) : undefined;
 
                 // Get text content (may be empty if only tool calls)
                 const textContent = getMessageContent(message);
@@ -302,51 +295,17 @@ export default function SessionDetailPage({
                     {/* Render text content if present */}
                     {textContent && (
                       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                        <Card
-                          className={`max-w-[80%] ${
-                            isUser
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted"
-                          }`}
-                        >
-                          <CardContent className="p-3">
-                            <div className="flex items-start gap-2">
-                              {!isUser && (
-                                <Bot className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                              )}
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs font-medium opacity-70">
-                                    {isUser ? "You" : "Assistant"}
-                                  </p>
-                                  {/* Show model and reasoning info for assistant messages */}
-                                  {isAssistant && (messageModel || messageReasoningEffort) && (
-                                    <div className="flex items-center gap-1">
-                                      {messageModel && (
-                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
-                                          <Sparkles className="w-2.5 h-2.5" />
-                                          {messageModel}
-                                        </Badge>
-                                      )}
-                                      {messageReasoningEffort && (
-                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 gap-0.5">
-                                          <Brain className="w-2.5 h-2.5" />
-                                          {messageReasoningEffort}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                                <p className="text-sm whitespace-pre-wrap">
-                                  {textContent}
-                                </p>
-                              </div>
-                              {isUser && (
-                                <User className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
+                        {isUser ? (
+                          /* User message - dark box, 90% width */
+                          <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
+                            <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                          </div>
+                        ) : (
+                          /* Agent message - no box, subtle background */
+                          <div className="w-full bg-muted/30 rounded-lg p-3">
+                            <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                          </div>
+                        )}
                       </div>
                     )}
 
