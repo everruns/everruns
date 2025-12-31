@@ -38,7 +38,7 @@ fn default_max_iterations() -> usize {
 }
 
 impl AgentConfig {
-    /// Create a new agent configuration
+    /// Create a new agent configuration with required fields only
     pub fn new(system_prompt: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             system_prompt: system_prompt.into(),
@@ -48,30 +48,6 @@ impl AgentConfig {
             temperature: None,
             max_tokens: None,
         }
-    }
-
-    /// Add tools to the configuration
-    pub fn with_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
-        self.tools = tools;
-        self
-    }
-
-    /// Set maximum iterations
-    pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
-        self.max_iterations = max_iterations;
-        self
-    }
-
-    /// Set temperature
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Set max tokens
-    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
     }
 }
 

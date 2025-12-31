@@ -10,7 +10,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    config::AgentConfig,
+    config::AgentConfigBuilder,
     memory::{InMemoryEventEmitter, InMemoryMessageStore},
     message::{Message, MessageRole},
     openai::OpenAIProtocolLlmProvider,
@@ -283,12 +283,12 @@ async fn example_time_query() -> anyhow::Result<()> {
     let registry = ToolRegistry::builder().tool(GetCurrentTime).build();
 
     // Create agent config with tools
-    let config = AgentConfig::new(
-        "You are a helpful assistant with access to a time tool. When asked about time, use the get_current_time tool.",
-        "gpt-5.2",
-    )
-    .with_tools(registry.tool_definitions())
-    .with_max_iterations(5);
+    let config = AgentConfigBuilder::new()
+        .system_prompt("You are a helpful assistant with access to a time tool. When asked about time, use the get_current_time tool.")
+        .model("gpt-5.2")
+        .tools(registry.tool_definitions())
+        .max_iterations(5)
+        .build();
 
     // Create components
     let event_emitter = InMemoryEventEmitter::new();
@@ -322,12 +322,14 @@ async fn example_calculation() -> anyhow::Result<()> {
 
     let registry = ToolRegistry::builder().tool(Calculator).build();
 
-    let config = AgentConfig::new(
-        "You are a helpful calculator assistant. Use the calculate tool for math operations.",
-        "gpt-5.2",
-    )
-    .with_tools(registry.tool_definitions())
-    .with_max_iterations(5);
+    let config = AgentConfigBuilder::new()
+        .system_prompt(
+            "You are a helpful calculator assistant. Use the calculate tool for math operations.",
+        )
+        .model("gpt-5.2")
+        .tools(registry.tool_definitions())
+        .max_iterations(5)
+        .build();
 
     let event_emitter = InMemoryEventEmitter::new();
     let message_store = InMemoryMessageStore::new();
@@ -365,12 +367,12 @@ async fn example_multi_tool() -> anyhow::Result<()> {
 
     println!("Available tools: {:?}\n", registry.tool_names());
 
-    let config = AgentConfig::new(
-        "You are a helpful assistant with access to multiple tools: get_current_time for time queries, calculate for math, and get_random_fact for interesting facts. Use the appropriate tool based on the user's request.",
-        "gpt-5.2",
-    )
-    .with_tools(registry.tool_definitions())
-    .with_max_iterations(5);
+    let config = AgentConfigBuilder::new()
+        .system_prompt("You are a helpful assistant with access to multiple tools: get_current_time for time queries, calculate for math, and get_random_fact for interesting facts. Use the appropriate tool based on the user's request.")
+        .model("gpt-5.2")
+        .tools(registry.tool_definitions())
+        .max_iterations(5)
+        .build();
 
     let event_emitter = InMemoryEventEmitter::new();
     let message_store = InMemoryMessageStore::new();
