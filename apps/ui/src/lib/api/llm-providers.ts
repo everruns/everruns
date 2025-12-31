@@ -11,7 +11,8 @@ import type {
 
 // Provider CRUD
 export async function getLlmProviders(): Promise<LlmProvider[]> {
-  return apiClient<LlmProvider[]>("/v1/llm-providers");
+  const response = await apiClient<{ data: LlmProvider[] }>("/v1/llm-providers");
+  return response.data;
 }
 
 export async function getLlmProvider(providerId: string): Promise<LlmProvider> {
