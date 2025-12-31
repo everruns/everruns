@@ -575,7 +575,12 @@ impl Database {
             SELECT id, session_id, sequence, event_type, data, created_at
             FROM events
             WHERE session_id = $1
-              AND event_type IN ('message.user', 'message.agent', 'message.tool_result')
+              AND event_type IN (
+                'message.user',
+                'message.agent',
+                'message.tool_result',
+                'message.system'
+              )
             ORDER BY sequence ASC
             "#,
         )

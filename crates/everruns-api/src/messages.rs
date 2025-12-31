@@ -11,10 +11,8 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use everruns_storage::Database;
 
 use crate::common::ListResponse;
-use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
@@ -144,10 +142,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
+    pub fn new(session_service: Arc<SessionService>, message_service: Arc<MessageService>) -> Self {
         Self {
-            session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(db, runner)),
+            session_service,
+            message_service,
         }
     }
 }

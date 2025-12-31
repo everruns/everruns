@@ -133,6 +133,33 @@ async fn test_full_agent_session_workflow() {
     println!("Created message: {}", message["id"]);
     assert_eq!(message["role"], "user");
 
+    // Step 6.5: Cancel running work
+    println!("\nStep 6.5: Cancelling running work...");
+    let cancel_response = client
+        .post(format!(
+            "{}/v1/agents/{}/sessions/{}/cancel",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to cancel session");
+
+    assert_eq!(cancel_response.status(), 200);
+    let cancel_data: Value = cancel_response
+        .json()
+        .await
+        .expect("Failed to parse cancel response");
+
+    assert_eq!(cancel_data["cancelled"], true);
+    let system_message = cancel_data
+        .get("message")
+        .expect("Expected system message after cancellation");
+    assert_eq!(system_message["role"], "system");
+    assert_eq!(
+        system_message["content"][0]["text"].as_str(),
+        Some("Work cancelled")
+    );
+
     // Step 7: List messages
     println!("\nStep 7: Listing messages...");
     let messages_response = client
@@ -150,7 +177,10 @@ async fn test_full_agent_session_workflow() {
         .as_array()
         .expect("Expected array of messages");
     println!("Found {} message(s)", messages.len());
-    assert_eq!(messages.len(), 1);
+    assert!(messages.len() >= 2);
+
+    let system_count = messages.iter().filter(|m| m["role"] == "system").count();
+    assert!(system_count >= 1, "Expected system cancellation message");
 
     // Step 8: Get session
     println!("\nStep 8: Getting session...");
@@ -170,6 +200,7 @@ async fn test_full_agent_session_workflow() {
         .expect("Failed to parse session");
     println!("Fetched session: {}", fetched_session.id);
     assert_eq!(fetched_session.id, session.id);
+    assert_eq!(fetched_session.status.to_string(), "cancelled");
 
     // Step 9: List events (events are created automatically with messages)
     println!("\nStep 9: Listing events...");
@@ -191,8 +222,18 @@ async fn test_full_agent_session_workflow() {
         .as_array()
         .expect("Expected array of events");
     println!("Found {} event(s)", events.len());
-    // Events are created when messages are processed by the workflow
-    // For this basic test, we just verify the endpoint works
+    let has_cancelled_event = events
+        .iter()
+        .any(|event| event["event_type"] == "session.cancelled");
+    assert!(has_cancelled_event, "Expected session.cancelled event");
+
+    let has_system_message = events
+        .iter()
+        .any(|event| event["event_type"] == "message.system");
+    assert!(
+        has_system_message,
+        "Expected message.system event for cancellation"
+    );
 
     println!("\nAll tests passed!");
 }

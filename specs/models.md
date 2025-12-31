@@ -33,14 +33,14 @@ An instance of agentic loop execution. Multiple sessions can exist concurrently 
 | `title` | string? | Session title (user-provided or auto-generated) |
 | `tags` | string[] | Tags for organization/filtering |
 | `model_id` | UUID? | Override model (null = use agent default) |
-| `status` | enum | `pending`, `running`, `failed` |
+| `status` | enum | `pending`, `running`, `completed`, `cancelled`, `failed` |
 | `created_at` | timestamp | Creation time |
 | `started_at` | timestamp? | Execution start time |
-| `finished_at` | timestamp? | Completion time (only set on failure) |
+| `finished_at` | timestamp? | Completion time (set on completion, cancellation, or failure) |
 
-Status transitions: `pending` → `running` → `pending` (cycles indefinitely) | `failed`
+Status transitions: `pending` → `running` → `completed` → `pending` (cycles indefinitely) | `cancelled` | `failed`
 
-Sessions work indefinitely - after processing a message, status returns to `pending` (ready for more messages). Only `failed` is a terminal state.
+Sessions work indefinitely - after processing a message, status returns to `pending` (ready for more messages). `failed` and `cancelled` are terminal states.
 
 ### Message
 
@@ -58,7 +58,7 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 | `tags` | string[] | Tags for organization/filtering |
 | `created_at` | timestamp | Creation time (from event.created_at) |
 
-**Note:** Messages are stored as events with types `message.user`, `message.agent`, `message.tool_result`. Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. System messages are handled internally and not persisted to events.
+**Note:** Messages are stored as events with types `message.user`, `message.agent`, `message.tool_result`, `message.system`. Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. System messages are persisted so the chat history records workflow status (e.g., cancellations).
 
 **ContentPart types (discriminated by `type` field):**
 
@@ -190,6 +190,7 @@ This convention ensures consistent, predictable event type names across the syst
    - `message.user` - User message
    - `message.agent` - Agent response (from LLM, may contain tool calls in content)
    - `message.tool_result` - Tool execution result
+   - `message.system` - System-generated message (e.g., cancellation notice)
 
 2. **Step Events** - Workflow progress notifications
    - `step.started` - Started processing (e.g., LLM call began)
@@ -205,6 +206,7 @@ This convention ensures consistent, predictable event type names across the syst
    - `session.started` - Session began processing
    - `session.completed` - Session finished successfully
    - `session.failed` - Session encountered error
+   - `session.cancelled` - Session execution was cancelled (includes reason)
 
 ## Flow Example
 

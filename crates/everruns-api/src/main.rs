@@ -76,6 +76,7 @@ struct HealthState {
         sessions::get_session,
         sessions::update_session,
         sessions::delete_session,
+        sessions::cancel_session,
         messages::create_message,
         messages::list_messages,
         events::stream_sse,
@@ -220,10 +221,14 @@ async fn main() -> Result<()> {
     // Create auth state
     let auth_state = auth::AuthState::new(auth_config.clone(), db.clone());
 
+    // Create shared services
+    let session_service = Arc::new(services::SessionService::new(db.clone()));
+    let message_service = Arc::new(services::MessageService::new(db.clone(), runner.clone()));
+
     // Create module-specific states
     let agents_state = agents::AppState::new(db.clone());
-    let sessions_state = sessions::AppState::new(db.clone());
-    let messages_state = messages::AppState::new(db.clone(), runner.clone());
+    let sessions_state = sessions::AppState::new(session_service.clone(), message_service.clone());
+    let messages_state = messages::AppState::new(session_service.clone(), message_service);
     let events_state = events::AppState::new(db.clone());
     let llm_providers_state = llm_providers::AppState::new(db.clone(), encryption.clone());
     let llm_models_state = llm_models::AppState::new(db.clone());

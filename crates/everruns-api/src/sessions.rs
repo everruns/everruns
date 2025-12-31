@@ -7,10 +7,10 @@ use axum::{
     Json, Router,
 };
 use everruns_core::Session;
-use everruns_storage::Database;
 
 use crate::common::ListResponse;
-use serde::Deserialize;
+use crate::services::{MessageService, SessionService};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -45,18 +45,18 @@ pub struct UpdateSessionRequest {
     pub tags: Option<Vec<String>>,
 }
 
-use crate::services::SessionService;
-
 /// App state for sessions routes
 #[derive(Clone)]
 pub struct AppState {
     pub session_service: Arc<SessionService>,
+    pub message_service: Arc<MessageService>,
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(session_service: Arc<SessionService>, message_service: Arc<MessageService>) -> Self {
         Self {
-            session_service: Arc::new(SessionService::new(db)),
+            session_service,
+            message_service,
         }
     }
 }
@@ -74,6 +74,10 @@ pub fn routes(state: AppState) -> Router {
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
+        )
+        .route(
+            "/v1/agents/:agent_id/sessions/:session_id/cancel",
+            post(cancel_session),
         )
         .with_state(state)
 }
@@ -233,6 +237,61 @@ pub async fn delete_session(
     } else {
         Err(StatusCode::NOT_FOUND)
     }
+}
+
+/// Response returned when cancelling a session execution
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CancelSessionResponse {
+    /// Whether a running execution was cancelled
+    pub cancelled: bool,
+    /// System message recorded for the cancellation (if any)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<crate::messages::Message>,
+}
+
+/// POST /v1/agents/{agent_id}/sessions/{session_id}/cancel - Cancel running work
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/sessions/{session_id}/cancel",
+    params(
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("session_id" = Uuid, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Cancellation request processed", body = CancelSessionResponse),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions",
+)]
+pub async fn cancel_session(
+    State(state): State<AppState>,
+    Path((agent_id, session_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<CancelSessionResponse>, StatusCode> {
+    // Ensure session exists
+    let _session = state
+        .session_service
+        .get(session_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get session: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let message = state
+        .message_service
+        .cancel_run(agent_id, session_id, "Cancelled by user request")
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to cancel session: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(CancelSessionResponse {
+        cancelled: message.is_some(),
+        message,
+    }))
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ import {
   updateSession,
   sendUserMessage,
   listEvents,
+  cancelSession,
 } from "@/lib/api/sessions";
 import type { CreateSessionRequest, UpdateSessionRequest, Event, Message, ContentPart, Controls } from "@/lib/api/types";
 import { isToolResultPart } from "@/lib/api/types";
@@ -90,6 +91,24 @@ export function useDeleteSession() {
   });
 }
 
+export function useCancelSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      agentId,
+      sessionId,
+    }: {
+      agentId: string;
+      sessionId: string;
+    }) => cancelSession(agentId, sessionId),
+    onSuccess: (_, { agentId, sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: ["session", agentId, sessionId] });
+      queryClient.invalidateQueries({ queryKey: ["events", agentId, sessionId] });
+    },
+  });
+}
+
 export function useSendMessage() {
   const queryClient = useQueryClient();
 
@@ -140,7 +159,8 @@ function eventsToMessages(events: Event[]): Message[] {
   const messageEvents = events.filter(e =>
     e.event_type === "message.user" ||
     e.event_type === "message.agent" ||
-    e.event_type === "message.tool_result"
+    e.event_type === "message.tool_result" ||
+    e.event_type === "message.system"
   );
 
   return messageEvents.map(event => {
@@ -158,6 +178,7 @@ function eventsToMessages(events: Event[]): Message[] {
       "message.user": "user",
       "message.agent": "assistant",
       "message.tool_result": "tool_result",
+      "message.system": "system",
     };
 
     // Extract tool_call_id from content for tool_result messages

@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useRef, useEffect } from "react";
-import { useAgent, useSession, useEvents, useRawEvents, useSendMessage, useLlmModel } from "@/hooks";
+import { useAgent, useSession, useEvents, useRawEvents, useSendMessage, useLlmModel, useCancelSession } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Send, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder, Activity } from "lucide-react";
+import { ArrowLeft, Send, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder, Activity, XCircle } from "lucide-react";
 import type { Message, Controls, ReasoningEffort, FileInfo } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
@@ -45,6 +45,7 @@ export default function SessionDetailPage({
     sessionId
   );
   const sendMessage = useSendMessage();
+  const cancelSessionMutation = useCancelSession();
 
   // Fetch LLM model info if session has a model_id
   const { data: llmModel } = useLlmModel(session?.model_id ?? "");
@@ -125,6 +126,15 @@ export default function SessionDetailPage({
       setIsWaitingForResponse(true);
     } catch (error) {
       console.error("Failed to send message:", error);
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      await cancelSessionMutation.mutateAsync({ agentId, sessionId });
+      setIsWaitingForResponse(false);
+    } catch (error) {
+      console.error("Failed to cancel session:", error);
     }
   };
 
@@ -226,8 +236,27 @@ export default function SessionDetailPage({
             {session.status === "pending" && (
               <Badge variant="secondary">Ready</Badge>
             )}
+            {session.status === "cancelled" && (
+              <Badge variant="outline">Cancelled</Badge>
+            )}
             {session.status === "failed" && (
               <Badge variant="destructive">Failed</Badge>
+            )}
+            {(session.status === "running" || session.status === "pending") && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={handleCancel}
+                disabled={cancelSessionMutation.isPending}
+              >
+                {cancelSessionMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <XCircle className="w-4 h-4" />
+                )}
+                Cancel work
+              </Button>
             )}
           </div>
         </div>
