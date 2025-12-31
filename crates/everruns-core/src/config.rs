@@ -2,7 +2,7 @@
 //
 // AgentConfig is a DB-agnostic configuration struct that can be:
 // - Created directly for standalone usage
-// - Built from an Agent entity via the `from_agent` method
+// - Built from an Agent entity via the `with_agent` builder method
 
 use crate::agent::Agent;
 use crate::capabilities::{CapabilityRegistry, CapabilityStatus};
@@ -68,9 +68,8 @@ impl Default for AgentConfig {
 
 /// Builder for AgentConfig with fluent API
 ///
-/// Can be created either from scratch with `new()` or from an Agent entity
-/// with `from_agent()`. When created from an agent, capabilities are applied
-/// immediately to the builder configuration.
+/// Use `new()` to start building, then chain methods like `with_agent()`,
+/// `model()`, `temperature()`, etc. Call `build()` to get the final config.
 pub struct AgentConfigBuilder {
     config: AgentConfig,
 }
@@ -83,15 +82,14 @@ impl AgentConfigBuilder {
         }
     }
 
-    /// Start building a configuration from an Agent entity.
+    /// Apply an Agent's configuration to this builder.
     ///
-    /// This initializes the builder with the agent's system prompt and applies
-    /// the agent's capabilities (tools and system prompt additions).
+    /// This sets the system prompt from the agent and applies the agent's
+    /// capabilities (tools and system prompt additions).
     ///
     /// # Arguments
     ///
-    /// * `agent` - The Agent entity to build config from
-    /// * `model` - The model to use (since Agent doesn't have model_id resolved yet)
+    /// * `agent` - The Agent entity to apply
     /// * `registry` - The capability registry containing capability implementations
     ///
     /// # Example
@@ -101,26 +99,21 @@ impl AgentConfigBuilder {
     /// use everruns_core::capabilities::CapabilityRegistry;
     ///
     /// let registry = CapabilityRegistry::with_builtins();
-    /// let config = AgentConfigBuilder::from_agent(&agent, "gpt-4o", &registry)
+    /// let config = AgentConfigBuilder::new()
+    ///     .with_agent(&agent, &registry)
+    ///     .model("gpt-4o")
     ///     .temperature(0.7)
-    ///     .max_iterations(5)
     ///     .build();
     /// ```
-    pub fn from_agent(
-        agent: &Agent,
-        model: impl Into<String>,
-        registry: &CapabilityRegistry,
-    ) -> Self {
+    pub fn with_agent(self, agent: &Agent, registry: &CapabilityRegistry) -> Self {
         let capability_ids: Vec<String> = agent
             .capabilities
             .iter()
             .map(|cap_id| cap_id.as_str().to_string())
             .collect();
 
-        // Start with base config from agent
-        let builder = AgentConfigBuilder::new()
-            .system_prompt(&agent.system_prompt)
-            .model(model);
+        // Set system prompt from agent
+        let builder = self.system_prompt(&agent.system_prompt);
 
         // Apply capabilities to builder
         apply_capabilities_to_builder(builder, &capability_ids, registry)

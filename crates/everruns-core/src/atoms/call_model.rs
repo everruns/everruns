@@ -168,8 +168,10 @@ where
 
         // Build config from agent with capabilities applied
         // TODO: resolve model from agent.default_model_id
-        let config =
-            AgentConfigBuilder::from_agent(&agent, "gpt-4o", &self.capability_registry).build();
+        let config = AgentConfigBuilder::new()
+            .with_agent(&agent, &self.capability_registry)
+            .model("gpt-4o")
+            .build();
 
         // 2. Load messages
         let messages = self.message_store.load(session_id).await?;
