@@ -25,7 +25,7 @@ pub mod agent;
 pub mod capability_dto;
 pub mod event;
 pub mod llm_models;
-pub mod model_profiles;
+pub mod llm_model_profiles;
 pub mod session;
 pub mod session_file;
 
@@ -107,6 +107,6 @@ pub use llm_models::{
     LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality, ReasoningEffort,
     ReasoningEffortConfig, ReasoningEffortValue,
 };
-pub use model_profiles::get_model_profile;
+pub use llm_model_profiles::get_model_profile;
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
