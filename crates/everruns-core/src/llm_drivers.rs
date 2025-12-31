@@ -11,9 +11,9 @@
 // from environment variables. Keys should be decrypted and passed via ProviderConfig.
 
 use crate::anthropic::AnthropicLlmDriver;
-use crate::config::AgentConfig;
 use crate::error::{AgentLoopError, Result};
 use crate::openai::OpenAILlmDriver;
+use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use futures::Stream;
@@ -260,13 +260,13 @@ pub struct LlmCallConfig {
     pub reasoning_effort: Option<String>,
 }
 
-impl From<&AgentConfig> for LlmCallConfig {
-    fn from(config: &AgentConfig) -> Self {
+impl From<&RuntimeAgent> for LlmCallConfig {
+    fn from(runtime_agent: &RuntimeAgent) -> Self {
         Self {
-            model: config.model.clone(),
-            temperature: config.temperature,
-            max_tokens: config.max_tokens,
-            tools: config.tools.clone(),
+            model: runtime_agent.model.clone(),
+            temperature: runtime_agent.temperature,
+            max_tokens: runtime_agent.max_tokens,
+            tools: runtime_agent.tools.clone(),
             reasoning_effort: None, // Set by CallModelAtom from user message controls
         }
     }
@@ -282,7 +282,7 @@ pub struct LlmResponse {
 
 /// Builder for LlmCallConfig with fluent API
 ///
-/// Use `from(&config)` to start building from an AgentConfig, then chain
+/// Use `from(&runtime_agent)` to start building from a RuntimeAgent, then chain
 /// methods like `reasoning_effort()`, `temperature()`, etc. Call `build()`
 /// to get the final config.
 ///
@@ -290,10 +290,10 @@ pub struct LlmResponse {
 ///
 /// ```ignore
 /// use everruns_core::llm::LlmCallConfigBuilder;
-/// use everruns_core::config::AgentConfig;
+/// use everruns_core::runtime_agent::RuntimeAgent;
 ///
-/// let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
-/// let llm_config = LlmCallConfigBuilder::from(&agent_config)
+/// let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+/// let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
 ///     .reasoning_effort("high")
 ///     .temperature(0.7)
 ///     .build();
@@ -303,10 +303,10 @@ pub struct LlmCallConfigBuilder {
 }
 
 impl LlmCallConfigBuilder {
-    /// Start building from an AgentConfig
-    pub fn from(config: &AgentConfig) -> Self {
+    /// Start building from a RuntimeAgent
+    pub fn from(runtime_agent: &RuntimeAgent) -> Self {
         Self {
-            config: LlmCallConfig::from(config),
+            config: LlmCallConfig::from(runtime_agent),
         }
     }
 
@@ -492,9 +492,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_llm_call_config_builder_from_agent_config() {
-        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&agent_config).build();
+    fn test_llm_call_config_builder_from_runtime_agent() {
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent).build();
 
         assert_eq!(llm_config.model, "gpt-4o");
         assert!(llm_config.reasoning_effort.is_none());
@@ -505,8 +505,8 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_reasoning_effort() {
-        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&agent_config)
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
             .reasoning_effort("high")
             .build();
 
@@ -515,8 +515,8 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_all_options() {
-        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&agent_config)
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
             .model("claude-3-opus")
             .reasoning_effort("medium")
             .temperature(0.7)

@@ -1,6 +1,6 @@
-// Agent configuration for the loop
+// Runtime agent configuration for the loop
 //
-// AgentConfig is a DB-agnostic configuration struct that can be:
+// RuntimeAgent is a DB-agnostic configuration struct that can be:
 // - Created directly for standalone usage
 // - Built from an Agent entity via the `with_agent` builder method
 
@@ -9,9 +9,9 @@ use crate::capabilities::{collect_capabilities, CapabilityRegistry};
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
-/// Configuration for the agent loop
+/// Runtime configuration for the agent loop
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentConfig {
+pub struct RuntimeAgent {
     /// System prompt that defines the agent's behavior
     pub system_prompt: String,
 
@@ -39,8 +39,8 @@ fn default_max_iterations() -> usize {
     10
 }
 
-impl AgentConfig {
-    /// Create a new agent configuration with required fields only
+impl RuntimeAgent {
+    /// Create a new runtime agent configuration with required fields only
     pub fn new(system_prompt: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             system_prompt: system_prompt.into(),
@@ -53,7 +53,7 @@ impl AgentConfig {
     }
 }
 
-impl Default for AgentConfig {
+impl Default for RuntimeAgent {
     fn default() -> Self {
         Self {
             system_prompt: "You are a helpful assistant.".to_string(),
@@ -66,19 +66,19 @@ impl Default for AgentConfig {
     }
 }
 
-/// Builder for AgentConfig with fluent API
+/// Builder for RuntimeAgent with fluent API
 ///
 /// Use `new()` to start building, then chain methods like `with_agent()`,
-/// `model()`, `temperature()`, etc. Call `build()` to get the final config.
-pub struct AgentConfigBuilder {
-    config: AgentConfig,
+/// `model()`, `temperature()`, etc. Call `build()` to get the final runtime agent.
+pub struct RuntimeAgentBuilder {
+    runtime_agent: RuntimeAgent,
 }
 
-impl AgentConfigBuilder {
-    /// Start building a new configuration from scratch
+impl RuntimeAgentBuilder {
+    /// Start building a new runtime agent from scratch
     pub fn new() -> Self {
         Self {
-            config: AgentConfig::default(),
+            runtime_agent: RuntimeAgent::default(),
         }
     }
 
@@ -95,11 +95,11 @@ impl AgentConfigBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::config::AgentConfigBuilder;
+    /// use everruns_core::runtime_agent::RuntimeAgentBuilder;
     /// use everruns_core::capabilities::CapabilityRegistry;
     ///
     /// let registry = CapabilityRegistry::with_builtins();
-    /// let config = AgentConfigBuilder::new()
+    /// let runtime_agent = RuntimeAgentBuilder::new()
     ///     .with_agent(&agent, &registry)
     ///     .model("gpt-4o")
     ///     .temperature(0.7)
@@ -148,7 +148,7 @@ impl AgentConfigBuilder {
 
     /// Set the system prompt
     pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
-        self.config.system_prompt = prompt.into();
+        self.runtime_agent.system_prompt = prompt.into();
         self
     }
 
@@ -156,54 +156,55 @@ impl AgentConfigBuilder {
     pub fn prepend_system_prompt(mut self, prefix: impl Into<String>) -> Self {
         let prefix = prefix.into();
         if !prefix.is_empty() {
-            self.config.system_prompt = format!("{}\n\n{}", prefix, self.config.system_prompt);
+            self.runtime_agent.system_prompt =
+                format!("{}\n\n{}", prefix, self.runtime_agent.system_prompt);
         }
         self
     }
 
     /// Set the model
     pub fn model(mut self, model: impl Into<String>) -> Self {
-        self.config.model = model.into();
+        self.runtime_agent.model = model.into();
         self
     }
 
     /// Add a tool
     pub fn tool(mut self, tool: ToolDefinition) -> Self {
-        self.config.tools.push(tool);
+        self.runtime_agent.tools.push(tool);
         self
     }
 
     /// Add multiple tools
     pub fn tools(mut self, tools: impl IntoIterator<Item = ToolDefinition>) -> Self {
-        self.config.tools.extend(tools);
+        self.runtime_agent.tools.extend(tools);
         self
     }
 
     /// Set maximum iterations
     pub fn max_iterations(mut self, max: usize) -> Self {
-        self.config.max_iterations = max;
+        self.runtime_agent.max_iterations = max;
         self
     }
 
     /// Set temperature
     pub fn temperature(mut self, temp: f32) -> Self {
-        self.config.temperature = Some(temp);
+        self.runtime_agent.temperature = Some(temp);
         self
     }
 
     /// Set max tokens
     pub fn max_tokens(mut self, tokens: u32) -> Self {
-        self.config.max_tokens = Some(tokens);
+        self.runtime_agent.max_tokens = Some(tokens);
         self
     }
 
-    /// Build the configuration
-    pub fn build(self) -> AgentConfig {
-        self.config
+    /// Build the runtime agent
+    pub fn build(self) -> RuntimeAgent {
+        self.runtime_agent
     }
 }
 
-impl Default for AgentConfigBuilder {
+impl Default for RuntimeAgentBuilder {
     fn default() -> Self {
         Self::new()
     }
@@ -217,41 +218,41 @@ mod tests {
     use crate::capability_types::CapabilityId as CapabilityIdType;
 
     #[test]
-    fn test_agent_config_new() {
-        let config = AgentConfig::new("You are helpful.", "gpt-5.2");
+    fn test_runtime_agent_new() {
+        let runtime_agent = RuntimeAgent::new("You are helpful.", "gpt-5.2");
 
-        assert_eq!(config.system_prompt, "You are helpful.");
-        assert_eq!(config.model, "gpt-5.2");
-        assert!(config.tools.is_empty());
-        assert_eq!(config.max_iterations, 10);
-        assert!(config.temperature.is_none());
-        assert!(config.max_tokens.is_none());
+        assert_eq!(runtime_agent.system_prompt, "You are helpful.");
+        assert_eq!(runtime_agent.model, "gpt-5.2");
+        assert!(runtime_agent.tools.is_empty());
+        assert_eq!(runtime_agent.max_iterations, 10);
+        assert!(runtime_agent.temperature.is_none());
+        assert!(runtime_agent.max_tokens.is_none());
     }
 
     #[test]
-    fn test_agent_config_default() {
-        let config = AgentConfig::default();
+    fn test_runtime_agent_default() {
+        let runtime_agent = RuntimeAgent::default();
 
-        assert_eq!(config.system_prompt, "You are a helpful assistant.");
-        assert_eq!(config.model, "gpt-5.2");
-        assert!(config.tools.is_empty());
-        assert_eq!(config.max_iterations, 10);
+        assert_eq!(runtime_agent.system_prompt, "You are a helpful assistant.");
+        assert_eq!(runtime_agent.model, "gpt-5.2");
+        assert!(runtime_agent.tools.is_empty());
+        assert_eq!(runtime_agent.max_iterations, 10);
     }
 
     #[test]
     fn test_builder_basic() {
-        let config = AgentConfigBuilder::new()
+        let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Custom prompt")
             .model("claude-3-opus")
             .build();
 
-        assert_eq!(config.system_prompt, "Custom prompt");
-        assert_eq!(config.model, "claude-3-opus");
+        assert_eq!(runtime_agent.system_prompt, "Custom prompt");
+        assert_eq!(runtime_agent.model, "claude-3-opus");
     }
 
     #[test]
     fn test_builder_with_all_options() {
-        let config = AgentConfigBuilder::new()
+        let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("You are a coder.")
             .model("gpt-5.2")
             .max_iterations(20)
@@ -259,43 +260,43 @@ mod tests {
             .max_tokens(4096)
             .build();
 
-        assert_eq!(config.system_prompt, "You are a coder.");
-        assert_eq!(config.model, "gpt-5.2");
-        assert_eq!(config.max_iterations, 20);
-        assert_eq!(config.temperature, Some(0.7));
-        assert_eq!(config.max_tokens, Some(4096));
+        assert_eq!(runtime_agent.system_prompt, "You are a coder.");
+        assert_eq!(runtime_agent.model, "gpt-5.2");
+        assert_eq!(runtime_agent.max_iterations, 20);
+        assert_eq!(runtime_agent.temperature, Some(0.7));
+        assert_eq!(runtime_agent.max_tokens, Some(4096));
     }
 
     #[test]
     fn test_builder_prepend_system_prompt() {
-        let config = AgentConfigBuilder::new()
+        let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .prepend_system_prompt("Prefix text.")
             .build();
 
-        assert_eq!(config.system_prompt, "Prefix text.\n\nBase prompt.");
+        assert_eq!(runtime_agent.system_prompt, "Prefix text.\n\nBase prompt.");
     }
 
     #[test]
     fn test_builder_prepend_empty_string_does_nothing() {
-        let config = AgentConfigBuilder::new()
+        let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .prepend_system_prompt("")
             .build();
 
-        assert_eq!(config.system_prompt, "Base prompt.");
+        assert_eq!(runtime_agent.system_prompt, "Base prompt.");
     }
 
     #[test]
     fn test_builder_with_capabilities_empty() {
         let registry = CapabilityRegistry::with_builtins();
-        let config = AgentConfigBuilder::new()
+        let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&[], &registry)
             .build();
 
-        assert_eq!(config.system_prompt, "Base prompt.");
-        assert!(config.tools.is_empty());
+        assert_eq!(runtime_agent.system_prompt, "Base prompt.");
+        assert!(runtime_agent.tools.is_empty());
     }
 
     #[test]
@@ -303,13 +304,13 @@ mod tests {
         use crate::tool_types::ToolDefinition;
 
         let registry = CapabilityRegistry::with_builtins();
-        let config = AgentConfigBuilder::new()
+        let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&[CapabilityId::CURRENT_TIME.to_string()], &registry)
             .build();
 
-        assert_eq!(config.tools.len(), 1);
-        match &config.tools[0] {
+        assert_eq!(runtime_agent.tools.len(), 1);
+        match &runtime_agent.tools[0] {
             ToolDefinition::Builtin(tool) => {
                 assert_eq!(tool.name, "get_current_time");
             }
@@ -319,13 +320,13 @@ mod tests {
     #[test]
     fn test_builder_with_capabilities_prepends_system_prompt() {
         let registry = CapabilityRegistry::with_builtins();
-        let config = AgentConfigBuilder::new()
+        let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&[CapabilityId::TEST_MATH.to_string()], &registry)
             .build();
 
-        assert!(config.system_prompt.contains("math tools"));
-        assert!(config.system_prompt.ends_with("Base prompt."));
+        assert!(runtime_agent.system_prompt.contains("math tools"));
+        assert!(runtime_agent.system_prompt.ends_with("Base prompt."));
     }
 
     #[test]
@@ -348,14 +349,14 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
 
-        let config = AgentConfigBuilder::new()
+        let runtime_agent = RuntimeAgentBuilder::new()
             .with_agent(&agent, &registry)
             .model("gpt-5.2")
             .build();
 
-        assert!(config.system_prompt.contains("Agent prompt."));
-        assert_eq!(config.tools.len(), 1);
-        match &config.tools[0] {
+        assert!(runtime_agent.system_prompt.contains("Agent prompt."));
+        assert_eq!(runtime_agent.tools.len(), 1);
+        match &runtime_agent.tools[0] {
             ToolDefinition::Builtin(tool) => {
                 assert_eq!(tool.name, "get_current_time");
             }
@@ -364,10 +365,10 @@ mod tests {
 
     #[test]
     fn test_builder_default() {
-        let builder = AgentConfigBuilder::default();
-        let config = builder.build();
+        let builder = RuntimeAgentBuilder::default();
+        let runtime_agent = builder.build();
 
-        assert_eq!(config.system_prompt, "You are a helpful assistant.");
-        assert_eq!(config.model, "gpt-5.2");
+        assert_eq!(runtime_agent.system_prompt, "You are a helpful assistant.");
+        assert_eq!(runtime_agent.model, "gpt-5.2");
     }
 }

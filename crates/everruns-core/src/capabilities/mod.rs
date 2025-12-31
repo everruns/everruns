@@ -9,12 +9,12 @@
 //! Design decisions:
 //! - Capabilities are defined via the Capability trait for flexibility
 //! - CapabilityRegistry holds all available capability implementations
-//! - apply_capabilities() merges capability contributions into AgentConfig
+//! - apply_capabilities() merges capability contributions into RuntimeAgent
 //! - The agent-loop remains execution-focused; capabilities are applied before execution
 //!
 //! Each capability is in its own file with collocated tools.
 
-use crate::config::AgentConfig;
+use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolRegistry};
 use std::collections::HashMap;
@@ -135,7 +135,7 @@ pub trait Capability: Send + Sync {
 /// Registry that holds all available capability implementations.
 ///
 /// The registry provides access to capabilities by ID and allows
-/// applying multiple capabilities to build an AgentConfig.
+/// applying multiple capabilities to build a RuntimeAgent.
 ///
 /// # Example
 ///
@@ -365,55 +365,55 @@ pub fn collect_capabilities(
 }
 
 // ============================================================================
-// Apply Capabilities to AgentConfig
+// Apply Capabilities to RuntimeAgent
 // ============================================================================
 
-/// Result of applying capabilities to a base config
+/// Result of applying capabilities to a base runtime agent
 pub struct AppliedCapabilities {
-    /// The modified agent config with capability contributions merged
-    pub config: AgentConfig,
+    /// The modified runtime agent with capability contributions merged
+    pub runtime_agent: RuntimeAgent,
     /// Tool registry containing all capability tools
     pub tool_registry: ToolRegistry,
     /// IDs of capabilities that were applied
     pub applied_ids: Vec<String>,
 }
 
-/// Apply capabilities to a base agent configuration.
+/// Apply capabilities to a base runtime agent configuration.
 ///
 /// This function:
 /// 1. Collects system prompt additions from capabilities (in order)
 /// 2. Prepends them to the agent's base system prompt
 /// 3. Collects all tools from capabilities
-/// 4. Returns the modified config and a tool registry
+/// 4. Returns the modified runtime agent and a tool registry
 ///
 /// # Arguments
 ///
-/// * `base_config` - The agent's base configuration
+/// * `base_runtime_agent` - The agent's base runtime configuration
 /// * `capability_ids` - Ordered list of capability IDs to apply
 /// * `registry` - The capability registry containing implementations
 ///
 /// # Returns
 ///
-/// An `AppliedCapabilities` struct containing the modified config,
+/// An `AppliedCapabilities` struct containing the modified runtime agent,
 /// tool registry, and list of applied capability IDs.
 ///
 /// # Example
 ///
 /// ```
 /// use everruns_core::capabilities::{apply_capabilities, CapabilityRegistry, CapabilityId};
-/// use everruns_core::config::AgentConfig;
+/// use everruns_core::runtime_agent::RuntimeAgent;
 ///
 /// let registry = CapabilityRegistry::with_builtins();
-/// let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+/// let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 ///
 /// let capability_ids = vec![CapabilityId::CURRENT_TIME.to_string()];
-/// let applied = apply_capabilities(base_config, &capability_ids, &registry);
+/// let applied = apply_capabilities(base_runtime_agent, &capability_ids, &registry);
 ///
-/// // The config now includes CurrentTime tool
+/// // The runtime agent now includes CurrentTime tool
 /// assert!(!applied.tool_registry.is_empty());
 /// ```
 pub fn apply_capabilities(
-    base_config: AgentConfig,
+    base_runtime_agent: RuntimeAgent,
     capability_ids: &[String],
     registry: &CapabilityRegistry,
 ) -> AppliedCapabilities {
@@ -421,8 +421,8 @@ pub fn apply_capabilities(
 
     // Build final system prompt: capability additions + base prompt
     let final_system_prompt = match collected.system_prompt_prefix() {
-        Some(prefix) => format!("{}\n\n{}", prefix, base_config.system_prompt),
-        None => base_config.system_prompt,
+        Some(prefix) => format!("{}\n\n{}", prefix, base_runtime_agent.system_prompt),
+        None => base_runtime_agent.system_prompt,
     };
 
     // Build tool registry from collected tools
@@ -431,18 +431,18 @@ pub fn apply_capabilities(
         tool_registry.register_boxed(tool);
     }
 
-    // Create modified config
-    let config = AgentConfig {
+    // Create modified runtime agent
+    let runtime_agent = RuntimeAgent {
         system_prompt: final_system_prompt,
-        model: base_config.model,
+        model: base_runtime_agent.model,
         tools: collected.tool_definitions,
-        max_iterations: base_config.max_iterations,
-        temperature: base_config.temperature,
-        max_tokens: base_config.max_tokens,
+        max_iterations: base_runtime_agent.max_iterations,
+        temperature: base_runtime_agent.temperature,
+        max_tokens: base_runtime_agent.max_tokens,
     };
 
     AppliedCapabilities {
-        config,
+        runtime_agent,
         tool_registry,
         applied_ids: collected.applied_ids,
     }
@@ -529,11 +529,14 @@ mod tests {
     #[test]
     fn test_apply_capabilities_empty() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied = apply_capabilities(base_config.clone(), &[], &registry);
+        let applied = apply_capabilities(base_runtime_agent.clone(), &[], &registry);
 
-        assert_eq!(applied.config.system_prompt, base_config.system_prompt);
+        assert_eq!(
+            applied.runtime_agent.system_prompt,
+            base_runtime_agent.system_prompt
+        );
         assert!(applied.tool_registry.is_empty());
         assert!(applied.applied_ids.is_empty());
     }
@@ -541,16 +544,19 @@ mod tests {
     #[test]
     fn test_apply_capabilities_noop() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[CapabilityId::NOOP.to_string()],
             &registry,
         );
 
         // Noop has no system prompt addition or tools
-        assert_eq!(applied.config.system_prompt, base_config.system_prompt);
+        assert_eq!(
+            applied.runtime_agent.system_prompt,
+            base_runtime_agent.system_prompt
+        );
         assert!(applied.tool_registry.is_empty());
         assert_eq!(applied.applied_ids, vec![CapabilityId::NOOP]);
     }
@@ -558,16 +564,19 @@ mod tests {
     #[test]
     fn test_apply_capabilities_current_time() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[CapabilityId::CURRENT_TIME.to_string()],
             &registry,
         );
 
         // CurrentTime has no system prompt addition but has a tool
-        assert_eq!(applied.config.system_prompt, base_config.system_prompt);
+        assert_eq!(
+            applied.runtime_agent.system_prompt,
+            base_runtime_agent.system_prompt
+        );
         assert!(applied.tool_registry.has("get_current_time"));
         assert_eq!(applied.tool_registry.len(), 1);
         assert_eq!(applied.applied_ids, vec![CapabilityId::CURRENT_TIME]);
@@ -576,27 +585,30 @@ mod tests {
     #[test]
     fn test_apply_capabilities_skips_coming_soon() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         // Research is ComingSoon, so it should be skipped
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[CapabilityId::RESEARCH.to_string()],
             &registry,
         );
 
         // System prompt should not have the research addition
-        assert_eq!(applied.config.system_prompt, base_config.system_prompt);
+        assert_eq!(
+            applied.runtime_agent.system_prompt,
+            base_runtime_agent.system_prompt
+        );
         assert!(applied.applied_ids.is_empty()); // Research was not applied
     }
 
     #[test]
     fn test_apply_capabilities_multiple() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[
                 CapabilityId::NOOP.to_string(),
                 CapabilityId::CURRENT_TIME.to_string(),
@@ -614,11 +626,11 @@ mod tests {
     #[test]
     fn test_apply_capabilities_preserves_order() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("Base prompt.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("Base prompt.", "gpt-5.2");
 
         // Order should be preserved in applied_ids
         let applied = apply_capabilities(
-            base_config,
+            base_runtime_agent,
             &[
                 CapabilityId::CURRENT_TIME.to_string(),
                 CapabilityId::NOOP.to_string(),
@@ -635,16 +647,16 @@ mod tests {
     #[test]
     fn test_apply_capabilities_test_math() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[CapabilityId::TEST_MATH.to_string()],
             &registry,
         );
 
         // TestMath has system prompt addition and 4 tools
-        assert!(applied.config.system_prompt.contains("math tools"));
+        assert!(applied.runtime_agent.system_prompt.contains("math tools"));
         assert!(applied.tool_registry.has("add"));
         assert!(applied.tool_registry.has("subtract"));
         assert!(applied.tool_registry.has("multiply"));
@@ -655,16 +667,19 @@ mod tests {
     #[test]
     fn test_apply_capabilities_test_weather() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[CapabilityId::TEST_WEATHER.to_string()],
             &registry,
         );
 
         // TestWeather has system prompt addition and 2 tools
-        assert!(applied.config.system_prompt.contains("weather tools"));
+        assert!(applied
+            .runtime_agent
+            .system_prompt
+            .contains("weather tools"));
         assert!(applied.tool_registry.has("get_weather"));
         assert!(applied.tool_registry.has("get_forecast"));
         assert_eq!(applied.tool_registry.len(), 2);
@@ -673,10 +688,10 @@ mod tests {
     #[test]
     fn test_apply_capabilities_test_math_and_test_weather() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[
                 CapabilityId::TEST_MATH.to_string(),
                 CapabilityId::TEST_WEATHER.to_string(),
@@ -693,17 +708,20 @@ mod tests {
     #[test]
     fn test_apply_capabilities_stateless_todo_list() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[CapabilityId::STATELESS_TODO_LIST.to_string()],
             &registry,
         );
 
         // StatelessTodoList has system prompt addition and 1 tool
-        assert!(applied.config.system_prompt.contains("Task Management"));
-        assert!(applied.config.system_prompt.contains("write_todos"));
+        assert!(applied
+            .runtime_agent
+            .system_prompt
+            .contains("Task Management"));
+        assert!(applied.runtime_agent.system_prompt.contains("write_todos"));
         assert!(applied.tool_registry.has("write_todos"));
         assert_eq!(applied.tool_registry.len(), 1);
     }
@@ -711,16 +729,19 @@ mod tests {
     #[test]
     fn test_apply_capabilities_web_fetch() {
         let registry = CapabilityRegistry::with_builtins();
-        let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
-            base_config.clone(),
+            base_runtime_agent.clone(),
             &[CapabilityId::WEB_FETCH.to_string()],
             &registry,
         );
 
         // WebFetch has no system prompt addition but has 1 tool
-        assert_eq!(applied.config.system_prompt, base_config.system_prompt);
+        assert_eq!(
+            applied.runtime_agent.system_prompt,
+            base_runtime_agent.system_prompt
+        );
         assert!(applied.tool_registry.has("web_fetch"));
         assert_eq!(applied.tool_registry.len(), 1);
     }

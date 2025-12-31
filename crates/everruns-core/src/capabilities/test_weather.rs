@@ -329,9 +329,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_forecast_default_days() {
         let tool = GetForecastTool;
-        let result = tool
-            .execute(serde_json::json!({"location": "Paris"}))
-            .await;
+        let result = tool.execute(serde_json::json!({"location": "Paris"})).await;
 
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("days").unwrap().as_u64().unwrap(), 3); // Default is 3
