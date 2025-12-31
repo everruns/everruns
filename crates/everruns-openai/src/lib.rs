@@ -6,6 +6,10 @@
 //
 // The OpenAI protocol is used as the base for LLM drivers in the system,
 // meaning other providers can adapt their APIs to this format.
+//
+// Design: This crate depends on everruns-core and registers its driver
+// at application startup via register_driver(). This enables dependency
+// inversion - core has no knowledge of specific provider implementations.
 
 mod driver;
 mod types;
@@ -13,10 +17,10 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub use driver::OpenAILlmDriver;
+pub use driver::{register_driver, OpenAILlmDriver};
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
 };
 
 // Re-export core types for convenience
-pub use everruns_core::llm_drivers::LlmDriver;
+pub use everruns_core::llm_driver_registry::{DriverRegistry, LlmDriver};

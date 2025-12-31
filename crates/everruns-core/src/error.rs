@@ -52,6 +52,10 @@ pub enum AgentLoopError {
     /// Internal error
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
+
+    /// Driver not registered for provider type
+    #[error("No driver registered for provider type '{0}'. Make sure the driver is registered at startup.")]
+    DriverNotRegistered(String),
 }
 
 impl AgentLoopError {
@@ -88,5 +92,10 @@ impl AgentLoopError {
     /// Create a session not found error
     pub fn session_not_found(session_id: Uuid) -> Self {
         AgentLoopError::SessionNotFound(session_id)
+    }
+
+    /// Create a driver not registered error
+    pub fn driver_not_registered(provider_type: impl Into<String>) -> Self {
+        AgentLoopError::DriverNotRegistered(provider_type.into())
     }
 }

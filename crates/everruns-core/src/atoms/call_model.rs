@@ -17,8 +17,8 @@ use uuid::Uuid;
 use super::Atom;
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
-use crate::llm_drivers::{
-    create_driver, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
+use crate::llm_driver_registry::{
+    DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmStreamEvent, ProviderConfig, ProviderType,
 };
 use crate::message::{Message, MessageRole};
@@ -129,6 +129,7 @@ where
     message_store: M,
     provider_store: P,
     capability_registry: CapabilityRegistry,
+    driver_registry: DriverRegistry,
 }
 
 impl<A, S, M, P> CallModelAtom<A, S, M, P>
@@ -145,6 +146,7 @@ where
         message_store: M,
         provider_store: P,
         capability_registry: CapabilityRegistry,
+        driver_registry: DriverRegistry,
     ) -> Self {
         Self {
             agent_store,
@@ -152,6 +154,7 @@ where
             message_store,
             provider_store,
             capability_registry,
+            driver_registry,
         }
     }
 }
@@ -387,11 +390,13 @@ where
             })
     }
 
-    /// Create LLM driver using factory
+    /// Create LLM driver using the driver registry
+    ///
+    /// Returns a user-friendly error if the driver is not registered for the provider type.
     fn create_llm_driver(
         &self,
         model: &ModelWithProvider,
-    ) -> Result<crate::llm_drivers::BoxedLlmDriver> {
+    ) -> Result<crate::llm_driver_registry::BoxedLlmDriver> {
         let provider_type = match model.provider_type {
             crate::llm_models::LlmProviderType::Openai => ProviderType::OpenAI,
             crate::llm_models::LlmProviderType::Anthropic => ProviderType::Anthropic,
@@ -406,7 +411,7 @@ where
             config = config.with_base_url(base_url);
         }
 
-        create_driver(&config)
+        self.driver_registry.create_driver(&config)
     }
 }
 

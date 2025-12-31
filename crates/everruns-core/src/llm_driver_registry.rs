@@ -2,22 +2,26 @@
 //
 // This module encapsulates all abstractions needed to interact with LLM Providers:
 // - LlmDriver trait and types for provider-agnostic LLM interactions
-// - Driver factory for creating drivers based on provider type and configuration
+// - DriverRegistry for dynamic driver registration at startup
 // - Message types for LLM calls
 //
 // Supports both simple text content and multipart content (text, images, audio).
 //
-// IMPORTANT: API keys must be provided from the database. The factory does NOT read
+// IMPORTANT: API keys must be provided from the database. The registry does NOT read
 // from environment variables. Keys should be decrypted and passed via ProviderConfig.
+//
+// Design: Dependency inversion - provider crates (everruns-anthropic, everruns-openai)
+// depend on core and register their drivers at startup. Core has no knowledge of
+// specific provider implementations.
 
-use crate::anthropic::AnthropicLlmDriver;
 use crate::error::{AgentLoopError, Result};
-use crate::openai::OpenAILlmDriver;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use futures::Stream;
+use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::Arc;
 
 // ============================================================================
 // LlmDriver Trait
@@ -384,11 +388,11 @@ impl From<&crate::message::Message> for LlmMessage {
 }
 
 // ============================================================================
-// Driver Factory
+// Driver Factory Types
 // ============================================================================
 
 /// Provider type enumeration matching the database/contracts
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProviderType {
     OpenAI,
     Anthropic,
@@ -455,31 +459,84 @@ impl ProviderConfig {
 /// Boxed LLM driver for dynamic dispatch
 pub type BoxedLlmDriver = Box<dyn LlmDriver>;
 
-/// Create an LLM driver based on configuration
-///
-/// API keys must be provided in the config. This function does NOT fall back to
-/// environment variables. Keys should be decrypted from the database and passed here.
-pub fn create_driver(config: &ProviderConfig) -> Result<BoxedLlmDriver> {
-    // API key is required - it should be decrypted from the database
-    let api_key = config.api_key.as_ref().ok_or_else(|| {
-        AgentLoopError::llm("API key is required. Configure the API key in provider settings.")
-    })?;
+// ============================================================================
+// Driver Registry
+// ============================================================================
 
-    match config.provider_type {
-        ProviderType::OpenAI | ProviderType::AzureOpenAI => {
-            let driver = match &config.base_url {
-                Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
-                None => OpenAILlmDriver::new(api_key),
-            };
-            Ok(Box::new(driver))
+/// Factory function type for creating LLM drivers
+///
+/// Takes api_key and optional base_url, returns a boxed driver
+pub type DriverFactory = Arc<dyn Fn(&str, Option<&str>) -> BoxedLlmDriver + Send + Sync>;
+
+/// Registry for LLM drivers
+///
+/// Enables dependency inversion: provider crates (everruns-anthropic, everruns-openai)
+/// register their drivers at startup. The core has no direct knowledge of implementations.
+///
+/// # Example
+///
+/// ```ignore
+/// use everruns_core::llm_drivers::{DriverRegistry, ProviderType};
+/// use everruns_anthropic::register_driver;
+/// use everruns_openai::register_driver as register_openai;
+///
+/// let mut registry = DriverRegistry::new();
+/// everruns_anthropic::register_driver(&mut registry);
+/// everruns_openai::register_driver(&mut registry);
+///
+/// // Later, create a driver from config
+/// let driver = registry.create_driver(&config)?;
+/// ```
+#[derive(Clone, Default)]
+pub struct DriverRegistry {
+    factories: HashMap<ProviderType, DriverFactory>,
+}
+
+impl DriverRegistry {
+    /// Create a new empty registry
+    pub fn new() -> Self {
+        Self {
+            factories: HashMap::new(),
         }
-        ProviderType::Anthropic => {
-            let driver = match &config.base_url {
-                Some(url) => AnthropicLlmDriver::with_base_url(api_key, url),
-                None => AnthropicLlmDriver::new(api_key),
-            };
-            Ok(Box::new(driver))
-        }
+    }
+
+    /// Register a driver factory for a provider type
+    pub fn register<F>(&mut self, provider_type: ProviderType, factory: F)
+    where
+        F: Fn(&str, Option<&str>) -> BoxedLlmDriver + Send + Sync + 'static,
+    {
+        self.factories.insert(provider_type, Arc::new(factory));
+    }
+
+    /// Create an LLM driver based on configuration
+    ///
+    /// API keys must be provided in the config. This function does NOT fall back to
+    /// environment variables. Keys should be decrypted from the database and passed here.
+    ///
+    /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
+    pub fn create_driver(&self, config: &ProviderConfig) -> Result<BoxedLlmDriver> {
+        // API key is required - it should be decrypted from the database
+        let api_key = config.api_key.as_ref().ok_or_else(|| {
+            AgentLoopError::llm("API key is required. Configure the API key in provider settings.")
+        })?;
+
+        // Look up the factory for this provider type
+        let factory = self.factories.get(&config.provider_type).ok_or_else(|| {
+            AgentLoopError::driver_not_registered(config.provider_type.to_string())
+        })?;
+
+        // Create the driver using the factory
+        Ok(factory(api_key, config.base_url.as_deref()))
+    }
+
+    /// Check if a driver is registered for a provider type
+    pub fn has_driver(&self, provider_type: &ProviderType) -> bool {
+        self.factories.contains_key(provider_type)
+    }
+
+    /// Get the list of registered provider types
+    pub fn registered_providers(&self) -> Vec<ProviderType> {
+        self.factories.keys().cloned().collect()
     }
 }
 
@@ -567,15 +624,74 @@ mod tests {
     }
 
     #[test]
-    fn test_create_driver_requires_api_key() {
+    fn test_driver_registry_requires_api_key() {
+        // Register a mock factory
+        let mut registry = DriverRegistry::new();
+        registry.register(ProviderType::OpenAI, |_api_key, _base_url| {
+            // Return a mock driver - just need something that compiles
+            struct MockDriver;
+            #[async_trait]
+            impl LlmDriver for MockDriver {
+                async fn chat_completion_stream(
+                    &self,
+                    _messages: Vec<LlmMessage>,
+                    _config: &LlmCallConfig,
+                ) -> Result<LlmResponseStream> {
+                    unimplemented!()
+                }
+            }
+            Box::new(MockDriver)
+        });
+
         // Driver without API key should fail
         let config = ProviderConfig::new(ProviderType::OpenAI);
-        let result = create_driver(&config);
+        let result = registry.create_driver(&config);
         assert!(result.is_err());
 
         // Driver with API key should succeed
         let config_with_key = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
-        let result = create_driver(&config_with_key);
+        let result = registry.create_driver(&config_with_key);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_driver_registry_returns_error_for_unregistered_provider() {
+        let registry = DriverRegistry::new();
+        let config = ProviderConfig::new(ProviderType::Anthropic).with_api_key("test-key");
+
+        let result = registry.create_driver(&config);
+
+        // Should fail with DriverNotRegistered error
+        if let Err(AgentLoopError::DriverNotRegistered(provider)) = result {
+            assert_eq!(provider, "anthropic");
+        } else {
+            panic!("Expected DriverNotRegistered error");
+        }
+    }
+
+    #[test]
+    fn test_driver_registry_registration() {
+        let mut registry = DriverRegistry::new();
+
+        assert!(!registry.has_driver(&ProviderType::OpenAI));
+        assert!(!registry.has_driver(&ProviderType::Anthropic));
+
+        registry.register(ProviderType::OpenAI, |_, _| {
+            struct MockDriver;
+            #[async_trait]
+            impl LlmDriver for MockDriver {
+                async fn chat_completion_stream(
+                    &self,
+                    _messages: Vec<LlmMessage>,
+                    _config: &LlmCallConfig,
+                ) -> Result<LlmResponseStream> {
+                    unimplemented!()
+                }
+            }
+            Box::new(MockDriver)
+        });
+
+        assert!(registry.has_driver(&ProviderType::OpenAI));
+        assert!(!registry.has_driver(&ProviderType::Anthropic));
     }
 }

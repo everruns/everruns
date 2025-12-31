@@ -25,6 +25,7 @@ use everruns_core::{
         ExecuteToolAtom, ExecuteToolInput,
     },
     capabilities::CapabilityRegistry,
+    llm_driver_registry::DriverRegistry,
     memory::{
         InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageStore, InMemorySessionStore,
     },
@@ -135,6 +136,14 @@ async fn main() -> anyhow::Result<()> {
     // Create capability registry (example uses its own tools, so empty registry is fine)
     let capability_registry = CapabilityRegistry::new();
 
+    // Create driver registry with all providers
+    let driver_registry = {
+        let mut registry = DriverRegistry::new();
+        everruns_openai::register_driver(&mut registry);
+        everruns_anthropic::register_driver(&mut registry);
+        registry
+    };
+
     // Create atoms
     let add_user_message = AddUserMessageAtom::new(message_store.clone());
     let call_model = CallModelAtom::new(
@@ -143,6 +152,7 @@ async fn main() -> anyhow::Result<()> {
         message_store.clone(),
         provider_store,
         capability_registry,
+        driver_registry,
     );
     let execute_tool = ExecuteToolAtom::new(message_store.clone(), tools.clone());
 

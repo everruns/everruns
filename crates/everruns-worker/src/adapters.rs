@@ -11,8 +11,20 @@ pub use everruns_storage::{
 
 // Driver factory helper for creating LLM drivers
 use everruns_core::{
-    create_driver, AgentLoopError, BoxedLlmDriver, ProviderConfig, ProviderType, Result,
+    AgentLoopError, BoxedLlmDriver, DriverRegistry, ProviderConfig, ProviderType, Result,
 };
+
+/// Create and configure the driver registry with all supported LLM providers
+///
+/// This registers drivers for:
+/// - OpenAI (and Azure OpenAI)
+/// - Anthropic Claude
+pub fn create_driver_registry() -> DriverRegistry {
+    let mut registry = DriverRegistry::new();
+    everruns_openai::register_driver(&mut registry);
+    everruns_anthropic::register_driver(&mut registry);
+    registry
+}
 
 /// Create an LLM driver based on configuration
 ///
@@ -34,5 +46,6 @@ pub fn create_llm_driver(
         config = config.with_base_url(url);
     }
 
-    create_driver(&config)
+    let registry = create_driver_registry();
+    registry.create_driver(&config)
 }

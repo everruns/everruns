@@ -1,7 +1,10 @@
 // OpenAI Protocol LLM Driver
 //
-// Implementation of LlmDriver for OpenAI-compatible APIs.
-// Requires the "openai" feature to be enabled.
+// Base implementation of the OpenAI chat completion protocol.
+// This driver can be used with any OpenAI-compatible API endpoint.
+//
+// This is the base protocol implementation used in examples.
+// For production use with OpenAI-specific features, use OpenAILlmDriver from everruns-openai.
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
@@ -12,7 +15,7 @@ use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, Result};
-use crate::llm_drivers::{
+use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
@@ -22,29 +25,32 @@ const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 
 /// OpenAI Protocol LLM Driver
 ///
-/// Implements `LlmDriver` for OpenAI-compatible APIs.
+/// Base implementation of `LlmDriver` for OpenAI-compatible APIs.
 /// Supports streaming responses and tool calls.
+///
+/// This is the base protocol driver used in examples and for OpenAI-compatible endpoints.
+/// For production use with OpenAI, consider using `OpenAILlmDriver` from the `everruns-openai` crate.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::openai::OpenAILlmDriver;
+/// use everruns_core::OpenAIProtocolLlmDriver;
 ///
-/// let provider = OpenAILlmDriver::from_env()?;
+/// let driver = OpenAIProtocolLlmDriver::from_env()?;
 /// // or
-/// let provider = OpenAILlmDriver::new("your-api-key");
+/// let driver = OpenAIProtocolLlmDriver::new("your-api-key");
 /// // or with custom endpoint
-/// let provider = OpenAILlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/chat/completions");
+/// let driver = OpenAIProtocolLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/chat/completions");
 /// ```
 #[derive(Clone)]
-pub struct OpenAILlmDriver {
+pub struct OpenAIProtocolLlmDriver {
     client: Client,
     api_key: String,
     api_url: String,
 }
 
-impl OpenAILlmDriver {
-    /// Create a new provider with the given API key
+impl OpenAIProtocolLlmDriver {
+    /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             client: Client::new(),
@@ -53,20 +59,35 @@ impl OpenAILlmDriver {
         }
     }
 
-    /// Create a new provider from the OPENAI_API_KEY environment variable
+    /// Create a new driver from the OPENAI_API_KEY environment variable
     pub fn from_env() -> Result<Self> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| AgentLoopError::llm("OPENAI_API_KEY environment variable not set"))?;
         Ok(Self::new(api_key))
     }
 
-    /// Create a new provider with a custom API URL (for OpenAI-compatible APIs)
+    /// Create a new driver with a custom API URL (for OpenAI-compatible APIs)
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         Self {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: api_url.into(),
         }
+    }
+
+    /// Get the API URL
+    pub fn api_url(&self) -> &str {
+        &self.api_url
+    }
+
+    /// Get the API key (for subclass access)
+    pub fn api_key(&self) -> &str {
+        &self.api_key
+    }
+
+    /// Get the HTTP client (for subclass access)
+    pub fn client(&self) -> &Client {
+        &self.client
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -96,9 +117,8 @@ impl OpenAILlmDriver {
                         LlmContentPart::Audio { url } => OpenAiContentPart::InputAudio {
                             r#type: "input_audio".to_string(),
                             input_audio: OpenAiInputAudio {
-                                // For audio, the URL is expected to be a data URL
                                 data: url.clone(),
-                                format: "wav".to_string(), // Default format
+                                format: "wav".to_string(),
                             },
                         },
                     })
@@ -151,7 +171,7 @@ impl OpenAILlmDriver {
 }
 
 #[async_trait]
-impl LlmDriver for OpenAILlmDriver {
+impl LlmDriver for OpenAIProtocolLlmDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -313,9 +333,9 @@ impl LlmDriver for OpenAILlmDriver {
     }
 }
 
-impl std::fmt::Debug for OpenAILlmDriver {
+impl std::fmt::Debug for OpenAIProtocolLlmDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAILlmDriver")
+        f.debug_struct("OpenAIProtocolLlmDriver")
             .field("api_url", &self.api_url)
             .field("api_key", &"[REDACTED]")
             .finish()
@@ -337,33 +357,28 @@ struct OpenAiRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<OpenAiTool>>,
-    /// Reasoning effort for o1/o3 models (low, medium, high)
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
 }
 
-/// Content can be either a simple string or an array of content parts
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum OpenAiContent {
-    /// Simple text content
     Text(String),
-    /// Array of content parts (text, images, audio)
     Parts(Vec<OpenAiContentPart>),
 }
 
-/// A content part within a message
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum OpenAiContentPart {
-    /// Text content part
-    Text { r#type: String, text: String },
-    /// Image URL content part
+    Text {
+        r#type: String,
+        text: String,
+    },
     ImageUrl {
         r#type: String,
         image_url: OpenAiImageUrl,
     },
-    /// Audio input content part
     InputAudio {
         r#type: String,
         input_audio: OpenAiInputAudio,
@@ -449,4 +464,29 @@ struct OpenAiStreamToolCall {
 struct OpenAiStreamFunction {
     name: Option<String>,
     arguments: Option<String>,
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_driver_with_api_key() {
+        let driver = OpenAIProtocolLlmDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenAIProtocolLlmDriver"));
+    }
+
+    #[test]
+    fn test_driver_with_base_url() {
+        let driver = OpenAIProtocolLlmDriver::with_base_url(
+            "test-key",
+            "https://custom.api.com/v1/completions",
+        );
+        assert!(format!("{:?}", driver).contains("OpenAIProtocolLlmDriver"));
+        assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
+    }
 }

@@ -848,6 +848,8 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "eventsource-stream",
+ "everruns-anthropic",
+ "everruns-openai",
  "futures",
  "reqwest",
  "serde",

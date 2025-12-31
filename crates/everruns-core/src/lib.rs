@@ -33,9 +33,10 @@ pub mod atoms;
 pub mod capabilities;
 pub mod error;
 pub mod events;
-pub mod llm_drivers;
+pub mod llm_driver_registry;
 pub mod r#loop;
 pub mod message;
+pub mod openai_protocol;
 pub mod runtime_agent;
 pub mod step;
 pub mod tools;
@@ -44,9 +45,9 @@ pub mod traits;
 // In-memory implementations for examples and testing
 pub mod memory;
 
-// LLM Driver implementations
-pub mod anthropic;
-pub mod openai;
+// Note: LLM Driver implementations (AnthropicLlmDriver, OpenAILlmDriver) are now in
+// separate crates (everruns-anthropic, everruns-openai) that depend on everruns-core.
+// This enables dependency inversion - provider crates register their drivers at startup.
 
 // Re-exports for convenience
 pub use error::{AgentLoopError, Result};
@@ -64,11 +65,14 @@ pub use traits::{
 };
 
 // LLM driver types re-exports
-pub use llm_drivers::{
-    create_driver, BoxedLlmDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata,
-    LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponse,
-    LlmResponseStream, LlmStreamEvent, ProviderConfig, ProviderType,
+pub use llm_driver_registry::{
+    BoxedLlmDriver, DriverFactory, DriverRegistry, LlmCallConfig, LlmCallConfigBuilder,
+    LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ProviderType,
 };
+
+// OpenAI Protocol driver (base implementation for OpenAI-compatible APIs)
+pub use openai_protocol::OpenAIProtocolLlmDriver;
 
 // Tool abstraction re-exports
 pub use tools::{
