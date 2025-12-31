@@ -25,18 +25,11 @@ use uuid::Uuid;
 use crate::adapters::{
     DbAgentStore, DbLlmProviderStore, DbMessageStore, DbSessionFileStore, DbSessionStore,
 };
-use crate::agent_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
+use crate::agent_workflow::{ToolCallData, ToolDefinitionData, ToolResultData};
 
 // ============================================================================
 // Activity Input/Output Types
 // ============================================================================
-
-/// Input for load-agent activity
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoadAgentInput {
-    /// Agent ID (UUID string)
-    pub agent_id: String,
-}
 
 /// Input for call-model activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,9 +38,6 @@ pub struct CallModelInput {
     pub session_id: String,
     /// Agent ID (UUID string)
     pub agent_id: String,
-    /// Agent configuration (model, tools, system_prompt)
-    /// Note: This is still passed for provider/API key info not available in Agent
-    pub agent_config: AgentConfigData,
 }
 
 /// Output from call-model activity
@@ -60,6 +50,16 @@ pub struct CallModelOutput {
     pub tool_calls: Option<Vec<ToolCallData>>,
     /// Whether tool execution is needed
     pub needs_tool_execution: bool,
+    /// Tool definitions from applied capabilities (for tool execution)
+    #[serde(default)]
+    pub tool_definitions: Vec<ToolDefinitionData>,
+    /// Maximum iterations configured for the agent
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: u8,
+}
+
+fn default_max_iterations() -> u8 {
+    10
 }
 
 /// Input for execute-tool activity (single tool)
@@ -83,183 +83,6 @@ pub struct ExecuteToolOutput {
 // ============================================================================
 // Activity Implementations
 // ============================================================================
-
-/// Load agent configuration from database
-///
-/// This activity loads the agent from the database and builds the AgentConfigData
-/// including the model, system_prompt, tools from capabilities, and max_iterations.
-/// API keys are decrypted from the database using the provided encryption service.
-pub async fn load_agent_activity(
-    db: Database,
-    encryption: EncryptionService,
-    input: LoadAgentInput,
-) -> Result<AgentConfigData> {
-    use everruns_core::capabilities::CapabilityRegistry;
-
-    let agent_id: Uuid = input.agent_id.parse().context("Invalid agent_id UUID")?;
-
-    tracing::info!(agent_id = %agent_id, "Loading agent configuration");
-
-    // Load agent from database
-    let agent = db
-        .get_agent(agent_id)
-        .await
-        .context("Database error loading agent")?
-        .ok_or_else(|| anyhow::anyhow!("Agent not found: {}", agent_id))?;
-
-    // Load capabilities for this agent
-    let capabilities = db
-        .get_agent_capabilities(agent_id)
-        .await
-        .context("Database error loading agent capabilities")?;
-
-    // Collect capability IDs as strings (no parsing needed now)
-    let capability_ids: Vec<String> = capabilities.into_iter().map(|c| c.capability_id).collect();
-
-    // Apply capabilities to get tools
-    let registry = CapabilityRegistry::with_builtins();
-
-    // Look up the LLM model configuration if default_model_id is set
-    // Also get the decrypted API key from the provider
-    let (model_id, provider_type, api_key, base_url) = if let Some(llm_model_uuid) =
-        agent.default_model_id
-    {
-        // Look up the LLM model to get the actual model_id and provider_type
-        match db.get_llm_model(llm_model_uuid).await {
-            Ok(Some(llm_model)) => {
-                // Get provider info to determine provider_type and get API key
-                match db.get_llm_provider(llm_model.provider_id).await {
-                    Ok(Some(provider)) => {
-                        // Decrypt the API key from the provider
-                        let provider_with_key = db
-                            .get_provider_with_api_key(&provider, &encryption)
-                            .context("Failed to decrypt provider API key")?;
-
-                        tracing::info!(
-                            agent_id = %agent_id,
-                            model_id = %llm_model.model_id,
-                            provider_type = %provider.provider_type,
-                            api_key_set = provider_with_key.api_key.is_some(),
-                            "Resolved LLM model and provider from database"
-                        );
-                        (
-                            llm_model.model_id,
-                            provider.provider_type,
-                            provider_with_key.api_key,
-                            provider_with_key.base_url,
-                        )
-                    }
-                    _ => {
-                        // Fallback to model detection if provider lookup fails
-                        let model_id = llm_model.model_id.clone();
-                        let provider_type = detect_provider_type(&model_id);
-                        (model_id, provider_type, None, None)
-                    }
-                }
-            }
-            _ => {
-                // Fallback to default model if agent's model lookup fails
-                match db.get_default_llm_model().await {
-                    Ok(Some(default_model_row)) => {
-                        // Get provider info to get API key
-                        match db.get_llm_provider(default_model_row.provider_id).await {
-                            Ok(Some(provider)) => {
-                                let provider_with_key = db
-                                    .get_provider_with_api_key(&provider, &encryption)
-                                    .context("Failed to decrypt default model provider API key")?;
-                                (
-                                    default_model_row.model_id,
-                                    provider.provider_type,
-                                    provider_with_key.api_key,
-                                    provider_with_key.base_url,
-                                )
-                            }
-                            _ => {
-                                let model_id = default_model_row.model_id;
-                                let provider_type = detect_provider_type(&model_id);
-                                (model_id, provider_type, None, None)
-                            }
-                        }
-                    }
-                    _ => {
-                        let default_model = "gpt-4o".to_string();
-                        let provider_type = detect_provider_type(&default_model);
-                        (default_model, provider_type, None, None)
-                    }
-                }
-            }
-        }
-    } else {
-        // No default_model_id set, try to use the default model
-        match db.get_default_llm_model().await {
-            Ok(Some(default_model_row)) => {
-                // Get provider info to get API key
-                match db.get_llm_provider(default_model_row.provider_id).await {
-                    Ok(Some(provider)) => {
-                        let provider_with_key = db
-                            .get_provider_with_api_key(&provider, &encryption)
-                            .context("Failed to decrypt default model provider API key")?;
-                        (
-                            default_model_row.model_id,
-                            provider.provider_type,
-                            provider_with_key.api_key,
-                            provider_with_key.base_url,
-                        )
-                    }
-                    _ => {
-                        let model_id = default_model_row.model_id;
-                        let provider_type = detect_provider_type(&model_id);
-                        (model_id, provider_type, None, None)
-                    }
-                }
-            }
-            _ => {
-                let default_model = "gpt-4o".to_string();
-                let provider_type = detect_provider_type(&default_model);
-                (default_model, provider_type, None, None)
-            }
-        }
-    };
-
-    // Build base config and apply capabilities
-    let base_config = everruns_core::AgentConfig::new(&agent.system_prompt, &model_id);
-    let applied =
-        everruns_core::capabilities::apply_capabilities(base_config, &capability_ids, &registry);
-
-    // Convert tools to ToolDefinitionData
-    let tools: Vec<ToolDefinitionData> = applied
-        .config
-        .tools
-        .iter()
-        .map(|tool| match tool {
-            ToolDefinition::Builtin(b) => ToolDefinitionData {
-                name: b.name.clone(),
-                description: b.description.clone(),
-                parameters: b.parameters.clone(),
-            },
-        })
-        .collect();
-
-    tracing::info!(
-        agent_id = %agent_id,
-        model = %model_id,
-        provider_type = %provider_type,
-        api_key_configured = api_key.is_some(),
-        capability_count = capability_ids.len(),
-        tool_count = tools.len(),
-        "Loaded agent with capabilities"
-    );
-
-    Ok(AgentConfigData {
-        model: model_id,
-        provider_type,
-        api_key, // Decrypted from database
-        base_url,
-        system_prompt: Some(applied.config.system_prompt),
-        tools,
-        max_iterations: 10,
-    })
-}
 
 /// Call the LLM model using CallModelAtom
 ///
@@ -329,10 +152,25 @@ pub async fn call_model_activity(
         )
     };
 
+    // Convert tool definitions to workflow DTO format
+    let tool_definitions: Vec<ToolDefinitionData> = result
+        .tool_definitions
+        .iter()
+        .map(|tool| match tool {
+            ToolDefinition::Builtin(b) => ToolDefinitionData {
+                name: b.name.clone(),
+                description: b.description.clone(),
+                parameters: b.parameters.clone(),
+            },
+        })
+        .collect();
+
     Ok(CallModelOutput {
         text: result.text,
         tool_calls,
         needs_tool_execution: result.needs_tool_execution,
+        tool_definitions,
+        max_iterations: result.max_iterations.min(255) as u8,
     })
 }
 
@@ -408,24 +246,6 @@ fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
     })
 }
 
-/// Detect provider type from model name pattern
-///
-/// This is a helper function that infers the provider type from the model name.
-/// It supports common patterns for OpenAI and Anthropic providers.
-fn detect_provider_type(model_id: &str) -> String {
-    let model_lower = model_id.to_lowercase();
-
-    if model_lower.starts_with("claude")
-        || model_lower.contains("claude")
-        || model_lower.starts_with("anthropic")
-    {
-        "anthropic".to_string()
-    } else {
-        // Default to OpenAI for all other models (including GPT, O1, O3, etc.)
-        "openai".to_string()
-    }
-}
-
 // ============================================================================
 // Activity Type Constants
 // ============================================================================
@@ -434,7 +254,6 @@ fn detect_provider_type(model_id: &str) -> String {
 pub mod activity_types {
     pub const CALL_MODEL: &str = "call-model";
     pub const EXECUTE_TOOL: &str = "execute-tool";
-    pub const LOAD_AGENT: &str = "load-agent";
 }
 
 // ============================================================================
@@ -451,22 +270,12 @@ mod tests {
         let input = CallModelInput {
             session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             agent_id: "660e8400-e29b-41d4-a716-446655440000".into(),
-            agent_config: AgentConfigData {
-                model: "gpt-4o".into(),
-                provider_type: "openai".into(),
-                api_key: None,
-                base_url: None,
-                system_prompt: Some("You are a helpful assistant.".into()),
-                tools: vec![],
-                max_iterations: 5,
-            },
         };
 
         let json = serde_json::to_string(&input).unwrap();
         let parsed: CallModelInput = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.session_id, input.session_id);
         assert_eq!(parsed.agent_id, input.agent_id);
-        assert_eq!(parsed.agent_config.model, "gpt-4o");
     }
 
     #[test]
@@ -488,21 +297,5 @@ mod tests {
         let json = serde_json::to_string(&input).unwrap();
         let parsed: ExecuteToolInput = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.tool_call.name, "get_time");
-    }
-
-    #[test]
-    fn test_detect_provider_type() {
-        assert_eq!(detect_provider_type("gpt-4o"), "openai");
-        assert_eq!(detect_provider_type("gpt-4-turbo"), "openai");
-        assert_eq!(detect_provider_type("claude-3-opus"), "anthropic");
-        assert_eq!(
-            detect_provider_type("claude-3-5-sonnet-20241022"),
-            "anthropic"
-        );
-        assert_eq!(detect_provider_type("o1-preview"), "openai");
-        assert_eq!(detect_provider_type("unknown-model"), "openai"); // Default to OpenAI
-                                                                     // Previously Ollama models now default to OpenAI
-        assert_eq!(detect_provider_type("llama-3.1-70b"), "openai");
-        assert_eq!(detect_provider_type("mistral-7b"), "openai");
     }
 }

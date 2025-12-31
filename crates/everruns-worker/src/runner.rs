@@ -5,7 +5,8 @@
 // Architecture:
 // - API calls `start_run` which queues a workflow to Temporal
 // - Worker polls Temporal task queues and executes activities
-// - Each activity (load_agent, call_llm, execute_tools) is idempotent
+// - Each activity (call_model, execute_tool) is idempotent
+// - CallModelAtom handles agent loading, model resolution, and LLM calls
 // - Events are persisted to database for SSE streaming to clients
 //
 // M2 Note: run_id maps to session_id, agent_id maps to harness_id

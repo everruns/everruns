@@ -92,6 +92,10 @@ pub struct CallModelResult {
     pub needs_tool_execution: bool,
     /// The assistant message that was stored
     pub assistant_message: Message,
+    /// Tool definitions from applied capabilities (for tool execution)
+    pub tool_definitions: Vec<crate::tool_types::ToolDefinition>,
+    /// Maximum iterations configured for the agent
+    pub max_iterations: usize,
 }
 
 // ============================================================================
@@ -305,6 +309,8 @@ where
             tool_calls: tool_calls.clone(),
             needs_tool_execution: has_tool_calls,
             assistant_message,
+            tool_definitions: runtime_agent.tools.clone(),
+            max_iterations: runtime_agent.max_iterations,
         })
     }
 }
@@ -409,9 +415,12 @@ mod tests {
             tool_calls: vec![],
             needs_tool_execution: false,
             assistant_message: Message::assistant("Hello"),
+            tool_definitions: vec![],
+            max_iterations: 10,
         };
         assert_eq!(result.text, "Hello");
         assert!(!result.needs_tool_execution);
+        assert_eq!(result.max_iterations, 10);
     }
 
     #[test]
