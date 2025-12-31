@@ -24,6 +24,7 @@ use everruns_core::{
         AddUserMessageAtom, AddUserMessageInput, Atom, CallModelAtom, CallModelInput,
         ExecuteToolAtom, ExecuteToolInput,
     },
+    capabilities::CapabilityRegistry,
     memory::{InMemoryAgentStore, InMemoryMessageStore},
     openai::OpenAIProtocolLlmProvider,
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
@@ -111,12 +112,16 @@ async fn main() -> anyhow::Result<()> {
     };
     agent_store.add_agent(agent).await;
 
+    // Create capability registry (example uses its own tools, so empty registry is fine)
+    let capability_registry = CapabilityRegistry::new();
+
     // Create atoms
     let add_user_message = AddUserMessageAtom::new(message_store.clone());
     let call_model = CallModelAtom::new(
         agent_store.clone(),
         message_store.clone(),
         llm_provider.clone(),
+        capability_registry,
     );
     let execute_tool = ExecuteToolAtom::new(message_store.clone(), tools.clone());
 

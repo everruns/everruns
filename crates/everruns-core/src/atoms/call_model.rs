@@ -2,10 +2,11 @@
 //!
 //! This module handles:
 //! 1. Retrieving agent configuration from the store
-//! 2. Loading messages from the store
-//! 3. Patching dangling tool calls (tool calls without results)
-//! 4. Calling the LLM with the messages
-//! 5. Storing the assistant response
+//! 2. Building configuration with capabilities applied
+//! 3. Loading messages from the store
+//! 4. Patching dangling tool calls (tool calls without results)
+//! 5. Calling the LLM with the messages
+//! 6. Storing the assistant response
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -13,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::Atom;
+use crate::capabilities::CapabilityRegistry;
 use crate::config::AgentConfigBuilder;
 use crate::error::{AgentLoopError, Result};
 use crate::llm::{
@@ -98,10 +100,11 @@ pub struct CallModelResult {
 ///
 /// This atom:
 /// 1. Retrieves agent configuration from the store
-/// 2. Loads messages from the store
-/// 3. Calls the LLM with the messages
-/// 4. Stores the assistant response
-/// 5. Returns the result with tool calls (if any)
+/// 2. Builds configuration with capabilities applied
+/// 3. Loads messages from the store
+/// 4. Calls the LLM with the messages
+/// 5. Stores the assistant response
+/// 6. Returns the result with tool calls (if any)
 pub struct CallModelAtom<A, M, L>
 where
     A: AgentStore,
@@ -111,6 +114,7 @@ where
     agent_store: A,
     message_store: M,
     llm_provider: L,
+    capability_registry: CapabilityRegistry,
 }
 
 impl<A, M, L> CallModelAtom<A, M, L>
@@ -120,11 +124,17 @@ where
     L: LlmProvider,
 {
     /// Create a new CallModelAtom
-    pub fn new(agent_store: A, message_store: M, llm_provider: L) -> Self {
+    pub fn new(
+        agent_store: A,
+        message_store: M,
+        llm_provider: L,
+        capability_registry: CapabilityRegistry,
+    ) -> Self {
         Self {
             agent_store,
             message_store,
             llm_provider,
+            capability_registry,
         }
     }
 }
@@ -149,17 +159,19 @@ where
             agent_id,
         } = input;
 
-        // 1. Retrieve agent and build config
+        // 1. Retrieve agent and build config with capabilities
         let agent = self
             .agent_store
             .get_agent(agent_id)
             .await?
             .ok_or_else(|| AgentLoopError::agent_not_found(agent_id))?;
 
-        let config = AgentConfigBuilder::new()
-            .system_prompt(&agent.system_prompt)
-            .model("gpt-4o") // TODO: resolve model from agent.default_model_id
-            .build();
+        // Build config from agent with capabilities applied
+        // TODO: resolve model from agent.default_model_id
+        let agent_config_result =
+            AgentConfigBuilder::from_agent(&agent, "gpt-4o", &self.capability_registry);
+        let config = agent_config_result.config;
+        // Note: tool_registry is available as agent_config_result.tool_registry for tool execution
 
         // 2. Load messages
         let messages = self.message_store.load(session_id).await?;

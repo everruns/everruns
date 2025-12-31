@@ -51,7 +51,7 @@ pub mod openai;
 pub mod provider_factory;
 
 // Re-exports for convenience
-pub use config::AgentConfig;
+pub use config::{AgentConfig, AgentConfigBuilder, AgentConfigFromAgent};
 pub use error::{AgentLoopError, Result};
 pub use events::LoopEvent;
 pub use executor::AgentLoop;

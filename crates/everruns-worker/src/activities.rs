@@ -14,6 +14,7 @@ use everruns_core::atoms::{
     Atom, CallModelAtom, CallModelInput as AtomCallModelInput, ExecuteToolAtom,
     ExecuteToolInput as AtomExecuteToolInput,
 };
+use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::provider_factory::{create_provider, ProviderConfig, ProviderType};
 use everruns_core::traits::ToolContext;
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolRegistry};
@@ -304,9 +305,15 @@ pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<
     // Create atom dependencies
     let agent_store = DbAgentStore::new(db.clone());
     let message_store = DbMessageStore::new(db);
+    let capability_registry = CapabilityRegistry::with_builtins();
 
     // Create and execute CallModelAtom
-    let atom = CallModelAtom::new(agent_store, message_store, llm_provider);
+    let atom = CallModelAtom::new(
+        agent_store,
+        message_store,
+        llm_provider,
+        capability_registry,
+    );
     let result = atom
         .execute(AtomCallModelInput {
             session_id,

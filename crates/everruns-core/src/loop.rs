@@ -10,6 +10,7 @@ use crate::atoms::{
     AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, Atom, CallModelAtom,
     CallModelInput, CallModelResult, ExecuteToolAtom, ExecuteToolInput, ExecuteToolResult,
 };
+use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::llm::LlmProvider;
 use crate::message::Message;
@@ -41,6 +42,7 @@ where
     message_store: M,
     llm_provider: L,
     tool_executor: T,
+    capability_registry: CapabilityRegistry,
 }
 
 impl<A, M, L, T> AgentLoop2<A, M, L, T>
@@ -51,12 +53,19 @@ where
     T: ToolExecutor + Clone + Send + Sync,
 {
     /// Create a new agent loop
-    pub fn new(agent_store: A, message_store: M, llm_provider: L, tool_executor: T) -> Self {
+    pub fn new(
+        agent_store: A,
+        message_store: M,
+        llm_provider: L,
+        tool_executor: T,
+        capability_registry: CapabilityRegistry,
+    ) -> Self {
         Self {
             agent_store,
             message_store,
             llm_provider,
             tool_executor,
+            capability_registry,
         }
     }
 
@@ -95,6 +104,7 @@ where
             self.agent_store.clone(),
             self.message_store.clone(),
             self.llm_provider.clone(),
+            self.capability_registry.clone(),
         )
     }
 

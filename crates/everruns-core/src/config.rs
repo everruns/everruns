@@ -4,7 +4,10 @@
 // - Created directly for standalone usage
 // - Built from an Agent entity via the `from_agent` method
 
+use crate::agent::Agent;
+use crate::capabilities::{apply_capabilities, AppliedCapabilities, CapabilityRegistry};
 use crate::tool_types::ToolDefinition;
+use crate::tools::ToolRegistry;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for the agent loop
@@ -128,5 +131,74 @@ impl AgentConfigBuilder {
 impl Default for AgentConfigBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Result of building configuration from an Agent with capabilities
+pub struct AgentConfigFromAgent {
+    /// The agent configuration with capabilities applied
+    pub config: AgentConfig,
+    /// Tool registry containing all capability tools
+    pub tool_registry: ToolRegistry,
+    /// IDs of capabilities that were applied
+    pub applied_capability_ids: Vec<String>,
+}
+
+impl AgentConfigBuilder {
+    /// Build an AgentConfig from an Agent entity, applying its capabilities.
+    ///
+    /// This method:
+    /// 1. Creates a base config from the agent's system prompt and model
+    /// 2. Applies the agent's capabilities using the provided registry
+    /// 3. Returns the config with tool registry and applied capability IDs
+    ///
+    /// # Arguments
+    ///
+    /// * `agent` - The Agent entity to build config from
+    /// * `model` - The model to use (since Agent doesn't have model_id resolved yet)
+    /// * `registry` - The capability registry containing capability implementations
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use everruns_core::config::AgentConfigBuilder;
+    /// use everruns_core::capabilities::CapabilityRegistry;
+    ///
+    /// let registry = CapabilityRegistry::with_builtins();
+    /// let result = AgentConfigBuilder::from_agent(&agent, "gpt-4o", &registry);
+    ///
+    /// // Use result.config for LLM calls
+    /// // Use result.tool_registry for executing tools
+    /// ```
+    pub fn from_agent(
+        agent: &Agent,
+        model: impl Into<String>,
+        registry: &CapabilityRegistry,
+    ) -> AgentConfigFromAgent {
+        // Create base config from agent
+        let base_config = AgentConfigBuilder::new()
+            .system_prompt(&agent.system_prompt)
+            .model(model)
+            .build();
+
+        // Get capability IDs as strings
+        let capability_ids: Vec<String> = agent
+            .capabilities
+            .iter()
+            .map(|cap_id| cap_id.as_str().to_string())
+            .collect();
+
+        // Apply capabilities
+        let AppliedCapabilities {
+            config,
+            tool_registry,
+            applied_ids,
+        } = apply_capabilities(base_config, &capability_ids, registry);
+
+        AgentConfigFromAgent {
+            config,
+            tool_registry,
+            applied_capability_ids: applied_ids,
+        }
     }
 }
