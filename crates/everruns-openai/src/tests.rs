@@ -1,6 +1,48 @@
 // Unit tests for OpenAI provider
 
 #[cfg(test)]
+mod driver_tests {
+    use crate::{register_driver, DriverRegistry, OpenAILlmDriver};
+    use everruns_core::llm_driver_registry::{ProviderConfig, ProviderType};
+
+    #[test]
+    fn test_driver_with_api_key() {
+        let driver = OpenAILlmDriver::new("test-key");
+        // Just verify it can be created
+        assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
+    }
+
+    #[test]
+    fn test_driver_with_base_url() {
+        let driver =
+            OpenAILlmDriver::with_base_url("test-key", "https://custom.api.com/v1/completions");
+        assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
+        assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
+    }
+
+    #[test]
+    fn test_register_driver() {
+        let mut registry = DriverRegistry::new();
+        assert!(!registry.has_driver(&ProviderType::OpenAI));
+        assert!(!registry.has_driver(&ProviderType::AzureOpenAI));
+
+        register_driver(&mut registry);
+
+        assert!(registry.has_driver(&ProviderType::OpenAI));
+        assert!(registry.has_driver(&ProviderType::AzureOpenAI));
+
+        // Verify drivers can be created via registry
+        let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
+        let driver = registry.create_driver(&config);
+        assert!(driver.is_ok());
+
+        let azure_config = ProviderConfig::new(ProviderType::AzureOpenAI).with_api_key("test-key");
+        let azure_driver = registry.create_driver(&azure_config);
+        assert!(azure_driver.is_ok());
+    }
+}
+
+#[cfg(test)]
 mod provider_tests {
     use crate::types::{ChatMessage, LlmConfig, MessageRole};
 

@@ -12,6 +12,7 @@
 use anyhow::{Context, Result};
 use everruns_core::atoms::{Atom, CallModelAtom, ExecuteToolAtom};
 use everruns_core::capabilities::CapabilityRegistry;
+use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::ToolRegistry;
 use everruns_storage::{repositories::Database, EncryptionService};
 use std::sync::Arc;
@@ -19,6 +20,18 @@ use std::sync::Arc;
 use crate::adapters::{
     DbAgentStore, DbLlmProviderStore, DbMessageStore, DbSessionFileStore, DbSessionStore,
 };
+
+/// Create and configure the driver registry with all supported LLM providers
+///
+/// This registers drivers for:
+/// - OpenAI (and Azure OpenAI)
+/// - Anthropic Claude
+fn create_driver_registry() -> DriverRegistry {
+    let mut registry = DriverRegistry::new();
+    everruns_openai::register_driver(&mut registry);
+    everruns_anthropic::register_driver(&mut registry);
+    registry
+}
 
 // Re-export atom types for activity callers
 pub use everruns_core::atoms::{
@@ -55,6 +68,7 @@ pub async fn call_model_activity(
     let message_store = DbMessageStore::new(db.clone());
     let provider_store = DbLlmProviderStore::new(db, encryption);
     let capability_registry = CapabilityRegistry::with_builtins();
+    let driver_registry = create_driver_registry();
 
     // Create and execute CallModelAtom
     // The atom resolves model using chain: controls.model_id > session.model_id > agent.default_model_id
@@ -64,6 +78,7 @@ pub async fn call_model_activity(
         message_store,
         provider_store,
         capability_registry,
+        driver_registry,
     );
 
     atom.execute(input)

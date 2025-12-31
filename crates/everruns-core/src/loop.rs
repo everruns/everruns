@@ -12,6 +12,7 @@ use crate::atoms::{
 };
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
+use crate::llm_driver_registry::DriverRegistry;
 use crate::message::Message;
 use crate::traits::{AgentStore, LlmProviderStore, MessageStore, SessionStore, ToolExecutor};
 
@@ -44,6 +45,7 @@ where
     provider_store: P,
     tool_executor: T,
     capability_registry: CapabilityRegistry,
+    driver_registry: DriverRegistry,
 }
 
 impl<A, S, M, P, T> AgentLoop<A, S, M, P, T>
@@ -62,6 +64,7 @@ where
         provider_store: P,
         tool_executor: T,
         capability_registry: CapabilityRegistry,
+        driver_registry: DriverRegistry,
     ) -> Self {
         Self {
             agent_store,
@@ -70,6 +73,7 @@ where
             provider_store,
             tool_executor,
             capability_registry,
+            driver_registry,
         }
     }
 
@@ -115,6 +119,7 @@ where
             self.message_store.clone(),
             self.provider_store.clone(),
             self.capability_registry.clone(),
+            self.driver_registry.clone(),
         )
     }
 
