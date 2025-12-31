@@ -17,13 +17,14 @@
 //!
 //! Run with: cargo run -p everruns-core --example decomposed_execution --features openai
 
+use chrono::Utc;
 use everruns_core::{
+    agent::{Agent, AgentStatus},
     atoms::{
         AddUserMessageAtom, AddUserMessageInput, Atom, CallModelAtom, CallModelInput,
         ExecuteToolAtom, ExecuteToolInput,
     },
-    config::AgentConfigBuilder,
-    memory::InMemoryMessageStore,
+    memory::{InMemoryAgentStore, InMemoryMessageStore},
     openai::OpenAIProtocolLlmProvider,
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
     MessageStore,
@@ -88,23 +89,39 @@ async fn main() -> anyhow::Result<()> {
     println!("=== ReACT Loop with Atoms ===\n");
 
     // Create shared dependencies
+    let agent_store = InMemoryAgentStore::new();
     let message_store = InMemoryMessageStore::new();
     let llm_provider = OpenAIProtocolLlmProvider::from_env()?;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
+    // Create an agent in the store
+    let agent_id = Uuid::now_v7();
+    let now = Utc::now();
+    let agent = Agent {
+        id: agent_id,
+        name: "Weather Assistant".to_string(),
+        description: Some("A helpful weather assistant".to_string()),
+        system_prompt: "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.".to_string(),
+        default_model_id: None,
+        tags: vec![],
+        capabilities: vec![],
+        status: AgentStatus::Active,
+        created_at: now,
+        updated_at: now,
+    };
+    agent_store.add_agent(agent).await;
+
     // Create atoms
     let add_user_message = AddUserMessageAtom::new(message_store.clone());
-    let call_model = CallModelAtom::new(message_store.clone(), llm_provider.clone());
+    let call_model = CallModelAtom::new(
+        agent_store.clone(),
+        message_store.clone(),
+        llm_provider.clone(),
+    );
     let execute_tool = ExecuteToolAtom::new(message_store.clone(), tools.clone());
 
-    // Create config with tools
-    let config = AgentConfigBuilder::new()
-        .system_prompt(
-            "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.",
-        )
-        .model("gpt-5.2")
-        .tools(tools.tool_definitions())
-        .build();
+    // Get tool definitions for tool execution
+    let tool_definitions = tools.tool_definitions();
 
     let session_id = Uuid::now_v7();
     let user_question = "What's the weather like in Paris?";
@@ -139,7 +156,7 @@ async fn main() -> anyhow::Result<()> {
         let model_result = call_model
             .execute(CallModelInput {
                 session_id,
-                config: config.clone(),
+                agent_id,
             })
             .await?;
 
@@ -173,7 +190,7 @@ async fn main() -> anyhow::Result<()> {
                 .execute(ExecuteToolInput {
                     session_id,
                     tool_call: tool_call.clone(),
-                    tool_definitions: config.tools.clone(),
+                    tool_definitions: tool_definitions.clone(),
                     tool_context: None, // Example doesn't use context-aware tools
                 })
                 .await?;

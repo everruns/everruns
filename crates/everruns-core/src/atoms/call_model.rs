@@ -1,10 +1,11 @@
 //! CallModelAtom - Atom for calling the LLM
 //!
 //! This module handles:
-//! 1. Loading messages from the store
-//! 2. Patching dangling tool calls (tool calls without results)
-//! 3. Calling the LLM with the messages
-//! 4. Storing the assistant response
+//! 1. Retrieving agent configuration from the store
+//! 2. Loading messages from the store
+//! 3. Patching dangling tool calls (tool calls without results)
+//! 4. Calling the LLM with the messages
+//! 5. Storing the assistant response
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -12,14 +13,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::Atom;
-use crate::config::AgentConfig;
+use crate::config::AgentConfigBuilder;
 use crate::error::{AgentLoopError, Result};
 use crate::llm::{
     LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider, LlmStreamEvent,
 };
 use crate::message::{Message, MessageRole};
 use crate::tool_types::ToolCall;
-use crate::traits::MessageStore;
+use crate::traits::{AgentStore, MessageStore};
 
 // ============================================================================
 // Helper Functions
@@ -72,8 +73,8 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
 pub struct CallModelInput {
     /// Session ID
     pub session_id: Uuid,
-    /// Agent configuration
-    pub config: AgentConfig,
+    /// Agent ID - the atom will retrieve the agent and build AgentConfig
+    pub agent_id: Uuid,
 }
 
 /// Result of calling the model
@@ -96,27 +97,32 @@ pub struct CallModelResult {
 /// Atom that calls the LLM model
 ///
 /// This atom:
-/// 1. Loads messages from the store
-/// 2. Calls the LLM with the messages
-/// 3. Stores the assistant response
-/// 4. Returns the result with tool calls (if any)
-pub struct CallModelAtom<M, L>
+/// 1. Retrieves agent configuration from the store
+/// 2. Loads messages from the store
+/// 3. Calls the LLM with the messages
+/// 4. Stores the assistant response
+/// 5. Returns the result with tool calls (if any)
+pub struct CallModelAtom<A, M, L>
 where
+    A: AgentStore,
     M: MessageStore,
     L: LlmProvider,
 {
+    agent_store: A,
     message_store: M,
     llm_provider: L,
 }
 
-impl<M, L> CallModelAtom<M, L>
+impl<A, M, L> CallModelAtom<A, M, L>
 where
+    A: AgentStore,
     M: MessageStore,
     L: LlmProvider,
 {
     /// Create a new CallModelAtom
-    pub fn new(message_store: M, llm_provider: L) -> Self {
+    pub fn new(agent_store: A, message_store: M, llm_provider: L) -> Self {
         Self {
+            agent_store,
             message_store,
             llm_provider,
         }
@@ -124,8 +130,9 @@ where
 }
 
 #[async_trait]
-impl<M, L> Atom for CallModelAtom<M, L>
+impl<A, M, L> Atom for CallModelAtom<A, M, L>
 where
+    A: AgentStore + Send + Sync,
     M: MessageStore + Send + Sync,
     L: LlmProvider + Send + Sync,
 {
@@ -137,16 +144,31 @@ where
     }
 
     async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
-        let CallModelInput { session_id, config } = input;
+        let CallModelInput {
+            session_id,
+            agent_id,
+        } = input;
 
-        // 1. Load messages
+        // 1. Retrieve agent and build config
+        let agent = self
+            .agent_store
+            .get_agent(agent_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::agent_not_found(agent_id))?;
+
+        let config = AgentConfigBuilder::new()
+            .system_prompt(&agent.system_prompt)
+            .model("gpt-4o") // TODO: resolve model from agent.default_model_id
+            .build();
+
+        // 2. Load messages
         let messages = self.message_store.load(session_id).await?;
 
         if messages.is_empty() {
             return Err(AgentLoopError::NoMessages);
         }
 
-        // 2. Extract reasoning effort from the last user message's controls
+        // 3. Extract reasoning effort from the last user message's controls
         let reasoning_effort = messages
             .iter()
             .rev()
@@ -155,10 +177,10 @@ where
             .and_then(|c| c.reasoning.as_ref())
             .and_then(|r| r.effort.clone());
 
-        // 3. Patch dangling tool calls (add cancelled results for tool calls without responses)
+        // 4. Patch dangling tool calls (add cancelled results for tool calls without responses)
         let patched_messages = patch_dangling_tool_calls(&messages);
 
-        // 4. Build LLM messages
+        // 5. Build LLM messages
         let mut llm_messages = Vec::new();
 
         // Add system prompt
@@ -177,7 +199,7 @@ where
             llm_messages.push(msg.into());
         }
 
-        // 5. Call LLM with reasoning effort
+        // 6. Call LLM with reasoning effort
         let mut llm_config = LlmCallConfig::from(&config);
         llm_config.reasoning_effort = reasoning_effort.clone();
 
@@ -207,7 +229,7 @@ where
             }
         }
 
-        // 6. Build metadata with model and reasoning effort info
+        // 7. Build metadata with model and reasoning effort info
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),
@@ -220,7 +242,7 @@ where
             );
         }
 
-        // 7. Store assistant message with metadata
+        // 8. Store assistant message with metadata
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())

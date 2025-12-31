@@ -5,6 +5,7 @@
 // - Database implementations for production
 // - Channel-based implementations for streaming
 
+use crate::agent::Agent;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
@@ -81,6 +82,22 @@ pub trait MessageStore: Send + Sync {
     async fn count(&self, session_id: Uuid) -> Result<usize> {
         Ok(self.load(session_id).await?.len())
     }
+}
+
+// ============================================================================
+// AgentStore - For retrieving agent configurations
+// ============================================================================
+
+/// Trait for retrieving agent configurations
+///
+/// Implementations can:
+/// - Load agents from a database
+/// - Keep agents in memory for testing
+/// - Load agents from a configuration file
+#[async_trait]
+pub trait AgentStore: Send + Sync {
+    /// Get an agent by ID
+    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>>;
 }
 
 // ============================================================================

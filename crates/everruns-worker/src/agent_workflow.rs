@@ -373,6 +373,7 @@ impl AgentWorkflow {
             activity_type: activity_names::CALL_MODEL.to_string(),
             input: json!({
                 "session_id": self.session_id(),
+                "agent_id": self.input.agent_id.to_string(),
                 "agent_config": agent_config,
             }),
         }]

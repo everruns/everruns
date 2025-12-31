@@ -5,6 +5,7 @@
 // - Unit tests
 // - Quick prototyping
 
+use crate::agent::Agent;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -15,7 +16,7 @@ use uuid::Uuid;
 use crate::error::Result;
 use crate::events::LoopEvent;
 use crate::message::Message;
-use crate::traits::{EventEmitter, MessageStore, ToolExecutor};
+use crate::traits::{AgentStore, EventEmitter, MessageStore, ToolExecutor};
 
 // ============================================================================
 // InMemoryEventEmitter - Collects events in memory
@@ -188,6 +189,50 @@ impl MessageStore for InMemoryMessageStore {
             .get(&session_id)
             .map(|m| m.len())
             .unwrap_or(0))
+    }
+}
+
+// ============================================================================
+// InMemoryAgentStore - Stores agents in memory
+// ============================================================================
+
+/// In-memory agent store
+///
+/// Stores agents in a HashMap keyed by agent ID.
+/// Useful for testing and examples where you want to configure agents without a database.
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryAgentStore {
+    agents: Arc<RwLock<HashMap<Uuid, Agent>>>,
+}
+
+impl InMemoryAgentStore {
+    /// Create a new in-memory agent store
+    pub fn new() -> Self {
+        Self {
+            agents: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Add an agent to the store
+    pub async fn add_agent(&self, agent: Agent) {
+        self.agents.write().await.insert(agent.id, agent);
+    }
+
+    /// Get all agent IDs
+    pub async fn agent_ids(&self) -> Vec<Uuid> {
+        self.agents.read().await.keys().copied().collect()
+    }
+
+    /// Clear all agents
+    pub async fn clear(&self) {
+        self.agents.write().await.clear();
+    }
+}
+
+#[async_trait]
+impl AgentStore for InMemoryAgentStore {
+    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
+        Ok(self.agents.read().await.get(&agent_id).cloned())
     }
 }
 

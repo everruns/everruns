@@ -1,9 +1,11 @@
 // Postgres storage layer with sqlx
 //
 // This crate provides database implementations for core traits:
+// - DbAgentStore: implements AgentStore for agent retrieval
 // - DbMessageStore: implements MessageStore for message persistence
 // - DbSessionFileStore: implements SessionFileStore for session filesystem
 
+pub mod agent_store;
 pub mod encryption;
 pub mod message_store;
 pub mod models;
@@ -11,6 +13,7 @@ pub mod password;
 pub mod repositories;
 pub mod session_file_store;
 
+pub use agent_store::{create_db_agent_store, DbAgentStore};
 pub use encryption::{
     generate_encryption_key, EncryptedColumn, EncryptedPayload, EncryptionService,
     ENCRYPTED_COLUMNS,
