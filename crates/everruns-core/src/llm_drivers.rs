@@ -1,15 +1,23 @@
-// LLM Driver Types
+// LLM Driver Abstractions
 //
-// Provider-agnostic types for LLM interactions.
+// This module encapsulates all abstractions needed to interact with LLM Providers:
+// - LlmDriver trait and types for provider-agnostic LLM interactions
+// - Driver factory for creating drivers based on provider type and configuration
+// - Message types for LLM calls
+//
 // Supports both simple text content and multipart content (text, images, audio).
+//
+// IMPORTANT: API keys must be provided from the database. The factory does NOT read
+// from environment variables. Keys should be decrypted and passed via ProviderConfig.
 
+use crate::anthropic::AnthropicLlmDriver;
+use crate::error::{AgentLoopError, Result};
+use crate::openai::OpenAILlmDriver;
+use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
-
-use crate::config::AgentConfig;
-use crate::error::Result;
 
 // ============================================================================
 // LlmDriver Trait
@@ -252,13 +260,13 @@ pub struct LlmCallConfig {
     pub reasoning_effort: Option<String>,
 }
 
-impl From<&AgentConfig> for LlmCallConfig {
-    fn from(config: &AgentConfig) -> Self {
+impl From<&RuntimeAgent> for LlmCallConfig {
+    fn from(runtime_agent: &RuntimeAgent) -> Self {
         Self {
-            model: config.model.clone(),
-            temperature: config.temperature,
-            max_tokens: config.max_tokens,
-            tools: config.tools.clone(),
+            model: runtime_agent.model.clone(),
+            temperature: runtime_agent.temperature,
+            max_tokens: runtime_agent.max_tokens,
+            tools: runtime_agent.tools.clone(),
             reasoning_effort: None, // Set by CallModelAtom from user message controls
         }
     }
@@ -274,7 +282,7 @@ pub struct LlmResponse {
 
 /// Builder for LlmCallConfig with fluent API
 ///
-/// Use `from(&config)` to start building from an AgentConfig, then chain
+/// Use `from(&runtime_agent)` to start building from a RuntimeAgent, then chain
 /// methods like `reasoning_effort()`, `temperature()`, etc. Call `build()`
 /// to get the final config.
 ///
@@ -282,10 +290,10 @@ pub struct LlmResponse {
 ///
 /// ```ignore
 /// use everruns_core::llm::LlmCallConfigBuilder;
-/// use everruns_core::config::AgentConfig;
+/// use everruns_core::runtime_agent::RuntimeAgent;
 ///
-/// let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
-/// let llm_config = LlmCallConfigBuilder::from(&agent_config)
+/// let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+/// let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
 ///     .reasoning_effort("high")
 ///     .temperature(0.7)
 ///     .build();
@@ -295,10 +303,10 @@ pub struct LlmCallConfigBuilder {
 }
 
 impl LlmCallConfigBuilder {
-    /// Start building from an AgentConfig
-    pub fn from(config: &AgentConfig) -> Self {
+    /// Start building from a RuntimeAgent
+    pub fn from(runtime_agent: &RuntimeAgent) -> Self {
         Self {
-            config: LlmCallConfig::from(config),
+            config: LlmCallConfig::from(runtime_agent),
         }
     }
 
@@ -376,6 +384,106 @@ impl From<&crate::message::Message> for LlmMessage {
 }
 
 // ============================================================================
+// Driver Factory
+// ============================================================================
+
+/// Provider type enumeration matching the database/contracts
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderType {
+    OpenAI,
+    Anthropic,
+    AzureOpenAI,
+}
+
+impl std::str::FromStr for ProviderType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "openai" => Ok(ProviderType::OpenAI),
+            "anthropic" => Ok(ProviderType::Anthropic),
+            "azure_openai" => Ok(ProviderType::AzureOpenAI),
+            _ => Err(format!("Unknown provider type: {}", s)),
+        }
+    }
+}
+
+impl std::fmt::Display for ProviderType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProviderType::OpenAI => write!(f, "openai"),
+            ProviderType::Anthropic => write!(f, "anthropic"),
+            ProviderType::AzureOpenAI => write!(f, "azure_openai"),
+        }
+    }
+}
+
+/// Configuration for creating an LLM provider
+#[derive(Debug, Clone)]
+pub struct ProviderConfig {
+    /// Type of provider
+    pub provider_type: ProviderType,
+    /// API key for authentication
+    pub api_key: Option<String>,
+    /// Base URL override (optional)
+    pub base_url: Option<String>,
+}
+
+impl ProviderConfig {
+    /// Create a new provider config
+    pub fn new(provider_type: ProviderType) -> Self {
+        Self {
+            provider_type,
+            api_key: None,
+            base_url: None,
+        }
+    }
+
+    /// Set the API key
+    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = Some(api_key.into());
+        self
+    }
+
+    /// Set the base URL
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = Some(base_url.into());
+        self
+    }
+}
+
+/// Boxed LLM driver for dynamic dispatch
+pub type BoxedLlmDriver = Box<dyn LlmDriver>;
+
+/// Create an LLM driver based on configuration
+///
+/// API keys must be provided in the config. This function does NOT fall back to
+/// environment variables. Keys should be decrypted from the database and passed here.
+pub fn create_driver(config: &ProviderConfig) -> Result<BoxedLlmDriver> {
+    // API key is required - it should be decrypted from the database
+    let api_key = config.api_key.as_ref().ok_or_else(|| {
+        AgentLoopError::llm("API key is required. Configure the API key in provider settings.")
+    })?;
+
+    match config.provider_type {
+        ProviderType::OpenAI | ProviderType::AzureOpenAI => {
+            let driver = match &config.base_url {
+                Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
+                None => OpenAILlmDriver::new(api_key),
+            };
+            Ok(Box::new(driver))
+        }
+        ProviderType::Anthropic => {
+            let driver = match &config.base_url {
+                Some(url) => AnthropicLlmDriver::with_base_url(api_key, url),
+                None => AnthropicLlmDriver::new(api_key),
+            };
+            Ok(Box::new(driver))
+        }
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -384,9 +492,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_llm_call_config_builder_from_agent_config() {
-        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&agent_config).build();
+    fn test_llm_call_config_builder_from_runtime_agent() {
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent).build();
 
         assert_eq!(llm_config.model, "gpt-4o");
         assert!(llm_config.reasoning_effort.is_none());
@@ -397,8 +505,8 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_reasoning_effort() {
-        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&agent_config)
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
             .reasoning_effort("high")
             .build();
 
@@ -407,8 +515,8 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_all_options() {
-        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&agent_config)
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
             .model("claude-3-opus")
             .reasoning_effort("medium")
             .temperature(0.7)
@@ -419,5 +527,55 @@ mod tests {
         assert_eq!(llm_config.reasoning_effort, Some("medium".to_string()));
         assert_eq!(llm_config.temperature, Some(0.7));
         assert_eq!(llm_config.max_tokens, Some(1000));
+    }
+
+    #[test]
+    fn test_provider_type_parsing() {
+        assert_eq!(
+            "openai".parse::<ProviderType>().unwrap(),
+            ProviderType::OpenAI
+        );
+        assert_eq!(
+            "anthropic".parse::<ProviderType>().unwrap(),
+            ProviderType::Anthropic
+        );
+        assert_eq!(
+            "azure_openai".parse::<ProviderType>().unwrap(),
+            ProviderType::AzureOpenAI
+        );
+        // Ollama and Custom are no longer supported
+        assert!("ollama".parse::<ProviderType>().is_err());
+        assert!("custom".parse::<ProviderType>().is_err());
+    }
+
+    #[test]
+    fn test_provider_type_display() {
+        assert_eq!(ProviderType::OpenAI.to_string(), "openai");
+        assert_eq!(ProviderType::Anthropic.to_string(), "anthropic");
+        assert_eq!(ProviderType::AzureOpenAI.to_string(), "azure_openai");
+    }
+
+    #[test]
+    fn test_provider_config_builder() {
+        let config = ProviderConfig::new(ProviderType::Anthropic)
+            .with_api_key("test-key")
+            .with_base_url("https://custom.api.com");
+
+        assert_eq!(config.provider_type, ProviderType::Anthropic);
+        assert_eq!(config.api_key, Some("test-key".to_string()));
+        assert_eq!(config.base_url, Some("https://custom.api.com".to_string()));
+    }
+
+    #[test]
+    fn test_create_driver_requires_api_key() {
+        // Driver without API key should fail
+        let config = ProviderConfig::new(ProviderType::OpenAI);
+        let result = create_driver(&config);
+        assert!(result.is_err());
+
+        // Driver with API key should succeed
+        let config_with_key = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
+        let result = create_driver(&config_with_key);
+        assert!(result.is_ok());
     }
 }

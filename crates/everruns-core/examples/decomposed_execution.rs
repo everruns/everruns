@@ -196,17 +196,15 @@ async fn main() -> anyhow::Result<()> {
             break;
         }
 
-        println!(
-            "    Tool calls requested: {}",
-            model_result.tool_calls.len()
-        );
+        let tool_calls = model_result.tool_calls.unwrap_or_default();
+        println!("    Tool calls requested: {}", tool_calls.len());
 
         // =====================================================================
         // ACT: Execute tool calls
         // =====================================================================
         println!("  [Act] Executing tools...");
 
-        for tool_call in &model_result.tool_calls {
+        for tool_call in &tool_calls {
             println!("    Tool: {}", tool_call.name);
             println!("    Args: {}", tool_call.arguments);
 
@@ -215,7 +213,6 @@ async fn main() -> anyhow::Result<()> {
                     session_id,
                     tool_call: tool_call.clone(),
                     tool_definitions: tool_definitions.clone(),
-                    tool_context: None, // Example doesn't use context-aware tools
                 })
                 .await?;
 

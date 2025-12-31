@@ -6,7 +6,7 @@
 // - Channel-based implementations for streaming
 
 use crate::agent::Agent;
-use crate::llm_entities::LlmProviderType;
+use crate::llm_models::LlmProviderType;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
@@ -126,7 +126,7 @@ pub trait SessionStore: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct ModelWithProvider {
     /// The model ID string to pass to the LLM API (e.g., "gpt-4o", "claude-3-opus")
-    pub model_id: String,
+    pub model: String,
     /// Provider type for factory selection
     pub provider_type: LlmProviderType,
     /// Decrypted API key (if configured)

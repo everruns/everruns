@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, Result};
-use crate::llm::{
+use crate::llm_drivers::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
@@ -29,22 +29,22 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::anthropic::AnthropicLlmProvider;
+/// use everruns_core::anthropic::AnthropicLlmDriver;
 ///
-/// let provider = AnthropicLlmProvider::from_env()?;
+/// let driver = AnthropicLlmDriver::from_env()?;
 /// // or
-/// let provider = AnthropicLlmProvider::new("your-api-key");
+/// let driver = AnthropicLlmDriver::new("your-api-key");
 /// // or with custom endpoint
-/// let provider = AnthropicLlmProvider::with_base_url("your-api-key", "https://api.example.com/v1/messages");
+/// let driver = AnthropicLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/messages");
 /// ```
 #[derive(Clone)]
-pub struct AnthropicLlmProvider {
+pub struct AnthropicLlmDriver {
     client: Client,
     api_key: String,
     api_url: String,
 }
 
-impl AnthropicLlmProvider {
+impl AnthropicLlmDriver {
     /// Create a new provider with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -199,7 +199,7 @@ impl AnthropicLlmProvider {
 }
 
 #[async_trait]
-impl LlmDriver for AnthropicLlmProvider {
+impl LlmDriver for AnthropicLlmDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -399,9 +399,9 @@ impl LlmDriver for AnthropicLlmProvider {
     }
 }
 
-impl std::fmt::Debug for AnthropicLlmProvider {
+impl std::fmt::Debug for AnthropicLlmDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AnthropicLlmProvider")
+        f.debug_struct("AnthropicLlmDriver")
             .field("api_url", &self.api_url)
             .field("api_key", &"[REDACTED]")
             .finish()

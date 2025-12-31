@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    llm_entities::LlmProviderType,
+    llm_models::LlmProviderType,
     traits::{LlmProviderStore, ModelWithProvider},
     AgentLoopError, Result,
 };
@@ -72,7 +72,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         let provider_type = parse_provider_type(&provider_with_key.provider_type);
 
         Ok(Some(ModelWithProvider {
-            model_id: model_row.model_id,
+            model: model_row.model_id,
             provider_type,
             api_key: provider_with_key.api_key,
             base_url: provider_with_key.base_url,
@@ -114,7 +114,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         let provider_type = parse_provider_type(&provider_with_key.provider_type);
 
         Ok(Some(ModelWithProvider {
-            model_id: model_row.model_id,
+            model: model_row.model_id,
             provider_type,
             api_key: provider_with_key.api_key,
             base_url: provider_with_key.base_url,

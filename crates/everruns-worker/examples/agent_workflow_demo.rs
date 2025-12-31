@@ -18,7 +18,7 @@ fn main() {
     println!("=== Agent Workflow Demo ===\n");
     println!("This demo simulates the agent workflow state machine.\n");
     println!("Agent workflow design:");
-    println!("  - Atoms handle message storage internally (no messages in state)");
+    println!("  - CallModelAtom handles agent loading and LLM calls");
     println!("  - Each tool call is a separate activity for visibility");
     println!("  - Workflow is a lightweight orchestrator\n");
 
@@ -46,34 +46,22 @@ fn demo_simple_response() {
 
     let mut workflow = AgentWorkflow::new(input);
 
-    // Step 1: Start workflow
-    println!("1. on_start()");
+    // Step 1: Start workflow → directly to call-model
+    println!("1. on_start() → schedule call-model");
     let actions = workflow.on_start();
-    print_actions(&actions);
-    let load_agent_id = find_activity_id(&actions, "load-agent").unwrap();
-
-    // Step 2: Agent loaded → model call
-    println!("\n2. Agent loaded → schedule call-model");
-    let actions = workflow.on_activity_completed(
-        &load_agent_id,
-        json!({
-            "model": "gpt-5.2",
-            "system_prompt": "You are a helpful assistant.",
-            "tools": [],
-            "max_iterations": 5
-        }),
-    );
     print_actions(&actions);
     let call_model_id = find_activity_id(&actions, "call-model").unwrap();
 
-    // Step 3: LLM response (no tools) → complete
-    println!("\n3. LLM responded (no tools) → complete");
+    // Step 2: LLM response (no tools) → complete
+    println!("\n2. LLM responded (no tools) → complete");
     let actions = workflow.on_activity_completed(
         &call_model_id,
         json!({
             "text": "2 + 2 = 4",
             "tool_calls": null,
-            "needs_tool_execution": false
+            "needs_tool_execution": false,
+            "tool_definitions": [],
+            "max_iterations": 10
         }),
     );
     print_actions(&actions);
@@ -90,24 +78,9 @@ fn demo_tool_call() {
 
     let mut workflow = AgentWorkflow::new(input);
 
-    // Start
+    // Start → call-model
+    println!("1. on_start() → schedule call-model");
     let actions = workflow.on_start();
-    let load_agent_id = find_activity_id(&actions, "load-agent").unwrap();
-
-    // Agent loaded with tool
-    println!("1. Agent loaded (with get_time tool)");
-    let actions = workflow.on_activity_completed(
-        &load_agent_id,
-        json!({
-            "model": "gpt-5.2",
-            "tools": [{
-                "name": "get_time",
-                "description": "Get current time",
-                "parameters": {}
-            }],
-            "max_iterations": 5
-        }),
-    );
     print_actions(&actions);
     let call_model_id = find_activity_id(&actions, "call-model").unwrap();
 
@@ -122,7 +95,14 @@ fn demo_tool_call() {
                 "name": "get_time",
                 "arguments": {}
             }],
-            "needs_tool_execution": true
+            "needs_tool_execution": true,
+            "tool_definitions": [{
+                "type": "builtin",
+                "name": "get_time",
+                "description": "Get current time",
+                "parameters": {}
+            }],
+            "max_iterations": 10
         }),
     );
     print_actions(&actions);
@@ -150,7 +130,14 @@ fn demo_tool_call() {
         json!({
             "text": "The current time is 14:30.",
             "tool_calls": null,
-            "needs_tool_execution": false
+            "needs_tool_execution": false,
+            "tool_definitions": [{
+                "type": "builtin",
+                "name": "get_time",
+                "description": "Get current time",
+                "parameters": {}
+            }],
+            "max_iterations": 10
         }),
     );
     print_actions(&actions);
@@ -167,25 +154,14 @@ fn demo_parallel_tools() {
 
     let mut workflow = AgentWorkflow::new(input);
 
-    // Start and load agent
+    // Start → call-model
+    println!("1. on_start() → schedule call-model");
     let actions = workflow.on_start();
-    let load_agent_id = find_activity_id(&actions, "load-agent").unwrap();
-
-    let actions = workflow.on_activity_completed(
-        &load_agent_id,
-        json!({
-            "model": "gpt-5.2",
-            "tools": [
-                {"name": "get_weather", "description": "Get weather", "parameters": {}},
-                {"name": "get_time", "description": "Get time", "parameters": {}}
-            ],
-            "max_iterations": 5
-        }),
-    );
+    print_actions(&actions);
     let call_model_id = find_activity_id(&actions, "call-model").unwrap();
 
     // LLM requests TWO tool calls at once
-    println!("1. LLM requests 2 tools in parallel");
+    println!("\n2. LLM requests 2 tools in parallel");
     let actions = workflow.on_activity_completed(
         &call_model_id,
         json!({
@@ -194,7 +170,12 @@ fn demo_parallel_tools() {
                 {"id": "call_1", "name": "get_weather", "arguments": {"city": "NYC"}},
                 {"id": "call_2", "name": "get_time", "arguments": {}}
             ],
-            "needs_tool_execution": true
+            "needs_tool_execution": true,
+            "tool_definitions": [
+                {"type": "builtin", "name": "get_weather", "description": "Get weather", "parameters": {}},
+                {"type": "builtin", "name": "get_time", "description": "Get time", "parameters": {}}
+            ],
+            "max_iterations": 10
         }),
     );
     print_actions(&actions);
@@ -211,7 +192,7 @@ fn demo_parallel_tools() {
     println!("   ({} parallel activities scheduled)\n", tool_ids.len());
 
     // First tool completes
-    println!("2. First tool completes (still waiting)");
+    println!("3. First tool completes (still waiting)");
     let actions = workflow.on_activity_completed(
         &tool_ids[0],
         json!({
@@ -226,7 +207,7 @@ fn demo_parallel_tools() {
     println!("   (waiting for remaining tool)\n");
 
     // Second tool completes
-    println!("3. Second tool completes → next model call");
+    println!("4. Second tool completes → next model call");
     let actions = workflow.on_activity_completed(
         &tool_ids[1],
         json!({
@@ -241,13 +222,18 @@ fn demo_parallel_tools() {
     let call_model_id2 = find_activity_id(&actions, "call-model").unwrap();
 
     // Final response
-    println!("\n4. LLM final response → complete");
+    println!("\n5. LLM final response → complete");
     let actions = workflow.on_activity_completed(
         &call_model_id2,
         json!({
             "text": "It's 72°F in NYC and the time is 14:30.",
             "tool_calls": null,
-            "needs_tool_execution": false
+            "needs_tool_execution": false,
+            "tool_definitions": [
+                {"type": "builtin", "name": "get_weather", "description": "Get weather", "parameters": {}},
+                {"type": "builtin", "name": "get_time", "description": "Get time", "parameters": {}}
+            ],
+            "max_iterations": 10
         }),
     );
     print_actions(&actions);

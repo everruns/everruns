@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, Result};
-use crate::llm::{
+use crate::llm_drivers::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
@@ -28,22 +28,22 @@ const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::openai::OpenAIProtocolLlmProvider;
+/// use everruns_core::openai::OpenAILlmDriver;
 ///
-/// let provider = OpenAIProtocolLlmProvider::from_env()?;
+/// let provider = OpenAILlmDriver::from_env()?;
 /// // or
-/// let provider = OpenAIProtocolLlmProvider::new("your-api-key");
+/// let provider = OpenAILlmDriver::new("your-api-key");
 /// // or with custom endpoint
-/// let provider = OpenAIProtocolLlmProvider::with_base_url("your-api-key", "https://api.example.com/v1/chat/completions");
+/// let provider = OpenAILlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/chat/completions");
 /// ```
 #[derive(Clone)]
-pub struct OpenAIProtocolLlmProvider {
+pub struct OpenAILlmDriver {
     client: Client,
     api_key: String,
     api_url: String,
 }
 
-impl OpenAIProtocolLlmProvider {
+impl OpenAILlmDriver {
     /// Create a new provider with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -151,7 +151,7 @@ impl OpenAIProtocolLlmProvider {
 }
 
 #[async_trait]
-impl LlmDriver for OpenAIProtocolLlmProvider {
+impl LlmDriver for OpenAILlmDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -313,9 +313,9 @@ impl LlmDriver for OpenAIProtocolLlmProvider {
     }
 }
 
-impl std::fmt::Debug for OpenAIProtocolLlmProvider {
+impl std::fmt::Debug for OpenAILlmDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAIProtocolLlmProvider")
+        f.debug_struct("OpenAILlmDriver")
             .field("api_url", &self.api_url)
             .field("api_key", &"[REDACTED]")
             .finish()

@@ -16,13 +16,13 @@ use uuid::Uuid;
 
 use super::Atom;
 use crate::capabilities::CapabilityRegistry;
-use crate::config::AgentConfigBuilder;
-use crate::driver_factory::{create_driver, ProviderConfig, ProviderType};
 use crate::error::{AgentLoopError, Result};
-use crate::llm::{
-    LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole, LlmStreamEvent,
+use crate::llm_drivers::{
+    create_driver, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmStreamEvent, ProviderConfig, ProviderType,
 };
 use crate::message::{Message, MessageRole};
+use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::tool_types::ToolCall;
 use crate::traits::{AgentStore, LlmProviderStore, MessageStore, ModelWithProvider, SessionStore};
 
@@ -73,25 +73,34 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
 // ============================================================================
 
 /// Input for CallModelAtom
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallModelInput {
     /// Session ID
     pub session_id: Uuid,
-    /// Agent ID - the atom will retrieve the agent and build AgentConfig
+    /// Agent ID - the atom will retrieve the agent and build RuntimeAgent
     pub agent_id: Uuid,
 }
 
 /// Result of calling the model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CallModelResult {
     /// Text response from the model
     pub text: String,
-    /// Tool calls requested by the model (empty if none)
-    pub tool_calls: Vec<ToolCall>,
+    /// Tool calls requested by the model (None if no tools)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
     /// Whether the loop should continue (has tool calls)
     pub needs_tool_execution: bool,
-    /// The assistant message that was stored
-    pub assistant_message: Message,
+    /// Tool definitions from applied capabilities (for tool execution)
+    #[serde(default)]
+    pub tool_definitions: Vec<crate::tool_types::ToolDefinition>,
+    /// Maximum iterations configured for the agent
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: usize,
+}
+
+fn default_max_iterations() -> usize {
+    100
 }
 
 // ============================================================================
@@ -202,10 +211,10 @@ where
             .resolve_model(controls_model_id, session.model_id, agent.default_model_id)
             .await?;
 
-        // 6. Build config from agent with capabilities applied
-        let config = AgentConfigBuilder::new()
+        // 6. Build runtime agent from agent with capabilities applied
+        let runtime_agent = RuntimeAgentBuilder::new()
             .with_agent(&agent, &self.capability_registry)
-            .model(&model_with_provider.model_id)
+            .model(&model_with_provider.model)
             .build();
 
         // 7. Create LLM driver using factory
@@ -227,10 +236,10 @@ where
         let mut llm_messages = Vec::new();
 
         // Add system prompt
-        if !config.system_prompt.is_empty() {
+        if !runtime_agent.system_prompt.is_empty() {
             llm_messages.push(LlmMessage {
                 role: LlmMessageRole::System,
-                content: LlmMessageContent::Text(config.system_prompt.clone()),
+                content: LlmMessageContent::Text(runtime_agent.system_prompt.clone()),
                 tool_calls: None,
                 tool_call_id: None,
             });
@@ -243,7 +252,7 @@ where
         }
 
         // 11. Build LLM call config with reasoning effort
-        let mut llm_config_builder = LlmCallConfigBuilder::from(&config);
+        let mut llm_config_builder = LlmCallConfigBuilder::from(&runtime_agent);
         if let Some(effort) = reasoning_effort.clone() {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
         }
@@ -278,7 +287,7 @@ where
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),
-            serde_json::Value::String(config.model.clone()),
+            serde_json::Value::String(runtime_agent.model.clone()),
         );
         if let Some(ref effort) = reasoning_effort {
             metadata.insert(
@@ -300,11 +309,18 @@ where
             .store(session_id, assistant_message.clone())
             .await?;
 
+        let tool_calls_option = if tool_calls.is_empty() {
+            None
+        } else {
+            Some(tool_calls.clone())
+        };
+
         Ok(CallModelResult {
             text,
-            tool_calls: tool_calls.clone(),
+            tool_calls: tool_calls_option,
             needs_tool_execution: has_tool_calls,
-            assistant_message,
+            tool_definitions: runtime_agent.tools.clone(),
+            max_iterations: runtime_agent.max_iterations,
         })
     }
 }
@@ -375,11 +391,11 @@ where
     fn create_llm_driver(
         &self,
         model: &ModelWithProvider,
-    ) -> Result<crate::driver_factory::BoxedLlmDriver> {
+    ) -> Result<crate::llm_drivers::BoxedLlmDriver> {
         let provider_type = match model.provider_type {
-            crate::llm_entities::LlmProviderType::Openai => ProviderType::OpenAI,
-            crate::llm_entities::LlmProviderType::Anthropic => ProviderType::Anthropic,
-            crate::llm_entities::LlmProviderType::AzureOpenAI => ProviderType::AzureOpenAI,
+            crate::llm_models::LlmProviderType::Openai => ProviderType::OpenAI,
+            crate::llm_models::LlmProviderType::Anthropic => ProviderType::Anthropic,
+            crate::llm_models::LlmProviderType::AzureOpenAI => ProviderType::AzureOpenAI,
         };
 
         let mut config = ProviderConfig::new(provider_type);
@@ -406,12 +422,14 @@ mod tests {
     fn test_call_model_result() {
         let result = CallModelResult {
             text: "Hello".to_string(),
-            tool_calls: vec![],
+            tool_calls: None,
             needs_tool_execution: false,
-            assistant_message: Message::assistant("Hello"),
+            tool_definitions: vec![],
+            max_iterations: 10,
         };
         assert_eq!(result.text, "Hello");
         assert!(!result.needs_tool_execution);
+        assert_eq!(result.max_iterations, 10);
     }
 
     #[test]

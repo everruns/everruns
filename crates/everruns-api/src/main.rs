@@ -19,7 +19,7 @@ use anyhow::{Context, Result};
 use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use common::ListResponse;
-use everruns_core::llm_entities::LlmProvider;
+use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, Event, FileInfo, FileStat, GrepMatch, GrepResult, LlmModel,
     LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Session, SessionFile,

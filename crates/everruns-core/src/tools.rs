@@ -431,10 +431,10 @@ impl ToolRegistry {
         self.tools.keys().map(|s| s.as_str()).collect()
     }
 
-    /// Get tool definitions for use in AgentConfig.
+    /// Get tool definitions for use in RuntimeAgent.
     ///
     /// Returns a Vec of ToolDefinition that can be passed to
-    /// `AgentConfig::with_tools()`.
+    /// `RuntimeAgent::with_tools()`.
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools.values().map(|t| t.to_definition()).collect()
     }

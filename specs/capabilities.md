@@ -37,14 +37,14 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
                             ↓
 ┌─────────────────────────────────────────────────────────┐
 │                      Agent Loop                          │
-│        (receives fully-configured AgentConfig)           │
+│        (receives fully-configured RuntimeAgent)           │
 └─────────────────────────────────────────────────────────┘
 ```
 
 - Capabilities are defined in **everruns-core** (trait implementations)
 - The API layer uses the core registry and converts to DTOs for responses
 - The Agent Loop remains focused on execution
-- AgentConfig is built with merged system prompt and tools from capabilities
+- RuntimeAgent is built with merged system prompt and tools from capabilities
 
 ### Data Model
 
@@ -374,10 +374,10 @@ When a session executes:
    - Look up `InternalCapability` from registry by string ID
    - Collect `system_prompt_addition` texts
    - Collect `tools` definitions
-4. **Build AgentConfig**:
+4. **Build RuntimeAgent**:
    - System prompt = capability additions + agent's base system prompt
    - Tools = merged tool list from all capabilities
-5. **Execute**: Run Agent Loop with fully configured AgentConfig
+5. **Execute**: Run Agent Loop with fully configured RuntimeAgent
 
 ### API Endpoints
 
@@ -506,7 +506,7 @@ CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, pos
 | Question | Decision |
 |----------|----------|
 | Where are capabilities defined? | In-memory registry (not database) |
-| How are they applied? | Resolved at API layer, merged into AgentConfig |
+| How are they applied? | Resolved at API layer, merged into RuntimeAgent |
 | Order of application? | By `position` field (lower = earlier) |
 | Can capabilities conflict? | Currently no conflict resolution; later capabilities add to earlier ones |
 | Can users create custom capabilities? | Not in current version (built-in only) |

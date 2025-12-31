@@ -1,6 +1,6 @@
-// Agent Loop v2 - Atom-based execution loop
+// Agent Loop - Atom-based execution loop
 //
-// AgentLoop2 provides a high-level loop that orchestrates atoms to execute
+// AgentLoop provides a high-level loop that orchestrates atoms to execute
 // a complete agent turn (user message → LLM calls → tool execution → response).
 
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ pub struct LoadMessagesResult {
 /// Each method internally creates and executes the appropriate atom.
 ///
 /// For direct atom access, use the individual atom factory methods.
-pub struct AgentLoop2<A, S, M, P, T>
+pub struct AgentLoop<A, S, M, P, T>
 where
     A: AgentStore,
     S: SessionStore,
@@ -46,7 +46,7 @@ where
     capability_registry: CapabilityRegistry,
 }
 
-impl<A, S, M, P, T> AgentLoop2<A, S, M, P, T>
+impl<A, S, M, P, T> AgentLoop<A, S, M, P, T>
 where
     A: AgentStore + Clone + Send + Sync,
     S: SessionStore + Clone + Send + Sync,
@@ -202,8 +202,8 @@ where
             // TODO: Get tool definitions from agent capabilities
             let tool_definitions = Vec::new();
             let _ = &agent; // Silence unused warning for now
-            let futures: Vec<_> = result
-                .tool_calls
+            let tool_calls = result.tool_calls.unwrap_or_default();
+            let futures: Vec<_> = tool_calls
                 .into_iter()
                 .map(|tool_call| {
                     let atom = self.execute_tool_atom();
@@ -213,7 +213,6 @@ where
                             session_id,
                             tool_call,
                             tool_definitions: tool_defs,
-                            tool_context: None, // Context-aware tools need Temporal execution
                         })
                         .await
                     }

@@ -399,6 +399,6 @@ Profiles are matched by provider_type + model_id with version normalization (e.g
 | Where are tool results stored? | Events with `event_type` = `message.tool_result` |
 | Session status? | Explicit status field (pending, running, failed) |
 | Where are capabilities defined? | In-memory registry in API layer |
-| How are capabilities applied? | Resolved at API/service layer, merged into AgentConfig |
+| How are capabilities applied? | Resolved at API/service layer, merged into RuntimeAgent |
 | Where are API keys stored? | Encrypted in database (llm_providers.api_key_encrypted), decrypted at runtime |
 | Environment variables for API keys? | No - all API keys must be configured via database/UI |

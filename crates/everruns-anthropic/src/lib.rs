@@ -4,12 +4,12 @@
 // It implements the LlmDriver trait from everruns-core, enabling
 // the agent loop to communicate with Anthropic's Messages API.
 
-mod provider;
+mod driver;
 
 #[cfg(test)]
 mod tests;
 
-pub use provider::AnthropicDriver;
+pub use driver::AnthropicLlmDriver;
 
 // Re-export core types for convenience
-pub use everruns_core::llm::LlmDriver;
+pub use everruns_core::llm_drivers::LlmDriver;

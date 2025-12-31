@@ -6,7 +6,7 @@
 // - Quick prototyping
 
 use crate::agent::Agent;
-use crate::llm_entities::LlmProviderType;
+use crate::llm_models::LlmProviderType;
 use crate::session::Session;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ModelWithProvider;
@@ -328,7 +328,7 @@ impl InMemoryLlmProviderStore {
         // Check for OpenAI first
         if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
             let model = ModelWithProvider {
-                model_id: "gpt-4o".to_string(),
+                model: "gpt-4o".to_string(),
                 provider_type: LlmProviderType::Openai,
                 api_key: Some(api_key),
                 base_url: std::env::var("OPENAI_BASE_URL").ok(),
@@ -336,7 +336,7 @@ impl InMemoryLlmProviderStore {
             store.set_default_model(model).await;
         } else if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
             let model = ModelWithProvider {
-                model_id: "claude-sonnet-4-20250514".to_string(),
+                model: "claude-sonnet-4-20250514".to_string(),
                 provider_type: LlmProviderType::Anthropic,
                 api_key: Some(api_key),
                 base_url: std::env::var("ANTHROPIC_BASE_URL").ok(),
@@ -526,7 +526,7 @@ impl ToolExecutor for FailingToolExecutor {
 // MockLlmProvider - Returns predefined responses
 // ============================================================================
 
-use crate::llm::{
+use crate::llm_drivers::{
     LlmCallConfig, LlmCompletionMetadata, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
 use futures::stream;
@@ -634,106 +634,6 @@ impl LlmDriver for MockLlmProvider {
         ];
 
         Ok(Box::pin(stream::iter(events)))
-    }
-}
-
-// ============================================================================
-// Builder for easy setup
-// ============================================================================
-
-use crate::config::AgentConfig;
-use crate::executor::AgentLoop;
-
-/// Builder for creating an AgentLoop with in-memory components
-pub struct InMemoryAgentLoopBuilder {
-    config: AgentConfig,
-    event_emitter: Option<InMemoryEventEmitter>,
-    message_store: Option<InMemoryMessageStore>,
-    llm_provider: Option<MockLlmProvider>,
-    tool_executor: Option<MockToolExecutor>,
-}
-
-impl InMemoryAgentLoopBuilder {
-    /// Create a new builder with the given config
-    pub fn new(config: AgentConfig) -> Self {
-        Self {
-            config,
-            event_emitter: None,
-            message_store: None,
-            llm_provider: None,
-            tool_executor: None,
-        }
-    }
-
-    /// Use a custom event emitter
-    pub fn event_emitter(mut self, emitter: InMemoryEventEmitter) -> Self {
-        self.event_emitter = Some(emitter);
-        self
-    }
-
-    /// Use a custom message store
-    pub fn message_store(mut self, store: InMemoryMessageStore) -> Self {
-        self.message_store = Some(store);
-        self
-    }
-
-    /// Use a custom LLM provider
-    pub fn llm_provider(mut self, provider: MockLlmProvider) -> Self {
-        self.llm_provider = Some(provider);
-        self
-    }
-
-    /// Use a custom tool executor
-    pub fn tool_executor(mut self, executor: MockToolExecutor) -> Self {
-        self.tool_executor = Some(executor);
-        self
-    }
-
-    /// Build the agent loop
-    pub fn build(
-        self,
-    ) -> AgentLoop<InMemoryEventEmitter, InMemoryMessageStore, MockLlmProvider, MockToolExecutor>
-    {
-        AgentLoop::new(
-            self.config,
-            self.event_emitter.unwrap_or_default(),
-            self.message_store.unwrap_or_default(),
-            self.llm_provider.unwrap_or_default(),
-            self.tool_executor.unwrap_or_default(),
-        )
-    }
-
-    /// Build and return references to components for inspection
-    #[allow(clippy::type_complexity)]
-    pub fn build_with_refs(
-        self,
-    ) -> (
-        AgentLoop<InMemoryEventEmitter, InMemoryMessageStore, MockLlmProvider, MockToolExecutor>,
-        Arc<InMemoryEventEmitter>,
-        Arc<InMemoryMessageStore>,
-        Arc<MockLlmProvider>,
-        Arc<MockToolExecutor>,
-    ) {
-        let event_emitter = Arc::new(self.event_emitter.unwrap_or_default());
-        let message_store = Arc::new(self.message_store.unwrap_or_default());
-        let llm_provider = Arc::new(self.llm_provider.unwrap_or_default());
-        let tool_executor = Arc::new(self.tool_executor.unwrap_or_default());
-
-        let loop_instance = AgentLoop::with_arcs(
-            self.config,
-            event_emitter.clone(),
-            message_store.clone(),
-            llm_provider.clone(),
-            tool_executor.clone(),
-        );
-
-        (
-            loop_instance,
-            event_emitter,
-            message_store,
-            llm_provider,
-            tool_executor,
-        )
     }
 }
 
