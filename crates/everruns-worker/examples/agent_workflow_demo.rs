@@ -97,6 +97,7 @@ fn demo_tool_call() {
             }],
             "needs_tool_execution": true,
             "tool_definitions": [{
+                "type": "builtin",
                 "name": "get_time",
                 "description": "Get current time",
                 "parameters": {}
@@ -131,6 +132,7 @@ fn demo_tool_call() {
             "tool_calls": null,
             "needs_tool_execution": false,
             "tool_definitions": [{
+                "type": "builtin",
                 "name": "get_time",
                 "description": "Get current time",
                 "parameters": {}
@@ -170,8 +172,8 @@ fn demo_parallel_tools() {
             ],
             "needs_tool_execution": true,
             "tool_definitions": [
-                {"name": "get_weather", "description": "Get weather", "parameters": {}},
-                {"name": "get_time", "description": "Get time", "parameters": {}}
+                {"type": "builtin", "name": "get_weather", "description": "Get weather", "parameters": {}},
+                {"type": "builtin", "name": "get_time", "description": "Get time", "parameters": {}}
             ],
             "max_iterations": 10
         }),
@@ -228,8 +230,8 @@ fn demo_parallel_tools() {
             "tool_calls": null,
             "needs_tool_execution": false,
             "tool_definitions": [
-                {"name": "get_weather", "description": "Get weather", "parameters": {}},
-                {"name": "get_time", "description": "Get time", "parameters": {}}
+                {"type": "builtin", "name": "get_weather", "description": "Get weather", "parameters": {}},
+                {"type": "builtin", "name": "get_time", "description": "Get time", "parameters": {}}
             ],
             "max_iterations": 10
         }),

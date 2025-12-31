@@ -73,7 +73,7 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
 // ============================================================================
 
 /// Input for CallModelAtom
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallModelInput {
     /// Session ID
     pub session_id: Uuid,
@@ -82,20 +82,25 @@ pub struct CallModelInput {
 }
 
 /// Result of calling the model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CallModelResult {
     /// Text response from the model
     pub text: String,
-    /// Tool calls requested by the model (empty if none)
-    pub tool_calls: Vec<ToolCall>,
+    /// Tool calls requested by the model (None if no tools)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
     /// Whether the loop should continue (has tool calls)
     pub needs_tool_execution: bool,
-    /// The assistant message that was stored
-    pub assistant_message: Message,
     /// Tool definitions from applied capabilities (for tool execution)
+    #[serde(default)]
     pub tool_definitions: Vec<crate::tool_types::ToolDefinition>,
     /// Maximum iterations configured for the agent
+    #[serde(default = "default_max_iterations")]
     pub max_iterations: usize,
+}
+
+fn default_max_iterations() -> usize {
+    100
 }
 
 // ============================================================================
@@ -304,11 +309,16 @@ where
             .store(session_id, assistant_message.clone())
             .await?;
 
+        let tool_calls_option = if tool_calls.is_empty() {
+            None
+        } else {
+            Some(tool_calls.clone())
+        };
+
         Ok(CallModelResult {
             text,
-            tool_calls: tool_calls.clone(),
+            tool_calls: tool_calls_option,
             needs_tool_execution: has_tool_calls,
-            assistant_message,
             tool_definitions: runtime_agent.tools.clone(),
             max_iterations: runtime_agent.max_iterations,
         })
@@ -412,9 +422,8 @@ mod tests {
     fn test_call_model_result() {
         let result = CallModelResult {
             text: "Hello".to_string(),
-            tool_calls: vec![],
+            tool_calls: None,
             needs_tool_execution: false,
-            assistant_message: Message::assistant("Hello"),
             tool_definitions: vec![],
             max_iterations: 10,
         };

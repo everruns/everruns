@@ -202,8 +202,8 @@ where
             // TODO: Get tool definitions from agent capabilities
             let tool_definitions = Vec::new();
             let _ = &agent; // Silence unused warning for now
-            let futures: Vec<_> = result
-                .tool_calls
+            let tool_calls = result.tool_calls.unwrap_or_default();
+            let futures: Vec<_> = tool_calls
                 .into_iter()
                 .map(|tool_call| {
                     let atom = self.execute_tool_atom();
@@ -213,7 +213,6 @@ where
                             session_id,
                             tool_call,
                             tool_definitions: tool_defs,
-                            tool_context: None, // Context-aware tools need Temporal execution
                         })
                         .await
                     }

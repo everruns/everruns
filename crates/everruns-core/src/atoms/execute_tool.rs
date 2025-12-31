@@ -2,20 +2,21 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use super::Atom;
 use crate::error::{AgentLoopError, Result};
 use crate::message::Message;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{MessageStore, ToolContext, ToolExecutor};
+use crate::traits::{MessageStore, SessionFileStore, ToolContext, ToolExecutor};
 
 // ============================================================================
 // Input and Output Types
 // ============================================================================
 
 /// Input for ExecuteToolAtom (single tool)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecuteToolInput {
     /// Session ID
     pub session_id: Uuid,
@@ -23,8 +24,6 @@ pub struct ExecuteToolInput {
     pub tool_call: ToolCall,
     /// Available tool definitions for resolution
     pub tool_definitions: Vec<ToolDefinition>,
-    /// Optional tool context for context-aware tools (like filesystem tools)
-    pub tool_context: Option<ToolContext>,
 }
 
 /// Result of executing a single tool
@@ -32,8 +31,6 @@ pub struct ExecuteToolInput {
 pub struct ExecuteToolResult {
     /// Result of the tool call
     pub result: ToolResult,
-    /// Message stored (tool result)
-    pub message: Message,
 }
 
 // ============================================================================
@@ -54,6 +51,8 @@ where
 {
     message_store: M,
     tool_executor: T,
+    /// Optional file store for context-aware tools (like filesystem tools)
+    file_store: Option<Arc<dyn SessionFileStore>>,
 }
 
 impl<M, T> ExecuteToolAtom<M, T>
@@ -66,6 +65,20 @@ where
         Self {
             message_store,
             tool_executor,
+            file_store: None,
+        }
+    }
+
+    /// Create a new ExecuteToolAtom with a file store for context-aware tools
+    pub fn with_file_store(
+        message_store: M,
+        tool_executor: T,
+        file_store: Arc<dyn SessionFileStore>,
+    ) -> Self {
+        Self {
+            message_store,
+            tool_executor,
+            file_store: Some(file_store),
         }
     }
 }
@@ -88,7 +101,6 @@ where
             session_id,
             tool_call,
             tool_definitions,
-            tool_context,
         } = input;
 
         // Resolve tool definition
@@ -105,8 +117,9 @@ where
                 AgentLoopError::tool(format!("Tool definition not found: {}", tool_call.name))
             })?;
 
-        // Execute tool - use context if provided, otherwise fall back to basic execute
-        let result = if let Some(context) = tool_context {
+        // Execute tool - create context if file_store is available
+        let result = if let Some(ref store) = self.file_store {
+            let context = ToolContext::with_file_store(session_id, store.clone());
             self.tool_executor
                 .execute_with_context(&tool_call, &tool_definition, &context)
                 .await?
@@ -119,10 +132,8 @@ where
         // Store tool result message
         let message =
             Message::tool_result(&tool_call.id, result.result.clone(), result.error.clone());
-        self.message_store
-            .store(session_id, message.clone())
-            .await?;
+        self.message_store.store(session_id, message).await?;
 
-        Ok(ExecuteToolResult { result, message })
+        Ok(ExecuteToolResult { result })
     }
 }

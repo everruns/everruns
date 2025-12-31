@@ -10,75 +10,20 @@
 // Atoms handle message loading/storage internally via MessageStore trait.
 
 use anyhow::{Context, Result};
-use everruns_core::atoms::{
-    Atom, CallModelAtom, CallModelInput as AtomCallModelInput, ExecuteToolAtom,
-    ExecuteToolInput as AtomExecuteToolInput,
-};
+use everruns_core::atoms::{Atom, CallModelAtom, ExecuteToolAtom};
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::traits::ToolContext;
-use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolRegistry};
+use everruns_core::ToolRegistry;
 use everruns_storage::{repositories::Database, EncryptionService};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::adapters::{
     DbAgentStore, DbLlmProviderStore, DbMessageStore, DbSessionFileStore, DbSessionStore,
 };
-use crate::agent_workflow::{ToolCallData, ToolDefinitionData, ToolResultData};
 
-// ============================================================================
-// Activity Input/Output Types
-// ============================================================================
-
-/// Input for call-model activity
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CallModelInput {
-    /// Session ID (UUID string)
-    pub session_id: String,
-    /// Agent ID (UUID string)
-    pub agent_id: String,
-}
-
-/// Output from call-model activity
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CallModelOutput {
-    /// Text response from the model
-    pub text: String,
-    /// Tool calls requested by the model (if any)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ToolCallData>>,
-    /// Whether tool execution is needed
-    pub needs_tool_execution: bool,
-    /// Tool definitions from applied capabilities (for tool execution)
-    #[serde(default)]
-    pub tool_definitions: Vec<ToolDefinitionData>,
-    /// Maximum iterations configured for the agent
-    #[serde(default = "default_max_iterations")]
-    pub max_iterations: u8,
-}
-
-fn default_max_iterations() -> u8 {
-    10
-}
-
-/// Input for execute-tool activity (single tool)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecuteToolInput {
-    /// Session ID (UUID string)
-    pub session_id: String,
-    /// Tool call to execute
-    pub tool_call: ToolCallData,
-    /// Available tool definitions
-    pub tool_definitions: Vec<ToolDefinitionData>,
-}
-
-/// Output from execute-tool activity
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecuteToolOutput {
-    /// Result of the tool execution
-    pub result: ToolResultData,
-}
+// Re-export atom types for activity callers
+pub use everruns_core::atoms::{
+    CallModelInput, CallModelResult, ExecuteToolInput, ExecuteToolResult,
+};
 
 // ============================================================================
 // Activity Implementations
@@ -97,17 +42,10 @@ pub async fn call_model_activity(
     db: Database,
     encryption: EncryptionService,
     input: CallModelInput,
-) -> Result<CallModelOutput> {
-    let session_id: Uuid = input
-        .session_id
-        .parse()
-        .context("Invalid session_id UUID")?;
-
-    let agent_id: Uuid = input.agent_id.parse().context("Invalid agent_id UUID")?;
-
+) -> Result<CallModelResult> {
     tracing::info!(
-        session_id = %session_id,
-        agent_id = %agent_id,
+        session_id = %input.session_id,
+        agent_id = %input.agent_id,
         "Executing call_model_activity"
     );
 
@@ -127,51 +65,10 @@ pub async fn call_model_activity(
         provider_store,
         capability_registry,
     );
-    let result = atom
-        .execute(AtomCallModelInput {
-            session_id,
-            agent_id,
-        })
+
+    atom.execute(input)
         .await
-        .context("CallModelAtom execution failed")?;
-
-    // Convert to activity output
-    let tool_calls = if result.tool_calls.is_empty() {
-        None
-    } else {
-        Some(
-            result
-                .tool_calls
-                .iter()
-                .map(|tc| ToolCallData {
-                    id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    arguments: tc.arguments.clone(),
-                })
-                .collect(),
-        )
-    };
-
-    // Convert tool definitions to workflow DTO format
-    let tool_definitions: Vec<ToolDefinitionData> = result
-        .tool_definitions
-        .iter()
-        .map(|tool| match tool {
-            ToolDefinition::Builtin(b) => ToolDefinitionData {
-                name: b.name.clone(),
-                description: b.description.clone(),
-                parameters: b.parameters.clone(),
-            },
-        })
-        .collect();
-
-    Ok(CallModelOutput {
-        text: result.text,
-        tool_calls,
-        needs_tool_execution: result.needs_tool_execution,
-        tool_definitions,
-        max_iterations: result.max_iterations.min(255) as u8,
-    })
+        .context("CallModelAtom execution failed")
 }
 
 /// Execute a single tool using ExecuteToolAtom
@@ -183,67 +80,18 @@ pub async fn call_model_activity(
 pub async fn execute_tool_activity(
     db: Database,
     input: ExecuteToolInput,
-) -> Result<ExecuteToolOutput> {
-    let session_id: Uuid = input
-        .session_id
-        .parse()
-        .context("Invalid session_id UUID")?;
-
+) -> Result<ExecuteToolResult> {
     // Create atom dependencies
     let message_store = DbMessageStore::new(db.clone());
     let tool_executor = ToolRegistry::with_defaults();
-
-    // Create file store and tool context for context-aware tools (like filesystem tools)
     let file_store = Arc::new(DbSessionFileStore::new(db));
-    let tool_context = ToolContext::with_file_store(session_id, file_store);
 
-    // Convert tool call data
-    let tool_call = ToolCall {
-        id: input.tool_call.id.clone(),
-        name: input.tool_call.name.clone(),
-        arguments: input.tool_call.arguments.clone(),
-    };
+    // Create and execute ExecuteToolAtom with file store for context-aware tools
+    let atom = ExecuteToolAtom::with_file_store(message_store, tool_executor, file_store);
 
-    // Convert tool definitions
-    let tool_definitions: Vec<ToolDefinition> = input
-        .tool_definitions
-        .iter()
-        .map(convert_tool_definition)
-        .collect();
-
-    // Create and execute ExecuteToolAtom
-    let atom = ExecuteToolAtom::new(message_store, tool_executor);
-    let result = atom
-        .execute(AtomExecuteToolInput {
-            session_id,
-            tool_call: tool_call.clone(),
-            tool_definitions,
-            tool_context: Some(tool_context),
-        })
+    atom.execute(input)
         .await
-        .context("ExecuteToolAtom execution failed")?;
-
-    Ok(ExecuteToolOutput {
-        result: ToolResultData {
-            tool_call_id: tool_call.id,
-            result: result.result.result,
-            error: result.result.error,
-        },
-    })
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Convert workflow's ToolDefinitionData to core's ToolDefinition
-fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
-    ToolDefinition::Builtin(BuiltinTool {
-        name: tool.name.clone(),
-        description: tool.description.clone(),
-        parameters: tool.parameters.clone(),
-        policy: ToolPolicy::Auto,
-    })
+        .context("ExecuteToolAtom execution failed")
 }
 
 // ============================================================================
@@ -263,13 +111,15 @@ pub mod activity_types {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
     use serde_json::json;
+    use uuid::Uuid;
 
     #[test]
     fn test_call_model_input_serialization() {
         let input = CallModelInput {
-            session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
-            agent_id: "660e8400-e29b-41d4-a716-446655440000".into(),
+            session_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
+            agent_id: Uuid::parse_str("660e8400-e29b-41d4-a716-446655440000").unwrap(),
         };
 
         let json = serde_json::to_string(&input).unwrap();
@@ -281,17 +131,18 @@ mod tests {
     #[test]
     fn test_execute_tool_input_serialization() {
         let input = ExecuteToolInput {
-            session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
-            tool_call: ToolCallData {
+            session_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
+            tool_call: ToolCall {
                 id: "call_1".into(),
                 name: "get_time".into(),
                 arguments: json!({}),
             },
-            tool_definitions: vec![ToolDefinitionData {
+            tool_definitions: vec![ToolDefinition::Builtin(BuiltinTool {
                 name: "get_time".into(),
                 description: "Get current time".into(),
                 parameters: json!({"type": "object", "properties": {}}),
-            }],
+                policy: ToolPolicy::Auto,
+            })],
         };
 
         let json = serde_json::to_string(&input).unwrap();

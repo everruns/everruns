@@ -36,7 +36,7 @@ pub struct RuntimeAgent {
 }
 
 fn default_max_iterations() -> usize {
-    10
+    100
 }
 
 impl RuntimeAgent {
@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(runtime_agent.system_prompt, "You are helpful.");
         assert_eq!(runtime_agent.model, "gpt-5.2");
         assert!(runtime_agent.tools.is_empty());
-        assert_eq!(runtime_agent.max_iterations, 10);
+        assert_eq!(runtime_agent.max_iterations, 100);
         assert!(runtime_agent.temperature.is_none());
         assert!(runtime_agent.max_tokens.is_none());
     }
@@ -236,7 +236,7 @@ mod tests {
         assert_eq!(runtime_agent.system_prompt, "You are a helpful assistant.");
         assert_eq!(runtime_agent.model, "gpt-5.2");
         assert!(runtime_agent.tools.is_empty());
-        assert_eq!(runtime_agent.max_iterations, 10);
+        assert_eq!(runtime_agent.max_iterations, 100);
     }
 
     #[test]

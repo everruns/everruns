@@ -15,11 +15,12 @@
 //   (tool_calls?) → ExecutingTools → (wait for all) → CallingModel (loop)
 //   (no tools)   → Completed
 
+use everruns_core::{ToolCall, ToolDefinition, ToolResult};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::activities::{CallModelOutput, ExecuteToolOutput};
+use crate::activities::{CallModelResult, ExecuteToolResult};
 use crate::traits::{Workflow, WorkflowInput};
 use crate::types::WorkflowAction;
 
@@ -36,79 +37,7 @@ pub struct AgentWorkflowInput {
     pub agent_id: Uuid,
 }
 
-/// Simple message data for serialization (kept for compatibility)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageData {
-    pub role: String,
-    pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ToolCallData>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>,
-}
-
-/// Tool call data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCallData {
-    pub id: String,
-    pub name: String,
-    pub arguments: serde_json::Value,
-}
-
-/// Tool result data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolResultData {
-    pub tool_call_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Agent configuration loaded from storage
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentConfigData {
-    pub model: String,
-    /// Provider type (openai, anthropic, azure_openai, ollama, custom)
-    #[serde(default = "default_provider_type")]
-    pub provider_type: String,
-    /// Optional API key (only passed when provider-specific key is configured)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_key: Option<String>,
-    /// Optional base URL override
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-    pub system_prompt: Option<String>,
-    pub tools: Vec<ToolDefinitionData>,
-    #[serde(default)]
-    pub max_iterations: u8,
-}
-
-fn default_provider_type() -> String {
-    "openai".to_string()
-}
-
-impl Default for AgentConfigData {
-    fn default() -> Self {
-        Self {
-            model: "gpt-4o".to_string(),
-            provider_type: "openai".to_string(),
-            api_key: None,
-            base_url: None,
-            system_prompt: None,
-            tools: Vec::new(),
-            max_iterations: 10,
-        }
-    }
-}
-
-/// Tool definition data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolDefinitionData {
-    pub name: String,
-    pub description: String,
-    pub parameters: serde_json::Value,
-}
+// ToolCall, ToolResult, and ToolDefinition are re-exported from everruns_core
 
 // ============================================================================
 // Workflow State (Simplified - no message passing, no emit-event)
@@ -124,10 +53,10 @@ pub enum WorkflowState {
     CallingModel {
         pending_activity: String,
         /// Tool definitions from previous call (None on first call)
-        tool_definitions: Option<Vec<ToolDefinitionData>>,
+        tool_definitions: Option<Vec<ToolDefinition>>,
         /// Max iterations from previous call (None on first call)
-        max_iterations: Option<u8>,
-        iteration: u8,
+        max_iterations: Option<usize>,
+        iteration: usize,
     },
 
     /// Executing tools (one activity per tool)
@@ -135,13 +64,13 @@ pub enum WorkflowState {
         /// Activity IDs for pending tool executions
         pending_activities: Vec<String>,
         /// Completed tool results (activity_id -> result)
-        completed: Vec<(String, ToolResultData)>,
+        completed: Vec<(String, ToolResult)>,
         /// Tool definitions from call-model result
-        tool_definitions: Vec<ToolDefinitionData>,
+        tool_definitions: Vec<ToolDefinition>,
         /// Max iterations from call-model result
-        max_iterations: u8,
-        tool_calls: Vec<ToolCallData>,
-        iteration: u8,
+        max_iterations: usize,
+        tool_calls: Vec<ToolCall>,
+        iteration: usize,
     },
 
     /// Terminal: workflow completed
@@ -196,11 +125,11 @@ impl AgentWorkflow {
 
     fn handle_model_response(
         &mut self,
-        iteration: u8,
+        iteration: usize,
         result: serde_json::Value,
     ) -> Vec<WorkflowAction> {
-        // Deserialize directly to CallModelOutput (same struct the activity returns)
-        let output: CallModelOutput = serde_json::from_value(result).unwrap_or_default();
+        // Deserialize directly to CallModelResult (same struct the activity returns)
+        let output: CallModelResult = serde_json::from_value(result).unwrap_or_default();
 
         // Check if we need to execute tools
         if output.needs_tool_execution {
@@ -261,10 +190,10 @@ impl AgentWorkflow {
             _ => return vec![],
         };
 
-        // Deserialize directly to ExecuteToolOutput (same struct the activity returns)
-        let output: ExecuteToolOutput =
-            serde_json::from_value(result).unwrap_or(ExecuteToolOutput {
-                result: ToolResultData {
+        // Deserialize directly to ExecuteToolResult (same struct the activity returns)
+        let output: ExecuteToolResult =
+            serde_json::from_value(result).unwrap_or(ExecuteToolResult {
+                result: ToolResult {
                     tool_call_id: "unknown".to_string(),
                     result: None,
                     error: Some("Failed to parse tool result".to_string()),
@@ -355,9 +284,9 @@ impl Workflow for AgentWorkflow {
 impl AgentWorkflow {
     fn transition_to_model_call(
         &mut self,
-        tool_definitions: Option<Vec<ToolDefinitionData>>,
-        max_iterations: Option<u8>,
-        iteration: u8,
+        tool_definitions: Option<Vec<ToolDefinition>>,
+        max_iterations: Option<usize>,
+        iteration: usize,
     ) -> Vec<WorkflowAction> {
         let activity_id = self.next_activity_id(activity_names::CALL_MODEL);
 
@@ -382,10 +311,10 @@ impl AgentWorkflow {
 
     fn transition_to_tool_execution(
         &mut self,
-        tool_definitions: Vec<ToolDefinitionData>,
-        max_iterations: u8,
-        tool_calls: Vec<ToolCallData>,
-        iteration: u8,
+        tool_definitions: Vec<ToolDefinition>,
+        max_iterations: usize,
+        tool_calls: Vec<ToolCall>,
+        iteration: usize,
     ) -> Vec<WorkflowAction> {
         let mut actions = Vec::new();
         let mut pending_activities = Vec::new();
@@ -480,13 +409,14 @@ mod tests {
         let call_model_id = find_activity_id(&actions, "call-model").unwrap();
 
         // LLM returns tool calls (includes tool_definitions and max_iterations from CallModelOutput)
+        // Note: ToolDefinition is a tagged enum, so we need "type": "builtin"
         let actions = workflow.on_activity_completed(
             &call_model_id,
             json!({
                 "text": "Let me check.",
                 "tool_calls": [{"id": "call_1", "name": "get_time", "arguments": {}}],
                 "needs_tool_execution": true,
-                "tool_definitions": [{"name": "get_time", "description": "Get time", "parameters": {}}],
+                "tool_definitions": [{"type": "builtin", "name": "get_time", "description": "Get time", "parameters": {}}],
                 "max_iterations": 10
             }),
         );
