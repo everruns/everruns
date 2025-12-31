@@ -4,8 +4,9 @@
 // This file re-exports them for backward compatibility.
 
 pub use everruns_storage::{
-    create_db_agent_store, create_db_message_store, create_db_session_file_store, DbAgentStore,
-    DbMessageStore, DbSessionFileStore,
+    create_db_agent_store, create_db_llm_provider_store, create_db_message_store,
+    create_db_session_file_store, DbAgentStore, DbLlmProviderStore, DbMessageStore,
+    DbSessionFileStore,
 };
 
 // Provider factory helper for creating LLM providers

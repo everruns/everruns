@@ -13,9 +13,9 @@
 //! - Debugging and testing individual steps
 //!
 //! Prerequisites:
-//! - Set OPENAI_API_KEY environment variable
+//! - Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable
 //!
-//! Run with: cargo run -p everruns-core --example decomposed_execution --features openai
+//! Run with: cargo run -p everruns-core --example decomposed_execution
 
 use chrono::Utc;
 use everruns_core::{
@@ -25,8 +25,7 @@ use everruns_core::{
         ExecuteToolAtom, ExecuteToolInput,
     },
     capabilities::CapabilityRegistry,
-    memory::{InMemoryAgentStore, InMemoryMessageStore},
-    openai::OpenAIProtocolLlmProvider,
+    memory::{InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageStore},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
     MessageStore,
 };
@@ -81,9 +80,11 @@ async fn main() -> anyhow::Result<()> {
         .with_max_level(tracing::Level::WARN)
         .init();
 
-    if std::env::var("OPENAI_API_KEY").is_err() {
-        eprintln!("Error: OPENAI_API_KEY environment variable is not set");
+    if std::env::var("OPENAI_API_KEY").is_err() && std::env::var("ANTHROPIC_API_KEY").is_err() {
+        eprintln!("Error: No API key environment variable is set");
         eprintln!("  export OPENAI_API_KEY=your-api-key");
+        eprintln!("  or");
+        eprintln!("  export ANTHROPIC_API_KEY=your-api-key");
         std::process::exit(1);
     }
 
@@ -92,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
     // Create shared dependencies
     let agent_store = InMemoryAgentStore::new();
     let message_store = InMemoryMessageStore::new();
-    let llm_provider = OpenAIProtocolLlmProvider::from_env()?;
+    let provider_store = InMemoryLlmProviderStore::from_env().await;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
     // Create an agent in the store
@@ -120,7 +121,7 @@ async fn main() -> anyhow::Result<()> {
     let call_model = CallModelAtom::new(
         agent_store.clone(),
         message_store.clone(),
-        llm_provider.clone(),
+        provider_store,
         capability_registry,
     );
     let execute_tool = ExecuteToolAtom::new(message_store.clone(), tools.clone());

@@ -2,11 +2,12 @@
 //!
 //! This module handles:
 //! 1. Retrieving agent configuration from the store
-//! 2. Building configuration with capabilities applied
-//! 3. Loading messages from the store
-//! 4. Patching dangling tool calls (tool calls without results)
-//! 5. Calling the LLM with the messages
-//! 6. Storing the assistant response
+//! 2. Resolving model and provider from agent.default_model_id
+//! 3. Building configuration with capabilities applied
+//! 4. Loading messages from the store
+//! 5. Patching dangling tool calls (tool calls without results)
+//! 6. Calling the LLM with the messages
+//! 7. Storing the assistant response
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -17,12 +18,11 @@ use super::Atom;
 use crate::capabilities::CapabilityRegistry;
 use crate::config::AgentConfigBuilder;
 use crate::error::{AgentLoopError, Result};
-use crate::llm::{
-    LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider, LlmStreamEvent,
-};
+use crate::llm::{LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmStreamEvent};
 use crate::message::{Message, MessageRole};
+use crate::provider_factory::{create_provider, ProviderConfig, ProviderType};
 use crate::tool_types::ToolCall;
-use crate::traits::{AgentStore, MessageStore};
+use crate::traits::{AgentStore, LlmProviderStore, MessageStore, ModelWithProvider};
 
 // ============================================================================
 // Helper Functions
@@ -100,51 +100,52 @@ pub struct CallModelResult {
 ///
 /// This atom:
 /// 1. Retrieves agent configuration from the store
-/// 2. Builds configuration with capabilities applied
-/// 3. Loads messages from the store
-/// 4. Calls the LLM with the messages
-/// 5. Stores the assistant response
-/// 6. Returns the result with tool calls (if any)
-pub struct CallModelAtom<A, M, L>
+/// 2. Resolves model and provider from agent.default_model_id via LlmProviderStore
+/// 3. Builds configuration with capabilities applied
+/// 4. Loads messages from the store
+/// 5. Calls the LLM with the messages
+/// 6. Stores the assistant response
+/// 7. Returns the result with tool calls (if any)
+pub struct CallModelAtom<A, M, P>
 where
     A: AgentStore,
     M: MessageStore,
-    L: LlmProvider,
+    P: LlmProviderStore,
 {
     agent_store: A,
     message_store: M,
-    llm_provider: L,
+    provider_store: P,
     capability_registry: CapabilityRegistry,
 }
 
-impl<A, M, L> CallModelAtom<A, M, L>
+impl<A, M, P> CallModelAtom<A, M, P>
 where
     A: AgentStore,
     M: MessageStore,
-    L: LlmProvider,
+    P: LlmProviderStore,
 {
     /// Create a new CallModelAtom
     pub fn new(
         agent_store: A,
         message_store: M,
-        llm_provider: L,
+        provider_store: P,
         capability_registry: CapabilityRegistry,
     ) -> Self {
         Self {
             agent_store,
             message_store,
-            llm_provider,
+            provider_store,
             capability_registry,
         }
     }
 }
 
 #[async_trait]
-impl<A, M, L> Atom for CallModelAtom<A, M, L>
+impl<A, M, P> Atom for CallModelAtom<A, M, P>
 where
     A: AgentStore + Send + Sync,
     M: MessageStore + Send + Sync,
-    L: LlmProvider + Send + Sync,
+    P: LlmProviderStore + Send + Sync,
 {
     type Input = CallModelInput;
     type Output = CallModelResult;
@@ -159,28 +160,33 @@ where
             agent_id,
         } = input;
 
-        // 1. Retrieve agent and build config with capabilities
+        // 1. Retrieve agent
         let agent = self
             .agent_store
             .get_agent(agent_id)
             .await?
             .ok_or_else(|| AgentLoopError::agent_not_found(agent_id))?;
 
-        // Build config from agent with capabilities applied
-        // TODO: resolve model from agent.default_model_id
+        // 2. Resolve model and provider from agent.default_model_id
+        let model_with_provider = self.resolve_model(&agent).await?;
+
+        // 3. Build config from agent with capabilities applied
         let config = AgentConfigBuilder::new()
             .with_agent(&agent, &self.capability_registry)
-            .model("gpt-4o")
+            .model(&model_with_provider.model_id)
             .build();
 
-        // 2. Load messages
+        // 4. Create LLM provider using factory
+        let llm_provider = self.create_llm_provider(&model_with_provider)?;
+
+        // 5. Load messages
         let messages = self.message_store.load(session_id).await?;
 
         if messages.is_empty() {
             return Err(AgentLoopError::NoMessages);
         }
 
-        // 3. Extract reasoning effort from the last user message's controls
+        // 6. Extract reasoning effort from the last user message's controls
         let reasoning_effort = messages
             .iter()
             .rev()
@@ -189,10 +195,10 @@ where
             .and_then(|c| c.reasoning.as_ref())
             .and_then(|r| r.effort.clone());
 
-        // 4. Patch dangling tool calls (add cancelled results for tool calls without responses)
+        // 7. Patch dangling tool calls (add cancelled results for tool calls without responses)
         let patched_messages = patch_dangling_tool_calls(&messages);
 
-        // 5. Build LLM messages
+        // 8. Build LLM messages
         let mut llm_messages = Vec::new();
 
         // Add system prompt
@@ -211,12 +217,11 @@ where
             llm_messages.push(msg.into());
         }
 
-        // 6. Call LLM with reasoning effort
+        // 9. Call LLM with reasoning effort
         let mut llm_config = LlmCallConfig::from(&config);
         llm_config.reasoning_effort = reasoning_effort.clone();
 
-        let mut stream = self
-            .llm_provider
+        let mut stream = llm_provider
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
 
@@ -241,7 +246,7 @@ where
             }
         }
 
-        // 7. Build metadata with model and reasoning effort info
+        // 10. Build metadata with model and reasoning effort info
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),
@@ -254,7 +259,7 @@ where
             );
         }
 
-        // 8. Store assistant message with metadata
+        // 11. Store assistant message with metadata
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -273,6 +278,59 @@ where
             needs_tool_execution: has_tool_calls,
             assistant_message,
         })
+    }
+}
+
+impl<A, M, P> CallModelAtom<A, M, P>
+where
+    A: AgentStore,
+    M: MessageStore,
+    P: LlmProviderStore,
+{
+    /// Resolve model and provider from agent configuration
+    async fn resolve_model(&self, agent: &crate::agent::Agent) -> Result<ModelWithProvider> {
+        // Try to resolve from agent.default_model_id first
+        if let Some(model_id) = agent.default_model_id {
+            if let Some(model_with_provider) = self
+                .provider_store
+                .get_model_with_provider(model_id)
+                .await?
+            {
+                return Ok(model_with_provider);
+            }
+        }
+
+        // Fall back to system default model
+        self.provider_store
+            .get_default_model()
+            .await?
+            .ok_or_else(|| {
+                AgentLoopError::llm(
+                    "No model configured: agent has no default_model_id and no system default model is set"
+                )
+            })
+    }
+
+    /// Create LLM provider using factory
+    fn create_llm_provider(
+        &self,
+        model: &ModelWithProvider,
+    ) -> Result<crate::provider_factory::BoxedLlmProvider> {
+        let provider_type = match model.provider_type {
+            crate::llm_entities::LlmProviderType::Openai => ProviderType::OpenAI,
+            crate::llm_entities::LlmProviderType::Anthropic => ProviderType::Anthropic,
+            crate::llm_entities::LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
+        };
+
+        let mut config = ProviderConfig::new(provider_type);
+        if let Some(ref api_key) = model.api_key {
+            config = config.with_api_key(api_key);
+        }
+        if let Some(ref base_url) = model.base_url {
+            config = config.with_base_url(base_url);
+        }
+
+        create_provider(&config)
     }
 }
 

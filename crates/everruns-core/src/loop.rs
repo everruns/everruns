@@ -12,9 +12,8 @@ use crate::atoms::{
 };
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
-use crate::llm::LlmProvider;
 use crate::message::Message;
-use crate::traits::{AgentStore, MessageStore, ToolExecutor};
+use crate::traits::{AgentStore, LlmProviderStore, MessageStore, ToolExecutor};
 
 /// Result of loading messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,39 +30,39 @@ pub struct LoadMessagesResult {
 /// Each method internally creates and executes the appropriate atom.
 ///
 /// For direct atom access, use the individual atom factory methods.
-pub struct AgentLoop2<A, M, L, T>
+pub struct AgentLoop2<A, M, P, T>
 where
     A: AgentStore,
     M: MessageStore,
-    L: LlmProvider,
+    P: LlmProviderStore,
     T: ToolExecutor,
 {
     agent_store: A,
     message_store: M,
-    llm_provider: L,
+    provider_store: P,
     tool_executor: T,
     capability_registry: CapabilityRegistry,
 }
 
-impl<A, M, L, T> AgentLoop2<A, M, L, T>
+impl<A, M, P, T> AgentLoop2<A, M, P, T>
 where
     A: AgentStore + Clone + Send + Sync,
     M: MessageStore + Clone + Send + Sync,
-    L: LlmProvider + Clone + Send + Sync,
+    P: LlmProviderStore + Clone + Send + Sync,
     T: ToolExecutor + Clone + Send + Sync,
 {
     /// Create a new agent loop
     pub fn new(
         agent_store: A,
         message_store: M,
-        llm_provider: L,
+        provider_store: P,
         tool_executor: T,
         capability_registry: CapabilityRegistry,
     ) -> Self {
         Self {
             agent_store,
             message_store,
-            llm_provider,
+            provider_store,
             tool_executor,
             capability_registry,
         }
@@ -79,9 +78,9 @@ where
         &self.message_store
     }
 
-    /// Get reference to the LLM provider
-    pub fn llm_provider(&self) -> &L {
-        &self.llm_provider
+    /// Get reference to the provider store
+    pub fn provider_store(&self) -> &P {
+        &self.provider_store
     }
 
     /// Get reference to the tool executor
@@ -99,11 +98,11 @@ where
     }
 
     /// Create a CallModelAtom
-    pub fn call_model_atom(&self) -> CallModelAtom<A, M, L> {
+    pub fn call_model_atom(&self) -> CallModelAtom<A, M, P> {
         CallModelAtom::new(
             self.agent_store.clone(),
             self.message_store.clone(),
-            self.llm_provider.clone(),
+            self.provider_store.clone(),
             self.capability_registry.clone(),
         )
     }

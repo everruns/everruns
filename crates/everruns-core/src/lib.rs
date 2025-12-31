@@ -60,7 +60,10 @@ pub use message::{
     ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
 };
 pub use step::{LoopStep, StepKind, StepResult};
-pub use traits::{EventEmitter, MessageStore, SessionFileStore, ToolContext, ToolExecutor};
+pub use traits::{
+    EventEmitter, LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore, ToolContext,
+    ToolExecutor,
+};
 
 // LLM types re-exports
 pub use llm::{

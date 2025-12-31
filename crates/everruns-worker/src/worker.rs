@@ -645,7 +645,7 @@ async fn execute_activity(
         }
         activity_types::CALL_MODEL => {
             let input: CallModelInput = serde_json::from_slice(input_data)?;
-            let output = call_model_activity(db.clone(), input).await?;
+            let output = call_model_activity(db.clone(), encryption.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
         activity_types::EXECUTE_TOOL => {

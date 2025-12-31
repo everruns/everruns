@@ -6,7 +6,9 @@
 // - Quick prototyping
 
 use crate::agent::Agent;
+use crate::llm_entities::LlmProviderType;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::traits::ModelWithProvider;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,7 +18,7 @@ use uuid::Uuid;
 use crate::error::Result;
 use crate::events::LoopEvent;
 use crate::message::Message;
-use crate::traits::{AgentStore, EventEmitter, MessageStore, ToolExecutor};
+use crate::traits::{AgentStore, EventEmitter, LlmProviderStore, MessageStore, ToolExecutor};
 
 // ============================================================================
 // InMemoryEventEmitter - Collects events in memory
@@ -233,6 +235,103 @@ impl InMemoryAgentStore {
 impl AgentStore for InMemoryAgentStore {
     async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
         Ok(self.agents.read().await.get(&agent_id).cloned())
+    }
+}
+
+// ============================================================================
+// InMemoryLlmProviderStore - Stores LLM provider configurations in memory
+// ============================================================================
+
+/// In-memory LLM provider store
+///
+/// Stores model configurations in a HashMap keyed by model UUID.
+/// Useful for testing and examples where you want to configure providers without a database.
+///
+/// # Example
+///
+/// ```ignore
+/// use everruns_core::memory::InMemoryLlmProviderStore;
+/// use everruns_core::llm_entities::LlmProviderType;
+///
+/// let store = InMemoryLlmProviderStore::from_env().await;
+/// // Uses OPENAI_API_KEY or ANTHROPIC_API_KEY from environment
+/// ```
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryLlmProviderStore {
+    models: Arc<RwLock<HashMap<Uuid, ModelWithProvider>>>,
+    default_model: Arc<RwLock<Option<ModelWithProvider>>>,
+}
+
+impl InMemoryLlmProviderStore {
+    /// Create a new empty in-memory provider store
+    pub fn new() -> Self {
+        Self {
+            models: Arc::new(RwLock::new(HashMap::new())),
+            default_model: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Create a provider store from environment variables
+    ///
+    /// Checks for OPENAI_API_KEY or ANTHROPIC_API_KEY and configures
+    /// a default model accordingly.
+    pub async fn from_env() -> Self {
+        let store = Self::new();
+
+        // Check for OpenAI first
+        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+            let model = ModelWithProvider {
+                model_id: "gpt-4o".to_string(),
+                provider_type: LlmProviderType::Openai,
+                api_key: Some(api_key),
+                base_url: std::env::var("OPENAI_BASE_URL").ok(),
+            };
+            store.set_default_model(model).await;
+        } else if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+            let model = ModelWithProvider {
+                model_id: "claude-sonnet-4-20250514".to_string(),
+                provider_type: LlmProviderType::Anthropic,
+                api_key: Some(api_key),
+                base_url: std::env::var("ANTHROPIC_BASE_URL").ok(),
+            };
+            store.set_default_model(model).await;
+        }
+
+        store
+    }
+
+    /// Create a provider store with a specific default model
+    pub async fn with_default(model: ModelWithProvider) -> Self {
+        let store = Self::new();
+        store.set_default_model(model).await;
+        store
+    }
+
+    /// Add a model to the store
+    pub async fn add_model(&self, model_uuid: Uuid, model: ModelWithProvider) {
+        self.models.write().await.insert(model_uuid, model);
+    }
+
+    /// Set the default model
+    pub async fn set_default_model(&self, model: ModelWithProvider) {
+        *self.default_model.write().await = Some(model);
+    }
+
+    /// Clear all models
+    pub async fn clear(&self) {
+        self.models.write().await.clear();
+        *self.default_model.write().await = None;
+    }
+}
+
+#[async_trait]
+impl LlmProviderStore for InMemoryLlmProviderStore {
+    async fn get_model_with_provider(&self, model_id: Uuid) -> Result<Option<ModelWithProvider>> {
+        Ok(self.models.read().await.get(&model_id).cloned())
+    }
+
+    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
+        Ok(self.default_model.read().await.clone())
     }
 }
 
