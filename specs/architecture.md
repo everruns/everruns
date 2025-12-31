@@ -56,7 +56,7 @@ The core crate provides DB-agnostic agentic loop abstractions with pluggable bac
 4. **In-Memory Implementations** (for testing/examples):
    - `InMemoryMessageStore`, `InMemoryEventEmitter`
    - `MockLlmProvider`, `MockToolExecutor`
-   - `InMemoryAgentLoopBuilder` for easy test setup
+   - In-memory stores for testing: `InMemoryAgentStore`, `InMemorySessionStore`, `InMemoryLlmProviderStore`
 
 ### OpenAI Provider (`everruns-openai`)
 

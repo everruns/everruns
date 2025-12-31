@@ -205,7 +205,7 @@ where
         // 6. Build config from agent with capabilities applied
         let config = AgentConfigBuilder::new()
             .with_agent(&agent, &self.capability_registry)
-            .model(&model_with_provider.model_id)
+            .model(&model_with_provider.model)
             .build();
 
         // 7. Create LLM driver using factory

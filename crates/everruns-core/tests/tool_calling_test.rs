@@ -1,15 +1,14 @@
-// Integration tests for tool calling in the agent loop
+// Integration tests for tool calling
 //
 // These tests verify that both built-in tools (via ToolRegistry) and
 // the ToolExecutor trait work correctly together.
 
 use async_trait::async_trait;
 use everruns_core::{
-    config::AgentConfigBuilder,
-    memory::{InMemoryEventEmitter, InMemoryMessageStore, MockLlmProvider, MockLlmResponse},
+    memory::InMemoryMessageStore,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
-    AgentLoop, GetCurrentTimeTool, LoopEvent, Message, MessageRole,
+    GetCurrentTimeTool, Message, MessageRole,
 };
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use serde_json::json;
@@ -158,133 +157,6 @@ async fn test_tool_not_found_error() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.to_string().contains("not found"));
-}
-
-// =============================================================================
-// Tests for AgentLoop with Tool Execution
-// =============================================================================
-
-#[tokio::test]
-async fn test_agent_loop_with_tool_execution() {
-    // Create a tool call that will be returned by the mock LLM
-    let tool_call = ToolCall {
-        id: "call_test".to_string(),
-        name: "get_current_time".to_string(),
-        arguments: json!({"format": "iso8601"}),
-    };
-
-    // Create mock LLM provider
-    let llm_provider = MockLlmProvider::new();
-    llm_provider
-        .set_responses(vec![
-            // First call: return tool call
-            MockLlmResponse::with_tools(String::new(), vec![tool_call]),
-            // Second call: final response
-            MockLlmResponse::text("The current time is provided above."),
-        ])
-        .await;
-
-    // Create agent config with the tool definition
-    let config = AgentConfigBuilder::new()
-        .system_prompt("You are a helpful assistant")
-        .model("gpt-test")
-        .max_iterations(5)
-        .tool(ToolDefinition::Builtin(BuiltinTool {
-            name: "get_current_time".to_string(),
-            description: "Get the current time".to_string(),
-            parameters: json!({}),
-            policy: ToolPolicy::Auto,
-        }))
-        .build();
-
-    // Create a registry with built-in tools
-    let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
-
-    // Create in-memory backends
-    let event_emitter = InMemoryEventEmitter::new();
-    let message_store = InMemoryMessageStore::new();
-
-    // We'll create the actual agent loop below with Arc-wrapped components
-    let _ = AgentLoop::new(config, event_emitter, message_store, llm_provider, registry);
-
-    // Seed session with user message
-    let session_id = Uuid::now_v7();
-
-    // Create a standalone store and seed it
-    let message_store = InMemoryMessageStore::new();
-    message_store
-        .seed(session_id, vec![Message::user("What time is it?")])
-        .await;
-
-    // Create a fresh LLM provider
-    let llm_provider = MockLlmProvider::new();
-    let tool_call = ToolCall {
-        id: "call_test".to_string(),
-        name: "get_current_time".to_string(),
-        arguments: json!({"format": "iso8601"}),
-    };
-    llm_provider
-        .set_responses(vec![
-            MockLlmResponse::with_tools(String::new(), vec![tool_call]),
-            MockLlmResponse::text("The current time is provided above."),
-        ])
-        .await;
-
-    let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
-    let event_emitter = InMemoryEventEmitter::new();
-
-    let config = AgentConfigBuilder::new()
-        .system_prompt("You are a helpful assistant")
-        .model("gpt-test")
-        .max_iterations(5)
-        .tool(ToolDefinition::Builtin(BuiltinTool {
-            name: "get_current_time".to_string(),
-            description: "Get the current time".to_string(),
-            parameters: json!({}),
-            policy: ToolPolicy::Auto,
-        }))
-        .build();
-
-    // Use Arc to share message store
-    let message_store_arc = Arc::new(message_store);
-    let event_emitter_arc = Arc::new(event_emitter);
-    let llm_provider_arc = Arc::new(llm_provider);
-    let registry_arc = Arc::new(registry);
-
-    let agent_loop = AgentLoop::with_arcs(
-        config,
-        event_emitter_arc.clone(),
-        message_store_arc.clone(),
-        llm_provider_arc,
-        registry_arc,
-    );
-
-    // Run the loop
-    let result = agent_loop.run(session_id).await.unwrap();
-
-    // Verify the loop completed with 2 iterations (tool call + final response)
-    assert_eq!(result.iterations, 2);
-
-    // Verify tool was executed (messages should include tool result)
-    let tool_result_msg = result
-        .messages
-        .iter()
-        .find(|m| m.role == MessageRole::ToolResult);
-    assert!(
-        tool_result_msg.is_some(),
-        "Expected tool result message in conversation"
-    );
-
-    // Verify events were emitted for tool execution
-    let events = event_emitter_arc.events().await;
-    let tool_started = events
-        .iter()
-        .any(|e| matches!(e, LoopEvent::ToolExecutionStarted { .. }));
-    let tool_completed = events
-        .iter()
-        .any(|e| matches!(e, LoopEvent::ToolExecutionCompleted { .. }));
-    assert!(tool_started, "Expected ToolExecutionStarted event");
-    assert!(tool_completed, "Expected ToolExecutionCompleted event");
 }
 
 // =============================================================================

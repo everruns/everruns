@@ -62,17 +62,5 @@ tracing-subscriber.workspace = true
 wiremock = "0.6"
 
 [[example]]
-name = "tool_calling"
-path = "examples/tool_calling.rs"
-
-[[example]]
-name = "capabilities"
-path = "examples/capabilities.rs"
-
-[[example]]
-name = "simple_agent"
-path = "examples/simple_agent.rs"
-
-[[example]]
 name = "decomposed_execution"
 path = "examples/decomposed_execution.rs"

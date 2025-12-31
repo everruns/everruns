@@ -126,7 +126,7 @@ pub trait SessionStore: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct ModelWithProvider {
     /// The model ID string to pass to the LLM API (e.g., "gpt-4o", "claude-3-opus")
-    pub model_id: String,
+    pub model: String,
     /// Provider type for factory selection
     pub provider_type: LlmProviderType,
     /// Decrypted API key (if configured)

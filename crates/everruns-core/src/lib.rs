@@ -34,7 +34,6 @@ pub mod capabilities;
 pub mod config;
 pub mod error;
 pub mod events;
-pub mod executor;
 pub mod llm;
 pub mod r#loop;
 pub mod message;
@@ -54,11 +53,11 @@ pub mod openai;
 pub use config::{AgentConfig, AgentConfigBuilder};
 pub use error::{AgentLoopError, Result};
 pub use events::LoopEvent;
-pub use executor::AgentLoop;
 pub use message::{
     ContentPart, ContentType, Controls, ImageContentPart, InputContentPart, Message, MessageRole,
     ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
 };
+pub use r#loop::{AgentLoop, LoadMessagesResult};
 pub use step::{LoopStep, StepKind, StepResult};
 pub use traits::{
     EventEmitter, LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore,
@@ -92,9 +91,6 @@ pub use atoms::{
     AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, Atom, CallModelAtom,
     CallModelInput, CallModelResult, ExecuteToolAtom, ExecuteToolInput, ExecuteToolResult,
 };
-
-// Loop re-exports
-pub use r#loop::{AgentLoop2, LoadMessagesResult};
 
 // Tool types (runtime types defined in this crate)
 pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
