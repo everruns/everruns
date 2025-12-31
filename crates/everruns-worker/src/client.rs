@@ -13,9 +13,12 @@ use tracing::info;
 
 use temporal_sdk_core::{
     protos::temporal::api::{
-        common::v1::{Payloads, WorkflowType},
+        common::v1::{Payloads, WorkflowExecution, WorkflowType},
         taskqueue::v1::TaskQueue,
-        workflowservice::v1::{StartWorkflowExecutionRequest, StartWorkflowExecutionResponse},
+        workflowservice::v1::{
+            RequestCancelWorkflowExecutionRequest, StartWorkflowExecutionRequest,
+            StartWorkflowExecutionResponse,
+        },
     },
     Core, CoreInitOptions, ServerGateway, ServerGatewayApis, ServerGatewayOptions, Url,
 };
@@ -123,6 +126,30 @@ impl TemporalClient {
         );
 
         Ok(response)
+    }
+
+    /// Request cancellation of a running workflow
+    pub async fn cancel_agent_workflow(&self, session_id: uuid::Uuid) -> Result<()> {
+        let workflow_id = Self::workflow_id_for_session(session_id);
+
+        let request = RequestCancelWorkflowExecutionRequest {
+            namespace: self.config.temporal_namespace(),
+            workflow_execution: Some(WorkflowExecution {
+                workflow_id: workflow_id.clone(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        self.gateway
+            .service
+            .clone()
+            .request_cancel_workflow_execution(request)
+            .await
+            .context("Failed to request workflow cancellation")?;
+
+        info!(workflow_id = %workflow_id, "Cancellation requested");
+        Ok(())
     }
 
     /// Get the workflow ID for a session

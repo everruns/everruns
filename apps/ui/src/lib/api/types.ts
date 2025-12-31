@@ -46,7 +46,7 @@ export interface UpdateAgentRequest {
 // Session types (M2)
 // ============================================
 
-export type SessionStatus = "pending" | "running" | "completed" | "failed";
+export type SessionStatus = "pending" | "running" | "cancelled" | "completed" | "failed";
 
 export interface Session {
   id: string;
@@ -70,6 +70,11 @@ export interface UpdateSessionRequest {
   title?: string;
   tags?: string[];
   model_id?: string;
+}
+
+export interface CancelSessionResponse {
+  cancelled: boolean;
+  message?: Message;
 }
 
 // ============================================

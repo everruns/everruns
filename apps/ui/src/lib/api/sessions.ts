@@ -6,6 +6,7 @@ import type {
   CreateSessionRequest,
   UpdateSessionRequest,
   ListResponse,
+  CancelSessionResponse,
 } from "./types";
 
 // Re-export message functions for backward compatibility
@@ -66,4 +67,15 @@ export async function deleteSession(
   sessionId: string
 ): Promise<void> {
   await api.delete(`/v1/agents/${agentId}/sessions/${sessionId}`);
+}
+
+export async function cancelSession(
+  agentId: string,
+  sessionId: string
+): Promise<CancelSessionResponse> {
+  const response = await api.post<CancelSessionResponse>(
+    `/v1/agents/${agentId}/sessions/${sessionId}/cancel`,
+    {}
+  );
+  return response.data;
 }

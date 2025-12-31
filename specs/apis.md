@@ -54,6 +54,7 @@ Sessions are instances of agentic loop execution tied to an agent.
 | GET | `/v1/agents/{agent_id}/sessions` | List sessions (paginated) |
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}` | Get session |
 | PATCH | `/v1/agents/{agent_id}/sessions/{session_id}` | Update session |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/cancel` | Cancel running work and emit system message |
 | DELETE | `/v1/agents/{agent_id}/sessions/{session_id}` | Delete session |
 
 ### Messages

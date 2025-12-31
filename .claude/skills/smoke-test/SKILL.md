@@ -139,10 +139,21 @@ Expected: Valid UUID returned, role "user"
 ```bash
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data | length'
 ```
-Expected: At least 1 message
+Expected: At least 2 messages after cancellation (user + system). If the workflow was not cancelled, at least 1 message (user).
+
+#### 9.2. Cancel Running Session
+```bash
+curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/cancel" | jq
+```
+Expected: `{"cancelled": true, "message": {"role": "system", "content": [{"type": "text", "text": "Work cancelled"}]}}`
+
+```bash
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID" | jq '.status'
+```
+Expected: `"cancelled"`
 
 #### 9.5. Verify Workflow Execution (Temporal)
-After sending a user message, verify the agent workflow executed correctly:
+After sending a user message, verify the agent workflow executed correctly (if you haven't cancelled the run):
 ```bash
 # Wait for workflow to complete (5-10 seconds)
 sleep 10
@@ -150,7 +161,7 @@ sleep 10
 # Check session status (should be 'pending' after workflow completes)
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID" | jq '.status'
 ```
-Expected: `"pending"` (workflow completed)
+Expected: `"pending"` (workflow completed). If you ran the cancellation step above, expect `"cancelled"` instead.
 
 ```bash
 # Check for assistant response (content is now an array of ContentPart)
@@ -170,7 +181,7 @@ After workflow completes, verify events are created alongside messages:
 # List events for the session
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data | length'
 ```
-Expected: At least 2 events (message.user and message.agent)
+Expected: At least 3 events (message.user, message.system, and session.cancelled). If the workflow completed instead of being cancelled, expect message.agent instead of message.system/session.cancelled.
 
 ```bash
 # Check for message.user event
@@ -179,10 +190,16 @@ curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" 
 Expected: Event with `event_type: "message.user"` and `data` containing `message_id`, `content`
 
 ```bash
-# Check for message.agent event
+# Check for message.agent event (when workflow completes)
 curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.agent")'
 ```
 Expected: Event with `event_type: "message.agent"` and `data` containing `message_id`, `role`, `content`
+
+```bash
+# Check for cancellation artifacts (when workflow is cancelled)
+curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.system" or .event_type == "session.cancelled")'
+```
+Expected: `message.system` entry with text "Work cancelled" and `session.cancelled` entry with a reason
 
 **Note:** The UI uses the `/sse` endpoint for real-time streaming and the `/events` endpoint for polling/listing events.
 

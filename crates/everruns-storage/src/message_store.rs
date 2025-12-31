@@ -46,7 +46,8 @@ impl MessageStore for DbMessageStore {
         let event_type = match message.role {
             MessageRole::Assistant => Some("message.agent"),
             MessageRole::ToolResult => Some("message.tool_result"),
-            MessageRole::User | MessageRole::System => None,
+            MessageRole::System => Some("message.system"),
+            MessageRole::User => None,
         };
 
         if let Some(event_type) = event_type {

@@ -23,6 +23,8 @@ pub enum SessionStatus {
     Pending,
     /// Session is actively processing messages.
     Running,
+    /// Session was cancelled before completion.
+    Cancelled,
     /// Session finished successfully.
     Completed,
     /// Session terminated due to an error.
@@ -34,6 +36,7 @@ impl std::fmt::Display for SessionStatus {
         match self {
             SessionStatus::Pending => write!(f, "pending"),
             SessionStatus::Running => write!(f, "running"),
+            SessionStatus::Cancelled => write!(f, "cancelled"),
             SessionStatus::Completed => write!(f, "completed"),
             SessionStatus::Failed => write!(f, "failed"),
         }
@@ -44,6 +47,7 @@ impl From<&str> for SessionStatus {
     fn from(s: &str) -> Self {
         match s {
             "running" => SessionStatus::Running,
+            "cancelled" => SessionStatus::Cancelled,
             "completed" => SessionStatus::Completed,
             "failed" => SessionStatus::Failed,
             _ => SessionStatus::Pending,
