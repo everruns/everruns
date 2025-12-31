@@ -4,7 +4,6 @@
 //
 // Key design principles:
 // - Atoms handle message loading/storage internally via MessageStore
-// - Atoms emit events via EventEmitter (no separate emit-event activities)
 // - CallModelAtom loads agent config, resolves model/provider, applies capabilities
 // - Workflow only tracks session_id, tool_definitions, and iteration
 // - Each tool call is a separate activity for better visibility
