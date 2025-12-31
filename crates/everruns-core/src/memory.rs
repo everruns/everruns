@@ -17,111 +17,8 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::error::Result;
-use crate::events::LoopEvent;
 use crate::message::Message;
-use crate::traits::{
-    AgentStore, EventEmitter, LlmProviderStore, MessageStore, SessionStore, ToolExecutor,
-};
-
-// ============================================================================
-// InMemoryEventEmitter - Collects events in memory
-// ============================================================================
-
-/// In-memory event emitter that collects all events
-///
-/// Useful for testing and examples where you want to inspect events after execution.
-#[derive(Debug, Default)]
-pub struct InMemoryEventEmitter {
-    events: Arc<RwLock<Vec<LoopEvent>>>,
-}
-
-impl InMemoryEventEmitter {
-    /// Create a new in-memory event emitter
-    pub fn new() -> Self {
-        Self {
-            events: Arc::new(RwLock::new(Vec::new())),
-        }
-    }
-
-    /// Get all collected events
-    pub async fn events(&self) -> Vec<LoopEvent> {
-        self.events.read().await.clone()
-    }
-
-    /// Clear all events
-    pub async fn clear(&self) {
-        self.events.write().await.clear();
-    }
-
-    /// Get event count
-    pub async fn count(&self) -> usize {
-        self.events.read().await.len()
-    }
-}
-
-#[async_trait]
-impl EventEmitter for InMemoryEventEmitter {
-    async fn emit(&self, event: LoopEvent) -> Result<()> {
-        self.events.write().await.push(event);
-        Ok(())
-    }
-}
-
-// ============================================================================
-// ChannelEventEmitter - Sends events to a channel
-// ============================================================================
-
-/// Event emitter that sends events to a tokio broadcast channel
-///
-/// Useful for real-time streaming to multiple subscribers.
-pub struct ChannelEventEmitter {
-    sender: tokio::sync::broadcast::Sender<LoopEvent>,
-}
-
-impl ChannelEventEmitter {
-    /// Create a new channel event emitter with the given capacity
-    pub fn new(capacity: usize) -> (Self, tokio::sync::broadcast::Receiver<LoopEvent>) {
-        let (sender, receiver) = tokio::sync::broadcast::channel(capacity);
-        (Self { sender }, receiver)
-    }
-
-    /// Subscribe to events
-    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<LoopEvent> {
-        self.sender.subscribe()
-    }
-}
-
-#[async_trait]
-impl EventEmitter for ChannelEventEmitter {
-    async fn emit(&self, event: LoopEvent) -> Result<()> {
-        // Ignore send errors (no receivers)
-        let _ = self.sender.send(event);
-        Ok(())
-    }
-}
-
-// ============================================================================
-// NoOpEventEmitter - Discards all events
-// ============================================================================
-
-/// Event emitter that discards all events
-///
-/// Useful when you don't need event streaming.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct NoOpEventEmitter;
-
-impl NoOpEventEmitter {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[async_trait]
-impl EventEmitter for NoOpEventEmitter {
-    async fn emit(&self, _event: LoopEvent) -> Result<()> {
-        Ok(())
-    }
-}
+use crate::traits::{AgentStore, LlmProviderStore, MessageStore, SessionStore, ToolExecutor};
 
 // ============================================================================
 // InMemoryMessageStore - Stores messages in memory
@@ -640,21 +537,6 @@ impl LlmDriver for MockLlmProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_in_memory_event_emitter() {
-        let emitter = InMemoryEventEmitter::new();
-
-        emitter
-            .emit(LoopEvent::loop_started("test-session"))
-            .await
-            .unwrap();
-
-        assert_eq!(emitter.count().await, 1);
-
-        let events = emitter.events().await;
-        assert!(matches!(events[0], LoopEvent::LoopStarted { .. }));
-    }
 
     #[tokio::test]
     async fn test_in_memory_message_store() {

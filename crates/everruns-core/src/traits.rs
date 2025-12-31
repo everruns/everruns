@@ -14,33 +14,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::Result;
-use crate::events::LoopEvent;
 use crate::message::Message;
-
-// ============================================================================
-// EventEmitter - For streaming events during execution
-// ============================================================================
-
-/// Trait for emitting events during loop execution
-///
-/// Implementations can:
-/// - Store events in a database
-/// - Send events to a channel for SSE streaming
-/// - Collect events in memory for testing
-/// - Do nothing (no-op implementation)
-#[async_trait]
-pub trait EventEmitter: Send + Sync {
-    /// Emit a single event
-    async fn emit(&self, event: LoopEvent) -> Result<()>;
-
-    /// Emit multiple events
-    async fn emit_batch(&self, events: Vec<LoopEvent>) -> Result<()> {
-        for event in events {
-            self.emit(event).await?;
-        }
-        Ok(())
-    }
-}
 
 // ============================================================================
 // MessageStore - For persisting conversation messages

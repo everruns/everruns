@@ -4,9 +4,8 @@
 // of an agentic loop (LLM call → tool execution → repeat).
 //
 // Key design decisions:
-// - Uses traits (EventEmitter, MessageStore, ToolExecutor) for pluggable backends
+// - Uses traits (MessageStore, ToolExecutor) for pluggable backends
 // - Can be decomposed into steps for Temporal activity execution
-// - Emits events for SSE streaming via LoopEvent
 // - Configuration via RuntimeAgent (can be built from Agent entity or created directly)
 // - Tools are defined via a Tool trait for flexibility (function-style tools)
 // - ToolRegistry implements ToolExecutor for easy tool management
@@ -32,7 +31,6 @@ pub mod session_file;
 pub mod atoms;
 pub mod capabilities;
 pub mod error;
-pub mod events;
 pub mod llm_driver_registry;
 pub mod r#loop;
 pub mod message;
@@ -51,7 +49,6 @@ pub mod memory;
 
 // Re-exports for convenience
 pub use error::{AgentLoopError, Result};
-pub use events::LoopEvent;
 pub use message::{
     ContentPart, ContentType, Controls, ImageContentPart, InputContentPart, Message, MessageRole,
     ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
@@ -60,8 +57,8 @@ pub use r#loop::{AgentLoop, LoadMessagesResult};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use step::{LoopStep, StepKind, StepResult};
 pub use traits::{
-    EventEmitter, LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore,
-    SessionStore, ToolContext, ToolExecutor,
+    LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore, SessionStore, ToolContext,
+    ToolExecutor,
 };
 
 // LLM driver types re-exports
