@@ -5,9 +5,8 @@
 // - Built from an Agent entity via the `from_agent` method
 
 use crate::agent::Agent;
-use crate::capabilities::{apply_capabilities, AppliedCapabilities, CapabilityRegistry};
+use crate::capabilities::{CapabilityRegistry, CapabilityStatus};
 use crate::tool_types::ToolDefinition;
-use crate::tools::ToolRegistry;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for the agent loop
@@ -70,33 +69,24 @@ impl Default for AgentConfig {
 /// Builder for AgentConfig with fluent API
 ///
 /// Can be created either from scratch with `new()` or from an Agent entity
-/// with `from_agent()`. Use `build()` to get just the config, or
-/// `build_with_capabilities()` to get the config along with the tool registry.
-pub struct AgentConfigBuilder<'a> {
+/// with `from_agent()`. When created from an agent, capabilities are applied
+/// immediately to the builder configuration.
+pub struct AgentConfigBuilder {
     config: AgentConfig,
-    /// Optional: capability IDs to apply (from Agent)
-    capability_ids: Vec<String>,
-    /// Optional: capability registry for applying capabilities
-    capability_registry: Option<&'a CapabilityRegistry>,
 }
 
-impl AgentConfigBuilder<'static> {
+impl AgentConfigBuilder {
     /// Start building a new configuration from scratch
     pub fn new() -> Self {
         Self {
             config: AgentConfig::default(),
-            capability_ids: Vec::new(),
-            capability_registry: None,
         }
     }
-}
 
-impl<'a> AgentConfigBuilder<'a> {
     /// Start building a configuration from an Agent entity.
     ///
-    /// This initializes the builder with the agent's system prompt and capabilities.
-    /// Use `build_with_capabilities()` to get the config with applied capabilities
-    /// and the resulting tool registry.
+    /// This initializes the builder with the agent's system prompt and applies
+    /// the agent's capabilities (tools and system prompt additions).
     ///
     /// # Arguments
     ///
@@ -111,42 +101,43 @@ impl<'a> AgentConfigBuilder<'a> {
     /// use everruns_core::capabilities::CapabilityRegistry;
     ///
     /// let registry = CapabilityRegistry::with_builtins();
-    /// let result = AgentConfigBuilder::from_agent(&agent, "gpt-4o", &registry)
+    /// let config = AgentConfigBuilder::from_agent(&agent, "gpt-4o", &registry)
     ///     .temperature(0.7)
     ///     .max_iterations(5)
-    ///     .build_with_capabilities();
-    ///
-    /// // Use result.config for LLM calls
-    /// // Use result.tool_registry for executing tools
+    ///     .build();
     /// ```
     pub fn from_agent(
         agent: &Agent,
         model: impl Into<String>,
-        registry: &'a CapabilityRegistry,
-    ) -> AgentConfigBuilder<'a> {
+        registry: &CapabilityRegistry,
+    ) -> Self {
         let capability_ids: Vec<String> = agent
             .capabilities
             .iter()
             .map(|cap_id| cap_id.as_str().to_string())
             .collect();
 
-        AgentConfigBuilder {
-            config: AgentConfig {
-                system_prompt: agent.system_prompt.clone(),
-                model: model.into(),
-                tools: Vec::new(),
-                max_iterations: default_max_iterations(),
-                temperature: None,
-                max_tokens: None,
-            },
-            capability_ids,
-            capability_registry: Some(registry),
-        }
+        // Start with base config from agent
+        let builder = AgentConfigBuilder::new()
+            .system_prompt(&agent.system_prompt)
+            .model(model);
+
+        // Apply capabilities to builder
+        apply_capabilities_to_builder(builder, &capability_ids, registry)
     }
 
     /// Set the system prompt
     pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.config.system_prompt = prompt.into();
+        self
+    }
+
+    /// Prepend text to the system prompt
+    pub fn prepend_system_prompt(mut self, prefix: impl Into<String>) -> Self {
+        let prefix = prefix.into();
+        if !prefix.is_empty() {
+            self.config.system_prompt = format!("{}\n\n{}", prefix, self.config.system_prompt);
+        }
         self
     }
 
@@ -186,56 +177,66 @@ impl<'a> AgentConfigBuilder<'a> {
         self
     }
 
-    /// Build the configuration without applying capabilities.
-    ///
-    /// Returns just the AgentConfig. If you need the tool registry from
-    /// applied capabilities, use `build_with_capabilities()` instead.
+    /// Build the configuration
     pub fn build(self) -> AgentConfig {
         self.config
     }
-
-    /// Build the configuration and apply capabilities.
-    ///
-    /// If this builder was created with `from_agent()`, capabilities will be applied
-    /// and the result includes the tool registry. Otherwise, returns just the config
-    /// with an empty tool registry.
-    pub fn build_with_capabilities(self) -> AgentConfigBuildResult {
-        if let Some(registry) = self.capability_registry {
-            // Apply capabilities
-            let AppliedCapabilities {
-                config,
-                tool_registry,
-                applied_ids,
-            } = apply_capabilities(self.config, &self.capability_ids, registry);
-
-            AgentConfigBuildResult {
-                config,
-                tool_registry,
-                applied_capability_ids: applied_ids,
-            }
-        } else {
-            // No capabilities to apply
-            AgentConfigBuildResult {
-                config: self.config,
-                tool_registry: ToolRegistry::new(),
-                applied_capability_ids: Vec::new(),
-            }
-        }
-    }
 }
 
-impl Default for AgentConfigBuilder<'static> {
+impl Default for AgentConfigBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-/// Result of building an AgentConfig with capabilities applied
-pub struct AgentConfigBuildResult {
-    /// The agent configuration with capabilities applied
-    pub config: AgentConfig,
-    /// Tool registry containing capability tools
-    pub tool_registry: ToolRegistry,
-    /// IDs of capabilities that were applied
-    pub applied_capability_ids: Vec<String>,
+/// Apply capabilities to an AgentConfigBuilder using builder methods.
+///
+/// This function:
+/// 1. Collects system prompt additions from capabilities (in order)
+/// 2. Prepends them to the builder's system prompt
+/// 3. Adds tool definitions from capabilities
+///
+/// # Arguments
+///
+/// * `builder` - The builder to modify
+/// * `capability_ids` - Ordered list of capability IDs to apply
+/// * `registry` - The capability registry containing implementations
+fn apply_capabilities_to_builder(
+    mut builder: AgentConfigBuilder,
+    capability_ids: &[String],
+    registry: &CapabilityRegistry,
+) -> AgentConfigBuilder {
+    let mut system_prompt_parts: Vec<String> = Vec::new();
+    let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
+
+    // Collect contributions from capabilities
+    for cap_id in capability_ids {
+        if let Some(capability) = registry.get(cap_id) {
+            // Only apply available capabilities
+            if capability.status() != CapabilityStatus::Available {
+                continue;
+            }
+
+            // Collect system prompt addition
+            if let Some(addition) = capability.system_prompt_addition() {
+                system_prompt_parts.push(addition.to_string());
+            }
+
+            // Collect tool definitions
+            tool_definitions.extend(capability.tool_definitions());
+        }
+    }
+
+    // Apply system prompt additions (prepend to existing)
+    if !system_prompt_parts.is_empty() {
+        let prefix = system_prompt_parts.join("\n\n");
+        builder = builder.prepend_system_prompt(prefix);
+    }
+
+    // Apply tool definitions
+    if !tool_definitions.is_empty() {
+        builder = builder.tools(tool_definitions);
+    }
+
+    builder
 }
