@@ -1,135 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Bot, User, Wrench, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Bot, ArrowLeft } from "lucide-react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
+import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import type { Message } from "@/lib/api/types";
-import type { AggregatedToolCall } from "@/hooks/use-sse-events";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
 // ============================================
-// MessageBubble component (copied from chat-messages for showcase)
-// ============================================
-
-function MessageBubble({
-  messageRole,
-  content,
-  isStreaming,
-}: {
-  messageRole: string;
-  content: string;
-  isStreaming?: boolean;
-}) {
-  const isUser = messageRole === "user";
-
-  return (
-    <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>
-      <Avatar className="h-8 w-8 shrink-0">
-        <AvatarFallback className={cn(isUser ? "bg-primary" : "bg-muted")}>
-          {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-        </AvatarFallback>
-      </Avatar>
-      <div
-        className={cn(
-          "rounded-lg px-4 py-2 max-w-[80%]",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted"
-        )}
-      >
-        <p className="whitespace-pre-wrap">{content}</p>
-        {isStreaming && (
-          <span className="inline-block w-2 h-4 bg-current opacity-75 animate-pulse ml-0.5" />
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// ToolCallBubble component (copied from chat-messages for showcase)
-// ============================================
-
-function ToolCallBubble({ toolCall }: { toolCall: AggregatedToolCall }) {
-  return (
-    <div className="flex gap-3">
-      <Avatar className="h-8 w-8 shrink-0">
-        <AvatarFallback className="bg-purple-100">
-          <Wrench className="h-4 w-4 text-purple-600" />
-        </AvatarFallback>
-      </Avatar>
-      <div className="border rounded-lg p-3 max-w-[80%] bg-purple-50">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="font-medium text-sm">{toolCall.name}</span>
-          {toolCall.isComplete ? (
-            toolCall.error ? (
-              <Badge variant="destructive" className="text-xs">
-                Failed
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="bg-green-100 text-green-800 text-xs">
-                Done
-              </Badge>
-            )
-          ) : (
-            <Badge variant="outline" className="text-xs">
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-              Running
-            </Badge>
-          )}
-        </div>
-        <pre className="text-xs bg-white p-2 rounded overflow-x-auto">
-          {JSON.stringify(toolCall.arguments, null, 2)}
-        </pre>
-        {toolCall.isComplete && toolCall.result !== undefined && (
-          <>
-            <Separator className="my-2" />
-            <pre className="text-xs bg-white p-2 rounded overflow-x-auto max-h-32">
-              {JSON.stringify(toolCall.result, null, 2)}
-            </pre>
-          </>
-        )}
-        {toolCall.error && (
-          <>
-            <Separator className="my-2" />
-            <p className="text-sm text-destructive">{toolCall.error}</p>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// Loading indicator (copied from chat-messages for showcase)
-// ============================================
-
-function LoadingIndicator() {
-  return (
-    <div className="flex gap-3">
-      <Avatar className="h-8 w-8 shrink-0">
-        <AvatarFallback className="bg-muted">
-          <Bot className="h-4 w-4" />
-        </AvatarFallback>
-      </Avatar>
-      <div className="bg-muted rounded-lg px-4 py-2">
-        <div className="flex gap-1">
-          <div className="w-2 h-2 bg-current rounded-full animate-bounce" />
-          <div className="w-2 h-2 bg-current rounded-full animate-bounce delay-75" />
-          <div className="w-2 h-2 bg-current rounded-full animate-bounce delay-150" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// Showcase Section Component
+// Showcase Section Components
 // ============================================
 
 function ShowcaseSection({
@@ -168,116 +52,260 @@ function ShowcaseItem({
 }
 
 // ============================================
-// Sample Data
+// Message Rendering (from Session UI)
+// These match the inline rendering in sessions/[sessionId]/page.tsx
 // ============================================
 
-const sampleToolCalls = {
-  running: {
-    id: "tc-1",
-    name: "read_file",
-    arguments: { path: "/data/transactions.csv" },
-    isComplete: false,
-  },
-  success: {
-    id: "tc-2",
-    name: "bash",
-    arguments: { command: "python analyze.py --input data.csv" },
-    isComplete: true,
-    result: "Analysis complete. Found 15,432 transactions totaling $1,965,000 in revenue.",
-  },
-  successLongResult: {
-    id: "tc-3",
-    name: "grep",
-    arguments: { pattern: "error", path: "/var/log/app.log" },
-    isComplete: true,
-    result: [
-      "/var/log/app.log:142: [ERROR] Connection timeout",
-      "/var/log/app.log:298: [ERROR] Database query failed",
-      "/var/log/app.log:456: [ERROR] Authentication failed for user admin",
-      "/var/log/app.log:789: [ERROR] File not found: config.json",
-      "/var/log/app.log:1024: [ERROR] Memory allocation failed",
-    ].join("\n"),
-  },
-  failed: {
-    id: "tc-4",
-    name: "write_file",
-    arguments: { path: "/etc/config.json", content: "{}" },
-    isComplete: true,
-    error: "Permission denied: Cannot write to /etc/config.json",
-  },
-} satisfies Record<string, AggregatedToolCall>;
+function UserMessage({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
+        <p className="text-sm whitespace-pre-wrap">{content}</p>
+      </div>
+    </div>
+  );
+}
 
-// Sample Message objects for ToolCallCard component
+function AssistantMessage({ content }: { content: string }) {
+  return (
+    <div className="flex justify-start">
+      <div className="w-full bg-muted/60 rounded-lg p-3">
+        <div className="flex items-start gap-2">
+          <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+          <p className="text-sm whitespace-pre-wrap">{content}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Sample Data for ToolCallCard
+// ============================================
+
 const sampleToolCallMessages = {
-  toolCall: {
-    id: "tcm-1",
-    session_id: "session-1",
-    sequence: 5,
-    role: "assistant" as const,
-    content: [{
-      type: "tool_call" as const,
-      id: "tc-call-1",
-      name: "list_files",
-      arguments: { path: "/home/user/project", recursive: true },
-    }],
-    tool_call_id: null,
-    created_at: new Date().toISOString(),
+  // List files tool - completed with result
+  listFiles: {
+    toolCall: {
+      id: "msg-tc-1",
+      session_id: "session-1",
+      sequence: 5,
+      role: "assistant" as const,
+      content: [{
+        type: "tool_call" as const,
+        id: "tc-1",
+        name: "list_files",
+        arguments: { path: "/home/user/project", recursive: true },
+      }],
+      tool_call_id: null,
+      created_at: new Date().toISOString(),
+    },
+    toolResult: {
+      id: "msg-tr-1",
+      session_id: "session-1",
+      sequence: 6,
+      role: "tool_result" as const,
+      content: [{
+        type: "tool_result" as const,
+        tool_call_id: "tc-1",
+        result: ["src/", "src/main.rs", "src/lib.rs", "Cargo.toml", "README.md"],
+      }],
+      tool_call_id: "tc-1",
+      created_at: new Date().toISOString(),
+    },
   },
-  toolResult: {
-    id: "trm-1",
-    session_id: "session-1",
-    sequence: 6,
-    role: "tool_result" as const,
-    content: [{
-      type: "tool_result" as const,
-      tool_call_id: "tc-call-1",
-      result: ["src/", "src/main.rs", "src/lib.rs", "Cargo.toml", "README.md"],
-    }],
-    tool_call_id: "tc-call-1",
-    created_at: new Date().toISOString(),
+  // Bash command - completed with longer result
+  bashCommand: {
+    toolCall: {
+      id: "msg-tc-2",
+      session_id: "session-1",
+      sequence: 7,
+      role: "assistant" as const,
+      content: [{
+        type: "tool_call" as const,
+        id: "tc-2",
+        name: "bash",
+        arguments: { command: "cargo test --workspace" },
+      }],
+      tool_call_id: null,
+      created_at: new Date().toISOString(),
+    },
+    toolResult: {
+      id: "msg-tr-2",
+      session_id: "session-1",
+      sequence: 8,
+      role: "tool_result" as const,
+      content: [{
+        type: "tool_result" as const,
+        tool_call_id: "tc-2",
+        result: "running 24 tests\ntest storage::tests::test_create_agent ... ok\ntest storage::tests::test_list_agents ... ok\ntest api::tests::test_health_endpoint ... ok\ntest api::tests::test_create_session ... ok\n\ntest result: ok. 24 passed; 0 failed; 0 ignored",
+      }],
+      tool_call_id: "tc-2",
+      created_at: new Date().toISOString(),
+    },
   },
-  toolCallExecuting: {
-    id: "tcm-2",
-    session_id: "session-1",
-    sequence: 7,
-    role: "assistant" as const,
-    content: [{
-      type: "tool_call" as const,
-      id: "tc-call-2",
-      name: "run_tests",
-      arguments: { test_filter: "integration", verbose: true },
-    }],
-    tool_call_id: null,
-    created_at: new Date().toISOString(),
+  // Tool currently executing
+  executing: {
+    toolCall: {
+      id: "msg-tc-3",
+      session_id: "session-1",
+      sequence: 9,
+      role: "assistant" as const,
+      content: [{
+        type: "tool_call" as const,
+        id: "tc-3",
+        name: "read_file",
+        arguments: { path: "/home/user/project/src/main.rs" },
+      }],
+      tool_call_id: null,
+      created_at: new Date().toISOString(),
+    },
+    // No toolResult - still executing
   },
-  toolCallError: {
-    id: "tcm-3",
-    session_id: "session-1",
-    sequence: 8,
-    role: "assistant" as const,
-    content: [{
-      type: "tool_call" as const,
-      id: "tc-call-3",
-      name: "delete_file",
-      arguments: { path: "/protected/important.txt" },
-    }],
-    tool_call_id: null,
-    created_at: new Date().toISOString(),
+  // Tool with error
+  error: {
+    toolCall: {
+      id: "msg-tc-4",
+      session_id: "session-1",
+      sequence: 10,
+      role: "assistant" as const,
+      content: [{
+        type: "tool_call" as const,
+        id: "tc-4",
+        name: "write_file",
+        arguments: { path: "/etc/protected/config.json", content: "{}" },
+      }],
+      tool_call_id: null,
+      created_at: new Date().toISOString(),
+    },
+    toolResult: {
+      id: "msg-tr-4",
+      session_id: "session-1",
+      sequence: 11,
+      role: "tool_result" as const,
+      content: [{
+        type: "tool_result" as const,
+        tool_call_id: "tc-4",
+        error: "Permission denied: Cannot write to /etc/protected/config.json",
+      }],
+      tool_call_id: "tc-4",
+      created_at: new Date().toISOString(),
+    },
   },
-  toolResultError: {
-    id: "trm-2",
-    session_id: "session-1",
-    sequence: 9,
-    role: "tool_result" as const,
-    content: [{
-      type: "tool_result" as const,
-      tool_call_id: "tc-call-3",
-      error: "Access denied: File is protected and cannot be deleted",
-    }],
-    tool_call_id: "tc-call-3",
-    created_at: new Date().toISOString(),
+  // write_todos tool - shows TodoListRenderer
+  writeTodos: {
+    toolCall: {
+      id: "msg-tc-5",
+      session_id: "session-1",
+      sequence: 12,
+      role: "assistant" as const,
+      content: [{
+        type: "tool_call" as const,
+        id: "tc-5",
+        name: "write_todos",
+        arguments: {
+          todos: [
+            { content: "Review code changes", activeForm: "Reviewing code changes", status: "completed" },
+            { content: "Run tests", activeForm: "Running tests", status: "in_progress" },
+            { content: "Update documentation", activeForm: "Updating documentation", status: "pending" },
+            { content: "Create pull request", activeForm: "Creating pull request", status: "pending" },
+          ],
+        },
+      }],
+      tool_call_id: null,
+      created_at: new Date().toISOString(),
+    },
+    toolResult: {
+      id: "msg-tr-5",
+      session_id: "session-1",
+      sequence: 13,
+      role: "tool_result" as const,
+      content: [{
+        type: "tool_result" as const,
+        tool_call_id: "tc-5",
+        result: {
+          success: true,
+          total_tasks: 4,
+          pending: 2,
+          in_progress: 1,
+          completed: 1,
+          todos: [
+            { content: "Review code changes", activeForm: "Reviewing code changes", status: "completed" },
+            { content: "Run tests", activeForm: "Running tests", status: "in_progress" },
+            { content: "Update documentation", activeForm: "Updating documentation", status: "pending" },
+            { content: "Create pull request", activeForm: "Creating pull request", status: "pending" },
+          ],
+        },
+      }],
+      tool_call_id: "tc-5",
+      created_at: new Date().toISOString(),
+    },
   },
-} satisfies Record<string, Message>;
+} satisfies Record<string, { toolCall: Message; toolResult?: Message }>;
+
+// Sample todo data for TodoListRenderer directly
+const sampleTodoData = {
+  executing: {
+    arguments: {
+      todos: [
+        { content: "Analyze requirements", activeForm: "Analyzing requirements", status: "completed" },
+        { content: "Implement feature", activeForm: "Implementing feature", status: "in_progress" },
+        { content: "Write tests", activeForm: "Writing tests", status: "pending" },
+      ],
+    },
+    isExecuting: true,
+  },
+  completed: {
+    arguments: {
+      todos: [
+        { content: "Set up database", activeForm: "Setting up database", status: "completed" },
+        { content: "Create API endpoints", activeForm: "Creating API endpoints", status: "completed" },
+        { content: "Add authentication", activeForm: "Adding authentication", status: "completed" },
+      ],
+    },
+    result: {
+      success: true,
+      total_tasks: 3,
+      pending: 0,
+      in_progress: 0,
+      completed: 3,
+      todos: [
+        { content: "Set up database", activeForm: "Setting up database", status: "completed" },
+        { content: "Create API endpoints", activeForm: "Creating API endpoints", status: "completed" },
+        { content: "Add authentication", activeForm: "Adding authentication", status: "completed" },
+      ],
+    },
+    isExecuting: false,
+  },
+  withWarning: {
+    arguments: {
+      todos: [
+        { content: "Task 1", activeForm: "Working on task 1", status: "in_progress" },
+        { content: "Task 2", activeForm: "Working on task 2", status: "in_progress" },
+      ],
+    },
+    result: {
+      success: true,
+      total_tasks: 2,
+      pending: 0,
+      in_progress: 2,
+      completed: 0,
+      todos: [
+        { content: "Task 1", activeForm: "Working on task 1", status: "in_progress" },
+        { content: "Task 2", activeForm: "Working on task 2", status: "in_progress" },
+      ],
+      warning: "Multiple tasks are in progress simultaneously",
+    },
+    isExecuting: false,
+  },
+  error: {
+    arguments: {
+      todos: [],
+    },
+    error: "Invalid todo list format",
+    isExecuting: false,
+  },
+};
 
 // ============================================
 // Main Page Component
@@ -300,9 +328,16 @@ export default function DevComponentsPage() {
     <div className="min-h-screen bg-muted/30">
       <div className="container mx-auto py-8 px-4">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Component Showcase</h1>
+          <Link
+            href="/dev"
+            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Developer Tools
+          </Link>
+          <h1 className="text-3xl font-bold">Session Chat Components</h1>
           <p className="text-muted-foreground mt-2">
-            Development-only page to preview UI component states
+            Components used in the Session UI for chat messages and tool interactions
           </p>
           <Badge variant="outline" className="mt-2">
             Development Mode
@@ -311,121 +346,135 @@ export default function DevComponentsPage() {
 
         <ScrollArea className="h-[calc(100vh-12rem)]">
           <div className="space-y-8 pr-4">
-            {/* Message Bubbles Section */}
+            {/* Message Rendering Section */}
             <ShowcaseSection
-              title="Message Bubbles"
-              description="Chat message display for user and assistant messages"
+              title="Message Rendering"
+              description="User and assistant message styles from Session UI (sessions/[sessionId]/page.tsx)"
             >
               <ShowcaseItem label="User Message">
-                <MessageBubble messageRole="user" content="Hello! Can you help me with a task?" />
+                <UserMessage content="Hello! Can you help me analyze this code?" />
               </ShowcaseItem>
 
               <ShowcaseItem label="User Message (Long)">
-                <MessageBubble
-                  messageRole="user"
-                  content="I need to analyze a large dataset containing customer transactions from the past year. The data includes purchase amounts, dates, product categories, and customer demographics. Can you help me identify patterns and create a summary report?"
-                />
+                <UserMessage content="I need to refactor the authentication system to support OAuth 2.0 in addition to the existing session-based auth. The new system should maintain backward compatibility while adding support for multiple identity providers like Google, GitHub, and Microsoft." />
               </ShowcaseItem>
 
               <ShowcaseItem label="Assistant Message">
-                <MessageBubble
-                  messageRole="assistant"
-                  content="Of course! I'd be happy to help you with that. Let me start by reading the data file."
-                />
+                <AssistantMessage content="I'll help you with that. Let me start by examining the current authentication implementation." />
               </ShowcaseItem>
 
               <ShowcaseItem label="Assistant Message (Multiline)">
-                <MessageBubble
-                  messageRole="assistant"
-                  content={"Here's what I found:\n\n1. Total transactions: 15,432\n2. Average order value: $127.50\n3. Top category: Electronics (32%)\n4. Peak sales month: December\n\nWould you like me to dive deeper into any of these areas?"}
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Assistant Message (Streaming)">
-                <MessageBubble
-                  messageRole="assistant"
-                  content="I'm analyzing the data now and will provide you with a comprehensive report"
-                  isStreaming
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Loading Indicator">
-                <LoadingIndicator />
+                <AssistantMessage content={"Here's my analysis of the codebase:\n\n1. Current auth uses session cookies\n2. User model has email/password fields\n3. No OAuth support exists yet\n\nI recommend starting with the OAuth provider abstraction."} />
               </ShowcaseItem>
             </ShowcaseSection>
 
-            {/* Tool Call Bubbles Section (Streaming) */}
+            {/* ToolCallCard Section */}
             <ShowcaseSection
-              title="Tool Call Bubbles (Streaming View)"
-              description="Real-time tool execution display during SSE streaming"
-            >
-              <ShowcaseItem label="Running">
-                <ToolCallBubble toolCall={sampleToolCalls.running} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Completed (Success)">
-                <ToolCallBubble toolCall={sampleToolCalls.success} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Completed (Long Result)">
-                <ToolCallBubble toolCall={sampleToolCalls.successLongResult} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Failed">
-                <ToolCallBubble toolCall={sampleToolCalls.failed} />
-              </ShowcaseItem>
-            </ShowcaseSection>
-
-            {/* Tool Call Cards Section (History) */}
-            <ShowcaseSection
-              title="Tool Call Cards (History View)"
-              description="Compact tool call display for message history"
+              title="ToolCallCard Component"
+              description="Compact tool call display for message history (components/chat/tool-call-card.tsx)"
             >
               <ShowcaseItem label="Completed with Result">
                 <div className="pl-[25px]">
                   <ToolCallCard
-                    toolCall={sampleToolCallMessages.toolCall}
-                    toolResult={sampleToolCallMessages.toolResult}
+                    toolCall={sampleToolCallMessages.listFiles.toolCall}
+                    toolResult={sampleToolCallMessages.listFiles.toolResult}
+                  />
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Completed with Long Result (Expandable)">
+                <div className="pl-[25px]">
+                  <ToolCallCard
+                    toolCall={sampleToolCallMessages.bashCommand.toolCall}
+                    toolResult={sampleToolCallMessages.bashCommand.toolResult}
                   />
                 </div>
               </ShowcaseItem>
 
               <ShowcaseItem label="Executing">
                 <div className="pl-[25px]">
-                  <ToolCallCard toolCall={sampleToolCallMessages.toolCallExecuting} />
+                  <ToolCallCard
+                    toolCall={sampleToolCallMessages.executing.toolCall}
+                  />
                 </div>
               </ShowcaseItem>
 
-              <ShowcaseItem label="Failed with Error">
+              <ShowcaseItem label="Error">
                 <div className="pl-[25px]">
                   <ToolCallCard
-                    toolCall={sampleToolCallMessages.toolCallError}
-                    toolResult={sampleToolCallMessages.toolResultError}
+                    toolCall={sampleToolCallMessages.error.toolCall}
+                    toolResult={sampleToolCallMessages.error.toolResult}
                   />
                 </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="write_todos Tool (Special Rendering)">
+                <div className="pl-[25px]">
+                  <ToolCallCard
+                    toolCall={sampleToolCallMessages.writeTodos.toolCall}
+                    toolResult={sampleToolCallMessages.writeTodos.toolResult}
+                  />
+                </div>
+              </ShowcaseItem>
+            </ShowcaseSection>
+
+            {/* TodoListRenderer Section */}
+            <ShowcaseSection
+              title="TodoListRenderer Component"
+              description="Task list renderer for write_todos tool (components/chat/todo-list-renderer.tsx)"
+            >
+              <ShowcaseItem label="Executing (Updating)">
+                <TodoListRenderer
+                  arguments={sampleTodoData.executing.arguments}
+                  isExecuting={sampleTodoData.executing.isExecuting}
+                />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Completed (All Done)">
+                <TodoListRenderer
+                  arguments={sampleTodoData.completed.arguments}
+                  result={sampleTodoData.completed.result}
+                  isExecuting={sampleTodoData.completed.isExecuting}
+                />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="With Warning">
+                <TodoListRenderer
+                  arguments={sampleTodoData.withWarning.arguments}
+                  result={sampleTodoData.withWarning.result}
+                  isExecuting={sampleTodoData.withWarning.isExecuting}
+                />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Error State">
+                <TodoListRenderer
+                  arguments={sampleTodoData.error.arguments}
+                  error={sampleTodoData.error.error}
+                  isExecuting={sampleTodoData.error.isExecuting}
+                />
               </ShowcaseItem>
             </ShowcaseSection>
 
             {/* Combined Chat View */}
             <ShowcaseSection
               title="Combined Chat View"
-              description="Example conversation with messages and tool calls"
+              description="Example conversation showing how components work together in Session UI"
             >
               <ShowcaseItem label="Full Conversation">
                 <div className="space-y-4">
-                  <MessageBubble
-                    messageRole="user"
-                    content="Can you list the files in my project directory?"
-                  />
-                  <MessageBubble
-                    messageRole="assistant"
-                    content="Sure! Let me check what files are in your project."
-                  />
-                  <ToolCallBubble toolCall={sampleToolCalls.success} />
-                  <MessageBubble
-                    messageRole="assistant"
-                    content="I found several files in your project. The main source files are in the src/ directory."
-                  />
+                  <UserMessage content="Can you list the files in my project and run the tests?" />
+                  <AssistantMessage content="I'll check the project structure and run the test suite for you." />
+                  <div className="pl-[25px] space-y-2">
+                    <ToolCallCard
+                      toolCall={sampleToolCallMessages.listFiles.toolCall}
+                      toolResult={sampleToolCallMessages.listFiles.toolResult}
+                    />
+                    <ToolCallCard
+                      toolCall={sampleToolCallMessages.bashCommand.toolCall}
+                      toolResult={sampleToolCallMessages.bashCommand.toolResult}
+                    />
+                  </div>
+                  <AssistantMessage content="Your project has 5 files and all 24 tests passed successfully." />
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>

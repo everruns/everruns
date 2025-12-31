@@ -39,7 +39,7 @@ const navigation = [
 ];
 
 const devNavigation = [
-  { name: "Components", href: "/dev/components", icon: FlaskConical },
+  { name: "Dev Tools", href: "/dev", icon: FlaskConical },
 ];
 
 function getInitials(name: string): string {
