@@ -47,8 +47,8 @@ pub mod memory;
 
 // LLM Protocol providers
 pub mod anthropic;
+pub mod driver_factory;
 pub mod openai;
-pub mod provider_factory;
 
 // Re-exports for convenience
 pub use config::{AgentConfig, AgentConfigBuilder};
@@ -61,14 +61,14 @@ pub use message::{
 };
 pub use step::{LoopStep, StepKind, StepResult};
 pub use traits::{
-    EventEmitter, LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore, ToolContext,
-    ToolExecutor,
+    EventEmitter, LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore,
+    SessionStore, ToolContext, ToolExecutor,
 };
 
 // LLM types re-exports
 pub use llm::{
-    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmProvider, LlmResponse, LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmDriver,
+    LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
 };
 
 // Tool abstraction re-exports
@@ -99,14 +99,13 @@ pub use r#loop::{AgentLoop2, LoadMessagesResult};
 // Tool types (runtime types defined in this crate)
 pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResult};
 
-// Provider factory re-exports
-pub use provider_factory::{create_provider, BoxedLlmProvider, ProviderConfig, ProviderType};
+// Driver factory re-exports
+pub use driver_factory::{create_driver, BoxedLlmDriver, ProviderConfig, ProviderType};
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
 
 // Domain entity re-exports
-// Note: LlmProvider entity is in llm_entities module (not re-exported at root to avoid
-// conflict with LlmProvider trait). Import as: everruns_core::llm_entities::LlmProvider
+// Note: LlmProvider entity is in llm_entities module. Import as: everruns_core::llm_entities::LlmProvider
 pub use agent::{Agent, AgentStatus};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use event::Event;

@@ -5,24 +5,24 @@
 
 pub use everruns_storage::{
     create_db_agent_store, create_db_llm_provider_store, create_db_message_store,
-    create_db_session_file_store, DbAgentStore, DbLlmProviderStore, DbMessageStore,
-    DbSessionFileStore,
+    create_db_session_file_store, create_db_session_store, DbAgentStore, DbLlmProviderStore,
+    DbMessageStore, DbSessionFileStore, DbSessionStore,
 };
 
-// Provider factory helper for creating LLM providers
+// Driver factory helper for creating LLM drivers
 use everruns_core::{
-    provider_factory::{create_provider, BoxedLlmProvider, ProviderConfig, ProviderType},
+    driver_factory::{create_driver, BoxedLlmDriver, ProviderConfig, ProviderType},
     AgentLoopError, Result,
 };
 
-/// Create an LLM provider based on configuration
+/// Create an LLM driver based on configuration
 ///
-/// This factory supports all provider types: OpenAI, Anthropic, Azure, Ollama, and Custom.
-pub fn create_llm_provider(
+/// This factory supports all provider types: OpenAI, Anthropic, Azure.
+pub fn create_llm_driver(
     provider_type: &str,
     api_key: Option<&str>,
     base_url: Option<&str>,
-) -> Result<BoxedLlmProvider> {
+) -> Result<BoxedLlmDriver> {
     let ptype: ProviderType = provider_type
         .parse()
         .map_err(|e: String| AgentLoopError::llm(e))?;
@@ -35,5 +35,5 @@ pub fn create_llm_provider(
         config = config.with_base_url(url);
     }
 
-    create_provider(&config)
+    create_driver(&config)
 }

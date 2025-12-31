@@ -1,4 +1,4 @@
-// LLM Provider Types
+// LLM Driver Types
 //
 // Provider-agnostic types for LLM interactions.
 // Supports both simple text content and multipart content (text, images, audio).
@@ -12,7 +12,7 @@ use crate::config::AgentConfig;
 use crate::error::Result;
 
 // ============================================================================
-// LlmProvider Trait
+// LlmDriver Trait
 // ============================================================================
 
 /// Type alias for the LLM response stream
@@ -46,11 +46,11 @@ pub struct LlmCompletionMetadata {
     pub finish_reason: Option<String>,
 }
 
-/// Trait for LLM providers
+/// Trait for LLM drivers
 ///
 /// Implementations handle provider-specific API calls and response parsing.
 #[async_trait]
-pub trait LlmProvider: Send + Sync {
+pub trait LlmDriver: Send + Sync {
     /// Call the LLM with streaming response
     async fn chat_completion_stream(
         &self,
@@ -92,9 +92,9 @@ pub trait LlmProvider: Send + Sync {
     }
 }
 
-/// Implement LlmProvider for Box<dyn LlmProvider> to allow dynamic dispatch
+/// Implement LlmDriver for Box<dyn LlmDriver> to allow dynamic dispatch
 #[async_trait]
-impl LlmProvider for Box<dyn LlmProvider> {
+impl LlmDriver for Box<dyn LlmDriver> {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -272,6 +272,72 @@ pub struct LlmResponse {
     pub metadata: LlmCompletionMetadata,
 }
 
+/// Builder for LlmCallConfig with fluent API
+///
+/// Use `from(&config)` to start building from an AgentConfig, then chain
+/// methods like `reasoning_effort()`, `temperature()`, etc. Call `build()`
+/// to get the final config.
+///
+/// # Example
+///
+/// ```ignore
+/// use everruns_core::llm::LlmCallConfigBuilder;
+/// use everruns_core::config::AgentConfig;
+///
+/// let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
+/// let llm_config = LlmCallConfigBuilder::from(&agent_config)
+///     .reasoning_effort("high")
+///     .temperature(0.7)
+///     .build();
+/// ```
+pub struct LlmCallConfigBuilder {
+    config: LlmCallConfig,
+}
+
+impl LlmCallConfigBuilder {
+    /// Start building from an AgentConfig
+    pub fn from(config: &AgentConfig) -> Self {
+        Self {
+            config: LlmCallConfig::from(config),
+        }
+    }
+
+    /// Set reasoning effort level (for models that support it: low, medium, high)
+    pub fn reasoning_effort(mut self, effort: impl Into<String>) -> Self {
+        self.config.reasoning_effort = Some(effort.into());
+        self
+    }
+
+    /// Set the model
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.config.model = model.into();
+        self
+    }
+
+    /// Set temperature
+    pub fn temperature(mut self, temp: f32) -> Self {
+        self.config.temperature = Some(temp);
+        self
+    }
+
+    /// Set max tokens
+    pub fn max_tokens(mut self, tokens: u32) -> Self {
+        self.config.max_tokens = Some(tokens);
+        self
+    }
+
+    /// Set tools
+    pub fn tools(mut self, tools: Vec<ToolDefinition>) -> Self {
+        self.config.tools = tools;
+        self
+    }
+
+    /// Build the configuration
+    pub fn build(self) -> LlmCallConfig {
+        self.config
+    }
+}
+
 // ============================================================================
 // Conversion from Message
 // ============================================================================
@@ -306,5 +372,52 @@ impl From<&crate::message::Message> for LlmMessage {
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
         }
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_llm_call_config_builder_from_agent_config() {
+        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&agent_config).build();
+
+        assert_eq!(llm_config.model, "gpt-4o");
+        assert!(llm_config.reasoning_effort.is_none());
+        assert!(llm_config.temperature.is_none());
+        assert!(llm_config.max_tokens.is_none());
+        assert!(llm_config.tools.is_empty());
+    }
+
+    #[test]
+    fn test_llm_call_config_builder_with_reasoning_effort() {
+        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&agent_config)
+            .reasoning_effort("high")
+            .build();
+
+        assert_eq!(llm_config.reasoning_effort, Some("high".to_string()));
+    }
+
+    #[test]
+    fn test_llm_call_config_builder_with_all_options() {
+        let agent_config = AgentConfig::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&agent_config)
+            .model("claude-3-opus")
+            .reasoning_effort("medium")
+            .temperature(0.7)
+            .max_tokens(1000)
+            .build();
+
+        assert_eq!(llm_config.model, "claude-3-opus");
+        assert_eq!(llm_config.reasoning_effort, Some("medium".to_string()));
+        assert_eq!(llm_config.temperature, Some(0.7));
+        assert_eq!(llm_config.max_tokens, Some(1000));
     }
 }

@@ -7,6 +7,7 @@
 
 use crate::agent::Agent;
 use crate::llm_entities::LlmProviderType;
+use crate::session::Session;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ModelWithProvider;
 use async_trait::async_trait;
@@ -18,7 +19,9 @@ use uuid::Uuid;
 use crate::error::Result;
 use crate::events::LoopEvent;
 use crate::message::Message;
-use crate::traits::{AgentStore, EventEmitter, LlmProviderStore, MessageStore, ToolExecutor};
+use crate::traits::{
+    AgentStore, EventEmitter, LlmProviderStore, MessageStore, SessionStore, ToolExecutor,
+};
 
 // ============================================================================
 // InMemoryEventEmitter - Collects events in memory
@@ -235,6 +238,50 @@ impl InMemoryAgentStore {
 impl AgentStore for InMemoryAgentStore {
     async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
         Ok(self.agents.read().await.get(&agent_id).cloned())
+    }
+}
+
+// ============================================================================
+// InMemorySessionStore - Stores sessions in memory
+// ============================================================================
+
+/// In-memory session store
+///
+/// Stores sessions in a HashMap keyed by session ID.
+/// Useful for testing and examples where you want to configure sessions without a database.
+#[derive(Debug, Default, Clone)]
+pub struct InMemorySessionStore {
+    sessions: Arc<RwLock<HashMap<Uuid, Session>>>,
+}
+
+impl InMemorySessionStore {
+    /// Create a new in-memory session store
+    pub fn new() -> Self {
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Add a session to the store
+    pub async fn add_session(&self, session: Session) {
+        self.sessions.write().await.insert(session.id, session);
+    }
+
+    /// Get all session IDs
+    pub async fn session_ids(&self) -> Vec<Uuid> {
+        self.sessions.read().await.keys().copied().collect()
+    }
+
+    /// Clear all sessions
+    pub async fn clear(&self) {
+        self.sessions.write().await.clear();
+    }
+}
+
+#[async_trait]
+impl SessionStore for InMemorySessionStore {
+    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>> {
+        Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }
 
@@ -480,8 +527,7 @@ impl ToolExecutor for FailingToolExecutor {
 // ============================================================================
 
 use crate::llm::{
-    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmProvider, LlmResponseStream,
-    LlmStreamEvent,
+    LlmCallConfig, LlmCompletionMetadata, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
 use futures::stream;
 
@@ -555,7 +601,7 @@ impl MockLlmProvider {
 }
 
 #[async_trait]
-impl LlmProvider for MockLlmProvider {
+impl LlmDriver for MockLlmProvider {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,

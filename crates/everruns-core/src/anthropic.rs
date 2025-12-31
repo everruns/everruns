@@ -1,6 +1,6 @@
-// Anthropic Claude LLM Provider
+// Anthropic Claude LLM Driver
 //
-// Implementation of LlmProvider for Anthropic's Claude API.
+// Implementation of LlmDriver for Anthropic's Claude API.
 // Uses the Messages API with streaming support.
 
 use async_trait::async_trait;
@@ -13,17 +13,17 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, Result};
 use crate::llm::{
-    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmProvider, LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-/// Anthropic Claude LLM Provider
+/// Anthropic Claude LLM Driver
 ///
-/// Implements `LlmProvider` for Anthropic's Messages API.
+/// Implements `LlmDriver` for Anthropic's Messages API.
 /// Supports streaming responses and tool calls.
 ///
 /// # Example
@@ -199,7 +199,7 @@ impl AnthropicLlmProvider {
 }
 
 #[async_trait]
-impl LlmProvider for AnthropicLlmProvider {
+impl LlmDriver for AnthropicLlmProvider {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,

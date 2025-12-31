@@ -22,7 +22,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::adapters::{DbAgentStore, DbLlmProviderStore, DbMessageStore, DbSessionFileStore};
+use crate::adapters::{
+    DbAgentStore, DbLlmProviderStore, DbMessageStore, DbSessionFileStore, DbSessionStore,
+};
 use crate::agent_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
 
 // ============================================================================
@@ -288,14 +290,16 @@ pub async fn call_model_activity(
 
     // Create atom dependencies
     let agent_store = DbAgentStore::new(db.clone());
+    let session_store = DbSessionStore::new(db.clone());
     let message_store = DbMessageStore::new(db.clone());
     let provider_store = DbLlmProviderStore::new(db, encryption);
     let capability_registry = CapabilityRegistry::with_builtins();
 
     // Create and execute CallModelAtom
-    // The atom now resolves model and provider from agent.default_model_id internally
+    // The atom resolves model using chain: controls.model_id > session.model_id > agent.default_model_id
     let atom = CallModelAtom::new(
         agent_store,
+        session_store,
         message_store,
         provider_store,
         capability_registry,

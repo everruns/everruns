@@ -1,19 +1,19 @@
-// Unit tests for Anthropic provider
+// Unit tests for Anthropic driver
 
-use crate::AnthropicProvider;
+use crate::AnthropicDriver;
 
 #[test]
-fn test_provider_with_api_key() {
-    let provider = AnthropicProvider::with_api_key("test-key".to_string());
+fn test_driver_with_api_key() {
+    let driver = AnthropicDriver::with_api_key("test-key".to_string());
     // Just verify it can be created
-    assert!(format!("{:?}", provider).contains("AnthropicProvider"));
+    assert!(format!("{:?}", driver).contains("AnthropicDriver"));
 }
 
 #[test]
-fn test_provider_with_base_url() {
-    let provider = AnthropicProvider::with_base_url(
+fn test_driver_with_base_url() {
+    let driver = AnthropicDriver::with_base_url(
         "test-key".to_string(),
         "https://custom.api.com/v1/messages".to_string(),
     );
-    assert!(format!("{:?}", provider).contains("AnthropicProvider"));
+    assert!(format!("{:?}", driver).contains("AnthropicDriver"));
 }

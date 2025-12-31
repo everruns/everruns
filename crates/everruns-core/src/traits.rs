@@ -102,6 +102,23 @@ pub trait AgentStore: Send + Sync {
 }
 
 // ============================================================================
+// SessionStore - For retrieving session information
+// ============================================================================
+
+use crate::session::Session;
+
+/// Trait for retrieving session configurations
+///
+/// Implementations can:
+/// - Load sessions from a database
+/// - Keep sessions in memory for testing
+#[async_trait]
+pub trait SessionStore: Send + Sync {
+    /// Get a session by ID
+    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>>;
+}
+
+// ============================================================================
 // LlmProviderStore - For retrieving LLM provider configurations
 // ============================================================================
 

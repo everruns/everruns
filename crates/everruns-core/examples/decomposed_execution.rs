@@ -25,7 +25,10 @@ use everruns_core::{
         ExecuteToolAtom, ExecuteToolInput,
     },
     capabilities::CapabilityRegistry,
-    memory::{InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageStore},
+    memory::{
+        InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageStore, InMemorySessionStore,
+    },
+    session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
     MessageStore,
 };
@@ -92,12 +95,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Create shared dependencies
     let agent_store = InMemoryAgentStore::new();
+    let session_store = InMemorySessionStore::new();
     let message_store = InMemoryMessageStore::new();
     let provider_store = InMemoryLlmProviderStore::from_env().await;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
     // Create an agent in the store
     let agent_id = Uuid::now_v7();
+    let session_id = Uuid::now_v7();
     let now = Utc::now();
     let agent = Agent {
         id: agent_id,
@@ -113,6 +118,20 @@ async fn main() -> anyhow::Result<()> {
     };
     agent_store.add_agent(agent).await;
 
+    // Create a session in the store
+    let session = Session {
+        id: session_id,
+        agent_id,
+        title: Some("Weather Query".to_string()),
+        tags: vec![],
+        model_id: None, // Will use agent's default_model_id or system default
+        status: SessionStatus::Pending,
+        created_at: now,
+        started_at: None,
+        finished_at: None,
+    };
+    session_store.add_session(session).await;
+
     // Create capability registry (example uses its own tools, so empty registry is fine)
     let capability_registry = CapabilityRegistry::new();
 
@@ -120,6 +139,7 @@ async fn main() -> anyhow::Result<()> {
     let add_user_message = AddUserMessageAtom::new(message_store.clone());
     let call_model = CallModelAtom::new(
         agent_store.clone(),
+        session_store,
         message_store.clone(),
         provider_store,
         capability_registry,
@@ -128,8 +148,6 @@ async fn main() -> anyhow::Result<()> {
 
     // Get tool definitions for tool execution
     let tool_definitions = tools.tool_definitions();
-
-    let session_id = Uuid::now_v7();
     let user_question = "What's the weather like in Paris?";
     let max_iterations = 5;
 

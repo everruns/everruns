@@ -13,7 +13,7 @@ use crate::atoms::{
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::message::Message;
-use crate::traits::{AgentStore, LlmProviderStore, MessageStore, ToolExecutor};
+use crate::traits::{AgentStore, LlmProviderStore, MessageStore, SessionStore, ToolExecutor};
 
 /// Result of loading messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,23 +30,26 @@ pub struct LoadMessagesResult {
 /// Each method internally creates and executes the appropriate atom.
 ///
 /// For direct atom access, use the individual atom factory methods.
-pub struct AgentLoop2<A, M, P, T>
+pub struct AgentLoop2<A, S, M, P, T>
 where
     A: AgentStore,
+    S: SessionStore,
     M: MessageStore,
     P: LlmProviderStore,
     T: ToolExecutor,
 {
     agent_store: A,
+    session_store: S,
     message_store: M,
     provider_store: P,
     tool_executor: T,
     capability_registry: CapabilityRegistry,
 }
 
-impl<A, M, P, T> AgentLoop2<A, M, P, T>
+impl<A, S, M, P, T> AgentLoop2<A, S, M, P, T>
 where
     A: AgentStore + Clone + Send + Sync,
+    S: SessionStore + Clone + Send + Sync,
     M: MessageStore + Clone + Send + Sync,
     P: LlmProviderStore + Clone + Send + Sync,
     T: ToolExecutor + Clone + Send + Sync,
@@ -54,6 +57,7 @@ where
     /// Create a new agent loop
     pub fn new(
         agent_store: A,
+        session_store: S,
         message_store: M,
         provider_store: P,
         tool_executor: T,
@@ -61,6 +65,7 @@ where
     ) -> Self {
         Self {
             agent_store,
+            session_store,
             message_store,
             provider_store,
             tool_executor,
@@ -71,6 +76,11 @@ where
     /// Get reference to the agent store
     pub fn agent_store(&self) -> &A {
         &self.agent_store
+    }
+
+    /// Get reference to the session store
+    pub fn session_store(&self) -> &S {
+        &self.session_store
     }
 
     /// Get reference to the message store
@@ -98,9 +108,10 @@ where
     }
 
     /// Create a CallModelAtom
-    pub fn call_model_atom(&self) -> CallModelAtom<A, M, P> {
+    pub fn call_model_atom(&self) -> CallModelAtom<A, S, M, P> {
         CallModelAtom::new(
             self.agent_store.clone(),
+            self.session_store.clone(),
             self.message_store.clone(),
             self.provider_store.clone(),
             self.capability_registry.clone(),

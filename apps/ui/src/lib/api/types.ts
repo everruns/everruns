@@ -104,7 +104,9 @@ export interface ReasoningConfig {
 }
 
 // Runtime controls for message processing
+// Model resolution priority: controls.model_id > session.model_id > agent.default_model_id > system default
 export interface Controls {
+  /** UUID of the model to use for this message (overrides session/agent settings) */
   model_id?: string;
   reasoning?: ReasoningConfig;
   max_tokens?: number;

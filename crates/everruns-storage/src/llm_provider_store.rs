@@ -127,7 +127,7 @@ fn parse_provider_type(provider_type_str: &str) -> LlmProviderType {
     match provider_type_str.to_lowercase().as_str() {
         "openai" => LlmProviderType::Openai,
         "anthropic" => LlmProviderType::Anthropic,
-        "azure_openai" | "azure-openai" | "azureopenai" => LlmProviderType::AzureOpenai,
+        "azure_openai" | "azure-openai" | "azureopenai" => LlmProviderType::AzureOpenAI,
         _ => LlmProviderType::Openai, // Default to OpenAI
     }
 }

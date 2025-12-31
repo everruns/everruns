@@ -1,6 +1,6 @@
-// OpenAI Protocol LLM Provider
+// OpenAI Protocol LLM Driver
 //
-// Implementation of LlmProvider for OpenAI-compatible APIs.
+// Implementation of LlmDriver for OpenAI-compatible APIs.
 // Requires the "openai" feature to be enabled.
 
 use async_trait::async_trait;
@@ -13,16 +13,16 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, Result};
 use crate::llm::{
-    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmProvider, LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 
-/// OpenAI Protocol LLM Provider
+/// OpenAI Protocol LLM Driver
 ///
-/// Implements `LlmProvider` for OpenAI-compatible APIs.
+/// Implements `LlmDriver` for OpenAI-compatible APIs.
 /// Supports streaming responses and tool calls.
 ///
 /// # Example
@@ -151,7 +151,7 @@ impl OpenAIProtocolLlmProvider {
 }
 
 #[async_trait]
-impl LlmProvider for OpenAIProtocolLlmProvider {
+impl LlmDriver for OpenAIProtocolLlmProvider {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,

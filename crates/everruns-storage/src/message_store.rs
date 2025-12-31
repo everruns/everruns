@@ -409,11 +409,13 @@ mod tests {
 
     #[test]
     fn test_event_to_message_with_controls() {
+        // Use a valid UUID for model_id (now Controls expects UUID)
+        let model_uuid = "11111111-1111-1111-1111-111111111111";
         let data = json!({
             "message_id": "01234567-89ab-cdef-0123-456789abcdef",
             "role": "user",
             "content": [{"type": "text", "text": "Test"}],
-            "controls": {"model_id": "openai/gpt-4o"},
+            "controls": {"model_id": model_uuid},
             "metadata": {"locale": "en-US"},
             "tags": []
         });
@@ -425,7 +427,7 @@ mod tests {
         assert!(message.controls.is_some());
         assert_eq!(
             message.controls.as_ref().unwrap().model_id,
-            Some("openai/gpt-4o".to_string())
+            Some(Uuid::parse_str(model_uuid).unwrap())
         );
         assert!(message.metadata.is_some());
     }

@@ -19,5 +19,5 @@ pub use workflow_registry::{WorkflowFactory, WorkflowRegistry, WorkflowRegistryB
 // Re-export adapters
 pub use adapters::{create_db_message_store, DbMessageStore};
 
-// Re-export OpenAI provider from the openai crate
-pub use everruns_openai::OpenAiProvider;
+// Re-export OpenAI driver from the openai crate
+pub use everruns_openai::OpenAiDriver;

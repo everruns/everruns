@@ -107,7 +107,7 @@ pub fn get_model_profile(
     match provider_type {
         LlmProviderType::Openai => get_openai_profile(model_id),
         LlmProviderType::Anthropic => get_anthropic_profile(model_id),
-        LlmProviderType::AzureOpenai => get_openai_profile(model_id), // Azure uses same model IDs
+        LlmProviderType::AzureOpenAI => get_openai_profile(model_id), // Azure uses same model IDs
     }
 }
 
@@ -1009,7 +1009,7 @@ mod tests {
 
     #[test]
     fn test_azure_uses_openai_profiles() {
-        let profile = get_model_profile(&LlmProviderType::AzureOpenai, "gpt-4o");
+        let profile = get_model_profile(&LlmProviderType::AzureOpenAI, "gpt-4o");
         assert!(profile.is_some());
         assert_eq!(profile.unwrap().name, "GPT-4o");
     }
