@@ -133,6 +133,54 @@ async fn test_full_agent_session_workflow() {
     println!("Created message: {}", message["id"]);
     assert_eq!(message["role"], "user");
 
+    // Step 6.2: Send a second message which should cancel the prior run
+    // This exercises the "new user message cancels current work" requirement.
+    println!("\nStep 6.2: Sending follow-up user message to interrupt work...");
+    let second_message_response = client
+        .post(format!(
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "Follow-up question"}]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to create second message");
+
+    assert_eq!(second_message_response.status(), 201);
+    let second_message: Value = second_message_response
+        .json()
+        .await
+        .expect("Failed to parse second message");
+    println!("Created second message: {}", second_message["id"]);
+    assert_eq!(second_message["role"], "user");
+
+    // Confirm a system cancellation message was added before the follow-up
+    let messages_after_interrupt: Value = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list messages after interrupt")
+        .json()
+        .await
+        .expect("Failed to parse messages after interrupt");
+
+    let system_count = messages_after_interrupt["data"]
+        .as_array()
+        .map(|arr| arr.iter().filter(|m| m["role"] == "system").count())
+        .unwrap_or(0);
+    assert!(
+        system_count > 0,
+        "Expected system message recording cancellation on follow-up"
+    );
+
     // Step 6.5: Cancel running work
     println!("\nStep 6.5: Cancelling running work...");
     let cancel_response = client
