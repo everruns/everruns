@@ -247,3 +247,119 @@ impl Tool for DivideTool {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capabilities::CapabilityRegistry;
+
+    #[test]
+    fn test_capability_metadata() {
+        let cap = TestMathCapability;
+
+        assert_eq!(cap.id(), "test_math");
+        assert_eq!(cap.name(), "Test Math");
+        assert_eq!(cap.icon(), Some("calculator"));
+        assert_eq!(cap.category(), Some("Testing"));
+        assert_eq!(cap.status(), CapabilityStatus::Available);
+    }
+
+    #[test]
+    fn test_capability_has_tools() {
+        let cap = TestMathCapability;
+        let tools = cap.tools();
+
+        assert_eq!(tools.len(), 4);
+        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(tool_names.contains(&"add"));
+        assert!(tool_names.contains(&"subtract"));
+        assert!(tool_names.contains(&"multiply"));
+        assert!(tool_names.contains(&"divide"));
+    }
+
+    #[test]
+    fn test_capability_has_system_prompt() {
+        let cap = TestMathCapability;
+        let prompt = cap.system_prompt_addition().unwrap();
+        assert!(prompt.contains("math tools"));
+    }
+
+    #[test]
+    fn test_capability_in_registry() {
+        let registry = CapabilityRegistry::with_builtins();
+        let cap = registry.get("test_math").unwrap();
+
+        assert_eq!(cap.id(), "test_math");
+        assert_eq!(cap.tools().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn test_add_tool() {
+        let tool = AddTool;
+        let result = tool.execute(serde_json::json!({"a": 5, "b": 3})).await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 8.0);
+            assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "add");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_subtract_tool() {
+        let tool = SubtractTool;
+        let result = tool.execute(serde_json::json!({"a": 10, "b": 4})).await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 6.0);
+            assert_eq!(
+                value.get("operation").unwrap().as_str().unwrap(),
+                "subtract"
+            );
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_multiply_tool() {
+        let tool = MultiplyTool;
+        let result = tool.execute(serde_json::json!({"a": 6, "b": 7})).await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 42.0);
+            assert_eq!(
+                value.get("operation").unwrap().as_str().unwrap(),
+                "multiply"
+            );
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_divide_tool() {
+        let tool = DivideTool;
+        let result = tool.execute(serde_json::json!({"a": 20, "b": 4})).await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 5.0);
+            assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "divide");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_divide_by_zero() {
+        let tool = DivideTool;
+        let result = tool.execute(serde_json::json!({"a": 10, "b": 0})).await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("divide by zero"));
+        } else {
+            panic!("Expected tool error for division by zero");
+        }
+    }
+}

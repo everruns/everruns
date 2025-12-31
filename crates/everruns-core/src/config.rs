@@ -208,3 +208,166 @@ impl Default for AgentConfigBuilder {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::AgentStatus;
+    use crate::capabilities::CapabilityId;
+    use crate::capability_types::CapabilityId as CapabilityIdType;
+
+    #[test]
+    fn test_agent_config_new() {
+        let config = AgentConfig::new("You are helpful.", "gpt-5.2");
+
+        assert_eq!(config.system_prompt, "You are helpful.");
+        assert_eq!(config.model, "gpt-5.2");
+        assert!(config.tools.is_empty());
+        assert_eq!(config.max_iterations, 10);
+        assert!(config.temperature.is_none());
+        assert!(config.max_tokens.is_none());
+    }
+
+    #[test]
+    fn test_agent_config_default() {
+        let config = AgentConfig::default();
+
+        assert_eq!(config.system_prompt, "You are a helpful assistant.");
+        assert_eq!(config.model, "gpt-5.2");
+        assert!(config.tools.is_empty());
+        assert_eq!(config.max_iterations, 10);
+    }
+
+    #[test]
+    fn test_builder_basic() {
+        let config = AgentConfigBuilder::new()
+            .system_prompt("Custom prompt")
+            .model("claude-3-opus")
+            .build();
+
+        assert_eq!(config.system_prompt, "Custom prompt");
+        assert_eq!(config.model, "claude-3-opus");
+    }
+
+    #[test]
+    fn test_builder_with_all_options() {
+        let config = AgentConfigBuilder::new()
+            .system_prompt("You are a coder.")
+            .model("gpt-5.2")
+            .max_iterations(20)
+            .temperature(0.7)
+            .max_tokens(4096)
+            .build();
+
+        assert_eq!(config.system_prompt, "You are a coder.");
+        assert_eq!(config.model, "gpt-5.2");
+        assert_eq!(config.max_iterations, 20);
+        assert_eq!(config.temperature, Some(0.7));
+        assert_eq!(config.max_tokens, Some(4096));
+    }
+
+    #[test]
+    fn test_builder_prepend_system_prompt() {
+        let config = AgentConfigBuilder::new()
+            .system_prompt("Base prompt.")
+            .prepend_system_prompt("Prefix text.")
+            .build();
+
+        assert_eq!(config.system_prompt, "Prefix text.\n\nBase prompt.");
+    }
+
+    #[test]
+    fn test_builder_prepend_empty_string_does_nothing() {
+        let config = AgentConfigBuilder::new()
+            .system_prompt("Base prompt.")
+            .prepend_system_prompt("")
+            .build();
+
+        assert_eq!(config.system_prompt, "Base prompt.");
+    }
+
+    #[test]
+    fn test_builder_with_capabilities_empty() {
+        let registry = CapabilityRegistry::with_builtins();
+        let config = AgentConfigBuilder::new()
+            .system_prompt("Base prompt.")
+            .with_capabilities(&[], &registry)
+            .build();
+
+        assert_eq!(config.system_prompt, "Base prompt.");
+        assert!(config.tools.is_empty());
+    }
+
+    #[test]
+    fn test_builder_with_capabilities_adds_tools() {
+        use crate::tool_types::ToolDefinition;
+
+        let registry = CapabilityRegistry::with_builtins();
+        let config = AgentConfigBuilder::new()
+            .system_prompt("Base prompt.")
+            .with_capabilities(&[CapabilityId::CURRENT_TIME.to_string()], &registry)
+            .build();
+
+        assert_eq!(config.tools.len(), 1);
+        match &config.tools[0] {
+            ToolDefinition::Builtin(tool) => {
+                assert_eq!(tool.name, "get_current_time");
+            }
+        }
+    }
+
+    #[test]
+    fn test_builder_with_capabilities_prepends_system_prompt() {
+        let registry = CapabilityRegistry::with_builtins();
+        let config = AgentConfigBuilder::new()
+            .system_prompt("Base prompt.")
+            .with_capabilities(&[CapabilityId::TEST_MATH.to_string()], &registry)
+            .build();
+
+        assert!(config.system_prompt.contains("math tools"));
+        assert!(config.system_prompt.ends_with("Base prompt."));
+    }
+
+    #[test]
+    fn test_builder_with_agent() {
+        use crate::tool_types::ToolDefinition;
+        use uuid::{NoContext, Timestamp, Uuid};
+
+        let registry = CapabilityRegistry::with_builtins();
+        let ts = Timestamp::now(NoContext);
+        let agent = Agent {
+            id: Uuid::new_v7(ts),
+            name: "Test Agent".to_string(),
+            description: None,
+            system_prompt: "Agent prompt.".to_string(),
+            capabilities: vec![CapabilityIdType::from(CapabilityId::CURRENT_TIME)],
+            status: AgentStatus::Active,
+            default_model_id: None,
+            tags: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let config = AgentConfigBuilder::new()
+            .with_agent(&agent, &registry)
+            .model("gpt-5.2")
+            .build();
+
+        assert!(config.system_prompt.contains("Agent prompt."));
+        assert_eq!(config.tools.len(), 1);
+        match &config.tools[0] {
+            ToolDefinition::Builtin(tool) => {
+                assert_eq!(tool.name, "get_current_time");
+            }
+        }
+    }
+
+    #[test]
+    fn test_builder_default() {
+        let builder = AgentConfigBuilder::default();
+        let config = builder.build();
+
+        assert_eq!(config.system_prompt, "You are a helpful assistant.");
+        assert_eq!(config.model, "gpt-5.2");
+    }
+}

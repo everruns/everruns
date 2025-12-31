@@ -109,3 +109,86 @@ impl Tool for GetCurrentTimeTool {
         ToolExecutionResult::success(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capabilities::CapabilityRegistry;
+
+    #[test]
+    fn test_capability_metadata() {
+        let cap = CurrentTimeCapability;
+
+        assert_eq!(cap.id(), "current_time");
+        assert_eq!(cap.name(), "Current Time");
+        assert_eq!(cap.icon(), Some("clock"));
+        assert_eq!(cap.category(), Some("Utilities"));
+        assert_eq!(cap.status(), CapabilityStatus::Available);
+    }
+
+    #[test]
+    fn test_capability_has_tools() {
+        let cap = CurrentTimeCapability;
+        let tools = cap.tools();
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name(), "get_current_time");
+    }
+
+    #[test]
+    fn test_capability_no_system_prompt() {
+        let cap = CurrentTimeCapability;
+        assert!(cap.system_prompt_addition().is_none());
+    }
+
+    #[test]
+    fn test_capability_in_registry() {
+        let registry = CapabilityRegistry::with_builtins();
+        let cap = registry.get("current_time").unwrap();
+
+        assert_eq!(cap.id(), "current_time");
+        assert_eq!(cap.tools().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_current_time_iso8601() {
+        let tool = GetCurrentTimeTool;
+        let result = tool.execute(serde_json::json!({})).await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert!(value.get("datetime").is_some());
+            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "iso8601");
+            assert_eq!(value.get("timezone").unwrap().as_str().unwrap(), "UTC");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_current_time_unix() {
+        let tool = GetCurrentTimeTool;
+        let result = tool.execute(serde_json::json!({"format": "unix"})).await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert!(value.get("timestamp").is_some());
+            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "unix");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_current_time_human() {
+        let tool = GetCurrentTimeTool;
+        let result = tool.execute(serde_json::json!({"format": "human"})).await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert!(value.get("datetime").is_some());
+            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "human");
+            let datetime = value.get("datetime").unwrap().as_str().unwrap();
+            assert!(datetime.contains("at"));
+        } else {
+            panic!("Expected success");
+        }
+    }
+}

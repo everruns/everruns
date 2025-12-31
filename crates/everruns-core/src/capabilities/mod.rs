@@ -455,7 +455,10 @@ pub fn apply_capabilities(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::ToolExecutionResult;
+
+    // =========================================================================
+    // CapabilityRegistry tests
+    // =========================================================================
 
     #[test]
     fn test_capability_registry_with_builtins() {
@@ -484,6 +487,18 @@ mod tests {
     }
 
     #[test]
+    fn test_capability_registry_builder() {
+        let registry = CapabilityRegistry::builder()
+            .capability(NoopCapability)
+            .capability(CurrentTimeCapability)
+            .build();
+
+        assert!(registry.has(CapabilityId::NOOP));
+        assert!(registry.has(CapabilityId::CURRENT_TIME));
+        assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
     fn test_capability_status() {
         let registry = CapabilityRegistry::with_builtins();
 
@@ -495,15 +510,21 @@ mod tests {
     }
 
     #[test]
-    fn test_current_time_capability_has_tools() {
+    fn test_capability_icons_and_categories() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
-        let tools = current_time.tools();
+        let noop = registry.get(CapabilityId::NOOP).unwrap();
+        assert_eq!(noop.icon(), Some("circle-off"));
+        assert_eq!(noop.category(), Some("Testing"));
 
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "get_current_time");
+        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
+        assert_eq!(current_time.icon(), Some("clock"));
+        assert_eq!(current_time.category(), Some("Utilities"));
     }
+
+    // =========================================================================
+    // apply_capabilities tests
+    // =========================================================================
 
     #[test]
     fn test_apply_capabilities_empty() {
@@ -612,228 +633,6 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_registry_builder() {
-        let registry = CapabilityRegistry::builder()
-            .capability(NoopCapability)
-            .capability(CurrentTimeCapability)
-            .build();
-
-        assert!(registry.has(CapabilityId::NOOP));
-        assert!(registry.has(CapabilityId::CURRENT_TIME));
-        assert_eq!(registry.len(), 2);
-    }
-
-    #[test]
-    fn test_capability_icons_and_categories() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let noop = registry.get(CapabilityId::NOOP).unwrap();
-        assert_eq!(noop.icon(), Some("circle-off"));
-        assert_eq!(noop.category(), Some("Testing"));
-
-        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
-        assert_eq!(current_time.icon(), Some("clock"));
-        assert_eq!(current_time.category(), Some("Utilities"));
-    }
-
-    #[tokio::test]
-    async fn test_get_current_time_tool_iso8601() {
-        let tool = GetCurrentTimeTool;
-        let result = tool.execute(serde_json::json!({})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert!(value.get("datetime").is_some());
-            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "iso8601");
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_current_time_tool_unix() {
-        let tool = GetCurrentTimeTool;
-        let result = tool.execute(serde_json::json!({"format": "unix"})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert!(value.get("timestamp").is_some());
-            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "unix");
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_current_time_tool_human() {
-        let tool = GetCurrentTimeTool;
-        let result = tool.execute(serde_json::json!({"format": "human"})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert!(value.get("datetime").is_some());
-            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "human");
-            // Human format should contain "at" for time
-            let datetime = value.get("datetime").unwrap().as_str().unwrap();
-            assert!(datetime.contains("at"));
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    // TestMath capability tests
-    #[test]
-    fn test_test_math_capability_has_tools() {
-        let registry = CapabilityRegistry::with_builtins();
-        let math = registry.get(CapabilityId::TEST_MATH).unwrap();
-        let tools = math.tools();
-
-        assert_eq!(tools.len(), 4);
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"add"));
-        assert!(tool_names.contains(&"subtract"));
-        assert!(tool_names.contains(&"multiply"));
-        assert!(tool_names.contains(&"divide"));
-    }
-
-    #[tokio::test]
-    async fn test_add_tool() {
-        let tool = AddTool;
-        let result = tool.execute(serde_json::json!({"a": 5, "b": 3})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 8.0);
-            assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "add");
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_subtract_tool() {
-        let tool = SubtractTool;
-        let result = tool.execute(serde_json::json!({"a": 10, "b": 4})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 6.0);
-            assert_eq!(
-                value.get("operation").unwrap().as_str().unwrap(),
-                "subtract"
-            );
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_multiply_tool() {
-        let tool = MultiplyTool;
-        let result = tool.execute(serde_json::json!({"a": 6, "b": 7})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 42.0);
-            assert_eq!(
-                value.get("operation").unwrap().as_str().unwrap(),
-                "multiply"
-            );
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_divide_tool() {
-        let tool = DivideTool;
-        let result = tool.execute(serde_json::json!({"a": 20, "b": 4})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 5.0);
-            assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "divide");
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_divide_by_zero() {
-        let tool = DivideTool;
-        let result = tool.execute(serde_json::json!({"a": 10, "b": 0})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("divide by zero"));
-        } else {
-            panic!("Expected tool error for division by zero");
-        }
-    }
-
-    // TestWeather capability tests
-    #[test]
-    fn test_test_weather_capability_has_tools() {
-        let registry = CapabilityRegistry::with_builtins();
-        let weather = registry.get(CapabilityId::TEST_WEATHER).unwrap();
-        let tools = weather.tools();
-
-        assert_eq!(tools.len(), 2);
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"get_weather"));
-        assert!(tool_names.contains(&"get_forecast"));
-    }
-
-    #[tokio::test]
-    async fn test_get_weather_tool() {
-        let tool = GetWeatherTool;
-        let result = tool
-            .execute(serde_json::json!({"location": "New York"}))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("location").unwrap().as_str().unwrap(), "New York");
-            assert!(value.get("temperature").is_some());
-            assert!(value.get("conditions").is_some());
-            assert!(value.get("humidity").is_some());
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_weather_fahrenheit() {
-        let tool = GetWeatherTool;
-        let result = tool
-            .execute(serde_json::json!({"location": "London", "units": "fahrenheit"}))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("units").unwrap().as_str().unwrap(), "fahrenheit");
-            // Fahrenheit temps should be higher than Celsius
-            let temp = value.get("temperature").unwrap().as_f64().unwrap();
-            assert!(temp > 30.0); // At least 30°F
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_forecast_tool() {
-        let tool = GetForecastTool;
-        let result = tool
-            .execute(serde_json::json!({"location": "Tokyo", "days": 5}))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("location").unwrap().as_str().unwrap(), "Tokyo");
-            assert_eq!(value.get("days").unwrap().as_u64().unwrap(), 5);
-            let forecast = value.get("forecast").unwrap().as_array().unwrap();
-            assert_eq!(forecast.len(), 5);
-            // Check first day has expected fields
-            let first_day = &forecast[0];
-            assert!(first_day.get("date").is_some());
-            assert!(first_day.get("high").is_some());
-            assert!(first_day.get("low").is_some());
-            assert!(first_day.get("conditions").is_some());
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[test]
     fn test_apply_capabilities_test_math() {
         let registry = CapabilityRegistry::with_builtins();
         let base_config = AgentConfig::new("You are a helpful assistant.", "gpt-5.2");
@@ -891,40 +690,6 @@ mod tests {
         assert!(applied.tool_registry.has("get_weather"));
     }
 
-    // StatelessTodoList capability tests
-    #[test]
-    fn test_stateless_todo_list_capability_has_tools() {
-        let registry = CapabilityRegistry::with_builtins();
-        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
-        let tools = capability.tools();
-
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "write_todos");
-    }
-
-    #[test]
-    fn test_stateless_todo_list_capability_has_system_prompt() {
-        let registry = CapabilityRegistry::with_builtins();
-        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
-
-        let system_prompt = capability.system_prompt_addition().unwrap();
-        assert!(system_prompt.contains("Task Management"));
-        assert!(system_prompt.contains("write_todos"));
-        assert!(system_prompt.contains("in_progress"));
-        assert!(system_prompt.contains("completed"));
-    }
-
-    #[test]
-    fn test_stateless_todo_list_capability_metadata() {
-        let registry = CapabilityRegistry::with_builtins();
-        let capability = registry.get(CapabilityId::STATELESS_TODO_LIST).unwrap();
-
-        assert_eq!(capability.name(), "Task Management");
-        assert_eq!(capability.icon(), Some("list-checks"));
-        assert_eq!(capability.category(), Some("Productivity"));
-        assert_eq!(capability.status(), CapabilityStatus::Available);
-    }
-
     #[test]
     fn test_apply_capabilities_stateless_todo_list() {
         let registry = CapabilityRegistry::with_builtins();
@@ -943,37 +708,6 @@ mod tests {
         assert_eq!(applied.tool_registry.len(), 1);
     }
 
-    // WebFetch capability tests
-    #[test]
-    fn test_web_fetch_capability_has_tools() {
-        let registry = CapabilityRegistry::with_builtins();
-        let capability = registry.get(CapabilityId::WEB_FETCH).unwrap();
-        let tools = capability.tools();
-
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "web_fetch");
-    }
-
-    #[test]
-    fn test_web_fetch_capability_no_system_prompt() {
-        let registry = CapabilityRegistry::with_builtins();
-        let capability = registry.get(CapabilityId::WEB_FETCH).unwrap();
-
-        // WebFetch should not have a system prompt addition
-        assert!(capability.system_prompt_addition().is_none());
-    }
-
-    #[test]
-    fn test_web_fetch_capability_metadata() {
-        let registry = CapabilityRegistry::with_builtins();
-        let capability = registry.get(CapabilityId::WEB_FETCH).unwrap();
-
-        assert_eq!(capability.name(), "Web Fetch");
-        assert_eq!(capability.icon(), Some("globe"));
-        assert_eq!(capability.category(), Some("Network"));
-        assert_eq!(capability.status(), CapabilityStatus::Available);
-    }
-
     #[test]
     fn test_apply_capabilities_web_fetch() {
         let registry = CapabilityRegistry::with_builtins();
@@ -989,43 +723,5 @@ mod tests {
         assert_eq!(applied.config.system_prompt, base_config.system_prompt);
         assert!(applied.tool_registry.has("web_fetch"));
         assert_eq!(applied.tool_registry.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_tool_missing_url() {
-        let tool = WebFetchTool;
-        let result = tool.execute(serde_json::json!({})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("url"));
-        } else {
-            panic!("Expected tool error for missing URL");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_tool_invalid_url() {
-        let tool = WebFetchTool;
-        let result = tool.execute(serde_json::json!({"url": "not-a-url"})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Invalid URL"));
-        } else {
-            panic!("Expected tool error for invalid URL");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_tool_invalid_method() {
-        let tool = WebFetchTool;
-        let result = tool
-            .execute(serde_json::json!({"url": "https://example.com", "method": "DELETE"}))
-            .await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Invalid method"));
-        } else {
-            panic!("Expected tool error for invalid method");
-        }
     }
 }

@@ -225,3 +225,120 @@ impl Tool for GetForecastTool {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capabilities::CapabilityRegistry;
+
+    #[test]
+    fn test_capability_metadata() {
+        let cap = TestWeatherCapability;
+
+        assert_eq!(cap.id(), "test_weather");
+        assert_eq!(cap.name(), "Test Weather");
+        assert_eq!(cap.icon(), Some("cloud-sun"));
+        assert_eq!(cap.category(), Some("Testing"));
+        assert_eq!(cap.status(), CapabilityStatus::Available);
+    }
+
+    #[test]
+    fn test_capability_has_tools() {
+        let cap = TestWeatherCapability;
+        let tools = cap.tools();
+
+        assert_eq!(tools.len(), 2);
+        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(tool_names.contains(&"get_weather"));
+        assert!(tool_names.contains(&"get_forecast"));
+    }
+
+    #[test]
+    fn test_capability_has_system_prompt() {
+        let cap = TestWeatherCapability;
+        let prompt = cap.system_prompt_addition().unwrap();
+        assert!(prompt.contains("weather tools"));
+    }
+
+    #[test]
+    fn test_capability_in_registry() {
+        let registry = CapabilityRegistry::with_builtins();
+        let cap = registry.get("test_weather").unwrap();
+
+        assert_eq!(cap.id(), "test_weather");
+        assert_eq!(cap.tools().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_weather_tool() {
+        let tool = GetWeatherTool;
+        let result = tool
+            .execute(serde_json::json!({"location": "New York"}))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("location").unwrap().as_str().unwrap(), "New York");
+            assert!(value.get("temperature").is_some());
+            assert!(value.get("conditions").is_some());
+            assert!(value.get("humidity").is_some());
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_weather_fahrenheit() {
+        let tool = GetWeatherTool;
+        let result = tool
+            .execute(serde_json::json!({"location": "London", "units": "fahrenheit"}))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("units").unwrap().as_str().unwrap(), "fahrenheit");
+            // Fahrenheit temps should be higher than Celsius
+            let temp = value.get("temperature").unwrap().as_f64().unwrap();
+            assert!(temp > 30.0); // At least 30°F
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_forecast_tool() {
+        let tool = GetForecastTool;
+        let result = tool
+            .execute(serde_json::json!({"location": "Tokyo", "days": 5}))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("location").unwrap().as_str().unwrap(), "Tokyo");
+            assert_eq!(value.get("days").unwrap().as_u64().unwrap(), 5);
+            let forecast = value.get("forecast").unwrap().as_array().unwrap();
+            assert_eq!(forecast.len(), 5);
+            // Check first day has expected fields
+            let first_day = &forecast[0];
+            assert!(first_day.get("date").is_some());
+            assert!(first_day.get("high").is_some());
+            assert!(first_day.get("low").is_some());
+            assert!(first_day.get("conditions").is_some());
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_forecast_default_days() {
+        let tool = GetForecastTool;
+        let result = tool
+            .execute(serde_json::json!({"location": "Paris"}))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("days").unwrap().as_u64().unwrap(), 3); // Default is 3
+            let forecast = value.get("forecast").unwrap().as_array().unwrap();
+            assert_eq!(forecast.len(), 3);
+        } else {
+            panic!("Expected success");
+        }
+    }
+}
