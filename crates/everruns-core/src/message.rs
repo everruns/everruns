@@ -67,9 +67,10 @@ pub struct ReasoningConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Controls {
-    /// Model ID to use for this message (format: "provider/model-name")
+    /// Model ID (UUID) to use for this message.
+    /// Overrides session and agent model settings.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<String>,
+    pub model_id: Option<Uuid>,
 
     /// Reasoning configuration
     #[serde(skip_serializing_if = "Option::is_none")]

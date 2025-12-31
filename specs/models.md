@@ -92,7 +92,7 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 
 ```json
 {
-  "model_id": "openai/gpt-4o",
+  "model_id": "550e8400-e29b-41d4-a716-446655440000",
   "reasoning": {
     "effort": "medium"
   }
@@ -100,6 +100,16 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 ```
 
 Controls are optional and allow per-message overrides for model selection and reasoning configuration.
+
+**Model resolution priority:**
+
+The model used for processing is determined using this priority chain:
+1. `controls.model_id` (from the last user message) - highest priority
+2. `session.model_id` - session-level override
+3. `agent.default_model_id` - agent's default model
+4. System default model - fallback if no model is configured above
+
+Each level references a UUID that points to a configured model in the `llm_models` table.
 
 **CreateMessageRequest structure:**
 
@@ -113,7 +123,7 @@ Controls are optional and allow per-message overrides for model selection and re
     ]
   },
   "controls": {
-    "model_id": "openai/gpt-4o",
+    "model_id": "550e8400-e29b-41d4-a716-446655440000",
     "reasoning": { "effort": "medium" }
   },
   "metadata": {

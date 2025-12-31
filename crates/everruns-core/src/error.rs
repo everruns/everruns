@@ -1,6 +1,7 @@
 // Error types for the agent loop
 
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Result type alias for agent loop operations
 pub type Result<T> = std::result::Result<T, AgentLoopError>;
@@ -40,6 +41,14 @@ pub enum AgentLoopError {
     #[error("No messages to process")]
     NoMessages,
 
+    /// Agent not found
+    #[error("Agent not found: {0}")]
+    AgentNotFound(Uuid),
+
+    /// Session not found
+    #[error("Session not found: {0}")]
+    SessionNotFound(Uuid),
+
     /// Internal error
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
@@ -69,5 +78,15 @@ impl AgentLoopError {
     /// Create a configuration error
     pub fn config(msg: impl Into<String>) -> Self {
         AgentLoopError::Configuration(msg.into())
+    }
+
+    /// Create an agent not found error
+    pub fn agent_not_found(agent_id: Uuid) -> Self {
+        AgentLoopError::AgentNotFound(agent_id)
+    }
+
+    /// Create a session not found error
+    pub fn session_not_found(session_id: Uuid) -> Self {
+        AgentLoopError::SessionNotFound(session_id)
     }
 }

@@ -2,7 +2,7 @@
 //
 // The main orchestrator for the agentic loop. Coordinates:
 // - Loading messages from MessageStore
-// - Calling LLM via LlmProvider
+// - Calling LLM via LlmDriver
 // - Executing tools via ToolExecutor
 // - Emitting events via EventEmitter
 
@@ -16,7 +16,7 @@ use crate::config::AgentConfig;
 use crate::error::{AgentLoopError, Result};
 use crate::events::LoopEvent;
 use crate::llm::{
-    LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmProvider, LlmStreamEvent,
+    LlmCallConfig, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmStreamEvent,
 };
 use crate::message::Message;
 use crate::step::{LoopStep, StepInput, StepOutput, StepResult};
@@ -40,13 +40,13 @@ pub struct LoopResult {
 /// Orchestrates the agentic loop with pluggable backends for:
 /// - Event emission (EventEmitter)
 /// - Message storage (MessageStore)
-/// - LLM calls (LlmProvider)
+/// - LLM calls (LlmDriver)
 /// - Tool execution (ToolExecutor)
 pub struct AgentLoop<E, M, L, T>
 where
     E: EventEmitter,
     M: MessageStore,
-    L: LlmProvider,
+    L: LlmDriver,
     T: ToolExecutor,
 {
     /// Configuration for this agent
@@ -55,8 +55,8 @@ where
     event_emitter: Arc<E>,
     /// Message store for persistence
     message_store: Arc<M>,
-    /// LLM provider for inference
-    llm_provider: Arc<L>,
+    /// LLM driver for inference
+    llm_driver: Arc<L>,
     /// Tool executor for tool calls
     tool_executor: Arc<T>,
 }
@@ -65,7 +65,7 @@ impl<E, M, L, T> AgentLoop<E, M, L, T>
 where
     E: EventEmitter,
     M: MessageStore,
-    L: LlmProvider,
+    L: LlmDriver,
     T: ToolExecutor,
 {
     /// Create a new agent loop
@@ -73,14 +73,14 @@ where
         config: AgentConfig,
         event_emitter: E,
         message_store: M,
-        llm_provider: L,
+        llm_driver: L,
         tool_executor: T,
     ) -> Self {
         Self {
             config,
             event_emitter: Arc::new(event_emitter),
             message_store: Arc::new(message_store),
-            llm_provider: Arc::new(llm_provider),
+            llm_driver: Arc::new(llm_driver),
             tool_executor: Arc::new(tool_executor),
         }
     }
@@ -90,14 +90,14 @@ where
         config: AgentConfig,
         event_emitter: Arc<E>,
         message_store: Arc<M>,
-        llm_provider: Arc<L>,
+        llm_driver: Arc<L>,
         tool_executor: Arc<T>,
     ) -> Self {
         Self {
             config,
             event_emitter,
             message_store,
-            llm_provider,
+            llm_driver,
             tool_executor,
         }
     }
@@ -393,7 +393,7 @@ where
 
         // Call LLM with streaming
         let mut stream = self
-            .llm_provider
+            .llm_driver
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
 

@@ -14,8 +14,7 @@ use everruns_core::atoms::{
     Atom, CallModelAtom, CallModelInput as AtomCallModelInput, ExecuteToolAtom,
     ExecuteToolInput as AtomExecuteToolInput,
 };
-use everruns_core::config::AgentConfigBuilder;
-use everruns_core::provider_factory::{create_provider, ProviderConfig, ProviderType};
+use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::traits::ToolContext;
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolRegistry};
 use everruns_storage::{repositories::Database, EncryptionService};
@@ -23,7 +22,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::adapters::{DbMessageStore, DbSessionFileStore};
+use crate::adapters::{
+    DbAgentStore, DbLlmProviderStore, DbMessageStore, DbSessionFileStore, DbSessionStore,
+};
 use crate::agent_workflow::{AgentConfigData, ToolCallData, ToolDefinitionData, ToolResultData};
 
 // ============================================================================
@@ -42,7 +43,10 @@ pub struct LoadAgentInput {
 pub struct CallModelInput {
     /// Session ID (UUID string)
     pub session_id: String,
+    /// Agent ID (UUID string)
+    pub agent_id: String,
     /// Agent configuration (model, tools, system_prompt)
+    /// Note: This is still passed for provider/API key info not available in Agent
     pub agent_config: AgentConfigData,
 }
 
@@ -260,53 +264,50 @@ pub async fn load_agent_activity(
 /// Call the LLM model using CallModelAtom
 ///
 /// This activity:
-/// 1. Loads messages from the database via MessageStore
-/// 2. Calls the LLM with the agent configuration
-/// 3. Stores the assistant response and any tool call messages
-/// 4. Returns the text and tool calls
-pub async fn call_model_activity(db: Database, input: CallModelInput) -> Result<CallModelOutput> {
+/// 1. Retrieves agent configuration via AgentStore
+/// 2. Resolves model and provider via LlmProviderStore
+/// 3. Loads messages from the database via MessageStore
+/// 4. Calls the LLM with the agent configuration
+/// 5. Stores the assistant response and any tool call messages
+/// 6. Returns the text and tool calls
+pub async fn call_model_activity(
+    db: Database,
+    encryption: EncryptionService,
+    input: CallModelInput,
+) -> Result<CallModelOutput> {
     let session_id: Uuid = input
         .session_id
         .parse()
         .context("Invalid session_id UUID")?;
 
-    // Create LLM provider based on agent config
-    let provider_type: ProviderType = input
-        .agent_config
-        .provider_type
-        .parse()
-        .unwrap_or(ProviderType::OpenAI);
+    let agent_id: Uuid = input.agent_id.parse().context("Invalid agent_id UUID")?;
 
     tracing::info!(
         session_id = %session_id,
-        model = %input.agent_config.model,
-        provider_type = %provider_type,
-        "Creating LLM provider for call_model_activity"
+        agent_id = %agent_id,
+        "Executing call_model_activity"
     );
 
-    let mut provider_config = ProviderConfig::new(provider_type);
-    if let Some(ref api_key) = input.agent_config.api_key {
-        provider_config = provider_config.with_api_key(api_key);
-    }
-    if let Some(ref base_url) = input.agent_config.base_url {
-        provider_config = provider_config.with_base_url(base_url);
-    }
-
-    let llm_provider =
-        create_provider(&provider_config).context("Failed to create LLM provider")?;
-
     // Create atom dependencies
-    let message_store = DbMessageStore::new(db);
-
-    // Build AgentConfig from the workflow's AgentConfigData
-    let agent_config = build_agent_config(&input.agent_config);
+    let agent_store = DbAgentStore::new(db.clone());
+    let session_store = DbSessionStore::new(db.clone());
+    let message_store = DbMessageStore::new(db.clone());
+    let provider_store = DbLlmProviderStore::new(db, encryption);
+    let capability_registry = CapabilityRegistry::with_builtins();
 
     // Create and execute CallModelAtom
-    let atom = CallModelAtom::new(message_store, llm_provider);
+    // The atom resolves model using chain: controls.model_id > session.model_id > agent.default_model_id
+    let atom = CallModelAtom::new(
+        agent_store,
+        session_store,
+        message_store,
+        provider_store,
+        capability_registry,
+    );
     let result = atom
         .execute(AtomCallModelInput {
             session_id,
-            config: agent_config,
+            agent_id,
         })
         .await
         .context("CallModelAtom execution failed")?;
@@ -397,18 +398,6 @@ pub async fn execute_tool_activity(
 // Helper Functions
 // ============================================================================
 
-/// Build AgentConfig from workflow's AgentConfigData
-fn build_agent_config(data: &AgentConfigData) -> everruns_core::AgentConfig {
-    let tools: Vec<ToolDefinition> = data.tools.iter().map(convert_tool_definition).collect();
-
-    AgentConfigBuilder::new()
-        .model(&data.model)
-        .system_prompt(data.system_prompt.as_deref().unwrap_or(""))
-        .tools(tools)
-        .max_iterations(data.max_iterations as usize)
-        .build()
-}
-
 /// Convert workflow's ToolDefinitionData to core's ToolDefinition
 fn convert_tool_definition(tool: &ToolDefinitionData) -> ToolDefinition {
     ToolDefinition::Builtin(BuiltinTool {
@@ -461,6 +450,7 @@ mod tests {
     fn test_call_model_input_serialization() {
         let input = CallModelInput {
             session_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            agent_id: "660e8400-e29b-41d4-a716-446655440000".into(),
             agent_config: AgentConfigData {
                 model: "gpt-4o".into(),
                 provider_type: "openai".into(),
@@ -475,6 +465,7 @@ mod tests {
         let json = serde_json::to_string(&input).unwrap();
         let parsed: CallModelInput = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.session_id, input.session_id);
+        assert_eq!(parsed.agent_id, input.agent_id);
         assert_eq!(parsed.agent_config.model, "gpt-4o");
     }
 
@@ -497,29 +488,6 @@ mod tests {
         let json = serde_json::to_string(&input).unwrap();
         let parsed: ExecuteToolInput = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.tool_call.name, "get_time");
-    }
-
-    #[test]
-    fn test_build_agent_config() {
-        let data = AgentConfigData {
-            model: "gpt-4o".into(),
-            provider_type: "openai".into(),
-            api_key: None,
-            base_url: None,
-            system_prompt: Some("Test prompt".into()),
-            tools: vec![ToolDefinitionData {
-                name: "test_tool".into(),
-                description: "A test tool".into(),
-                parameters: json!({}),
-            }],
-            max_iterations: 10,
-        };
-
-        let config = build_agent_config(&data);
-        assert_eq!(config.model, "gpt-4o");
-        assert_eq!(config.system_prompt, "Test prompt");
-        assert_eq!(config.tools.len(), 1);
-        assert_eq!(config.max_iterations, 10);
     }
 
     #[test]

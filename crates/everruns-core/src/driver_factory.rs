@@ -1,6 +1,6 @@
-// LLM Provider Factory
+// LLM Driver Factory
 //
-// Factory for creating LlmProvider instances based on provider type and configuration.
+// Factory for creating LlmDriver instances based on provider type and configuration.
 // This enables dynamic provider selection at runtime based on model/provider configuration.
 //
 // IMPORTANT: API keys must be provided from the database. This factory does NOT read
@@ -8,7 +8,7 @@
 
 use crate::anthropic::AnthropicLlmProvider;
 use crate::error::{AgentLoopError, Result};
-use crate::llm::LlmProvider;
+use crate::llm::LlmDriver;
 use crate::openai::OpenAIProtocolLlmProvider;
 
 /// Provider type enumeration matching the database/contracts
@@ -76,14 +76,14 @@ impl ProviderConfig {
     }
 }
 
-/// Boxed LLM provider for dynamic dispatch
-pub type BoxedLlmProvider = Box<dyn LlmProvider>;
+/// Boxed LLM driver for dynamic dispatch
+pub type BoxedLlmDriver = Box<dyn LlmDriver>;
 
-/// Create an LLM provider based on configuration
+/// Create an LLM driver based on configuration
 ///
 /// API keys must be provided in the config. This function does NOT fall back to
 /// environment variables. Keys should be decrypted from the database and passed here.
-pub fn create_provider(config: &ProviderConfig) -> Result<BoxedLlmProvider> {
+pub fn create_driver(config: &ProviderConfig) -> Result<BoxedLlmDriver> {
     // API key is required - it should be decrypted from the database
     let api_key = config.api_key.as_ref().ok_or_else(|| {
         AgentLoopError::llm("API key is required. Configure the API key in provider settings.")
@@ -149,15 +149,15 @@ mod tests {
     }
 
     #[test]
-    fn test_create_provider_requires_api_key() {
-        // Provider without API key should fail
+    fn test_create_driver_requires_api_key() {
+        // Driver without API key should fail
         let config = ProviderConfig::new(ProviderType::OpenAI);
-        let result = create_provider(&config);
+        let result = create_driver(&config);
         assert!(result.is_err());
 
-        // Provider with API key should succeed
+        // Driver with API key should succeed
         let config_with_key = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
-        let result = create_provider(&config_with_key);
+        let result = create_driver(&config_with_key);
         assert!(result.is_ok());
     }
 }

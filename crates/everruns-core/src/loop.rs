@@ -10,11 +10,10 @@ use crate::atoms::{
     AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, Atom, CallModelAtom,
     CallModelInput, CallModelResult, ExecuteToolAtom, ExecuteToolInput, ExecuteToolResult,
 };
-use crate::config::AgentConfig;
+use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
-use crate::llm::LlmProvider;
 use crate::message::Message;
-use crate::traits::{MessageStore, ToolExecutor};
+use crate::traits::{AgentStore, LlmProviderStore, MessageStore, SessionStore, ToolExecutor};
 
 /// Result of loading messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,30 +30,57 @@ pub struct LoadMessagesResult {
 /// Each method internally creates and executes the appropriate atom.
 ///
 /// For direct atom access, use the individual atom factory methods.
-pub struct AgentLoop2<M, L, T>
+pub struct AgentLoop2<A, S, M, P, T>
 where
+    A: AgentStore,
+    S: SessionStore,
     M: MessageStore,
-    L: LlmProvider,
+    P: LlmProviderStore,
     T: ToolExecutor,
 {
+    agent_store: A,
+    session_store: S,
     message_store: M,
-    llm_provider: L,
+    provider_store: P,
     tool_executor: T,
+    capability_registry: CapabilityRegistry,
 }
 
-impl<M, L, T> AgentLoop2<M, L, T>
+impl<A, S, M, P, T> AgentLoop2<A, S, M, P, T>
 where
+    A: AgentStore + Clone + Send + Sync,
+    S: SessionStore + Clone + Send + Sync,
     M: MessageStore + Clone + Send + Sync,
-    L: LlmProvider + Clone + Send + Sync,
+    P: LlmProviderStore + Clone + Send + Sync,
     T: ToolExecutor + Clone + Send + Sync,
 {
     /// Create a new agent loop
-    pub fn new(message_store: M, llm_provider: L, tool_executor: T) -> Self {
+    pub fn new(
+        agent_store: A,
+        session_store: S,
+        message_store: M,
+        provider_store: P,
+        tool_executor: T,
+        capability_registry: CapabilityRegistry,
+    ) -> Self {
         Self {
+            agent_store,
+            session_store,
             message_store,
-            llm_provider,
+            provider_store,
             tool_executor,
+            capability_registry,
         }
+    }
+
+    /// Get reference to the agent store
+    pub fn agent_store(&self) -> &A {
+        &self.agent_store
+    }
+
+    /// Get reference to the session store
+    pub fn session_store(&self) -> &S {
+        &self.session_store
     }
 
     /// Get reference to the message store
@@ -62,9 +88,9 @@ where
         &self.message_store
     }
 
-    /// Get reference to the LLM provider
-    pub fn llm_provider(&self) -> &L {
-        &self.llm_provider
+    /// Get reference to the provider store
+    pub fn provider_store(&self) -> &P {
+        &self.provider_store
     }
 
     /// Get reference to the tool executor
@@ -82,8 +108,14 @@ where
     }
 
     /// Create a CallModelAtom
-    pub fn call_model_atom(&self) -> CallModelAtom<M, L> {
-        CallModelAtom::new(self.message_store.clone(), self.llm_provider.clone())
+    pub fn call_model_atom(&self) -> CallModelAtom<A, S, M, P> {
+        CallModelAtom::new(
+            self.agent_store.clone(),
+            self.session_store.clone(),
+            self.message_store.clone(),
+            self.provider_store.clone(),
+            self.capability_registry.clone(),
+        )
     }
 
     /// Create an ExecuteToolAtom (single tool)
@@ -117,15 +149,11 @@ where
     }
 
     /// Call the LLM model (uses CallModelAtom)
-    pub async fn call_model(
-        &self,
-        session_id: Uuid,
-        config: &AgentConfig,
-    ) -> Result<CallModelResult> {
+    pub async fn call_model(&self, session_id: Uuid, agent_id: Uuid) -> Result<CallModelResult> {
         let atom = self.call_model_atom();
         atom.execute(CallModelInput {
             session_id,
-            config: config.clone(),
+            agent_id,
         })
         .await
     }
@@ -141,17 +169,24 @@ where
     pub async fn run_turn(
         &self,
         session_id: Uuid,
+        agent_id: Uuid,
         user_message: impl Into<String>,
-        config: &AgentConfig,
         max_iterations: usize,
     ) -> Result<String> {
+        // Load agent to get tool definitions for tool execution
+        let agent = self
+            .agent_store
+            .get_agent(agent_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::agent_not_found(agent_id))?;
+
         self.add_user_message(session_id, user_message).await?;
 
         let mut final_response = String::new();
 
         for iteration in 1..=max_iterations {
             // Call the model
-            let result = self.call_model(session_id, config).await?;
+            let result = self.call_model(session_id, agent_id).await?;
 
             // Capture the response text
             if !result.text.is_empty() {
@@ -164,7 +199,9 @@ where
             }
 
             // Execute tools in parallel using ExecuteToolAtom
-            let tool_definitions = config.tools.clone();
+            // TODO: Get tool definitions from agent capabilities
+            let tool_definitions = Vec::new();
+            let _ = &agent; // Silence unused warning for now
             let futures: Vec<_> = result
                 .tool_calls
                 .into_iter()

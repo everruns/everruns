@@ -2,8 +2,10 @@
 //
 // AgentConfig is a DB-agnostic configuration struct that can be:
 // - Created directly for standalone usage
-// - Built from an Agent entity via the `from_agent` method
+// - Built from an Agent entity via the `with_agent` builder method
 
+use crate::agent::Agent;
+use crate::capabilities::{CapabilityRegistry, CapabilityStatus};
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +40,7 @@ fn default_max_iterations() -> usize {
 }
 
 impl AgentConfig {
-    /// Create a new agent configuration
+    /// Create a new agent configuration with required fields only
     pub fn new(system_prompt: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             system_prompt: system_prompt.into(),
@@ -48,30 +50,6 @@ impl AgentConfig {
             temperature: None,
             max_tokens: None,
         }
-    }
-
-    /// Add tools to the configuration
-    pub fn with_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
-        self.tools = tools;
-        self
-    }
-
-    /// Set maximum iterations
-    pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
-        self.max_iterations = max_iterations;
-        self
-    }
-
-    /// Set temperature
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Set max tokens
-    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
     }
 }
 
@@ -89,21 +67,70 @@ impl Default for AgentConfig {
 }
 
 /// Builder for AgentConfig with fluent API
+///
+/// Use `new()` to start building, then chain methods like `with_agent()`,
+/// `model()`, `temperature()`, etc. Call `build()` to get the final config.
 pub struct AgentConfigBuilder {
     config: AgentConfig,
 }
 
 impl AgentConfigBuilder {
-    /// Start building a new configuration
+    /// Start building a new configuration from scratch
     pub fn new() -> Self {
         Self {
             config: AgentConfig::default(),
         }
     }
 
+    /// Apply an Agent's configuration to this builder.
+    ///
+    /// This sets the system prompt from the agent and applies the agent's
+    /// capabilities (tools and system prompt additions).
+    ///
+    /// # Arguments
+    ///
+    /// * `agent` - The Agent entity to apply
+    /// * `registry` - The capability registry containing capability implementations
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use everruns_core::config::AgentConfigBuilder;
+    /// use everruns_core::capabilities::CapabilityRegistry;
+    ///
+    /// let registry = CapabilityRegistry::with_builtins();
+    /// let config = AgentConfigBuilder::new()
+    ///     .with_agent(&agent, &registry)
+    ///     .model("gpt-4o")
+    ///     .temperature(0.7)
+    ///     .build();
+    /// ```
+    pub fn with_agent(self, agent: &Agent, registry: &CapabilityRegistry) -> Self {
+        let capability_ids: Vec<String> = agent
+            .capabilities
+            .iter()
+            .map(|cap_id| cap_id.as_str().to_string())
+            .collect();
+
+        // Set system prompt from agent
+        let builder = self.system_prompt(&agent.system_prompt);
+
+        // Apply capabilities to builder
+        apply_capabilities_to_builder(builder, &capability_ids, registry)
+    }
+
     /// Set the system prompt
     pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.config.system_prompt = prompt.into();
+        self
+    }
+
+    /// Prepend text to the system prompt
+    pub fn prepend_system_prompt(mut self, prefix: impl Into<String>) -> Self {
+        let prefix = prefix.into();
+        if !prefix.is_empty() {
+            self.config.system_prompt = format!("{}\n\n{}", prefix, self.config.system_prompt);
+        }
         self
     }
 
@@ -153,4 +180,56 @@ impl Default for AgentConfigBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Apply capabilities to an AgentConfigBuilder using builder methods.
+///
+/// This function:
+/// 1. Collects system prompt additions from capabilities (in order)
+/// 2. Prepends them to the builder's system prompt
+/// 3. Adds tool definitions from capabilities
+///
+/// # Arguments
+///
+/// * `builder` - The builder to modify
+/// * `capability_ids` - Ordered list of capability IDs to apply
+/// * `registry` - The capability registry containing implementations
+fn apply_capabilities_to_builder(
+    mut builder: AgentConfigBuilder,
+    capability_ids: &[String],
+    registry: &CapabilityRegistry,
+) -> AgentConfigBuilder {
+    let mut system_prompt_parts: Vec<String> = Vec::new();
+    let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
+
+    // Collect contributions from capabilities
+    for cap_id in capability_ids {
+        if let Some(capability) = registry.get(cap_id) {
+            // Only apply available capabilities
+            if capability.status() != CapabilityStatus::Available {
+                continue;
+            }
+
+            // Collect system prompt addition
+            if let Some(addition) = capability.system_prompt_addition() {
+                system_prompt_parts.push(addition.to_string());
+            }
+
+            // Collect tool definitions
+            tool_definitions.extend(capability.tool_definitions());
+        }
+    }
+
+    // Apply system prompt additions (prepend to existing)
+    if !system_prompt_parts.is_empty() {
+        let prefix = system_prompt_parts.join("\n\n");
+        builder = builder.prepend_system_prompt(prefix);
+    }
+
+    // Apply tool definitions
+    if !tool_definitions.is_empty() {
+        builder = builder.tools(tool_definitions);
+    }
+
+    builder
 }

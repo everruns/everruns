@@ -5,10 +5,11 @@
 
 use async_trait::async_trait;
 use everruns_core::{
+    config::AgentConfigBuilder,
     memory::{InMemoryEventEmitter, InMemoryMessageStore, MockLlmProvider, MockLlmResponse},
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
-    AgentConfig, AgentLoop, GetCurrentTimeTool, LoopEvent, Message, MessageRole,
+    AgentLoop, GetCurrentTimeTool, LoopEvent, Message, MessageRole,
 };
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use serde_json::json;
@@ -184,14 +185,17 @@ async fn test_agent_loop_with_tool_execution() {
         .await;
 
     // Create agent config with the tool definition
-    let config = AgentConfig::new("You are a helpful assistant", "gpt-test")
-        .with_max_iterations(5)
-        .with_tools(vec![ToolDefinition::Builtin(BuiltinTool {
+    let config = AgentConfigBuilder::new()
+        .system_prompt("You are a helpful assistant")
+        .model("gpt-test")
+        .max_iterations(5)
+        .tool(ToolDefinition::Builtin(BuiltinTool {
             name: "get_current_time".to_string(),
             description: "Get the current time".to_string(),
             parameters: json!({}),
             policy: ToolPolicy::Auto,
-        })]);
+        }))
+        .build();
 
     // Create a registry with built-in tools
     let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
@@ -229,14 +233,17 @@ async fn test_agent_loop_with_tool_execution() {
     let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
     let event_emitter = InMemoryEventEmitter::new();
 
-    let config = AgentConfig::new("You are a helpful assistant", "gpt-test")
-        .with_max_iterations(5)
-        .with_tools(vec![ToolDefinition::Builtin(BuiltinTool {
+    let config = AgentConfigBuilder::new()
+        .system_prompt("You are a helpful assistant")
+        .model("gpt-test")
+        .max_iterations(5)
+        .tool(ToolDefinition::Builtin(BuiltinTool {
             name: "get_current_time".to_string(),
             description: "Get the current time".to_string(),
             parameters: json!({}),
             policy: ToolPolicy::Auto,
-        })]);
+        }))
+        .build();
 
     // Use Arc to share message store
     let message_store_arc = Arc::new(message_store);

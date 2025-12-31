@@ -154,6 +154,7 @@ pub trait Capability: Send + Sync {
 ///     println!("{}: {}", cap.id(), cap.name());
 /// }
 /// ```
+#[derive(Clone)]
 pub struct CapabilityRegistry {
     capabilities: HashMap<String, Arc<dyn Capability>>,
 }

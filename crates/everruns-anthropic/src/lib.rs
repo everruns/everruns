@@ -1,7 +1,7 @@
-// Anthropic Provider Implementation
+// Anthropic Driver Implementation
 //
-// This crate provides an Anthropic Claude LLM provider implementation.
-// It implements the LlmProvider trait from everruns-core, enabling
+// This crate provides an Anthropic Claude LLM driver implementation.
+// It implements the LlmDriver trait from everruns-core, enabling
 // the agent loop to communicate with Anthropic's Messages API.
 
 mod provider;
@@ -9,7 +9,7 @@ mod provider;
 #[cfg(test)]
 mod tests;
 
-pub use provider::AnthropicProvider;
+pub use provider::AnthropicDriver;
 
 // Re-export core types for convenience
-pub use everruns_core::llm::LlmProvider;
+pub use everruns_core::llm::LlmDriver;

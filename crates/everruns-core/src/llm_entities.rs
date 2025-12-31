@@ -17,7 +17,8 @@ use utoipa::ToSchema;
 pub enum LlmProviderType {
     Openai,
     Anthropic,
-    AzureOpenai,
+    #[serde(rename = "azure_openai")]
+    AzureOpenAI,
 }
 
 impl std::fmt::Display for LlmProviderType {
@@ -25,7 +26,7 @@ impl std::fmt::Display for LlmProviderType {
         match self {
             LlmProviderType::Openai => write!(f, "openai"),
             LlmProviderType::Anthropic => write!(f, "anthropic"),
-            LlmProviderType::AzureOpenai => write!(f, "azure_openai"),
+            LlmProviderType::AzureOpenAI => write!(f, "azure_openai"),
         }
     }
 }
@@ -37,7 +38,7 @@ impl std::str::FromStr for LlmProviderType {
         match s {
             "openai" => Ok(LlmProviderType::Openai),
             "anthropic" => Ok(LlmProviderType::Anthropic),
-            "azure_openai" => Ok(LlmProviderType::AzureOpenai),
+            "azure_openai" => Ok(LlmProviderType::AzureOpenAI),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
     }

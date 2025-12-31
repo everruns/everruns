@@ -13,18 +13,22 @@
 //! - Debugging and testing individual steps
 //!
 //! Prerequisites:
-//! - Set OPENAI_API_KEY environment variable
+//! - Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable
 //!
-//! Run with: cargo run -p everruns-core --example decomposed_execution --features openai
+//! Run with: cargo run -p everruns-core --example decomposed_execution
 
+use chrono::Utc;
 use everruns_core::{
+    agent::{Agent, AgentStatus},
     atoms::{
         AddUserMessageAtom, AddUserMessageInput, Atom, CallModelAtom, CallModelInput,
         ExecuteToolAtom, ExecuteToolInput,
     },
-    config::AgentConfigBuilder,
-    memory::InMemoryMessageStore,
-    openai::OpenAIProtocolLlmProvider,
+    capabilities::CapabilityRegistry,
+    memory::{
+        InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageStore, InMemorySessionStore,
+    },
+    session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
     MessageStore,
 };
@@ -79,34 +83,71 @@ async fn main() -> anyhow::Result<()> {
         .with_max_level(tracing::Level::WARN)
         .init();
 
-    if std::env::var("OPENAI_API_KEY").is_err() {
-        eprintln!("Error: OPENAI_API_KEY environment variable is not set");
+    if std::env::var("OPENAI_API_KEY").is_err() && std::env::var("ANTHROPIC_API_KEY").is_err() {
+        eprintln!("Error: No API key environment variable is set");
         eprintln!("  export OPENAI_API_KEY=your-api-key");
+        eprintln!("  or");
+        eprintln!("  export ANTHROPIC_API_KEY=your-api-key");
         std::process::exit(1);
     }
 
     println!("=== ReACT Loop with Atoms ===\n");
 
     // Create shared dependencies
+    let agent_store = InMemoryAgentStore::new();
+    let session_store = InMemorySessionStore::new();
     let message_store = InMemoryMessageStore::new();
-    let llm_provider = OpenAIProtocolLlmProvider::from_env()?;
+    let provider_store = InMemoryLlmProviderStore::from_env().await;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
+
+    // Create an agent in the store
+    let agent_id = Uuid::now_v7();
+    let session_id = Uuid::now_v7();
+    let now = Utc::now();
+    let agent = Agent {
+        id: agent_id,
+        name: "Weather Assistant".to_string(),
+        description: Some("A helpful weather assistant".to_string()),
+        system_prompt: "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.".to_string(),
+        default_model_id: None,
+        tags: vec![],
+        capabilities: vec![],
+        status: AgentStatus::Active,
+        created_at: now,
+        updated_at: now,
+    };
+    agent_store.add_agent(agent).await;
+
+    // Create a session in the store
+    let session = Session {
+        id: session_id,
+        agent_id,
+        title: Some("Weather Query".to_string()),
+        tags: vec![],
+        model_id: None, // Will use agent's default_model_id or system default
+        status: SessionStatus::Pending,
+        created_at: now,
+        started_at: None,
+        finished_at: None,
+    };
+    session_store.add_session(session).await;
+
+    // Create capability registry (example uses its own tools, so empty registry is fine)
+    let capability_registry = CapabilityRegistry::new();
 
     // Create atoms
     let add_user_message = AddUserMessageAtom::new(message_store.clone());
-    let call_model = CallModelAtom::new(message_store.clone(), llm_provider.clone());
+    let call_model = CallModelAtom::new(
+        agent_store.clone(),
+        session_store,
+        message_store.clone(),
+        provider_store,
+        capability_registry,
+    );
     let execute_tool = ExecuteToolAtom::new(message_store.clone(), tools.clone());
 
-    // Create config with tools
-    let config = AgentConfigBuilder::new()
-        .system_prompt(
-            "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.",
-        )
-        .model("gpt-5.2")
-        .tools(tools.tool_definitions())
-        .build();
-
-    let session_id = Uuid::now_v7();
+    // Get tool definitions for tool execution
+    let tool_definitions = tools.tool_definitions();
     let user_question = "What's the weather like in Paris?";
     let max_iterations = 5;
 
@@ -139,7 +180,7 @@ async fn main() -> anyhow::Result<()> {
         let model_result = call_model
             .execute(CallModelInput {
                 session_id,
-                config: config.clone(),
+                agent_id,
             })
             .await?;
 
@@ -173,7 +214,7 @@ async fn main() -> anyhow::Result<()> {
                 .execute(ExecuteToolInput {
                     session_id,
                     tool_call: tool_call.clone(),
-                    tool_definitions: config.tools.clone(),
+                    tool_definitions: tool_definitions.clone(),
                     tool_context: None, // Example doesn't use context-aware tools
                 })
                 .await?;

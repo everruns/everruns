@@ -5,6 +5,8 @@
 // - Database implementations for production
 // - Channel-based implementations for streaming
 
+use crate::agent::Agent;
+use crate::llm_entities::LlmProviderType;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
@@ -81,6 +83,79 @@ pub trait MessageStore: Send + Sync {
     async fn count(&self, session_id: Uuid) -> Result<usize> {
         Ok(self.load(session_id).await?.len())
     }
+}
+
+// ============================================================================
+// AgentStore - For retrieving agent configurations
+// ============================================================================
+
+/// Trait for retrieving agent configurations
+///
+/// Implementations can:
+/// - Load agents from a database
+/// - Keep agents in memory for testing
+/// - Load agents from a configuration file
+#[async_trait]
+pub trait AgentStore: Send + Sync {
+    /// Get an agent by ID
+    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>>;
+}
+
+// ============================================================================
+// SessionStore - For retrieving session information
+// ============================================================================
+
+use crate::session::Session;
+
+/// Trait for retrieving session configurations
+///
+/// Implementations can:
+/// - Load sessions from a database
+/// - Keep sessions in memory for testing
+#[async_trait]
+pub trait SessionStore: Send + Sync {
+    /// Get a session by ID
+    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>>;
+}
+
+// ============================================================================
+// LlmProviderStore - For retrieving LLM provider configurations
+// ============================================================================
+
+/// Model information with provider details needed for LLM calls
+#[derive(Debug, Clone)]
+pub struct ModelWithProvider {
+    /// The model ID string to pass to the LLM API (e.g., "gpt-4o", "claude-3-opus")
+    pub model_id: String,
+    /// Provider type for factory selection
+    pub provider_type: LlmProviderType,
+    /// Decrypted API key (if configured)
+    pub api_key: Option<String>,
+    /// Optional base URL override
+    pub base_url: Option<String>,
+}
+
+/// Trait for retrieving LLM provider and model configurations
+///
+/// This trait abstracts the database lookup and API key decryption needed
+/// to create LLM providers at runtime.
+///
+/// Implementations can:
+/// - Load from a database with encrypted API keys
+/// - Use in-memory configurations for testing
+/// - Load from environment variables for development
+#[async_trait]
+pub trait LlmProviderStore: Send + Sync {
+    /// Get model with provider info by model UUID
+    ///
+    /// Returns the model string ID, provider type, decrypted API key, and base URL
+    /// needed to create an LLM provider via the factory.
+    async fn get_model_with_provider(&self, model_id: Uuid) -> Result<Option<ModelWithProvider>>;
+
+    /// Get the default model with provider info
+    ///
+    /// Returns the system default model when an agent has no default_model_id set.
+    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>>;
 }
 
 // ============================================================================

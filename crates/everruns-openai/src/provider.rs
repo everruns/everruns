@@ -1,20 +1,20 @@
-// OpenAI Provider Implementation
+// OpenAI Driver Implementation
 //
-// This module provides OpenAiProvider as a wrapper around the core
+// This module provides OpenAiDriver as a wrapper around the core
 // OpenAIProtocolLlmProvider implementation.
 
 use anyhow::Result;
 
-/// OpenAI LLM provider
+/// OpenAI LLM driver
 ///
 /// This is a thin wrapper around `everruns_core::openai::OpenAIProtocolLlmProvider`
 /// that provides backward compatibility with the existing API.
-pub struct OpenAiProvider {
+pub struct OpenAiDriver {
     inner: everruns_core::openai::OpenAIProtocolLlmProvider,
 }
 
-impl OpenAiProvider {
-    /// Create a new OpenAI provider
+impl OpenAiDriver {
+    /// Create a new OpenAI driver
     /// Requires OPENAI_API_KEY environment variable
     pub fn new() -> Result<Self> {
         let inner = everruns_core::openai::OpenAIProtocolLlmProvider::from_env()
@@ -22,14 +22,14 @@ impl OpenAiProvider {
         Ok(Self { inner })
     }
 
-    /// Create a new OpenAI provider with a custom API key
+    /// Create a new OpenAI driver with a custom API key
     pub fn with_api_key(api_key: String) -> Self {
         Self {
             inner: everruns_core::openai::OpenAIProtocolLlmProvider::new(api_key),
         }
     }
 
-    /// Create a new OpenAI provider with a custom API key and base URL
+    /// Create a new OpenAI driver with a custom API key and base URL
     pub fn with_base_url(api_key: String, base_url: String) -> Self {
         Self {
             inner: everruns_core::openai::OpenAIProtocolLlmProvider::with_base_url(
@@ -38,24 +38,24 @@ impl OpenAiProvider {
         }
     }
 
-    /// Get a reference to the inner provider
+    /// Get a reference to the inner driver
     pub fn inner(&self) -> &everruns_core::openai::OpenAIProtocolLlmProvider {
         &self.inner
     }
 }
 
-impl Default for OpenAiProvider {
+impl Default for OpenAiDriver {
     fn default() -> Self {
-        Self::new().expect("Failed to create OpenAI provider")
+        Self::new().expect("Failed to create OpenAI driver")
     }
 }
 
-// Delegate LlmProvider implementation to inner
+// Delegate LlmDriver implementation to inner
 use async_trait::async_trait;
-use everruns_core::llm::{LlmCallConfig, LlmMessage, LlmProvider, LlmResponseStream};
+use everruns_core::llm::{LlmCallConfig, LlmDriver, LlmMessage, LlmResponseStream};
 
 #[async_trait]
-impl LlmProvider for OpenAiProvider {
+impl LlmDriver for OpenAiDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -65,9 +65,9 @@ impl LlmProvider for OpenAiProvider {
     }
 }
 
-impl std::fmt::Debug for OpenAiProvider {
+impl std::fmt::Debug for OpenAiDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAiProvider")
+        f.debug_struct("OpenAiDriver")
             .field("inner", &self.inner)
             .finish()
     }
