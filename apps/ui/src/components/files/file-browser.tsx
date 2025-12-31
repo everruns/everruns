@@ -314,8 +314,6 @@ interface FileItemProps {
 }
 
 function FileItem({ file, isSelected, isExpanded, onClick, onDelete }: FileItemProps) {
-  const [showActions, setShowActions] = useState(false);
-
   return (
     <div
       className={`group flex items-center gap-2 p-2 text-sm rounded-md cursor-pointer transition-colors ${
@@ -323,8 +321,6 @@ function FileItem({ file, isSelected, isExpanded, onClick, onDelete }: FileItemP
       }`}
       onClick={onClick}
       onKeyDown={(e) => e.key === "Enter" && onClick()}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
     >
       {file.is_directory ? (
         <>
@@ -351,19 +347,17 @@ function FileItem({ file, isSelected, isExpanded, onClick, onDelete }: FileItemP
             {formatFileSize(file.size_bytes)}
           </Badge>
         )}
-        {showActions && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 opacity-0 group-hover:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Trash2 className="h-3 w-3 text-destructive" />
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 opacity-0 group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <Trash2 className="h-3 w-3 text-destructive" />
+        </Button>
       </div>
     </div>
   );
