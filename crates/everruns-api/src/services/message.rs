@@ -62,7 +62,7 @@ impl MessageService {
                         "role": "system",
                         "content": [{
                             "type": "text",
-                            "text": "Work interrupted by new message."
+                            "text": "Execution interrupted by new message."
                         }]
                     }),
                 };

@@ -1,7 +1,6 @@
 // Session service for business logic (M2)
 
 use anyhow::Result;
-use chrono::Utc;
 use everruns_core::{Session, SessionStatus};
 use everruns_storage::{
     models::{CreateEventRow, CreateSessionRow, UpdateSession},
@@ -70,8 +69,8 @@ impl SessionService {
     /// Cancel a running session
     ///
     /// This will:
-    /// 1. Cancel the running workflow
-    /// 2. Update session status to pending
+    /// 1. Stop the running workflow (if running)
+    /// 2. Update session status to pending (ready for new messages)
     /// 3. Create a cancellation event with a system message
     pub async fn cancel(&self, id: Uuid, runner: Arc<dyn AgentRunner>) -> Result<Option<Session>> {
         // Get the session first
@@ -90,7 +89,7 @@ impl SessionService {
             return Ok(Some(Self::row_to_session(session)));
         }
 
-        // Cancel the workflow
+        // Stop the running workflow
         if let Err(e) = runner.cancel_run(id).await {
             tracing::warn!(
                 session_id = %id,
@@ -100,10 +99,10 @@ impl SessionService {
             // Continue anyway - the workflow may have already finished
         }
 
-        // Update session status to pending
+        // Update session status to pending (ready for new messages)
+        // Note: Don't set finished_at - the session isn't finished, just interrupted
         let update = UpdateSession {
             status: Some("pending".to_string()),
-            finished_at: Some(Utc::now()),
             ..Default::default()
         };
         let updated = self.db.update_session(id, update).await?;
@@ -115,7 +114,7 @@ impl SessionService {
             "role": "system",
             "content": [{
                 "type": "text",
-                "text": "Work cancelled by user."
+                "text": "Execution cancelled."
             }]
         });
 
@@ -128,7 +127,7 @@ impl SessionService {
 
         tracing::info!(
             session_id = %id,
-            "Session cancelled successfully"
+            "Session workflow cancelled, ready for new messages"
         );
 
         Ok(updated.map(Self::row_to_session))
