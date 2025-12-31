@@ -67,3 +67,13 @@ export async function deleteSession(
 ): Promise<void> {
   await api.delete(`/v1/agents/${agentId}/sessions/${sessionId}`);
 }
+
+export async function cancelSession(
+  agentId: string,
+  sessionId: string
+): Promise<Session> {
+  const response = await api.post<Session>(
+    `/v1/agents/${agentId}/sessions/${sessionId}/cancel`
+  );
+  return response.data;
+}

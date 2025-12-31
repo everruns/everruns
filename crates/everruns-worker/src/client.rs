@@ -13,9 +13,12 @@ use tracing::info;
 
 use temporal_sdk_core::{
     protos::temporal::api::{
-        common::v1::{Payloads, WorkflowType},
+        common::v1::{Payloads, WorkflowExecution, WorkflowType},
         taskqueue::v1::TaskQueue,
-        workflowservice::v1::{StartWorkflowExecutionRequest, StartWorkflowExecutionResponse},
+        workflowservice::v1::{
+            StartWorkflowExecutionRequest, StartWorkflowExecutionResponse,
+            TerminateWorkflowExecutionRequest,
+        },
     },
     Core, CoreInitOptions, ServerGateway, ServerGatewayApis, ServerGatewayOptions, Url,
 };
@@ -128,6 +131,47 @@ impl TemporalClient {
     /// Get the workflow ID for a session
     pub fn workflow_id_for_session(session_id: uuid::Uuid) -> String {
         format!("session-{}", session_id)
+    }
+
+    /// Terminate a workflow execution
+    ///
+    /// This immediately terminates the workflow, stopping any running activities.
+    /// The workflow will record a WorkflowExecutionTerminated event in history.
+    pub async fn terminate_workflow(&self, session_id: uuid::Uuid, reason: &str) -> Result<()> {
+        let workflow_id = Self::workflow_id_for_session(session_id);
+
+        info!(
+            workflow_id = %workflow_id,
+            session_id = %session_id,
+            reason = %reason,
+            "Terminating workflow"
+        );
+
+        let request = TerminateWorkflowExecutionRequest {
+            namespace: self.config.temporal_namespace(),
+            workflow_execution: Some(WorkflowExecution {
+                workflow_id: workflow_id.clone(),
+                run_id: String::new(), // Empty run_id terminates the latest run
+            }),
+            reason: reason.to_string(),
+            ..Default::default()
+        };
+
+        // Call terminate on the service
+        self.gateway
+            .service
+            .clone()
+            .terminate_workflow_execution(request)
+            .await
+            .context("Failed to terminate workflow")?;
+
+        info!(
+            workflow_id = %workflow_id,
+            session_id = %session_id,
+            "Workflow terminated successfully"
+        );
+
+        Ok(())
     }
 
     /// Get the underlying gateway for advanced operations

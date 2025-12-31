@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useRef, useEffect } from "react";
-import { useAgent, useSession, useEvents, useRawEvents, useSendMessage, useLlmModel } from "@/hooks";
+import { useAgent, useSession, useEvents, useRawEvents, useSendMessage, useLlmModel, useCancelSession } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Send, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder, Activity } from "lucide-react";
+import { ArrowLeft, Send, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder, Activity, StopCircle, AlertCircle } from "lucide-react";
 import type { Message, Controls, ReasoningEffort, FileInfo } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
@@ -45,6 +45,7 @@ export default function SessionDetailPage({
     sessionId
   );
   const sendMessage = useSendMessage();
+  const cancelSession = useCancelSession();
 
   // Fetch LLM model info if session has a model_id
   const { data: llmModel } = useLlmModel(session?.model_id ?? "");
@@ -135,6 +136,17 @@ export default function SessionDetailPage({
     }
   };
 
+  const handleCancel = async () => {
+    if (cancelSession.isPending) return;
+
+    try {
+      await cancelSession.mutateAsync({ agentId, sessionId });
+      setIsWaitingForResponse(false);
+    } catch (error) {
+      console.error("Failed to cancel session:", error);
+    }
+  };
+
   // Extract message content - handles new ContentPart[] format
   // Filters out "Tool call:" lines which are rendered separately
   const getMessageContent = (message: Message): string => {
@@ -221,7 +233,23 @@ export default function SessionDetailPage({
               </Badge>
             )}
             {session.status === "running" && (
-              <Badge variant="default">Processing...</Badge>
+              <>
+                <Badge variant="default">Processing...</Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancel}
+                  disabled={cancelSession.isPending}
+                  className="gap-1 text-destructive hover:text-destructive"
+                >
+                  {cancelSession.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <StopCircle className="h-3 w-3" />
+                  )}
+                  Cancel
+                </Button>
+              </>
             )}
             {session.status === "pending" && (
               <Badge variant="secondary">Ready</Badge>
@@ -284,6 +312,7 @@ export default function SessionDetailPage({
             ) : (
               messages?.map((message) => {
                 const isUser = message.role === "user";
+                const isSystem = message.role === "system";
 
                 // Skip tool_result messages - they're rendered with their tool_call
                 if (message.role === "tool_result") {
@@ -296,7 +325,7 @@ export default function SessionDetailPage({
                 // Get text content (may be empty if only tool calls)
                 const textContent = getMessageContent(message);
 
-                // Render user and assistant messages
+                // Render user, assistant, and system messages
                 return (
                   <div key={message.id} className="space-y-2">
                     {/* Render text content if present */}
@@ -306,6 +335,14 @@ export default function SessionDetailPage({
                           /* User message - dark box, 90% width */
                           <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
                             <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                          </div>
+                        ) : isSystem ? (
+                          /* System message - centered, muted style with alert icon */
+                          <div className="w-full flex justify-center">
+                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-muted/40 rounded-full border border-dashed border-muted-foreground/30">
+                              <AlertCircle className="w-3 h-3 text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground italic">{textContent}</span>
+                            </div>
                           </div>
                         ) : (
                           /* Agent message - darker background with robot icon */

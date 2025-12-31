@@ -55,6 +55,15 @@ Sessions are instances of agentic loop execution tied to an agent.
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}` | Get session |
 | PATCH | `/v1/agents/{agent_id}/sessions/{session_id}` | Update session |
 | DELETE | `/v1/agents/{agent_id}/sessions/{session_id}` | Delete session |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/cancel` | Cancel running session |
+
+**Session Cancellation:**
+
+The cancel endpoint terminates a running session workflow and returns the session to `pending` status. This allows:
+- **Explicit cancellation:** User clicks "Cancel" button in UI
+- **Implicit interruption:** When sending a new message to a running session, the current workflow is automatically cancelled before processing the new message
+
+Cancellation creates a `session.cancelled` event (explicit) or `session.interrupted` event (implicit) with a system message that appears in the chat.
 
 ### Messages
 
