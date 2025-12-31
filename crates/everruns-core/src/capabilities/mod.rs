@@ -285,6 +285,86 @@ impl Default for CapabilityRegistryBuilder {
 }
 
 // ============================================================================
+// Collect Capabilities Helper
+// ============================================================================
+
+/// Collected data from capabilities before applying to config.
+///
+/// This intermediate struct allows sharing the capability collection logic
+/// between `apply_capabilities` and `apply_capabilities_to_builder`.
+pub struct CollectedCapabilities {
+    /// System prompt additions (in order)
+    pub system_prompt_parts: Vec<String>,
+    /// Tool implementations for the registry
+    pub tools: Vec<Box<dyn Tool>>,
+    /// Tool definitions for config
+    pub tool_definitions: Vec<ToolDefinition>,
+    /// IDs of capabilities that were collected
+    pub applied_ids: Vec<String>,
+}
+
+impl CollectedCapabilities {
+    /// Returns the combined system prompt prefix from all capabilities.
+    /// Returns None if no capabilities contributed system prompt additions.
+    pub fn system_prompt_prefix(&self) -> Option<String> {
+        if self.system_prompt_parts.is_empty() {
+            None
+        } else {
+            Some(self.system_prompt_parts.join("\n\n"))
+        }
+    }
+}
+
+/// Collect contributions from capabilities without applying them.
+///
+/// This extracts system prompt additions, tools, and tool definitions from
+/// the given capabilities. Use this when you need the raw capability data
+/// before applying it to a config or builder.
+///
+/// # Arguments
+///
+/// * `capability_ids` - Ordered list of capability IDs to collect
+/// * `registry` - The capability registry containing implementations
+pub fn collect_capabilities(
+    capability_ids: &[String],
+    registry: &CapabilityRegistry,
+) -> CollectedCapabilities {
+    let mut system_prompt_parts: Vec<String> = Vec::new();
+    let mut tools: Vec<Box<dyn Tool>> = Vec::new();
+    let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
+    let mut applied_ids: Vec<String> = Vec::new();
+
+    for cap_id in capability_ids {
+        if let Some(capability) = registry.get(cap_id) {
+            // Only collect from available capabilities
+            if capability.status() != CapabilityStatus::Available {
+                continue;
+            }
+
+            // Collect system prompt addition
+            if let Some(addition) = capability.system_prompt_addition() {
+                system_prompt_parts.push(addition.to_string());
+            }
+
+            // Collect tools
+            tools.extend(capability.tools());
+
+            // Collect tool definitions
+            tool_definitions.extend(capability.tool_definitions());
+
+            applied_ids.push(cap_id.clone());
+        }
+    }
+
+    CollectedCapabilities {
+        system_prompt_parts,
+        tools,
+        tool_definitions,
+        applied_ids,
+    }
+}
+
+// ============================================================================
 // Apply Capabilities to AgentConfig
 // ============================================================================
 
@@ -337,49 +417,25 @@ pub fn apply_capabilities(
     capability_ids: &[String],
     registry: &CapabilityRegistry,
 ) -> AppliedCapabilities {
-    let mut system_prompt_parts: Vec<String> = Vec::new();
-    let mut tool_registry = ToolRegistry::new();
-    let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
-    let mut applied_ids: Vec<String> = Vec::new();
-
-    // Apply capabilities in order
-    for cap_id in capability_ids {
-        if let Some(capability) = registry.get(cap_id) {
-            // Only apply available capabilities
-            if capability.status() != CapabilityStatus::Available {
-                continue;
-            }
-
-            // Collect system prompt addition
-            if let Some(addition) = capability.system_prompt_addition() {
-                system_prompt_parts.push(addition.to_string());
-            }
-
-            // Collect tools
-            for tool in capability.tools() {
-                tool_registry.register_boxed(tool);
-            }
-
-            // Collect tool definitions
-            tool_definitions.extend(capability.tool_definitions());
-
-            applied_ids.push(cap_id.clone());
-        }
-    }
+    let collected = collect_capabilities(capability_ids, registry);
 
     // Build final system prompt: capability additions + base prompt
-    let mut final_system_prompt = String::new();
-    if !system_prompt_parts.is_empty() {
-        final_system_prompt.push_str(&system_prompt_parts.join("\n\n"));
-        final_system_prompt.push_str("\n\n");
+    let final_system_prompt = match collected.system_prompt_prefix() {
+        Some(prefix) => format!("{}\n\n{}", prefix, base_config.system_prompt),
+        None => base_config.system_prompt,
+    };
+
+    // Build tool registry from collected tools
+    let mut tool_registry = ToolRegistry::new();
+    for tool in collected.tools {
+        tool_registry.register_boxed(tool);
     }
-    final_system_prompt.push_str(&base_config.system_prompt);
 
     // Create modified config
     let config = AgentConfig {
         system_prompt: final_system_prompt,
         model: base_config.model,
-        tools: tool_definitions,
+        tools: collected.tool_definitions,
         max_iterations: base_config.max_iterations,
         temperature: base_config.temperature,
         max_tokens: base_config.max_tokens,
@@ -388,7 +444,7 @@ pub fn apply_capabilities(
     AppliedCapabilities {
         config,
         tool_registry,
-        applied_ids,
+        applied_ids: collected.applied_ids,
     }
 }
 

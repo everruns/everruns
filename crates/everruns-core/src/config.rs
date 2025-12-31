@@ -5,7 +5,7 @@
 // - Built from an Agent entity via the `with_agent` builder method
 
 use crate::agent::Agent;
-use crate::capabilities::{CapabilityRegistry, CapabilityStatus};
+use crate::capabilities::{collect_capabilities, CapabilityRegistry};
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
@@ -112,11 +112,38 @@ impl AgentConfigBuilder {
             .map(|cap_id| cap_id.as_str().to_string())
             .collect();
 
-        // Set system prompt from agent
-        let builder = self.system_prompt(&agent.system_prompt);
+        self.system_prompt(&agent.system_prompt)
+            .with_capabilities(&capability_ids, registry)
+    }
 
-        // Apply capabilities to builder
-        apply_capabilities_to_builder(builder, &capability_ids, registry)
+    /// Apply capabilities to this builder.
+    ///
+    /// This collects contributions from the given capabilities and applies them:
+    /// - System prompt additions are prepended to the current system prompt
+    /// - Tool definitions are added to the tools list
+    ///
+    /// # Arguments
+    ///
+    /// * `capability_ids` - Ordered list of capability IDs to apply
+    /// * `registry` - The capability registry containing implementations
+    pub fn with_capabilities(
+        mut self,
+        capability_ids: &[String],
+        registry: &CapabilityRegistry,
+    ) -> Self {
+        let collected = collect_capabilities(capability_ids, registry);
+
+        // Apply system prompt additions (prepend to existing)
+        if let Some(prefix) = collected.system_prompt_prefix() {
+            self = self.prepend_system_prompt(prefix);
+        }
+
+        // Apply tool definitions
+        if !collected.tool_definitions.is_empty() {
+            self = self.tools(collected.tool_definitions);
+        }
+
+        self
     }
 
     /// Set the system prompt
@@ -180,56 +207,4 @@ impl Default for AgentConfigBuilder {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Apply capabilities to an AgentConfigBuilder using builder methods.
-///
-/// This function:
-/// 1. Collects system prompt additions from capabilities (in order)
-/// 2. Prepends them to the builder's system prompt
-/// 3. Adds tool definitions from capabilities
-///
-/// # Arguments
-///
-/// * `builder` - The builder to modify
-/// * `capability_ids` - Ordered list of capability IDs to apply
-/// * `registry` - The capability registry containing implementations
-fn apply_capabilities_to_builder(
-    mut builder: AgentConfigBuilder,
-    capability_ids: &[String],
-    registry: &CapabilityRegistry,
-) -> AgentConfigBuilder {
-    let mut system_prompt_parts: Vec<String> = Vec::new();
-    let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
-
-    // Collect contributions from capabilities
-    for cap_id in capability_ids {
-        if let Some(capability) = registry.get(cap_id) {
-            // Only apply available capabilities
-            if capability.status() != CapabilityStatus::Available {
-                continue;
-            }
-
-            // Collect system prompt addition
-            if let Some(addition) = capability.system_prompt_addition() {
-                system_prompt_parts.push(addition.to_string());
-            }
-
-            // Collect tool definitions
-            tool_definitions.extend(capability.tool_definitions());
-        }
-    }
-
-    // Apply system prompt additions (prepend to existing)
-    if !system_prompt_parts.is_empty() {
-        let prefix = system_prompt_parts.join("\n\n");
-        builder = builder.prepend_system_prompt(prefix);
-    }
-
-    // Apply tool definitions
-    if !tool_definitions.is_empty() {
-        builder = builder.tools(tool_definitions);
-    }
-
-    builder
 }
