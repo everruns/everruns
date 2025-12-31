@@ -308,11 +308,14 @@ impl Tool for WebFetchTool {
             || body.trim_start().starts_with("<html");
 
         // Convert content based on format
-        let mut content = match response_format {
+        let content = match response_format {
             ResponseFormat::Markdown if is_html => html_to_markdown(&body),
             ResponseFormat::Text if is_html => html_to_text(&body),
             _ => body,
         };
+
+        // Filter excessive newlines (keep at most 2 consecutive)
+        let mut content = filter_excessive_newlines(&content);
 
         // Append timeout indicator if body was truncated
         if timed_out {
@@ -689,6 +692,27 @@ fn clean_whitespace(text: &str) -> String {
     }
 
     result.trim().to_string()
+}
+
+/// Filter excessive consecutive newlines, keeping at most 2.
+/// Unlike clean_whitespace, this preserves other whitespace (spaces, tabs, etc.).
+fn filter_excessive_newlines(text: &str) -> String {
+    let mut result = String::new();
+    let mut newline_count = 0;
+
+    for ch in text.chars() {
+        if ch == '\n' {
+            newline_count += 1;
+            if newline_count <= 2 {
+                result.push('\n');
+            }
+        } else {
+            newline_count = 0;
+            result.push(ch);
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -1854,6 +1878,99 @@ mod tests {
             assert_eq!(value["status_code"], 200);
         } else {
             panic!("Expected successful response for HTTP URL");
+        }
+    }
+
+    // ============================================================================
+    // Excessive newline filtering tests
+    // ============================================================================
+
+    #[test]
+    fn test_filter_excessive_newlines_basic() {
+        // More than 2 consecutive newlines should be reduced to 2
+        let input = "line1\n\n\n\n\nline2";
+        let output = filter_excessive_newlines(input);
+        assert_eq!(output, "line1\n\nline2");
+    }
+
+    #[test]
+    fn test_filter_excessive_newlines_preserves_two() {
+        // Exactly 2 newlines should be preserved
+        let input = "line1\n\nline2";
+        let output = filter_excessive_newlines(input);
+        assert_eq!(output, "line1\n\nline2");
+    }
+
+    #[test]
+    fn test_filter_excessive_newlines_preserves_one() {
+        // Single newline should be preserved
+        let input = "line1\nline2";
+        let output = filter_excessive_newlines(input);
+        assert_eq!(output, "line1\nline2");
+    }
+
+    #[test]
+    fn test_filter_excessive_newlines_preserves_spaces() {
+        // Spaces and tabs should be preserved
+        let input = "line1    \n\n\n\n\n    line2\t\ttabs";
+        let output = filter_excessive_newlines(input);
+        assert_eq!(output, "line1    \n\n    line2\t\ttabs");
+    }
+
+    #[test]
+    fn test_filter_excessive_newlines_many_groups() {
+        // Multiple groups of excessive newlines
+        let input = "a\n\n\n\nb\n\n\n\n\nc";
+        let output = filter_excessive_newlines(input);
+        assert_eq!(output, "a\n\nb\n\nc");
+    }
+
+    #[test]
+    fn test_filter_excessive_newlines_empty() {
+        let input = "";
+        let output = filter_excessive_newlines(input);
+        assert_eq!(output, "");
+    }
+
+    #[test]
+    fn test_filter_excessive_newlines_only_newlines() {
+        let input = "\n\n\n\n\n\n\n";
+        let output = filter_excessive_newlines(input);
+        assert_eq!(output, "\n\n");
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_filters_excessive_newlines() {
+        let mock_server = MockServer::start().await;
+
+        // Response with many consecutive newlines
+        Mock::given(method("GET"))
+            .and(path("/newlines"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("line1\n\n\n\n\n\n\n\nline2")
+                    .insert_header("content-type", "text/plain"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": format!("{}/newlines", mock_server.uri())
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            let content = value["content"].as_str().unwrap();
+            // Should have at most 2 consecutive newlines
+            assert!(
+                !content.contains("\n\n\n"),
+                "Content should not have more than 2 consecutive newlines"
+            );
+            assert_eq!(content, "line1\n\nline2");
+        } else {
+            panic!("Expected successful response");
         }
     }
 }
