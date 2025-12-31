@@ -6,7 +6,7 @@
 // - Quick prototyping
 
 use crate::agent::Agent;
-use crate::llm_entities::LlmProviderType;
+use crate::llm_models::LlmProviderType;
 use crate::session::Session;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ModelWithProvider;
@@ -526,7 +526,7 @@ impl ToolExecutor for FailingToolExecutor {
 // MockLlmProvider - Returns predefined responses
 // ============================================================================
 
-use crate::llm::{
+use crate::llm_drivers::{
     LlmCallConfig, LlmCompletionMetadata, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
 use futures::stream;

@@ -7,16 +7,16 @@
 // The OpenAI protocol is used as the base for LLM drivers in the system,
 // meaning other providers can adapt their APIs to this format.
 
-mod provider;
+mod driver;
 mod types;
 
 #[cfg(test)]
 mod tests;
 
-pub use provider::OpenAiDriver;
+pub use driver::OpenAILlmDriver;
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
 };
 
 // Re-export core types for convenience
-pub use everruns_core::llm::LlmDriver;
+pub use everruns_core::llm_drivers::LlmDriver;

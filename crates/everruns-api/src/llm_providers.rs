@@ -6,7 +6,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use everruns_core::llm_entities::LlmProvider;
+use everruns_core::llm_models::LlmProvider;
 use everruns_core::{LlmProviderStatus, LlmProviderType};
 use everruns_storage::{Database, EncryptionService};
 use serde::{Deserialize, Serialize};

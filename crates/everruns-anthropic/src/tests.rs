@@ -1,19 +1,17 @@
 // Unit tests for Anthropic driver
 
-use crate::AnthropicDriver;
+use crate::AnthropicLlmDriver;
 
 #[test]
 fn test_driver_with_api_key() {
-    let driver = AnthropicDriver::with_api_key("test-key".to_string());
+    let driver = AnthropicLlmDriver::new("test-key");
     // Just verify it can be created
-    assert!(format!("{:?}", driver).contains("AnthropicDriver"));
+    assert!(format!("{:?}", driver).contains("AnthropicLlmDriver"));
 }
 
 #[test]
 fn test_driver_with_base_url() {
-    let driver = AnthropicDriver::with_base_url(
-        "test-key".to_string(),
-        "https://custom.api.com/v1/messages".to_string(),
-    );
-    assert!(format!("{:?}", driver).contains("AnthropicDriver"));
+    let driver =
+        AnthropicLlmDriver::with_base_url("test-key", "https://custom.api.com/v1/messages");
+    assert!(format!("{:?}", driver).contains("AnthropicLlmDriver"));
 }

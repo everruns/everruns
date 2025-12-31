@@ -1,7 +1,7 @@
 // Integration tests for Everruns API (M2)
 // Run with: cargo test --test integration_test
 
-use everruns_core::llm_entities::LlmProvider;
+use everruns_core::llm_models::LlmProvider;
 use everruns_core::{Agent, LlmModel, Session, SessionFile};
 use serde_json::{json, Value};
 

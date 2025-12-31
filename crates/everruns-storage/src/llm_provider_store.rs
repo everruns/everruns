@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    llm_entities::LlmProviderType,
+    llm_models::LlmProviderType,
     traits::{LlmProviderStore, ModelWithProvider},
     AgentLoopError, Result,
 };

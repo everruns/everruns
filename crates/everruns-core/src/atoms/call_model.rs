@@ -17,10 +17,10 @@ use uuid::Uuid;
 use super::Atom;
 use crate::capabilities::CapabilityRegistry;
 use crate::config::AgentConfigBuilder;
-use crate::driver_factory::{create_driver, ProviderConfig, ProviderType};
 use crate::error::{AgentLoopError, Result};
-use crate::llm::{
-    LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole, LlmStreamEvent,
+use crate::llm_drivers::{
+    create_driver, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmStreamEvent, ProviderConfig, ProviderType,
 };
 use crate::message::{Message, MessageRole};
 use crate::tool_types::ToolCall;
@@ -375,11 +375,11 @@ where
     fn create_llm_driver(
         &self,
         model: &ModelWithProvider,
-    ) -> Result<crate::driver_factory::BoxedLlmDriver> {
+    ) -> Result<crate::llm_drivers::BoxedLlmDriver> {
         let provider_type = match model.provider_type {
-            crate::llm_entities::LlmProviderType::Openai => ProviderType::OpenAI,
-            crate::llm_entities::LlmProviderType::Anthropic => ProviderType::Anthropic,
-            crate::llm_entities::LlmProviderType::AzureOpenAI => ProviderType::AzureOpenAI,
+            crate::llm_models::LlmProviderType::Openai => ProviderType::OpenAI,
+            crate::llm_models::LlmProviderType::Anthropic => ProviderType::Anthropic,
+            crate::llm_models::LlmProviderType::AzureOpenAI => ProviderType::AzureOpenAI,
         };
 
         let mut config = ProviderConfig::new(provider_type);

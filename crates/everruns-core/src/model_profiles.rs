@@ -8,7 +8,7 @@
 //
 // Data source: https://models.dev/api.json
 
-use crate::llm_entities::{
+use crate::llm_models::{
     LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmProviderType, Modality,
     ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };

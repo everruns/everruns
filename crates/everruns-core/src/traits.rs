@@ -6,7 +6,7 @@
 // - Channel-based implementations for streaming
 
 use crate::agent::Agent;
-use crate::llm_entities::LlmProviderType;
+use crate::llm_models::LlmProviderType;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;

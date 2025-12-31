@@ -1,7 +1,7 @@
 // LLM Provider service for business logic
 
 use anyhow::{anyhow, Result};
-use everruns_core::llm_entities::LlmProvider;
+use everruns_core::llm_models::LlmProvider;
 use everruns_core::{LlmProviderStatus, LlmProviderType};
 use everruns_storage::{
     models::{CreateLlmProviderRow, LlmProviderRow, UpdateLlmProvider},

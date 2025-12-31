@@ -11,8 +11,7 @@ pub use everruns_storage::{
 
 // Driver factory helper for creating LLM drivers
 use everruns_core::{
-    driver_factory::{create_driver, BoxedLlmDriver, ProviderConfig, ProviderType},
-    AgentLoopError, Result,
+    create_driver, AgentLoopError, BoxedLlmDriver, ProviderConfig, ProviderType, Result,
 };
 
 /// Create an LLM driver based on configuration
