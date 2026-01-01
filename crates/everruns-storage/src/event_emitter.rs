@@ -69,7 +69,7 @@ pub fn create_db_event_emitter(db: Database) -> DbEventEmitter {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::event::{EventContext, InputReceivedData, INPUT_RECEIVED};
+    use everruns_core::event::{EventContext, InputReceivedData};
     use everruns_core::message::Message;
     use everruns_core::Event;
     use uuid::Uuid;
@@ -79,7 +79,6 @@ mod tests {
         let session_id = Uuid::now_v7();
         let event_context = EventContext::empty();
         let event = Event::new(
-            INPUT_RECEIVED,
             session_id,
             event_context,
             InputReceivedData::new(Message::user("test")),
@@ -98,7 +97,6 @@ mod tests {
         let session_id = Uuid::now_v7();
         let event_context = EventContext::empty();
         let event = Event::new(
-            INPUT_RECEIVED,
             session_id,
             event_context,
             InputReceivedData::new(Message::user("test")),
@@ -112,7 +110,6 @@ mod tests {
         let session_id = Uuid::now_v7();
         let event_context = EventContext::empty();
         let event = Event::new(
-            INPUT_RECEIVED,
             session_id,
             event_context,
             InputReceivedData::new(Message::user("test")),

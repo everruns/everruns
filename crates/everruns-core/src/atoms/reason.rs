@@ -24,9 +24,7 @@ use uuid::Uuid;
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
-use crate::event::{
-    Event, EventContext, ReasonCompletedData, ReasonStartedData, REASON_COMPLETED, REASON_STARTED,
-};
+use crate::event::{Event, EventContext, ReasonCompletedData, ReasonStartedData};
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmStreamEvent, ProviderConfig, ProviderType,
@@ -215,7 +213,6 @@ where
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
-                REASON_STARTED,
                 context.session_id,
                 event_context.clone(),
                 ReasonStartedData {
@@ -242,7 +239,6 @@ where
                 if let Err(e) = self
                     .event_emitter
                     .emit(Event::new(
-                        REASON_COMPLETED,
                         context.session_id,
                         event_context.clone(),
                         ReasonCompletedData::success(
@@ -277,7 +273,6 @@ where
                 if let Err(emit_err) = self
                     .event_emitter
                     .emit(Event::new(
-                        REASON_COMPLETED,
                         context.session_id,
                         event_context,
                         ReasonCompletedData::failure(error_msg.clone()),

@@ -97,7 +97,7 @@ impl EventContext {
 /// - `ts`: ISO 8601 timestamp with millisecond precision
 /// - `session_id`: Session this event belongs to
 /// - `context`: Correlation context for tracing
-/// - `data`: Event-specific payload
+/// - `data`: Event-specific payload (typed via EventData enum)
 /// - `metadata`: Optional arbitrary metadata
 /// - `tags`: Optional list of tags for filtering
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,8 +119,9 @@ pub struct Event {
     /// Correlation context
     pub context: EventContext,
 
-    /// Event-specific payload
-    pub data: serde_json::Value,
+    /// Event-specific payload (typed)
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub data: EventData,
 
     /// Arbitrary metadata for the event
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -136,20 +137,19 @@ pub struct Event {
 }
 
 impl Event {
-    /// Create a new event with the given type, session_id, context, and data
-    pub fn new(
-        event_type: impl Into<String>,
-        session_id: Uuid,
-        context: EventContext,
-        data: impl Serialize,
-    ) -> Self {
+    /// Create a new event with the given session_id, context, and typed data
+    ///
+    /// The event type is automatically inferred from the data type.
+    pub fn new(session_id: Uuid, context: EventContext, data: impl Into<EventData>) -> Self {
+        let data = data.into();
+        let event_type = data.event_type().to_string();
         Self {
             id: Uuid::now_v7(),
-            event_type: event_type.into(),
+            event_type,
             ts: Utc::now(),
             session_id,
             context,
-            data: serde_json::to_value(data).unwrap_or_default(),
+            data,
             metadata: None,
             tags: None,
             sequence: None,
@@ -159,18 +159,19 @@ impl Event {
     /// Create an event with a specific ID (for testing or replay)
     pub fn with_id(
         id: Uuid,
-        event_type: impl Into<String>,
         session_id: Uuid,
         context: EventContext,
-        data: impl Serialize,
+        data: impl Into<EventData>,
     ) -> Self {
+        let data = data.into();
+        let event_type = data.event_type().to_string();
         Self {
             id,
-            event_type: event_type.into(),
+            event_type,
             ts: Utc::now(),
             session_id,
             context,
-            data: serde_json::to_value(data).unwrap_or_default(),
+            data,
             metadata: None,
             tags: None,
             sequence: None,
@@ -542,20 +543,171 @@ pub struct SessionStartedData {
 }
 
 // ============================================================================
+// EventData Enum - Typed event payloads
+// ============================================================================
+
+/// Typed event data enum for all event payloads
+///
+/// This enum provides type safety for event data. Each variant corresponds
+/// to a specific event type and contains the appropriate data structure.
+/// The `Raw` variant is used for backward compatibility with legacy events
+/// or unknown event types.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EventData {
+    // Message events
+    MessageUser(MessageUserData),
+    MessageAgent(MessageAgentData),
+
+    // Turn lifecycle events
+    TurnStarted(TurnStartedData),
+    TurnCompleted(TurnCompletedData),
+    TurnFailed(TurnFailedData),
+
+    // Atom lifecycle events
+    InputReceived(InputReceivedData),
+    ReasonStarted(ReasonStartedData),
+    ReasonCompleted(ReasonCompletedData),
+    ActStarted(ActStartedData),
+    ActCompleted(ActCompletedData),
+    ToolCallStarted(ToolCallStartedData),
+    ToolCallCompleted(ToolCallCompletedData),
+
+    // Session events
+    SessionStarted(SessionStartedData),
+
+    // Raw data for backward compatibility with legacy events
+    Raw(serde_json::Value),
+}
+
+/// Unknown event type for raw/legacy events
+pub const UNKNOWN: &str = "unknown";
+
+impl EventData {
+    /// Get the event type constant for this data
+    pub fn event_type(&self) -> &'static str {
+        match self {
+            EventData::MessageUser(_) => MESSAGE_USER,
+            EventData::MessageAgent(_) => MESSAGE_AGENT,
+            EventData::TurnStarted(_) => TURN_STARTED,
+            EventData::TurnCompleted(_) => TURN_COMPLETED,
+            EventData::TurnFailed(_) => TURN_FAILED,
+            EventData::InputReceived(_) => INPUT_RECEIVED,
+            EventData::ReasonStarted(_) => REASON_STARTED,
+            EventData::ReasonCompleted(_) => REASON_COMPLETED,
+            EventData::ActStarted(_) => ACT_STARTED,
+            EventData::ActCompleted(_) => ACT_COMPLETED,
+            EventData::ToolCallStarted(_) => TOOL_CALL_STARTED,
+            EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
+            EventData::SessionStarted(_) => SESSION_STARTED,
+            EventData::Raw(_) => UNKNOWN,
+        }
+    }
+
+    /// Create a raw event data from JSON value
+    pub fn raw(value: serde_json::Value) -> Self {
+        EventData::Raw(value)
+    }
+}
+
+// From implementations for each data type
+impl From<MessageUserData> for EventData {
+    fn from(data: MessageUserData) -> Self {
+        EventData::MessageUser(data)
+    }
+}
+
+impl From<MessageAgentData> for EventData {
+    fn from(data: MessageAgentData) -> Self {
+        EventData::MessageAgent(data)
+    }
+}
+
+impl From<TurnStartedData> for EventData {
+    fn from(data: TurnStartedData) -> Self {
+        EventData::TurnStarted(data)
+    }
+}
+
+impl From<TurnCompletedData> for EventData {
+    fn from(data: TurnCompletedData) -> Self {
+        EventData::TurnCompleted(data)
+    }
+}
+
+impl From<TurnFailedData> for EventData {
+    fn from(data: TurnFailedData) -> Self {
+        EventData::TurnFailed(data)
+    }
+}
+
+impl From<InputReceivedData> for EventData {
+    fn from(data: InputReceivedData) -> Self {
+        EventData::InputReceived(data)
+    }
+}
+
+impl From<ReasonStartedData> for EventData {
+    fn from(data: ReasonStartedData) -> Self {
+        EventData::ReasonStarted(data)
+    }
+}
+
+impl From<ReasonCompletedData> for EventData {
+    fn from(data: ReasonCompletedData) -> Self {
+        EventData::ReasonCompleted(data)
+    }
+}
+
+impl From<ActStartedData> for EventData {
+    fn from(data: ActStartedData) -> Self {
+        EventData::ActStarted(data)
+    }
+}
+
+impl From<ActCompletedData> for EventData {
+    fn from(data: ActCompletedData) -> Self {
+        EventData::ActCompleted(data)
+    }
+}
+
+impl From<ToolCallStartedData> for EventData {
+    fn from(data: ToolCallStartedData) -> Self {
+        EventData::ToolCallStarted(data)
+    }
+}
+
+impl From<ToolCallCompletedData> for EventData {
+    fn from(data: ToolCallCompletedData) -> Self {
+        EventData::ToolCallCompleted(data)
+    }
+}
+
+impl From<SessionStartedData> for EventData {
+    fn from(data: SessionStartedData) -> Self {
+        EventData::SessionStarted(data)
+    }
+}
+
+impl From<serde_json::Value> for EventData {
+    fn from(data: serde_json::Value) -> Self {
+        EventData::Raw(data)
+    }
+}
+
+// ============================================================================
 // Event Builder
 // ============================================================================
 
 /// Builder for creating events with fluent API
 pub struct EventBuilder {
-    event_type: String,
     session_id: Uuid,
     context: EventContext,
 }
 
 impl EventBuilder {
-    pub fn new(event_type: impl Into<String>, session_id: Uuid) -> Self {
+    pub fn new(session_id: Uuid) -> Self {
         Self {
-            event_type: event_type.into(),
             session_id,
             context: EventContext::empty(),
         }
@@ -572,8 +724,8 @@ impl EventBuilder {
         self
     }
 
-    pub fn build<T: Serialize>(self, data: T) -> Event {
-        Event::new(self.event_type, self.session_id, self.context, data)
+    pub fn build(self, data: impl Into<EventData>) -> Event {
+        Event::new(self.session_id, self.context, data)
     }
 }
 
@@ -591,7 +743,7 @@ mod tests {
         let context = EventContext::empty();
         let data = InputReceivedData::new(Message::user("test"));
 
-        let event = Event::new(INPUT_RECEIVED, session_id, context, data);
+        let event = Event::new(session_id, context, data);
 
         assert_eq!(event.event_type, "input.received");
         assert_eq!(event.session_id(), session_id);
@@ -617,7 +769,11 @@ mod tests {
     fn test_event_serialization() {
         let session_id = Uuid::now_v7();
         let context = EventContext::empty();
-        let event = Event::new(MESSAGE_USER, session_id, context, serde_json::json!({"test": true}));
+        let event = Event::new(
+            session_id,
+            context,
+            MessageUserData::new(Message::user("test")),
+        );
 
         let json = serde_json::to_string(&event).unwrap();
 
@@ -634,7 +790,7 @@ mod tests {
         let input_message_id = Uuid::now_v7();
         let exec_id = Uuid::now_v7();
 
-        let event = EventBuilder::new(REASON_STARTED, session_id)
+        let event = EventBuilder::new(session_id)
             .with_turn(turn_id, input_message_id)
             .with_exec(exec_id)
             .build(ReasonStartedData {

@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use anyhow::Result;
-use everruns_core::{Event, EventContext};
+use everruns_core::{Event, EventContext, EventData};
 use everruns_storage::{models::CreateEventRow, Database};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -40,14 +40,14 @@ impl EventService {
         }
 
         // Fallback for old format or direct data storage:
-        // Reconstruct event from row fields
+        // Reconstruct event from row fields using raw data
         Event {
             id: row.id,
             event_type: row.event_type,
             ts: row.created_at,
             session_id: row.session_id,
             context: EventContext::empty(),
-            data: row.data,
+            data: EventData::raw(row.data),
             metadata: None,
             tags: None,
             sequence: Some(row.sequence),

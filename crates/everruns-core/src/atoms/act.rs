@@ -25,7 +25,7 @@ use super::{Atom, AtomContext};
 use crate::error::Result;
 use crate::event::{
     ActCompletedData, ActStartedData, Event, EventContext, ToolCallCompletedData,
-    ToolCallStartedData, ACT_COMPLETED, ACT_STARTED, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
+    ToolCallStartedData,
 };
 use crate::message::{ContentPart, Message};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
@@ -175,7 +175,6 @@ where
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
-                ACT_STARTED,
                 context.session_id,
                 event_context.clone(),
                 ActStartedData::new(&tool_calls),
@@ -237,7 +236,6 @@ where
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
-                ACT_COMPLETED,
                 context.session_id,
                 event_context,
                 ActCompletedData {
@@ -300,7 +298,6 @@ where
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
-                TOOL_CALL_STARTED,
                 context.session_id,
                 event_context.clone(),
                 ToolCallStartedData {
@@ -325,7 +322,6 @@ where
             if let Err(e) = self
                 .event_emitter
                 .emit(Event::new(
-                    TOOL_CALL_COMPLETED,
                     context.session_id,
                     event_context,
                     ToolCallCompletedData::failure(
@@ -397,7 +393,6 @@ where
                 if let Err(e) = self
                     .event_emitter
                     .emit(Event::new(
-                        TOOL_CALL_COMPLETED,
                         context.session_id,
                         event_context.clone(),
                         completed_data,
@@ -434,7 +429,6 @@ where
                 if let Err(emit_err) = self
                     .event_emitter
                     .emit(Event::new(
-                        TOOL_CALL_COMPLETED,
                         context.session_id,
                         event_context,
                         ToolCallCompletedData::failure(
