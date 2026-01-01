@@ -73,14 +73,14 @@ User message submitted to the session.
 }
 ```
 
-#### `message.assistant`
+#### `message.agent`
 
-Assistant response message.
+Agent response message.
 
 ```json
 {
   "id": "...",
-  "type": "message.assistant",
+  "type": "message.agent",
   "ts": "...",
   "context": {
     "session_id": "...",
@@ -92,7 +92,11 @@ Assistant response message.
     "content": [
       { "type": "text", "text": "Hello! How can I help?" }
     ],
-    "model": "gpt-4o",
+    "metadata": {
+      "model": "gpt-4o",
+      "model_id": "01937abc-...",
+      "provider_id": "01937abc-..."
+    },
     "usage": {
       "input_tokens": 50,
       "output_tokens": 20
@@ -103,7 +107,7 @@ Assistant response message.
 
 #### `message.tool_call`
 
-Tool call request from the assistant.
+Tool call request from the agent.
 
 ```json
 {
@@ -154,31 +158,83 @@ Tool execution result.
 }
 ```
 
+### Turn Lifecycle Events
+
+Turn events track the lifecycle of a single turn in the conversation.
+
+#### `turn.started`
+
+Turn execution started.
+
+```json
+{
+  "type": "turn.started",
+  "context": {
+    "session_id": "...",
+    "turn_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  }
+}
+```
+
+#### `turn.completed`
+
+Turn execution completed successfully.
+
+```json
+{
+  "type": "turn.completed",
+  "context": {
+    "session_id": "...",
+    "turn_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "iterations": 3,
+    "duration_ms": 1500
+  }
+}
+```
+
+#### `turn.failed`
+
+Turn execution failed.
+
+```json
+{
+  "type": "turn.failed",
+  "context": {
+    "session_id": "...",
+    "turn_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "error": "Max iterations exceeded",
+    "error_code": "MAX_ITERATIONS"
+  }
+}
+```
+
 ### Atom Lifecycle Events
 
 Atom events provide observability into the execution pipeline.
 
-#### `input.started` / `input.completed`
+#### `input.received`
 
-InputAtom lifecycle - retrieving user message.
+User input received and retrieved from message store.
 
 ```json
 {
-  "type": "input.started",
+  "type": "input.received",
   "context": {
     "session_id": "...",
     "turn_id": "...",
     "input_message_id": "...",
     "exec_id": "..."
   },
-  "data": {}
-}
-```
-
-```json
-{
-  "type": "input.completed",
-  "context": { ... },
   "data": {
     "message": { /* Message object */ }
   }
@@ -195,7 +251,11 @@ ReasonAtom lifecycle - LLM inference.
   "context": { ... },
   "data": {
     "agent_id": "...",
-    "model": "gpt-4o"
+    "metadata": {
+      "model": "gpt-4o",
+      "model_id": "...",
+      "provider_id": "..."
+    }
   }
 }
 ```
@@ -293,49 +353,18 @@ Session execution started.
 }
 ```
 
-#### `session.completed`
-
-Session execution completed successfully.
-
-```json
-{
-  "type": "session.completed",
-  "context": {
-    "session_id": "..."
-  },
-  "data": {
-    "duration_ms": 1500
-  }
-}
-```
-
-#### `session.failed`
-
-Session execution failed.
-
-```json
-{
-  "type": "session.failed",
-  "context": {
-    "session_id": "..."
-  },
-  "data": {
-    "error": "LLM provider unavailable",
-    "error_code": "PROVIDER_ERROR"
-  }
-}
-```
-
 ## Event Type Registry
 
 | Event Type | Category | Description |
 |------------|----------|-------------|
 | `message.user` | Message | User input message |
-| `message.assistant` | Message | Assistant response |
+| `message.agent` | Message | Agent response |
 | `message.tool_call` | Message | Tool call request |
 | `message.tool_result` | Message | Tool execution result |
-| `input.started` | Atom | InputAtom started |
-| `input.completed` | Atom | InputAtom completed |
+| `turn.started` | Turn | Turn execution started |
+| `turn.completed` | Turn | Turn completed |
+| `turn.failed` | Turn | Turn failed |
+| `input.received` | Atom | User input received |
 | `reason.started` | Atom | ReasonAtom started |
 | `reason.completed` | Atom | ReasonAtom completed |
 | `act.started` | Atom | ActAtom started |
@@ -343,8 +372,6 @@ Session execution failed.
 | `tool.call_started` | Atom | Individual tool started |
 | `tool.call_completed` | Atom | Individual tool completed |
 | `session.started` | Session | Session execution started |
-| `session.completed` | Session | Session completed |
-| `session.failed` | Session | Session failed |
 
 ## Database Storage
 
@@ -393,5 +420,5 @@ A partial index exists for efficient message queries:
 
 ```sql
 CREATE INDEX idx_events_messages ON events(session_id, sequence)
-WHERE event_type IN ('message.user', 'message.assistant', 'message.tool_call', 'message.tool_result');
+WHERE event_type IN ('message.user', 'message.agent', 'message.tool_call', 'message.tool_result');
 ```

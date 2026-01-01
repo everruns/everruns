@@ -725,7 +725,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter() {
-        use crate::event::{EventContext, InputStartedData, INPUT_STARTED};
+        use crate::event::{EventContext, InputReceivedData, INPUT_RECEIVED};
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();
@@ -734,9 +734,9 @@ mod tests {
         // Emit an event
         let seq = emitter
             .emit(Event::new(
-                INPUT_STARTED,
+                INPUT_RECEIVED,
                 event_context.clone(),
-                InputStartedData::default(),
+                InputReceivedData::new(Message::user("test1")),
             ))
             .await
             .unwrap();
@@ -745,9 +745,9 @@ mod tests {
         // Emit another event
         let seq2 = emitter
             .emit(Event::new(
-                INPUT_STARTED,
+                INPUT_RECEIVED,
                 event_context,
-                InputStartedData::default(),
+                InputReceivedData::new(Message::user("test2")),
             ))
             .await
             .unwrap();
@@ -762,53 +762,46 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_event_emitter_filter_by_type() {
         use crate::event::{
-            EventContext, InputCompletedData, InputStartedData, INPUT_COMPLETED, INPUT_STARTED,
+            EventContext, InputReceivedData, ReasonStartedData, INPUT_RECEIVED, REASON_STARTED,
         };
-        use crate::ContentPart;
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();
         let event_context = EventContext::session(session_id);
 
-        // Emit different events
+        // Emit different event types
         emitter
             .emit(Event::new(
-                INPUT_STARTED,
+                INPUT_RECEIVED,
                 event_context.clone(),
-                InputStartedData::default(),
+                InputReceivedData::new(Message::user("test")),
             ))
             .await
             .unwrap();
 
-        let message = Message {
-            id: Uuid::now_v7(),
-            role: crate::message::MessageRole::User,
-            content: vec![ContentPart::text("test")],
-            controls: None,
-            metadata: None,
-            created_at: Utc::now(),
-        };
-
         emitter
             .emit(Event::new(
-                INPUT_COMPLETED,
+                REASON_STARTED,
                 event_context,
-                InputCompletedData { message },
+                ReasonStartedData {
+                    agent_id: Uuid::now_v7(),
+                    metadata: None,
+                },
             ))
             .await
             .unwrap();
 
         // Filter by type
-        let started_events = emitter.events_by_type(INPUT_STARTED).await;
-        assert_eq!(started_events.len(), 1);
+        let received_events = emitter.events_by_type(INPUT_RECEIVED).await;
+        assert_eq!(received_events.len(), 1);
 
-        let completed_events = emitter.events_by_type(INPUT_COMPLETED).await;
-        assert_eq!(completed_events.len(), 1);
+        let started_events = emitter.events_by_type(REASON_STARTED).await;
+        assert_eq!(started_events.len(), 1);
     }
 
     #[tokio::test]
     async fn test_in_memory_event_emitter_filter_by_session() {
-        use crate::event::{EventContext, InputStartedData, INPUT_STARTED};
+        use crate::event::{EventContext, InputReceivedData, INPUT_RECEIVED};
 
         let emitter = InMemoryEventEmitter::new();
         let session1 = Uuid::now_v7();
@@ -820,17 +813,17 @@ mod tests {
 
         emitter
             .emit(Event::new(
-                INPUT_STARTED,
+                INPUT_RECEIVED,
                 context1,
-                InputStartedData::default(),
+                InputReceivedData::new(Message::user("session1")),
             ))
             .await
             .unwrap();
         emitter
             .emit(Event::new(
-                INPUT_STARTED,
+                INPUT_RECEIVED,
                 context2,
-                InputStartedData::default(),
+                InputReceivedData::new(Message::user("session2")),
             ))
             .await
             .unwrap();
@@ -845,7 +838,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter_clear() {
-        use crate::event::{EventContext, InputStartedData, INPUT_STARTED};
+        use crate::event::{EventContext, InputReceivedData, INPUT_RECEIVED};
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();
@@ -853,9 +846,9 @@ mod tests {
 
         emitter
             .emit(Event::new(
-                INPUT_STARTED,
+                INPUT_RECEIVED,
                 event_context,
-                InputStartedData::default(),
+                InputReceivedData::new(Message::user("test")),
             ))
             .await
             .unwrap();

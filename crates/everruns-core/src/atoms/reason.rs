@@ -216,7 +216,7 @@ where
             context.exec_id,
         );
 
-        // Emit reason.started event
+        // Emit reason.started event (note: we'll emit a more detailed event after model resolution)
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
@@ -224,7 +224,7 @@ where
                 event_context.clone(),
                 ReasonStartedData {
                     agent_id,
-                    model: None,
+                    metadata: None, // Will be populated after model resolution
                 },
             ))
             .await

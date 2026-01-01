@@ -2,7 +2,7 @@
 //!
 //! This atom is the entry point for a turn. It:
 //! 1. Retrieves the user message from the message store
-//! 2. Emits input.started and input.completed events
+//! 2. Emits input.received event
 //! 3. Returns the message for further processing
 
 use async_trait::async_trait;
@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Atom, AtomContext};
 use crate::error::{AgentLoopError, Result};
-use crate::event::{
-    Event, EventContext, InputCompletedData, InputStartedData, INPUT_COMPLETED, INPUT_STARTED,
-};
+use crate::event::{Event, EventContext, InputReceivedData, INPUT_RECEIVED};
 use crate::message::Message;
 use crate::traits::{EventEmitter, MessageStore};
 
@@ -41,10 +39,9 @@ pub struct InputAtomResult {
 /// Atom that records user input and starts a turn
 ///
 /// This atom:
-/// 1. Emits input.started event
-/// 2. Retrieves the user message from the message store using input_message_id
-/// 3. Emits input.completed event
-/// 4. Returns the message for downstream processing
+/// 1. Retrieves the user message from the message store using input_message_id
+/// 2. Emits input.received event
+/// 3. Returns the message for downstream processing
 ///
 /// The message is expected to already be stored by the API layer.
 /// This atom just retrieves it and prepares for the turn.
@@ -95,31 +92,6 @@ where
             "InputAtom: retrieving user message"
         );
 
-        // Create event context from atom context
-        let event_context = EventContext::atom(
-            context.session_id,
-            context.turn_id,
-            context.input_message_id,
-            context.exec_id,
-        );
-
-        // Emit input.started event
-        if let Err(e) = self
-            .event_emitter
-            .emit(Event::new(
-                INPUT_STARTED,
-                event_context.clone(),
-                InputStartedData::default(),
-            ))
-            .await
-        {
-            tracing::warn!(
-                session_id = %context.session_id,
-                error = %e,
-                "InputAtom: failed to emit input.started event"
-            );
-        }
-
         // Retrieve the user message from the store
         let message = self
             .message_store
@@ -132,22 +104,28 @@ where
                 ))
             })?;
 
-        // Emit input.completed event
+        // Create event context from atom context
+        let event_context = EventContext::atom(
+            context.session_id,
+            context.turn_id,
+            context.input_message_id,
+            context.exec_id,
+        );
+
+        // Emit input.received event
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
-                INPUT_COMPLETED,
+                INPUT_RECEIVED,
                 event_context,
-                InputCompletedData {
-                    message: message.clone(),
-                },
+                InputReceivedData::new(message.clone()),
             ))
             .await
         {
             tracing::warn!(
                 session_id = %context.session_id,
                 error = %e,
-                "InputAtom: failed to emit input.completed event"
+                "InputAtom: failed to emit input.received event"
             );
         }
 

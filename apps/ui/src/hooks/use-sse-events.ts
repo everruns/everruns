@@ -1,5 +1,10 @@
 // SSE Events hook for real-time streaming
 // Events follow the standard event protocol: { id, type, ts, context, data }
+// Event types: message.user, message.agent, message.tool_call, message.tool_result,
+//              turn.started, turn.completed, turn.failed,
+//              input.received, reason.started, reason.completed,
+//              act.started, act.completed, tool.call_started, tool.call_completed,
+//              session.started
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
@@ -89,7 +94,7 @@ export function useSSEEvents({
           ]);
           break;
 
-        case "message.assistant":
+        case "message.agent":
           setMessages((prev) => [
             ...prev,
             {
@@ -135,10 +140,18 @@ export function useSSEEvents({
           break;
 
         // =====================================================================
+        // Turn Lifecycle Events (for observability)
+        // =====================================================================
+        case "turn.started":
+        case "turn.completed":
+        case "turn.failed":
+          // Turn lifecycle events - stored but not displayed directly
+          break;
+
+        // =====================================================================
         // Atom Lifecycle Events (for observability)
         // =====================================================================
-        case "input.started":
-        case "input.completed":
+        case "input.received":
         case "reason.started":
         case "reason.completed":
         case "act.started":
@@ -192,9 +205,7 @@ export function useSSEEvents({
         // Session Events
         // =====================================================================
         case "session.started":
-        case "session.completed":
-        case "session.failed":
-          // Session lifecycle events
+          // Session lifecycle event
           break;
 
         default:
@@ -231,12 +242,15 @@ export function useSSEEvents({
     const eventTypes = [
       // Message events
       "message.user",
-      "message.assistant",
+      "message.agent",
       "message.tool_call",
       "message.tool_result",
+      // Turn lifecycle events
+      "turn.started",
+      "turn.completed",
+      "turn.failed",
       // Atom lifecycle events
-      "input.started",
-      "input.completed",
+      "input.received",
       "reason.started",
       "reason.completed",
       "act.started",
@@ -245,8 +259,6 @@ export function useSSEEvents({
       "tool.call_completed",
       // Session events
       "session.started",
-      "session.completed",
-      "session.failed",
     ];
 
     eventTypes.forEach((type) => {

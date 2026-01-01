@@ -69,7 +69,8 @@ pub fn create_db_event_emitter(db: Database) -> DbEventEmitter {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::event::{EventContext, InputStartedData, INPUT_STARTED};
+    use everruns_core::event::{EventContext, InputReceivedData, INPUT_RECEIVED};
+    use everruns_core::message::Message;
     use everruns_core::Event;
     use uuid::Uuid;
 
@@ -77,12 +78,16 @@ mod tests {
     fn test_event_serialization() {
         let session_id = Uuid::now_v7();
         let event_context = EventContext::session(session_id);
-        let event = Event::new(INPUT_STARTED, event_context, InputStartedData::default());
+        let event = Event::new(
+            INPUT_RECEIVED,
+            event_context,
+            InputReceivedData::new(Message::user("test")),
+        );
 
         let json = serde_json::to_value(&event).unwrap();
 
         assert!(json.is_object());
-        assert_eq!(json["type"], "input.started");
+        assert_eq!(json["type"], "input.received");
         assert!(json["context"].is_object());
         assert_eq!(json["context"]["session_id"], session_id.to_string());
     }
@@ -91,16 +96,24 @@ mod tests {
     fn test_event_type() {
         let session_id = Uuid::now_v7();
         let event_context = EventContext::session(session_id);
-        let event = Event::new(INPUT_STARTED, event_context, InputStartedData::default());
+        let event = Event::new(
+            INPUT_RECEIVED,
+            event_context,
+            InputReceivedData::new(Message::user("test")),
+        );
 
-        assert_eq!(event.event_type, "input.started");
+        assert_eq!(event.event_type, "input.received");
     }
 
     #[test]
     fn test_event_session_id() {
         let session_id = Uuid::now_v7();
         let event_context = EventContext::session(session_id);
-        let event = Event::new(INPUT_STARTED, event_context, InputStartedData::default());
+        let event = Event::new(
+            INPUT_RECEIVED,
+            event_context,
+            InputReceivedData::new(Message::user("test")),
+        );
 
         assert_eq!(event.session_id(), session_id);
     }

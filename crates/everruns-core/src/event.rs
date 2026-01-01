@@ -18,13 +18,17 @@ use utoipa::ToSchema;
 
 // Message events
 pub const MESSAGE_USER: &str = "message.user";
-pub const MESSAGE_ASSISTANT: &str = "message.assistant";
+pub const MESSAGE_AGENT: &str = "message.agent";
 pub const MESSAGE_TOOL_CALL: &str = "message.tool_call";
 pub const MESSAGE_TOOL_RESULT: &str = "message.tool_result";
 
+// Turn lifecycle events
+pub const TURN_STARTED: &str = "turn.started";
+pub const TURN_COMPLETED: &str = "turn.completed";
+pub const TURN_FAILED: &str = "turn.failed";
+
 // Atom lifecycle events
-pub const INPUT_STARTED: &str = "input.started";
-pub const INPUT_COMPLETED: &str = "input.completed";
+pub const INPUT_RECEIVED: &str = "input.received";
 pub const REASON_STARTED: &str = "reason.started";
 pub const REASON_COMPLETED: &str = "reason.completed";
 pub const ACT_STARTED: &str = "act.started";
@@ -34,8 +38,6 @@ pub const TOOL_CALL_COMPLETED: &str = "tool.call_completed";
 
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
-pub const SESSION_COMPLETED: &str = "session.completed";
-pub const SESSION_FAILED: &str = "session.failed";
 
 // ============================================================================
 // Event Context
@@ -177,8 +179,7 @@ impl Event {
     pub fn is_atom_event(&self) -> bool {
         matches!(
             self.event_type.as_str(),
-            INPUT_STARTED
-                | INPUT_COMPLETED
+            INPUT_RECEIVED
                 | REASON_STARTED
                 | REASON_COMPLETED
                 | ACT_STARTED
@@ -186,6 +187,11 @@ impl Event {
                 | TOOL_CALL_STARTED
                 | TOOL_CALL_COMPLETED
         )
+    }
+
+    /// Check if this is a turn lifecycle event
+    pub fn is_turn_event(&self) -> bool {
+        self.event_type.starts_with("turn.")
     }
 
     /// Check if this is a session lifecycle event
@@ -225,18 +231,33 @@ pub struct MessageUserData {
     pub tags: Vec<String>,
 }
 
-/// Data for message.assistant event
+/// Metadata about the model used for generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageAssistantData {
+pub struct ModelMetadata {
+    /// Model name (e.g., "gpt-4o", "claude-3-sonnet")
+    pub model: String,
+
+    /// Model ID (internal identifier)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<Uuid>,
+
+    /// Provider ID (internal identifier)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<Uuid>,
+}
+
+/// Data for message.agent event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageAgentData {
     /// Unique message identifier
     pub message_id: Uuid,
 
     /// Message content
     pub content: Vec<ContentPart>,
 
-    /// Model used for generation
+    /// Metadata about the model used
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub metadata: Option<ModelMetadata>,
 
     /// Token usage
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -286,15 +307,18 @@ pub struct MessageToolResultData {
 
 use crate::message::Message;
 
-/// Data for input.started event (empty - just signals start)
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct InputStartedData {}
-
-/// Data for input.completed event
+/// Data for input.received event
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InputCompletedData {
-    /// The user message that was retrieved
+pub struct InputReceivedData {
+    /// The user message that was received
     pub message: Message,
+}
+
+impl InputReceivedData {
+    /// Create a new InputReceivedData from a message
+    pub fn new(message: Message) -> Self {
+        Self { message }
+    }
 }
 
 /// Data for reason.started event
@@ -303,9 +327,9 @@ pub struct ReasonStartedData {
     /// Agent ID being used
     pub agent_id: Uuid,
 
-    /// Model being used
+    /// Metadata about the model being used
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub metadata: Option<ModelMetadata>,
 }
 
 /// Data for reason.completed event
@@ -451,6 +475,48 @@ impl ToolCallCompletedData {
 }
 
 // ============================================================================
+// Turn Event Data Types
+// ============================================================================
+
+/// Data for turn.started event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurnStartedData {
+    /// Turn identifier
+    pub turn_id: Uuid,
+
+    /// Input message ID that triggered this turn
+    pub input_message_id: Uuid,
+}
+
+/// Data for turn.completed event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurnCompletedData {
+    /// Turn identifier
+    pub turn_id: Uuid,
+
+    /// Number of iterations in this turn
+    pub iterations: usize,
+
+    /// Duration in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+/// Data for turn.failed event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurnFailedData {
+    /// Turn identifier
+    pub turn_id: Uuid,
+
+    /// Error message
+    pub error: String,
+
+    /// Error code
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+}
+
+// ============================================================================
 // Session Event Data Types
 // ============================================================================
 
@@ -463,25 +529,6 @@ pub struct SessionStartedData {
     /// Model ID if specified
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<Uuid>,
-}
-
-/// Data for session.completed event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionCompletedData {
-    /// Duration in milliseconds
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u64>,
-}
-
-/// Data for session.failed event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionFailedData {
-    /// Error message
-    pub error: String,
-
-    /// Error code
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error_code: Option<String>,
 }
 
 // ============================================================================
@@ -530,11 +577,11 @@ mod tests {
     fn test_event_creation() {
         let session_id = Uuid::now_v7();
         let context = EventContext::session(session_id);
-        let data = InputStartedData::default();
+        let data = InputReceivedData::new(Message::user("test"));
 
-        let event = Event::new(INPUT_STARTED, context, data);
+        let event = Event::new(INPUT_RECEIVED, context, data);
 
-        assert_eq!(event.event_type, "input.started");
+        assert_eq!(event.event_type, "input.received");
         assert_eq!(event.session_id(), session_id);
         assert!(event.is_atom_event());
         assert!(!event.is_message_event());
@@ -580,7 +627,11 @@ mod tests {
             .with_exec(exec_id)
             .build(ReasonStartedData {
                 agent_id: Uuid::now_v7(),
-                model: Some("gpt-4o".to_string()),
+                metadata: Some(ModelMetadata {
+                    model: "gpt-4o".to_string(),
+                    model_id: None,
+                    provider_id: None,
+                }),
             });
 
         assert_eq!(event.event_type, "reason.started");
@@ -604,8 +655,20 @@ mod tests {
     #[test]
     fn test_message_event_types() {
         assert_eq!(MESSAGE_USER, "message.user");
-        assert_eq!(MESSAGE_ASSISTANT, "message.assistant");
+        assert_eq!(MESSAGE_AGENT, "message.agent");
         assert_eq!(MESSAGE_TOOL_CALL, "message.tool_call");
         assert_eq!(MESSAGE_TOOL_RESULT, "message.tool_result");
+    }
+
+    #[test]
+    fn test_turn_event_types() {
+        assert_eq!(TURN_STARTED, "turn.started");
+        assert_eq!(TURN_COMPLETED, "turn.completed");
+        assert_eq!(TURN_FAILED, "turn.failed");
+    }
+
+    #[test]
+    fn test_input_received_event() {
+        assert_eq!(INPUT_RECEIVED, "input.received");
     }
 }
