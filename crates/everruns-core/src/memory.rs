@@ -729,12 +729,13 @@ mod tests {
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();
-        let event_context = EventContext::session(session_id);
+        let event_context = EventContext::empty();
 
         // Emit an event
         let seq = emitter
             .emit(Event::new(
                 INPUT_RECEIVED,
+                session_id,
                 event_context.clone(),
                 InputReceivedData::new(Message::user("test1")),
             ))
@@ -746,6 +747,7 @@ mod tests {
         let seq2 = emitter
             .emit(Event::new(
                 INPUT_RECEIVED,
+                session_id,
                 event_context,
                 InputReceivedData::new(Message::user("test2")),
             ))
@@ -767,12 +769,13 @@ mod tests {
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();
-        let event_context = EventContext::session(session_id);
+        let event_context = EventContext::empty();
 
         // Emit different event types
         emitter
             .emit(Event::new(
                 INPUT_RECEIVED,
+                session_id,
                 event_context.clone(),
                 InputReceivedData::new(Message::user("test")),
             ))
@@ -782,6 +785,7 @@ mod tests {
         emitter
             .emit(Event::new(
                 REASON_STARTED,
+                session_id,
                 event_context,
                 ReasonStartedData {
                     agent_id: Uuid::now_v7(),
@@ -808,13 +812,13 @@ mod tests {
         let session2 = Uuid::now_v7();
 
         // Emit events for different sessions
-        let context1 = EventContext::session(session1);
-        let context2 = EventContext::session(session2);
+        let context = EventContext::empty();
 
         emitter
             .emit(Event::new(
                 INPUT_RECEIVED,
-                context1,
+                session1,
+                context.clone(),
                 InputReceivedData::new(Message::user("session1")),
             ))
             .await
@@ -822,7 +826,8 @@ mod tests {
         emitter
             .emit(Event::new(
                 INPUT_RECEIVED,
-                context2,
+                session2,
+                context,
                 InputReceivedData::new(Message::user("session2")),
             ))
             .await
@@ -842,11 +847,12 @@ mod tests {
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();
-        let event_context = EventContext::session(session_id);
+        let event_context = EventContext::empty();
 
         emitter
             .emit(Event::new(
                 INPUT_RECEIVED,
+                session_id,
                 event_context,
                 InputReceivedData::new(Message::user("test")),
             ))

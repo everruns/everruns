@@ -209,18 +209,14 @@ where
         );
 
         // Create event context from atom context
-        let event_context = EventContext::atom(
-            context.session_id,
-            context.turn_id,
-            context.input_message_id,
-            context.exec_id,
-        );
+        let event_context = EventContext::from_atom_context(&context);
 
         // Emit reason.started event (note: we'll emit a more detailed event after model resolution)
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
                 REASON_STARTED,
+                context.session_id,
                 event_context.clone(),
                 ReasonStartedData {
                     agent_id,
@@ -247,6 +243,7 @@ where
                     .event_emitter
                     .emit(Event::new(
                         REASON_COMPLETED,
+                        context.session_id,
                         event_context.clone(),
                         ReasonCompletedData::success(
                             &result.text,
@@ -281,6 +278,7 @@ where
                     .event_emitter
                     .emit(Event::new(
                         REASON_COMPLETED,
+                        context.session_id,
                         event_context,
                         ReasonCompletedData::failure(error_msg.clone()),
                     ))

@@ -77,9 +77,10 @@ mod tests {
     #[test]
     fn test_event_serialization() {
         let session_id = Uuid::now_v7();
-        let event_context = EventContext::session(session_id);
+        let event_context = EventContext::empty();
         let event = Event::new(
             INPUT_RECEIVED,
+            session_id,
             event_context,
             InputReceivedData::new(Message::user("test")),
         );
@@ -88,16 +89,17 @@ mod tests {
 
         assert!(json.is_object());
         assert_eq!(json["type"], "input.received");
+        assert_eq!(json["session_id"], session_id.to_string());
         assert!(json["context"].is_object());
-        assert_eq!(json["context"]["session_id"], session_id.to_string());
     }
 
     #[test]
     fn test_event_type() {
         let session_id = Uuid::now_v7();
-        let event_context = EventContext::session(session_id);
+        let event_context = EventContext::empty();
         let event = Event::new(
             INPUT_RECEIVED,
+            session_id,
             event_context,
             InputReceivedData::new(Message::user("test")),
         );
@@ -108,9 +110,10 @@ mod tests {
     #[test]
     fn test_event_session_id() {
         let session_id = Uuid::now_v7();
-        let event_context = EventContext::session(session_id);
+        let event_context = EventContext::empty();
         let event = Event::new(
             INPUT_RECEIVED,
+            session_id,
             event_context,
             InputReceivedData::new(Message::user("test")),
         );

@@ -41,13 +41,12 @@ pub const SESSION_STARTED: &str = "session.started";
 // Event Context
 // ============================================================================
 
+use crate::atoms::AtomContext;
+
 /// Context for event correlation and tracing
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct EventContext {
-    /// Session this event belongs to
-    pub session_id: Uuid,
-
     /// Turn identifier (for turn-scoped events)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub turn_id: Option<Uuid>,
@@ -62,28 +61,23 @@ pub struct EventContext {
 }
 
 impl EventContext {
-    /// Create a minimal context with just session_id
-    pub fn session(session_id: Uuid) -> Self {
-        Self {
-            session_id,
-            ..Default::default()
-        }
+    /// Create an empty context (for session-level events)
+    pub fn empty() -> Self {
+        Self::default()
     }
 
-    /// Create a full context for atom execution
-    pub fn atom(session_id: Uuid, turn_id: Uuid, input_message_id: Uuid, exec_id: Uuid) -> Self {
+    /// Create a full context from an AtomContext
+    pub fn from_atom_context(ctx: &AtomContext) -> Self {
         Self {
-            session_id,
-            turn_id: Some(turn_id),
-            input_message_id: Some(input_message_id),
-            exec_id: Some(exec_id),
+            turn_id: Some(ctx.turn_id),
+            input_message_id: Some(ctx.input_message_id),
+            exec_id: Some(ctx.exec_id),
         }
     }
 
     /// Create a context for turn-scoped events (without exec_id)
-    pub fn turn(session_id: Uuid, turn_id: Uuid, input_message_id: Uuid) -> Self {
+    pub fn turn(turn_id: Uuid, input_message_id: Uuid) -> Self {
         Self {
-            session_id,
             turn_id: Some(turn_id),
             input_message_id: Some(input_message_id),
             exec_id: None,
@@ -101,8 +95,11 @@ impl EventContext {
 /// - `id`: Unique UUID v7 identifier (monotonically increasing)
 /// - `type`: Event type in dot notation (e.g., "message.user", "reason.started")
 /// - `ts`: ISO 8601 timestamp with millisecond precision
+/// - `session_id`: Session this event belongs to
 /// - `context`: Correlation context for tracing
 /// - `data`: Event-specific payload
+/// - `metadata`: Optional arbitrary metadata
+/// - `tags`: Optional list of tags for filtering
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Event {
@@ -116,11 +113,22 @@ pub struct Event {
     /// Event timestamp
     pub ts: DateTime<Utc>,
 
+    /// Session this event belongs to
+    pub session_id: Uuid,
+
     /// Correlation context
     pub context: EventContext,
 
     /// Event-specific payload
     pub data: serde_json::Value,
+
+    /// Arbitrary metadata for the event
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+
+    /// Tags for filtering and categorization
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
 
     /// Sequence number within session (for ordering)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -128,14 +136,22 @@ pub struct Event {
 }
 
 impl Event {
-    /// Create a new event with the given type, context, and data
-    pub fn new(event_type: impl Into<String>, context: EventContext, data: impl Serialize) -> Self {
+    /// Create a new event with the given type, session_id, context, and data
+    pub fn new(
+        event_type: impl Into<String>,
+        session_id: Uuid,
+        context: EventContext,
+        data: impl Serialize,
+    ) -> Self {
         Self {
             id: Uuid::now_v7(),
             event_type: event_type.into(),
             ts: Utc::now(),
+            session_id,
             context,
             data: serde_json::to_value(data).unwrap_or_default(),
+            metadata: None,
+            tags: None,
             sequence: None,
         }
     }
@@ -144,6 +160,7 @@ impl Event {
     pub fn with_id(
         id: Uuid,
         event_type: impl Into<String>,
+        session_id: Uuid,
         context: EventContext,
         data: impl Serialize,
     ) -> Self {
@@ -151,8 +168,11 @@ impl Event {
             id,
             event_type: event_type.into(),
             ts: Utc::now(),
+            session_id,
             context,
             data: serde_json::to_value(data).unwrap_or_default(),
+            metadata: None,
+            tags: None,
             sequence: None,
         }
     }
@@ -163,9 +183,21 @@ impl Event {
         self
     }
 
-    /// Get the session_id from context
+    /// Set metadata
+    pub fn with_metadata(mut self, metadata: serde_json::Value) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+
+    /// Set tags
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = Some(tags);
+        self
+    }
+
+    /// Get the session_id
     pub fn session_id(&self) -> Uuid {
-        self.context.session_id
+        self.session_id
     }
 
     /// Check if this is a message event
@@ -516,6 +548,7 @@ pub struct SessionStartedData {
 /// Builder for creating events with fluent API
 pub struct EventBuilder {
     event_type: String,
+    session_id: Uuid,
     context: EventContext,
 }
 
@@ -523,7 +556,8 @@ impl EventBuilder {
     pub fn new(event_type: impl Into<String>, session_id: Uuid) -> Self {
         Self {
             event_type: event_type.into(),
-            context: EventContext::session(session_id),
+            session_id,
+            context: EventContext::empty(),
         }
     }
 
@@ -539,7 +573,7 @@ impl EventBuilder {
     }
 
     pub fn build<T: Serialize>(self, data: T) -> Event {
-        Event::new(self.event_type, self.context, data)
+        Event::new(self.event_type, self.session_id, self.context, data)
     }
 }
 
@@ -554,10 +588,10 @@ mod tests {
     #[test]
     fn test_event_creation() {
         let session_id = Uuid::now_v7();
-        let context = EventContext::session(session_id);
+        let context = EventContext::empty();
         let data = InputReceivedData::new(Message::user("test"));
 
-        let event = Event::new(INPUT_RECEIVED, context, data);
+        let event = Event::new(INPUT_RECEIVED, session_id, context, data);
 
         assert_eq!(event.event_type, "input.received");
         assert_eq!(event.session_id(), session_id);
@@ -566,29 +600,29 @@ mod tests {
     }
 
     #[test]
-    fn test_event_context_atom() {
+    fn test_event_context_from_atom_context() {
         let session_id = Uuid::now_v7();
         let turn_id = Uuid::now_v7();
         let input_message_id = Uuid::now_v7();
-        let exec_id = Uuid::now_v7();
 
-        let context = EventContext::atom(session_id, turn_id, input_message_id, exec_id);
+        let atom_ctx = AtomContext::new(session_id, turn_id, input_message_id);
+        let context = EventContext::from_atom_context(&atom_ctx);
 
-        assert_eq!(context.session_id, session_id);
         assert_eq!(context.turn_id, Some(turn_id));
         assert_eq!(context.input_message_id, Some(input_message_id));
-        assert_eq!(context.exec_id, Some(exec_id));
+        assert_eq!(context.exec_id, Some(atom_ctx.exec_id));
     }
 
     #[test]
     fn test_event_serialization() {
         let session_id = Uuid::now_v7();
-        let context = EventContext::session(session_id);
-        let event = Event::new(MESSAGE_USER, context, serde_json::json!({"test": true}));
+        let context = EventContext::empty();
+        let event = Event::new(MESSAGE_USER, session_id, context, serde_json::json!({"test": true}));
 
         let json = serde_json::to_string(&event).unwrap();
 
         assert!(json.contains("\"type\":\"message.user\""));
+        assert!(json.contains("\"session_id\""));
         assert!(json.contains("\"context\""));
         assert!(json.contains("\"data\""));
     }
@@ -613,6 +647,7 @@ mod tests {
             });
 
         assert_eq!(event.event_type, "reason.started");
+        assert_eq!(event.session_id, session_id);
         assert_eq!(event.context.turn_id, Some(turn_id));
         assert_eq!(event.context.exec_id, Some(exec_id));
     }

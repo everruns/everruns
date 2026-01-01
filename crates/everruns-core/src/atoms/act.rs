@@ -169,18 +169,14 @@ where
         );
 
         // Create event context from atom context
-        let event_context = EventContext::atom(
-            context.session_id,
-            context.turn_id,
-            context.input_message_id,
-            context.exec_id,
-        );
+        let event_context = EventContext::from_atom_context(&context);
 
         // Emit act.started event
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
                 ACT_STARTED,
+                context.session_id,
                 event_context.clone(),
                 ActStartedData::new(&tool_calls),
             ))
@@ -242,6 +238,7 @@ where
             .event_emitter
             .emit(Event::new(
                 ACT_COMPLETED,
+                context.session_id,
                 event_context,
                 ActCompletedData {
                     completed: true,
@@ -297,18 +294,14 @@ where
         );
 
         // Create event context from atom context
-        let event_context = EventContext::atom(
-            context.session_id,
-            context.turn_id,
-            context.input_message_id,
-            context.exec_id,
-        );
+        let event_context = EventContext::from_atom_context(context);
 
         // Emit tool.call_started event
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
                 TOOL_CALL_STARTED,
+                context.session_id,
                 event_context.clone(),
                 ToolCallStartedData {
                     tool_call: tool_call.clone(),
@@ -333,6 +326,7 @@ where
                 .event_emitter
                 .emit(Event::new(
                     TOOL_CALL_COMPLETED,
+                    context.session_id,
                     event_context,
                     ToolCallCompletedData::failure(
                         tool_call.id.clone(),
@@ -404,6 +398,7 @@ where
                     .event_emitter
                     .emit(Event::new(
                         TOOL_CALL_COMPLETED,
+                        context.session_id,
                         event_context.clone(),
                         completed_data,
                     ))
@@ -440,6 +435,7 @@ where
                     .event_emitter
                     .emit(Event::new(
                         TOOL_CALL_COMPLETED,
+                        context.session_id,
                         event_context,
                         ToolCallCompletedData::failure(
                             tool_call.id.clone(),

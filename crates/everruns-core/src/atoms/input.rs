@@ -105,18 +105,14 @@ where
             })?;
 
         // Create event context from atom context
-        let event_context = EventContext::atom(
-            context.session_id,
-            context.turn_id,
-            context.input_message_id,
-            context.exec_id,
-        );
+        let event_context = EventContext::from_atom_context(&context);
 
         // Emit input.received event
         if let Err(e) = self
             .event_emitter
             .emit(Event::new(
                 INPUT_RECEIVED,
+                context.session_id,
                 event_context,
                 InputReceivedData::new(message.clone()),
             ))

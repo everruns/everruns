@@ -45,8 +45,11 @@ impl EventService {
             id: row.id,
             event_type: row.event_type,
             ts: row.created_at,
-            context: EventContext::session(row.session_id),
+            session_id: row.session_id,
+            context: EventContext::empty(),
             data: row.data,
+            metadata: None,
+            tags: None,
             sequence: Some(row.sequence),
         }
     }

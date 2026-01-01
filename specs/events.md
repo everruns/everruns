@@ -13,12 +13,17 @@ Every event MUST conform to this schema:
   "id": "01937abc-def0-7000-8000-000000000001",
   "type": "message.user",
   "ts": "2024-01-15T10:30:00.000Z",
+  "session_id": "01937abc-def0-7000-8000-000000000002",
   "context": {
-    "session_id": "01937abc-def0-7000-8000-000000000002"
+    "turn_id": "01937abc-def0-7000-8000-000000000003",
+    "input_message_id": "01937abc-def0-7000-8000-000000000004",
+    "exec_id": "01937abc-def0-7000-8000-000000000005"
   },
   "data": {
     // Event-specific payload
-  }
+  },
+  "metadata": { /* Optional arbitrary metadata */ },
+  "tags": ["tag1", "tag2"]
 }
 ```
 
@@ -29,8 +34,11 @@ Every event MUST conform to this schema:
 | `id` | UUID v7 | Yes | Unique, monotonically increasing event identifier |
 | `type` | string | Yes | Event type in dot notation (e.g., `message.user`, `reason.started`) |
 | `ts` | ISO 8601 | Yes | Event timestamp with millisecond precision |
+| `session_id` | UUID | Yes | Session this event belongs to |
 | `context` | object | Yes | Correlation context for tracing |
 | `data` | object | Yes | Event-specific payload (can be empty `{}`) |
+| `metadata` | object | No | Arbitrary metadata for the event |
+| `tags` | array | No | Tags for filtering and categorization |
 
 ### Context Object
 
@@ -38,7 +46,6 @@ The context provides correlation data for tracing and filtering:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `session_id` | UUID | Yes | Session this event belongs to |
 | `turn_id` | UUID | No | Turn identifier (for turn-scoped events) |
 | `input_message_id` | UUID | No | User message that triggered this turn |
 | `exec_id` | UUID | No | Atom execution identifier |
@@ -58,9 +65,8 @@ User message submitted to the session.
   "id": "...",
   "type": "message.user",
   "ts": "...",
-  "context": {
-    "session_id": "..."
-  },
+  "session_id": "...",
+  "context": {},
   "data": {
     "message": {
       "id": "01937abc-...",
@@ -85,8 +91,8 @@ Agent response message.
   "id": "...",
   "type": "message.agent",
   "ts": "...",
+  "session_id": "...",
   "context": {
-    "session_id": "...",
     "turn_id": "...",
     "input_message_id": "..."
   },
@@ -123,8 +129,8 @@ Turn execution started.
 ```json
 {
   "type": "turn.started",
+  "session_id": "...",
   "context": {
-    "session_id": "...",
     "turn_id": "..."
   },
   "data": {
@@ -141,8 +147,8 @@ Turn execution completed successfully.
 ```json
 {
   "type": "turn.completed",
+  "session_id": "...",
   "context": {
-    "session_id": "...",
     "turn_id": "..."
   },
   "data": {
@@ -160,8 +166,8 @@ Turn execution failed.
 ```json
 {
   "type": "turn.failed",
+  "session_id": "...",
   "context": {
-    "session_id": "...",
     "turn_id": "..."
   },
   "data": {
@@ -183,8 +189,8 @@ User input received and retrieved from message store.
 ```json
 {
   "type": "input.received",
+  "session_id": "...",
   "context": {
-    "session_id": "...",
     "turn_id": "...",
     "input_message_id": "...",
     "exec_id": "..."
@@ -202,7 +208,8 @@ ReasonAtom lifecycle - LLM inference.
 ```json
 {
   "type": "reason.started",
-  "context": { ... },
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "agent_id": "...",
     "metadata": {
@@ -217,7 +224,8 @@ ReasonAtom lifecycle - LLM inference.
 ```json
 {
   "type": "reason.completed",
-  "context": { ... },
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "success": true,
     "text_preview": "First 200 chars...",
@@ -234,7 +242,8 @@ ActAtom lifecycle - tool batch execution.
 ```json
 {
   "type": "act.started",
-  "context": { ... },
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "tool_calls": [
       { "id": "call_123", "name": "get_weather" }
@@ -246,7 +255,8 @@ ActAtom lifecycle - tool batch execution.
 ```json
 {
   "type": "act.completed",
-  "context": { ... },
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "completed": true,
     "success_count": 2,
@@ -262,7 +272,8 @@ Individual tool execution within ActAtom.
 ```json
 {
   "type": "tool.call_started",
-  "context": { ... },
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "tool_call": {
       "id": "call_123",
@@ -276,7 +287,8 @@ Individual tool execution within ActAtom.
 ```json
 {
   "type": "tool.call_completed",
-  "context": { ... },
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "tool_call_id": "call_123",
     "tool_name": "get_weather",
@@ -294,7 +306,8 @@ For failed tool calls:
 ```json
 {
   "type": "tool.call_completed",
-  "context": { ... },
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
     "tool_call_id": "call_456",
     "tool_name": "search_db",
@@ -316,9 +329,8 @@ Session execution started.
 ```json
 {
   "type": "session.started",
-  "context": {
-    "session_id": "..."
-  },
+  "session_id": "...",
+  "context": {},
   "data": {
     "agent_id": "...",
     "model_id": "..."
@@ -355,12 +367,14 @@ CREATE TABLE events (
     sequence INTEGER NOT NULL,
     event_type VARCHAR(100) NOT NULL,
     data JSONB NOT NULL DEFAULT '{}',
+    metadata JSONB,
+    tags TEXT[],
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(session_id, sequence)
 );
 ```
 
-The `data` column contains the full event JSON (type, context, data fields). The `event_type` column is denormalized for efficient filtering.
+The `data` column contains the full event JSON (type, context, data fields). The `event_type` column is denormalized for efficient filtering. The `metadata` and `tags` columns provide additional filtering and categorization capabilities.
 
 ## SSE Streaming
 
@@ -368,10 +382,10 @@ Events are streamed to clients via Server-Sent Events (SSE):
 
 ```
 event: message.user
-data: {"id":"...","type":"message.user","ts":"...","context":{...},"data":{...}}
+data: {"id":"...","type":"message.user","ts":"...","session_id":"...","context":{},"data":{...}}
 
 event: reason.started
-data: {"id":"...","type":"reason.started","ts":"...","context":{...},"data":{...}}
+data: {"id":"...","type":"reason.started","ts":"...","session_id":"...","context":{...},"data":{...}}
 ```
 
 The SSE `event` field matches the `type` field in the event payload.
