@@ -19,8 +19,6 @@ use utoipa::ToSchema;
 // Message events
 pub const MESSAGE_USER: &str = "message.user";
 pub const MESSAGE_AGENT: &str = "message.agent";
-pub const MESSAGE_TOOL_CALL: &str = "message.tool_call";
-pub const MESSAGE_TOOL_RESULT: &str = "message.tool_result";
 
 // Turn lifecycle events
 pub const TURN_STARTED: &str = "turn.started";
@@ -204,32 +202,8 @@ impl Event {
 // Message Event Data Types
 // ============================================================================
 
-use crate::message::ContentPart;
+use crate::message::{ContentPart, Message};
 use crate::tool_types::ToolCall;
-use crate::Controls;
-use std::collections::HashMap;
-
-/// Data for message.user event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageUserData {
-    /// Unique message identifier
-    pub message_id: Uuid,
-
-    /// Message content
-    pub content: Vec<ContentPart>,
-
-    /// Optional execution controls
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub controls: Option<Controls>,
-
-    /// Optional metadata
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, serde_json::Value>>,
-
-    /// Optional tags
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tags: Vec<String>,
-}
 
 /// Metadata about the model used for generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,14 +220,31 @@ pub struct ModelMetadata {
     pub provider_id: Option<Uuid>,
 }
 
+/// Token usage statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+}
+
+/// Data for message.user event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageUserData {
+    /// The user message
+    pub message: Message,
+}
+
+impl MessageUserData {
+    pub fn new(message: Message) -> Self {
+        Self { message }
+    }
+}
+
 /// Data for message.agent event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageAgentData {
-    /// Unique message identifier
-    pub message_id: Uuid,
-
-    /// Message content
-    pub content: Vec<ContentPart>,
+    /// The agent message
+    pub message: Message,
 
     /// Metadata about the model used
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -264,48 +255,29 @@ pub struct MessageAgentData {
     pub usage: Option<TokenUsage>,
 }
 
-/// Token usage statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TokenUsage {
-    pub input_tokens: u32,
-    pub output_tokens: u32,
-}
+impl MessageAgentData {
+    pub fn new(message: Message) -> Self {
+        Self {
+            message,
+            metadata: None,
+            usage: None,
+        }
+    }
 
-/// Data for message.tool_call event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageToolCallData {
-    /// Unique message identifier
-    pub message_id: Uuid,
+    pub fn with_metadata(mut self, metadata: ModelMetadata) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
 
-    /// Tool calls requested by the assistant
-    pub tool_calls: Vec<ToolCall>,
-}
-
-/// Data for message.tool_result event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageToolResultData {
-    /// Unique message identifier
-    pub message_id: Uuid,
-
-    /// ID of the tool call this result is for
-    pub tool_call_id: String,
-
-    /// Name of the tool
-    pub tool_name: String,
-
-    /// Result content
-    pub content: Vec<ContentPart>,
-
-    /// Whether this is an error result
-    #[serde(default)]
-    pub is_error: bool,
+    pub fn with_usage(mut self, usage: TokenUsage) -> Self {
+        self.usage = Some(usage);
+        self
+    }
 }
 
 // ============================================================================
 // Atom Event Data Types
 // ============================================================================
-
-use crate::message::Message;
 
 /// Data for input.received event
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -447,18 +419,23 @@ pub struct ToolCallCompletedData {
     /// Status: "success", "error", "timeout", "cancelled"
     pub status: String,
 
+    /// Result content (for successful calls)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<Vec<ContentPart>>,
+
     /// Error message if failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
 impl ToolCallCompletedData {
-    pub fn success(tool_call_id: String, tool_name: String) -> Self {
+    pub fn success(tool_call_id: String, tool_name: String, result: Vec<ContentPart>) -> Self {
         Self {
             tool_call_id,
             tool_name,
             success: true,
             status: "success".to_string(),
+            result: Some(result),
             error: None,
         }
     }
@@ -469,6 +446,7 @@ impl ToolCallCompletedData {
             tool_name,
             success: false,
             status,
+            result: None,
             error: Some(error),
         }
     }
@@ -656,8 +634,6 @@ mod tests {
     fn test_message_event_types() {
         assert_eq!(MESSAGE_USER, "message.user");
         assert_eq!(MESSAGE_AGENT, "message.agent");
-        assert_eq!(MESSAGE_TOOL_CALL, "message.tool_call");
-        assert_eq!(MESSAGE_TOOL_RESULT, "message.tool_result");
     }
 
     #[test]

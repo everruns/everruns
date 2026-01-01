@@ -135,45 +135,72 @@ function extractToolCallId(content: ContentPart[]): string | null {
  * This allows the UI to render from events while still displaying as "messages"
  */
 function eventsToMessages(events: Event[]): Message[] {
-  // Filter only message events and transform them
+  // Filter message events and tool.call_completed events
   // Note: Tool calls are embedded in message.agent events via ContentPart::ToolCall
-  const messageEvents = events.filter(e =>
+  // Note: Tool results now come from tool.call_completed events (not message.tool_result)
+  const relevantEvents = events.filter(e =>
     e.event_type === "message.user" ||
     e.event_type === "message.agent" ||
-    e.event_type === "message.tool_result"
+    e.event_type === "tool.call_completed"
   );
 
-  return messageEvents.map(event => {
+  return relevantEvents.map(event => {
+    if (event.event_type === "tool.call_completed") {
+      // Convert tool.call_completed to a tool_result message
+      const data = event.data as {
+        tool_call_id: string;
+        tool_name: string;
+        success: boolean;
+        result?: ContentPart[];
+        error?: string;
+      };
+
+      // Build content from result or error
+      const content: ContentPart[] = data.result || [];
+      if (data.error) {
+        content.push({ type: "text", text: data.error } as ContentPart);
+      }
+
+      return {
+        id: event.id,
+        session_id: event.session_id,
+        sequence: event.sequence,
+        role: "tool_result" as Message["role"],
+        content,
+        metadata: undefined,
+        tool_call_id: data.tool_call_id,
+        created_at: event.created_at,
+      };
+    }
+
+    // Handle message.user and message.agent
+    // data.message contains the full Message object
     const data = event.data as {
-      message_id: string;
-      role: string;
-      content: ContentPart[];
-      sequence: number;
-      created_at: string;
+      message: {
+        id: string;
+        role: string;
+        content: ContentPart[];
+        created_at: string;
+      };
     };
 
+    const message = data.message;
+
     // Map event type to message role
-    // Note: Tool calls are embedded in message.agent content, not separate events
     const roleMap: Record<string, Message["role"]> = {
       "message.user": "user",
       "message.agent": "assistant",
-      "message.tool_result": "tool_result",
     };
 
-    // Extract tool_call_id from content for tool_result messages
-    const toolCallId = event.event_type === "message.tool_result"
-      ? extractToolCallId(data.content)
-      : null;
-
     return {
-      id: data.message_id,
+      id: message?.id || event.id,
       session_id: event.session_id,
-      sequence: data.sequence ?? event.sequence,
-      role: roleMap[event.event_type] ?? data.role as Message["role"],
-      content: data.content,
+      sequence: event.sequence,
+      role: roleMap[event.event_type] ?? message?.role as Message["role"],
+      content: message?.content || [],
       metadata: undefined,
-      tool_call_id: toolCallId,
-      created_at: data.created_at ?? event.created_at,
+      tool_call_id: null,
+      created_at: message?.created_at ?? event.created_at,
     };
   });
 }

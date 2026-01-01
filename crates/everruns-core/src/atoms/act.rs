@@ -27,7 +27,7 @@ use crate::event::{
     ActCompletedData, ActStartedData, Event, EventContext, ToolCallCompletedData,
     ToolCallStartedData, ACT_COMPLETED, ACT_STARTED, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
 };
-use crate::message::Message;
+use crate::message::{ContentPart, Message};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{EventEmitter, MessageStore, SessionFileStore, ToolContext, ToolExecutor};
 
@@ -380,7 +380,17 @@ where
 
                 // Emit tool.call_completed event
                 let completed_data = if success {
-                    ToolCallCompletedData::success(tool_call.id.clone(), tool_call.name.clone())
+                    // Convert result to ContentPart (text representation of JSON)
+                    let result_content = tool_result
+                        .result
+                        .as_ref()
+                        .map(|r| vec![ContentPart::text(r.to_string())])
+                        .unwrap_or_default();
+                    ToolCallCompletedData::success(
+                        tool_call.id.clone(),
+                        tool_call.name.clone(),
+                        result_content,
+                    )
                 } else {
                     ToolCallCompletedData::failure(
                         tool_call.id.clone(),

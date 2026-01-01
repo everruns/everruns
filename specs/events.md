@@ -62,13 +62,16 @@ User message submitted to the session.
     "session_id": "..."
   },
   "data": {
-    "message_id": "01937abc-...",
-    "content": [
-      { "type": "text", "text": "Hello, world!" }
-    ],
-    "controls": { "max_tokens": 1000 },
-    "metadata": { "source": "web" },
-    "tags": ["important"]
+    "message": {
+      "id": "01937abc-...",
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Hello, world!" }
+      ],
+      "controls": { "max_tokens": 1000 },
+      "metadata": { "source": "web" },
+      "created_at": "2024-01-15T10:30:00.000Z"
+    }
   }
 }
 ```
@@ -88,10 +91,14 @@ Agent response message.
     "input_message_id": "..."
   },
   "data": {
-    "message_id": "01937abc-...",
-    "content": [
-      { "type": "text", "text": "Hello! How can I help?" }
-    ],
+    "message": {
+      "id": "01937abc-...",
+      "role": "assistant",
+      "content": [
+        { "type": "text", "text": "Hello! How can I help?" }
+      ],
+      "created_at": "2024-01-15T10:30:01.000Z"
+    },
     "metadata": {
       "model": "gpt-4o",
       "model_id": "01937abc-...",
@@ -101,59 +108,6 @@ Agent response message.
       "input_tokens": 50,
       "output_tokens": 20
     }
-  }
-}
-```
-
-#### `message.tool_call`
-
-Tool call request from the agent.
-
-```json
-{
-  "id": "...",
-  "type": "message.tool_call",
-  "ts": "...",
-  "context": {
-    "session_id": "...",
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "message_id": "01937abc-...",
-    "tool_calls": [
-      {
-        "id": "call_123",
-        "name": "get_weather",
-        "arguments": { "city": "Tokyo" }
-      }
-    ]
-  }
-}
-```
-
-#### `message.tool_result`
-
-Tool execution result.
-
-```json
-{
-  "id": "...",
-  "type": "message.tool_result",
-  "ts": "...",
-  "context": {
-    "session_id": "...",
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "message_id": "01937abc-...",
-    "tool_call_id": "call_123",
-    "tool_name": "get_weather",
-    "content": [
-      { "type": "text", "text": "Temperature: 22C, Sunny" }
-    ],
-    "is_error": false
   }
 }
 ```
@@ -327,7 +281,26 @@ Individual tool execution within ActAtom.
     "tool_call_id": "call_123",
     "tool_name": "get_weather",
     "success": true,
-    "status": "success"
+    "status": "success",
+    "result": [
+      { "type": "text", "text": "Temperature: 22C, Sunny" }
+    ]
+  }
+}
+```
+
+For failed tool calls:
+
+```json
+{
+  "type": "tool.call_completed",
+  "context": { ... },
+  "data": {
+    "tool_call_id": "call_456",
+    "tool_name": "search_db",
+    "success": false,
+    "status": "error",
+    "error": "Connection timeout"
   }
 }
 ```
@@ -359,8 +332,6 @@ Session execution started.
 |------------|----------|-------------|
 | `message.user` | Message | User input message |
 | `message.agent` | Message | Agent response |
-| `message.tool_call` | Message | Tool call request |
-| `message.tool_result` | Message | Tool execution result |
 | `turn.started` | Turn | Turn execution started |
 | `turn.completed` | Turn | Turn completed |
 | `turn.failed` | Turn | Turn failed |
@@ -370,7 +341,7 @@ Session execution started.
 | `act.started` | Atom | ActAtom started |
 | `act.completed` | Atom | ActAtom completed |
 | `tool.call_started` | Atom | Individual tool started |
-| `tool.call_completed` | Atom | Individual tool completed |
+| `tool.call_completed` | Atom | Individual tool completed (includes result) |
 | `session.started` | Session | Session execution started |
 
 ## Database Storage
@@ -420,5 +391,5 @@ A partial index exists for efficient message queries:
 
 ```sql
 CREATE INDEX idx_events_messages ON events(session_id, sequence)
-WHERE event_type IN ('message.user', 'message.agent', 'message.tool_call', 'message.tool_result');
+WHERE event_type IN ('message.user', 'message.agent');
 ```

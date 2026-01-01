@@ -1,6 +1,6 @@
 // SSE Events hook for real-time streaming
 // Events follow the standard event protocol: { id, type, ts, context, data }
-// Event types: message.user, message.agent, message.tool_call, message.tool_result,
+// Event types: message.user, message.agent,
 //              turn.started, turn.completed, turn.failed,
 //              input.received, reason.started, reason.completed,
 //              act.started, act.completed, tool.call_started, tool.call_completed,
@@ -82,62 +82,35 @@ export function useSSEEvents({
         // =====================================================================
         // Message Events
         // =====================================================================
-        case "message.user":
+        case "message.user": {
+          // data.message contains the full Message object
+          const message = data.message as { id: string; content: unknown[] };
           setMessages((prev) => [
             ...prev,
             {
-              id: (data.message_id as string) || sseEvent.id,
+              id: message?.id || sseEvent.id,
               role: "user",
-              content: extractTextContent(data.content),
+              content: extractTextContent(message?.content),
               isComplete: true,
             },
           ]);
           break;
+        }
 
-        case "message.agent":
+        case "message.agent": {
+          // data.message contains the full Message object
+          const message = data.message as { id: string; content: unknown[] };
           setMessages((prev) => [
             ...prev,
             {
-              id: (data.message_id as string) || sseEvent.id,
+              id: message?.id || sseEvent.id,
               role: "assistant",
-              content: extractTextContent(data.content),
+              content: extractTextContent(message?.content),
               isComplete: true,
             },
           ]);
           break;
-
-        case "message.tool_call":
-          // Tool calls requested by assistant
-          if (Array.isArray(data.tool_calls)) {
-            for (const tc of data.tool_calls) {
-              setToolCalls((prev) => [
-                ...prev,
-                {
-                  id: tc.id as string,
-                  name: tc.name as string,
-                  arguments: (tc.arguments as Record<string, unknown>) || {},
-                  isComplete: false,
-                },
-              ]);
-            }
-          }
-          break;
-
-        case "message.tool_result":
-          // Tool result came back
-          setToolCalls((prev) =>
-            prev.map((tc) =>
-              tc.id === (data.tool_call_id as string)
-                ? {
-                    ...tc,
-                    isComplete: true,
-                    result: data.content,
-                    error: data.is_error ? "Tool returned error" : undefined,
-                  }
-                : tc
-            )
-          );
-          break;
+        }
 
         // =====================================================================
         // Turn Lifecycle Events (for observability)
@@ -187,13 +160,14 @@ export function useSSEEvents({
           break;
 
         case "tool.call_completed":
-          // Individual tool call completed
+          // Individual tool call completed (now includes result content)
           setToolCalls((prev) =>
             prev.map((tc) =>
               tc.id === (data.tool_call_id as string)
                 ? {
                     ...tc,
                     isComplete: true,
+                    result: data.result,
                     error: data.error as string | undefined,
                   }
                 : tc
@@ -243,8 +217,6 @@ export function useSSEEvents({
       // Message events
       "message.user",
       "message.agent",
-      "message.tool_call",
-      "message.tool_result",
       // Turn lifecycle events
       "turn.started",
       "turn.completed",
