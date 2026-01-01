@@ -197,7 +197,7 @@ async fn main() -> anyhow::Result<()> {
     println!(
         "  Message retrieved: {:?} - {}",
         input_result.message.role,
-        truncate(&input_result.message.text().unwrap_or(""), 40)
+        truncate(input_result.message.text().unwrap_or(""), 40)
     );
     println!();
 
