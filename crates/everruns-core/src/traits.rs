@@ -386,3 +386,41 @@ impl std::fmt::Debug for ToolContext {
             .finish()
     }
 }
+
+// ============================================================================
+// EventEmitter - For emitting atom lifecycle events
+// ============================================================================
+
+use crate::atoms::AtomEvent;
+
+/// Trait for emitting atom lifecycle events
+///
+/// Implementations can:
+/// - Store events in a database
+/// - Keep events in memory for testing
+/// - Stream events via SSE/WebSocket
+/// - Log events for debugging
+///
+/// Events are emitted during atom execution to provide observability
+/// into the agent loop lifecycle.
+#[async_trait]
+pub trait EventEmitter: Send + Sync {
+    /// Emit an atom event
+    ///
+    /// The session_id is extracted from the event for storage/routing.
+    /// Returns the assigned sequence number.
+    async fn emit(&self, event: AtomEvent) -> Result<i32>;
+}
+
+/// No-op event emitter for when event emission is not needed
+///
+/// This is useful for testing or when event observability is disabled.
+#[derive(Debug, Clone, Default)]
+pub struct NoopEventEmitter;
+
+#[async_trait]
+impl EventEmitter for NoopEventEmitter {
+    async fn emit(&self, _event: AtomEvent) -> Result<i32> {
+        Ok(0)
+    }
+}

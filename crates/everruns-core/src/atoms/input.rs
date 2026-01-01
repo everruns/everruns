@@ -2,16 +2,17 @@
 //!
 //! This atom is the entry point for a turn. It:
 //! 1. Retrieves the user message from the message store
-//! 2. Emits a message.user event
+//! 2. Emits input.started and input.completed events
 //! 3. Returns the message for further processing
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use super::events::{AtomEvent, InputCompletedEvent, InputStartedEvent};
 use super::{Atom, AtomContext};
 use crate::error::{AgentLoopError, Result};
 use crate::message::Message;
-use crate::traits::MessageStore;
+use crate::traits::{EventEmitter, MessageStore};
 
 // ============================================================================
 // Input and Output Types
@@ -38,32 +39,41 @@ pub struct InputAtomResult {
 /// Atom that records user input and starts a turn
 ///
 /// This atom:
-/// 1. Retrieves the user message from the message store using input_message_id
-/// 2. Returns the message for downstream processing
+/// 1. Emits input.started event
+/// 2. Retrieves the user message from the message store using input_message_id
+/// 3. Emits input.completed event
+/// 4. Returns the message for downstream processing
 ///
 /// The message is expected to already be stored by the API layer.
 /// This atom just retrieves it and prepares for the turn.
-pub struct InputAtom<M>
+pub struct InputAtom<M, E>
 where
     M: MessageStore,
+    E: EventEmitter,
 {
     message_store: M,
+    event_emitter: E,
 }
 
-impl<M> InputAtom<M>
+impl<M, E> InputAtom<M, E>
 where
     M: MessageStore,
+    E: EventEmitter,
 {
     /// Create a new InputAtom
-    pub fn new(message_store: M) -> Self {
-        Self { message_store }
+    pub fn new(message_store: M, event_emitter: E) -> Self {
+        Self {
+            message_store,
+            event_emitter,
+        }
     }
 }
 
 #[async_trait]
-impl<M> Atom for InputAtom<M>
+impl<M, E> Atom for InputAtom<M, E>
 where
     M: MessageStore + Send + Sync,
+    E: EventEmitter + Send + Sync,
 {
     type Input = InputAtomInput;
     type Output = InputAtomResult;
@@ -83,6 +93,21 @@ where
             "InputAtom: retrieving user message"
         );
 
+        // Emit input.started event
+        if let Err(e) = self
+            .event_emitter
+            .emit(AtomEvent::InputStarted(InputStartedEvent::new(
+                context.clone(),
+            )))
+            .await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                error = %e,
+                "InputAtom: failed to emit input.started event"
+            );
+        }
+
         // Retrieve the user message from the store
         let message = self
             .message_store
@@ -94,6 +119,22 @@ where
                     context.input_message_id
                 ))
             })?;
+
+        // Emit input.completed event
+        if let Err(e) = self
+            .event_emitter
+            .emit(AtomEvent::InputCompleted(InputCompletedEvent::new(
+                context.clone(),
+                message.clone(),
+            )))
+            .await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                error = %e,
+                "InputAtom: failed to emit input.completed event"
+            );
+        }
 
         tracing::info!(
             session_id = %context.session_id,
@@ -114,12 +155,13 @@ where
 mod tests {
     use super::*;
     use crate::memory::InMemoryMessageStore;
-    use crate::traits::InputMessage;
+    use crate::traits::{InputMessage, NoopEventEmitter};
     use uuid::Uuid;
 
     #[tokio::test]
     async fn test_input_atom_retrieves_message() {
         let store = InMemoryMessageStore::new();
+        let event_emitter = NoopEventEmitter;
         let session_id = Uuid::now_v7();
         let turn_id = Uuid::now_v7();
 
@@ -130,7 +172,7 @@ mod tests {
             .unwrap();
 
         let context = AtomContext::new(session_id, turn_id, user_message.id);
-        let atom = InputAtom::new(store);
+        let atom = InputAtom::new(store, event_emitter);
 
         let result = atom.execute(InputAtomInput { context }).await.unwrap();
 
@@ -141,12 +183,13 @@ mod tests {
     #[tokio::test]
     async fn test_input_atom_not_found() {
         let store = InMemoryMessageStore::new();
+        let event_emitter = NoopEventEmitter;
         let session_id = Uuid::now_v7();
         let turn_id = Uuid::now_v7();
         let missing_id = Uuid::now_v7();
 
         let context = AtomContext::new(session_id, turn_id, missing_id);
-        let atom = InputAtom::new(store);
+        let atom = InputAtom::new(store, event_emitter);
 
         let result = atom.execute(InputAtomInput { context }).await;
 

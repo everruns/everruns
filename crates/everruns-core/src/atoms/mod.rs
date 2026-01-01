@@ -23,11 +23,18 @@ use crate::error::Result;
 
 // Turn-based atoms for the turn workflow
 mod act;
+pub mod events;
 mod input;
 mod reason;
 
 // Re-export atoms and their types
 pub use act::{ActAtom, ActInput, ActResult, ToolCallResult};
+pub use events::{
+    ActCompletedEvent, ActStartedEvent, AtomEvent, InputCompletedEvent, InputStartedEvent,
+    ReasonCompletedEvent, ReasonStartedEvent, ToolCallCompletedEvent, ToolCallStartedEvent,
+    ToolCallSummary, ACT_COMPLETED, ACT_STARTED, INPUT_COMPLETED, INPUT_STARTED, REASON_COMPLETED,
+    REASON_STARTED, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
+};
 pub use input::{InputAtom, InputAtomInput, InputAtomResult};
 pub use reason::{ReasonAtom, ReasonInput, ReasonResult};
 

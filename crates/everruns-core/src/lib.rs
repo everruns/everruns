@@ -53,8 +53,8 @@ pub use message::{
 };
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    InputMessage, LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore,
-    SessionStore, ToolContext, ToolExecutor,
+    EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
+    NoopEventEmitter, SessionFileStore, SessionStore, ToolContext, ToolExecutor,
 };
 
 // LLM driver types re-exports
@@ -85,8 +85,12 @@ pub use capabilities::{
 
 // Atoms re-exports (stateless atomic operations)
 pub use atoms::{
-    ActAtom, ActInput, ActResult, Atom, AtomContext, InputAtom, InputAtomInput, InputAtomResult,
-    ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
+    ActAtom, ActCompletedEvent, ActInput, ActResult, ActStartedEvent, Atom, AtomContext, AtomEvent,
+    InputAtom, InputAtomInput, InputAtomResult, InputCompletedEvent, InputStartedEvent, ReasonAtom,
+    ReasonCompletedEvent, ReasonInput, ReasonResult, ReasonStartedEvent, ToolCallCompletedEvent,
+    ToolCallResult, ToolCallStartedEvent, ToolCallSummary, ACT_COMPLETED, ACT_STARTED,
+    INPUT_COMPLETED, INPUT_STARTED, REASON_COMPLETED, REASON_STARTED, TOOL_CALL_COMPLETED,
+    TOOL_CALL_STARTED,
 };
 
 // Tool types (runtime types defined in this crate)

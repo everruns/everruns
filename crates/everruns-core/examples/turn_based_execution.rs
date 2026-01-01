@@ -31,7 +31,8 @@ use everruns_core::{
     capabilities::CapabilityRegistry,
     llm_driver_registry::DriverRegistry,
     memory::{
-        InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageStore, InMemorySessionStore,
+        InMemoryAgentStore, InMemoryEventEmitter, InMemoryLlmProviderStore, InMemoryMessageStore,
+        InMemorySessionStore,
     },
     session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
@@ -170,7 +171,10 @@ async fn main() -> anyhow::Result<()> {
     // =========================================================================
     // Create Atoms
     // =========================================================================
-    let input_atom = InputAtom::new(message_store.clone());
+    // Use InMemoryEventEmitter to track events emitted by atoms
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let input_atom = InputAtom::new(message_store.clone(), event_emitter.clone());
     let reason_atom = ReasonAtom::new(
         agent_store.clone(),
         session_store,
@@ -178,8 +182,9 @@ async fn main() -> anyhow::Result<()> {
         provider_store,
         capability_registry,
         driver_registry,
+        event_emitter.clone(),
     );
-    let act_atom = ActAtom::new(message_store.clone(), tools.clone());
+    let act_atom = ActAtom::new(message_store.clone(), tools.clone(), event_emitter.clone());
 
     // =========================================================================
     // Step 1: Input Atom - Record user message
@@ -308,6 +313,16 @@ async fn main() -> anyhow::Result<()> {
             truncate(&msg.content_to_llm_string(), 60)
         );
     }
+
+    // =========================================================================
+    // Emitted Events
+    // =========================================================================
+    println!("\n━━━ Emitted Events ━━━");
+    let events = event_emitter.events().await;
+    for (i, event) in events.iter().enumerate() {
+        println!("  {}. {}", i + 1, event.event_type());
+    }
+    println!("  Total events: {}", events.len());
 
     println!("\n=== Demo completed! ===");
     Ok(())

@@ -1,10 +1,12 @@
 //! ActAtom - Atom for parallel tool execution
 //!
 //! This atom handles:
-//! 1. Executing multiple tool calls in parallel
-//! 2. Handling errors, timeouts, and cancellations as "normal" results
-//! 3. Storing tool result messages
-//! 4. Returning all tool results (success, error, timeout, or cancelled)
+//! 1. Emitting act.started event
+//! 2. Executing multiple tool calls in parallel (with tool.call_started/completed events)
+//! 3. Handling errors, timeouts, and cancellations as "normal" results
+//! 4. Storing tool result messages
+//! 5. Emitting act.completed event
+//! 6. Returning all tool results (success, error, timeout, or cancelled)
 //!
 //! NOTES from Python spec:
 //! - Tools call runs in parallel
@@ -19,11 +21,14 @@ use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use super::events::{
+    ActCompletedEvent, ActStartedEvent, AtomEvent, ToolCallCompletedEvent, ToolCallStartedEvent,
+};
 use super::{Atom, AtomContext};
 use crate::error::Result;
 use crate::message::Message;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{MessageStore, SessionFileStore, ToolContext, ToolExecutor};
+use crate::traits::{EventEmitter, MessageStore, SessionFileStore, ToolContext, ToolExecutor};
 
 // ============================================================================
 // Input and Output Types
@@ -73,31 +78,37 @@ pub struct ActResult {
 /// Atom that executes tool calls in parallel
 ///
 /// This atom:
-/// 1. Executes all tool calls in parallel
-/// 2. Handles errors, timeouts, and cancellations gracefully
-/// 3. Stores tool result messages for each call
-/// 4. Returns comprehensive results for all tools
-pub struct ActAtom<M, T>
+/// 1. Emits act.started event
+/// 2. Executes all tool calls in parallel (emitting tool.call_started/completed for each)
+/// 3. Handles errors, timeouts, and cancellations gracefully
+/// 4. Stores tool result messages for each call
+/// 5. Emits act.completed event
+/// 6. Returns comprehensive results for all tools
+pub struct ActAtom<M, T, E>
 where
     M: MessageStore,
     T: ToolExecutor,
+    E: EventEmitter,
 {
     message_store: M,
     tool_executor: T,
+    event_emitter: E,
     /// Optional file store for context-aware tools
     file_store: Option<Arc<dyn SessionFileStore>>,
 }
 
-impl<M, T> ActAtom<M, T>
+impl<M, T, E> ActAtom<M, T, E>
 where
     M: MessageStore,
     T: ToolExecutor,
+    E: EventEmitter,
 {
     /// Create a new ActAtom
-    pub fn new(message_store: M, tool_executor: T) -> Self {
+    pub fn new(message_store: M, tool_executor: T, event_emitter: E) -> Self {
         Self {
             message_store,
             tool_executor,
+            event_emitter,
             file_store: None,
         }
     }
@@ -106,21 +117,24 @@ where
     pub fn with_file_store(
         message_store: M,
         tool_executor: T,
+        event_emitter: E,
         file_store: Arc<dyn SessionFileStore>,
     ) -> Self {
         Self {
             message_store,
             tool_executor,
+            event_emitter,
             file_store: Some(file_store),
         }
     }
 }
 
 #[async_trait]
-impl<M, T> Atom for ActAtom<M, T>
+impl<M, T, E> Atom for ActAtom<M, T, E>
 where
     M: MessageStore + Send + Sync + Clone,
     T: ToolExecutor + Send + Sync,
+    E: EventEmitter + Send + Sync,
 {
     type Input = ActInput;
     type Output = ActResult;
@@ -152,6 +166,22 @@ where
             tool_count = %tool_calls.len(),
             "ActAtom: executing tools in parallel"
         );
+
+        // Emit act.started event
+        if let Err(e) = self
+            .event_emitter
+            .emit(AtomEvent::ActStarted(ActStartedEvent::new(
+                context.clone(),
+                &tool_calls,
+            )))
+            .await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                error = %e,
+                "ActAtom: failed to emit act.started event"
+            );
+        }
 
         // Build tool name to definition map
         let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_definitions
@@ -197,6 +227,24 @@ where
             }
         }
 
+        // Emit act.completed event
+        if let Err(e) = self
+            .event_emitter
+            .emit(AtomEvent::ActCompleted(ActCompletedEvent::new(
+                context.clone(),
+                true,
+                success_count,
+                error_count,
+            )))
+            .await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                error = %e,
+                "ActAtom: failed to emit act.completed event"
+            );
+        }
+
         tracing::info!(
             session_id = %context.session_id,
             turn_id = %context.turn_id,
@@ -214,10 +262,11 @@ where
     }
 }
 
-impl<M, T> ActAtom<M, T>
+impl<M, T, E> ActAtom<M, T, E>
 where
     M: MessageStore + Send + Sync + Clone,
     T: ToolExecutor + Send + Sync,
+    E: EventEmitter + Send + Sync,
 {
     /// Execute a single tool call
     async fn execute_single_tool(
@@ -234,14 +283,55 @@ where
             "ActAtom: executing tool"
         );
 
+        // Emit tool.call_started event
+        if let Err(e) = self
+            .event_emitter
+            .emit(AtomEvent::ToolCallStarted(ToolCallStartedEvent::new(
+                context.clone(),
+                tool_call.clone(),
+            )))
+            .await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                tool_call_id = %tool_call.id,
+                error = %e,
+                "ActAtom: failed to emit tool.call_started event"
+            );
+        }
+
         // If tool definition not found, return error result
         let Some(tool_def) = tool_def else {
+            let error_msg = format!("Tool definition not found: {}", tool_call.name);
+
+            // Emit tool.call_completed event for error
+            if let Err(e) = self
+                .event_emitter
+                .emit(AtomEvent::ToolCallCompleted(
+                    ToolCallCompletedEvent::failure(
+                        context.clone(),
+                        tool_call.id.clone(),
+                        tool_call.name.clone(),
+                        "error".to_string(),
+                        error_msg.clone(),
+                    ),
+                ))
+                .await
+            {
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    tool_call_id = %tool_call.id,
+                    error = %e,
+                    "ActAtom: failed to emit tool.call_completed event"
+                );
+            }
+
             return ToolCallResult {
                 tool_call: tool_call.clone(),
                 result: ToolResult {
                     tool_call_id: tool_call.id.clone(),
                     result: None,
-                    error: Some(format!("Tool definition not found: {}", tool_call.name)),
+                    error: Some(error_msg),
                 },
                 success: false,
                 status: "error".to_string(),
@@ -258,9 +348,54 @@ where
             self.tool_executor.execute(&tool_call, tool_def).await
         };
 
-        match result {
+        let tool_call_result = match result {
             Ok(tool_result) => {
                 let success = tool_result.error.is_none();
+                let status = if success { "success" } else { "error" };
+
+                // Emit tool.call_completed event
+                if success {
+                    if let Err(e) = self
+                        .event_emitter
+                        .emit(AtomEvent::ToolCallCompleted(
+                            ToolCallCompletedEvent::success(
+                                context.clone(),
+                                tool_call.id.clone(),
+                                tool_call.name.clone(),
+                            ),
+                        ))
+                        .await
+                    {
+                        tracing::warn!(
+                            session_id = %context.session_id,
+                            tool_call_id = %tool_call.id,
+                            error = %e,
+                            "ActAtom: failed to emit tool.call_completed event"
+                        );
+                    }
+                } else if let Some(ref error) = tool_result.error {
+                    if let Err(e) = self
+                        .event_emitter
+                        .emit(AtomEvent::ToolCallCompleted(
+                            ToolCallCompletedEvent::failure(
+                                context.clone(),
+                                tool_call.id.clone(),
+                                tool_call.name.clone(),
+                                status.to_string(),
+                                error.clone(),
+                            ),
+                        ))
+                        .await
+                    {
+                        tracing::warn!(
+                            session_id = %context.session_id,
+                            tool_call_id = %tool_call.id,
+                            error = %e,
+                            "ActAtom: failed to emit tool.call_completed event"
+                        );
+                    }
+                }
+
                 tracing::debug!(
                     session_id = %context.session_id,
                     tool_name = %tool_call.name,
@@ -268,18 +403,39 @@ where
                     success = %success,
                     "ActAtom: tool execution completed"
                 );
+
                 ToolCallResult {
                     tool_call,
                     result: tool_result,
                     success,
-                    status: if success {
-                        "success".to_string()
-                    } else {
-                        "error".to_string()
-                    },
+                    status: status.to_string(),
                 }
             }
             Err(e) => {
+                let error_msg = e.to_string();
+
+                // Emit tool.call_completed event for error
+                if let Err(emit_err) = self
+                    .event_emitter
+                    .emit(AtomEvent::ToolCallCompleted(
+                        ToolCallCompletedEvent::failure(
+                            context.clone(),
+                            tool_call.id.clone(),
+                            tool_call.name.clone(),
+                            "error".to_string(),
+                            error_msg.clone(),
+                        ),
+                    ))
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        tool_call_id = %tool_call.id,
+                        error = %emit_err,
+                        "ActAtom: failed to emit tool.call_completed event"
+                    );
+                }
+
                 tracing::warn!(
                     session_id = %context.session_id,
                     tool_name = %tool_call.name,
@@ -287,18 +443,21 @@ where
                     error = %e,
                     "ActAtom: tool execution failed"
                 );
+
                 ToolCallResult {
                     tool_call: tool_call.clone(),
                     result: ToolResult {
                         tool_call_id: tool_call.id.clone(),
                         result: None,
-                        error: Some(e.to_string()),
+                        error: Some(error_msg),
                     },
                     success: false,
                     status: "error".to_string(),
                 }
             }
-        }
+        };
+
+        tool_call_result
     }
 }
 
@@ -311,6 +470,7 @@ mod tests {
     use super::*;
     use crate::memory::InMemoryMessageStore;
     use crate::tools::ToolRegistry;
+    use crate::traits::NoopEventEmitter;
     use serde_json::json;
     use uuid::Uuid;
 
@@ -318,7 +478,8 @@ mod tests {
     async fn test_act_atom_empty_tool_calls() {
         let store = InMemoryMessageStore::new();
         let executor = ToolRegistry::with_defaults();
-        let atom = ActAtom::new(store, executor);
+        let event_emitter = NoopEventEmitter;
+        let atom = ActAtom::new(store, executor, event_emitter);
 
         let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
         let input = ActInput {
@@ -339,7 +500,8 @@ mod tests {
     async fn test_act_atom_tool_not_found() {
         let store = InMemoryMessageStore::new();
         let executor = ToolRegistry::with_defaults();
-        let atom = ActAtom::new(store, executor);
+        let event_emitter = NoopEventEmitter;
+        let atom = ActAtom::new(store, executor, event_emitter);
 
         let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
         let input = ActInput {
