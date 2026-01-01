@@ -49,42 +49,50 @@ pub const TOOL_CALL_COMPLETED: &str = "tool.call_completed";
 /// Each variant contains the relevant payload for that event type.
 /// Events are serializable for storage and SSE streaming.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type")]
 pub enum AtomEvent {
     // ========================================================================
     // InputAtom Events
     // ========================================================================
     /// Emitted when InputAtom starts processing
+    #[serde(rename = "input.started")]
     InputStarted(InputStartedEvent),
 
     /// Emitted when InputAtom completes successfully
+    #[serde(rename = "input.completed")]
     InputCompleted(InputCompletedEvent),
 
     // ========================================================================
     // ReasonAtom Events
     // ========================================================================
     /// Emitted when ReasonAtom starts LLM call
+    #[serde(rename = "reason.started")]
     ReasonStarted(ReasonStartedEvent),
 
     /// Emitted when ReasonAtom completes (success or failure)
+    #[serde(rename = "reason.completed")]
     ReasonCompleted(ReasonCompletedEvent),
 
     // ========================================================================
     // ActAtom Events
     // ========================================================================
     /// Emitted when ActAtom starts parallel tool execution
+    #[serde(rename = "act.started")]
     ActStarted(ActStartedEvent),
 
     /// Emitted when ActAtom completes all tool calls
+    #[serde(rename = "act.completed")]
     ActCompleted(ActCompletedEvent),
 
     // ========================================================================
     // Tool Call Events
     // ========================================================================
     /// Emitted when a single tool call starts
+    #[serde(rename = "tool.call_started")]
     ToolCallStarted(ToolCallStartedEvent),
 
     /// Emitted when a single tool call completes
+    #[serde(rename = "tool.call_completed")]
     ToolCallCompleted(ToolCallCompletedEvent),
 }
 
@@ -438,7 +446,7 @@ mod tests {
         let event = AtomEvent::InputStarted(InputStartedEvent::new(ctx));
 
         let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains("\"type\":\"input_started\""));
+        assert!(json.contains("\"type\":\"input.started\""));
 
         let parsed: AtomEvent = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, AtomEvent::InputStarted(_)));
