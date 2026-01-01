@@ -114,3 +114,57 @@ pub trait Atom: Send + Sync {
     /// Execute the atom with the given input
     async fn execute(&self, input: Self::Input) -> Result<Self::Output>;
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_atom_context_new() {
+        let session_id = Uuid::now_v7();
+        let turn_id = Uuid::now_v7();
+        let input_message_id = Uuid::now_v7();
+
+        let context = AtomContext::new(session_id, turn_id, input_message_id);
+
+        assert_eq!(context.session_id, session_id);
+        assert_eq!(context.turn_id, turn_id);
+        assert_eq!(context.input_message_id, input_message_id);
+        // exec_id should be auto-generated
+        assert!(!context.exec_id.is_nil());
+    }
+
+    #[test]
+    fn test_atom_context_next_exec() {
+        let session_id = Uuid::now_v7();
+        let turn_id = Uuid::now_v7();
+        let input_message_id = Uuid::now_v7();
+
+        let context1 = AtomContext::new(session_id, turn_id, input_message_id);
+        let context2 = context1.next_exec();
+
+        // Same session, turn, and input_message_id
+        assert_eq!(context2.session_id, context1.session_id);
+        assert_eq!(context2.turn_id, context1.turn_id);
+        assert_eq!(context2.input_message_id, context1.input_message_id);
+        // Different exec_id
+        assert_ne!(context2.exec_id, context1.exec_id);
+    }
+
+    #[test]
+    fn test_atom_context_serialization() {
+        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+
+        let json = serde_json::to_string(&context).unwrap();
+        let parsed: AtomContext = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.session_id, context.session_id);
+        assert_eq!(parsed.turn_id, context.turn_id);
+        assert_eq!(parsed.input_message_id, context.input_message_id);
+        assert_eq!(parsed.exec_id, context.exec_id);
+    }
+}

@@ -36,26 +36,29 @@ See [specs/temporal-integration.md](temporal-integration.md) for detailed Tempor
 
 ### Core Abstractions (`everruns-core`)
 
-The core crate provides DB-agnostic agentic loop abstractions with pluggable backends:
+The core crate provides DB-agnostic agent abstractions with pluggable backends:
 
 1. **Trait-Based Design**:
-   - `EventEmitter` - Emit events during loop execution
-   - `MessageStore` - Load/store conversation messages
-   - `LlmProvider` - Call LLM with streaming support (OpenAI Protocol as base)
+   - `MessageStore` - Load/store conversation messages (add, get, list methods)
+   - `LlmProviderStore` - Resolve LLM models and providers
    - `ToolExecutor` - Execute tool calls
+   - `AgentStore` - Load agent configurations
+   - `SessionStore` - Load session configurations
 
-2. **Execution**:
-   - `AgentLoop::run()` - Complete loop execution
-   - `AgentLoop::execute_step()` - Step-by-step execution for Temporal activities
+2. **Atoms** (Stateless Atomic Operations):
+   - `InputAtom` - Retrieve user message from store
+   - `ReasonAtom` - Call LLM with context preparation, store response
+   - `ActAtom` - Execute tools in parallel, store results
+   - Each atom implements `Atom` trait with `execute(input) -> Result<output>`
 
-3. **Step Abstraction** (`step.rs`):
-   - `StepInput` / `StepOutput` - Input/output for each step
-   - `LoopStep` - Records for each step (setup, llm_call, tool_execution, finalize)
-   - Enables each LLM call and tool call to be a separate Temporal activity
+3. **AtomContext** (Execution Tracking):
+   - `session_id` - The conversation session
+   - `turn_id` - Unique identifier for the current turn
+   - `input_message_id` - User message that triggered this turn
+   - `exec_id` - Unique identifier for this atom execution
 
 4. **In-Memory Implementations** (for testing/examples):
-   - `InMemoryMessageStore`, `InMemoryEventEmitter`
-   - `MockLlmProvider`, `MockToolExecutor`
+   - `InMemoryMessageStore`
    - In-memory stores for testing: `InMemoryAgentStore`, `InMemorySessionStore`, `InMemoryLlmProviderStore`
 
 ### OpenAI Provider (`everruns-openai`)
