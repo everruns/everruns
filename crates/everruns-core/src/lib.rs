@@ -85,12 +85,8 @@ pub use capabilities::{
 
 // Atoms re-exports (stateless atomic operations)
 pub use atoms::{
-    ActAtom, ActCompletedEvent, ActInput, ActResult, ActStartedEvent, Atom, AtomContext, AtomEvent,
-    InputAtom, InputAtomInput, InputAtomResult, InputCompletedEvent, InputStartedEvent, ReasonAtom,
-    ReasonCompletedEvent, ReasonInput, ReasonResult, ReasonStartedEvent, ToolCallCompletedEvent,
-    ToolCallResult, ToolCallStartedEvent, ToolCallSummary, ACT_COMPLETED, ACT_STARTED,
-    INPUT_COMPLETED, INPUT_STARTED, REASON_COMPLETED, REASON_STARTED, TOOL_CALL_COMPLETED,
-    TOOL_CALL_STARTED,
+    ActAtom, ActInput, ActResult, Atom, AtomContext, InputAtom, InputAtomInput, InputAtomResult,
+    ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
 };
 
 // Tool types (runtime types defined in this crate)
@@ -102,7 +98,15 @@ pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResu
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
 pub use agent::{Agent, AgentStatus};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
-pub use event::Event;
+pub use event::{
+    ActCompletedData, ActStartedData, Event, EventBuilder, EventContext, InputCompletedData,
+    InputStartedData, MessageAssistantData, MessageToolCallData, MessageToolResultData,
+    MessageUserData, ReasonCompletedData, ReasonStartedData, SessionCompletedData,
+    SessionFailedData, SessionStartedData, TokenUsage, ToolCallCompletedData, ToolCallStartedData,
+    ToolCallSummary, ACT_COMPLETED, ACT_STARTED, INPUT_COMPLETED, INPUT_STARTED, MESSAGE_ASSISTANT,
+    MESSAGE_TOOL_CALL, MESSAGE_TOOL_RESULT, MESSAGE_USER, REASON_COMPLETED, REASON_STARTED,
+    SESSION_COMPLETED, SESSION_FAILED, SESSION_STARTED, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
+};
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{
     LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelStatus,

@@ -455,7 +455,7 @@ impl ToolExecutor for FailingToolExecutor {
 // MockLlmProvider - Returns predefined responses
 // ============================================================================
 
-use crate::atoms::AtomEvent;
+use crate::event::Event;
 use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
@@ -592,7 +592,7 @@ impl LlmDriver for MockLlmProvider {
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryEventEmitter {
-    events: Arc<RwLock<Vec<AtomEvent>>>,
+    events: Arc<RwLock<Vec<Event>>>,
     sequence: Arc<RwLock<i32>>,
 }
 
@@ -606,7 +606,7 @@ impl InMemoryEventEmitter {
     }
 
     /// Get all emitted events
-    pub async fn events(&self) -> Vec<AtomEvent> {
+    pub async fn events(&self) -> Vec<Event> {
         self.events.read().await.clone()
     }
 
@@ -622,18 +622,18 @@ impl InMemoryEventEmitter {
     }
 
     /// Get events by type
-    pub async fn events_by_type(&self, event_type: &str) -> Vec<AtomEvent> {
+    pub async fn events_by_type(&self, event_type: &str) -> Vec<Event> {
         self.events
             .read()
             .await
             .iter()
-            .filter(|e| e.event_type() == event_type)
+            .filter(|e| e.event_type == event_type)
             .cloned()
             .collect()
     }
 
     /// Get events for a specific session
-    pub async fn events_for_session(&self, session_id: Uuid) -> Vec<AtomEvent> {
+    pub async fn events_for_session(&self, session_id: Uuid) -> Vec<Event> {
         self.events
             .read()
             .await
@@ -646,7 +646,7 @@ impl InMemoryEventEmitter {
 
 #[async_trait]
 impl EventEmitter for InMemoryEventEmitter {
-    async fn emit(&self, event: AtomEvent) -> Result<i32> {
+    async fn emit(&self, event: Event) -> Result<i32> {
         let mut sequence = self.sequence.write().await;
         *sequence += 1;
         let seq = *sequence;
@@ -725,24 +725,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter() {
-        use crate::atoms::{AtomContext, InputStartedEvent};
+        use crate::event::{EventContext, InputStartedData, INPUT_STARTED};
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();
-        let context = AtomContext::new(session_id, Uuid::now_v7(), Uuid::now_v7());
+        let event_context = EventContext::session(session_id);
 
         // Emit an event
         let seq = emitter
-            .emit(AtomEvent::InputStarted(InputStartedEvent::new(
-                context.clone(),
-            )))
+            .emit(Event::new(
+                INPUT_STARTED,
+                event_context.clone(),
+                InputStartedData::default(),
+            ))
             .await
             .unwrap();
         assert_eq!(seq, 1);
 
         // Emit another event
         let seq2 = emitter
-            .emit(AtomEvent::InputStarted(InputStartedEvent::new(context)))
+            .emit(Event::new(
+                INPUT_STARTED,
+                event_context,
+                InputStartedData::default(),
+            ))
             .await
             .unwrap();
         assert_eq!(seq2, 2);
@@ -755,19 +761,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter_filter_by_type() {
-        use crate::atoms::{
-            AtomContext, InputCompletedEvent, InputStartedEvent, INPUT_COMPLETED, INPUT_STARTED,
+        use crate::event::{
+            EventContext, InputCompletedData, InputStartedData, INPUT_COMPLETED, INPUT_STARTED,
         };
         use crate::ContentPart;
 
         let emitter = InMemoryEventEmitter::new();
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let session_id = Uuid::now_v7();
+        let event_context = EventContext::session(session_id);
 
         // Emit different events
         emitter
-            .emit(AtomEvent::InputStarted(InputStartedEvent::new(
-                context.clone(),
-            )))
+            .emit(Event::new(
+                INPUT_STARTED,
+                event_context.clone(),
+                InputStartedData::default(),
+            ))
             .await
             .unwrap();
 
@@ -781,9 +790,11 @@ mod tests {
         };
 
         emitter
-            .emit(AtomEvent::InputCompleted(InputCompletedEvent::new(
-                context, message,
-            )))
+            .emit(Event::new(
+                INPUT_COMPLETED,
+                event_context,
+                InputCompletedData { message },
+            ))
             .await
             .unwrap();
 
@@ -797,22 +808,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter_filter_by_session() {
-        use crate::atoms::{AtomContext, InputStartedEvent};
+        use crate::event::{EventContext, InputStartedData, INPUT_STARTED};
 
         let emitter = InMemoryEventEmitter::new();
         let session1 = Uuid::now_v7();
         let session2 = Uuid::now_v7();
 
         // Emit events for different sessions
-        let context1 = AtomContext::new(session1, Uuid::now_v7(), Uuid::now_v7());
-        let context2 = AtomContext::new(session2, Uuid::now_v7(), Uuid::now_v7());
+        let context1 = EventContext::session(session1);
+        let context2 = EventContext::session(session2);
 
         emitter
-            .emit(AtomEvent::InputStarted(InputStartedEvent::new(context1)))
+            .emit(Event::new(
+                INPUT_STARTED,
+                context1,
+                InputStartedData::default(),
+            ))
             .await
             .unwrap();
         emitter
-            .emit(AtomEvent::InputStarted(InputStartedEvent::new(context2)))
+            .emit(Event::new(
+                INPUT_STARTED,
+                context2,
+                InputStartedData::default(),
+            ))
             .await
             .unwrap();
 
@@ -826,13 +845,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter_clear() {
-        use crate::atoms::{AtomContext, InputStartedEvent};
+        use crate::event::{EventContext, InputStartedData, INPUT_STARTED};
 
         let emitter = InMemoryEventEmitter::new();
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let session_id = Uuid::now_v7();
+        let event_context = EventContext::session(session_id);
 
         emitter
-            .emit(AtomEvent::InputStarted(InputStartedEvent::new(context)))
+            .emit(Event::new(
+                INPUT_STARTED,
+                event_context,
+                InputStartedData::default(),
+            ))
             .await
             .unwrap();
 

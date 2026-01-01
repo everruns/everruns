@@ -1,4 +1,5 @@
-// SSE Events hook for real-time streaming (M2)
+// SSE Events hook for real-time streaming
+// Events follow the standard event protocol: { id, type, ts, context, data }
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
@@ -29,6 +30,23 @@ interface UseSSEEventsReturn {
   toolCalls: AggregatedToolCall[];
   isConnected: boolean;
   error: Error | null;
+  // New: raw events for debugging/display
+  events: SSEEvent[];
+}
+
+// Standard event schema
+interface SSEEvent {
+  id: string;
+  type: string;
+  ts: string;
+  context: {
+    session_id: string;
+    turn_id?: string;
+    input_message_id?: string;
+    exec_id?: string;
+  };
+  data: Record<string, unknown>;
+  sequence?: number;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000";
@@ -40,6 +58,7 @@ export function useSSEEvents({
 }: UseSSEEventsOptions): UseSSEEventsReturn {
   const [messages, setMessages] = useState<AggregatedMessage[]>([]);
   const [toolCalls, setToolCalls] = useState<AggregatedToolCall[]>([]);
+  const [events, setEvents] = useState<SSEEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -47,79 +66,140 @@ export function useSSEEvents({
 
   const handleEvent = useCallback((event: MessageEvent) => {
     try {
-      const data = JSON.parse(event.data);
+      const sseEvent: SSEEvent = JSON.parse(event.data);
+
+      // Store all events for debugging/display
+      setEvents((prev) => [...prev, sseEvent]);
+
+      const { data } = sseEvent;
 
       switch (event.type) {
-        case "step.generating":
-          // Streaming text delta
-          setMessages((prev) => {
-            const existing = prev.find((m) => m.id === data.message_id);
-            if (existing) {
-              return prev.map((m) =>
-                m.id === data.message_id
-                  ? { ...m, content: m.content + (data.delta || "") }
-                  : m
-              );
-            }
-            return [
-              ...prev,
-              {
-                id: data.message_id || `streaming-${Date.now()}`,
-                role: "assistant",
-                content: data.delta || "",
-                isComplete: false,
-              },
-            ];
-          });
-          break;
-
-        case "step.generated":
-          // Complete the streaming message
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === data.message_id ? { ...m, isComplete: true } : m
-            )
-          );
-          break;
-
-        case "tool.started":
-          setToolCalls((prev) => [
+        // =====================================================================
+        // Message Events
+        // =====================================================================
+        case "message.user":
+          setMessages((prev) => [
             ...prev,
             {
-              id: data.tool_call_id,
-              name: data.name,
-              arguments: data.arguments || {},
-              isComplete: false,
+              id: (data.message_id as string) || sseEvent.id,
+              role: "user",
+              content: extractTextContent(data.content),
+              isComplete: true,
             },
           ]);
           break;
 
-        case "tool.completed":
+        case "message.assistant":
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: (data.message_id as string) || sseEvent.id,
+              role: "assistant",
+              content: extractTextContent(data.content),
+              isComplete: true,
+            },
+          ]);
+          break;
+
+        case "message.tool_call":
+          // Tool calls requested by assistant
+          if (Array.isArray(data.tool_calls)) {
+            for (const tc of data.tool_calls) {
+              setToolCalls((prev) => [
+                ...prev,
+                {
+                  id: tc.id as string,
+                  name: tc.name as string,
+                  arguments: (tc.arguments as Record<string, unknown>) || {},
+                  isComplete: false,
+                },
+              ]);
+            }
+          }
+          break;
+
+        case "message.tool_result":
+          // Tool result came back
           setToolCalls((prev) =>
             prev.map((tc) =>
-              tc.id === data.tool_call_id
+              tc.id === (data.tool_call_id as string)
                 ? {
                     ...tc,
                     isComplete: true,
-                    result: data.result,
-                    error: data.error,
+                    result: data.content,
+                    error: data.is_error ? "Tool returned error" : undefined,
                   }
                 : tc
             )
           );
           break;
 
-        case "message.created":
-          // A message was persisted - could refresh messages list
+        // =====================================================================
+        // Atom Lifecycle Events (for observability)
+        // =====================================================================
+        case "input.started":
+        case "input.completed":
+        case "reason.started":
+        case "reason.completed":
+        case "act.started":
+        case "act.completed":
+          // These are observability events - stored but not displayed directly
           break;
 
+        case "tool.call_started":
+          // Individual tool call started
+          {
+            const toolCall = data.tool_call as {
+              id: string;
+              name: string;
+              arguments: Record<string, unknown>;
+            };
+            if (toolCall) {
+              setToolCalls((prev) => {
+                // Only add if not already present
+                const existing = prev.find((tc) => tc.id === toolCall.id);
+                if (existing) return prev;
+                return [
+                  ...prev,
+                  {
+                    id: toolCall.id,
+                    name: toolCall.name,
+                    arguments: toolCall.arguments || {},
+                    isComplete: false,
+                  },
+                ];
+              });
+            }
+          }
+          break;
+
+        case "tool.call_completed":
+          // Individual tool call completed
+          setToolCalls((prev) =>
+            prev.map((tc) =>
+              tc.id === (data.tool_call_id as string)
+                ? {
+                    ...tc,
+                    isComplete: true,
+                    error: data.error as string | undefined,
+                  }
+                : tc
+            )
+          );
+          break;
+
+        // =====================================================================
+        // Session Events
+        // =====================================================================
+        case "session.started":
         case "session.completed":
         case "session.failed":
-          // Session ended
+          // Session lifecycle events
           break;
 
         default:
-          // Unknown event type
+          // Unknown event type - log for debugging
+          console.debug("Unknown SSE event type:", event.type, sseEvent);
           break;
       }
     } catch (e) {
@@ -147,16 +227,23 @@ export function useSSEEvents({
       console.error("SSE error:", e);
     };
 
-    // Listen to specific event types
+    // Listen to all event types from the event protocol
     const eventTypes = [
-      "step.started",
-      "step.generating",
-      "step.generated",
-      "step.error",
-      "message.created",
-      "message.delta",
-      "tool.started",
-      "tool.completed",
+      // Message events
+      "message.user",
+      "message.assistant",
+      "message.tool_call",
+      "message.tool_result",
+      // Atom lifecycle events
+      "input.started",
+      "input.completed",
+      "reason.started",
+      "reason.completed",
+      "act.started",
+      "act.completed",
+      "tool.call_started",
+      "tool.call_completed",
+      // Session events
       "session.started",
       "session.completed",
       "session.failed",
@@ -180,5 +267,26 @@ export function useSSEEvents({
     toolCalls,
     isConnected,
     error,
+    events,
   };
+}
+
+// Helper to extract text from content array
+function extractTextContent(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .filter((part: unknown) => {
+      return (
+        typeof part === "object" &&
+        part !== null &&
+        "type" in part &&
+        part.type === "text"
+      );
+    })
+    .map((part: unknown) => {
+      const p = part as { text?: string };
+      return p.text || "";
+    })
+    .join("");
 }

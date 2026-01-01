@@ -8,9 +8,11 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use super::events::{AtomEvent, InputCompletedEvent, InputStartedEvent};
 use super::{Atom, AtomContext};
 use crate::error::{AgentLoopError, Result};
+use crate::event::{
+    Event, EventContext, InputCompletedData, InputStartedData, INPUT_COMPLETED, INPUT_STARTED,
+};
 use crate::message::Message;
 use crate::traits::{EventEmitter, MessageStore};
 
@@ -93,12 +95,22 @@ where
             "InputAtom: retrieving user message"
         );
 
+        // Create event context from atom context
+        let event_context = EventContext::atom(
+            context.session_id,
+            context.turn_id,
+            context.input_message_id,
+            context.exec_id,
+        );
+
         // Emit input.started event
         if let Err(e) = self
             .event_emitter
-            .emit(AtomEvent::InputStarted(InputStartedEvent::new(
-                context.clone(),
-            )))
+            .emit(Event::new(
+                INPUT_STARTED,
+                event_context.clone(),
+                InputStartedData::default(),
+            ))
             .await
         {
             tracing::warn!(
@@ -123,10 +135,13 @@ where
         // Emit input.completed event
         if let Err(e) = self
             .event_emitter
-            .emit(AtomEvent::InputCompleted(InputCompletedEvent::new(
-                context.clone(),
-                message.clone(),
-            )))
+            .emit(Event::new(
+                INPUT_COMPLETED,
+                event_context,
+                InputCompletedData {
+                    message: message.clone(),
+                },
+            ))
             .await
         {
             tracing::warn!(

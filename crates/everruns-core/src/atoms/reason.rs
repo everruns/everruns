@@ -21,10 +21,12 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::events::{AtomEvent, ReasonCompletedEvent, ReasonStartedEvent};
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
+use crate::event::{
+    Event, EventContext, ReasonCompletedData, ReasonStartedData, REASON_COMPLETED, REASON_STARTED,
+};
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmStreamEvent, ProviderConfig, ProviderType,
@@ -206,13 +208,25 @@ where
             "ReasonAtom: starting LLM call"
         );
 
+        // Create event context from atom context
+        let event_context = EventContext::atom(
+            context.session_id,
+            context.turn_id,
+            context.input_message_id,
+            context.exec_id,
+        );
+
         // Emit reason.started event
         if let Err(e) = self
             .event_emitter
-            .emit(AtomEvent::ReasonStarted(ReasonStartedEvent::new(
-                context.clone(),
-                agent_id,
-            )))
+            .emit(Event::new(
+                REASON_STARTED,
+                event_context.clone(),
+                ReasonStartedData {
+                    agent_id,
+                    model: None,
+                },
+            ))
             .await
         {
             tracing::warn!(
@@ -231,12 +245,15 @@ where
                 // Emit reason.completed event for success
                 if let Err(e) = self
                     .event_emitter
-                    .emit(AtomEvent::ReasonCompleted(ReasonCompletedEvent::success(
-                        context.clone(),
-                        &result.text,
-                        result.has_tool_calls,
-                        result.tool_calls.len(),
-                    )))
+                    .emit(Event::new(
+                        REASON_COMPLETED,
+                        event_context.clone(),
+                        ReasonCompletedData::success(
+                            &result.text,
+                            result.has_tool_calls,
+                            result.tool_calls.len(),
+                        ),
+                    ))
                     .await
                 {
                     tracing::warn!(
@@ -262,10 +279,11 @@ where
                 // Emit reason.completed event for failure
                 if let Err(emit_err) = self
                     .event_emitter
-                    .emit(AtomEvent::ReasonCompleted(ReasonCompletedEvent::failure(
-                        context.clone(),
-                        error_msg.clone(),
-                    )))
+                    .emit(Event::new(
+                        REASON_COMPLETED,
+                        event_context,
+                        ReasonCompletedData::failure(error_msg.clone()),
+                    ))
                     .await
                 {
                     tracing::warn!(

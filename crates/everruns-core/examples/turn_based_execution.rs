@@ -320,7 +320,7 @@ async fn main() -> anyhow::Result<()> {
     println!("\n━━━ Emitted Events ━━━");
     let events = event_emitter.events().await;
     for (i, event) in events.iter().enumerate() {
-        println!("  {}. {}", i + 1, event.event_type());
+        println!("  {}. {}", i + 1, event.event_type);
     }
     println!("  Total events: {}", events.len());
 

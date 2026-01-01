@@ -21,11 +21,12 @@ use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::events::{
-    ActCompletedEvent, ActStartedEvent, AtomEvent, ToolCallCompletedEvent, ToolCallStartedEvent,
-};
 use super::{Atom, AtomContext};
 use crate::error::Result;
+use crate::event::{
+    ActCompletedData, ActStartedData, Event, EventContext, ToolCallCompletedData,
+    ToolCallStartedData, ACT_COMPLETED, ACT_STARTED, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
+};
 use crate::message::Message;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{EventEmitter, MessageStore, SessionFileStore, ToolContext, ToolExecutor};
@@ -167,13 +168,22 @@ where
             "ActAtom: executing tools in parallel"
         );
 
+        // Create event context from atom context
+        let event_context = EventContext::atom(
+            context.session_id,
+            context.turn_id,
+            context.input_message_id,
+            context.exec_id,
+        );
+
         // Emit act.started event
         if let Err(e) = self
             .event_emitter
-            .emit(AtomEvent::ActStarted(ActStartedEvent::new(
-                context.clone(),
-                &tool_calls,
-            )))
+            .emit(Event::new(
+                ACT_STARTED,
+                event_context.clone(),
+                ActStartedData::new(&tool_calls),
+            ))
             .await
         {
             tracing::warn!(
@@ -230,12 +240,15 @@ where
         // Emit act.completed event
         if let Err(e) = self
             .event_emitter
-            .emit(AtomEvent::ActCompleted(ActCompletedEvent::new(
-                context.clone(),
-                true,
-                success_count,
-                error_count,
-            )))
+            .emit(Event::new(
+                ACT_COMPLETED,
+                event_context,
+                ActCompletedData {
+                    completed: true,
+                    success_count,
+                    error_count,
+                },
+            ))
             .await
         {
             tracing::warn!(
@@ -283,13 +296,24 @@ where
             "ActAtom: executing tool"
         );
 
+        // Create event context from atom context
+        let event_context = EventContext::atom(
+            context.session_id,
+            context.turn_id,
+            context.input_message_id,
+            context.exec_id,
+        );
+
         // Emit tool.call_started event
         if let Err(e) = self
             .event_emitter
-            .emit(AtomEvent::ToolCallStarted(ToolCallStartedEvent::new(
-                context.clone(),
-                tool_call.clone(),
-            )))
+            .emit(Event::new(
+                TOOL_CALL_STARTED,
+                event_context.clone(),
+                ToolCallStartedData {
+                    tool_call: tool_call.clone(),
+                },
+            ))
             .await
         {
             tracing::warn!(
@@ -307,9 +331,10 @@ where
             // Emit tool.call_completed event for error
             if let Err(e) = self
                 .event_emitter
-                .emit(AtomEvent::ToolCallCompleted(
-                    ToolCallCompletedEvent::failure(
-                        context.clone(),
+                .emit(Event::new(
+                    TOOL_CALL_COMPLETED,
+                    event_context,
+                    ToolCallCompletedData::failure(
                         tool_call.id.clone(),
                         tool_call.name.clone(),
                         "error".to_string(),
@@ -354,46 +379,32 @@ where
                 let status = if success { "success" } else { "error" };
 
                 // Emit tool.call_completed event
-                if success {
-                    if let Err(e) = self
-                        .event_emitter
-                        .emit(AtomEvent::ToolCallCompleted(
-                            ToolCallCompletedEvent::success(
-                                context.clone(),
-                                tool_call.id.clone(),
-                                tool_call.name.clone(),
-                            ),
-                        ))
-                        .await
-                    {
-                        tracing::warn!(
-                            session_id = %context.session_id,
-                            tool_call_id = %tool_call.id,
-                            error = %e,
-                            "ActAtom: failed to emit tool.call_completed event"
-                        );
-                    }
-                } else if let Some(ref error) = tool_result.error {
-                    if let Err(e) = self
-                        .event_emitter
-                        .emit(AtomEvent::ToolCallCompleted(
-                            ToolCallCompletedEvent::failure(
-                                context.clone(),
-                                tool_call.id.clone(),
-                                tool_call.name.clone(),
-                                status.to_string(),
-                                error.clone(),
-                            ),
-                        ))
-                        .await
-                    {
-                        tracing::warn!(
-                            session_id = %context.session_id,
-                            tool_call_id = %tool_call.id,
-                            error = %e,
-                            "ActAtom: failed to emit tool.call_completed event"
-                        );
-                    }
+                let completed_data = if success {
+                    ToolCallCompletedData::success(tool_call.id.clone(), tool_call.name.clone())
+                } else {
+                    ToolCallCompletedData::failure(
+                        tool_call.id.clone(),
+                        tool_call.name.clone(),
+                        status.to_string(),
+                        tool_result.error.clone().unwrap_or_default(),
+                    )
+                };
+
+                if let Err(e) = self
+                    .event_emitter
+                    .emit(Event::new(
+                        TOOL_CALL_COMPLETED,
+                        event_context.clone(),
+                        completed_data,
+                    ))
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        tool_call_id = %tool_call.id,
+                        error = %e,
+                        "ActAtom: failed to emit tool.call_completed event"
+                    );
                 }
 
                 tracing::debug!(
@@ -417,9 +428,10 @@ where
                 // Emit tool.call_completed event for error
                 if let Err(emit_err) = self
                     .event_emitter
-                    .emit(AtomEvent::ToolCallCompleted(
-                        ToolCallCompletedEvent::failure(
-                            context.clone(),
+                    .emit(Event::new(
+                        TOOL_CALL_COMPLETED,
+                        event_context,
+                        ToolCallCompletedData::failure(
                             tool_call.id.clone(),
                             tool_call.name.clone(),
                             "error".to_string(),

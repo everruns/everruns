@@ -388,12 +388,12 @@ impl std::fmt::Debug for ToolContext {
 }
 
 // ============================================================================
-// EventEmitter - For emitting atom lifecycle events
+// EventEmitter - For emitting events
 // ============================================================================
 
-use crate::atoms::AtomEvent;
+use crate::event::Event;
 
-/// Trait for emitting atom lifecycle events
+/// Trait for emitting events following the standard event protocol
 ///
 /// Implementations can:
 /// - Store events in a database
@@ -401,15 +401,14 @@ use crate::atoms::AtomEvent;
 /// - Stream events via SSE/WebSocket
 /// - Log events for debugging
 ///
-/// Events are emitted during atom execution to provide observability
-/// into the agent loop lifecycle.
+/// Events follow a consistent schema: id, type, ts, context, data.
+/// See specs/events.md for the full event protocol specification.
 #[async_trait]
 pub trait EventEmitter: Send + Sync {
-    /// Emit an atom event
+    /// Emit an event
     ///
-    /// The session_id is extracted from the event for storage/routing.
-    /// Returns the assigned sequence number.
-    async fn emit(&self, event: AtomEvent) -> Result<i32>;
+    /// Returns the assigned sequence number within the session.
+    async fn emit(&self, event: Event) -> Result<i32>;
 }
 
 /// No-op event emitter for when event emission is not needed
@@ -420,7 +419,7 @@ pub struct NoopEventEmitter;
 
 #[async_trait]
 impl EventEmitter for NoopEventEmitter {
-    async fn emit(&self, _event: AtomEvent) -> Result<i32> {
+    async fn emit(&self, _event: Event) -> Result<i32> {
         Ok(0)
     }
 }

@@ -5,7 +5,7 @@
 //! numbers per session, enabling SSE streaming and event replay.
 
 use async_trait::async_trait;
-use everruns_core::{atoms::AtomEvent, traits::EventEmitter, AgentLoopError, Result};
+use everruns_core::{traits::EventEmitter, AgentLoopError, Event, Result};
 
 use crate::models::CreateEventRow;
 use crate::repositories::Database;
@@ -16,7 +16,7 @@ use crate::repositories::Database;
 
 /// Database-backed event emitter
 ///
-/// Stores atom lifecycle events in the events table.
+/// Stores events in the events table following the standard event protocol.
 /// Events are stored with auto-incrementing sequence numbers per session,
 /// enabling SSE streaming and event replay.
 #[derive(Clone)]
@@ -32,10 +32,13 @@ impl DbEventEmitter {
 
 #[async_trait]
 impl EventEmitter for DbEventEmitter {
-    async fn emit(&self, event: AtomEvent) -> Result<i32> {
+    async fn emit(&self, event: Event) -> Result<i32> {
         let session_id = event.session_id();
-        let event_type = event.event_type().to_string();
-        let data = event.to_json();
+        let event_type = event.event_type.clone();
+
+        // Serialize the full event to JSON for storage
+        let data = serde_json::to_value(&event)
+            .map_err(|e| AgentLoopError::store(format!("Failed to serialize event: {}", e)))?;
 
         let event_row = self
             .db
@@ -66,38 +69,38 @@ pub fn create_db_event_emitter(db: Database) -> DbEventEmitter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use everruns_core::atoms::{AtomContext, InputStartedEvent};
+    use everruns_core::event::{EventContext, InputStartedData, INPUT_STARTED};
+    use everruns_core::Event;
     use uuid::Uuid;
 
-    // Note: Integration tests would require a database connection.
-    // Unit tests focus on the event conversion logic.
-
     #[test]
-    fn test_atom_event_serialization() {
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
-        let event = AtomEvent::InputStarted(InputStartedEvent::new(context.clone()));
+    fn test_event_serialization() {
+        let session_id = Uuid::now_v7();
+        let event_context = EventContext::session(session_id);
+        let event = Event::new(INPUT_STARTED, event_context, InputStartedData::default());
 
-        let json = event.to_json();
+        let json = serde_json::to_value(&event).unwrap();
 
         assert!(json.is_object());
-        assert_eq!(json["type"], "input_started");
+        assert_eq!(json["type"], "input.started");
         assert!(json["context"].is_object());
+        assert_eq!(json["context"]["session_id"], session_id.to_string());
     }
 
     #[test]
-    fn test_atom_event_type() {
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
-        let event = AtomEvent::InputStarted(InputStartedEvent::new(context));
-
-        assert_eq!(event.event_type(), "input.started");
-    }
-
-    #[test]
-    fn test_atom_event_session_id() {
+    fn test_event_type() {
         let session_id = Uuid::now_v7();
-        let context = AtomContext::new(session_id, Uuid::now_v7(), Uuid::now_v7());
-        let event = AtomEvent::InputStarted(InputStartedEvent::new(context));
+        let event_context = EventContext::session(session_id);
+        let event = Event::new(INPUT_STARTED, event_context, InputStartedData::default());
+
+        assert_eq!(event.event_type, "input.started");
+    }
+
+    #[test]
+    fn test_event_session_id() {
+        let session_id = Uuid::now_v7();
+        let event_context = EventContext::session(session_id);
+        let event = Event::new(INPUT_STARTED, event_context, InputStartedData::default());
 
         assert_eq!(event.session_id(), session_id);
     }
