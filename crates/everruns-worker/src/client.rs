@@ -20,8 +20,8 @@ use temporal_sdk_core::{
     Core, CoreInitOptions, ServerGateway, ServerGatewayApis, ServerGatewayOptions, Url,
 };
 
-use crate::agent_workflow::AgentWorkflowInput;
 use crate::runner::RunnerConfig;
+use crate::turn_workflow::TurnWorkflowInput;
 use crate::types::workflow_names;
 
 /// Client for interacting with Temporal server
@@ -66,10 +66,10 @@ impl TemporalClient {
         })
     }
 
-    /// Start a new agent workflow
-    pub async fn start_agent_workflow(
+    /// Start a new turn workflow
+    pub async fn start_turn_workflow(
         &self,
-        input: &AgentWorkflowInput,
+        input: &TurnWorkflowInput,
     ) -> Result<StartWorkflowExecutionResponse> {
         let workflow_id = Self::workflow_id_for_session(input.session_id);
 
@@ -77,7 +77,8 @@ impl TemporalClient {
             workflow_id = %workflow_id,
             session_id = %input.session_id,
             agent_id = %input.agent_id,
-            "Starting agent workflow"
+            input_message_id = %input.input_message_id,
+            "Starting turn workflow"
         );
 
         // Serialize workflow input
@@ -93,7 +94,7 @@ impl TemporalClient {
             namespace: self.config.temporal_namespace(),
             workflow_id: workflow_id.clone(),
             workflow_type: Some(WorkflowType {
-                name: workflow_names::AGENT_WORKFLOW.to_string(),
+                name: workflow_names::TURN_WORKFLOW.to_string(),
             }),
             task_queue: Some(TaskQueue {
                 name: self.config.temporal_task_queue(),

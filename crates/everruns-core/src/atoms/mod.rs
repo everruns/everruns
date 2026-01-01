@@ -21,22 +21,12 @@ use crate::error::Result;
 // Atom Modules
 // ============================================================================
 
-// Legacy atoms (kept for backward compatibility during migration)
-mod add_user_message;
-mod call_model;
-mod execute_tool;
-
-// New atoms for the turn-based workflow
+// Turn-based atoms for the turn workflow
 mod act;
 mod input;
 mod reason;
 
-// Re-export legacy atoms and their types
-pub use add_user_message::{AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult};
-pub use call_model::{CallModelAtom, CallModelInput, CallModelResult};
-pub use execute_tool::{ExecuteToolAtom, ExecuteToolInput, ExecuteToolResult};
-
-// Re-export new atoms and their types
+// Re-export atoms and their types
 pub use act::{ActAtom, ActInput, ActResult, ToolCallResult};
 pub use input::{InputAtom, InputAtomInput, InputAtomResult};
 pub use reason::{ReasonAtom, ReasonInput, ReasonResult};

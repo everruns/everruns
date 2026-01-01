@@ -65,5 +65,5 @@ everruns-openai = { path = "../everruns-openai" }
 everruns-anthropic = { path = "../everruns-anthropic" }
 
 [[example]]
-name = "decomposed_execution"
-path = "examples/decomposed_execution.rs"
+name = "turn_based_execution"
+path = "examples/turn_based_execution.rs"

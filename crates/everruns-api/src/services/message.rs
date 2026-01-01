@@ -77,23 +77,27 @@ impl MessageService {
             created_at: event.created_at,
         };
 
-        // Start workflow for user message
-        self.start_workflow(agent_id, session_id).await;
+        // Start workflow for user message (pass the message_id that triggered this turn)
+        self.start_workflow(agent_id, session_id, message_id).await;
 
         Ok(message)
     }
 
-    /// Start workflow execution for the session
-    async fn start_workflow(&self, agent_id: Uuid, session_id: Uuid) {
+    /// Start turn workflow for the session
+    async fn start_workflow(&self, agent_id: Uuid, session_id: Uuid, input_message_id: Uuid) {
         if let Err(e) = self
             .runner
-            .start_run(session_id, agent_id, session_id)
+            .start_run(session_id, agent_id, input_message_id)
             .await
         {
-            tracing::error!("Failed to start session workflow: {}", e);
+            tracing::error!("Failed to start turn workflow: {}", e);
             // Don't fail the request, message is already persisted
         } else {
-            tracing::info!(session_id = %session_id, "Session workflow started");
+            tracing::info!(
+                session_id = %session_id,
+                input_message_id = %input_message_id,
+                "Turn workflow started"
+            );
         }
     }
 

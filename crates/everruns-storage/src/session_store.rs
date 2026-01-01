@@ -20,7 +20,7 @@ use crate::repositories::Database;
 /// Database-backed session store
 ///
 /// Retrieves session configurations from the database.
-/// Used by CallModelAtom to load session data during workflow execution.
+/// Used by ReasonAtom to load session data during workflow execution.
 #[derive(Clone)]
 pub struct DbSessionStore {
     db: Database,

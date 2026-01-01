@@ -271,7 +271,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             temperature: runtime_agent.temperature,
             max_tokens: runtime_agent.max_tokens,
             tools: runtime_agent.tools.clone(),
-            reasoning_effort: None, // Set by CallModelAtom from user message controls
+            reasoning_effort: None, // Set by ReasonAtom from user message controls
         }
     }
 }
