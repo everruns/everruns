@@ -393,3 +393,17 @@ A partial index exists for efficient message queries:
 CREATE INDEX idx_events_messages ON events(session_id, sequence)
 WHERE event_type IN ('message.user', 'message.agent');
 ```
+
+### Turn Events Filter
+
+```sql
+CREATE INDEX idx_events_turns ON events(session_id, sequence)
+WHERE event_type IN ('turn.started', 'turn.completed', 'turn.failed');
+```
+
+### Tool Events Filter
+
+```sql
+CREATE INDEX idx_events_tool_calls ON events(session_id, sequence)
+WHERE event_type IN ('tool.call_started', 'tool.call_completed');
+```
