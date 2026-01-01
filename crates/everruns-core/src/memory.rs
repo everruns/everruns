@@ -18,7 +18,10 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::message::Message;
-use crate::traits::{AgentStore, LlmProviderStore, MessageStore, SessionStore, ToolExecutor};
+use crate::traits::{
+    AgentStore, InputMessage, LlmProviderStore, MessageStore, SessionStore, ToolExecutor,
+};
+use chrono::Utc;
 
 // ============================================================================
 // InMemoryMessageStore - Stores messages in memory
@@ -63,6 +66,35 @@ impl InMemoryMessageStore {
 
 #[async_trait]
 impl MessageStore for InMemoryMessageStore {
+    async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+        let message = Message {
+            id: Uuid::now_v7(),
+            role: input.role,
+            content: input.content,
+            controls: input.controls,
+            metadata: input.metadata,
+            created_at: Utc::now(),
+        };
+
+        self.messages
+            .write()
+            .await
+            .entry(session_id)
+            .or_default()
+            .push(message.clone());
+
+        Ok(message)
+    }
+
+    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+        Ok(self
+            .messages
+            .read()
+            .await
+            .get(&session_id)
+            .and_then(|messages| messages.iter().find(|m| m.id == message_id).cloned()))
+    }
+
     async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
         self.messages
             .write()
@@ -551,6 +583,27 @@ mod tests {
         let messages = store.load(session_id).await.unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].text(), Some("Hello"));
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_message_store_add_and_get() {
+        let store = InMemoryMessageStore::new();
+        let session_id = Uuid::now_v7();
+
+        // Add a message using the new add method
+        let message = store
+            .add(session_id, InputMessage::user("Hello via add"))
+            .await
+            .unwrap();
+
+        // Get the message by ID
+        let retrieved = store.get(session_id, message.id).await.unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().text(), Some("Hello via add"));
+
+        // Get non-existent message
+        let missing = store.get(session_id, Uuid::now_v7()).await.unwrap();
+        assert!(missing.is_none());
     }
 
     #[tokio::test]

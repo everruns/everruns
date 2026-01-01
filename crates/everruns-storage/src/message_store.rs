@@ -9,7 +9,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    traits::MessageStore, AgentLoopError, ContentPart, Controls, Message, MessageRole, Result,
+    traits::{InputMessage, MessageStore},
+    AgentLoopError, ContentPart, Controls, Message, MessageRole, Result,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -38,6 +39,56 @@ impl DbMessageStore {
 
 #[async_trait]
 impl MessageStore for DbMessageStore {
+    async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+        // Generate a new message ID
+        let message_id = Uuid::now_v7();
+        let created_at = Utc::now();
+
+        // Determine event type from message role
+        let event_type = match input.role {
+            MessageRole::User => "message.user",
+            MessageRole::Assistant => "message.agent",
+            MessageRole::ToolResult => "message.tool_result",
+            MessageRole::System => "message.system",
+        };
+
+        let event_input = CreateEventRow {
+            session_id,
+            event_type: event_type.to_string(),
+            data: serde_json::json!({
+                "message_id": message_id,
+                "role": input.role.to_string(),
+                "content": input.content,
+                "controls": input.controls,
+                "metadata": input.metadata,
+                "tags": input.tags,
+            }),
+        };
+
+        self.db
+            .create_event(event_input)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+        // Return the created message
+        Ok(Message {
+            id: message_id,
+            role: input.role,
+            content: input.content,
+            controls: input.controls,
+            metadata: input.metadata,
+            created_at,
+        })
+    }
+
+    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+        // Load all messages and find the one with the matching ID
+        // This is not the most efficient approach, but it works with the current event-based storage
+        // A more efficient approach would be to query by message_id directly
+        let messages = self.load(session_id).await?;
+        Ok(messages.into_iter().find(|m| m.id == message_id))
+    }
+
     async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
         // Determine event type from message role
         // Note: user messages are handled by MessageService in the API layer
