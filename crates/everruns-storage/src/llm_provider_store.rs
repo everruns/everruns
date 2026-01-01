@@ -22,7 +22,7 @@ use crate::{encryption::EncryptionService, repositories::Database};
 /// Retrieves LLM model and provider configurations from the database,
 /// including decrypted API keys.
 ///
-/// Used by CallModelAtom to resolve model and provider info dynamically.
+/// Used by ReasonAtom to resolve model and provider info dynamically.
 #[derive(Clone)]
 pub struct DbLlmProviderStore {
     db: Database,

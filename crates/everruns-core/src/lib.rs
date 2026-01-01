@@ -32,11 +32,9 @@ pub mod atoms;
 pub mod capabilities;
 pub mod error;
 pub mod llm_driver_registry;
-pub mod r#loop;
 pub mod message;
 pub mod openai_protocol;
 pub mod runtime_agent;
-pub mod step;
 pub mod tools;
 pub mod traits;
 
@@ -53,12 +51,10 @@ pub use message::{
     ContentPart, ContentType, Controls, ImageContentPart, InputContentPart, Message, MessageRole,
     ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
 };
-pub use r#loop::{AgentLoop, LoadMessagesResult};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
-pub use step::{LoopStep, StepKind, StepResult};
 pub use traits::{
-    LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore, SessionStore, ToolContext,
-    ToolExecutor,
+    InputMessage, LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore,
+    SessionStore, ToolContext, ToolExecutor,
 };
 
 // LLM driver types re-exports
@@ -89,8 +85,8 @@ pub use capabilities::{
 
 // Atoms re-exports (stateless atomic operations)
 pub use atoms::{
-    AddUserMessageAtom, AddUserMessageInput, AddUserMessageResult, Atom, CallModelAtom,
-    CallModelInput, CallModelResult, ExecuteToolAtom, ExecuteToolInput, ExecuteToolResult,
+    ActAtom, ActInput, ActResult, Atom, AtomContext, InputAtom, InputAtomInput, InputAtomResult,
+    ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
 };
 
 // Tool types (runtime types defined in this crate)

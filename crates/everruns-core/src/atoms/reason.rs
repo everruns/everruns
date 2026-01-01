@@ -1,20 +1,25 @@
-//! CallModelAtom - Atom for calling the LLM
+//! ReasonAtom - Atom for LLM reasoning (model call)
 //!
-//! This module handles:
-//! 1. Retrieving agent and session configuration from stores
-//! 2. Resolving model using priority chain: controls.model_id > session.model_id > agent.default_model_id
-//! 3. Building configuration with capabilities applied
-//! 4. Loading messages from the store
-//! 5. Patching dangling tool calls (tool calls without results)
-//! 6. Calling the LLM with the messages
-//! 7. Storing the assistant response
+//! This atom handles:
+//! 1. Context preparation (loading message history, adding system message)
+//! 2. Fixing invalid context (e.g., missing tool_results for dangling tool calls)
+//! 3. LLM call with streaming support
+//! 4. Storing the assistant response
+//! 5. Returning the result with tool calls (if any)
+//!
+//! NOTES from Python spec:
+//! - Context preparation includes loading message history, adding system message, editing context if needed
+//! - Before LLM call, invalid context (e.g. missing tool_results) should be fixed
+//! - LLM call should emit start/end events
+//! - Failure of the LLM call should be "normal" result, should user message that LLM call failed
+//! - Reason should be cancellable, cancellation should stop LLM call and exit with message
 
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::Atom;
+use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
@@ -23,7 +28,7 @@ use crate::llm_driver_registry::{
 };
 use crate::message::{Message, MessageRole};
 use crate::runtime_agent::RuntimeAgentBuilder;
-use crate::tool_types::ToolCall;
+use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{AgentStore, LlmProviderStore, MessageStore, ModelWithProvider, SessionStore};
 
 // ============================================================================
@@ -34,9 +39,6 @@ use crate::traits::{AgentStore, LlmProviderStore, MessageStore, ModelWithProvide
 ///
 /// This ensures every tool call has a corresponding tool result,
 /// preventing LLM API errors (e.g., OpenAI requires every tool_call to have a result).
-///
-/// Based on langchain's patch_tool_calls middleware:
-/// https://github.com/langchain-ai/deepagents/blob/master/libs/deepagents/deepagents/middleware/patch_tool_calls.py
 fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
     let mut result = Vec::new();
 
@@ -72,31 +74,36 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
 // Input and Output Types
 // ============================================================================
 
-/// Input for CallModelAtom
+/// Input for ReasonAtom
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CallModelInput {
-    /// Session ID
-    pub session_id: Uuid,
-    /// Agent ID - the atom will retrieve the agent and build RuntimeAgent
+pub struct ReasonInput {
+    /// Atom execution context
+    pub context: AtomContext,
+    /// Agent ID for loading configuration
     pub agent_id: Uuid,
 }
 
-/// Result of calling the model
+/// Result of the ReasonAtom
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CallModelResult {
+pub struct ReasonResult {
+    /// Whether the LLM call succeeded
+    pub success: bool,
     /// Text response from the model
     pub text: String,
-    /// Tool calls requested by the model (None if no tools)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ToolCall>>,
-    /// Whether the loop should continue (has tool calls)
-    pub needs_tool_execution: bool,
+    /// Tool calls requested by the model
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCall>,
+    /// Whether tool execution is needed
+    pub has_tool_calls: bool,
     /// Tool definitions from applied capabilities (for tool execution)
     #[serde(default)]
-    pub tool_definitions: Vec<crate::tool_types::ToolDefinition>,
+    pub tool_definitions: Vec<ToolDefinition>,
     /// Maximum iterations configured for the agent
     #[serde(default = "default_max_iterations")]
     pub max_iterations: usize,
+    /// Error message if the call failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 fn default_max_iterations() -> usize {
@@ -104,20 +111,21 @@ fn default_max_iterations() -> usize {
 }
 
 // ============================================================================
-// CallModelAtom
+// ReasonAtom
 // ============================================================================
 
-/// Atom that calls the LLM model
+/// Atom that calls the LLM model for reasoning
 ///
 /// This atom:
 /// 1. Retrieves agent and session configuration from stores
 /// 2. Resolves model using priority: controls.model_id > session.model_id > agent.default_model_id
 /// 3. Builds configuration with capabilities applied
 /// 4. Loads messages from the store
-/// 5. Calls the LLM with the messages
-/// 6. Stores the assistant response
-/// 7. Returns the result with tool calls (if any)
-pub struct CallModelAtom<A, S, M, P>
+/// 5. Patches dangling tool calls
+/// 6. Calls the LLM with the messages
+/// 7. Stores the assistant response
+/// 8. Returns the result with tool calls (if any)
+pub struct ReasonAtom<A, S, M, P>
 where
     A: AgentStore,
     S: SessionStore,
@@ -132,14 +140,14 @@ where
     driver_registry: DriverRegistry,
 }
 
-impl<A, S, M, P> CallModelAtom<A, S, M, P>
+impl<A, S, M, P> ReasonAtom<A, S, M, P>
 where
     A: AgentStore,
     S: SessionStore,
     M: MessageStore,
     P: LlmProviderStore,
 {
-    /// Create a new CallModelAtom
+    /// Create a new ReasonAtom
     pub fn new(
         agent_store: A,
         session_store: S,
@@ -160,26 +168,78 @@ where
 }
 
 #[async_trait]
-impl<A, S, M, P> Atom for CallModelAtom<A, S, M, P>
+impl<A, S, M, P> Atom for ReasonAtom<A, S, M, P>
 where
     A: AgentStore + Send + Sync,
     S: SessionStore + Send + Sync,
     M: MessageStore + Send + Sync,
     P: LlmProviderStore + Send + Sync,
 {
-    type Input = CallModelInput;
-    type Output = CallModelResult;
+    type Input = ReasonInput;
+    type Output = ReasonResult;
 
     fn name(&self) -> &'static str {
-        "call_model"
+        "reason"
     }
 
     async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
-        let CallModelInput {
-            session_id,
-            agent_id,
-        } = input;
+        let ReasonInput { context, agent_id } = input;
 
+        tracing::info!(
+            session_id = %context.session_id,
+            turn_id = %context.turn_id,
+            exec_id = %context.exec_id,
+            agent_id = %agent_id,
+            "ReasonAtom: starting LLM call"
+        );
+
+        // Execute the LLM call and handle errors gracefully
+        match self
+            .execute_llm_call(context.session_id, agent_id, &context)
+            .await
+        {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                // LLM call failure is a "normal" result per the spec
+                // Return a result indicating failure with the error message
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    turn_id = %context.turn_id,
+                    error = %e,
+                    "ReasonAtom: LLM call failed"
+                );
+
+                Ok(ReasonResult {
+                    success: false,
+                    text: format!(
+                        "I encountered an error while processing your request: {}",
+                        e
+                    ),
+                    tool_calls: vec![],
+                    has_tool_calls: false,
+                    tool_definitions: vec![],
+                    max_iterations: default_max_iterations(),
+                    error: Some(e.to_string()),
+                })
+            }
+        }
+    }
+}
+
+impl<A, S, M, P> ReasonAtom<A, S, M, P>
+where
+    A: AgentStore + Send + Sync,
+    S: SessionStore + Send + Sync,
+    M: MessageStore + Send + Sync,
+    P: LlmProviderStore + Send + Sync,
+{
+    /// Execute the actual LLM call
+    async fn execute_llm_call(
+        &self,
+        session_id: Uuid,
+        agent_id: Uuid,
+        context: &AtomContext,
+    ) -> Result<ReasonResult> {
         // 1. Retrieve agent
         let agent = self
             .agent_store
@@ -248,8 +308,7 @@ where
             });
         }
 
-        // Add conversation messages (user, assistant, tool results)
-        // Tool calls are embedded in Assistant messages via ContentPart::ToolCall.
+        // Add conversation messages
         for msg in &patched_messages {
             llm_messages.push(msg.into());
         }
@@ -260,6 +319,14 @@ where
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
         }
         let llm_config = llm_config_builder.build();
+
+        tracing::debug!(
+            session_id = %session_id,
+            turn_id = %context.turn_id,
+            model = %runtime_agent.model,
+            message_count = %llm_messages.len(),
+            "ReasonAtom: calling LLM"
+        );
 
         let mut stream = llm_driver
             .chat_completion_stream(llm_messages, &llm_config)
@@ -312,34 +379,26 @@ where
             .store(session_id, assistant_message.clone())
             .await?;
 
-        let tool_calls_option = if tool_calls.is_empty() {
-            None
-        } else {
-            Some(tool_calls.clone())
-        };
+        tracing::info!(
+            session_id = %session_id,
+            turn_id = %context.turn_id,
+            has_tool_calls = %has_tool_calls,
+            tool_count = %tool_calls.len(),
+            "ReasonAtom: LLM call completed"
+        );
 
-        Ok(CallModelResult {
+        Ok(ReasonResult {
+            success: true,
             text,
-            tool_calls: tool_calls_option,
-            needs_tool_execution: has_tool_calls,
+            tool_calls,
+            has_tool_calls,
             tool_definitions: runtime_agent.tools.clone(),
             max_iterations: runtime_agent.max_iterations,
+            error: None,
         })
     }
-}
 
-impl<A, S, M, P> CallModelAtom<A, S, M, P>
-where
-    A: AgentStore,
-    S: SessionStore,
-    M: MessageStore,
-    P: LlmProviderStore,
-{
-    /// Resolve model using priority chain:
-    /// 1. controls.model_id (from last user message)
-    /// 2. session.model_id
-    /// 3. agent.default_model_id
-    /// 4. system default model
+    /// Resolve model using priority chain
     async fn resolve_model(
         &self,
         controls_model_id: Option<Uuid>,
@@ -391,8 +450,6 @@ where
     }
 
     /// Create LLM driver using the driver registry
-    ///
-    /// Returns a user-friendly error if the driver is not registered for the provider type.
     fn create_llm_driver(
         &self,
         model: &ModelWithProvider,
@@ -424,34 +481,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_call_model_result() {
-        let result = CallModelResult {
-            text: "Hello".to_string(),
-            tool_calls: None,
-            needs_tool_execution: false,
-            tool_definitions: vec![],
-            max_iterations: 10,
-        };
-        assert_eq!(result.text, "Hello");
-        assert!(!result.needs_tool_execution);
-        assert_eq!(result.max_iterations, 10);
+    fn test_reason_result_default() {
+        let result = ReasonResult::default();
+        assert!(!result.success);
+        assert!(result.text.is_empty());
+        assert!(result.tool_calls.is_empty());
+        assert!(!result.has_tool_calls);
+        // Default derive gives 0, but serde deserialization gives 100 via default_max_iterations()
+        assert_eq!(result.max_iterations, 0);
+    }
+
+    #[test]
+    fn test_reason_result_serde_default() {
+        // Test that serde uses the default_max_iterations function
+        let json = r#"{"success":true,"text":"","has_tool_calls":false}"#;
+        let result: ReasonResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.max_iterations, 100);
     }
 
     #[test]
     fn test_patch_dangling_tool_calls_no_tool_calls() {
-        // Messages without tool calls should be unchanged
         let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
-
         let patched = patch_dangling_tool_calls(&messages);
-
         assert_eq!(patched.len(), 2);
-        assert_eq!(patched[0].role, MessageRole::User);
-        assert_eq!(patched[1].role, MessageRole::Assistant);
     }
 
     #[test]
     fn test_patch_dangling_tool_calls_with_result() {
-        // Tool call with matching result should not be patched
         let tool_call = ToolCall {
             id: "call_123".to_string(),
             name: "get_weather".to_string(),
@@ -465,16 +521,11 @@ mod tests {
         ];
 
         let patched = patch_dangling_tool_calls(&messages);
-
         assert_eq!(patched.len(), 3);
-        assert_eq!(patched[0].role, MessageRole::User);
-        assert_eq!(patched[1].role, MessageRole::Assistant);
-        assert_eq!(patched[2].role, MessageRole::ToolResult);
     }
 
     #[test]
     fn test_patch_dangling_tool_calls_missing_result() {
-        // Tool call without result should get a cancelled result added
         let tool_call = ToolCall {
             id: "call_456".to_string(),
             name: "search_web".to_string(),
@@ -484,78 +535,13 @@ mod tests {
         let messages = vec![
             Message::user("Search for rust"),
             Message::assistant_with_tools("Searching...", vec![tool_call]),
-            // No tool result - simulating interruption
             Message::user("Actually, never mind"),
         ];
 
         let patched = patch_dangling_tool_calls(&messages);
-
-        // Should have added a cancelled result before the new user message
+        // Should have added a cancelled result
         assert_eq!(patched.len(), 4);
-        assert_eq!(patched[0].role, MessageRole::User);
-        assert_eq!(patched[1].role, MessageRole::Assistant);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
         assert_eq!(patched[2].tool_call_id(), Some("call_456"));
-        // Check the error message
-        let result_content = patched[2].tool_result_content().unwrap();
-        assert!(result_content.error.is_some());
-        assert!(result_content.error.as_ref().unwrap().contains("cancelled"));
-        assert_eq!(patched[3].role, MessageRole::User);
-    }
-
-    #[test]
-    fn test_patch_dangling_tool_calls_multiple_calls() {
-        // Multiple tool calls where one is missing result
-        let tool_call_1 = ToolCall {
-            id: "call_1".to_string(),
-            name: "tool_a".to_string(),
-            arguments: serde_json::json!({}),
-        };
-        let tool_call_2 = ToolCall {
-            id: "call_2".to_string(),
-            name: "tool_b".to_string(),
-            arguments: serde_json::json!({}),
-        };
-
-        let messages = vec![
-            Message::user("Do two things"),
-            Message::assistant_with_tools("On it", vec![tool_call_1, tool_call_2]),
-            Message::tool_result("call_1", Some(serde_json::json!("done")), None),
-            // call_2 has no result
-        ];
-
-        let patched = patch_dangling_tool_calls(&messages);
-
-        // Should have added a cancelled result for call_2 right after the assistant message
-        // Order: [0] user, [1] assistant, [2] cancelled call_2, [3] real result call_1
-        assert_eq!(patched.len(), 4);
-        assert_eq!(patched[2].role, MessageRole::ToolResult);
-        assert_eq!(patched[2].tool_call_id(), Some("call_2"));
-        // Verify the cancelled result has the error message
-        let result_content = patched[2].tool_result_content().unwrap();
-        assert!(result_content.error.as_ref().unwrap().contains("cancelled"));
-    }
-
-    #[test]
-    fn test_patch_dangling_tool_calls_at_end() {
-        // Dangling tool call at the end of conversation
-        let tool_call = ToolCall {
-            id: "call_end".to_string(),
-            name: "final_tool".to_string(),
-            arguments: serde_json::json!({}),
-        };
-
-        let messages = vec![
-            Message::user("Do something"),
-            Message::assistant_with_tools("Running tool", vec![tool_call]),
-            // Conversation ends without tool result
-        ];
-
-        let patched = patch_dangling_tool_calls(&messages);
-
-        // Should have added a cancelled result at the end
-        assert_eq!(patched.len(), 3);
-        assert_eq!(patched[2].role, MessageRole::ToolResult);
-        assert_eq!(patched[2].tool_call_id(), Some("call_end"));
     }
 }

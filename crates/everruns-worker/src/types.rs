@@ -41,7 +41,7 @@ pub struct SessionWorkflowOutput {
 
 /// Constants for workflow names
 pub mod workflow_names {
-    pub const AGENT_WORKFLOW: &str = "agent_workflow";
+    pub const TURN_WORKFLOW: &str = "turn_workflow";
 }
 
 /// Task queue name for agent runs

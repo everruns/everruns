@@ -35,7 +35,7 @@ This specification documents the Temporal workflow integration for agent executi
 
 ## Components
 
-### TemporalClient (`temporal/client.rs`)
+### TemporalClient (`client.rs`)
 
 Client wrapper for starting workflows from the API process.
 
@@ -46,7 +46,7 @@ pub struct TemporalClient {
 }
 
 impl TemporalClient {
-    async fn start_session_workflow(&self, input: &SessionWorkflowInput) -> Result<StartWorkflowExecutionResponse>;
+    async fn start_turn_workflow(&self, input: &TurnWorkflowInput) -> Result<StartWorkflowExecutionResponse>;
 }
 ```
 
@@ -65,9 +65,9 @@ impl TemporalWorker {
 }
 ```
 
-### Workflow State Machine (`temporal/workflows/`)
+### TurnWorkflow State Machine (`turn_workflow.rs`)
 
-Session workflow implementation with trait-based abstraction:
+Turn-based workflow implementation with trait-based abstraction:
 
 ```rust
 pub trait Workflow: Send + Sync + Debug {
@@ -79,41 +79,90 @@ pub trait Workflow: Send + Sync + Debug {
 }
 ```
 
-### Activities (`temporal/activities.rs`)
+TurnWorkflow states:
+- `Init` - Initial state, schedules Input activity
+- `ProcessingInput` - Waiting for InputAtom to retrieve user message
+- `Reasoning` - Waiting for ReasonAtom to call LLM
+- `Acting` - Waiting for ActAtom to execute tools
+- `Completed` - Workflow finished successfully
+- `Failed` - Workflow encountered an error
 
-Idempotent activity functions:
+### Activities (`activities.rs`)
 
-| Activity | Description | Heartbeat |
-|----------|-------------|-----------|
-| `load_agent` | Load agent configuration from database | No |
-| `load_messages` | Load session messages | No |
-| `update_status` | Update session status in database | No |
-| `persist_event` | Persist event to database | No |
-| `call_llm` | Call LLM and stream response | Yes (every 10 chunks) |
-| `execute_tools` | Execute tool calls | Yes (per tool) |
-| `save_message` | Save message to session | No |
+Turn-based activity functions using Atoms:
+
+| Activity | Atom | Description |
+|----------|------|-------------|
+| `input` | `InputAtom` | Retrieve user message from store |
+| `reason` | `ReasonAtom` | Call LLM with context, store response |
+| `act` | `ActAtom` | Execute tools in parallel, store results |
+
+### Atoms (`everruns-core/atoms/`)
+
+Stateless atomic operations:
+
+| Atom | Input | Output | Description |
+|------|-------|--------|-------------|
+| `InputAtom` | `AtomContext` | `InputAtomResult` | Retrieves user message by ID |
+| `ReasonAtom` | `AtomContext`, `agent_id` | `ReasonResult` | Prepares context, calls LLM, stores response |
+| `ActAtom` | `AtomContext`, `tool_calls`, `tool_definitions` | `ActResult` | Executes tools in parallel |
+
+## AtomContext
+
+Each atom execution receives an `AtomContext` for tracking:
+
+```rust
+pub struct AtomContext {
+    pub session_id: Uuid,        // The conversation session
+    pub turn_id: Uuid,           // Unique identifier for this turn
+    pub input_message_id: Uuid,  // User message that triggered this turn
+    pub exec_id: Uuid,           // Unique identifier for this atom execution
+}
+```
 
 ## Workflow Execution Flow
 
-1. **API receives request** - Creates session in database
-2. **TemporalRunner.start_run()** - Queues workflow to Temporal server
-3. **Worker polls workflow task** - Creates workflow state machine
-4. **Workflow schedules activities** - update_status, load_agent
-5. **Worker polls activity task** - Executes load_agent
-6. **Activity result returned** - Workflow transitions to LoadingMessages
-7. **LLM call with heartbeats** - call_llm activity streams and persists events
-8. **Tool iteration** - If tool calls present, execute_tools then call_llm again
-9. **Completion** - save_message, update_status to completed
-10. **Workflow completes** - Session marked complete in database
+1. **API receives message** - Creates user message event in database
+2. **MessageService.start_workflow()** - Passes `input_message_id` to runner
+3. **TemporalRunner.start_run()** - Queues TurnWorkflow to Temporal server
+4. **Worker polls workflow task** - Creates TurnWorkflow state machine
+5. **Input phase** - InputAtom retrieves user message from store
+6. **Reason phase** - ReasonAtom calls LLM, stores assistant response
+7. **Act phase** - If tool calls present, ActAtom executes tools in parallel
+8. **Loop** - Repeat Reason → Act until no more tool calls
+9. **Completion** - Workflow completes, session status updated
+
+```
+TurnWorkflow Execution:
+┌──────────┐     ┌──────────────────┐     ┌───────────┐
+│   Init   │────►│ ProcessingInput  │────►│ Reasoning │
+└──────────┘     └──────────────────┘     └─────┬─────┘
+                                                │
+                     ┌──────────────────────────┼──────────────────┐
+                     │                          │                  │
+                     ▼                          ▼                  ▼
+              ┌───────────┐              ┌───────────┐      ┌───────────┐
+              │ Completed │◄─────────────│  Acting   │◄─────│  Failed   │
+              │(no tools) │              │           │      │           │
+              └───────────┘              └─────┬─────┘      └───────────┘
+                                               │
+                                               │ (has more tools)
+                                               ▼
+                                         ┌───────────┐
+                                         │ Reasoning │
+                                         │  (loop)   │
+                                         └───────────┘
+```
 
 ## Streaming Preservation
 
 SSE streaming to clients is preserved through database-backed events:
 
-1. Activities persist events to `session_events` table using `PersistEventActivity`
-2. `call_llm` activity persists `TEXT_MESSAGE_CONTENT` events during streaming
-3. SSE endpoint polls `session_events` table for new events
-4. No changes needed to SSE infrastructure
+1. Activities persist events to `events` table
+2. ReasonAtom persists assistant message events during LLM response
+3. ActAtom persists tool result events
+4. SSE endpoint polls events table for new events
+5. No changes needed to SSE infrastructure
 
 ## Configuration
 
@@ -132,39 +181,35 @@ TEMPORAL_TASK_QUEUE=everruns-agent-runs  # Task queue name
 - Non-retryable errors transition workflow to Failed state
 - Failed workflows update session status to "failed"
 
+### Atom Error Handling
+- Errors in atoms are returned as normal results (not exceptions)
+- ReasonResult and ActResult include `error` and `success` fields
+- Workflow decides how to handle errors based on result
+
 ### Workflow Failures
 - Workflow failures are recorded in database
 - `SESSION_ERROR` event emitted
 - Session status updated to "failed"
 
-## Activity Heartbeats
+## Tool Iteration Limit
 
-Long-running activities use heartbeats to report progress:
+Maximum iterations configurable via ReasonResult.max_iterations (default: 100):
 
 ```rust
-// In call_llm activity
-if chunk_count % 10 == 0 {
-    ctx.heartbeat(&format!("Streaming LLM response: {} tokens", full_response.len()));
+pub struct ReasonResult {
+    // ...
+    pub max_iterations: u32,  // Default 100
 }
 ```
 
-Heartbeat timeout is 30 seconds. If an activity fails to heartbeat, Temporal will schedule it for retry.
-
-## Tool Iteration Limit
-
-Maximum 5 tool iterations per session to prevent infinite loops:
-
-```rust
-const MAX_TOOL_ITERATIONS: u32 = 5;
-```
+TurnWorkflow tracks iteration count and fails if exceeded.
 
 ## Database Schema Usage
 
 | Table | Usage |
 |-------|-------|
 | `sessions` | Status updates, workflow_id recording |
-| `session_events` | Event persistence for streaming |
-| `messages` | Session message storage |
+| `events` | Event persistence for streaming (messages stored as events) |
 | `agents` | Agent configuration loading |
 
 ## SDK Choice

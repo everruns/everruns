@@ -1,28 +1,32 @@
-//! Decomposed Execution Example - ReACT Loop
+//! Turn-Based Execution Example
 //!
-//! This example demonstrates using atoms directly to implement a ReACT
-//! (Reason-Act) loop. Each iteration:
+//! This example demonstrates the new turn-based atoms:
+//! - InputAtom: Records user input and starts a turn
+//! - ReasonAtom: LLM call with context preparation
+//! - ActAtom: Parallel tool execution
 //!
-//! 1. **Reason**: Call the model to decide what to do next
-//! 2. **Act**: Execute any requested tool calls
-//! 3. **Repeat**: Loop until the model provides a final response
+//! The turn loop:
+//! 1. **Input**: Record user message (using InputAtom)
+//! 2. **Reason**: Call the model (using ReasonAtom)
+//! 3. **Act**: Execute tools if needed (using ActAtom)
+//! 4. **Repeat**: Loop until no more tool calls
 //!
-//! This pattern is suitable for:
-//! - Temporal workflow activities
-//! - Custom orchestration logic
-//! - Debugging and testing individual steps
+//! This demonstrates the new AtomContext pattern which tracks:
+//! - session_id: The session
+//! - turn_id: Unique identifier for this turn
+//! - input_message_id: The message that triggered this turn
+//! - exec_id: Unique identifier for each atom execution
 //!
 //! Prerequisites:
 //! - Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable
 //!
-//! Run with: cargo run -p everruns-core --example decomposed_execution
+//! Run with: cargo run -p everruns-core --example turn_based_execution
 
 use chrono::Utc;
 use everruns_core::{
     agent::{Agent, AgentStatus},
     atoms::{
-        AddUserMessageAtom, AddUserMessageInput, Atom, CallModelAtom, CallModelInput,
-        ExecuteToolAtom, ExecuteToolInput,
+        ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
     },
     capabilities::CapabilityRegistry,
     llm_driver_registry::DriverRegistry,
@@ -31,7 +35,7 @@ use everruns_core::{
     },
     session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
-    MessageStore,
+    InputMessage, MessageStore,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -92,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    println!("=== ReACT Loop with Atoms ===\n");
+    println!("=== Turn-Based Execution with New Atoms ===\n");
 
     // Create shared dependencies
     let agent_store = InMemoryAgentStore::new();
@@ -125,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
         agent_id,
         title: Some("Weather Query".to_string()),
         tags: vec![],
-        model_id: None, // Will use agent's default_model_id or system default
+        model_id: None,
         status: SessionStatus::Pending,
         created_at: now,
         started_at: None,
@@ -133,10 +137,8 @@ async fn main() -> anyhow::Result<()> {
     };
     session_store.add_session(session).await;
 
-    // Create capability registry (example uses its own tools, so empty registry is fine)
+    // Create capability and driver registries
     let capability_registry = CapabilityRegistry::new();
-
-    // Create driver registry with all providers
     let driver_registry = {
         let mut registry = DriverRegistry::new();
         everruns_openai::register_driver(&mut registry);
@@ -144,9 +146,32 @@ async fn main() -> anyhow::Result<()> {
         registry
     };
 
-    // Create atoms
-    let add_user_message = AddUserMessageAtom::new(message_store.clone());
-    let call_model = CallModelAtom::new(
+    // =========================================================================
+    // Setup: Add user message to store (simulating API layer)
+    // =========================================================================
+    let user_question = "What's the weather like in Paris?";
+    println!("Session: {}", session_id);
+    println!("User: {}\n", user_question);
+
+    // Add user message to store (this would be done by the API layer)
+    let user_message = message_store
+        .add(session_id, InputMessage::user(user_question))
+        .await?;
+
+    // =========================================================================
+    // Create Turn Context
+    // =========================================================================
+    let turn_id = Uuid::now_v7();
+    let base_context = AtomContext::new(session_id, turn_id, user_message.id);
+
+    println!("Turn ID: {}", turn_id);
+    println!("Input Message ID: {}\n", user_message.id);
+
+    // =========================================================================
+    // Create Atoms
+    // =========================================================================
+    let input_atom = InputAtom::new(message_store.clone());
+    let reason_atom = ReasonAtom::new(
         agent_store.clone(),
         session_store,
         message_store.clone(),
@@ -154,86 +179,106 @@ async fn main() -> anyhow::Result<()> {
         capability_registry,
         driver_registry,
     );
-    let execute_tool = ExecuteToolAtom::new(message_store.clone(), tools.clone());
-
-    // Get tool definitions for tool execution
-    let tool_definitions = tools.tool_definitions();
-    let user_question = "What's the weather like in Paris?";
-    let max_iterations = 5;
-
-    println!("Session: {}", session_id);
-    println!("User: {}\n", user_question);
+    let act_atom = ActAtom::new(message_store.clone(), tools.clone());
 
     // =========================================================================
-    // Add user message
+    // Step 1: Input Atom - Record user message
     // =========================================================================
-    add_user_message
-        .execute(AddUserMessageInput {
-            session_id,
-            content: user_question.to_string(),
+    println!("━━━ Step 1: InputAtom ━━━");
+    let context = base_context.clone();
+    println!("  Exec ID: {}", context.exec_id);
+
+    let input_result = input_atom
+        .execute(InputAtomInput {
+            context: context.clone(),
         })
         .await?;
 
+    println!(
+        "  Message retrieved: {:?} - {}",
+        input_result.message.role,
+        truncate(input_result.message.text().unwrap_or(""), 40)
+    );
+    println!();
+
     // =========================================================================
-    // ReACT Loop
+    // Turn Loop: Reason → Act → Repeat
     // =========================================================================
+    let max_iterations = 5;
     let mut final_response = String::new();
 
     for iteration in 1..=max_iterations {
-        println!("━━━ Iteration {} ━━━", iteration);
-
         // =====================================================================
-        // REASON: Call the model
+        // Reason Atom - Call the model
         // =====================================================================
-        println!("  [Reason] Calling model...");
+        println!("━━━ Iteration {} - ReasonAtom ━━━", iteration);
+        let reason_context = base_context.next_exec();
+        println!("  Exec ID: {}", reason_context.exec_id);
 
-        let model_result = call_model
-            .execute(CallModelInput {
-                session_id,
+        let reason_result = reason_atom
+            .execute(ReasonInput {
+                context: reason_context,
                 agent_id,
             })
             .await?;
 
-        // Capture response
-        if !model_result.text.is_empty() {
-            final_response = model_result.text.clone();
-            println!("    Response: {}", truncate(&model_result.text, 60));
+        println!("  Success: {}", reason_result.success);
+        if !reason_result.text.is_empty() {
+            final_response = reason_result.text.clone();
+            println!("  Response: {}", truncate(&reason_result.text, 50));
         }
+        println!(
+            "  Has tool calls: {} (count: {})",
+            reason_result.has_tool_calls,
+            reason_result.tool_calls.len()
+        );
 
-        // Check if we're done (no tool calls = final response)
-        if !model_result.needs_tool_execution {
-            println!("  [Done] No tool calls, returning final response\n");
+        // Check if we're done
+        if !reason_result.has_tool_calls || reason_result.tool_calls.is_empty() {
+            println!("\n  [Done] No tool calls, turn complete.");
             break;
         }
 
-        let tool_calls = model_result.tool_calls.unwrap_or_default();
-        println!("    Tool calls requested: {}", tool_calls.len());
-
         // =====================================================================
-        // ACT: Execute tool calls
+        // Act Atom - Execute tools in parallel
         // =====================================================================
-        println!("  [Act] Executing tools...");
+        println!("\n━━━ Iteration {} - ActAtom ━━━", iteration);
+        let act_context = base_context.next_exec();
+        println!("  Exec ID: {}", act_context.exec_id);
+        println!(
+            "  Tool calls: {:?}",
+            reason_result
+                .tool_calls
+                .iter()
+                .map(|tc| &tc.name)
+                .collect::<Vec<_>>()
+        );
 
-        for tool_call in &tool_calls {
-            println!("    Tool: {}", tool_call.name);
-            println!("    Args: {}", tool_call.arguments);
+        let act_result = act_atom
+            .execute(ActInput {
+                context: act_context,
+                tool_calls: reason_result.tool_calls.clone(),
+                tool_definitions: reason_result.tool_definitions.clone(),
+            })
+            .await?;
 
-            let tool_result = execute_tool
-                .execute(ExecuteToolInput {
-                    session_id,
-                    tool_call: tool_call.clone(),
-                    tool_definitions: tool_definitions.clone(),
-                })
-                .await?;
+        println!("  Completed: {}", act_result.completed);
+        println!(
+            "  Results: {} success, {} errors",
+            act_result.success_count, act_result.error_count
+        );
 
-            let result_str = tool_result
+        for result in &act_result.results {
+            let result_preview = result
                 .result
                 .result
                 .as_ref()
-                .map(|v: &Value| truncate(&v.to_string(), 50))
+                .map(|v| truncate(&v.to_string(), 40))
                 .unwrap_or_else(|| "None".to_string());
-
-            println!("    Result: {}", result_str);
+            println!(
+                "    {} [{}]: {}",
+                result.tool_call.name, result.status, result_preview
+            );
         }
 
         println!();
@@ -247,7 +292,7 @@ async fn main() -> anyhow::Result<()> {
     // =========================================================================
     // Final Output
     // =========================================================================
-    println!("━━━ Final Response ━━━");
+    println!("\n━━━ Final Response ━━━");
     println!("Assistant: {}", final_response);
 
     // =========================================================================

@@ -3,13 +3,11 @@
 // Decision: Use true Temporal workflows for durable, distributed execution
 //
 // Architecture:
-// - API calls `start_run` which queues a workflow to Temporal
+// - API calls `start_run` which queues a TurnWorkflow to Temporal
 // - Worker polls Temporal task queues and executes activities
-// - Each activity (call_model, execute_tool) is idempotent
-// - CallModelAtom handles agent loading, model resolution, and LLM calls
+// - Each activity (input, reason, act) is idempotent
+// - ReasonAtom handles agent loading, model resolution, and LLM calls
 // - Events are persisted to database for SSE streaming to clients
-//
-// M2 Note: run_id maps to session_id, agent_id maps to harness_id
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -18,8 +16,8 @@ use std::sync::Arc;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::agent_workflow::AgentWorkflowInput;
 use crate::client::TemporalClient;
+use crate::turn_workflow::TurnWorkflowInput;
 use crate::worker::TemporalWorker;
 
 // =============================================================================
@@ -77,13 +75,18 @@ impl RunnerConfig {
 /// Implementations handle the actual execution of agent runs
 ///
 /// M2 Note: Parameters map to session concepts:
-/// - run_id -> session_id
-/// - agent_id -> harness_id
-/// - thread_id -> session_id (same value, kept for backwards compatibility)
+/// - session_id: The session/conversation
+/// - agent_id: The agent configuration
+/// - input_message_id: The user message that triggered this turn
 #[async_trait]
 pub trait AgentRunner: Send + Sync {
-    /// Start a new workflow execution for the given session
-    async fn start_run(&self, run_id: Uuid, agent_id: Uuid, thread_id: Uuid) -> Result<()>;
+    /// Start a new turn workflow for the given session
+    async fn start_run(
+        &self,
+        session_id: Uuid,
+        agent_id: Uuid,
+        input_message_id: Uuid,
+    ) -> Result<()>;
 
     /// Cancel a running workflow
     async fn cancel_run(&self, run_id: Uuid) -> Result<()>;
@@ -133,23 +136,29 @@ impl TemporalRunner {
 
 #[async_trait]
 impl AgentRunner for TemporalRunner {
-    /// Start an agent workflow
-    /// In M2: run_id = session_id, agent_id = agent_id, thread_id = session_id
-    async fn start_run(&self, session_id: Uuid, agent_id: Uuid, _thread_id: Uuid) -> Result<()> {
+    /// Start a turn workflow for the given session
+    async fn start_run(
+        &self,
+        session_id: Uuid,
+        agent_id: Uuid,
+        input_message_id: Uuid,
+    ) -> Result<()> {
         info!(
             session_id = %session_id,
             agent_id = %agent_id,
-            "Starting Temporal workflow for session"
+            input_message_id = %input_message_id,
+            "Starting Temporal turn workflow for session"
         );
 
         // Build workflow input
-        let input = AgentWorkflowInput {
+        let input = TurnWorkflowInput {
             session_id,
             agent_id,
+            input_message_id,
         };
 
         // Start the workflow on Temporal server
-        let response = self.client.start_agent_workflow(&input).await?;
+        let response = self.client.start_turn_workflow(&input).await?;
 
         // Workflow ID is derived from session_id (session-{session_id})
         let workflow_id = TemporalClient::workflow_id_for_session(session_id);

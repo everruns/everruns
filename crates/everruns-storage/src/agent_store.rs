@@ -21,7 +21,7 @@ use crate::repositories::Database;
 /// Database-backed agent store
 ///
 /// Retrieves agent configurations from the database.
-/// Used by CallModelAtom to load agent data during workflow execution.
+/// Used by ReasonAtom to load agent data during workflow execution.
 #[derive(Clone)]
 pub struct DbAgentStore {
     db: Database,

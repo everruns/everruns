@@ -30,7 +30,8 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::activities::{
-    activity_types, call_model_activity, execute_tool_activity, CallModelInput, ExecuteToolInput,
+    act_activity, activity_types, input_activity, reason_activity, ActInput, InputAtomInput,
+    ReasonInput,
 };
 use crate::client::TemporalWorkerCore;
 use crate::runner::RunnerConfig;
@@ -637,20 +638,25 @@ async fn execute_activity(
     input_data: &[u8],
 ) -> Result<serde_json::Value> {
     match activity_type {
-        activity_types::CALL_MODEL => {
-            let input: CallModelInput = serde_json::from_slice(input_data)?;
-            let output = call_model_activity(db.clone(), encryption.clone(), input).await?;
+        activity_types::INPUT => {
+            let input: InputAtomInput = serde_json::from_slice(input_data)?;
+            let output = input_activity(db.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
-        activity_types::EXECUTE_TOOL => {
-            let input: ExecuteToolInput = serde_json::from_slice(input_data)?;
-            let output = execute_tool_activity(db.clone(), input).await?;
+        activity_types::REASON => {
+            let input: ReasonInput = serde_json::from_slice(input_data)?;
+            let output = reason_activity(db.clone(), encryption.clone(), input).await?;
+            Ok(serde_json::to_value(output)?)
+        }
+        activity_types::ACT => {
+            let input: ActInput = serde_json::from_slice(input_data)?;
+            let output = act_activity(db.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
         _ => {
             // Provide a helpful error message with known activity types
             Err(anyhow::anyhow!(
-                "Unknown activity type: '{}'. Known activities: call-model, execute-tool. \
+                "Unknown activity type: '{}'. Known activities: input, reason, act. \
                 This may indicate a workflow bug or version mismatch.",
                 activity_type
             ))
