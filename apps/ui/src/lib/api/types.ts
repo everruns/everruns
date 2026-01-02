@@ -323,6 +323,29 @@ export interface ToolCallCompletedData {
   error?: string;
 }
 
+/** LLM generation output */
+export interface LlmGenerationOutput {
+  text?: string;
+  tool_calls: ToolCall[];
+}
+
+/** LLM generation metadata */
+export interface LlmGenerationMetadata {
+  model: string;
+  provider?: string;
+  usage?: TokenUsage;
+  duration_ms?: number;
+  success: boolean;
+  error?: string;
+}
+
+/** Data for llm.generation event */
+export interface LlmGenerationData {
+  messages: Message[];
+  output: LlmGenerationOutput;
+  metadata: LlmGenerationMetadata;
+}
+
 /** Data for session.started event */
 export interface SessionStartedData {
   agent_id: string;
@@ -343,6 +366,7 @@ export type EventData =
   | ActCompletedData
   | ToolCallStartedData
   | ToolCallCompletedData
+  | LlmGenerationData
   | SessionStartedData
   | Record<string, unknown>; // Raw/unknown event data
 

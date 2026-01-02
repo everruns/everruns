@@ -99,7 +99,7 @@ Agent response message.
   "data": {
     "message": {
       "id": "01937abc-...",
-      "role": "assistant",
+      "role": "agent",
       "content": [
         { "type": "text", "text": "Hello! How can I help?" }
       ],
@@ -318,6 +318,82 @@ For failed tool calls:
 }
 ```
 
+### LLM Events
+
+LLM events provide visibility into the actual LLM API calls.
+
+#### `llm.generation`
+
+Emitted after each LLM API call to provide full visibility into the messages sent to the model and the response received. This is useful for debugging, auditing, and understanding the exact prompts and responses.
+
+```json
+{
+  "type": "llm.generation",
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
+  "data": {
+    "messages": [
+      {
+        "id": "...",
+        "role": "system",
+        "content": [{ "type": "text", "text": "You are a helpful assistant." }],
+        "created_at": "..."
+      },
+      {
+        "id": "...",
+        "role": "user",
+        "content": [{ "type": "text", "text": "What's the weather in Tokyo?" }],
+        "created_at": "..."
+      }
+    ],
+    "output": {
+      "text": "I'll check the weather for you.",
+      "tool_calls": [
+        {
+          "id": "call_123",
+          "name": "get_weather",
+          "arguments": { "city": "Tokyo" }
+        }
+      ]
+    },
+    "metadata": {
+      "model": "gpt-4o",
+      "provider": "openai",
+      "usage": {
+        "input_tokens": 150,
+        "output_tokens": 45
+      },
+      "duration_ms": 1200,
+      "success": true
+    }
+  }
+}
+```
+
+For failed generations:
+
+```json
+{
+  "type": "llm.generation",
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
+  "data": {
+    "messages": [...],
+    "output": {
+      "text": null,
+      "tool_calls": []
+    },
+    "metadata": {
+      "model": "gpt-4o",
+      "provider": "openai",
+      "duration_ms": 500,
+      "success": false,
+      "error": "Rate limit exceeded"
+    }
+  }
+}
+```
+
 ### Session Events
 
 Session lifecycle events.
@@ -354,6 +430,7 @@ Session execution started.
 | `act.completed` | Atom | ActAtom completed |
 | `tool.call_started` | Atom | Individual tool started |
 | `tool.call_completed` | Atom | Individual tool completed (includes result) |
+| `llm.generation` | LLM | Full LLM API call with messages and response |
 | `session.started` | Session | Session execution started |
 
 ## Database Storage

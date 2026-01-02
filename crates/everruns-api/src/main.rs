@@ -23,7 +23,8 @@ use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
     // Event data types
     events::{
-        ActCompletedData, ActStartedData, InputReceivedData, MessageAgentData, MessageUserData,
+        ActCompletedData, ActStartedData, InputReceivedData, LlmGenerationData,
+        LlmGenerationMetadata, LlmGenerationOutput, MessageAgentData, MessageUserData,
         ModelMetadata, ReasonCompletedData, ReasonStartedData, SessionStartedData, TokenUsage,
         ToolCallCompletedData, ToolCallStartedData, ToolCallSummary, TurnCompletedData,
         TurnFailedData, TurnStartedData,
@@ -137,6 +138,7 @@ struct HealthState {
             InputReceivedData, ReasonStartedData, ReasonCompletedData,
             ActStartedData, ActCompletedData, ToolCallSummary,
             ToolCallStartedData, ToolCallCompletedData,
+            LlmGenerationData, LlmGenerationOutput, LlmGenerationMetadata,
             SessionStartedData,
             // Agent/Session types
             agents::CreateAgentRequest, agents::UpdateAgentRequest,

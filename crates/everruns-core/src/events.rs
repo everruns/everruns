@@ -34,6 +34,9 @@ pub const ACT_COMPLETED: &str = "act.completed";
 pub const TOOL_CALL_STARTED: &str = "tool.call_started";
 pub const TOOL_CALL_COMPLETED: &str = "tool.call_completed";
 
+// LLM events
+pub const LLM_GENERATION: &str = "llm.generation";
+
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
 
@@ -498,6 +501,118 @@ impl ToolCallCompletedData {
 }
 
 // ============================================================================
+// LLM Event Data Types
+// ============================================================================
+
+/// LLM generation output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmGenerationOutput {
+    /// Text response from the model
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+
+    /// Tool calls requested by the model
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
+}
+
+/// Metadata about an LLM generation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmGenerationMetadata {
+    /// Model identifier used for generation
+    pub model: String,
+
+    /// Provider type (openai, anthropic, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+
+    /// Token usage statistics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
+
+    /// Duration of the generation in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+
+    /// Whether the generation was successful
+    pub success: bool,
+
+    /// Error message if generation failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Data for llm.generation event
+///
+/// Emitted after each LLM API call to provide full visibility into
+/// the messages sent to the model and the response received.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmGenerationData {
+    /// Messages sent to the LLM (including system prompt)
+    pub messages: Vec<Message>,
+
+    /// Output from the LLM
+    pub output: LlmGenerationOutput,
+
+    /// Metadata about the generation
+    pub metadata: LlmGenerationMetadata,
+}
+
+impl LlmGenerationData {
+    /// Create a successful generation event
+    pub fn success(
+        messages: Vec<Message>,
+        text: Option<String>,
+        tool_calls: Vec<ToolCall>,
+        model: String,
+        provider: Option<String>,
+        usage: Option<TokenUsage>,
+        duration_ms: Option<u64>,
+    ) -> Self {
+        Self {
+            messages,
+            output: LlmGenerationOutput { text, tool_calls },
+            metadata: LlmGenerationMetadata {
+                model,
+                provider,
+                usage,
+                duration_ms,
+                success: true,
+                error: None,
+            },
+        }
+    }
+
+    /// Create a failed generation event
+    pub fn failure(
+        messages: Vec<Message>,
+        model: String,
+        provider: Option<String>,
+        error: String,
+        duration_ms: Option<u64>,
+    ) -> Self {
+        Self {
+            messages,
+            output: LlmGenerationOutput {
+                text: None,
+                tool_calls: vec![],
+            },
+            metadata: LlmGenerationMetadata {
+                model,
+                provider,
+                usage: None,
+                duration_ms,
+                success: false,
+                error: Some(error),
+            },
+        }
+    }
+}
+
+// ============================================================================
 // Turn Event Data Types
 // ============================================================================
 
@@ -582,6 +697,7 @@ pub struct SessionStartedData {
 /// - `act.completed` → ActCompletedData
 /// - `tool.call_started` → ToolCallStartedData
 /// - `tool.call_completed` → ToolCallCompletedData
+/// - `llm.generation` → LlmGenerationData
 /// - `session.started` → SessionStartedData
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -610,6 +726,9 @@ pub enum EventData {
     ToolCallStarted(ToolCallStartedData),
     ToolCallCompleted(ToolCallCompletedData),
 
+    // LLM events
+    LlmGeneration(LlmGenerationData),
+
     // Session events
     SessionStarted(SessionStartedData),
 
@@ -637,6 +756,7 @@ impl EventData {
             EventData::ActCompleted(_) => ACT_COMPLETED,
             EventData::ToolCallStarted(_) => TOOL_CALL_STARTED,
             EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
+            EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::Raw(_) => UNKNOWN,
         }
@@ -718,6 +838,12 @@ impl From<ToolCallStartedData> for EventData {
 impl From<ToolCallCompletedData> for EventData {
     fn from(data: ToolCallCompletedData) -> Self {
         EventData::ToolCallCompleted(data)
+    }
+}
+
+impl From<LlmGenerationData> for EventData {
+    fn from(data: LlmGenerationData) -> Self {
+        EventData::LlmGeneration(data)
     }
 }
 
@@ -875,5 +1001,69 @@ mod tests {
     #[test]
     fn test_input_received_event() {
         assert_eq!(INPUT_RECEIVED, "input.received");
+    }
+
+    #[test]
+    fn test_llm_generation_event_type() {
+        assert_eq!(LLM_GENERATION, "llm.generation");
+    }
+
+    #[test]
+    fn test_llm_generation_data_success() {
+        let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
+        let tool_calls = vec![];
+        let data = LlmGenerationData::success(
+            messages.clone(),
+            Some("Hi there!".to_string()),
+            tool_calls,
+            "gpt-4o".to_string(),
+            Some("openai".to_string()),
+            Some(TokenUsage {
+                input_tokens: 10,
+                output_tokens: 5,
+            }),
+            Some(100),
+        );
+
+        assert_eq!(data.messages.len(), 2);
+        assert_eq!(data.output.text, Some("Hi there!".to_string()));
+        assert!(data.output.tool_calls.is_empty());
+        assert!(data.metadata.success);
+        assert_eq!(data.metadata.model, "gpt-4o");
+        assert_eq!(data.metadata.provider, Some("openai".to_string()));
+        assert!(data.metadata.error.is_none());
+    }
+
+    #[test]
+    fn test_llm_generation_data_failure() {
+        let messages = vec![Message::user("Hello")];
+        let data = LlmGenerationData::failure(
+            messages,
+            "gpt-4o".to_string(),
+            Some("openai".to_string()),
+            "Rate limit exceeded".to_string(),
+            Some(50),
+        );
+
+        assert!(!data.metadata.success);
+        assert_eq!(data.metadata.error, Some("Rate limit exceeded".to_string()));
+        assert!(data.output.text.is_none());
+        assert!(data.output.tool_calls.is_empty());
+    }
+
+    #[test]
+    fn test_llm_generation_event_data() {
+        let data = LlmGenerationData::success(
+            vec![Message::user("test")],
+            Some("response".to_string()),
+            vec![],
+            "model".to_string(),
+            None,
+            None,
+            None,
+        );
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), LLM_GENERATION);
     }
 }
