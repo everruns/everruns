@@ -21,6 +21,7 @@ Available specs:
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system for modular functionality
 - `specs/documentation.md` - Documentation site (Astro Starlight, Cloudflare Pages)
+- `specs/brand.md` - Brand identity, colors, typography, voice
 - `specs/dismissed-options.md` - Technical options considered but dismissed
 
 Specification format: Abstract and Requirements sections.

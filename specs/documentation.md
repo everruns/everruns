@@ -20,6 +20,7 @@ All documentation content lives in `docs/` at the repository root:
 
 ```
 docs/
+├── index.md              # Landing page
 ├── getting-started/
 │   └── introduction.md
 ├── features/
@@ -48,11 +49,27 @@ description: Brief description for SEO and search
 
 ### Design Requirements
 
-1. **Visual Consistency**: Design matches the main application
-   - Brand colors from logo (dark blue: #0A1636, gold: #D4A43A)
-   - Same logo SVG as the UI (`apps/docs/src/assets/logo.svg`)
-   - Dark mode as default theme
-2. **Fonts**: System UI fonts matching the application
+Design follows the brand guidelines defined in [specs/brand.md](brand.md).
+
+#### Color Scheme
+
+| Theme | Background | Text | Accent |
+|-------|------------|------|--------|
+| Light | White/Smoke | Obsidian | Navy links, Gold hover |
+| Dark | Navy | White | Gold links |
+
+#### Typography
+
+- **Font**: Geist Sans (body), Geist Mono (code)
+- **Headings**: Weight 600 for H1-H3, 500 for H4-H6
+- **Body**: Weight 400, line-height 1.6
+
+#### Design Principles
+
+1. **Simple and clean** — grayscale dominant
+2. **Content-first** — minimal visual distraction
+3. **Generous whitespace** — let content breathe
+4. **Fast** — minimal external dependencies
 
 ### Build & Deployment
 
@@ -90,3 +107,4 @@ npm run build
 1. **API Reference Generation**: Generate API documentation from OpenAPI spec
 2. **Versioned Documentation**: Support for multiple documentation versions
 3. **Search Analytics**: Track popular search queries to improve docs
+4. **Changelog**: Auto-generate from GitHub releases
