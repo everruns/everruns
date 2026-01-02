@@ -1,0 +1,440 @@
+// Internal gRPC Service for Worker Communication
+//
+// Decision: Workers communicate with control plane via gRPC for all database operations
+// Decision: This provides a clean boundary and simplifies worker deployment
+//
+// NOTE: This is a placeholder implementation. Full integration requires:
+// - Adapting to the events-based message storage
+// - Integration with existing services
+
+use everruns_internal_protocol::proto::{
+    self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
+    CreateDirectoryRequest, CreateDirectoryResponse, DeleteFileRequest, DeleteFileResponse,
+    EmitEventRequest, EmitEventResponse, EmitEventStreamResponse, GetAgentRequest,
+    GetAgentResponse, GetDefaultModelRequest, GetDefaultModelResponse, GetModelWithProviderRequest,
+    GetModelWithProviderResponse, GetSessionRequest, GetSessionResponse, GetTurnContextRequest,
+    GetTurnContextResponse, GrepFilesRequest, GrepFilesResponse, ListDirectoryRequest,
+    ListDirectoryResponse, LoadMessagesRequest, LoadMessagesResponse, ReadFileRequest,
+    ReadFileResponse, StatFileRequest, StatFileResponse, WriteFileRequest, WriteFileResponse,
+};
+use everruns_internal_protocol::{WorkerService, WorkerServiceServer};
+use everruns_storage::Database;
+use std::sync::Arc;
+use tonic::{Request, Response, Status, Streaming};
+
+/// gRPC service implementation for worker communication
+pub struct WorkerServiceImpl {
+    db: Arc<Database>,
+}
+
+impl WorkerServiceImpl {
+    pub fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+
+    /// Create a tonic server for this service
+    pub fn into_server(self) -> WorkerServiceServer<Self> {
+        WorkerServiceServer::new(self)
+    }
+}
+
+// Helper to convert uuid parse error to tonic status
+#[allow(clippy::result_large_err)] // tonic::Status is the standard gRPC error type
+fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
+    let uuid_str = proto_uuid
+        .map(|u| &u.value)
+        .ok_or_else(|| Status::invalid_argument("Missing UUID"))?;
+    uuid::Uuid::parse_str(uuid_str)
+        .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
+}
+
+#[tonic::async_trait]
+impl WorkerService for WorkerServiceImpl {
+    // ========================================================================
+    // Batched operations
+    // ========================================================================
+
+    async fn get_turn_context(
+        &self,
+        request: Request<GetTurnContextRequest>,
+    ) -> Result<Response<GetTurnContextResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        // Get session
+        let session_row = self
+            .db
+            .get_session(session_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        // Get agent
+        let agent_row = self
+            .db
+            .get_agent(session_row.agent_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
+            .ok_or_else(|| Status::not_found("Agent not found"))?;
+
+        // Convert rows to proto types
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let proto_agent = proto::Agent {
+            id: Some(uuid_to_proto_uuid(agent_row.id)),
+            name: agent_row.name.clone(),
+            description: agent_row.description.clone().unwrap_or_default(),
+            system_prompt: agent_row.system_prompt.clone(),
+            default_model_id: agent_row.default_model_id.map(uuid_to_proto_uuid),
+            temperature: None, // Not stored in AgentRow
+            max_tokens: None,  // Not stored in AgentRow
+            status: agent_row.status.clone(),
+            created_at: Some(datetime_to_proto_timestamp(agent_row.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(agent_row.updated_at)),
+            capability_ids: vec![], // Capabilities stored separately, not in AgentRow
+        };
+
+        let proto_session = proto::Session {
+            id: Some(uuid_to_proto_uuid(session_row.id)),
+            agent_id: Some(uuid_to_proto_uuid(session_row.agent_id)),
+            title: session_row.title.clone().unwrap_or_default(),
+            status: session_row.status.clone(),
+            created_at: Some(datetime_to_proto_timestamp(session_row.created_at)),
+            // SessionRow doesn't have updated_at, use created_at as fallback
+            updated_at: Some(datetime_to_proto_timestamp(session_row.created_at)),
+            default_model_id: session_row.model_id.map(uuid_to_proto_uuid),
+        };
+
+        // TODO: Load messages from events table
+        let proto_messages: Vec<proto::Message> = vec![];
+
+        // TODO: Get model with provider (decrypted API key)
+        let model: Option<proto::ModelWithProvider> = None;
+
+        Ok(Response::new(GetTurnContextResponse {
+            agent: Some(proto_agent),
+            session: Some(proto_session),
+            messages: proto_messages,
+            model,
+        }))
+    }
+
+    async fn emit_event_stream(
+        &self,
+        request: Request<Streaming<EmitEventRequest>>,
+    ) -> Result<Response<EmitEventStreamResponse>, Status> {
+        let mut stream = request.into_inner();
+        let mut events_processed = 0i32;
+
+        while let Some(_req) = stream.message().await? {
+            // TODO: Store event
+            events_processed += 1;
+        }
+
+        Ok(Response::new(EmitEventStreamResponse { events_processed }))
+    }
+
+    // ========================================================================
+    // Individual operations
+    // ========================================================================
+
+    async fn get_agent(
+        &self,
+        request: Request<GetAgentRequest>,
+    ) -> Result<Response<GetAgentResponse>, Status> {
+        let req = request.into_inner();
+        let agent_id = parse_uuid(req.agent_id.as_ref())?;
+
+        let agent_row = self
+            .db
+            .get_agent(agent_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
+
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let proto_agent = agent_row.map(|a| proto::Agent {
+            id: Some(uuid_to_proto_uuid(a.id)),
+            name: a.name.clone(),
+            description: a.description.clone().unwrap_or_default(),
+            system_prompt: a.system_prompt.clone(),
+            default_model_id: a.default_model_id.map(uuid_to_proto_uuid),
+            temperature: None, // Not stored in AgentRow
+            max_tokens: None,  // Not stored in AgentRow
+            status: a.status.clone(),
+            created_at: Some(datetime_to_proto_timestamp(a.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(a.updated_at)),
+            capability_ids: vec![], // Capabilities stored separately
+        });
+
+        Ok(Response::new(GetAgentResponse { agent: proto_agent }))
+    }
+
+    async fn get_session(
+        &self,
+        request: Request<GetSessionRequest>,
+    ) -> Result<Response<GetSessionResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let session_row = self
+            .db
+            .get_session(session_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?;
+
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let proto_session = session_row.map(|s| proto::Session {
+            id: Some(uuid_to_proto_uuid(s.id)),
+            agent_id: Some(uuid_to_proto_uuid(s.agent_id)),
+            title: s.title.clone().unwrap_or_default(),
+            status: s.status.clone(),
+            created_at: Some(datetime_to_proto_timestamp(s.created_at)),
+            // SessionRow doesn't have updated_at, use created_at as fallback
+            updated_at: Some(datetime_to_proto_timestamp(s.created_at)),
+            default_model_id: s.model_id.map(uuid_to_proto_uuid),
+        });
+
+        Ok(Response::new(GetSessionResponse {
+            session: proto_session,
+        }))
+    }
+
+    async fn load_messages(
+        &self,
+        _request: Request<LoadMessagesRequest>,
+    ) -> Result<Response<LoadMessagesResponse>, Status> {
+        // TODO: Implement by querying events table for message events
+        Ok(Response::new(LoadMessagesResponse { messages: vec![] }))
+    }
+
+    async fn add_message(
+        &self,
+        _request: Request<AddMessageRequest>,
+    ) -> Result<Response<AddMessageResponse>, Status> {
+        // TODO: Implement by creating message event
+        Err(Status::unimplemented("add_message not yet implemented"))
+    }
+
+    async fn emit_event(
+        &self,
+        _request: Request<EmitEventRequest>,
+    ) -> Result<Response<EmitEventResponse>, Status> {
+        // TODO: Implement by storing event
+        Err(Status::unimplemented("emit_event not yet implemented"))
+    }
+
+    async fn commit_exec(
+        &self,
+        _request: Request<CommitExecRequest>,
+    ) -> Result<Response<CommitExecResponse>, Status> {
+        // TODO: Implement exec_id commit tracking
+        Ok(Response::new(CommitExecResponse { committed: true }))
+    }
+
+    async fn get_model_with_provider(
+        &self,
+        _request: Request<GetModelWithProviderRequest>,
+    ) -> Result<Response<GetModelWithProviderResponse>, Status> {
+        // TODO: Implement with decrypted API key
+        Ok(Response::new(GetModelWithProviderResponse { model: None }))
+    }
+
+    async fn get_default_model(
+        &self,
+        _request: Request<GetDefaultModelRequest>,
+    ) -> Result<Response<GetDefaultModelResponse>, Status> {
+        // TODO: Implement with decrypted API key
+        Ok(Response::new(GetDefaultModelResponse { model: None }))
+    }
+
+    // ========================================================================
+    // Session file operations
+    // ========================================================================
+
+    async fn read_file(
+        &self,
+        request: Request<ReadFileRequest>,
+    ) -> Result<Response<ReadFileResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let file_row = self
+            .db
+            .get_session_file(session_id, &req.path)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to read file: {}", e)))?;
+
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        // Derive name from path
+        fn name_from_path(path: &str) -> String {
+            if path == "/" {
+                "/".to_string()
+            } else {
+                path.rsplit('/').next().unwrap_or(path).to_string()
+            }
+        }
+
+        let proto_file = file_row.map(|f| {
+            // Convert bytes content to string
+            let content = f
+                .content
+                .as_ref()
+                .map(|bytes| String::from_utf8_lossy(bytes).to_string());
+
+            proto::SessionFile {
+                id: Some(uuid_to_proto_uuid(f.id)),
+                session_id: Some(uuid_to_proto_uuid(f.session_id)),
+                path: f.path.clone(),
+                name: name_from_path(&f.path),
+                content,
+                encoding: "text".to_string(), // Default encoding
+                is_directory: f.is_directory,
+                is_readonly: f.is_readonly,
+                size_bytes: f.size_bytes,
+                created_at: Some(datetime_to_proto_timestamp(f.created_at)),
+                updated_at: Some(datetime_to_proto_timestamp(f.updated_at)),
+            }
+        });
+
+        Ok(Response::new(ReadFileResponse { file: proto_file }))
+    }
+
+    async fn write_file(
+        &self,
+        _request: Request<WriteFileRequest>,
+    ) -> Result<Response<WriteFileResponse>, Status> {
+        // TODO: Database doesn't have upsert_session_file - need to implement
+        // For now, return unimplemented
+        Err(Status::unimplemented(
+            "write_file not yet implemented - requires database method",
+        ))
+    }
+
+    async fn delete_file(
+        &self,
+        request: Request<DeleteFileRequest>,
+    ) -> Result<Response<DeleteFileResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let deleted = if req.recursive {
+            let count = self
+                .db
+                .delete_session_file_recursive(session_id, &req.path)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to delete file: {}", e)))?;
+            count > 0
+        } else {
+            self.db
+                .delete_session_file(session_id, &req.path)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to delete file: {}", e)))?
+        };
+
+        Ok(Response::new(DeleteFileResponse { deleted }))
+    }
+
+    async fn list_directory(
+        &self,
+        request: Request<ListDirectoryRequest>,
+    ) -> Result<Response<ListDirectoryResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let files = self
+            .db
+            .list_session_files(session_id, &req.path)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list directory: {}", e)))?;
+
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        // Derive name from path
+        fn name_from_path(path: &str) -> String {
+            if path == "/" {
+                "/".to_string()
+            } else {
+                path.rsplit('/').next().unwrap_or(path).to_string()
+            }
+        }
+
+        let proto_files: Vec<proto::FileInfo> = files
+            .iter()
+            .map(|f| proto::FileInfo {
+                id: Some(uuid_to_proto_uuid(f.id)),
+                session_id: Some(uuid_to_proto_uuid(f.session_id)),
+                path: f.path.clone(),
+                name: name_from_path(&f.path),
+                is_directory: f.is_directory,
+                is_readonly: f.is_readonly,
+                size_bytes: f.size_bytes,
+                created_at: Some(datetime_to_proto_timestamp(f.created_at)),
+                updated_at: Some(datetime_to_proto_timestamp(f.updated_at)),
+            })
+            .collect();
+
+        Ok(Response::new(ListDirectoryResponse { files: proto_files }))
+    }
+
+    async fn stat_file(
+        &self,
+        request: Request<StatFileRequest>,
+    ) -> Result<Response<StatFileResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        // Get file info and convert to stat
+        let file = self
+            .db
+            .get_session_file(session_id, &req.path)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to stat file: {}", e)))?;
+
+        use everruns_internal_protocol::datetime_to_proto_timestamp;
+
+        // Derive name from path
+        fn name_from_path(path: &str) -> String {
+            if path == "/" {
+                "/".to_string()
+            } else {
+                path.rsplit('/').next().unwrap_or(path).to_string()
+            }
+        }
+
+        let proto_stat = file.map(|f| proto::FileStat {
+            path: f.path.clone(),
+            name: name_from_path(&f.path),
+            is_directory: f.is_directory,
+            is_readonly: f.is_readonly,
+            size_bytes: f.size_bytes,
+            created_at: Some(datetime_to_proto_timestamp(f.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(f.updated_at)),
+        });
+
+        Ok(Response::new(StatFileResponse { stat: proto_stat }))
+    }
+
+    async fn grep_files(
+        &self,
+        _request: Request<GrepFilesRequest>,
+    ) -> Result<Response<GrepFilesResponse>, Status> {
+        // TODO: The current database grep returns file info, not line matches
+        // Need to implement proper line-by-line grep functionality
+        Err(Status::unimplemented(
+            "grep_files not yet implemented - requires line-level matching",
+        ))
+    }
+
+    async fn create_directory(
+        &self,
+        _request: Request<CreateDirectoryRequest>,
+    ) -> Result<Response<CreateDirectoryResponse>, Status> {
+        // TODO: Database doesn't have upsert_session_file - need to implement
+        Err(Status::unimplemented(
+            "create_directory not yet implemented - requires database method",
+        ))
+    }
+}

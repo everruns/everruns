@@ -7,6 +7,7 @@ mod auth;
 mod capabilities;
 mod common;
 mod events;
+mod grpc_service;
 mod llm_models;
 mod llm_providers;
 mod messages;
@@ -350,12 +351,28 @@ async fn main() -> Result<()> {
     // Add tracing
     let app = app.layer(TraceLayer::new_for_http());
 
-    // Start server
+    // Start gRPC server for worker communication
+    let grpc_addr = std::env::var("GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9001".to_string());
+    let grpc_db = db.clone();
+    tokio::spawn(async move {
+        let grpc_service = grpc_service::WorkerServiceImpl::new(grpc_db);
+        let addr = grpc_addr.parse().expect("Invalid GRPC_ADDR");
+        tracing::info!("gRPC server listening on {}", addr);
+        if let Err(e) = tonic::transport::Server::builder()
+            .add_service(grpc_service.into_server())
+            .serve(addr)
+            .await
+        {
+            tracing::error!("gRPC server error: {}", e);
+        }
+    });
+
+    // Start HTTP server
     let addr = "0.0.0.0:9000";
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .context("Failed to bind to address")?;
-    tracing::info!("Listening on {}", addr);
+    tracing::info!("HTTP server listening on {}", addr);
 
     axum::serve(listener, app).await.context("Server error")?;
 

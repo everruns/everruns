@@ -19,6 +19,8 @@ everruns-storage = { path = "../everruns-storage" }
 everruns-core = { path = "../everruns-core" }
 everruns-openai = { path = "../everruns-openai" }
 everruns-anthropic = { path = "../everruns-anthropic" }
+everruns-internal-protocol = { path = "../internal-protocol" }
+everruns-schemas = { path = "../schemas" }
 
 chrono.workspace = true
 async-trait.workspace = true

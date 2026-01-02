@@ -813,12 +813,14 @@ dependencies = [
  "chrono",
  "dotenvy",
  "everruns-core",
+ "everruns-internal-protocol",
  "everruns-storage",
  "everruns-worker",
  "futures",
  "hex",
  "http-body-util",
  "jsonwebtoken",
+ "prost 0.13.5",
  "rand 0.8.5",
  "regex",
  "reqwest",
@@ -830,6 +832,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-stream",
+ "tonic 0.12.3",
  "tower 0.5.2",
  "tower-http",
  "tracing",
@@ -866,6 +869,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-internal-protocol"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "everruns-schemas",
+ "prost 0.13.5",
+ "prost-types 0.13.5",
+ "serde",
+ "serde_json",
+ "tonic 0.12.3",
+ "tonic-build 0.12.3",
+ "uuid 1.19.0",
+]
+
+[[package]]
 name = "everruns-openai"
 version = "0.2.0"
 dependencies = [
@@ -881,6 +899,46 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber 0.3.22",
+]
+
+[[package]]
+name = "everruns-runtime"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "eventsource-stream",
+ "everruns-anthropic",
+ "everruns-openai",
+ "everruns-schemas",
+ "futures",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber 0.3.22",
+ "url",
+ "uuid 1.19.0",
+ "wiremock",
+]
+
+[[package]]
+name = "everruns-schemas"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "utoipa",
+ "uuid 1.19.0",
 ]
 
 [[package]]
@@ -916,7 +974,9 @@ dependencies = [
  "chrono",
  "everruns-anthropic",
  "everruns-core",
+ "everruns-internal-protocol",
  "everruns-openai",
+ "everruns-schemas",
  "everruns-storage",
  "futures",
  "hex",
@@ -3860,6 +3920,20 @@ dependencies = [
  "prost-build 0.7.0",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "tonic-build"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9557ce109ea773b399c9b9e5dca39294110b74f1f342cb347a80d1fce8c26a11"
+dependencies = [
+ "prettyplease",
+ "proc-macro2",
+ "prost-build 0.13.5",
+ "prost-types 0.13.5",
+ "quote",
+ "syn 2.0.112",
 ]
 
 [[package]]

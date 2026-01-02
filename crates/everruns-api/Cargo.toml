@@ -45,6 +45,11 @@ regex.workspace = true
 everruns-core = { path = "../everruns-core", features = ["openapi"] }
 everruns-storage = { path = "../everruns-storage" }
 everruns-worker = { path = "../everruns-worker" }
+everruns-internal-protocol = { path = "../internal-protocol" }
+
+# gRPC
+tonic = "0.12"
+prost.workspace = true
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

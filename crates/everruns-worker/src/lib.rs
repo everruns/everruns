@@ -1,6 +1,7 @@
 pub mod activities;
 pub mod adapters;
 pub mod client;
+pub mod grpc_adapters;
 pub mod runner;
 pub mod traits;
 pub mod turn_workflow;
@@ -18,6 +19,12 @@ pub use workflow_registry::{WorkflowFactory, WorkflowRegistry, WorkflowRegistryB
 
 // Re-export adapters
 pub use adapters::{create_db_message_store, DbMessageStore};
+
+// Re-export gRPC adapters for worker communication with control plane
+pub use grpc_adapters::{
+    load_turn_context, GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore,
+    GrpcMessageStore, GrpcSessionFileStore, GrpcSessionStore, TurnContext,
+};
 
 // Re-export OpenAI driver from the openai crate
 pub use everruns_openai::OpenAILlmDriver;

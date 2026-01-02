@@ -1,0 +1,34 @@
+# Shared Type Contracts
+# Decision: Source of truth for all data structures shared across crates
+# Decision: Minimal dependencies (serde, uuid, chrono)
+# Decision: Optional OpenAPI support via "openapi" feature
+
+[package]
+name = "everruns-schemas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared type contracts for Everruns - agents, sessions, messages, events, tools"
+
+[dependencies]
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# UUID and time
+uuid.workspace = true
+chrono.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Encoding
+base64.workspace = true
+
+# OpenAPI schema generation (optional)
+utoipa = { workspace = true, optional = true }
+
+[features]
+default = []
+openapi = ["utoipa"]

@@ -12,6 +12,9 @@ members = [
     "crates/everruns-core",
     "crates/everruns-openai",
     "crates/everruns-anthropic",
+    "crates/schemas",
+    "crates/runtime",
+    "crates/internal-protocol",
 ]
 
 [workspace.package]

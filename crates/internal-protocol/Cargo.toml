@@ -1,0 +1,32 @@
+# Internal Protocol (gRPC)
+# Decision: gRPC for worker <-> control plane communication
+# Decision: Uses tonic for gRPC (already in stack via Temporal SDK)
+# Decision: Proto definitions mirror Rust types in schemas crate
+
+[package]
+name = "everruns-internal-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Internal gRPC protocol for Everruns worker-control plane communication"
+
+[dependencies]
+# gRPC
+tonic = "0.12"
+prost.workspace = true
+prost-types.workspace = true
+
+# Internal dependencies
+everruns-schemas = { path = "../schemas" }
+
+# Serialization (for JSON conversion)
+serde.workspace = true
+serde_json.workspace = true
+
+# UUID and time
+uuid.workspace = true
+chrono.workspace = true
+
+[build-dependencies]
+tonic-build = "0.12"
