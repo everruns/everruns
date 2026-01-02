@@ -7,22 +7,29 @@
 
 use crate::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use anyhow::Result;
-use chrono::{DateTime, Utc};
-use everruns_core::Controls;
-use everruns_storage::{models::CreateEventRow, Database};
+use chrono::Utc;
+use everruns_core::events::{EventContext, MessageUserData};
+use everruns_core::traits::EventEmitter;
+use everruns_core::Event;
+use everruns_storage::{Database, DbEventEmitter};
 use everruns_worker::AgentRunner;
-use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct MessageService {
     db: Arc<Database>,
+    event_emitter: DbEventEmitter,
     runner: Arc<dyn AgentRunner>,
 }
 
 impl MessageService {
     pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
-        Self { db, runner }
+        let event_emitter = DbEventEmitter::new((*db).clone());
+        Self {
+            db,
+            event_emitter,
+            runner,
+        }
     }
 
     /// Create a user message from API request
@@ -46,39 +53,38 @@ impl MessageService {
 
         // Generate a new message ID
         let message_id = Uuid::now_v7();
-        let tags = req.tags.unwrap_or_default();
+        let now = Utc::now();
 
-        // Create the event with data matching MessageUserData structure
-        // This ensures consistency with events emitted by atoms
-        let event = self
-            .db
-            .create_event(CreateEventRow {
+        // Build the core message
+        let core_message = everruns_core::Message {
+            id: message_id,
+            role: everruns_core::MessageRole::User,
+            content: content.iter().cloned().map(Into::into).collect(),
+            controls: req.controls.clone(),
+            metadata: req.metadata.clone(),
+            created_at: now,
+        };
+
+        // Emit as typed event using DbEventEmitter
+        let sequence = self
+            .event_emitter
+            .emit(Event::new(
                 session_id,
-                event_type: "message.user".to_string(),
-                data: serde_json::json!({
-                    "message": {
-                        "id": message_id,
-                        "role": "user",
-                        "content": &content,
-                        "controls": &req.controls,
-                        "metadata": &req.metadata,
-                        "created_at": chrono::Utc::now(),
-                    },
-                    "tags": &tags,
-                }),
-            })
+                EventContext::empty(),
+                MessageUserData::new(core_message),
+            ))
             .await?;
 
-        // Construct Message from the event
+        // Construct API Message
         let message = Message {
             id: message_id,
             session_id,
-            sequence: event.sequence,
+            sequence,
             role: MessageRole::User,
             content,
             controls: req.controls,
             metadata: req.metadata,
-            created_at: event.created_at,
+            created_at: now,
         };
 
         // Start workflow for user message (pass the message_id that triggered this turn)
@@ -109,12 +115,15 @@ impl MessageService {
         let events = self.db.list_message_events(session_id).await?;
         let mut messages = Vec::with_capacity(events.len());
 
-        for event in events {
-            match Self::event_to_message(session_id, &event.data, event.sequence, event.created_at)
-            {
+        for event_row in events {
+            match Self::event_to_message(session_id, &event_row.data, event_row.sequence) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
-                    tracing::warn!("Failed to parse message from event {}: {}", event.id, e);
+                    tracing::warn!(
+                        "Failed to parse message from event {}: {}",
+                        event_row.id,
+                        e
+                    );
                 }
             }
         }
@@ -122,140 +131,60 @@ impl MessageService {
         Ok(messages)
     }
 
-    /// Convert event data to API Message
+    /// Convert stored event data to API Message
     ///
-    /// Handles both formats:
-    /// - New format: { "message": { "id", "role", "content", ... } }
-    /// - Legacy format: { "message_id", "role", "content", ... }
+    /// Events are stored as full Event structures with typed EventData.
     fn event_to_message(
         session_id: Uuid,
         data: &serde_json::Value,
         sequence: i32,
-        created_at: DateTime<Utc>,
     ) -> std::result::Result<Message, String> {
-        // Try new format first (message wrapper)
-        if let Some(message_obj) = data.get("message") {
-            return Self::parse_message_object(session_id, message_obj, sequence, created_at);
-        }
+        // Deserialize the full Event structure
+        let event: Event =
+            serde_json::from_value(data.clone()).map_err(|e| format!("invalid event: {}", e))?;
 
-        // Fall back to legacy format (flat structure)
-        Self::parse_legacy_format(session_id, data, sequence, created_at)
-    }
-
-    /// Parse message from new format with message wrapper
-    fn parse_message_object(
-        session_id: Uuid,
-        message: &serde_json::Value,
-        sequence: i32,
-        created_at: DateTime<Utc>,
-    ) -> std::result::Result<Message, String> {
-        // Extract id (can be string or object with UUID)
-        let id = message
-            .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or("missing message.id")?
-            .parse::<Uuid>()
-            .map_err(|e| format!("invalid message.id: {}", e))?;
-
-        // Extract role
-        let role_str = message
-            .get("role")
-            .and_then(|v| v.as_str())
-            .ok_or("missing message.role")?;
-        let role = MessageRole::from(role_str);
-
-        // Extract content
-        let content: Vec<ContentPart> = message
-            .get("content")
-            .cloned()
-            .map(|v| serde_json::from_value(v).unwrap_or_default())
-            .unwrap_or_default();
-
-        // Extract optional controls
-        let controls: Option<Controls> = message
-            .get("controls")
-            .filter(|v| !v.is_null())
-            .cloned()
-            .and_then(|v| serde_json::from_value(v).ok());
-
-        // Extract optional metadata
-        let metadata: Option<HashMap<String, serde_json::Value>> = message
-            .get("metadata")
-            .filter(|v| !v.is_null())
-            .cloned()
-            .and_then(|v| serde_json::from_value(v).ok());
-
-        // Use created_at from message if present, otherwise from event
-        let msg_created_at = message
-            .get("created_at")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse::<DateTime<Utc>>().ok())
-            .unwrap_or(created_at);
+        // Extract message from typed EventData
+        let core_message = match &event.data {
+            everruns_core::EventData::MessageUser(data) => &data.message,
+            everruns_core::EventData::MessageAgent(data) => &data.message,
+            everruns_core::EventData::ToolCallCompleted(data) => {
+                // Convert tool result to message
+                let result: Option<serde_json::Value> = data.result.as_ref().map(|parts| {
+                    if parts.len() == 1 {
+                        if let everruns_core::ContentPart::Text(t) = &parts[0] {
+                            return serde_json::Value::String(t.text.clone());
+                        }
+                    }
+                    serde_json::to_value(parts).unwrap_or_default()
+                });
+                let msg = everruns_core::Message::tool_result(
+                    &data.tool_call_id,
+                    result,
+                    data.error.clone(),
+                );
+                return Ok(Message {
+                    id: msg.id,
+                    session_id,
+                    sequence,
+                    role: MessageRole::from(msg.role.to_string().as_str()),
+                    content: msg.content.into_iter().map(Into::into).collect(),
+                    controls: None,
+                    metadata: None,
+                    created_at: msg.created_at,
+                });
+            }
+            _ => return Err(format!("unexpected event type: {}", event.event_type)),
+        };
 
         Ok(Message {
-            id,
+            id: core_message.id,
             session_id,
             sequence,
-            role,
-            content,
-            controls,
-            metadata,
-            created_at: msg_created_at,
-        })
-    }
-
-    /// Parse message from legacy format (flat structure)
-    fn parse_legacy_format(
-        session_id: Uuid,
-        data: &serde_json::Value,
-        sequence: i32,
-        created_at: DateTime<Utc>,
-    ) -> std::result::Result<Message, String> {
-        // Extract message_id
-        let id = data
-            .get("message_id")
-            .and_then(|v| v.as_str())
-            .ok_or("missing message_id")?
-            .parse::<Uuid>()
-            .map_err(|e| format!("invalid message_id: {}", e))?;
-
-        // Extract role
-        let role_str = data
-            .get("role")
-            .and_then(|v| v.as_str())
-            .ok_or("missing role")?;
-        let role = MessageRole::from(role_str);
-
-        // Extract content
-        let content: Vec<ContentPart> = data
-            .get("content")
-            .cloned()
-            .map(|v| serde_json::from_value(v).unwrap_or_default())
-            .unwrap_or_default();
-
-        // Extract optional controls
-        let controls: Option<Controls> = data
-            .get("controls")
-            .filter(|v| !v.is_null())
-            .cloned()
-            .and_then(|v| serde_json::from_value(v).ok());
-
-        // Extract optional metadata
-        let metadata: Option<HashMap<String, serde_json::Value>> = data
-            .get("metadata")
-            .filter(|v| !v.is_null())
-            .cloned()
-            .and_then(|v| serde_json::from_value(v).ok());
-
-        Ok(Message {
-            id,
-            session_id,
-            sequence,
-            role,
-            content,
-            controls,
-            metadata,
-            created_at,
+            role: MessageRole::from(core_message.role.to_string().as_str()),
+            content: core_message.content.iter().cloned().map(Into::into).collect(),
+            controls: core_message.controls.clone(),
+            metadata: core_message.metadata.clone(),
+            created_at: core_message.created_at,
         })
     }
 }
