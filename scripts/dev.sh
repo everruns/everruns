@@ -188,6 +188,26 @@ case "$command" in
     echo "✅ UI dependencies installed!"
     ;;
 
+  docs)
+    echo "📚 Starting docs development server..."
+    cd apps/docs
+    npm run dev
+    ;;
+
+  docs-build)
+    echo "🔨 Building docs for production..."
+    cd apps/docs
+    npm run check && npm run build
+    echo "✅ Docs build complete!"
+    ;;
+
+  docs-install)
+    echo "📦 Installing docs dependencies..."
+    cd apps/docs
+    npm install
+    echo "✅ Docs dependencies installed!"
+    ;;
+
   start-all)
     echo "🚀 Starting complete Everruns development environment..."
     echo ""
@@ -494,6 +514,14 @@ PY
     npm install
     cd "$PROJECT_ROOT"
 
+    # Docs dependencies
+    echo ""
+    echo "📚 Docs setup:"
+    echo "  📦 Installing docs dependencies..."
+    cd apps/docs
+    npm install
+    cd "$PROJECT_ROOT"
+
     echo ""
     echo "✅ All development dependencies ready!"
     ;;
@@ -517,7 +545,7 @@ Everrun Development Helper
 Usage: $0 <command>
 
 Commands:
-  init        Install all development dependencies (Rust tools + UI)
+  init        Install all development dependencies (Rust tools + UI + Docs)
   start       Start Docker services (Postgres, Temporal)
   stop        Stop Docker services
   start-all   Start everything with auto-reload (Docker, API, Worker, UI, seed)
@@ -535,6 +563,9 @@ Commands:
   ui          Start the UI development server
   ui-build    Build the UI for production
   ui-install  Install UI dependencies
+  docs        Start the docs development server
+  docs-build  Build the docs for production
+  docs-install Install docs dependencies
   logs        View Docker service logs
   clean       Clean build artifacts and Docker volumes
   help        Show this help message
@@ -543,6 +574,7 @@ Examples:
   $0 init            # First-time setup (install all dependencies)
   $0 start-all       # Start everything with auto-reload
   $0 watch-api       # Just run API with auto-reload
+  $0 docs            # Start docs dev server
   $0 stop-all        # Stop everything
 EOF
     ;;
