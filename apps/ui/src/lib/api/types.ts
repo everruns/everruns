@@ -173,7 +173,6 @@ export function getToolCallsFromContent(content: ContentPart[]): Array<{ id: str
 
 /** Event context for correlation */
 export interface EventContext {
-  session_id: string;
   turn_id?: string;
   input_message_id?: string;
   exec_id?: string;
@@ -188,11 +187,144 @@ export interface Event {
   ts: string;
   session_id: string;
   context: EventContext;
-  data: Record<string, unknown>;
+  /** Event-specific payload. Schema depends on event type. */
+  data: EventData;
   metadata?: Record<string, unknown>;
   tags?: string[];
   sequence?: number;
 }
+
+// ============================================
+// Event Data Types - Typed payloads for each event type
+// ============================================
+
+/** Model metadata for generation events */
+export interface ModelMetadata {
+  model: string;
+  model_id?: string;
+  provider_id?: string;
+}
+
+/** Token usage statistics */
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+}
+
+/** Data for message.user event */
+export interface MessageUserData {
+  message: Message;
+}
+
+/** Data for message.agent event */
+export interface MessageAgentData {
+  message: Message;
+  metadata?: ModelMetadata;
+  usage?: TokenUsage;
+}
+
+/** Data for turn.started event */
+export interface TurnStartedData {
+  turn_id: string;
+  input_message_id: string;
+}
+
+/** Data for turn.completed event */
+export interface TurnCompletedData {
+  turn_id: string;
+  iterations: number;
+  duration_ms?: number;
+}
+
+/** Data for turn.failed event */
+export interface TurnFailedData {
+  turn_id: string;
+  error: string;
+  error_code?: string;
+}
+
+/** Data for input.received event */
+export interface InputReceivedData {
+  message: Message;
+}
+
+/** Data for reason.started event */
+export interface ReasonStartedData {
+  agent_id: string;
+  metadata?: ModelMetadata;
+}
+
+/** Data for reason.completed event */
+export interface ReasonCompletedData {
+  success: boolean;
+  text_preview?: string;
+  has_tool_calls: boolean;
+  tool_call_count: number;
+  error?: string;
+}
+
+/** Tool call summary (compact form) */
+export interface ToolCallSummary {
+  id: string;
+  name: string;
+}
+
+/** Data for act.started event */
+export interface ActStartedData {
+  tool_calls: ToolCallSummary[];
+}
+
+/** Data for act.completed event */
+export interface ActCompletedData {
+  completed: boolean;
+  success_count: number;
+  error_count: number;
+}
+
+/** Tool call from LLM response */
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+/** Data for tool.call_started event */
+export interface ToolCallStartedData {
+  tool_call: ToolCall;
+}
+
+/** Data for tool.call_completed event */
+export interface ToolCallCompletedData {
+  tool_call_id: string;
+  tool_name: string;
+  success: boolean;
+  status: "success" | "error" | "timeout" | "cancelled";
+  result?: ContentPart[];
+  error?: string;
+}
+
+/** Data for session.started event */
+export interface SessionStartedData {
+  agent_id: string;
+  model_id?: string;
+}
+
+/** Union type for all event data types */
+export type EventData =
+  | MessageUserData
+  | MessageAgentData
+  | TurnStartedData
+  | TurnCompletedData
+  | TurnFailedData
+  | InputReceivedData
+  | ReasonStartedData
+  | ReasonCompletedData
+  | ActStartedData
+  | ActCompletedData
+  | ToolCallStartedData
+  | ToolCallCompletedData
+  | SessionStartedData
+  | Record<string, unknown>; // Raw/unknown event data
 
 export interface CreateEventRequest {
   event_type: string;

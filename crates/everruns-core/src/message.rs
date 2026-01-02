@@ -15,6 +15,7 @@ use utoipa::ToSchema;
 
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MessageRole {
     /// System message (instructions)
@@ -79,6 +80,7 @@ pub struct Controls {
 
 /// A message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Message {
     /// Unique message ID
     pub id: Uuid,
@@ -95,6 +97,7 @@ pub struct Message {
 
     /// Message-level metadata
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
 
     /// Timestamp when the message was created

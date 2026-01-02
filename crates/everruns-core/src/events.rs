@@ -119,8 +119,8 @@ pub struct Event {
     /// Correlation context
     pub context: EventContext,
 
-    /// Event-specific payload (typed)
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    /// Event-specific payload. The schema depends on the event type.
+    /// See EventData documentation for the mapping of type to data schema.
     pub data: EventData,
 
     /// Arbitrary metadata for the event
@@ -240,6 +240,7 @@ use crate::tool_types::ToolCall;
 
 /// Metadata about the model used for generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ModelMetadata {
     /// Model name (e.g., "gpt-4o", "claude-3-sonnet")
     pub model: String,
@@ -255,6 +256,7 @@ pub struct ModelMetadata {
 
 /// Token usage statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TokenUsage {
     pub input_tokens: u32,
     pub output_tokens: u32,
@@ -262,6 +264,7 @@ pub struct TokenUsage {
 
 /// Data for message.user event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct MessageUserData {
     /// The user message
     pub message: Message,
@@ -275,6 +278,7 @@ impl MessageUserData {
 
 /// Data for message.agent event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct MessageAgentData {
     /// The agent message
     pub message: Message,
@@ -314,6 +318,7 @@ impl MessageAgentData {
 
 /// Data for input.received event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct InputReceivedData {
     /// The user message that was received
     pub message: Message,
@@ -328,6 +333,7 @@ impl InputReceivedData {
 
 /// Data for reason.started event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasonStartedData {
     /// Agent ID being used
     pub agent_id: Uuid,
@@ -339,6 +345,7 @@ pub struct ReasonStartedData {
 
 /// Data for reason.completed event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasonCompletedData {
     /// Whether the LLM call succeeded
     pub success: bool,
@@ -388,6 +395,7 @@ impl ReasonCompletedData {
 
 /// Summary of a tool call (compact form without arguments)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolCallSummary {
     pub id: String,
     pub name: String,
@@ -404,6 +412,7 @@ impl From<&ToolCall> for ToolCallSummary {
 
 /// Data for act.started event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ActStartedData {
     /// Tool calls to be executed
     pub tool_calls: Vec<ToolCallSummary>,
@@ -419,6 +428,7 @@ impl ActStartedData {
 
 /// Data for act.completed event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ActCompletedData {
     /// Whether all tool calls completed
     pub completed: bool,
@@ -432,6 +442,7 @@ pub struct ActCompletedData {
 
 /// Data for tool.call_started event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolCallStartedData {
     /// The tool call being executed
     pub tool_call: ToolCall,
@@ -439,6 +450,7 @@ pub struct ToolCallStartedData {
 
 /// Data for tool.call_completed event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolCallCompletedData {
     /// Tool call ID
     pub tool_call_id: String,
@@ -491,6 +503,7 @@ impl ToolCallCompletedData {
 
 /// Data for turn.started event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnStartedData {
     /// Turn identifier
     pub turn_id: Uuid,
@@ -501,6 +514,7 @@ pub struct TurnStartedData {
 
 /// Data for turn.completed event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnCompletedData {
     /// Turn identifier
     pub turn_id: Uuid,
@@ -515,6 +529,7 @@ pub struct TurnCompletedData {
 
 /// Data for turn.failed event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnFailedData {
     /// Turn identifier
     pub turn_id: Uuid,
@@ -533,6 +548,7 @@ pub struct TurnFailedData {
 
 /// Data for session.started event
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SessionStartedData {
     /// Agent ID
     pub agent_id: Uuid,
@@ -552,8 +568,29 @@ pub struct SessionStartedData {
 /// to a specific event type and contains the appropriate data structure.
 /// The `Raw` variant is used for backward compatibility with legacy events
 /// or unknown event types.
+///
+/// The data type depends on the event `type` field:
+/// - `message.user` → MessageUserData
+/// - `message.agent` → MessageAgentData
+/// - `turn.started` → TurnStartedData
+/// - `turn.completed` → TurnCompletedData
+/// - `turn.failed` → TurnFailedData
+/// - `input.received` → InputReceivedData
+/// - `reason.started` → ReasonStartedData
+/// - `reason.completed` → ReasonCompletedData
+/// - `act.started` → ActStartedData
+/// - `act.completed` → ActCompletedData
+/// - `tool.call_started` → ToolCallStartedData
+/// - `tool.call_completed` → ToolCallCompletedData
+/// - `session.started` → SessionStartedData
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(
+    title = "EventData",
+    description = "Event-specific payload. The schema depends on the event type field.",
+    example = json!({"message": {"id": "...", "role": "user", "content": []}})
+))]
 pub enum EventData {
     // Message events
     MessageUser(MessageUserData),
@@ -576,7 +613,8 @@ pub enum EventData {
     // Session events
     SessionStarted(SessionStartedData),
 
-    // Raw data for backward compatibility with legacy events
+    /// Raw data for backward compatibility with legacy events
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     Raw(serde_json::Value),
 }
 
