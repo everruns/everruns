@@ -93,3 +93,58 @@ The UI makes all API requests to `/api/*` paths. These are handled differently i
   }
   ```
 - No CORS needed (same-origin)
+
+## Worker Configuration
+
+### GRPC_ADDRESS
+
+Address of the control-plane gRPC server for worker communication.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | `127.0.0.1:9001` |
+
+**Example:**
+
+```bash
+GRPC_ADDRESS=127.0.0.1:9001
+```
+
+**Notes:**
+- Workers communicate with the control-plane via gRPC for all database operations
+- The control-plane exposes both HTTP (port 9000) and gRPC (port 9001) interfaces
+- Workers are stateless and do not connect directly to the database
+
+### TEMPORAL_ADDRESS
+
+Address of the Temporal server.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `localhost:7233` |
+
+**Example:**
+
+```bash
+TEMPORAL_ADDRESS=localhost:7233
+```
+
+### TEMPORAL_NAMESPACE
+
+Temporal namespace for workflows.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `default` |
+
+### TEMPORAL_TASK_QUEUE
+
+Temporal task queue name for agent run workflows.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `everruns-agent-runs` |

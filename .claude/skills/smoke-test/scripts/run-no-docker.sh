@@ -110,8 +110,8 @@ start_worker() {
     log_info "Building and starting Temporal worker..."
 
     cd "$PROJECT_ROOT"
-    export DATABASE_URL="$(get_database_url)"
     export TEMPORAL_ADDRESS="localhost:7233"
+    export GRPC_ADDRESS="127.0.0.1:9001"
 
     # Build worker
     cargo build -p everruns-worker > /dev/null 2>&1
