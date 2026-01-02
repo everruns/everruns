@@ -15,7 +15,7 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
    - `schemas/` → `everruns-schemas` - Shared type definitions (source of truth for all data structures)
    - `runtime/` → `everruns-runtime` - Runtime traits and abstractions
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ control-plane
-   - `everruns-core/` → `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities)
+   - `core/` → `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities)
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
@@ -145,7 +145,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
    - Migrations in `control-plane/migrations/`
    - Note: Messages are stored as events (see `specs/models.md`)
 
-3. **Core Layer** (`everruns-core/`):
+3. **Core Layer** (`core/`):
    - Contains shared domain types used across layers (e.g., `ContentPart`, `Controls`, `Message`)
    - Contains domain entity types (e.g., `Agent`, `Session`, `LlmProvider`, `Event`, `Capability`)
    - Provides trait definitions (`MessageStore`, `EventEmitter`, `LlmProvider` trait, `ToolExecutor`)

@@ -45,7 +45,7 @@ async-trait.workspace = true
 aes-gcm.workspace = true
 argon2.workspace = true
 
-everruns-core = { path = "../everruns-core", features = ["openapi"] }
+everruns-core = { path = "../core", features = ["openapi"] }
 everruns-worker = { path = "../worker" }  # For Temporal runner (AgentRunner trait)
 everruns-internal-protocol = { path = "../internal-protocol" }
 

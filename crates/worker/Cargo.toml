@@ -14,7 +14,7 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
-everruns-core = { path = "../everruns-core" }
+everruns-core = { path = "../core" }
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-internal-protocol = { path = "../internal-protocol" }

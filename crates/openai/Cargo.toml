@@ -32,7 +32,7 @@ serde_json.workspace = true
 tracing.workspace = true
 
 # Internal dependencies
-everruns-core = { path = "../everruns-core" }
+everruns-core = { path = "../core" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

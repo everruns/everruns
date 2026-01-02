@@ -142,7 +142,7 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
    - Migrations in `control-plane/migrations/`
    - Note: Messages are stored as events (see `specs/models.md`)
 
-3. **Core Layer** (`everruns-core/`):
+3. **Core Layer** (`core/`):
    - Shared domain types: `ContentPart`, `Controls`, `Message`, `ToolCall`
    - Trait definitions: `MessageStore`, `EventEmitter`, `LlmProvider`
    - Types are DB-agnostic and serializable
@@ -399,7 +399,7 @@ everruns/
 │   ├── schemas/          # Shared type definitions (everruns-schemas)
 │   ├── runtime/          # Agent execution engine (everruns-runtime)
 │   ├── internal-protocol/ # gRPC protocol definitions (everruns-internal-protocol)
-│   ├── everruns-core/    # Core abstractions, domain entities, tools
+│   ├── core/    # Core abstractions, domain entities, tools
 │   ├── openai/           # OpenAI provider (everruns-openai)
 │   └── anthropic/        # Anthropic provider (everruns-anthropic)
 ├── docs/                 # Documentation content (published via apps/docs)
