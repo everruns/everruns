@@ -39,13 +39,13 @@ service WorkerService {
     rpc GetDefaultModel(GetDefaultModelRequest) returns (GetDefaultModelResponse);
 
     // Session file operations (virtual filesystem)
-    rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
-    rpc WriteFile(WriteFileRequest) returns (WriteFileResponse);
-    rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
-    rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
-    rpc StatFile(StatFileRequest) returns (StatFileResponse);
-    rpc GrepFiles(GrepFilesRequest) returns (GrepFilesResponse);
-    rpc CreateDirectory(CreateDirectoryRequest) returns (CreateDirectoryResponse);
+    rpc SessionReadFile(SessionReadFileRequest) returns (SessionReadFileResponse);
+    rpc SessionWriteFile(SessionWriteFileRequest) returns (SessionWriteFileResponse);
+    rpc SessionDeleteFile(SessionDeleteFileRequest) returns (SessionDeleteFileResponse);
+    rpc SessionListDirectory(SessionListDirectoryRequest) returns (SessionListDirectoryResponse);
+    rpc SessionStatFile(SessionStatFileRequest) returns (SessionStatFileResponse);
+    rpc SessionGrepFiles(SessionGrepFilesRequest) returns (SessionGrepFilesResponse);
+    rpc SessionCreateDirectory(SessionCreateDirectoryRequest) returns (SessionCreateDirectoryResponse);
 }
 
 // ============================================================================
@@ -269,69 +269,69 @@ message GrepMatch {
     string line = 3;
 }
 
-message ReadFileRequest {
+message SessionReadFileRequest {
     Uuid session_id = 1;
     string path = 2;
 }
 
-message ReadFileResponse {
+message SessionReadFileResponse {
     optional SessionFile file = 1;
 }
 
-message WriteFileRequest {
+message SessionWriteFileRequest {
     Uuid session_id = 1;
     string path = 2;
     string content = 3;
     string encoding = 4;
 }
 
-message WriteFileResponse {
+message SessionWriteFileResponse {
     SessionFile file = 1;
 }
 
-message DeleteFileRequest {
+message SessionDeleteFileRequest {
     Uuid session_id = 1;
     string path = 2;
     bool recursive = 3;
 }
 
-message DeleteFileResponse {
+message SessionDeleteFileResponse {
     bool deleted = 1;
 }
 
-message ListDirectoryRequest {
+message SessionListDirectoryRequest {
     Uuid session_id = 1;
     string path = 2;
 }
 
-message ListDirectoryResponse {
+message SessionListDirectoryResponse {
     repeated FileInfo files = 1;
 }
 
-message StatFileRequest {
+message SessionStatFileRequest {
     Uuid session_id = 1;
     string path = 2;
 }
 
-message StatFileResponse {
+message SessionStatFileResponse {
     optional FileStat stat = 1;
 }
 
-message GrepFilesRequest {
+message SessionGrepFilesRequest {
     Uuid session_id = 1;
     string pattern = 2;
     optional string path_pattern = 3;
 }
 
-message GrepFilesResponse {
+message SessionGrepFilesResponse {
     repeated GrepMatch matches = 1;
 }
 
-message CreateDirectoryRequest {
+message SessionCreateDirectoryRequest {
     Uuid session_id = 1;
     string path = 2;
 }
 
-message CreateDirectoryResponse {
+message SessionCreateDirectoryResponse {
     FileInfo directory = 1;
 }

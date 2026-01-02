@@ -9,13 +9,15 @@
 
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
-    CreateDirectoryRequest, CreateDirectoryResponse, DeleteFileRequest, DeleteFileResponse,
     EmitEventRequest, EmitEventResponse, EmitEventStreamResponse, GetAgentRequest,
     GetAgentResponse, GetDefaultModelRequest, GetDefaultModelResponse, GetModelWithProviderRequest,
     GetModelWithProviderResponse, GetSessionRequest, GetSessionResponse, GetTurnContextRequest,
-    GetTurnContextResponse, GrepFilesRequest, GrepFilesResponse, ListDirectoryRequest,
-    ListDirectoryResponse, LoadMessagesRequest, LoadMessagesResponse, ReadFileRequest,
-    ReadFileResponse, StatFileRequest, StatFileResponse, WriteFileRequest, WriteFileResponse,
+    GetTurnContextResponse, LoadMessagesRequest, LoadMessagesResponse,
+    SessionCreateDirectoryRequest, SessionCreateDirectoryResponse, SessionDeleteFileRequest,
+    SessionDeleteFileResponse, SessionGrepFilesRequest, SessionGrepFilesResponse,
+    SessionListDirectoryRequest, SessionListDirectoryResponse, SessionReadFileRequest,
+    SessionReadFileResponse, SessionStatFileRequest, SessionStatFileResponse,
+    SessionWriteFileRequest, SessionWriteFileResponse,
 };
 use everruns_internal_protocol::{WorkerService, WorkerServiceServer};
 use everruns_storage::Database;
@@ -253,10 +255,10 @@ impl WorkerService for WorkerServiceImpl {
     // Session file operations
     // ========================================================================
 
-    async fn read_file(
+    async fn session_read_file(
         &self,
-        request: Request<ReadFileRequest>,
-    ) -> Result<Response<ReadFileResponse>, Status> {
+        request: Request<SessionReadFileRequest>,
+    ) -> Result<Response<SessionReadFileResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
@@ -299,24 +301,24 @@ impl WorkerService for WorkerServiceImpl {
             }
         });
 
-        Ok(Response::new(ReadFileResponse { file: proto_file }))
+        Ok(Response::new(SessionReadFileResponse { file: proto_file }))
     }
 
-    async fn write_file(
+    async fn session_write_file(
         &self,
-        _request: Request<WriteFileRequest>,
-    ) -> Result<Response<WriteFileResponse>, Status> {
+        _request: Request<SessionWriteFileRequest>,
+    ) -> Result<Response<SessionWriteFileResponse>, Status> {
         // TODO: Database doesn't have upsert_session_file - need to implement
         // For now, return unimplemented
         Err(Status::unimplemented(
-            "write_file not yet implemented - requires database method",
+            "session_write_file not yet implemented - requires database method",
         ))
     }
 
-    async fn delete_file(
+    async fn session_delete_file(
         &self,
-        request: Request<DeleteFileRequest>,
-    ) -> Result<Response<DeleteFileResponse>, Status> {
+        request: Request<SessionDeleteFileRequest>,
+    ) -> Result<Response<SessionDeleteFileResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
@@ -334,13 +336,13 @@ impl WorkerService for WorkerServiceImpl {
                 .map_err(|e| Status::internal(format!("Failed to delete file: {}", e)))?
         };
 
-        Ok(Response::new(DeleteFileResponse { deleted }))
+        Ok(Response::new(SessionDeleteFileResponse { deleted }))
     }
 
-    async fn list_directory(
+    async fn session_list_directory(
         &self,
-        request: Request<ListDirectoryRequest>,
-    ) -> Result<Response<ListDirectoryResponse>, Status> {
+        request: Request<SessionListDirectoryRequest>,
+    ) -> Result<Response<SessionListDirectoryResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
@@ -376,13 +378,13 @@ impl WorkerService for WorkerServiceImpl {
             })
             .collect();
 
-        Ok(Response::new(ListDirectoryResponse { files: proto_files }))
+        Ok(Response::new(SessionListDirectoryResponse { files: proto_files }))
     }
 
-    async fn stat_file(
+    async fn session_stat_file(
         &self,
-        request: Request<StatFileRequest>,
-    ) -> Result<Response<StatFileResponse>, Status> {
+        request: Request<SessionStatFileRequest>,
+    ) -> Result<Response<SessionStatFileResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
@@ -414,27 +416,27 @@ impl WorkerService for WorkerServiceImpl {
             updated_at: Some(datetime_to_proto_timestamp(f.updated_at)),
         });
 
-        Ok(Response::new(StatFileResponse { stat: proto_stat }))
+        Ok(Response::new(SessionStatFileResponse { stat: proto_stat }))
     }
 
-    async fn grep_files(
+    async fn session_grep_files(
         &self,
-        _request: Request<GrepFilesRequest>,
-    ) -> Result<Response<GrepFilesResponse>, Status> {
+        _request: Request<SessionGrepFilesRequest>,
+    ) -> Result<Response<SessionGrepFilesResponse>, Status> {
         // TODO: The current database grep returns file info, not line matches
         // Need to implement proper line-by-line grep functionality
         Err(Status::unimplemented(
-            "grep_files not yet implemented - requires line-level matching",
+            "session_grep_files not yet implemented - requires line-level matching",
         ))
     }
 
-    async fn create_directory(
+    async fn session_create_directory(
         &self,
-        _request: Request<CreateDirectoryRequest>,
-    ) -> Result<Response<CreateDirectoryResponse>, Status> {
+        _request: Request<SessionCreateDirectoryRequest>,
+    ) -> Result<Response<SessionCreateDirectoryResponse>, Status> {
         // TODO: Database doesn't have upsert_session_file - need to implement
         Err(Status::unimplemented(
-            "create_directory not yet implemented - requires database method",
+            "session_create_directory not yet implemented - requires database method",
         ))
     }
 }

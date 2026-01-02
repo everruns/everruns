@@ -478,15 +478,15 @@ impl SessionFileStore for GrpcSessionFileStore {
     async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::ReadFileRequest {
+        let request = proto::SessionReadFileRequest {
             session_id: Some(uuid_to_proto(session_id)),
             path: path.to_string(),
         };
 
         let response = client
-            .read_file(request)
+            .session_read_file(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC read_file failed: {}", e)))?;
+            .map_err(|e| grpc_error(format!("gRPC session_read_file failed: {}", e)))?;
 
         match response.into_inner().file {
             Some(proto_file) => {
@@ -506,7 +506,7 @@ impl SessionFileStore for GrpcSessionFileStore {
     ) -> Result<SessionFile> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::WriteFileRequest {
+        let request = proto::SessionWriteFileRequest {
             session_id: Some(uuid_to_proto(session_id)),
             path: path.to_string(),
             content: content.to_string(),
@@ -514,9 +514,9 @@ impl SessionFileStore for GrpcSessionFileStore {
         };
 
         let response = client
-            .write_file(request)
+            .session_write_file(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC write_file failed: {}", e)))?;
+            .map_err(|e| grpc_error(format!("gRPC session_write_file failed: {}", e)))?;
 
         let proto_file = response
             .into_inner()
@@ -529,16 +529,16 @@ impl SessionFileStore for GrpcSessionFileStore {
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::DeleteFileRequest {
+        let request = proto::SessionDeleteFileRequest {
             session_id: Some(uuid_to_proto(session_id)),
             path: path.to_string(),
             recursive,
         };
 
         let response = client
-            .delete_file(request)
+            .session_delete_file(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC delete_file failed: {}", e)))?;
+            .map_err(|e| grpc_error(format!("gRPC session_delete_file failed: {}", e)))?;
 
         Ok(response.into_inner().deleted)
     }
@@ -546,15 +546,15 @@ impl SessionFileStore for GrpcSessionFileStore {
     async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::ListDirectoryRequest {
+        let request = proto::SessionListDirectoryRequest {
             session_id: Some(uuid_to_proto(session_id)),
             path: path.to_string(),
         };
 
         let response = client
-            .list_directory(request)
+            .session_list_directory(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC list_directory failed: {}", e)))?;
+            .map_err(|e| grpc_error(format!("gRPC session_list_directory failed: {}", e)))?;
 
         response
             .into_inner()
@@ -567,15 +567,15 @@ impl SessionFileStore for GrpcSessionFileStore {
     async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::StatFileRequest {
+        let request = proto::SessionStatFileRequest {
             session_id: Some(uuid_to_proto(session_id)),
             path: path.to_string(),
         };
 
         let response = client
-            .stat_file(request)
+            .session_stat_file(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC stat_file failed: {}", e)))?;
+            .map_err(|e| grpc_error(format!("gRPC session_stat_file failed: {}", e)))?;
 
         match response.into_inner().stat {
             Some(proto_stat) => {
@@ -594,16 +594,16 @@ impl SessionFileStore for GrpcSessionFileStore {
     ) -> Result<Vec<GrepMatch>> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::GrepFilesRequest {
+        let request = proto::SessionGrepFilesRequest {
             session_id: Some(uuid_to_proto(session_id)),
             pattern: pattern.to_string(),
             path_pattern: path_pattern.map(|s| s.to_string()),
         };
 
         let response = client
-            .grep_files(request)
+            .session_grep_files(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC grep_files failed: {}", e)))?;
+            .map_err(|e| grpc_error(format!("gRPC session_grep_files failed: {}", e)))?;
 
         Ok(response
             .into_inner()
@@ -620,15 +620,15 @@ impl SessionFileStore for GrpcSessionFileStore {
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::CreateDirectoryRequest {
+        let request = proto::SessionCreateDirectoryRequest {
             session_id: Some(uuid_to_proto(session_id)),
             path: path.to_string(),
         };
 
         let response = client
-            .create_directory(request)
+            .session_create_directory(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC create_directory failed: {}", e)))?;
+            .map_err(|e| grpc_error(format!("gRPC session_create_directory failed: {}", e)))?;
 
         let proto_info = response
             .into_inner()
