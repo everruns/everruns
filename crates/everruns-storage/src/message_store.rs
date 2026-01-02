@@ -160,9 +160,10 @@ impl MessageStore for DbMessageStore {
 
 /// Convert event data to a Message
 ///
-/// Handles both formats:
-/// - New format: { "message": { "id", "role", "content", ... } }
-/// - Legacy format: { "message_id", "role", "content", ... }
+/// Handles multiple formats:
+/// - Message events: { "message": { "id", "role", "content", ... } }
+/// - Legacy message format: { "message_id", "role", "content", ... }
+/// - Tool call completed: { "tool_call_id", "result", "error", ... }
 fn event_to_message(
     data: &serde_json::Value,
     created_at: DateTime<Utc>,
@@ -172,8 +173,51 @@ fn event_to_message(
         return parse_message_object(message_obj, created_at);
     }
 
+    // Check if this is a tool.call_completed event
+    if data.get("tool_call_id").is_some() && data.get("tool_name").is_some() {
+        return parse_tool_call_completed(data, created_at);
+    }
+
     // Fall back to legacy format (flat structure)
     parse_legacy_format(data, created_at)
+}
+
+/// Parse tool.call_completed event into a ToolResult message
+fn parse_tool_call_completed(
+    data: &serde_json::Value,
+    _created_at: DateTime<Utc>,
+) -> std::result::Result<Message, String> {
+    let tool_call_id = data
+        .get("tool_call_id")
+        .and_then(|v| v.as_str())
+        .ok_or("missing tool_call_id")?
+        .to_string();
+
+    // Extract result or error
+    let result: Option<serde_json::Value> = data
+        .get("result")
+        .filter(|v| !v.is_null())
+        .cloned()
+        .map(|v| {
+            // Result is Vec<ContentPart>, convert to JSON value
+            // For simple text results, extract the text
+            if let Some(arr) = v.as_array() {
+                if arr.len() == 1 {
+                    if let Some(text) = arr[0].get("text") {
+                        return text.clone();
+                    }
+                }
+            }
+            v
+        });
+
+    let error: Option<String> = data
+        .get("error")
+        .filter(|v| !v.is_null())
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    Ok(Message::tool_result(&tool_call_id, result, error))
 }
 
 /// Parse message from new format with message wrapper
@@ -584,5 +628,51 @@ mod tests {
             message.id,
             Uuid::parse_str("01234567-89ab-cdef-0123-456789abcdef").unwrap()
         );
+    }
+
+    #[test]
+    fn test_event_to_message_tool_call_completed() {
+        // tool.call_completed event format
+        let data = json!({
+            "tool_call_id": "call_123",
+            "tool_name": "get_weather",
+            "success": true,
+            "status": "success",
+            "result": [{"type": "text", "text": "Sunny, 72°F"}],
+            "error": null
+        });
+
+        let result = event_to_message(&data, Utc::now());
+        assert!(result.is_ok());
+
+        let message = result.unwrap();
+        assert_eq!(message.role, MessageRole::ToolResult);
+        assert_eq!(message.tool_call_id(), Some("call_123"));
+    }
+
+    #[test]
+    fn test_event_to_message_tool_call_completed_error() {
+        // tool.call_completed event with error
+        let data = json!({
+            "tool_call_id": "call_456",
+            "tool_name": "read_file",
+            "success": false,
+            "status": "error",
+            "result": null,
+            "error": "File not found"
+        });
+
+        let result = event_to_message(&data, Utc::now());
+        assert!(result.is_ok());
+
+        let message = result.unwrap();
+        assert_eq!(message.role, MessageRole::ToolResult);
+        assert_eq!(message.tool_call_id(), Some("call_456"));
+        // Check that error is present
+        if let ContentPart::ToolResult(tr) = &message.content[0] {
+            assert_eq!(tr.error.as_deref(), Some("File not found"));
+        } else {
+            panic!("Expected ToolResult content part");
+        }
     }
 }

@@ -22,7 +22,9 @@ pub enum MessageRole {
     System,
     /// User message
     User,
-    /// Assistant response (may contain tool calls in content)
+    /// Agent response (may contain tool calls in content)
+    /// Note: Serializes as "agent" for API consistency
+    #[serde(rename = "agent")]
     Assistant,
     /// Tool execution result
     ToolResult,
@@ -33,7 +35,7 @@ impl std::fmt::Display for MessageRole {
         match self {
             MessageRole::System => write!(f, "system"),
             MessageRole::User => write!(f, "user"),
-            MessageRole::Assistant => write!(f, "assistant"),
+            MessageRole::Assistant => write!(f, "agent"),
             MessageRole::ToolResult => write!(f, "tool_result"),
         }
     }
@@ -44,7 +46,8 @@ impl From<&str> for MessageRole {
         match s.to_lowercase().as_str() {
             "system" => MessageRole::System,
             "user" => MessageRole::User,
-            "assistant" => MessageRole::Assistant,
+            // Accept both "agent" and legacy "assistant"
+            "agent" | "assistant" => MessageRole::Assistant,
             "tool_result" => MessageRole::ToolResult,
             _ => MessageRole::User,
         }
