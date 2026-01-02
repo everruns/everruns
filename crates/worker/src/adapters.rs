@@ -1,15 +1,8 @@
-// Database-backed adapters for core traits
+// LLM driver factory helpers
 //
-// These implementations are now in everruns-storage.
-// This file re-exports them for backward compatibility.
+// Decision: Workers use gRPC adapters for database operations, not direct DB access.
+// This module only contains LLM driver factory helpers.
 
-pub use everruns_storage::{
-    create_db_agent_store, create_db_llm_provider_store, create_db_message_store,
-    create_db_session_file_store, create_db_session_store, DbAgentStore, DbLlmProviderStore,
-    DbMessageStore, DbSessionFileStore, DbSessionStore,
-};
-
-// Driver factory helper for creating LLM drivers
 use everruns_core::{
     AgentLoopError, BoxedLlmDriver, DriverRegistry, ProviderConfig, ProviderType, Result,
 };

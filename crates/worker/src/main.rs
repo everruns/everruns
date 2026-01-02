@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use everruns_storage::{repositories::Database, EncryptionService};
 use everruns_worker::{RunnerConfig, TemporalWorker};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -22,25 +21,20 @@ async fn main() -> Result<()> {
     // Load runner configuration
     let config = RunnerConfig::from_env();
 
-    // Start the Temporal worker to poll for tasks
+    // Get gRPC address for control-plane communication
+    let grpc_address = std::env::var("GRPC_ADDRESS")
+        .unwrap_or_else(|_| "127.0.0.1:9001".into());
+
     tracing::info!(
         task_queue = %config.temporal_task_queue(),
+        grpc_address = %grpc_address,
         "Starting Temporal worker"
     );
 
-    // Connect to database
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://everruns:everruns@localhost:5432/everruns".into());
-    let db = Database::from_url(&database_url).await?;
-
-    // Initialize encryption service for decrypting API keys
-    // SECRETS_ENCRYPTION_KEY is required for API key decryption
-    let encryption = EncryptionService::from_env().context(
-        "Failed to initialize encryption service. Ensure SECRETS_ENCRYPTION_KEY is set.",
-    )?;
-
-    // Create and run the Temporal worker
-    let worker = TemporalWorker::new(config, db, encryption).await?;
+    // Create and run the Temporal worker (connects to control-plane via gRPC)
+    let worker = TemporalWorker::new(config, &grpc_address)
+        .await
+        .context("Failed to create Temporal worker")?;
 
     // Run the worker (blocks until shutdown)
     tokio::select! {

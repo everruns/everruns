@@ -1,24 +1,23 @@
 // Agent runner for workflow execution
 // Decision: Use trait-based abstraction for workflow execution
 // Decision: Use true Temporal workflows for durable, distributed execution
+// Decision: Workers communicate with control-plane via gRPC (no direct DB access)
 //
 // Architecture:
 // - API calls `start_run` which queues a TurnWorkflow to Temporal
 // - Worker polls Temporal task queues and executes activities
 // - Each activity (input, reason, act) is idempotent
 // - ReasonAtom handles agent loading, model resolution, and LLM calls
-// - Events are persisted to database for SSE streaming to clients
+// - Events are persisted via gRPC to control-plane
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_storage::repositories::Database;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::client::TemporalClient;
 use crate::turn_workflow::TurnWorkflowInput;
-use crate::worker::TemporalWorker;
 
 // =============================================================================
 // Configuration
@@ -109,13 +108,11 @@ pub trait AgentRunner: Send + Sync {
 pub struct TemporalRunner {
     /// Temporal client for starting workflows
     client: Arc<TemporalClient>,
-    /// Database connection (for recording workflow IDs)
-    db: Database,
 }
 
 impl TemporalRunner {
     /// Create a new Temporal runner connected to the server
-    pub async fn new(config: RunnerConfig, db: Database) -> Result<Self> {
+    pub async fn new(config: RunnerConfig) -> Result<Self> {
         info!(
             address = %config.temporal_address(),
             namespace = %config.temporal_namespace(),
@@ -129,7 +126,6 @@ impl TemporalRunner {
 
         Ok(Self {
             client: Arc::new(client),
-            db,
         })
     }
 }
@@ -189,12 +185,10 @@ impl AgentRunner for TemporalRunner {
         Ok(())
     }
 
-    async fn is_running(&self, session_id: Uuid) -> bool {
-        // Check with database since workflow state is persisted there
-        match self.db.get_session(session_id).await {
-            Ok(Some(session)) => session.status == "running",
-            _ => false,
-        }
+    async fn is_running(&self, _session_id: Uuid) -> bool {
+        // TODO: Query Temporal directly for workflow status
+        // For now, return false - callers should check session status from their own DB
+        false
     }
 
     async fn active_count(&self) -> usize {
@@ -209,45 +203,18 @@ impl AgentRunner for TemporalRunner {
 // =============================================================================
 
 /// Create the Temporal agent runner
-pub async fn create_runner(config: &RunnerConfig, db: Database) -> Result<Arc<dyn AgentRunner>> {
+///
+/// This is used by the control-plane API to start workflows on Temporal.
+/// Note: The worker process uses TemporalWorker directly, not this function.
+pub async fn create_runner(config: &RunnerConfig) -> Result<Arc<dyn AgentRunner>> {
     tracing::info!(
         address = %config.temporal_address(),
         namespace = %config.temporal_namespace(),
         task_queue = %config.temporal_task_queue(),
         "Creating Temporal agent runner"
     );
-    let runner = TemporalRunner::new(config.clone(), db).await?;
+    let runner = TemporalRunner::new(config.clone()).await?;
     Ok(Arc::new(runner))
-}
-
-/// Run the Temporal worker
-///
-/// This function starts the worker that polls Temporal for tasks and executes activities.
-/// It should be run in a separate process from the API.
-pub async fn run_worker(
-    config: &RunnerConfig,
-    db: Database,
-    encryption: everruns_storage::EncryptionService,
-) -> Result<()> {
-    info!(
-        address = %config.temporal_address(),
-        namespace = %config.temporal_namespace(),
-        task_queue = %config.temporal_task_queue(),
-        "Starting Temporal worker"
-    );
-
-    let worker = TemporalWorker::new(config.clone(), db, encryption).await?;
-
-    info!("Temporal worker started, polling for tasks...");
-
-    // Run the worker (blocks until shutdown)
-    if let Err(e) = worker.run().await {
-        error!(error = %e, "Temporal worker error");
-        return Err(e);
-    }
-
-    info!("Temporal worker shut down");
-    Ok(())
 }
 
 #[cfg(test)]

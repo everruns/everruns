@@ -1,5 +1,6 @@
 // Temporal worker implementation
 // Decision: Use the temporal-sdk-core's Core trait for polling and completion
+// Decision: Workers communicate with control-plane via gRPC for all operations
 //
 // This worker:
 // 1. Polls for workflow tasks and drives workflow state machines
@@ -12,7 +13,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use everruns_storage::{repositories::Database, EncryptionService};
 use temporal_sdk_core::protos::coresdk::{
     activity_result::{self, ActivityResult},
     activity_task::{activity_task, ActivityTask},
@@ -34,6 +34,7 @@ use crate::activities::{
     ReasonInput,
 };
 use crate::client::TemporalWorkerCore;
+use crate::grpc_adapters::GrpcClient;
 use crate::runner::RunnerConfig;
 use crate::traits::Workflow;
 use crate::types::*;
@@ -43,10 +44,8 @@ use crate::workflow_registry::WorkflowRegistry;
 pub struct TemporalWorker {
     /// Temporal core for polling (wrapped in Arc for sharing)
     core: Arc<TemporalWorkerCore>,
-    /// Database connection
-    db: Database,
-    /// Encryption service for decrypting secrets
-    encryption: Arc<EncryptionService>,
+    /// gRPC client for communication with control-plane
+    grpc_client: Arc<GrpcClient>,
     /// Worker configuration
     #[allow(dead_code)]
     config: RunnerConfig,
@@ -60,31 +59,32 @@ pub struct TemporalWorker {
 
 impl TemporalWorker {
     /// Create a new Temporal worker with default workflow registry
-    pub async fn new(
-        config: RunnerConfig,
-        db: Database,
-        encryption: EncryptionService,
-    ) -> Result<Self> {
-        Self::with_registry(config, db, encryption, WorkflowRegistry::with_defaults()).await
+    ///
+    /// The worker connects to the control-plane via gRPC for all database operations.
+    pub async fn new(config: RunnerConfig, grpc_address: &str) -> Result<Self> {
+        Self::with_registry(config, grpc_address, WorkflowRegistry::with_defaults()).await
     }
 
     /// Create a new Temporal worker with a custom workflow registry
     pub async fn with_registry(
         config: RunnerConfig,
-        db: Database,
-        encryption: EncryptionService,
+        grpc_address: &str,
         registry: WorkflowRegistry,
     ) -> Result<Self> {
         let core = TemporalWorkerCore::new(config.clone())
             .await
             .context("Failed to create Temporal worker core")?;
 
+        // Connect to control-plane gRPC server
+        let grpc_client = GrpcClient::connect(grpc_address)
+            .await
+            .context("Failed to connect to control-plane gRPC server")?;
+
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
         Ok(Self {
             core: Arc::new(core),
-            db,
-            encryption: Arc::new(encryption),
+            grpc_client: Arc::new(grpc_client),
             config,
             registry: Arc::new(registry),
             shutdown_tx,
@@ -102,7 +102,6 @@ impl TemporalWorker {
         // Spawn workflow task poller
         let workflow_handle = spawn_workflow_poller(
             self.core.clone(),
-            self.db.clone(),
             self.registry.clone(),
             self.shutdown_rx.clone(),
         );
@@ -110,8 +109,7 @@ impl TemporalWorker {
         // Spawn activity task poller
         let activity_handle = spawn_activity_poller(
             self.core.clone(),
-            self.db.clone(),
-            self.encryption.clone(),
+            self.grpc_client.clone(),
             self.shutdown_rx.clone(),
         );
 
@@ -141,7 +139,6 @@ impl TemporalWorker {
 /// Spawn workflow task polling loop
 fn spawn_workflow_poller(
     core: Arc<TemporalWorkerCore>,
-    db: Database,
     registry: Arc<WorkflowRegistry>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
@@ -156,7 +153,7 @@ fn spawn_workflow_poller(
                     info!("Workflow poller shutting down");
                     break;
                 }
-                result = poll_and_process_workflow_task(&core, &db, &registry, workflows.clone()) => {
+                result = poll_and_process_workflow_task(&core, &registry, workflows.clone()) => {
                     if let Err(e) = result {
                         match e.downcast_ref::<PollWfError>() {
                             Some(PollWfError::ShutDown) => {
@@ -179,8 +176,7 @@ fn spawn_workflow_poller(
 /// Spawn activity task polling loop
 fn spawn_activity_poller(
     core: Arc<TemporalWorkerCore>,
-    db: Database,
-    encryption: Arc<EncryptionService>,
+    grpc_client: Arc<GrpcClient>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -190,7 +186,7 @@ fn spawn_activity_poller(
                     info!("Activity poller shutting down");
                     break;
                 }
-                result = poll_and_process_activity_task(&core, &db, &encryption) => {
+                result = poll_and_process_activity_task(&core, &grpc_client) => {
                     if let Err(e) = result {
                         match e.downcast_ref::<PollActivityError>() {
                             Some(PollActivityError::ShutDown) => {
@@ -213,7 +209,6 @@ fn spawn_activity_poller(
 /// Poll and process a single workflow task
 async fn poll_and_process_workflow_task(
     core: &TemporalWorkerCore,
-    _db: &Database,
     registry: &WorkflowRegistry,
     workflows: Arc<Mutex<HashMap<String, Box<dyn Workflow>>>>,
 ) -> Result<()> {
@@ -487,8 +482,7 @@ fn action_to_command(
 /// Poll and process a single activity task
 async fn poll_and_process_activity_task(
     core: &TemporalWorkerCore,
-    db: &Database,
-    encryption: &EncryptionService,
+    grpc_client: &GrpcClient,
 ) -> Result<()> {
     // Poll for activity task
     let task = core.core().poll_activity_task().await?;
@@ -509,7 +503,7 @@ async fn poll_and_process_activity_task(
     );
 
     // Process activity
-    let result = process_activity(&task, db, encryption).await;
+    let result = process_activity(&task, grpc_client).await;
 
     // Complete the activity
     let completion = ActivityTaskCompletion {
@@ -523,11 +517,7 @@ async fn poll_and_process_activity_task(
 }
 
 /// Process an activity task and return the result
-async fn process_activity(
-    task: &ActivityTask,
-    db: &Database,
-    encryption: &EncryptionService,
-) -> ActivityResult {
+async fn process_activity(task: &ActivityTask, grpc_client: &GrpcClient) -> ActivityResult {
     match &task.variant {
         Some(activity_task::Variant::Start(start)) => {
             // Check for empty activity type - this can happen with synthetic tasks
@@ -566,7 +556,7 @@ async fn process_activity(
                 .map(|p| p.data.clone())
                 .unwrap_or_default();
 
-            let result = execute_activity(db, encryption, &start.activity_type, &input_data).await;
+            let result = execute_activity(grpc_client, &start.activity_type, &input_data).await;
 
             match result {
                 Ok(output) => {
@@ -632,25 +622,24 @@ async fn process_activity(
 
 /// Execute an activity by type
 async fn execute_activity(
-    db: &Database,
-    encryption: &EncryptionService,
+    grpc_client: &GrpcClient,
     activity_type: &str,
     input_data: &[u8],
 ) -> Result<serde_json::Value> {
     match activity_type {
         activity_types::INPUT => {
             let input: InputAtomInput = serde_json::from_slice(input_data)?;
-            let output = input_activity(db.clone(), input).await?;
+            let output = input_activity(grpc_client.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
         activity_types::REASON => {
             let input: ReasonInput = serde_json::from_slice(input_data)?;
-            let output = reason_activity(db.clone(), encryption.clone(), input).await?;
+            let output = reason_activity(grpc_client.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
         activity_types::ACT => {
             let input: ActInput = serde_json::from_slice(input_data)?;
-            let output = act_activity(db.clone(), input).await?;
+            let output = act_activity(grpc_client.clone(), input).await?;
             Ok(serde_json::to_value(output)?)
         }
         _ => {

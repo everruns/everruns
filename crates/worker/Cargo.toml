@@ -13,9 +13,7 @@ anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-sqlx.workspace = true
 
-everruns-storage = { path = "../everruns-storage" }
 everruns-core = { path = "../everruns-core" }
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }

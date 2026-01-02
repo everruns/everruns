@@ -2,6 +2,7 @@
 //
 // Activities are the units of work scheduled by the workflow.
 // Each activity runs outside the workflow and returns a result.
+// Decision: Workers communicate with control-plane via gRPC for all operations.
 //
 // These implementations use Atoms from everruns-core for the actual work:
 // - InputAtom: Retrieves user input message
@@ -16,11 +17,11 @@ use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::ToolRegistry;
-use everruns_storage::{repositories::Database, DbEventEmitter, EncryptionService};
 use std::sync::Arc;
 
-use crate::adapters::{
-    DbAgentStore, DbLlmProviderStore, DbMessageStore, DbSessionFileStore, DbSessionStore,
+use crate::grpc_adapters::{
+    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageStore,
+    GrpcSessionFileStore, GrpcSessionStore,
 };
 
 /// Create and configure the driver registry with all supported LLM providers
@@ -51,7 +52,10 @@ pub use everruns_core::atoms::{
 /// 2. Retrieves the user message from the message store
 /// 3. Emits input.completed event
 /// 4. Returns the message for downstream processing
-pub async fn input_activity(db: Database, input: InputAtomInput) -> Result<InputAtomResult> {
+pub async fn input_activity(
+    grpc_client: GrpcClient,
+    input: InputAtomInput,
+) -> Result<InputAtomResult> {
     tracing::info!(
         session_id = %input.context.session_id,
         turn_id = %input.context.turn_id,
@@ -59,8 +63,8 @@ pub async fn input_activity(db: Database, input: InputAtomInput) -> Result<Input
         "Executing input_activity"
     );
 
-    let message_store = DbMessageStore::new(db.clone());
-    let event_emitter = DbEventEmitter::new(db);
+    let message_store = GrpcMessageStore::new(grpc_client.clone());
+    let event_emitter = GrpcEventEmitter::new(grpc_client);
     let atom = InputAtom::new(message_store, event_emitter);
 
     atom.execute(input)
@@ -78,11 +82,9 @@ pub async fn input_activity(db: Database, input: InputAtomInput) -> Result<Input
 /// 5. Stores the assistant response
 /// 6. Emits reason.completed event
 /// 7. Returns the result with tool calls (if any)
-pub async fn reason_activity(
-    db: Database,
-    encryption: EncryptionService,
-    input: ReasonInput,
-) -> Result<ReasonResult> {
+///
+/// Note: API key decryption is handled by the control-plane gRPC service.
+pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Result<ReasonResult> {
     tracing::info!(
         session_id = %input.context.session_id,
         turn_id = %input.context.turn_id,
@@ -90,14 +92,14 @@ pub async fn reason_activity(
         "Executing reason_activity"
     );
 
-    // Create atom dependencies
-    let agent_store = DbAgentStore::new(db.clone());
-    let session_store = DbSessionStore::new(db.clone());
-    let message_store = DbMessageStore::new(db.clone());
-    let provider_store = DbLlmProviderStore::new(db.clone(), encryption);
+    // Create atom dependencies using gRPC adapters
+    let agent_store = GrpcAgentStore::new(grpc_client.clone());
+    let session_store = GrpcSessionStore::new(grpc_client.clone());
+    let message_store = GrpcMessageStore::new(grpc_client.clone());
+    let provider_store = GrpcLlmProviderStore::new(grpc_client.clone());
     let capability_registry = CapabilityRegistry::with_builtins();
     let driver_registry = create_driver_registry();
-    let event_emitter = DbEventEmitter::new(db);
+    let event_emitter = GrpcEventEmitter::new(grpc_client);
 
     let atom = ReasonAtom::new(
         agent_store,
@@ -123,7 +125,7 @@ pub async fn reason_activity(
 /// 4. Stores tool result messages
 /// 5. Emits act.completed event
 /// 6. Returns comprehensive results for all tools
-pub async fn act_activity(db: Database, input: ActInput) -> Result<ActResult> {
+pub async fn act_activity(grpc_client: GrpcClient, input: ActInput) -> Result<ActResult> {
     tracing::info!(
         session_id = %input.context.session_id,
         turn_id = %input.context.turn_id,
@@ -132,8 +134,8 @@ pub async fn act_activity(db: Database, input: ActInput) -> Result<ActResult> {
     );
 
     let tool_executor = ToolRegistry::with_defaults();
-    let event_emitter = DbEventEmitter::new(db.clone());
-    let file_store = Arc::new(DbSessionFileStore::new(db));
+    let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
+    let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client));
 
     let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store);
 

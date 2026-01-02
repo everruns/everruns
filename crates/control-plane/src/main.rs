@@ -219,7 +219,8 @@ async fn main() -> Result<()> {
     let runner_config = RunnerConfig::from_env();
 
     // Create the agent runner (Temporal)
-    let runner = create_runner(&runner_config, db.clone())
+    // Note: Runner no longer needs db - session status is managed by control-plane
+    let runner = create_runner(&runner_config)
         .await
         .context("Failed to create agent runner")?;
 
