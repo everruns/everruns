@@ -13,6 +13,7 @@
 // Note: Paths starting with "_" are reserved for actions and cannot be
 // used for file creation or updates.
 
+use crate::storage::Database;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -20,7 +21,6 @@ use axum::{
     Json, Router,
 };
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
-use everruns_storage::Database;
 
 use crate::common::ListResponse;
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,7 @@
 // Users API routes
 // Decision: Expose user listing for admin settings page (member management)
 
+use crate::storage::Database;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -8,7 +9,6 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use everruns_storage::Database;
 
 use crate::common::ListResponse;
 use serde::{Deserialize, Serialize};

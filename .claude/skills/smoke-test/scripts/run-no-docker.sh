@@ -70,7 +70,7 @@ run_migrations() {
         cargo install sqlx-cli --no-default-features --features postgres > /dev/null 2>&1
     fi
 
-    sqlx migrate run --source crates/everruns-storage/migrations > /dev/null 2>&1
+    sqlx migrate run --source crates/control-plane/migrations > /dev/null 2>&1
     check_pass "Migrations - applied successfully"
 }
 

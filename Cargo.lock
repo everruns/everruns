@@ -817,7 +817,6 @@ dependencies = [
  "dotenvy",
  "everruns-core",
  "everruns-internal-protocol",
- "everruns-storage",
  "everruns-worker",
  "futures",
  "hex",
@@ -941,30 +940,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "utoipa",
- "uuid 1.19.0",
-]
-
-[[package]]
-name = "everruns-storage"
-version = "0.2.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "argon2",
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "everruns-core",
- "hex",
- "rand 0.8.5",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
  "uuid 1.19.0",
 ]
 

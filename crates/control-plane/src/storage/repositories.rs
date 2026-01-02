@@ -723,7 +723,7 @@ impl Database {
     pub fn get_provider_with_api_key(
         &self,
         provider: &LlmProviderRow,
-        encryption: &super::encryption::EncryptionService,
+        encryption: &super::EncryptionService,
     ) -> Result<LlmProviderWithApiKey> {
         let api_key = if let Some(ref encrypted) = provider.api_key_encrypted {
             Some(encryption.decrypt_to_string(encrypted)?)

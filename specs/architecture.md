@@ -10,7 +10,7 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 
 1. **Monorepo Structure**: Single repository with Cargo workspace containing multiple crates
 2. **Crate Separation** (folder → package name):
-   - `control-plane/` → `everruns-control-plane` - HTTP API (axum) + gRPC server (tonic), SSE streaming
+   - `control-plane/` → `everruns-control-plane` - HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - Temporal worker, workflows, activities, gRPC client adapters
    - `schemas/` → `everruns-schemas` - Shared type definitions (source of truth for all data structures)
    - `runtime/` → `everruns-runtime` - Runtime traits and abstractions
@@ -18,7 +18,6 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
    - `everruns-core/` → `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities)
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
-   - `everruns-storage/` → `everruns-storage` - PostgreSQL (sqlx), migrations, repositories
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
    - See [specs/documentation.md](documentation.md) for detailed specification
@@ -28,7 +27,7 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 1. **Database**: PostgreSQL 17 with custom UUID v7 function
    - Decision: Using PostgreSQL 17 because PostgreSQL 18 is not yet available on managed services like AWS Aurora RDS. This is temporary; we will migrate to PostgreSQL 18 with native uuidv7() when it becomes widely available.
 2. **UUID Strategy**: All IDs use UUID v7 (time-ordered, better indexing, naturally sortable)
-3. **Migrations**: Managed via sqlx-cli in `crates/everruns-storage/migrations/`
+3. **Migrations**: Managed via sqlx-cli in `crates/control-plane/migrations/`
 
 ### Execution Layer
 
@@ -138,11 +137,12 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
    - LLM types: `LlmProviderType`, `ModelWithProvider`
    - Optional OpenAPI support via feature flag
 
-2. **Storage Layer** (`everruns-storage/`):
+2. **Storage Layer** (`control-plane/src/storage/`):
    - Database models use `Row` suffix (e.g., `AgentRow`, `SessionRow`, `EventRow`)
    - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateEventRow`)
    - Update structs use `Update` prefix (e.g., `UpdateAgent`)
    - Repositories handle raw database operations only
+   - Migrations in `control-plane/migrations/`
    - Note: Messages are stored as events (see `specs/models.md`)
 
 3. **Core Layer** (`everruns-core/`):

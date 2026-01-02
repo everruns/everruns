@@ -5,9 +5,9 @@
 
 #![allow(dead_code)]
 
+use crate::storage::{models::CreateEventRow, Database};
 use anyhow::Result;
 use everruns_core::{Event, EventContext, EventData};
-use everruns_storage::{models::CreateEventRow, Database};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -30,7 +30,7 @@ impl EventService {
         Ok(rows.into_iter().map(Self::row_to_event).collect())
     }
 
-    fn row_to_event(row: everruns_storage::EventRow) -> Event {
+    fn row_to_event(row: crate::storage::EventRow) -> Event {
         // Try to deserialize the full event from the data column
         // (new format stores the complete event JSON)
         if let Ok(mut event) = serde_json::from_value::<Event>(row.data.clone()) {

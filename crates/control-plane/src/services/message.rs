@@ -6,12 +6,12 @@
 // - Workflow triggering for user messages
 
 use crate::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
+use crate::storage::{Database, DbEventEmitter};
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::events::{EventContext, MessageUserData};
 use everruns_core::traits::EventEmitter;
 use everruns_core::Event;
-use everruns_storage::{Database, DbEventEmitter};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use uuid::Uuid;

@@ -8,7 +8,6 @@ resolver = "2"
 members = [
     "crates/control-plane",
     "crates/worker",
-    "crates/everruns-storage",
     "crates/everruns-core",
     "crates/openai",
     "crates/anthropic",

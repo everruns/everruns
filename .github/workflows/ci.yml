@@ -112,7 +112,7 @@ jobs:
           fi
 
       - name: Run migrations
-        run: sqlx migrate run --source crates/everruns-storage/migrations
+        run: sqlx migrate run --source crates/control-plane/migrations
 
       - name: Run tests
         run: cargo test --all-features
@@ -278,7 +278,7 @@ jobs:
           fi
 
       - name: Run migrations
-        run: sqlx migrate run --source crates/everruns-storage/migrations
+        run: sqlx migrate run --source crates/control-plane/migrations
 
       - name: Build API
         run: cargo build -p everruns-control-plane

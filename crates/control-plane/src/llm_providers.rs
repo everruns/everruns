@@ -1,5 +1,6 @@
 // LLM Provider API endpoints
 
+use crate::storage::{Database, EncryptionService};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -8,7 +9,6 @@ use axum::{
 };
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{LlmProviderStatus, LlmProviderType};
-use everruns_storage::{Database, EncryptionService};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

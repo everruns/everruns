@@ -23,7 +23,7 @@ use super::{
     middleware::{AuthError, AuthState, AuthUser},
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
-use everruns_storage::{
+use crate::storage::{
     models::{CreateApiKeyRow, CreateRefreshTokenRow, CreateUserRow},
     password::{hash_password, verify_password},
 };

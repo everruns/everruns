@@ -181,7 +181,7 @@ struct EncryptedTable {
 }
 
 /// Returns list of tables with encrypted fields from the central registry.
-/// The registry is defined in everruns_storage::ENCRYPTED_COLUMNS.
+/// The registry is defined in crate::storage::ENCRYPTED_COLUMNS.
 /// A test in encryption.rs ensures all encrypted columns in migrations are registered.
 fn get_encrypted_tables(filter: &Option<String>) -> Vec<EncryptedTable> {
     let all_tables: Vec<EncryptedTable> = ENCRYPTED_COLUMNS

@@ -5,9 +5,9 @@
 //
 // Note: Agent-specific capability management is handled by AgentService.
 
+use crate::storage::Database;
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::{CapabilityId, CapabilityInfo};
-use everruns_storage::Database;
 use std::sync::Arc;
 
 pub struct CapabilityService {

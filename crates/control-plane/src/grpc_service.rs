@@ -7,6 +7,7 @@
 // - Adapting to the events-based message storage
 // - Integration with existing services
 
+use crate::storage::Database;
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
     EmitEventRequest, EmitEventResponse, EmitEventStreamResponse, GetAgentRequest,
@@ -20,7 +21,6 @@ use everruns_internal_protocol::proto::{
     SessionWriteFileRequest, SessionWriteFileResponse,
 };
 use everruns_internal_protocol::{WorkerService, WorkerServiceServer};
-use everruns_storage::Database;
 use std::sync::Arc;
 use tonic::{Request, Response, Status, Streaming};
 

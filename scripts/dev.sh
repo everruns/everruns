@@ -107,7 +107,7 @@ case "$command" in
   migrate)
     echo "🔧 Running database migrations..."
     export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-    sqlx migrate run --source crates/everruns-storage/migrations
+    sqlx migrate run --source crates/control-plane/migrations
     echo "✅ Migrations complete!"
     ;;
 
@@ -332,7 +332,7 @@ PY
     # Run migrations
     echo "3️⃣  Running database migrations..."
     export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-    sqlx migrate run --source crates/everruns-storage/migrations
+    sqlx migrate run --source crates/control-plane/migrations
     echo "   ✅ Migrations complete"
 
     # Wait for Temporal (needed before API/worker connect)

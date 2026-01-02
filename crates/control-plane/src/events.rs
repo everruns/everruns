@@ -1,6 +1,7 @@
 // Event streaming HTTP routes (SSE)
 // Events are notifications streamed to clients, NOT primary data storage
 
+use crate::storage::Database;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -9,7 +10,6 @@ use axum::{
     Json, Router,
 };
 use everruns_core::Event;
-use everruns_storage::Database;
 
 use crate::common::ListResponse;
 use crate::services::EventService;

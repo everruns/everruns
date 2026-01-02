@@ -1,5 +1,6 @@
 // Session CRUD HTTP routes
 
+use crate::storage::Database;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -7,7 +8,6 @@ use axum::{
     Json, Router,
 };
 use everruns_core::Session;
-use everruns_storage::Database;
 
 use crate::common::ListResponse;
 use serde::Deserialize;

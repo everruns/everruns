@@ -1,11 +1,11 @@
 // Session service for business logic (M2)
 
-use anyhow::Result;
-use everruns_core::{Session, SessionStatus};
-use everruns_storage::{
+use crate::storage::{
     models::{CreateSessionRow, UpdateSession},
     Database,
 };
+use anyhow::Result;
+use everruns_core::{Session, SessionStatus};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -65,7 +65,7 @@ impl SessionService {
         self.db.delete_session(id).await
     }
 
-    fn row_to_session(row: everruns_storage::SessionRow) -> Session {
+    fn row_to_session(row: crate::storage::SessionRow) -> Session {
         Session {
             id: row.id,
             agent_id: row.agent_id,

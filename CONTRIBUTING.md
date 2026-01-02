@@ -78,7 +78,7 @@ sqlx migrate add -r <migration_name>
 ```
 
 Rules:
-- Migrations live in `crates/everruns-storage/migrations/`
+- Migrations live in `crates/control-plane/migrations/`
 - Never modify existing migrations - always add new ones
 - Test migrations both up and down
 

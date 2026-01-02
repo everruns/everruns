@@ -1,11 +1,11 @@
 // Agent service for business logic (M2)
 
-use anyhow::Result;
-use everruns_core::{Agent, AgentStatus, CapabilityId};
-use everruns_storage::{
+use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
     AgentRow, Database,
 };
+use anyhow::Result;
+use everruns_core::{Agent, AgentStatus, CapabilityId};
 use std::sync::Arc;
 use uuid::Uuid;
 

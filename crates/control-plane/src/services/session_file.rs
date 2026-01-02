@@ -1,11 +1,11 @@
 // Session Files service for virtual filesystem operations
 
-use anyhow::{anyhow, Result};
-use everruns_core::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
-use everruns_storage::{
+use crate::storage::{
     models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
     Database,
 };
+use anyhow::{anyhow, Result};
+use everruns_core::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
 use regex::Regex;
 use std::sync::Arc;
 use uuid::Uuid;

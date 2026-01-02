@@ -17,6 +17,7 @@ mod sessions;
 pub mod storage;
 mod users;
 
+use crate::storage::{Database, EncryptionService};
 use anyhow::{Context, Result};
 use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
@@ -51,7 +52,6 @@ use everruns_core::{
     SessionStatus,
     ToolCall,
 };
-use everruns_storage::{Database, EncryptionService};
 use everruns_worker::{create_runner, RunnerConfig};
 use serde::Serialize;
 use std::sync::Arc;

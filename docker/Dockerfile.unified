@@ -140,7 +140,7 @@ COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 COPY --from=builder-admin /app/target/release/reencrypt-secrets /app/reencrypt-secrets
 
 # Copy migrations
-COPY crates/everruns-storage/migrations /app/migrations
+COPY crates/control-plane/migrations /app/migrations
 
 # Copy entrypoint script
 COPY docker/admin-entrypoint.sh /app/entrypoint.sh

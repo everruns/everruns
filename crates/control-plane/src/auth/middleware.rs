@@ -18,7 +18,7 @@ use super::{
     config::{AuthConfig, AuthMode},
     jwt::JwtService,
 };
-use everruns_storage::Database;
+use crate::storage::Database;
 
 /// Authentication error
 #[derive(Debug, Clone, Serialize)]

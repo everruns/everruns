@@ -1,5 +1,6 @@
 // LLM Model API endpoints
 
+use crate::storage::Database;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -7,7 +8,6 @@ use axum::{
     Json, Router,
 };
 use everruns_core::{LlmModel, LlmModelStatus, LlmModelWithProvider};
-use everruns_storage::Database;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

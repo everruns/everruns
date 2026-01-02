@@ -134,11 +134,12 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
    - Tool types: `ToolCall`, `ToolResult`, `ToolDefinition`
    - LLM types: `LlmProviderType`, `ModelWithProvider`
 
-2. **Storage Layer** (`everruns-storage/`):
+2. **Storage Layer** (`control-plane/src/storage/`):
    - Database models use `Row` suffix: `AgentRow`, `SessionRow`, `EventRow`
    - Create input structs: `CreateAgentRow`, `CreateEventRow`
    - Update structs: `UpdateAgent`, `UpdateSession`
    - Repositories handle raw database operations only
+   - Migrations in `control-plane/migrations/`
    - Note: Messages are stored as events (see `specs/models.md`)
 
 3. **Core Layer** (`everruns-core/`):
@@ -393,13 +394,12 @@ everruns/
 │   ├── ui/               # Next.js Management UI
 │   └── docs/             # Astro Starlight Documentation Site
 ├── crates/
-│   ├── control-plane/    # HTTP API + gRPC server (everruns-control-plane)
+│   ├── control-plane/    # HTTP API + gRPC server + database layer (everruns-control-plane)
 │   ├── worker/           # Temporal worker with gRPC client (everruns-worker)
 │   ├── schemas/          # Shared type definitions (everruns-schemas)
 │   ├── runtime/          # Agent execution engine (everruns-runtime)
 │   ├── internal-protocol/ # gRPC protocol definitions (everruns-internal-protocol)
 │   ├── everruns-core/    # Core abstractions, domain entities, tools
-│   ├── everruns-storage/ # Database layer
 │   ├── openai/           # OpenAI provider (everruns-openai)
 │   └── anthropic/        # Anthropic provider (everruns-anthropic)
 ├── docs/                 # Documentation content (published via apps/docs)
