@@ -41,9 +41,12 @@ base64.workspace = true
 reqwest.workspace = true
 time.workspace = true
 regex.workspace = true
+async-trait.workspace = true
+aes-gcm.workspace = true
+argon2.workspace = true
 
 everruns-core = { path = "../everruns-core", features = ["openapi"] }
-everruns-storage = { path = "../everruns-storage" }
+everruns-storage = { path = "../everruns-storage" }  # For worker interface (to be removed when worker uses gRPC)
 everruns-worker = { path = "../worker" }
 everruns-internal-protocol = { path = "../internal-protocol" }
 

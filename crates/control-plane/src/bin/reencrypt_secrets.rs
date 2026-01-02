@@ -2,7 +2,7 @@
 // Run with: cargo run --bin reencrypt-secrets -- --help
 
 use anyhow::{Context, Result};
-use everruns_storage::{EncryptionService, ENCRYPTED_COLUMNS};
+use everruns_control_plane::storage::{EncryptionService, ENCRYPTED_COLUMNS};
 use sqlx::PgPool;
 use std::env;
 

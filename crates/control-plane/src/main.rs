@@ -14,6 +14,7 @@ mod messages;
 mod services;
 mod session_files;
 mod sessions;
+pub mod storage;
 mod users;
 
 use anyhow::{Context, Result};
