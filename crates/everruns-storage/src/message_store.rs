@@ -173,8 +173,8 @@ fn event_to_message(
         return parse_message_object(message_obj, created_at);
     }
 
-    // Check if this is a tool.call_completed event
-    if data.get("tool_call_id").is_some() && data.get("tool_name").is_some() {
+    // Check if this is a tool.call_completed event (has tool_call_id at top level)
+    if data.get("tool_call_id").is_some() {
         return parse_tool_call_completed(data, created_at);
     }
 
