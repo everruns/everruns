@@ -116,11 +116,7 @@ impl MessageStore for DbMessageStore {
             match event_to_message(&event_row.data, &event_row.event_type) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
-                    tracing::warn!(
-                        "Failed to parse message from event {}: {}",
-                        event_row.id,
-                        e
-                    );
+                    tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
                 }
             }
         }
@@ -244,11 +240,7 @@ mod tests {
 
     #[test]
     fn test_tool_result_success() {
-        let message = Message::tool_result(
-            "call_123",
-            Some(json!({"temperature": 72})),
-            None,
-        );
+        let message = Message::tool_result("call_123", Some(json!({"temperature": 72})), None);
 
         assert_eq!(message.role, MessageRole::ToolResult);
         assert_eq!(message.tool_call_id(), Some("call_123"));
@@ -322,7 +314,11 @@ mod tests {
     fn test_parse_message_user_event() {
         let session_id = Uuid::now_v7();
         let message = Message::user("Hello from user!");
-        let event = Event::new(session_id, EventContext::empty(), MessageUserData::new(message));
+        let event = Event::new(
+            session_id,
+            EventContext::empty(),
+            MessageUserData::new(message),
+        );
 
         let stored = serde_json::to_value(&event).unwrap();
         let result = event_to_message(&stored, "message.user");

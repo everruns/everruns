@@ -59,7 +59,7 @@ impl MessageService {
         let core_message = everruns_core::Message {
             id: message_id,
             role: everruns_core::MessageRole::User,
-            content: content.iter().cloned().map(Into::into).collect(),
+            content: content.clone(),
             controls: req.controls.clone(),
             metadata: req.metadata.clone(),
             created_at: now,
@@ -119,11 +119,7 @@ impl MessageService {
             match Self::event_to_message(session_id, &event_row.data, event_row.sequence) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
-                    tracing::warn!(
-                        "Failed to parse message from event {}: {}",
-                        event_row.id,
-                        e
-                    );
+                    tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
                 }
             }
         }
@@ -167,7 +163,7 @@ impl MessageService {
                     session_id,
                     sequence,
                     role: MessageRole::from(msg.role.to_string().as_str()),
-                    content: msg.content.into_iter().map(Into::into).collect(),
+                    content: msg.content,
                     controls: None,
                     metadata: None,
                     created_at: msg.created_at,
@@ -181,7 +177,7 @@ impl MessageService {
             session_id,
             sequence,
             role: MessageRole::from(core_message.role.to_string().as_str()),
-            content: core_message.content.iter().cloned().map(Into::into).collect(),
+            content: core_message.content.clone(),
             controls: core_message.controls.clone(),
             metadata: core_message.metadata.clone(),
             created_at: core_message.created_at,
