@@ -12,7 +12,6 @@ members = [
     "crates/openai",
     "crates/anthropic",
     "crates/schemas",
-    "crates/runtime",
     "crates/internal-protocol",
 ]
 
