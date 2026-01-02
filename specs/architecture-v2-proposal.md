@@ -6,10 +6,22 @@ This document proposes a new architecture where workers communicate with a contr
 
 ## Goals
 
-1. **Security isolation**: Workers don't need database credentials or encryption keys
+1. **Deployment simplification**: Workers don't need database credentials or encryption keys
 2. **Clear boundaries**: Control plane owns all state; workers are stateless executors
 3. **Simpler crates**: Fewer, more focused crates with clear responsibilities
-4. **Industry alignment**: Follow patterns from Temporal, Kubernetes, Ray
+4. **Future investment**: Foundation for scaling, multi-tenancy, and security enhancements
+
+## Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Worker ↔ Control Plane protocol | gRPC | Industry standard, already in stack via Temporal |
+| LLM calls | Workers call directly | Simpler, trust workers for now |
+| Tool execution | Workers execute locally | Direct, can split later if needed |
+| Temporal access | Direct from workers | Acceptable, not sensitive |
+| Schema source of truth | Rust types | Full ergonomics, proto mirrors |
+| OpenAPI support | utoipa in schemas (feature flag) | Reuse types in REST API |
+| Migration strategy | Big bang | No backward compatibility needed |
 
 ## Current vs Proposed Architecture
 
@@ -33,7 +45,7 @@ This document proposes a new architecture where workers communicate with a contr
 - Workers need database credentials
 - Workers need encryption keys for LLM API keys
 - Tight coupling between workers and storage layer
-- Hard to run workers in untrusted environments
+- `everruns-core` is a monolith (types + atoms + tools + capabilities)
 
 ### Proposed Architecture (v2)
 
@@ -67,7 +79,7 @@ This document proposes a new architecture where workers communicate with a contr
     │ Clients │                      │  (no DB access) │
     └─────────┘                      └─────────────────┘
                                               │
-                                              │ Temporal
+                                              │ Temporal (direct)
                                               ▼
                                      ┌─────────────────┐
                                      │ Temporal Server │
@@ -76,41 +88,30 @@ This document proposes a new architecture where workers communicate with a contr
 
 ## Crate Reorganization
 
-### Current Crate Structure
+### Current → Proposed
 
 ```
-crates/
-├── everruns-api/        # HTTP API, services, routes
-├── everruns-worker/     # Temporal worker, workflows, activities
-├── everruns-core/       # Domain types, traits, atoms, tools, capabilities
-├── everruns-storage/    # Database layer (sqlx)
-├── everruns-openai/     # OpenAI LLM driver
-└── everruns-anthropic/  # Anthropic LLM driver
+CURRENT                              PROPOSED
+crates/                              crates/
+├── everruns-api/        ──┐         ├── schemas/             # everruns-schemas
+├── everruns-storage/    ──┴──────►  ├── runtime/             # everruns-runtime
+├── everruns-core/       ──┬──────►  ├── internal-protocol/   # everruns-internal-protocol
+│                          │         ├── control-plane/       # everruns-control-plane
+├── everruns-worker/     ──┴──────►  ├── worker/              # everruns-worker
+├── everruns-openai/     ─────────►  ├── openai/              # everruns-openai
+└── everruns-anthropic/  ─────────►  └── anthropic/           # everruns-anthropic
 ```
 
-**Problems:**
-- `everruns-core` is too big (types + traits + atoms + tools + capabilities)
-- `everruns-storage` is separate but tightly coupled to api
-- Worker needs storage crate for Db* adapters
-- No clear schema contract between components
-
-### Proposed Crate Structure
-
-```
-crates/
-├── schemas/             # everruns-schemas: Shared type contracts
-├── runtime/             # everruns-runtime: Agent execution (atoms, drivers, tools)
-├── internal-protocol/   # everruns-internal-protocol: gRPC proto definitions
-├── control-plane/       # everruns-control-plane: API + services + storage
-├── worker/              # everruns-worker: Temporal worker (thin, uses runtime)
-├── openai/              # everruns-openai: OpenAI driver
-└── anthropic/           # everruns-anthropic: Anthropic driver
-```
+**Naming convention:**
+- Folder: `schemas/`, `runtime/`, etc. (no prefix)
+- Package name: `everruns-schemas`, `everruns-runtime`, etc.
+- Binary name: `everruns-control-plane`, `everruns-worker`
 
 ### Crate Details
 
 #### `schemas` (everruns-schemas)
-Shared type contracts used across all components. No business logic.
+
+Shared type contracts. Source of truth for all data structures.
 
 ```rust
 // What it contains:
@@ -122,123 +123,148 @@ pub mod tools;       // ToolCall, ToolResult, ToolDefinition
 pub mod llm;         // LlmProviderType, ModelWithProvider
 pub mod files;       // SessionFile, FileInfo, FileStat
 
-// Dependencies: minimal (serde, uuid, chrono)
-// Used by: runtime, control-plane, worker, internal-protocol
+// Features:
+// - "openapi" enables utoipa::ToSchema derives
+
+// Dependencies: serde, uuid, chrono, utoipa (optional)
+// Used by: ALL other crates
 ```
 
 #### `runtime` (everruns-runtime)
-Agent execution engine. Used by workers to run agents.
+
+Agent execution engine with atoms, capabilities, and tools.
 
 ```rust
 // What it contains:
-pub mod atoms;           // InputAtom, ReasonAtom, ActAtom
-pub mod capabilities;    // CapabilityRegistry, builtin capabilities
+pub mod atoms;           // InputAtom, ReasonAtom, ActAtom, AtomContext
+pub mod capabilities;    // CapabilityRegistry + all builtin capabilities
+│   ├── file_system.rs
+│   ├── web_fetch.rs
+│   ├── current_time.rs
+│   └── ...
 pub mod drivers;         // LlmDriver trait, DriverRegistry
-pub mod tools;           // ToolExecutor, ToolRegistry
-pub mod traits;          // Store traits (for gRPC implementations)
+pub mod tools;           // ToolExecutor trait, ToolRegistry
+pub mod traits;          // MessageStore, EventEmitter, AgentStore, etc.
 
 // Dependencies: schemas, openai, anthropic, tokio, async-trait
 // Used by: worker
-// Does NOT depend on: storage, database, control-plane
+// Does NOT depend on: control-plane, sqlx, database
 ```
 
 #### `internal-protocol` (everruns-internal-protocol)
-gRPC service definitions for worker ↔ control-plane communication.
+
+gRPC contract between workers and control plane. Proto mirrors Rust schemas.
 
 ```rust
 // What it contains:
-// - Proto files in proto/
+// - proto/worker_service.proto
 // - Generated Rust code via tonic-build
-// - WorkerService client and server traits
+// - Conversion traits: Proto ↔ Rust schemas
 
 // Dependencies: tonic, prost, schemas
 // Used by: control-plane (server), worker (client)
 ```
 
 #### `control-plane` (everruns-control-plane)
-Central service with REST API, gRPC service, storage, and business logic.
+
+Central service: REST API + gRPC service + storage.
 
 ```rust
 // What it contains:
-pub mod api;         // REST routes (axum)
+pub mod api;         // REST routes (axum), OpenAPI
 pub mod grpc;        // gRPC WorkerService implementation
 pub mod services;    // Business logic
-pub mod storage;     // Database layer (merged from everruns-storage)
-pub mod migrations;  // SQL migrations
+pub mod storage;     // Database layer (sqlx) - merged from everruns-storage
+│   ├── repositories.rs
+│   ├── models.rs
+│   └── migrations/
 
-// Dependencies: schemas, internal-protocol, axum, tonic, sqlx
-// Binary: everruns-control-plane (single binary for API + gRPC)
+// Dependencies: schemas, internal-protocol, runtime (for types), axum, tonic, sqlx
+// Binary: everruns-control-plane
 ```
 
 #### `worker` (everruns-worker)
-Thin Temporal worker that uses runtime for execution.
+
+Thin Temporal worker. Executes atoms via runtime, talks to control-plane via gRPC.
 
 ```rust
 // What it contains:
-pub mod workflow;    // TurnWorkflow state machine
-pub mod activities;  // Activity implementations (call runtime atoms)
-pub mod grpc_stores; // gRPC-backed trait implementations
+pub mod workflow;      // TurnWorkflow state machine
+pub mod activities;    // Activity implementations
+pub mod grpc_client;   // gRPC client wrapper
+pub mod stores;        // GrpcMessageStore, GrpcAgentStore, etc.
 
 // Dependencies: schemas, runtime, internal-protocol, temporal-sdk-core
 // Binary: everruns-worker
-// Does NOT depend on: storage, sqlx, database
+// Does NOT have: sqlx, database access
+```
+
+#### `openai` / `anthropic` (everruns-openai, everruns-anthropic)
+
+LLM provider implementations. Unchanged, stay separate.
+
+```rust
+// Dependencies: schemas (for types), reqwest, tokio
+// Used by: runtime
 ```
 
 ### Dependency Graph
 
 ```
-                    ┌──────────────┐
-                    │   schemas    │
-                    └──────┬───────┘
-                           │
-          ┌────────────────┼────────────────┐
-          │                │                │
-          ▼                ▼                ▼
-    ┌──────────┐    ┌──────────────┐  ┌──────────────────┐
-    │  openai  │    │  anthropic   │  │ internal-protocol│
-    └────┬─────┘    └──────┬───────┘  └────────┬─────────┘
-         │                 │                   │
-         └────────┬────────┘                   │
-                  │                            │
-                  ▼                            │
-            ┌──────────┐                       │
-            │ runtime  │                       │
-            └────┬─────┘                       │
-                 │                             │
-         ┌───────┴───────┐                     │
-         │               │                     │
-         ▼               ▼                     │
-   ┌──────────┐   ┌──────────────┐             │
-   │  worker  │   │control-plane │◄────────────┘
-   └──────────┘   └──────────────┘
+                         ┌──────────────┐
+                         │   schemas    │
+                         └──────┬───────┘
+                                │
+         ┌──────────────────────┼──────────────────────┐
+         │                      │                      │
+         ▼                      ▼                      ▼
+   ┌──────────┐          ┌──────────────┐    ┌──────────────────┐
+   │  openai  │          │  anthropic   │    │ internal-protocol│
+   └────┬─────┘          └──────┬───────┘    └────────┬─────────┘
+        │                       │                     │
+        └───────────┬───────────┘                     │
+                    │                                 │
+                    ▼                                 │
+              ┌──────────┐                            │
+              │ runtime  │                            │
+              └────┬─────┘                            │
+                   │                                  │
+           ┌───────┴───────┐                          │
+           │               │                          │
+           ▼               ▼                          │
+     ┌──────────┐   ┌──────────────┐                  │
+     │  worker  │   │control-plane │◄─────────────────┘
+     └────┬─────┘   └──────────────┘
+          │
+          │ gRPC
+          └──────────────────────────────────────────►
 ```
 
 ## gRPC WorkerService
 
-### Service Definition
+### Batched RPCs for Efficiency
+
+Instead of multiple calls per turn, use batched endpoints:
 
 ```protobuf
-// proto/worker_service.proto
-syntax = "proto3";
-package everruns.worker.v1;
-
 service WorkerService {
-  // Agent/Session config (read-only)
-  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
-  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+  // === Batched Operations (primary) ===
 
-  // Messages (read/write)
+  // Get everything needed to start a turn in one call
+  rpc GetTurnContext(GetTurnContextRequest) returns (GetTurnContextResponse);
+
+  // Stream events efficiently
+  rpc EmitEventStream(stream EmitEventRequest) returns (stream EmitEventResponse);
+
+  // === Individual Operations (for specific needs) ===
+
+  // Messages
   rpc AddMessage(AddMessageRequest) returns (AddMessageResponse);
   rpc GetMessage(GetMessageRequest) returns (GetMessageResponse);
   rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
 
-  // Events (write with streaming option)
+  // Events (single)
   rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
-  rpc EmitEventStream(stream EmitEventRequest) returns (stream EmitEventResponse);
-
-  // LLM Providers (returns decrypted keys)
-  rpc GetModelProvider(GetModelProviderRequest) returns (GetModelProviderResponse);
-  rpc GetDefaultModel(GetDefaultModelRequest) returns (GetModelProviderResponse);
 
   // Session Files
   rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
@@ -251,192 +277,265 @@ service WorkerService {
 }
 ```
 
-### Worker gRPC Adapters
+### GetTurnContext - Batched Read
 
-```rust
-// crates/worker/src/grpc_stores.rs
+Single call to get everything needed for a turn:
 
-/// gRPC-backed MessageStore for workers
-pub struct GrpcMessageStore {
-    client: WorkerServiceClient<Channel>,
+```protobuf
+message GetTurnContextRequest {
+  string session_id = 1;
+  string agent_id = 2;
+  optional string model_id = 3;  // If not set, uses agent's default
 }
 
-#[async_trait]
-impl MessageStore for GrpcMessageStore {
-    async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
-        let response = self.client.clone()
-            .add_message(AddMessageRequest {
-                session_id: Some(session_id.into()),
-                input: Some(input.into()),
-            })
-            .await?;
-
-        response.into_inner().message
-            .ok_or_else(|| Error::NotFound)?
-            .try_into()
-    }
-
-    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
-        let response = self.client.clone()
-            .list_messages(ListMessagesRequest {
-                session_id: Some(session_id.into()),
-                offset: 0,
-                limit: 10000,
-            })
-            .await?;
-
-        response.into_inner().messages
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect()
-    }
+message GetTurnContextResponse {
+  Agent agent = 1;
+  Session session = 2;
+  repeated Message messages = 3;
+  ModelWithProvider model_provider = 4;
 }
-
-// Similar implementations for:
-// - GrpcAgentStore
-// - GrpcSessionStore
-// - GrpcEventEmitter
-// - GrpcLlmProviderStore
-// - GrpcSessionFileStore
 ```
 
-## Industry Precedent
+**Reduces:** 4 calls → 1 call at turn start
 
-| System | Use Case | Communication Pattern |
-|--------|----------|----------------------|
-| **Temporal** | Workflow orchestration | Workers poll server via gRPC |
-| **Kubernetes** | Container orchestration | kubelet ↔ API server via gRPC |
-| **Ray** | Distributed computing | Worker ↔ head node via gRPC |
-| **Envoy/Istio** | Service mesh | xDS protocol over gRPC |
+### EmitEventStream - Batched Write
 
-**Why these systems chose gRPC:**
-- 7-10x faster than REST for high-frequency operations
-- Binary serialization (protobuf) reduces bandwidth
-- HTTP/2 multiplexing reduces connection overhead
-- Streaming enables efficient event delivery
+Stream events instead of individual calls:
 
-**Relevance:** Workers already have gRPC dependencies via Temporal SDK (`tonic`, `prost`). Adding WorkerService has zero new dependency overhead.
+```protobuf
+// Client streams events, server acknowledges each
+rpc EmitEventStream(stream EmitEventRequest) returns (stream EmitEventResponse);
+```
+
+**Reduces:** N event calls → 1 streaming connection
+
+### Call Pattern Per Turn
+
+```
+Turn Start:
+  GetTurnContext()           # 1 call - get agent, session, messages, model
+
+Turn Execution (loop):
+  [LLM call - direct to provider]
+  AddMessage()               # 1 call per assistant message
+  [Tool execution - local]
+  AddMessage()               # 1 call per tool result
+
+Throughout:
+  EmitEventStream()          # 1 streaming connection for all events
+```
+
+**Total: ~3-5 gRPC calls per turn** (down from 10+)
+
+## Type System
+
+### Rust Schemas (Source of Truth)
+
+```rust
+// crates/schemas/src/message.rs
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct Message {
+    pub id: Uuid,
+    pub role: MessageRole,
+    pub content: Vec<ContentPart>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Controls>,
+    pub created_at: DateTime<Utc>,
+}
+```
+
+### Proto (Mirrors Rust)
+
+```protobuf
+// crates/internal-protocol/proto/types.proto
+
+message Message {
+  string id = 1;
+  MessageRole role = 2;
+  repeated ContentPart content = 3;
+  optional string controls_json = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+```
+
+### Conversion Layer
+
+```rust
+// crates/internal-protocol/src/convert.rs
+
+impl From<schemas::Message> for proto::Message {
+    fn from(m: schemas::Message) -> Self {
+        proto::Message {
+            id: m.id.to_string(),
+            role: m.role.into(),
+            content: m.content.into_iter().map(Into::into).collect(),
+            controls_json: m.controls.map(|c| serde_json::to_string(&c).unwrap()),
+            created_at: Some(m.created_at.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::Message> for schemas::Message {
+    type Error = ConversionError;
+
+    fn try_from(m: proto::Message) -> Result<Self, Self::Error> {
+        Ok(schemas::Message {
+            id: m.id.parse()?,
+            role: m.role.try_into()?,
+            content: m.content.into_iter().map(TryInto::try_into).collect::<Result<_, _>>()?,
+            controls: m.controls_json.map(|j| serde_json::from_str(&j)).transpose()?,
+            created_at: m.created_at.ok_or(ConversionError::MissingField("created_at"))?.into(),
+        })
+    }
+}
+```
 
 ## Implementation Plan
 
-### Phase 1: Create schemas crate
-**Goal:** Extract shared types into standalone crate
+Single migration, no backward compatibility. Execute in order:
 
-1. Create `crates/schemas/` with types from `everruns-core`
-2. Move: `Agent`, `Session`, `Message`, `Event`, `ContentPart`, `ToolCall`, etc.
-3. Update all crates to depend on `schemas`
-4. Keep `everruns-core` temporarily as re-export layer for compatibility
+### Step 1: Create `schemas` crate
 
-**Deliverable:** All crates compile, tests pass, schemas crate exists
+```bash
+crates/schemas/
+├── Cargo.toml
+└── src/
+    ├── lib.rs
+    ├── agent.rs
+    ├── session.rs
+    ├── message.rs
+    ├── events.rs
+    ├── tools.rs
+    ├── llm.rs
+    └── files.rs
+```
 
-### Phase 2: Create runtime crate
-**Goal:** Extract agent execution logic
+- [ ] Create crate structure
+- [ ] Move types from `everruns-core`
+- [ ] Add `openapi` feature with utoipa
+- [ ] Update all dependents to use `schemas`
 
-1. Create `crates/runtime/` with atoms and capabilities from `everruns-core`
-2. Move: `InputAtom`, `ReasonAtom`, `ActAtom`, capabilities, `ToolRegistry`
-3. Move LLM driver registry integration
-4. Define store traits in runtime (implementations in consumer crates)
+### Step 2: Create `runtime` crate
 
-**Deliverable:** Runtime crate with atoms, worker uses runtime for execution
+```bash
+crates/runtime/
+├── Cargo.toml
+└── src/
+    ├── lib.rs
+    ├── atoms/
+    │   ├── mod.rs
+    │   ├── input.rs
+    │   ├── reason.rs
+    │   └── act.rs
+    ├── capabilities/
+    │   ├── mod.rs
+    │   ├── file_system.rs
+    │   ├── web_fetch.rs
+    │   └── ...
+    ├── drivers.rs
+    ├── tools.rs
+    └── traits.rs
+```
 
-### Phase 3: Create internal-protocol crate
-**Goal:** Define gRPC contract
+- [ ] Create crate structure
+- [ ] Move atoms from `everruns-core`
+- [ ] Move capabilities from `everruns-core`
+- [ ] Move tool execution from `everruns-core`
+- [ ] Move driver registry integration
+- [ ] Define store traits
 
-1. Create `crates/internal-protocol/` with proto files
-2. Set up `tonic-build` in `build.rs`
-3. Generate Rust types from proto definitions
-4. Export client and server traits
+### Step 3: Create `internal-protocol` crate
 
-**Deliverable:** Proto compiles, types available for both sides
+```bash
+crates/internal-protocol/
+├── Cargo.toml
+├── build.rs
+├── proto/
+│   ├── worker_service.proto
+│   └── types.proto
+└── src/
+    ├── lib.rs
+    └── convert.rs
+```
 
-### Phase 4: Add gRPC to control-plane
-**Goal:** Control plane serves WorkerService
+- [ ] Create crate with tonic-build
+- [ ] Define WorkerService proto
+- [ ] Define type protos (mirroring schemas)
+- [ ] Implement conversion traits
 
-1. Rename `crates/everruns-api/` → `crates/control-plane/`
-2. Merge `crates/everruns-storage/` into control-plane
-3. Implement `WorkerService` gRPC server
-4. Run REST (:9000) and gRPC (:50051) in same binary
+### Step 4: Create `control-plane` crate
 
-**Deliverable:** Control plane serves both REST and gRPC
+```bash
+crates/control-plane/
+├── Cargo.toml
+└── src/
+    ├── lib.rs
+    ├── main.rs           # Binary entry point
+    ├── api/              # REST (from everruns-api)
+    ├── grpc/             # NEW: WorkerService implementation
+    │   ├── mod.rs
+    │   └── worker_service.rs
+    ├── services/         # Business logic (from everruns-api)
+    └── storage/          # Database (from everruns-storage)
+        ├── mod.rs
+        ├── repositories.rs
+        ├── models.rs
+        └── migrations/
+```
 
-### Phase 5: Worker uses gRPC
-**Goal:** Workers communicate via gRPC only
-
-1. Implement `Grpc*Store` adapters in worker crate
-2. Remove direct database dependencies from worker
-3. Configure worker to connect to control-plane gRPC
-4. Remove `everruns-storage` dependency from worker
-
-**Deliverable:** Worker has no database access, uses gRPC for all operations
-
-### Phase 6: Cleanup
-**Goal:** Remove old code and crates
-
-1. Remove `crates/everruns-core/` (replaced by schemas + runtime)
-2. Remove `crates/everruns-storage/` (merged into control-plane)
-3. Rename crate folders (remove `everruns-` prefix from folders)
-4. Update documentation and CI
-
-**Deliverable:** Clean crate structure matching proposal
-
-## Migration Checklist
-
-### Phase 1: schemas
-- [ ] Create `crates/schemas/Cargo.toml`
-- [ ] Move types: Agent, Session, Message, Event, ContentPart, ToolCall, ToolResult
-- [ ] Move types: MessageRole, SessionStatus, LlmProviderType
-- [ ] Move types: FileInfo, FileStat, SessionFile, GrepMatch
-- [ ] Add serde derives with `#[serde(rename_all = "snake_case")]`
-- [ ] Update dependent crates to use schemas
-- [ ] Ensure all tests pass
-
-### Phase 2: runtime
-- [ ] Create `crates/runtime/Cargo.toml`
-- [ ] Move atoms: InputAtom, ReasonAtom, ActAtom, AtomContext
-- [ ] Move capabilities: CapabilityRegistry, builtin capabilities
-- [ ] Move tool execution: ToolRegistry, ToolExecutor trait
-- [ ] Move LLM driver integration
-- [ ] Define trait bounds (MessageStore, EventEmitter, etc.)
-- [ ] Worker depends on runtime
-- [ ] Ensure all tests pass
-
-### Phase 3: internal-protocol
-- [ ] Create `crates/internal-protocol/Cargo.toml`
-- [ ] Create `proto/worker_service.proto`
-- [ ] Set up `build.rs` with tonic-build
-- [ ] Verify proto compiles
-- [ ] Export client/server types
-
-### Phase 4: control-plane
 - [ ] Rename `everruns-api` → `control-plane`
-- [ ] Merge storage modules into control-plane
-- [ ] Implement `WorkerService` trait
-- [ ] Add gRPC server startup alongside REST
-- [ ] Test gRPC endpoints with grpcurl
-- [ ] Ensure REST API unchanged
+- [ ] Merge `everruns-storage` into `control-plane/storage`
+- [ ] Implement `WorkerService` gRPC server
+- [ ] Start both REST and gRPC servers in main.rs
+- [ ] Test with grpcurl
 
-### Phase 5: worker gRPC
-- [ ] Implement GrpcMessageStore
-- [ ] Implement GrpcAgentStore
-- [ ] Implement GrpcSessionStore
-- [ ] Implement GrpcEventEmitter
-- [ ] Implement GrpcLlmProviderStore
-- [ ] Implement GrpcSessionFileStore
-- [ ] Remove sqlx dependency from worker
-- [ ] Configure GRPC_ENDPOINT env var
-- [ ] Run smoke tests with gRPC communication
+### Step 5: Update `worker` crate
 
-### Phase 6: cleanup
-- [ ] Remove everruns-core crate
-- [ ] Remove everruns-storage crate
-- [ ] Rename folder: `everruns-worker` → `worker`
-- [ ] Rename folder: `everruns-openai` → `openai`
-- [ ] Rename folder: `everruns-anthropic` → `anthropic`
-- [ ] Update CLAUDE.md and documentation
+```bash
+crates/worker/
+├── Cargo.toml
+└── src/
+    ├── lib.rs
+    ├── main.rs
+    ├── workflow.rs
+    ├── activities.rs
+    ├── grpc_client.rs    # NEW
+    └── stores/           # NEW: gRPC-backed stores
+        ├── mod.rs
+        ├── message_store.rs
+        ├── agent_store.rs
+        ├── session_store.rs
+        ├── event_emitter.rs
+        ├── llm_provider_store.rs
+        └── session_file_store.rs
+```
+
+- [ ] Add gRPC client setup
+- [ ] Implement `GrpcMessageStore`
+- [ ] Implement `GrpcAgentStore`
+- [ ] Implement `GrpcSessionStore`
+- [ ] Implement `GrpcEventEmitter`
+- [ ] Implement `GrpcLlmProviderStore`
+- [ ] Implement `GrpcSessionFileStore`
+- [ ] Remove sqlx/database dependencies
+- [ ] Update activities to use gRPC stores
+
+### Step 6: Cleanup
+
+- [ ] Delete `crates/everruns-core/`
+- [ ] Delete `crates/everruns-storage/`
+- [ ] Rename `crates/everruns-worker/` → `crates/worker/`
+- [ ] Rename `crates/everruns-openai/` → `crates/openai/`
+- [ ] Rename `crates/everruns-anthropic/` → `crates/anthropic/`
+- [ ] Update workspace Cargo.toml
+- [ ] Update CLAUDE.md
 - [ ] Update CI workflows
-- [ ] Final smoke test
+- [ ] Run full smoke test
 
-## Configuration Changes
+## Configuration
 
 ### Control Plane
 
@@ -452,29 +551,23 @@ GRPC_PORT=50051
 ### Worker
 
 ```bash
-# Remove
-DATABASE_URL=postgres://...        # No longer needed
-ENCRYPTION_KEY=...                 # No longer needed
+# Removed
+DATABASE_URL=...              # Not needed
+ENCRYPTION_KEY=...            # Not needed
 
-# Add
+# New
 CONTROL_PLANE_GRPC_URL=http://control-plane:50051
-WORKER_AUTH_TOKEN=...              # For gRPC authentication
+
+# Unchanged
+TEMPORAL_ADDRESS=localhost:7233
+TEMPORAL_NAMESPACE=default
+TEMPORAL_TASK_QUEUE=everruns-agent-runs
 ```
-
-## Risks and Mitigations
-
-| Risk | Mitigation |
-|------|------------|
-| gRPC latency | Profile early; gRPC is ~50% faster than REST |
-| Control plane becomes bottleneck | Horizontal scaling, connection pooling |
-| Network failures | Retry with backoff, circuit breaker |
-| Migration complexity | Phase-based approach, feature flags |
-| Proto schema evolution | Use proto3 optional fields, never remove fields |
 
 ## Success Criteria
 
-1. **Workers have no database access**: No sqlx/postgres dependencies
-2. **Single control-plane binary**: Serves REST + gRPC
-3. **Smoke tests pass**: Full workflow works over gRPC
-4. **Latency acceptable**: < 5ms overhead per gRPC call
-5. **Clean crate structure**: 5 crates with clear responsibilities
+1. **Worker has no DB access**: No sqlx in dependencies
+2. **Single control-plane binary**: Serves REST (:9000) + gRPC (:50051)
+3. **Smoke tests pass**: Full workflow over gRPC
+4. **Clean crate structure**: 7 crates with clear responsibilities
+5. **Latency acceptable**: < 100ms added per turn
