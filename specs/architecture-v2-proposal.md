@@ -564,6 +564,68 @@ TEMPORAL_NAMESPACE=default
 TEMPORAL_TASK_QUEUE=everruns-agent-runs
 ```
 
+## Idempotency and Retry Handling
+
+Temporal retries failed activities. To handle partial writes from crashed attempts:
+
+### exec_id Strategy
+
+1. **exec_id = UUID v7** - time-ordered, monotonically increasing
+2. **All writes tagged with exec_id** - messages, events
+3. **CommitExec on success** - marks exec_id as valid
+4. **Reads filter to committed exec_ids** - orphaned data ignored
+
+### Flow
+
+```
+Attempt 1 (exec_id = "019abc..."):
+  AddMessage(exec_id="019abc...")     ✓ stored
+  EmitEvent(exec_id="019abc...")      ✓ stored
+  [crash before commit]               ✗ no commit
+
+Attempt 2 (exec_id = "019def..."):    # newer UUID v7
+  AddMessage(exec_id="019def...")     ✓ stored
+  EmitEvent(exec_id="019def...")      ✓ stored
+  CommitExec(exec_id="019def...")     ✓ committed
+  [activity completes]
+```
+
+### gRPC Addition
+
+```protobuf
+service WorkerService {
+  // ... existing RPCs ...
+
+  // Commit an exec_id, marking all its writes as valid
+  rpc CommitExec(CommitExecRequest) returns (CommitExecResponse);
+}
+
+message CommitExecRequest {
+  string session_id = 1;
+  string turn_id = 2;
+  string exec_id = 3;  // UUID v7
+}
+```
+
+### Read Filtering
+
+```sql
+-- Messages: only from committed exec_ids
+SELECT m.* FROM messages m
+JOIN committed_execs c ON m.exec_id = c.exec_id
+WHERE m.session_id = ?
+
+-- If edge case of multiple committed exec_ids for same turn/atom,
+-- UUID v7 ordering means latest wins automatically
+```
+
+### Benefits
+
+- **No duplicates**: Uncommitted writes ignored on read
+- **No cleanup needed**: Orphaned data filtered out (lazy cleanup optional)
+- **Idempotent**: Same exec_id = same logical operation
+- **Simple**: Single commit call at end of each atom
+
 ## Success Criteria
 
 1. **Worker has no DB access**: No sqlx in dependencies
