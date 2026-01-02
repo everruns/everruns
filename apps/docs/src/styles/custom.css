@@ -1,0 +1,93 @@
+/* Everruns Docs Custom Theme
+ *
+ * Brand colors from logo:
+ * - Dark blues: #0A1636, #081C3F, #0B1233
+ * - Gold accent: #D4A43A
+ *
+ * Design matches the app's minimal aesthetic with dark mode default
+ */
+
+:root {
+  /* Accent colors - Gold from logo */
+  --sl-color-accent-low: #2a2006;
+  --sl-color-accent: #d4a43a;
+  --sl-color-accent-high: #f5d78e;
+
+  /* Text colors */
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #eceef2;
+  --sl-color-gray-2: #c0c2c7;
+  --sl-color-gray-3: #888b96;
+  --sl-color-gray-4: #545861;
+  --sl-color-gray-5: #353841;
+  --sl-color-gray-6: #24272f;
+  --sl-color-black: #0a1636;
+
+  /* Font family matching the app */
+  --sl-font: ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono",
+    "Segoe UI Mono", "Roboto Mono", "Oxygen Mono", "Ubuntu Monospace",
+    "Source Code Pro", "Fira Mono", "Droid Sans Mono", "Courier New", monospace;
+}
+
+/* Dark theme adjustments */
+:root[data-theme="dark"] {
+  --sl-color-bg: #0a1636;
+  --sl-color-bg-nav: #081c3f;
+  --sl-color-bg-sidebar: #0b1233;
+  --sl-color-bg-inline-code: #1a2746;
+  --sl-color-hairline-light: #1e3a5f;
+  --sl-color-hairline: #2a4a7a;
+}
+
+/* Light theme adjustments */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #fef6e3;
+  --sl-color-accent: #b8892e;
+  --sl-color-accent-high: #6b4f1a;
+}
+
+/* Logo sizing */
+.site-title img {
+  height: 2rem;
+  width: auto;
+}
+
+/* Link styling to use accent color */
+a:not([class]) {
+  color: var(--sl-color-accent);
+}
+
+a:not([class]):hover {
+  color: var(--sl-color-accent-high);
+}
+
+/* Code block styling */
+.expressive-code pre {
+  border: 1px solid var(--sl-color-hairline-light);
+}
+
+/* Table styling */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  border: 1px solid var(--sl-color-hairline);
+  padding: 0.5rem 1rem;
+}
+
+th {
+  background-color: var(--sl-color-bg-sidebar);
+}
+
+/* Hero section customization */
+.hero {
+  background: linear-gradient(
+    135deg,
+    var(--sl-color-bg) 0%,
+    var(--sl-color-bg-nav) 100%
+  );
+}

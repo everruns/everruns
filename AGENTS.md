@@ -20,6 +20,7 @@ Available specs:
 - `specs/apis.md` - HTTP API endpoints
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system for modular functionality
+- `specs/documentation.md` - Documentation site (Astro Starlight, Cloudflare Pages)
 - `specs/dismissed-options.md` - Technical options considered but dismissed
 
 Specification format: Abstract and Requirements sections.
@@ -48,18 +49,30 @@ When adding new features, create corresponding test cases to document expected b
 
 ### Public Documentation
 
-`docs/` contains public-facing user documentation. This documentation is intended for end users and operators of the system, not for internal development reference.
+Documentation is published at https://docs.everruns.com/ via Cloudflare Pages.
 
-Documentation structure:
-- `docs/sre/` - Site Reliability Engineering documentation
+**Source locations:**
+- `docs/` - Source markdown files (legacy location, kept for reference)
+- `apps/docs/` - Astro Starlight documentation site
+
+**Content structure:**
+- `apps/docs/src/content/docs/getting-started/` - Quickstart guides
+- `apps/docs/src/content/docs/features/` - Feature documentation
+- `apps/docs/src/content/docs/sre/` - SRE documentation
   - `environment-variables.md` - Configuration environment variables
   - `admin-container.md` - Admin container usage guide
   - `runbooks/` - Operational runbooks for common tasks
-    - `authentication.md` - Authentication configuration
-    - `encryption-key-rotation.md` - Key rotation procedures
-    - `production-migrations.md` - Database migration procedures
 
-When making changes that affect user-facing behavior or operations, update the relevant docs in this folder.
+**Development:**
+```bash
+cd apps/docs
+npm install
+npm run dev      # Local development server
+npm run check    # Type checking
+npm run build    # Production build
+```
+
+When making changes that affect user-facing behavior or operations, update the relevant docs in `apps/docs/src/content/docs/`. Ensure the docs build passes before creating a PR.
 
 ### Local dev expectations
 
@@ -190,10 +203,11 @@ Before creating a pull request, ensure:
 3. **Tests**: Run `cargo test` to ensure all tests pass
 4. **UI Linting**: Run `npm run lint` in `apps/ui/` to check for oxlint issues
 5. **UI Build**: Run `npm run build` in `apps/ui/` to verify TypeScript and build
-6. **Smoke tests**: Run smoke tests to verify the system works end-to-end
-7. **Examples**: If adding or modifying examples, validate they run successfully against a running API
-8. **Update specs**: If your changes affect system behavior, update the relevant specs in `specs/`
-9. **Update docs**: If your changes affect usage or configuration, update public docs in `./docs` folder
+6. **Docs Build**: Run `npm run check && npm run build` in `apps/docs/` to verify docs build
+7. **Smoke tests**: Run smoke tests to verify the system works end-to-end
+8. **Examples**: If adding or modifying examples, validate they run successfully against a running API
+9. **Update specs**: If your changes affect system behavior, update the relevant specs in `specs/`
+10. **Update docs**: If your changes affect usage or configuration, update public docs in `apps/docs/src/content/docs/`
 
 ```bash
 # Quick pre-PR check (Rust)
@@ -201,9 +215,12 @@ cargo fmt && cargo clippy -- -D warnings && cargo test
 
 # Quick pre-PR check (UI)
 cd apps/ui && npm run lint && npm run build
+
+# Quick pre-PR check (Docs)
+cd apps/docs && npm run check && npm run build
 ```
 
-CI will fail if formatting, linting, tests, or UI build fail. Always run these locally before pushing.
+CI will fail if formatting, linting, tests, UI build, or docs build fail. Always run these locally before pushing.
 
 ### UI conventions
 
@@ -358,7 +375,9 @@ cargo run --example create_agent
 
 ```
 everruns/
-├── apps/ui/              # Next.js Management UI
+├── apps/
+│   ├── ui/               # Next.js Management UI
+│   └── docs/             # Astro Starlight Documentation Site
 ├── crates/
 │   ├── everruns-api/     # HTTP API (axum), API DTOs
 │   ├── everruns-worker/  # Temporal worker
@@ -366,6 +385,7 @@ everruns/
 │   ├── everruns-storage/ # Database layer
 │   ├── everruns-openai/  # OpenAI provider
 │   └── everruns-anthropic/  # Anthropic provider
+├── docs/                 # Source documentation (legacy)
 ├── harness/              # Docker Compose
 ├── specs/                # Specifications
 └── scripts/              # Dev scripts

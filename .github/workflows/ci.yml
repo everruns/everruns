@@ -303,6 +303,33 @@ jobs:
         if: always()
         run: docker stop temporal || true
 
+  docs-build:
+    name: Docs Build & Check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/docs
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/docs/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Astro check
+        run: npm run check
+
+      - name: Build docs
+        run: npm run build
+
   # Docker builds using matrix for parallel execution
   docker-build:
     name: Docker Build (${{ matrix.target }})

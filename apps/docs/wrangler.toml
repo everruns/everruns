@@ -1,0 +1,19 @@
+# Cloudflare Pages configuration for Everruns Docs
+#
+# Deployment is handled via Cloudflare Pages dashboard or wrangler CLI.
+# This file configures the static site deployment.
+#
+# Dashboard setup:
+# 1. Connect your GitHub repository
+# 2. Set build command: npm run build
+# 3. Set build output directory: dist
+# 4. Set root directory: apps/docs
+# 5. Set Node.js version: 20
+#
+# Manual deploy:
+# cd apps/docs && npm run build && npx wrangler pages deploy dist --project-name=everruns-docs
+
+name = "everruns-docs"
+
+# For static site deployment, no runtime is needed
+# Pages will serve the built static files from dist/
