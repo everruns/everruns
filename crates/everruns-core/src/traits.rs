@@ -391,7 +391,7 @@ impl std::fmt::Debug for ToolContext {
 // EventEmitter - For emitting events
 // ============================================================================
 
-use crate::event::Event;
+use crate::events::Event;
 
 /// Trait for emitting events following the standard event protocol
 ///

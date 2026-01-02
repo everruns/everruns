@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Atom, AtomContext};
 use crate::error::{AgentLoopError, Result};
-use crate::event::{Event, EventContext, InputReceivedData};
+use crate::events::{Event, EventContext, InputReceivedData};
 use crate::message::Message;
 use crate::traits::{EventEmitter, MessageStore};
 

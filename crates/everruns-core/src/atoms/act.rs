@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use super::{Atom, AtomContext};
 use crate::error::Result;
-use crate::event::{
+use crate::events::{
     ActCompletedData, ActStartedData, Event, EventContext, ToolCallCompletedData,
     ToolCallStartedData,
 };

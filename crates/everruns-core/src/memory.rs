@@ -455,7 +455,7 @@ impl ToolExecutor for FailingToolExecutor {
 // MockLlmProvider - Returns predefined responses
 // ============================================================================
 
-use crate::event::Event;
+use crate::events::Event;
 use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
@@ -725,7 +725,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter() {
-        use crate::event::{EventContext, InputReceivedData};
+        use crate::events::{EventContext, InputReceivedData};
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();
@@ -761,7 +761,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter_filter_by_type() {
-        use crate::event::{
+        use crate::events::{
             EventContext, InputReceivedData, ReasonStartedData, INPUT_RECEIVED, REASON_STARTED,
         };
 
@@ -801,7 +801,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter_filter_by_session() {
-        use crate::event::{EventContext, InputReceivedData};
+        use crate::events::{EventContext, InputReceivedData};
 
         let emitter = InMemoryEventEmitter::new();
         let session1 = Uuid::now_v7();
@@ -837,7 +837,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_event_emitter_clear() {
-        use crate::event::{EventContext, InputReceivedData};
+        use crate::events::{EventContext, InputReceivedData};
 
         let emitter = InMemoryEventEmitter::new();
         let session_id = Uuid::now_v7();

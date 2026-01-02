@@ -22,7 +22,7 @@ pub mod tool_types;
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
 pub mod capability_dto;
-pub mod event;
+pub mod events;
 pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod session;
@@ -98,7 +98,7 @@ pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResu
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
 pub use agent::{Agent, AgentStatus};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
-pub use event::{
+pub use events::{
     ActCompletedData, ActStartedData, Event, EventBuilder, EventContext, EventData,
     InputReceivedData, MessageAgentData, MessageUserData, ModelMetadata, ReasonCompletedData,
     ReasonStartedData, SessionStartedData, TokenUsage, ToolCallCompletedData, ToolCallStartedData,

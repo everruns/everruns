@@ -69,7 +69,7 @@ pub fn create_db_event_emitter(db: Database) -> DbEventEmitter {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::event::{EventContext, InputReceivedData};
+    use everruns_core::events::{EventContext, InputReceivedData};
     use everruns_core::message::Message;
     use everruns_core::Event;
     use uuid::Uuid;

@@ -24,7 +24,7 @@ use uuid::Uuid;
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
-use crate::event::{Event, EventContext, ReasonCompletedData, ReasonStartedData};
+use crate::events::{Event, EventContext, ReasonCompletedData, ReasonStartedData};
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmStreamEvent, ProviderConfig, ProviderType,
