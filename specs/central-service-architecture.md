@@ -494,9 +494,31 @@ Instead of REST/HTTP, worker-to-central-service communication could use RPC. The
 | Ecosystem | Universal | Strong in Rust (tonic), Go, Java |
 | Debugging | Easy (curl, browser) | Harder (need grpcurl, special tools) |
 
+### Industry Precedent
+
+Many distributed systems use gRPC for worker/control-plane communication:
+
+| System | Use Case | Communication Pattern |
+|--------|----------|----------------------|
+| **Temporal** | Workflow orchestration | Workers long-poll server, report completions |
+| **Kubernetes** | Container orchestration | kubelet ↔ CRI, kubelet ↔ API server |
+| **Ray** | Distributed computing | Worker nodes ↔ head node |
+| **Envoy/Istio** | Service mesh | xDS protocol for config distribution |
+| **etcd** | Distributed KV store | All client-server communication |
+| **CockroachDB** | Distributed SQL | Inter-node communication |
+| **Vitess** | MySQL scaling | VTGate ↔ VTTablet |
+
+**Why these systems chose gRPC:**
+- **Temporal**: "The only requirement is to be able to communicate over gRPC with a Temporal Cluster" - enables cross-language workers (Go, PHP, Rust, etc.)
+- **Kubernetes**: CRI over gRPC performs 7-10x faster than REST for container operations
+- **Ray**: Added gRPC proxy for "significantly lower communication latency than HTTP"
+
 ### Relevance to Everruns
 
-Temporal already uses gRPC internally. Workers already have gRPC dependencies through the Temporal SDK. Adding a gRPC service for worker communication aligns with existing infrastructure.
+Temporal already uses gRPC internally. Workers already have gRPC dependencies through the Temporal SDK (`temporal-sdk-core`, `tonic`, `prost`). Adding a gRPC service for worker communication:
+- Reuses existing dependencies (no new dep overhead)
+- Aligns with proven distributed systems patterns
+- Enables future cross-language workers if needed
 
 ### Service Definition
 
