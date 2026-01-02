@@ -19,12 +19,13 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use uuid::Uuid;
 
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
-use crate::events::{Event, EventContext, ReasonCompletedData, ReasonStartedData};
+use crate::events::{Event, EventContext, LlmGenerationData, ReasonCompletedData, ReasonStartedData};
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmStreamEvent, ProviderConfig, ProviderType,
@@ -408,6 +409,9 @@ where
             "ReasonAtom: calling LLM"
         );
 
+        // Track LLM call timing
+        let llm_start = Instant::now();
+
         let mut stream = llm_driver
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
@@ -428,12 +432,57 @@ where
                     break;
                 }
                 LlmStreamEvent::Error(err) => {
+                    // Emit llm.generation failure event
+                    let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
+                    let event_context = EventContext::from_atom_context(context);
+                    let _ = self
+                        .event_emitter
+                        .emit(Event::new(
+                            session_id,
+                            event_context,
+                            LlmGenerationData::failure(
+                                patched_messages.clone(),
+                                runtime_agent.model.clone(),
+                                Some(model_with_provider.provider_type.to_string()),
+                                err.clone(),
+                                Some(llm_duration_ms),
+                            ),
+                        ))
+                        .await;
                     return Err(AgentLoopError::llm(err));
                 }
             }
         }
 
-        // 13. Build metadata with model and reasoning effort info
+        let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
+
+        // 13. Emit llm.generation event
+        let event_context = EventContext::from_atom_context(context);
+        if let Err(e) = self
+            .event_emitter
+            .emit(Event::new(
+                session_id,
+                event_context,
+                LlmGenerationData::success(
+                    patched_messages.clone(),
+                    Some(text.clone()).filter(|s| !s.is_empty()),
+                    tool_calls.clone(),
+                    runtime_agent.model.clone(),
+                    Some(model_with_provider.provider_type.to_string()),
+                    None, // usage - not available from stream yet
+                    Some(llm_duration_ms),
+                ),
+            ))
+            .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "ReasonAtom: failed to emit llm.generation event"
+            );
+        }
+
+        // 14. Build metadata with model and reasoning effort info
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),
