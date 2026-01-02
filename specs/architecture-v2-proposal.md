@@ -486,10 +486,10 @@ crates/control-plane/
         └── migrations/
 ```
 
-- [ ] Rename `everruns-api` → `control-plane`
-- [ ] Merge `everruns-storage` into `control-plane/storage`
-- [ ] Implement `WorkerService` gRPC server
-- [ ] Start both REST and gRPC servers in main.rs
+- [x] Rename `everruns-api` → `control-plane`
+- [x] Merge `everruns-storage` into `control-plane/storage`
+- [x] Implement `WorkerService` gRPC server
+- [x] Start both REST and gRPC servers in main.rs
 - [ ] Test with grpcurl
 
 ### Step 5: Update `worker` crate
