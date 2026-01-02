@@ -1,4 +1,7 @@
-# Admin Container
+---
+title: Admin Container
+description: Tools for running database migrations, key rotation, and other administrative tasks
+---
 
 The admin container provides tools for running database migrations, key rotation, and other administrative tasks in production environments.
 

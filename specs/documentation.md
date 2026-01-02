@@ -8,44 +8,66 @@ The Everruns documentation site provides user-facing documentation for operators
 
 ### Site Structure
 
-1. **Location**: `apps/docs/` in the monorepo
-2. **Framework**: Astro with Starlight documentation theme
-3. **Final URL**: https://docs.everruns.com/
-4. **Content Format**: Markdown files with frontmatter
+1. **Content Location**: `docs/` in the repository root
+2. **Site Application**: `apps/docs/` (Astro Starlight)
+3. **Content Symlink**: `apps/docs/src/content/docs` → `../../../../docs`
+4. **Final URL**: https://docs.everruns.com/
+5. **Content Format**: Markdown files with YAML frontmatter
 
 ### Content Organization
 
-1. **Getting Started**: Introduction and quickstart guides
-2. **Features**: User-facing feature documentation (capabilities, etc.)
-3. **SRE Guide**: Operational documentation
-   - Environment variables reference
-   - Admin container usage
-   - Runbooks for common operations
-4. **API Reference**: API documentation (future: generated from OpenAPI spec)
+All documentation content lives in `docs/` at the repository root:
+
+```
+docs/
+├── getting-started/
+│   └── introduction.md
+├── features/
+│   └── capabilities.md
+├── sre/
+│   ├── environment-variables.md
+│   ├── admin-container.md
+│   └── runbooks/
+│       ├── authentication.md
+│       ├── encryption-key-rotation.md
+│       └── production-migrations.md
+└── api/
+    └── overview.md
+```
+
+### Content Requirements
+
+Each markdown file must include YAML frontmatter:
+
+```yaml
+---
+title: Page Title
+description: Brief description for SEO and search
+---
+```
 
 ### Design Requirements
 
 1. **Visual Consistency**: Design matches the main application
    - Brand colors from logo (dark blue: #0A1636, gold: #D4A43A)
-   - Same logo SVG as the UI
+   - Same logo SVG as the UI (`apps/docs/src/assets/logo.svg`)
    - Dark mode as default theme
 2. **Fonts**: System UI fonts matching the application
-
-### Content Migration
-
-The original `docs/` folder at the repository root contains source documentation that is published through the docs site. Content from `docs/` should be kept in sync with `apps/docs/src/content/docs/`.
-
-| Source Path | Published Path |
-|-------------|----------------|
-| `docs/sre/` | `apps/docs/src/content/docs/sre/` |
-| `docs/features/` | `apps/docs/src/content/docs/features/` |
 
 ### Build & Deployment
 
 1. **Build Command**: `npm run build`
 2. **Output Directory**: `dist/`
-3. **Deployment Platform**: Cloudflare Pages
-4. **CI Integration**: GitHub Actions workflow checks build on every PR
+3. **Root Directory**: `apps/docs`
+4. **Deployment Platform**: Cloudflare Pages (GitHub integration)
+5. **CI Integration**: GitHub Actions workflow checks build on every PR
+
+Cloudflare Pages dashboard configuration:
+- Connect GitHub repository
+- Set root directory: `apps/docs`
+- Set build command: `npm run build`
+- Set output directory: `dist`
+- Node.js version: 20
 
 ### Development
 

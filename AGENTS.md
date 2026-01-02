@@ -52,16 +52,17 @@ When adding new features, create corresponding test cases to document expected b
 Documentation is published at https://docs.everruns.com/ via Cloudflare Pages.
 
 **Source locations:**
-- `docs/` - Source markdown files (legacy location, kept for reference)
-- `apps/docs/` - Astro Starlight documentation site
+- `docs/` - Source markdown files (edit docs here)
+- `apps/docs/` - Astro Starlight documentation site (reads from `docs/` via symlink)
 
 **Content structure:**
-- `apps/docs/src/content/docs/getting-started/` - Quickstart guides
-- `apps/docs/src/content/docs/features/` - Feature documentation
-- `apps/docs/src/content/docs/sre/` - SRE documentation
+- `docs/getting-started/` - Quickstart guides
+- `docs/features/` - Feature documentation
+- `docs/sre/` - SRE documentation
   - `environment-variables.md` - Configuration environment variables
   - `admin-container.md` - Admin container usage guide
   - `runbooks/` - Operational runbooks for common tasks
+- `docs/api/` - API reference documentation
 
 **Development:**
 ```bash
@@ -72,7 +73,7 @@ npm run check    # Type checking
 npm run build    # Production build
 ```
 
-When making changes that affect user-facing behavior or operations, update the relevant docs in `apps/docs/src/content/docs/`. Ensure the docs build passes before creating a PR.
+When making changes that affect user-facing behavior or operations, update the relevant docs in `docs/`. Ensure the docs build passes before creating a PR.
 
 ### Local dev expectations
 
@@ -207,7 +208,7 @@ Before creating a pull request, ensure:
 7. **Smoke tests**: Run smoke tests to verify the system works end-to-end
 8. **Examples**: If adding or modifying examples, validate they run successfully against a running API
 9. **Update specs**: If your changes affect system behavior, update the relevant specs in `specs/`
-10. **Update docs**: If your changes affect usage or configuration, update public docs in `apps/docs/src/content/docs/`
+10. **Update docs**: If your changes affect usage or configuration, update public docs in `docs/`
 
 ```bash
 # Quick pre-PR check (Rust)
@@ -385,7 +386,7 @@ everruns/
 │   ├── everruns-storage/ # Database layer
 │   ├── everruns-openai/  # OpenAI provider
 │   └── everruns-anthropic/  # Anthropic provider
-├── docs/                 # Source documentation (legacy)
+├── docs/                 # Documentation content (published via apps/docs)
 ├── harness/              # Docker Compose
 ├── specs/                # Specifications
 └── scripts/              # Dev scripts

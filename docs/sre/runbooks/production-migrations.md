@@ -1,4 +1,7 @@
-# Production Database Migrations Runbook
+---
+title: Production Database Migrations
+description: How to run database migrations in production environments
+---
 
 This runbook describes how to run database migrations in production environments.
 

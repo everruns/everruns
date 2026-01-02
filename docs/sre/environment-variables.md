@@ -1,4 +1,7 @@
-# Environment Variables
+---
+title: Environment Variables
+description: Configuration environment variables for Everruns
+---
 
 ## API_PREFIX
 

@@ -1,4 +1,7 @@
-# Capabilities
+---
+title: Capabilities
+description: Modular functionality units that extend Agent behavior
+---
 
 Capabilities are modular functionality units that extend Agent behavior. A Capability can contribute additions to the system prompt, provide tools, and modify execution behavior. Users can enable multiple capabilities on an Agent to compose functionality.
 
