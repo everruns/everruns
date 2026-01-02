@@ -128,24 +128,36 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
 
 #### Layer separation
 
-1. **Storage Layer** (`everruns-storage`):
+1. **Schemas Layer** (`schemas/` → `everruns-schemas`):
+   - Source of truth for all shared data structures
+   - Domain types: `Agent`, `Session`, `Message`, `Event`, `ContentPart`
+   - Tool types: `ToolCall`, `ToolResult`, `ToolDefinition`
+   - LLM types: `LlmProviderType`, `ModelWithProvider`
+
+2. **Storage Layer** (`everruns-storage/`):
    - Database models use `Row` suffix: `AgentRow`, `SessionRow`, `EventRow`
    - Create input structs: `CreateAgentRow`, `CreateEventRow`
    - Update structs: `UpdateAgent`, `UpdateSession`
    - Repositories handle raw database operations only
    - Note: Messages are stored as events (see `specs/models.md`)
 
-2. **Core Layer** (`everruns-core`):
+3. **Core Layer** (`everruns-core/`):
    - Shared domain types: `ContentPart`, `Controls`, `Message`, `ToolCall`
    - Trait definitions: `MessageStore`, `EventEmitter`, `LlmProvider`
    - Types are DB-agnostic and serializable
    - OpenAPI support via feature flag: `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
-3. **API Layer** (`everruns-api`):
+4. **Control-Plane Layer** (`control-plane/` → `everruns-control-plane`):
+   - HTTP API (axum) on port 9000, gRPC server (tonic) on port 9001
    - API contracts collocated with routes (e.g., `messages.rs` has routes + DTOs)
    - Services accept API DTOs, transform to storage types, store in database
    - Input types: `InputMessage`, `InputContentPart` (for user-facing input)
    - Request wrappers: `CreateMessageRequest`, `CreateAgentRequest`
+
+5. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
+   - gRPC protocol definitions (proto files) for worker ↔ control-plane
+   - Generated Rust types via tonic-build
+   - Batched operations: `GetTurnContext`, `EmitEventStream`
 
 #### Naming conventions
 
@@ -381,12 +393,15 @@ everruns/
 │   ├── ui/               # Next.js Management UI
 │   └── docs/             # Astro Starlight Documentation Site
 ├── crates/
-│   ├── everruns-api/     # HTTP API (axum), API DTOs
-│   ├── everruns-worker/  # Temporal worker
+│   ├── control-plane/    # HTTP API + gRPC server (everruns-control-plane)
+│   ├── worker/           # Temporal worker with gRPC client (everruns-worker)
+│   ├── schemas/          # Shared type definitions (everruns-schemas)
+│   ├── runtime/          # Agent execution engine (everruns-runtime)
+│   ├── internal-protocol/ # gRPC protocol definitions (everruns-internal-protocol)
 │   ├── everruns-core/    # Core abstractions, domain entities, tools
 │   ├── everruns-storage/ # Database layer
-│   ├── everruns-openai/  # OpenAI provider
-│   └── everruns-anthropic/  # Anthropic provider
+│   ├── openai/           # OpenAI provider (everruns-openai)
+│   └── anthropic/        # Anthropic provider (everruns-anthropic)
 ├── docs/                 # Documentation content (published via apps/docs)
 ├── harness/              # Docker Compose
 ├── specs/                # Specifications

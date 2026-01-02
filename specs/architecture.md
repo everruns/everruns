@@ -9,13 +9,16 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 ### Core Architecture
 
 1. **Monorepo Structure**: Single repository with Cargo workspace containing multiple crates
-2. **Crate Separation**:
-   - `everruns-api` - HTTP API server (axum), SSE streaming, health endpoints, API-only DTOs
-   - `everruns-worker` - Temporal worker, workflows, activities, database adapters
-   - `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities, domain entities)
-   - `everruns-openai` - OpenAI LLM provider implementation
-   - `everruns-anthropic` - Anthropic LLM provider implementation
-   - `everruns-storage` - PostgreSQL (sqlx), migrations, repositories
+2. **Crate Separation** (folder → package name):
+   - `control-plane/` → `everruns-control-plane` - HTTP API (axum) + gRPC server (tonic), SSE streaming
+   - `worker/` → `everruns-worker` - Temporal worker, workflows, activities, gRPC client adapters
+   - `schemas/` → `everruns-schemas` - Shared type definitions (source of truth for all data structures)
+   - `runtime/` → `everruns-runtime` - Runtime traits and abstractions
+   - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ control-plane
+   - `everruns-core/` → `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities)
+   - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
+   - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
+   - `everruns-storage/` → `everruns-storage` - PostgreSQL (sqlx), migrations, repositories
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
    - See [specs/documentation.md](documentation.md) for detailed specification
@@ -35,6 +38,31 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
 4. **Event Streaming**: SSE for real-time event delivery via database-backed events
 
 See [specs/temporal-integration.md](temporal-integration.md) for detailed Temporal architecture.
+
+### Worker ↔ Control-Plane Communication
+
+Workers communicate with the control-plane via gRPC instead of direct database access:
+
+1. **gRPC Service** (port 9001):
+   - `WorkerService` - Internal service for worker operations
+   - Batched operations: `GetTurnContext` (agent + session + messages + model in one call)
+   - Streaming: `EmitEventStream` for efficient event emission
+   - Individual operations for messages, files, providers
+
+2. **gRPC Client Adapters** (in worker crate):
+   - `GrpcMessageStore` - Implements `MessageStore` trait via gRPC
+   - `GrpcAgentStore` - Implements `AgentStore` trait via gRPC
+   - `GrpcSessionStore` - Implements `SessionStore` trait via gRPC
+   - `GrpcLlmProviderStore` - Implements `LlmProviderStore` trait via gRPC
+   - `GrpcSessionFileStore` - Implements `SessionFileStore` trait via gRPC
+   - `GrpcEventEmitter` - Implements `EventEmitter` trait via gRPC
+
+3. **Benefits**:
+   - Workers don't need database credentials or encryption keys
+   - Clear boundary between control-plane (owns state) and workers (stateless executors)
+   - Batched operations reduce round trips (4 DB calls → 1 gRPC call)
+
+See [specs/architecture-v2-proposal.md](architecture-v2-proposal.md) for detailed design.
 
 ### Core Abstractions (`everruns-core`)
 
@@ -103,14 +131,21 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 #### Layer Separation
 
-1. **Storage Layer** (`everruns-storage`):
+1. **Schemas Layer** (`schemas/` → `everruns-schemas`):
+   - Source of truth for all shared data structures
+   - Domain types: `Agent`, `Session`, `Message`, `Event`, `ContentPart`
+   - Tool types: `ToolCall`, `ToolResult`, `ToolDefinition`
+   - LLM types: `LlmProviderType`, `ModelWithProvider`
+   - Optional OpenAPI support via feature flag
+
+2. **Storage Layer** (`everruns-storage/`):
    - Database models use `Row` suffix (e.g., `AgentRow`, `SessionRow`, `EventRow`)
    - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateEventRow`)
    - Update structs use `Update` prefix (e.g., `UpdateAgent`)
    - Repositories handle raw database operations only
    - Note: Messages are stored as events (see `specs/models.md`)
 
-2. **Core Layer** (`everruns-core`):
+3. **Core Layer** (`everruns-core/`):
    - Contains shared domain types used across layers (e.g., `ContentPart`, `Controls`, `Message`)
    - Contains domain entity types (e.g., `Agent`, `Session`, `LlmProvider`, `Event`, `Capability`)
    - Provides trait definitions (`MessageStore`, `EventEmitter`, `LlmProvider` trait, `ToolExecutor`)
@@ -118,20 +153,25 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
    - Domain types are DB-agnostic and serializable
    - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
-3. **API Layer** (`everruns-api`):
+4. **Control-Plane Layer** (`control-plane/` → `everruns-control-plane`):
+   - HTTP API (axum) on port 9000 - public REST API
+   - gRPC server (tonic) on port 9001 - internal WorkerService
    - API contracts (DTOs) are collocated with their routes in the same module
-   - API types can reference and re-export core types
    - Controllers handle HTTP concerns only, delegating business logic to services
-   - Controllers should NOT import or know about storage Row types
    - Input types for user-facing APIs use `Input` prefix (e.g., `InputMessage`, `InputContentPart`)
    - Request/response wrappers use `Request`/`Response` suffix
 
-4. **Service Layer** (`everruns-api/services`):
+5. **Service Layer** (`control-plane/services/`):
    - Services accept API contracts (request types) and return domain types
    - Services handle conversion from API contracts to storage Row types
    - Services own business logic, validation, and orchestration
    - Services call repositories (via Database) for persistence
    - Each controller module has a corresponding service (e.g., `agents.rs` → `AgentService`)
+
+6. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
+   - gRPC protocol definitions (proto files)
+   - Generated Rust types via tonic-build
+   - Conversion functions between proto types and schema types
 
 #### Type Flow Example
 
