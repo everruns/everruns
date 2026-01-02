@@ -7,19 +7,19 @@
  */
 
 :root {
-  /* Accent colors - subtle, used sparingly */
+  /* Accent colors - for selected states */
   --sl-color-accent-low: #f5f5f5;
-  --sl-color-accent: #404040;
+  --sl-color-accent: #0a0a0a;
   --sl-color-accent-high: #0a0a0a;
 
   /* Grayscale palette matching app */
   --sl-color-white: #ffffff;
-  --sl-color-gray-1: #f5f5f5; /* Smoke */
+  --sl-color-gray-1: #f5f5f5;
   --sl-color-gray-2: #e5e5e5;
-  --sl-color-gray-3: #a0a0a0; /* Silver */
-  --sl-color-gray-4: #404040; /* Slate */
-  --sl-color-gray-5: #1a1a1a; /* Charcoal */
-  --sl-color-gray-6: #0a0a0a; /* Obsidian */
+  --sl-color-gray-3: #a0a0a0;
+  --sl-color-gray-4: #404040;
+  --sl-color-gray-5: #1a1a1a;
+  --sl-color-gray-6: #0a0a0a;
   --sl-color-black: #0a0a0a;
 
   /* Font family - system fonts like the app */
@@ -29,7 +29,7 @@
     monospace;
 }
 
-/* Light theme - clean white like the app */
+/* Light theme */
 :root,
 :root[data-theme="light"] {
   --sl-color-bg: #ffffff;
@@ -40,22 +40,27 @@
   --sl-color-hairline: #e5e5e5;
   --sl-color-text: #0a0a0a;
   --sl-color-text-accent: #0a0a0a;
+
+  /* Fix selected page contrast */
+  --sl-color-accent-low: #f0f0f0;
+  --sl-color-accent: #0a0a0a;
+  --sl-color-accent-high: #0a0a0a;
 }
 
-/* Dark theme - clean dark like app dark mode */
+/* Dark theme */
 :root[data-theme="dark"] {
   --sl-color-bg: #0a0a0a;
   --sl-color-bg-nav: #0a0a0a;
-  --sl-color-bg-sidebar: #141414;
+  --sl-color-bg-sidebar: #111111;
   --sl-color-bg-inline-code: #1a1a1a;
   --sl-color-hairline-light: #2a2a2a;
-  --sl-color-hairline: #2a2a2a;
+  --sl-color-hairline: #333333;
   --sl-color-text: #fafafa;
   --sl-color-text-accent: #ffffff;
 
-  /* Dark mode accents */
+  /* Fix selected page and accents for dark */
   --sl-color-accent-low: #1a1a1a;
-  --sl-color-accent: #a0a0a0;
+  --sl-color-accent: #ffffff;
   --sl-color-accent-high: #ffffff;
 }
 
@@ -65,41 +70,76 @@
   width: auto;
 }
 
-/* Links - black, underline on hover */
-a:not([class]) {
+/* Sidebar links - better contrast */
+:root[data-theme="light"] .sidebar-content a {
+  color: #404040;
+}
+
+:root[data-theme="light"] .sidebar-content a:hover {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .sidebar-content a[aria-current="page"] {
+  color: #0a0a0a;
+  font-weight: 600;
+  background: #f0f0f0;
+}
+
+:root[data-theme="dark"] .sidebar-content a {
+  color: #a0a0a0;
+}
+
+:root[data-theme="dark"] .sidebar-content a:hover {
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .sidebar-content a[aria-current="page"] {
+  color: #ffffff;
+  font-weight: 600;
+  background: #1a1a1a;
+}
+
+/* Content links - underlined */
+.sl-markdown-content a {
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-a:not([class]):hover {
-  color: inherit;
+.sl-markdown-content a:hover {
   text-decoration-thickness: 2px;
 }
 
-/* Code block styling - subtle borders */
+/* Code block styling */
 .expressive-code pre {
   border: 1px solid var(--sl-color-hairline);
 }
 
-/* Table styling */
-table {
+/* Table styling - cleaner look */
+.sl-markdown-content table {
   border-collapse: collapse;
   width: 100%;
+  margin: 1.5rem 0;
+  font-size: 0.9rem;
 }
 
-th,
-td {
+.sl-markdown-content th,
+.sl-markdown-content td {
   border: 1px solid var(--sl-color-hairline);
-  padding: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  text-align: left;
 }
 
-th {
+.sl-markdown-content th {
   background-color: var(--sl-color-bg-sidebar);
   font-weight: 600;
 }
 
-/* Typography - clean weights */
+.sl-markdown-content tr:nth-child(even) {
+  background-color: var(--sl-color-bg-sidebar);
+}
+
+/* Typography */
 h1,
 h2,
 h3 {
@@ -112,17 +152,6 @@ h6 {
   font-weight: 500;
 }
 
-/* Body text */
 .sl-markdown-content {
   line-height: 1.6;
-}
-
-/* Sidebar - cleaner look */
-nav.sidebar a {
-  color: var(--sl-color-gray-4);
-}
-
-nav.sidebar a:hover,
-nav.sidebar a[aria-current="page"] {
-  color: var(--sl-color-text);
 }
