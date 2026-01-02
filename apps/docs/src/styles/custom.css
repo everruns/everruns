@@ -1,56 +1,62 @@
 /* Everruns Docs Custom Theme
  *
- * Brand colors (see specs/brand.md):
- * - Primary: Navy #0A1636, Gold #D4A43A
- * - Grayscale: Obsidian #0A0A0A, Charcoal #1A1A1A, Slate #404040,
- *              Silver #A0A0A0, Smoke #F5F5F5, White #FFFFFF
+ * Design: Black and white, minimal, matching the main app
+ * Brand colors (Navy/Gold) used sparingly - primarily in logo only
  *
- * Design principles: Simple, clean, grayscale dominant, generous whitespace
+ * See specs/brand.md for full guidelines
  */
 
-/* Geist font (matching landing page) */
-@import url("https://fonts.cdnfonts.com/css/geist");
-
 :root {
-  /* Accent colors - Gold from brand */
-  --sl-color-accent-low: #2a2006;
-  --sl-color-accent: #d4a43a;
-  --sl-color-accent-high: #f5d78e;
+  /* Accent colors - subtle, used sparingly */
+  --sl-color-accent-low: #f5f5f5;
+  --sl-color-accent: #404040;
+  --sl-color-accent-high: #0a0a0a;
 
-  /* Grayscale from brand spec */
+  /* Grayscale palette matching app */
   --sl-color-white: #ffffff;
   --sl-color-gray-1: #f5f5f5; /* Smoke */
-  --sl-color-gray-2: #a0a0a0; /* Silver */
-  --sl-color-gray-3: #606060;
+  --sl-color-gray-2: #e5e5e5;
+  --sl-color-gray-3: #a0a0a0; /* Silver */
   --sl-color-gray-4: #404040; /* Slate */
   --sl-color-gray-5: #1a1a1a; /* Charcoal */
   --sl-color-gray-6: #0a0a0a; /* Obsidian */
-  --sl-color-black: #0a0a0a; /* Obsidian */
+  --sl-color-black: #0a0a0a;
 
-  /* Font family - Geist Sans/Mono */
-  --sl-font: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --sl-font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Monaco,
+  /* Font family - system fonts like the app */
+  --sl-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --sl-font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono",
     monospace;
 }
 
-/* Dark theme - Navy-based */
-:root[data-theme="dark"] {
-  --sl-color-bg: #0a1636; /* Navy */
-  --sl-color-bg-nav: #080f1f;
-  --sl-color-bg-sidebar: #0b1233;
-  --sl-color-bg-inline-code: #1a2746;
-  --sl-color-hairline-light: #1e3a5f;
-  --sl-color-hairline: #2a4a7a;
+/* Light theme - clean white like the app */
+:root,
+:root[data-theme="light"] {
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #fafafa;
+  --sl-color-bg-inline-code: #f5f5f5;
+  --sl-color-hairline-light: #e5e5e5;
+  --sl-color-hairline: #e5e5e5;
+  --sl-color-text: #0a0a0a;
+  --sl-color-text-accent: #0a0a0a;
 }
 
-/* Light theme - Clean grayscale */
-:root[data-theme="light"] {
-  --sl-color-bg: #ffffff; /* White */
-  --sl-color-bg-nav: #f5f5f5; /* Smoke */
-  --sl-color-bg-sidebar: #f5f5f5; /* Smoke */
-  --sl-color-accent-low: #fef6e3;
-  --sl-color-accent: #b8892e;
-  --sl-color-accent-high: #6b4f1a;
+/* Dark theme - clean dark like app dark mode */
+:root[data-theme="dark"] {
+  --sl-color-bg: #0a0a0a;
+  --sl-color-bg-nav: #0a0a0a;
+  --sl-color-bg-sidebar: #141414;
+  --sl-color-bg-inline-code: #1a1a1a;
+  --sl-color-hairline-light: #2a2a2a;
+  --sl-color-hairline: #2a2a2a;
+  --sl-color-text: #fafafa;
+  --sl-color-text-accent: #ffffff;
+
+  /* Dark mode accents */
+  --sl-color-accent-low: #1a1a1a;
+  --sl-color-accent: #a0a0a0;
+  --sl-color-accent-high: #ffffff;
 }
 
 /* Logo sizing */
@@ -59,26 +65,21 @@
   width: auto;
 }
 
-/* Link styling - use Navy in light mode, Gold in dark mode */
-:root[data-theme="light"] a:not([class]) {
-  color: #0a1636; /* Navy */
+/* Links - black, underline on hover */
+a:not([class]) {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-:root[data-theme="light"] a:not([class]):hover {
-  color: #d4a43a; /* Gold */
+a:not([class]):hover {
+  color: inherit;
+  text-decoration-thickness: 2px;
 }
 
-:root[data-theme="dark"] a:not([class]) {
-  color: var(--sl-color-accent);
-}
-
-:root[data-theme="dark"] a:not([class]):hover {
-  color: var(--sl-color-accent-high);
-}
-
-/* Code block styling */
+/* Code block styling - subtle borders */
 .expressive-code pre {
-  border: 1px solid var(--sl-color-hairline-light);
+  border: 1px solid var(--sl-color-hairline);
 }
 
 /* Table styling */
@@ -95,9 +96,10 @@ td {
 
 th {
   background-color: var(--sl-color-bg-sidebar);
+  font-weight: 600;
 }
 
-/* Typography refinements */
+/* Typography - clean weights */
 h1,
 h2,
 h3 {
@@ -110,7 +112,17 @@ h6 {
   font-weight: 500;
 }
 
-/* Body text - comfortable line height */
+/* Body text */
 .sl-markdown-content {
   line-height: 1.6;
+}
+
+/* Sidebar - cleaner look */
+nav.sidebar a {
+  color: var(--sl-color-gray-4);
+}
+
+nav.sidebar a:hover,
+nav.sidebar a[aria-current="page"] {
+  color: var(--sl-color-text);
 }
