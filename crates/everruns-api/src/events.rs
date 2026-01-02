@@ -111,8 +111,8 @@ pub async fn stream_sse(
                         .map(|event| {
                             let event_type = event.event_type.clone();
                             let sequence = event.sequence.unwrap_or(0);
-                            let json = serde_json::to_string(&event)
-                                .unwrap_or_else(|_| "{}".to_string());
+                            let json =
+                                serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
 
                             Ok(SseEvent::default()
                                 .event(&event_type)

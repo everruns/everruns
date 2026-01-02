@@ -104,7 +104,7 @@ export function useSSEEvents({
             ...prev,
             {
               id: message?.id || sseEvent.id,
-              role: "assistant",
+              role: "agent",
               content: extractTextContent(message?.content),
               isComplete: true,
             },

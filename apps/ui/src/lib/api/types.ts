@@ -76,7 +76,22 @@ export interface UpdateSessionRequest {
 // Message types (M2) - PRIMARY data
 // ============================================
 
-export type MessageRole = "user" | "assistant" | "tool_result" | "system";
+/**
+ * Message role (API layer)
+ *
+ * Simplified to only user and agent messages.
+ * Tool results are conveyed via `tool.call_completed` events.
+ * System messages are internal and not exposed via API.
+ */
+export type MessageRole = "user" | "agent";
+
+/**
+ * Display message role (UI layer)
+ *
+ * Extended role type for rendering messages in the UI.
+ * Includes "tool_result" for displaying tool execution results from events.
+ */
+export type DisplayMessageRole = MessageRole | "tool_result";
 
 // ContentPart discriminated union - message content parts
 export type ContentPart =
@@ -113,12 +128,17 @@ export interface Controls {
   temperature?: number;
 }
 
-// Message response from API
+/**
+ * Message for UI display
+ *
+ * Uses DisplayMessageRole since messages can be derived from events
+ * including tool.call_completed events which become "tool_result" messages.
+ */
 export interface Message {
   id: string;
   session_id: string;
   sequence: number;
-  role: MessageRole;
+  role: DisplayMessageRole;
   content: ContentPart[];
   metadata?: Record<string, unknown>;
   tool_call_id: string | null;

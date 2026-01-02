@@ -90,7 +90,7 @@ const sampleToolCallMessages = {
       id: "msg-tc-1",
       session_id: "session-1",
       sequence: 5,
-      role: "assistant" as const,
+      role: "agent" as const,
       content: [{
         type: "tool_call" as const,
         id: "tc-1",
@@ -120,7 +120,7 @@ const sampleToolCallMessages = {
       id: "msg-tc-2",
       session_id: "session-1",
       sequence: 7,
-      role: "assistant" as const,
+      role: "agent" as const,
       content: [{
         type: "tool_call" as const,
         id: "tc-2",
@@ -150,7 +150,7 @@ const sampleToolCallMessages = {
       id: "msg-tc-3",
       session_id: "session-1",
       sequence: 9,
-      role: "assistant" as const,
+      role: "agent" as const,
       content: [{
         type: "tool_call" as const,
         id: "tc-3",
@@ -168,7 +168,7 @@ const sampleToolCallMessages = {
       id: "msg-tc-4",
       session_id: "session-1",
       sequence: 10,
-      role: "assistant" as const,
+      role: "agent" as const,
       content: [{
         type: "tool_call" as const,
         id: "tc-4",
@@ -198,7 +198,7 @@ const sampleToolCallMessages = {
       id: "msg-tc-5",
       session_id: "session-1",
       sequence: 12,
-      role: "assistant" as const,
+      role: "agent" as const,
       content: [{
         type: "tool_call" as const,
         id: "tc-5",

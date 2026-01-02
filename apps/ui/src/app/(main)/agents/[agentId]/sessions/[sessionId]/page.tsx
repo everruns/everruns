@@ -160,7 +160,7 @@ export default function SessionDetailPage({
 
   // Get tool calls from assistant message content
   const getToolCallsFromMessage = (message: Message): Array<{ id: string; name: string; arguments: Record<string, unknown> }> => {
-    if (message.role !== "assistant" || !Array.isArray(message.content)) {
+    if (message.role !== "agent" || !Array.isArray(message.content)) {
       return [];
     }
     return message.content
@@ -328,7 +328,7 @@ export default function SessionDetailPage({
                         id: `${message.id}-tc-${tc.id}`,
                         session_id: message.session_id,
                         sequence: message.sequence,
-                        role: "assistant",
+                        role: "agent",
                         content: [{ type: "tool_call", id: tc.id, name: tc.name, arguments: tc.arguments }],
                         tool_call_id: null,
                         created_at: message.created_at,

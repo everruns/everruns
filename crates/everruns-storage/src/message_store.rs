@@ -159,7 +159,83 @@ impl MessageStore for DbMessageStore {
 }
 
 /// Convert event data to a Message
+///
+/// Handles both formats:
+/// - New format: { "message": { "id", "role", "content", ... } }
+/// - Legacy format: { "message_id", "role", "content", ... }
 fn event_to_message(
+    data: &serde_json::Value,
+    created_at: DateTime<Utc>,
+) -> std::result::Result<Message, String> {
+    // Try new format first (message wrapper)
+    if let Some(message_obj) = data.get("message") {
+        return parse_message_object(message_obj, created_at);
+    }
+
+    // Fall back to legacy format (flat structure)
+    parse_legacy_format(data, created_at)
+}
+
+/// Parse message from new format with message wrapper
+fn parse_message_object(
+    message: &serde_json::Value,
+    created_at: DateTime<Utc>,
+) -> std::result::Result<Message, String> {
+    // Extract id (can be string or UUID directly)
+    let id = message
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("missing message.id")?
+        .parse::<Uuid>()
+        .map_err(|e| format!("invalid message.id: {}", e))?;
+
+    // Extract role
+    let role_str = message
+        .get("role")
+        .and_then(|v| v.as_str())
+        .ok_or("missing message.role")?;
+    let role = MessageRole::from(role_str);
+
+    // Extract content
+    let content: Vec<ContentPart> = message
+        .get("content")
+        .cloned()
+        .map(|v| serde_json::from_value(v).unwrap_or_default())
+        .unwrap_or_default();
+
+    // Extract optional controls
+    let controls: Option<Controls> = message
+        .get("controls")
+        .filter(|v| !v.is_null())
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok());
+
+    // Extract optional metadata
+    let metadata: Option<HashMap<String, serde_json::Value>> = message
+        .get("metadata")
+        .filter(|v| !v.is_null())
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok());
+
+    // Use created_at from message if present, otherwise from event
+    let msg_created_at = message
+        .get("created_at")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<DateTime<Utc>>().ok())
+        .unwrap_or(created_at);
+
+    Ok(Message {
+        id,
+        role,
+        content,
+        controls,
+        metadata,
+        created_at: msg_created_at,
+    })
+}
+
+/// Parse message from legacy format (flat structure)
+fn parse_legacy_format(
     data: &serde_json::Value,
     created_at: DateTime<Utc>,
 ) -> std::result::Result<Message, String> {
@@ -481,5 +557,32 @@ mod tests {
             Some(Uuid::parse_str(model_uuid).unwrap())
         );
         assert!(message.metadata.is_some());
+    }
+
+    #[test]
+    fn test_event_to_message_new_format() {
+        // New format: message wrapped in "message" key
+        let data = json!({
+            "message": {
+                "id": "01234567-89ab-cdef-0123-456789abcdef",
+                "role": "user",
+                "content": [{"type": "text", "text": "Hello from new format!"}],
+                "controls": null,
+                "metadata": null,
+                "created_at": "2024-01-01T12:00:00Z"
+            },
+            "tags": []
+        });
+
+        let result = event_to_message(&data, Utc::now());
+        assert!(result.is_ok());
+
+        let message = result.unwrap();
+        assert_eq!(message.role, MessageRole::User);
+        assert_eq!(message.content.len(), 1);
+        assert_eq!(
+            message.id,
+            Uuid::parse_str("01234567-89ab-cdef-0123-456789abcdef").unwrap()
+        );
     }
 }

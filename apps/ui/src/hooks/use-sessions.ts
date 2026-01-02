@@ -189,7 +189,7 @@ function eventsToMessages(events: Event[]): Message[] {
     // Map event type to message role
     const roleMap: Record<string, Message["role"]> = {
       "message.user": "user",
-      "message.agent": "assistant",
+      "message.agent": "agent",
     };
 
     return {
