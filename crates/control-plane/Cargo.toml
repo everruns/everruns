@@ -46,8 +46,8 @@ aes-gcm.workspace = true
 argon2.workspace = true
 
 everruns-core = { path = "../everruns-core", features = ["openapi"] }
-everruns-storage = { path = "../everruns-storage" }  # For worker interface (to be removed when worker uses gRPC)
-everruns-worker = { path = "../worker" }
+everruns-storage = { path = "../everruns-storage" }  # Database layer - repositories, encryption, password hashing
+everruns-worker = { path = "../worker" }  # For Temporal runner (AgentRunner trait)
 everruns-internal-protocol = { path = "../internal-protocol" }
 
 # gRPC
