@@ -7,6 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 /// Tool policy determines how tool calls are handled
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -46,12 +49,14 @@ pub struct BuiltinTool {
 
 /// Tool call from LLM response
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolCall {
     /// Unique ID for this tool call
     pub id: String,
     /// Tool name to execute
     pub name: String,
     /// Arguments as JSON
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub arguments: serde_json::Value,
 }
 

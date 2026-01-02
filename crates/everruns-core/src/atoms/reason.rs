@@ -1,11 +1,13 @@
 //! ReasonAtom - Atom for LLM reasoning (model call)
 //!
 //! This atom handles:
-//! 1. Context preparation (loading message history, adding system message)
-//! 2. Fixing invalid context (e.g., missing tool_results for dangling tool calls)
-//! 3. LLM call with streaming support
-//! 4. Storing the assistant response
-//! 5. Returning the result with tool calls (if any)
+//! 1. Emitting reason.started event
+//! 2. Context preparation (loading message history, adding system message)
+//! 3. Fixing invalid context (e.g., missing tool_results for dangling tool calls)
+//! 4. LLM call with streaming support
+//! 5. Storing the assistant response
+//! 6. Emitting reason.completed event
+//! 7. Returning the result with tool calls (if any)
 //!
 //! NOTES from Python spec:
 //! - Context preparation includes loading message history, adding system message, editing context if needed
@@ -17,11 +19,15 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use uuid::Uuid;
 
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
+use crate::events::{
+    Event, EventContext, LlmGenerationData, ReasonCompletedData, ReasonStartedData,
+};
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmStreamEvent, ProviderConfig, ProviderType,
@@ -29,7 +35,9 @@ use crate::llm_driver_registry::{
 use crate::message::{Message, MessageRole};
 use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::{AgentStore, LlmProviderStore, MessageStore, ModelWithProvider, SessionStore};
+use crate::traits::{
+    AgentStore, EventEmitter, LlmProviderStore, MessageStore, ModelWithProvider, SessionStore,
+};
 
 // ============================================================================
 // Helper Functions
@@ -117,20 +125,23 @@ fn default_max_iterations() -> usize {
 /// Atom that calls the LLM model for reasoning
 ///
 /// This atom:
-/// 1. Retrieves agent and session configuration from stores
-/// 2. Resolves model using priority: controls.model_id > session.model_id > agent.default_model_id
-/// 3. Builds configuration with capabilities applied
-/// 4. Loads messages from the store
-/// 5. Patches dangling tool calls
-/// 6. Calls the LLM with the messages
-/// 7. Stores the assistant response
-/// 8. Returns the result with tool calls (if any)
-pub struct ReasonAtom<A, S, M, P>
+/// 1. Emits reason.started event
+/// 2. Retrieves agent and session configuration from stores
+/// 3. Resolves model using priority: controls.model_id > session.model_id > agent.default_model_id
+/// 4. Builds configuration with capabilities applied
+/// 5. Loads messages from the store
+/// 6. Patches dangling tool calls
+/// 7. Calls the LLM with the messages
+/// 8. Stores the assistant response
+/// 9. Emits reason.completed event
+/// 10. Returns the result with tool calls (if any)
+pub struct ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore,
     S: SessionStore,
     M: MessageStore,
     P: LlmProviderStore,
+    E: EventEmitter,
 {
     agent_store: A,
     session_store: S,
@@ -138,14 +149,16 @@ where
     provider_store: P,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
+    event_emitter: E,
 }
 
-impl<A, S, M, P> ReasonAtom<A, S, M, P>
+impl<A, S, M, P, E> ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore,
     S: SessionStore,
     M: MessageStore,
     P: LlmProviderStore,
+    E: EventEmitter,
 {
     /// Create a new ReasonAtom
     pub fn new(
@@ -155,6 +168,7 @@ where
         provider_store: P,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
+        event_emitter: E,
     ) -> Self {
         Self {
             agent_store,
@@ -163,17 +177,19 @@ where
             provider_store,
             capability_registry,
             driver_registry,
+            event_emitter,
         }
     }
 }
 
 #[async_trait]
-impl<A, S, M, P> Atom for ReasonAtom<A, S, M, P>
+impl<A, S, M, P, E> Atom for ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore + Send + Sync,
     S: SessionStore + Send + Sync,
     M: MessageStore + Send + Sync,
     P: LlmProviderStore + Send + Sync,
+    E: EventEmitter + Send + Sync,
 {
     type Input = ReasonInput;
     type Output = ReasonResult;
@@ -193,12 +209,57 @@ where
             "ReasonAtom: starting LLM call"
         );
 
+        // Create event context from atom context
+        let event_context = EventContext::from_atom_context(&context);
+
+        // Emit reason.started event (note: we'll emit a more detailed event after model resolution)
+        if let Err(e) = self
+            .event_emitter
+            .emit(Event::new(
+                context.session_id,
+                event_context.clone(),
+                ReasonStartedData {
+                    agent_id,
+                    metadata: None, // Will be populated after model resolution
+                },
+            ))
+            .await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                error = %e,
+                "ReasonAtom: failed to emit reason.started event"
+            );
+        }
+
         // Execute the LLM call and handle errors gracefully
-        match self
+        let result = match self
             .execute_llm_call(context.session_id, agent_id, &context)
             .await
         {
-            Ok(result) => Ok(result),
+            Ok(result) => {
+                // Emit reason.completed event for success
+                if let Err(e) = self
+                    .event_emitter
+                    .emit(Event::new(
+                        context.session_id,
+                        event_context.clone(),
+                        ReasonCompletedData::success(
+                            &result.text,
+                            result.has_tool_calls,
+                            result.tool_calls.len(),
+                        ),
+                    ))
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        error = %e,
+                        "ReasonAtom: failed to emit reason.completed event"
+                    );
+                }
+                result
+            }
             Err(e) => {
                 // LLM call failure is a "normal" result per the spec
                 // Return a result indicating failure with the error message
@@ -209,7 +270,26 @@ where
                     "ReasonAtom: LLM call failed"
                 );
 
-                Ok(ReasonResult {
+                let error_msg = e.to_string();
+
+                // Emit reason.completed event for failure
+                if let Err(emit_err) = self
+                    .event_emitter
+                    .emit(Event::new(
+                        context.session_id,
+                        event_context,
+                        ReasonCompletedData::failure(error_msg.clone()),
+                    ))
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        error = %emit_err,
+                        "ReasonAtom: failed to emit reason.completed event"
+                    );
+                }
+
+                ReasonResult {
                     success: false,
                     text: format!(
                         "I encountered an error while processing your request: {}",
@@ -219,19 +299,22 @@ where
                     has_tool_calls: false,
                     tool_definitions: vec![],
                     max_iterations: default_max_iterations(),
-                    error: Some(e.to_string()),
-                })
+                    error: Some(error_msg),
+                }
             }
-        }
+        };
+
+        Ok(result)
     }
 }
 
-impl<A, S, M, P> ReasonAtom<A, S, M, P>
+impl<A, S, M, P, E> ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore + Send + Sync,
     S: SessionStore + Send + Sync,
     M: MessageStore + Send + Sync,
     P: LlmProviderStore + Send + Sync,
+    E: EventEmitter + Send + Sync,
 {
     /// Execute the actual LLM call
     async fn execute_llm_call(
@@ -328,6 +411,9 @@ where
             "ReasonAtom: calling LLM"
         );
 
+        // Track LLM call timing
+        let llm_start = Instant::now();
+
         let mut stream = llm_driver
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
@@ -348,12 +434,57 @@ where
                     break;
                 }
                 LlmStreamEvent::Error(err) => {
+                    // Emit llm.generation failure event
+                    let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
+                    let event_context = EventContext::from_atom_context(context);
+                    let _ = self
+                        .event_emitter
+                        .emit(Event::new(
+                            session_id,
+                            event_context,
+                            LlmGenerationData::failure(
+                                patched_messages.clone(),
+                                runtime_agent.model.clone(),
+                                Some(model_with_provider.provider_type.to_string()),
+                                err.clone(),
+                                Some(llm_duration_ms),
+                            ),
+                        ))
+                        .await;
                     return Err(AgentLoopError::llm(err));
                 }
             }
         }
 
-        // 13. Build metadata with model and reasoning effort info
+        let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
+
+        // 13. Emit llm.generation event
+        let event_context = EventContext::from_atom_context(context);
+        if let Err(e) = self
+            .event_emitter
+            .emit(Event::new(
+                session_id,
+                event_context,
+                LlmGenerationData::success(
+                    patched_messages.clone(),
+                    Some(text.clone()).filter(|s| !s.is_empty()),
+                    tool_calls.clone(),
+                    runtime_agent.model.clone(),
+                    Some(model_with_provider.provider_type.to_string()),
+                    None, // usage - not available from stream yet
+                    Some(llm_duration_ms),
+                ),
+            ))
+            .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "ReasonAtom: failed to emit llm.generation event"
+            );
+        }
+
+        // 14. Build metadata with model and reasoning effort info
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),

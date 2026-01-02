@@ -9,13 +9,14 @@
 // - ActAtom: Parallel tool execution
 //
 // Atoms handle message loading/storage internally via MessageStore trait.
+// Atoms emit events via EventEmitter for observability.
 
 use anyhow::{Context, Result};
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::ToolRegistry;
-use everruns_storage::{repositories::Database, EncryptionService};
+use everruns_storage::{repositories::Database, DbEventEmitter, EncryptionService};
 use std::sync::Arc;
 
 use crate::adapters::{
@@ -46,8 +47,10 @@ pub use everruns_core::atoms::{
 /// Process user input using InputAtom
 ///
 /// This activity:
-/// 1. Retrieves the user message from the message store
-/// 2. Returns the message for downstream processing
+/// 1. Emits input.started event
+/// 2. Retrieves the user message from the message store
+/// 3. Emits input.completed event
+/// 4. Returns the message for downstream processing
 pub async fn input_activity(db: Database, input: InputAtomInput) -> Result<InputAtomResult> {
     tracing::info!(
         session_id = %input.context.session_id,
@@ -56,8 +59,9 @@ pub async fn input_activity(db: Database, input: InputAtomInput) -> Result<Input
         "Executing input_activity"
     );
 
-    let message_store = DbMessageStore::new(db);
-    let atom = InputAtom::new(message_store);
+    let message_store = DbMessageStore::new(db.clone());
+    let event_emitter = DbEventEmitter::new(db);
+    let atom = InputAtom::new(message_store, event_emitter);
 
     atom.execute(input)
         .await
@@ -67,11 +71,13 @@ pub async fn input_activity(db: Database, input: InputAtomInput) -> Result<Input
 /// Call the LLM model for reasoning using ReasonAtom
 ///
 /// This activity:
-/// 1. Retrieves agent and session configuration
-/// 2. Loads messages and prepares context
-/// 3. Calls the LLM with the messages
-/// 4. Stores the assistant response
-/// 5. Returns the result with tool calls (if any)
+/// 1. Emits reason.started event
+/// 2. Retrieves agent and session configuration
+/// 3. Loads messages and prepares context
+/// 4. Calls the LLM with the messages
+/// 5. Stores the assistant response
+/// 6. Emits reason.completed event
+/// 7. Returns the result with tool calls (if any)
 pub async fn reason_activity(
     db: Database,
     encryption: EncryptionService,
@@ -88,9 +94,10 @@ pub async fn reason_activity(
     let agent_store = DbAgentStore::new(db.clone());
     let session_store = DbSessionStore::new(db.clone());
     let message_store = DbMessageStore::new(db.clone());
-    let provider_store = DbLlmProviderStore::new(db, encryption);
+    let provider_store = DbLlmProviderStore::new(db.clone(), encryption);
     let capability_registry = CapabilityRegistry::with_builtins();
     let driver_registry = create_driver_registry();
+    let event_emitter = DbEventEmitter::new(db);
 
     let atom = ReasonAtom::new(
         agent_store,
@@ -99,6 +106,7 @@ pub async fn reason_activity(
         provider_store,
         capability_registry,
         driver_registry,
+        event_emitter,
     );
 
     atom.execute(input)
@@ -109,10 +117,12 @@ pub async fn reason_activity(
 /// Execute tools in parallel using ActAtom
 ///
 /// This activity:
-/// 1. Executes all tool calls in parallel
-/// 2. Handles errors, timeouts, and cancellations gracefully
-/// 3. Stores tool result messages
-/// 4. Returns comprehensive results for all tools
+/// 1. Emits act.started event
+/// 2. Executes all tool calls in parallel (emitting tool.call_started/completed for each)
+/// 3. Handles errors, timeouts, and cancellations gracefully
+/// 4. Stores tool result messages
+/// 5. Emits act.completed event
+/// 6. Returns comprehensive results for all tools
 pub async fn act_activity(db: Database, input: ActInput) -> Result<ActResult> {
     tracing::info!(
         session_id = %input.context.session_id,
@@ -121,11 +131,11 @@ pub async fn act_activity(db: Database, input: ActInput) -> Result<ActResult> {
         "Executing act_activity"
     );
 
-    let message_store = DbMessageStore::new(db.clone());
     let tool_executor = ToolRegistry::with_defaults();
+    let event_emitter = DbEventEmitter::new(db.clone());
     let file_store = Arc::new(DbSessionFileStore::new(db));
 
-    let atom = ActAtom::with_file_store(message_store, tool_executor, file_store);
+    let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store);
 
     atom.execute(input)
         .await

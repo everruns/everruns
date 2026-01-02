@@ -1,5 +1,8 @@
 // Message HTTP routes and API contracts
-// Messages are PRIMARY data store, Events are SSE notifications
+//
+// BREAKING CHANGE: Simplified message roles to just `user` and `agent`.
+// - Tool results are conveyed via `tool.call_completed` events
+// - System messages are internal and not exposed via API
 //
 // ContentPart and InputContentPart are defined in everruns-core.
 // We re-export them here with ToSchema for OpenAPI documentation.
@@ -33,23 +36,25 @@ pub use everruns_core::{
 // Message API Contracts
 // ============================================
 
-/// Message role
+/// Message role (API layer)
+///
+/// Simplified to only user and agent messages.
+/// Tool results are conveyed via `tool.call_completed` events.
+/// System messages are internal and not exposed via API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageRole {
+    /// User message (input from the user)
     User,
-    Assistant,
-    ToolResult,
-    System,
+    /// Agent message (response from the AI agent)
+    Agent,
 }
 
 impl std::fmt::Display for MessageRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MessageRole::User => write!(f, "user"),
-            MessageRole::Assistant => write!(f, "assistant"),
-            MessageRole::ToolResult => write!(f, "tool_result"),
-            MessageRole::System => write!(f, "system"),
+            MessageRole::Agent => write!(f, "agent"),
         }
     }
 }
@@ -57,9 +62,8 @@ impl std::fmt::Display for MessageRole {
 impl From<&str> for MessageRole {
     fn from(s: &str) -> Self {
         match s {
-            "assistant" => MessageRole::Assistant,
-            "tool_result" => MessageRole::ToolResult,
-            "system" => MessageRole::System,
+            // Map both "agent" and legacy "assistant" to Agent role
+            "agent" | "assistant" => MessageRole::Agent,
             _ => MessageRole::User,
         }
     }
@@ -85,8 +89,8 @@ pub struct Message {
 
 /// Input message for creating a user message
 ///
-/// Only user messages can be created via the API. Assistant,
-/// tool_result, and system messages are created internally by the system.
+/// Only user messages can be created via the API.
+/// Agent messages are created internally by the workflow.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InputMessage {
     /// Message role (always "user" for API-created messages)
@@ -272,16 +276,16 @@ mod tests {
     #[test]
     fn test_message_role_display() {
         assert_eq!(MessageRole::User.to_string(), "user");
-        assert_eq!(MessageRole::Assistant.to_string(), "assistant");
-        assert_eq!(MessageRole::ToolResult.to_string(), "tool_result");
-        assert_eq!(MessageRole::System.to_string(), "system");
+        assert_eq!(MessageRole::Agent.to_string(), "agent");
     }
 
     #[test]
     fn test_message_role_from_str() {
         assert_eq!(MessageRole::from("user"), MessageRole::User);
-        assert_eq!(MessageRole::from("assistant"), MessageRole::Assistant);
-        assert_eq!(MessageRole::from("tool_result"), MessageRole::ToolResult);
+        assert_eq!(MessageRole::from("agent"), MessageRole::Agent);
+        // Legacy "assistant" maps to Agent
+        assert_eq!(MessageRole::from("assistant"), MessageRole::Agent);
+        // Unknown roles default to User
         assert_eq!(MessageRole::from("unknown"), MessageRole::User);
     }
 }

@@ -566,16 +566,17 @@ impl Database {
 
     /// List only message events for a session (for MessageStore implementation)
     ///
-    /// Returns events with types: message.user, message.agent, message.tool_result
+    /// Returns events with types: message.user, message.agent, tool.call_completed
     /// Ordered by sequence for conversation reconstruction.
     /// Note: Tool calls are embedded in message.agent events via ContentPart::ToolCall.
+    /// Note: Tool results come from tool.call_completed events (not message.tool_result).
     pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
         let rows = sqlx::query_as::<_, EventRow>(
             r#"
             SELECT id, session_id, sequence, event_type, data, created_at
             FROM events
             WHERE session_id = $1
-              AND event_type IN ('message.user', 'message.agent', 'message.tool_result')
+              AND event_type IN ('message.user', 'message.agent', 'tool.call_completed')
             ORDER BY sequence ASC
             "#,
         )
@@ -790,7 +791,7 @@ impl Database {
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.context_window, m.is_default, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id

@@ -386,3 +386,40 @@ impl std::fmt::Debug for ToolContext {
             .finish()
     }
 }
+
+// ============================================================================
+// EventEmitter - For emitting events
+// ============================================================================
+
+use crate::events::Event;
+
+/// Trait for emitting events following the standard event protocol
+///
+/// Implementations can:
+/// - Store events in a database
+/// - Keep events in memory for testing
+/// - Stream events via SSE/WebSocket
+/// - Log events for debugging
+///
+/// Events follow a consistent schema: id, type, ts, context, data.
+/// See specs/events.md for the full event protocol specification.
+#[async_trait]
+pub trait EventEmitter: Send + Sync {
+    /// Emit an event
+    ///
+    /// Returns the assigned sequence number within the session.
+    async fn emit(&self, event: Event) -> Result<i32>;
+}
+
+/// No-op event emitter for when event emission is not needed
+///
+/// This is useful for testing or when event observability is disabled.
+#[derive(Debug, Clone, Default)]
+pub struct NoopEventEmitter;
+
+#[async_trait]
+impl EventEmitter for NoopEventEmitter {
+    async fn emit(&self, _event: Event) -> Result<i32> {
+        Ok(0)
+    }
+}

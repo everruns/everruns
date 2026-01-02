@@ -22,7 +22,7 @@ pub mod tool_types;
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
 pub mod capability_dto;
-pub mod event;
+pub mod events;
 pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod session;
@@ -53,8 +53,8 @@ pub use message::{
 };
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    InputMessage, LlmProviderStore, MessageStore, ModelWithProvider, SessionFileStore,
-    SessionStore, ToolContext, ToolExecutor,
+    EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
+    NoopEventEmitter, SessionFileStore, SessionStore, ToolContext, ToolExecutor,
 };
 
 // LLM driver types re-exports
@@ -98,7 +98,15 @@ pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResu
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
 pub use agent::{Agent, AgentStatus};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
-pub use event::Event;
+pub use events::{
+    ActCompletedData, ActStartedData, Event, EventBuilder, EventContext, EventData,
+    InputReceivedData, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
+    MessageAgentData, MessageUserData, ModelMetadata, ReasonCompletedData, ReasonStartedData,
+    SessionStartedData, TokenUsage, ToolCallCompletedData, ToolCallStartedData, ToolCallSummary,
+    TurnCompletedData, TurnFailedData, TurnStartedData, ACT_COMPLETED, ACT_STARTED, INPUT_RECEIVED,
+    LLM_GENERATION, MESSAGE_AGENT, MESSAGE_USER, REASON_COMPLETED, REASON_STARTED, SESSION_STARTED,
+    TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, UNKNOWN,
+};
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{
     LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelStatus,

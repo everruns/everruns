@@ -455,9 +455,11 @@ impl ToolExecutor for FailingToolExecutor {
 // MockLlmProvider - Returns predefined responses
 // ============================================================================
 
+use crate::events::Event;
 use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
+use crate::traits::EventEmitter;
 use futures::stream;
 
 /// Mock LLM provider for testing
@@ -566,6 +568,95 @@ impl LlmDriver for MockLlmProvider {
     }
 }
 
+// ============================================================================
+// InMemoryEventEmitter - Stores events in memory for testing
+// ============================================================================
+
+/// In-memory event emitter for testing
+///
+/// Stores emitted events in memory for inspection.
+/// Useful for testing and examples where you want to verify events without a database.
+///
+/// # Example
+///
+/// ```ignore
+/// use everruns_core::memory::InMemoryEventEmitter;
+///
+/// let emitter = InMemoryEventEmitter::new();
+///
+/// // Emit events...
+///
+/// // Check emitted events
+/// let events = emitter.events().await;
+/// assert_eq!(events.len(), 2);
+/// ```
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryEventEmitter {
+    events: Arc<RwLock<Vec<Event>>>,
+    sequence: Arc<RwLock<i32>>,
+}
+
+impl InMemoryEventEmitter {
+    /// Create a new in-memory event emitter
+    pub fn new() -> Self {
+        Self {
+            events: Arc::new(RwLock::new(Vec::new())),
+            sequence: Arc::new(RwLock::new(0)),
+        }
+    }
+
+    /// Get all emitted events
+    pub async fn events(&self) -> Vec<Event> {
+        self.events.read().await.clone()
+    }
+
+    /// Get the count of emitted events
+    pub async fn event_count(&self) -> usize {
+        self.events.read().await.len()
+    }
+
+    /// Clear all events
+    pub async fn clear(&self) {
+        self.events.write().await.clear();
+        *self.sequence.write().await = 0;
+    }
+
+    /// Get events by type
+    pub async fn events_by_type(&self, event_type: &str) -> Vec<Event> {
+        self.events
+            .read()
+            .await
+            .iter()
+            .filter(|e| e.event_type == event_type)
+            .cloned()
+            .collect()
+    }
+
+    /// Get events for a specific session
+    pub async fn events_for_session(&self, session_id: Uuid) -> Vec<Event> {
+        self.events
+            .read()
+            .await
+            .iter()
+            .filter(|e| e.session_id() == session_id)
+            .cloned()
+            .collect()
+    }
+}
+
+#[async_trait]
+impl EventEmitter for InMemoryEventEmitter {
+    async fn emit(&self, event: Event) -> Result<i32> {
+        let mut sequence = self.sequence.write().await;
+        *sequence += 1;
+        let seq = *sequence;
+        drop(sequence);
+
+        self.events.write().await.push(event);
+        Ok(seq)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,5 +721,141 @@ mod tests {
 
         assert!(result.error.is_none());
         assert_eq!(result.result, Some(serde_json::json!({"temp": 72})));
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_event_emitter() {
+        use crate::events::{EventContext, InputReceivedData};
+
+        let emitter = InMemoryEventEmitter::new();
+        let session_id = Uuid::now_v7();
+        let event_context = EventContext::empty();
+
+        // Emit an event
+        let seq = emitter
+            .emit(Event::new(
+                session_id,
+                event_context.clone(),
+                InputReceivedData::new(Message::user("test1")),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(seq, 1);
+
+        // Emit another event
+        let seq2 = emitter
+            .emit(Event::new(
+                session_id,
+                event_context,
+                InputReceivedData::new(Message::user("test2")),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(seq2, 2);
+
+        // Check events
+        let events = emitter.events().await;
+        assert_eq!(events.len(), 2);
+        assert_eq!(emitter.event_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_event_emitter_filter_by_type() {
+        use crate::events::{
+            EventContext, InputReceivedData, ReasonStartedData, INPUT_RECEIVED, REASON_STARTED,
+        };
+
+        let emitter = InMemoryEventEmitter::new();
+        let session_id = Uuid::now_v7();
+        let event_context = EventContext::empty();
+
+        // Emit different event types
+        emitter
+            .emit(Event::new(
+                session_id,
+                event_context.clone(),
+                InputReceivedData::new(Message::user("test")),
+            ))
+            .await
+            .unwrap();
+
+        emitter
+            .emit(Event::new(
+                session_id,
+                event_context,
+                ReasonStartedData {
+                    agent_id: Uuid::now_v7(),
+                    metadata: None,
+                },
+            ))
+            .await
+            .unwrap();
+
+        // Filter by type
+        let received_events = emitter.events_by_type(INPUT_RECEIVED).await;
+        assert_eq!(received_events.len(), 1);
+
+        let started_events = emitter.events_by_type(REASON_STARTED).await;
+        assert_eq!(started_events.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_event_emitter_filter_by_session() {
+        use crate::events::{EventContext, InputReceivedData};
+
+        let emitter = InMemoryEventEmitter::new();
+        let session1 = Uuid::now_v7();
+        let session2 = Uuid::now_v7();
+
+        // Emit events for different sessions
+        let context = EventContext::empty();
+
+        emitter
+            .emit(Event::new(
+                session1,
+                context.clone(),
+                InputReceivedData::new(Message::user("session1")),
+            ))
+            .await
+            .unwrap();
+        emitter
+            .emit(Event::new(
+                session2,
+                context,
+                InputReceivedData::new(Message::user("session2")),
+            ))
+            .await
+            .unwrap();
+
+        // Filter by session
+        let session1_events = emitter.events_for_session(session1).await;
+        assert_eq!(session1_events.len(), 1);
+
+        let session2_events = emitter.events_for_session(session2).await;
+        assert_eq!(session2_events.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_event_emitter_clear() {
+        use crate::events::{EventContext, InputReceivedData};
+
+        let emitter = InMemoryEventEmitter::new();
+        let session_id = Uuid::now_v7();
+        let event_context = EventContext::empty();
+
+        emitter
+            .emit(Event::new(
+                session_id,
+                event_context,
+                InputReceivedData::new(Message::user("test")),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(emitter.event_count().await, 1);
+
+        emitter.clear().await;
+
+        assert_eq!(emitter.event_count().await, 0);
     }
 }

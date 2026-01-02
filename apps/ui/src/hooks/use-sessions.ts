@@ -10,8 +10,7 @@ import {
   sendUserMessage,
   listEvents,
 } from "@/lib/api/sessions";
-import type { CreateSessionRequest, UpdateSessionRequest, Event, Message, ContentPart, Controls } from "@/lib/api/types";
-import { isToolResultPart } from "@/lib/api/types";
+import type { CreateSessionRequest, UpdateSessionRequest, Controls } from "@/lib/api/types";
 
 export function useSessions(agentId: string | undefined) {
   return useQuery({
@@ -115,72 +114,12 @@ export function useSendMessage() {
 }
 
 // ============================================
-// Events hooks and helpers
+// Events hook - returns raw events for direct rendering
 // ============================================
 
 /**
- * Extract tool_call_id from content parts (for tool_result messages)
- */
-function extractToolCallId(content: ContentPart[]): string | null {
-  for (const part of content) {
-    if (isToolResultPart(part)) {
-      return part.tool_call_id;
-    }
-  }
-  return null;
-}
-
-/**
- * Transform events to Message-like objects for UI rendering
- * This allows the UI to render from events while still displaying as "messages"
- */
-function eventsToMessages(events: Event[]): Message[] {
-  // Filter only message events and transform them
-  // Note: Tool calls are embedded in message.agent events via ContentPart::ToolCall
-  const messageEvents = events.filter(e =>
-    e.event_type === "message.user" ||
-    e.event_type === "message.agent" ||
-    e.event_type === "message.tool_result"
-  );
-
-  return messageEvents.map(event => {
-    const data = event.data as {
-      message_id: string;
-      role: string;
-      content: ContentPart[];
-      sequence: number;
-      created_at: string;
-    };
-
-    // Map event type to message role
-    // Note: Tool calls are embedded in message.agent content, not separate events
-    const roleMap: Record<string, Message["role"]> = {
-      "message.user": "user",
-      "message.agent": "assistant",
-      "message.tool_result": "tool_result",
-    };
-
-    // Extract tool_call_id from content for tool_result messages
-    const toolCallId = event.event_type === "message.tool_result"
-      ? extractToolCallId(data.content)
-      : null;
-
-    return {
-      id: data.message_id,
-      session_id: event.session_id,
-      sequence: data.sequence ?? event.sequence,
-      role: roleMap[event.event_type] ?? data.role as Message["role"],
-      content: data.content,
-      metadata: undefined,
-      tool_call_id: toolCallId,
-      created_at: data.created_at ?? event.created_at,
-    };
-  });
-}
-
-/**
- * Fetch events and transform them to messages for UI rendering
- * This hook replaces useMessages for event-based rendering
+ * Fetch events for a session
+ * Returns raw Event[] for direct rendering in the UI
  */
 export function useEvents(
   agentId: string | undefined,
@@ -189,26 +128,6 @@ export function useEvents(
 ) {
   return useQuery({
     queryKey: ["events", agentId, sessionId],
-    queryFn: async () => {
-      const events = await listEvents(agentId!, sessionId!);
-      return eventsToMessages(events);
-    },
-    enabled: !!agentId && !!sessionId,
-    refetchInterval: options?.refetchInterval,
-  });
-}
-
-/**
- * Fetch raw events without transformation for developer debugging
- * Returns all events including non-message events (step.*, tool.*, session.*)
- */
-export function useRawEvents(
-  agentId: string | undefined,
-  sessionId: string | undefined,
-  options?: { refetchInterval?: number | false }
-) {
-  return useQuery({
-    queryKey: ["raw-events", agentId, sessionId],
     queryFn: () => listEvents(agentId!, sessionId!),
     enabled: !!agentId && !!sessionId,
     refetchInterval: options?.refetchInterval,

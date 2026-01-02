@@ -2,13 +2,13 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import type { Message } from "@/lib/api/types";
 
-// Helper to create tool call message (as assistant message with tool_call in content)
+// Helper to create tool call message (as agent message with tool_call in content)
 function createToolCallMessage(overrides?: Partial<Message>): Message {
   return {
     id: "msg-tool-call-1",
     session_id: "session-1",
     sequence: 1,
-    role: "assistant",
+    role: "agent",
     content: [{
       type: "tool_call" as const,
       id: "call_123",

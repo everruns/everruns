@@ -120,6 +120,37 @@ pub struct AtomContext {
 }
 ```
 
+## Atom Lifecycle Events
+
+Atoms emit lifecycle events via the `EventEmitter` trait for observability and SSE streaming:
+
+| Event Type | Atom | When Emitted |
+|------------|------|--------------|
+| `input.started` | InputAtom | Before retrieving user message |
+| `input.completed` | InputAtom | After message retrieved successfully |
+| `reason.started` | ReasonAtom | Before calling LLM |
+| `reason.completed` | ReasonAtom | After LLM response received and stored |
+| `act.started` | ActAtom | Before executing tool calls |
+| `act.completed` | ActAtom | After all tool calls completed |
+| `tool.call_started` | ActAtom | Before each individual tool execution |
+| `tool.call_completed` | ActAtom | After each individual tool execution |
+
+Each event includes the `AtomContext` for correlation, plus event-specific data (e.g., tool call details, results).
+
+### EventEmitter Trait
+
+```rust
+#[async_trait]
+pub trait EventEmitter: Send + Sync {
+    async fn emit(&self, event: AtomEvent) -> Result<i32>;
+}
+```
+
+Implementations:
+- `DbEventEmitter` (storage) - Persists events to database with auto-incrementing sequence numbers
+- `InMemoryEventEmitter` (core) - In-memory storage for testing
+- `NoopEventEmitter` (core) - Discards events (for backwards compatibility)
+
 ## Workflow Execution Flow
 
 1. **API receives message** - Creates user message event in database

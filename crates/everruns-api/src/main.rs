@@ -21,9 +21,33 @@ use axum::{extract::State, routing::get, Json, Router};
 use common::ListResponse;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
-    Agent, AgentStatus, CapabilityInfo, Event, FileInfo, FileStat, GrepMatch, GrepResult, LlmModel,
-    LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Session, SessionFile,
+    // Event data types
+    events::{
+        ActCompletedData, ActStartedData, InputReceivedData, LlmGenerationData,
+        LlmGenerationMetadata, LlmGenerationOutput, MessageAgentData, MessageUserData,
+        ModelMetadata, ReasonCompletedData, ReasonStartedData, SessionStartedData, TokenUsage,
+        ToolCallCompletedData, ToolCallStartedData, ToolCallSummary, TurnCompletedData,
+        TurnFailedData, TurnStartedData,
+    },
+    Agent,
+    AgentStatus,
+    CapabilityInfo,
+    Event,
+    EventContext,
+    EventData,
+    FileInfo,
+    FileStat,
+    GrepMatch,
+    GrepResult,
+    LlmModel,
+    LlmModelStatus,
+    LlmModelWithProvider,
+    LlmProviderStatus,
+    LlmProviderType,
+    Session,
+    SessionFile,
     SessionStatus,
+    ToolCall,
 };
 use everruns_storage::{Database, EncryptionService};
 use everruns_worker::{create_runner, RunnerConfig};
@@ -107,7 +131,16 @@ struct HealthState {
     components(
         schemas(
             Agent, AgentStatus,
-            Session, SessionStatus, Event,
+            Session, SessionStatus, Event, EventContext, EventData,
+            // Event data types
+            MessageUserData, MessageAgentData, ModelMetadata, TokenUsage,
+            TurnStartedData, TurnCompletedData, TurnFailedData,
+            InputReceivedData, ReasonStartedData, ReasonCompletedData,
+            ActStartedData, ActCompletedData, ToolCallSummary,
+            ToolCallStartedData, ToolCallCompletedData,
+            LlmGenerationData, LlmGenerationOutput, LlmGenerationMetadata,
+            SessionStartedData,
+            // Agent/Session types
             agents::CreateAgentRequest, agents::UpdateAgentRequest,
             sessions::CreateSessionRequest, sessions::UpdateSessionRequest,
             messages::Message, messages::MessageRole, messages::ContentPart, messages::InputContentPart,
@@ -135,6 +168,8 @@ struct HealthState {
             session_files::GetQuery, session_files::DeleteQuery, session_files::GetResponse,
             ListResponse<FileInfo>,
             ListResponse<GrepResult>,
+            // Tool types
+            ToolCall,
         )
     ),
     tags(

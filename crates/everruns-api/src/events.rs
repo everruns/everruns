@@ -8,11 +8,11 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use everruns_core::Event;
 use everruns_storage::Database;
-use serde::Serialize;
-use utoipa::ToSchema;
 
 use crate::common::ListResponse;
+use crate::services::EventService;
 use futures::{
     stream::{self, Stream},
     StreamExt,
@@ -30,14 +30,14 @@ use crate::services::SessionService;
 #[derive(Clone)]
 pub struct AppState {
     pub session_service: Arc<SessionService>,
-    pub db: Arc<Database>,
+    pub event_service: Arc<EventService>,
 }
 
 impl AppState {
     pub fn new(db: Arc<Database>) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            db,
+            event_service: Arc::new(EventService::new(db)),
         }
     }
 }
@@ -92,29 +92,32 @@ pub async fn stream_sse(
 
     tracing::info!(session_id = %session_id, "Starting event stream");
 
-    let db = state.db.clone();
+    let event_service = state.event_service.clone();
 
     // Create stream that replays all events from database
+    // SSE format: event: <type>, data: <full core::Event JSON>
     let stream = stream::unfold(0i32, move |last_sequence| {
-        let db = db.clone();
+        let event_service = event_service.clone();
         async move {
-            // Fetch events since last sequence
-            match db.list_events(session_id, Some(last_sequence)).await {
+            // Fetch events since last sequence using EventService
+            match event_service.list(session_id, Some(last_sequence)).await {
                 Ok(events) if !events.is_empty() => {
                     // Get the last sequence number for next iteration
-                    let new_sequence = events.last().unwrap().sequence;
+                    let new_sequence = events.last().unwrap().sequence.unwrap_or(last_sequence);
 
-                    // Convert events to SSE format
+                    // Convert events to SSE format with full Event as data
                     let sse_events: Vec<Result<SseEvent, Infallible>> = events
                         .into_iter()
-                        .map(|event_row| {
-                            let json = serde_json::to_string(&event_row.data)
-                                .unwrap_or_else(|_| "{}".to_string());
+                        .map(|event| {
+                            let event_type = event.event_type.clone();
+                            let sequence = event.sequence.unwrap_or(0);
+                            let json =
+                                serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
 
                             Ok(SseEvent::default()
-                                .event(&event_row.event_type)
+                                .event(&event_type)
                                 .data(json)
-                                .id(event_row.sequence.to_string()))
+                                .id(sequence.to_string()))
                         })
                         .collect();
 
@@ -140,17 +143,6 @@ pub async fn stream_sse(
 // ============================================
 // List Events (JSON response for polling)
 // ============================================
-
-/// Event response type for SSE/polling
-#[derive(Debug, Serialize, ToSchema)]
-pub struct Event {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub sequence: i32,
-    pub event_type: String,
-    pub data: serde_json::Value,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-}
 
 /// GET /v1/agents/{agent_id}/sessions/{session_id}/events - List events (JSON)
 #[utoipa::path(
@@ -182,24 +174,15 @@ pub async fn list_events(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Fetch all events for the session
-    let event_rows = state.db.list_events(session_id, None).await.map_err(|e| {
-        tracing::error!("Failed to list events: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    // Convert to Event response type
-    let events: Vec<Event> = event_rows
-        .into_iter()
-        .map(|row| Event {
-            id: row.id,
-            session_id: row.session_id,
-            sequence: row.sequence,
-            event_type: row.event_type,
-            data: row.data,
-            created_at: row.created_at,
-        })
-        .collect();
+    // Fetch all events using EventService (converts rows to core::Event)
+    let events = state
+        .event_service
+        .list(session_id, None)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list events: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(ListResponse { data: events }))
 }

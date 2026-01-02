@@ -1,7 +1,7 @@
 "use client";
 
-import { use, useState, useRef, useEffect } from "react";
-import { useAgent, useSession, useEvents, useRawEvents, useSendMessage, useLlmModel } from "@/hooks";
+import { use, useState, useRef, useEffect, useMemo } from "react";
+import { useAgent, useSession, useEvents, useSendMessage, useLlmModel } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,9 +15,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ArrowLeft, Send, Bot, Loader2, Sparkles, Brain, MessageSquare, Folder, Activity } from "lucide-react";
-import type { Message, Controls, ReasoningEffort, FileInfo } from "@/lib/api/types";
+import type { Controls, ReasoningEffort, FileInfo, ToolCallCompletedData, MessageUserData, MessageAgentData } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
-import { ToolCallCard } from "@/components/chat/tool-call-card";
+import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { FileBrowser, FileViewer } from "@/components/files";
 import {
   Table,
@@ -61,9 +61,8 @@ export default function SessionDetailPage({
     refetchInterval: shouldPoll ? 1000 : false,
   });
 
-  // Poll for messages (from events) while waiting and session is active
-  // Uses events endpoint and transforms to Message format for display
-  const { data: messages, isLoading: messagesLoading } = useEvents(
+  // Fetch events - used for both chat rendering and events tab
+  const { data: events, isLoading: eventsLoading } = useEvents(
     agentId,
     sessionId,
     { refetchInterval: shouldPoll ? 1000 : false }
@@ -77,12 +76,28 @@ export default function SessionDetailPage({
   const [activeTab, setActiveTab] = useState<"chat" | "files" | "events">("chat");
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 
-  // Fetch raw events for the Events tab (developer debugging)
-  const { data: rawEvents, isLoading: eventsLoading } = useRawEvents(
-    agentId,
-    sessionId,
-    { refetchInterval: shouldPoll ? 1000 : false }
-  );
+  // Filter chat-relevant events
+  const chatEvents = useMemo(() => {
+    if (!events) return [];
+    return events.filter(e =>
+      e.type === "message.user" ||
+      e.type === "message.agent" ||
+      e.type === "tool.call_completed"
+    );
+  }, [events]);
+
+  // Build tool result lookup by tool_call_id
+  const toolResultsMap = useMemo(() => {
+    const map = new Map<string, ToolCallCompletedData>();
+    if (!events) return map;
+    for (const event of events) {
+      if (event.type === "tool.call_completed") {
+        const data = event.data as ToolCallCompletedData;
+        map.set(data.tool_call_id, data);
+      }
+    }
+    return map;
+  }, [events]);
 
   // Check if the model supports reasoning effort
   const supportsReasoning = llmModel?.profile?.reasoning && llmModel?.profile?.reasoning_effort;
@@ -99,10 +114,10 @@ export default function SessionDetailPage({
     ? getReasoningEffortName(reasoningEffortConfig.default)
     : "Medium";
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new events arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [chatEvents]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,35 +150,18 @@ export default function SessionDetailPage({
     }
   };
 
-  // Extract message content - handles new ContentPart[] format
-  // Filters out "Tool call:" lines which are rendered separately
-  const getMessageContent = (message: Message): string => {
-    if (Array.isArray(message.content)) {
-      const text = getTextFromContent(message.content);
-      // Filter out lines that describe tool calls (these are rendered separately)
-      return text
-        .split("\n")
-        .filter(line => !line.trim().startsWith("Tool call:"))
-        .join("\n")
-        .trim();
-    }
-    return JSON.stringify(message.content);
+  // Extract text from message event data
+  const getMessageText = (data: MessageUserData | MessageAgentData): string => {
+    const content = data.message?.content;
+    if (!content) return "";
+    return getTextFromContent(content);
   };
 
-  // Build a map of tool_call_id to tool_result messages
-  const toolResultsMap = new Map<string, Message>();
-  messages?.forEach((msg) => {
-    if (msg.role === "tool_result" && msg.tool_call_id) {
-      toolResultsMap.set(msg.tool_call_id, msg);
-    }
-  });
-
-  // Get tool calls from assistant message content
-  const getToolCallsFromMessage = (message: Message): Array<{ id: string; name: string; arguments: Record<string, unknown> }> => {
-    if (message.role !== "assistant" || !Array.isArray(message.content)) {
-      return [];
-    }
-    return message.content
+  // Get tool calls from message event data
+  const getToolCalls = (data: MessageAgentData): Array<{ id: string; name: string; arguments: Record<string, unknown> }> => {
+    const content = data.message?.content;
+    if (!content) return [];
+    return content
       .filter(isToolCallPart)
       .map(part => ({ id: part.id, name: part.name, arguments: part.arguments }));
   };
@@ -269,36 +267,32 @@ export default function SessionDetailPage({
         <>
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messagesLoading ? (
+            {eventsLoading ? (
               <div className="space-y-4">
                 <Skeleton className="h-20 w-3/4" />
                 <Skeleton className="h-20 w-3/4 ml-auto" />
                 <Skeleton className="h-20 w-3/4" />
               </div>
-            ) : messages?.length === 0 ? (
+            ) : chatEvents.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
                 <Bot className="w-12 h-12 mb-4 opacity-50" />
                 <p className="text-lg font-medium">No messages yet</p>
                 <p className="text-sm">Send a message to start the conversation</p>
               </div>
             ) : (
-              messages?.map((message) => {
-                const isUser = message.role === "user";
-
-                // Skip tool_result messages - they're rendered with their tool_call
-                if (message.role === "tool_result") {
+              chatEvents.map((event) => {
+                // Skip tool.call_completed - rendered inline with agent messages
+                if (event.type === "tool.call_completed") {
                   return null;
                 }
 
-                // For assistant messages, get any embedded tool calls
-                const toolCalls = getToolCallsFromMessage(message);
+                const isUser = event.type === "message.user";
+                const data = event.data as MessageUserData | MessageAgentData;
+                const textContent = getMessageText(data);
+                const toolCalls = isUser ? [] : getToolCalls(data as MessageAgentData);
 
-                // Get text content (may be empty if only tool calls)
-                const textContent = getMessageContent(message);
-
-                // Render user and assistant messages
                 return (
-                  <div key={message.id} className="space-y-2">
+                  <div key={event.id} className="space-y-2">
                     {/* Render text content if present */}
                     {textContent && (
                       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -319,29 +313,21 @@ export default function SessionDetailPage({
                       </div>
                     )}
 
-                    {/* Render tool calls from assistant message - 25px left padding */}
-                    <div className="pl-[25px] space-y-2">
-                    {toolCalls.map((tc) => {
-                      const toolResult = toolResultsMap.get(tc.id);
-                      // Create a synthetic message for ToolCallCard
-                      const toolCallMessage: Message = {
-                        id: `${message.id}-tc-${tc.id}`,
-                        session_id: message.session_id,
-                        sequence: message.sequence,
-                        role: "assistant",
-                        content: [{ type: "tool_call", id: tc.id, name: tc.name, arguments: tc.arguments }],
-                        tool_call_id: null,
-                        created_at: message.created_at,
-                      };
-                      return (
-                        <ToolCallCard
-                          key={tc.id}
-                          toolCall={toolCallMessage}
-                          toolResult={toolResult}
-                        />
-                      );
-                    })}
-                    </div>
+                    {/* Render tool calls from agent message */}
+                    {toolCalls.length > 0 && (
+                      <div className="pl-[25px] space-y-2">
+                        {toolCalls.map((tc) => {
+                          const toolResult = toolResultsMap.get(tc.id);
+                          return (
+                            <ToolCallCardFromEvent
+                              key={tc.id}
+                              toolCall={tc}
+                              toolResult={toolResult}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -450,7 +436,7 @@ export default function SessionDetailPage({
               <Skeleton className="h-8 w-full" />
               <Skeleton className="h-8 w-full" />
             </div>
-          ) : rawEvents?.length === 0 ? (
+          ) : events?.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
               <Activity className="w-12 h-12 mb-4 opacity-50" />
               <p className="text-lg font-medium">No events yet</p>
@@ -468,18 +454,18 @@ export default function SessionDetailPage({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rawEvents?.map((event) => (
+                  {events?.map((event) => (
                     <TableRow key={event.id}>
                       <TableCell className="font-mono text-xs">
                         {event.sequence}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="font-mono text-xs">
-                          {event.event_type}
+                          {event.type}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {new Date(event.created_at).toLocaleString()}
+                        {new Date(event.ts).toLocaleString()}
                       </TableCell>
                       <TableCell className="font-mono text-xs max-w-[500px]">
                         <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
