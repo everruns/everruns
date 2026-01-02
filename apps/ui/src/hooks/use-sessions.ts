@@ -155,11 +155,23 @@ function eventsToMessages(events: Event[]): Message[] {
         error?: string;
       };
 
-      // Build content from result or error
-      const content: ContentPart[] = data.result || [];
-      if (data.error) {
-        content.push({ type: "text", text: data.error } as ContentPart);
+      // Build content as a tool_result ContentPart (matching what ToolCallCard expects)
+      // The result is flattened: if it's a single text part, extract just the text
+      let result: unknown = undefined;
+      if (data.result && data.result.length > 0) {
+        if (data.result.length === 1 && data.result[0].type === "text") {
+          result = (data.result[0] as { type: "text"; text: string }).text;
+        } else {
+          result = data.result;
+        }
       }
+
+      const content: ContentPart[] = [{
+        type: "tool_result",
+        tool_call_id: data.tool_call_id,
+        result,
+        error: data.error,
+      } as ContentPart];
 
       return {
         id: event.id,
