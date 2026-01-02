@@ -115,28 +115,37 @@
   border: 1px solid var(--sl-color-hairline);
 }
 
-/* Table styling - clean minimal look */
-.sl-markdown-content table {
-  border-collapse: collapse;
+/* Table styling - clean minimal look with proper specificity */
+.sl-markdown-content table:not(:where(.not-content *)) {
+  display: table;
   width: 100%;
+  border-collapse: collapse;
   margin: 1.5rem 0;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
+  border: 1px solid var(--sl-color-hairline);
 }
 
-.sl-markdown-content th,
-.sl-markdown-content td {
+.sl-markdown-content :is(th, td):not(:where(.not-content *)) {
   border: 1px solid var(--sl-color-hairline);
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1rem;
   text-align: left;
   vertical-align: top;
 }
 
-.sl-markdown-content th {
+.sl-markdown-content :is(th:first-child, td:first-child):not(:where(.not-content *)) {
+  padding-inline-start: 1rem;
+}
+
+.sl-markdown-content :is(th:last-child, td:last-child):not(:where(.not-content *)) {
+  padding-inline-end: 1rem;
+}
+
+.sl-markdown-content th:not(:where(.not-content *)) {
   background-color: #f8f9fa;
   font-weight: 600;
 }
 
-:root[data-theme="dark"] .sl-markdown-content th {
+:root[data-theme="dark"] .sl-markdown-content th:not(:where(.not-content *)) {
   background-color: #1a1a1a;
 }
 
