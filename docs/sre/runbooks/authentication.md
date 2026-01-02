@@ -1,4 +1,7 @@
-# Authentication Configuration Runbook
+---
+title: Authentication Configuration
+description: Configuring and managing authentication for Everruns
+---
 
 ## Overview
 

@@ -1,4 +1,7 @@
-# Encryption Key Rotation Runbook
+---
+title: Encryption Key Rotation
+description: How to rotate the secrets encryption key (KEK) used to encrypt sensitive data
+---
 
 This runbook describes how to rotate the secrets encryption key (KEK) used to encrypt sensitive data in the database.
 

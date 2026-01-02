@@ -17,6 +17,8 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
    - `everruns-anthropic` - Anthropic LLM provider implementation
    - `everruns-storage` - PostgreSQL (sqlx), migrations, repositories
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
+4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
+   - See [specs/documentation.md](documentation.md) for detailed specification
 
 ### Data Layer
 

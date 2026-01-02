@@ -1,0 +1,167 @@
+/* Everruns Docs Custom Theme
+ *
+ * Design: Black and white, minimal, matching the main app
+ * Brand colors (Navy/Gold) used sparingly - primarily in logo only
+ *
+ * See specs/brand.md for full guidelines
+ */
+
+:root {
+  /* Accent colors - for selected states */
+  --sl-color-accent-low: #f5f5f5;
+  --sl-color-accent: #0a0a0a;
+  --sl-color-accent-high: #0a0a0a;
+
+  /* Grayscale palette matching app */
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #f5f5f5;
+  --sl-color-gray-2: #e5e5e5;
+  --sl-color-gray-3: #a0a0a0;
+  --sl-color-gray-4: #404040;
+  --sl-color-gray-5: #1a1a1a;
+  --sl-color-gray-6: #0a0a0a;
+  --sl-color-black: #0a0a0a;
+
+  /* Font family - system fonts like the app */
+  --sl-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --sl-font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono",
+    monospace;
+}
+
+/* Light theme */
+:root,
+:root[data-theme="light"] {
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #fafafa;
+  --sl-color-bg-inline-code: #f5f5f5;
+  --sl-color-hairline-light: #e5e5e5;
+  --sl-color-hairline: #e5e5e5;
+  --sl-color-text: #0a0a0a;
+  --sl-color-text-accent: #0a0a0a;
+
+  /* Fix selected page contrast */
+  --sl-color-accent-low: #f0f0f0;
+  --sl-color-accent: #0a0a0a;
+  --sl-color-accent-high: #0a0a0a;
+}
+
+/* Dark theme */
+:root[data-theme="dark"] {
+  --sl-color-bg: #0a0a0a;
+  --sl-color-bg-nav: #0a0a0a;
+  --sl-color-bg-sidebar: #111111;
+  --sl-color-bg-inline-code: #1a1a1a;
+  --sl-color-hairline-light: #2a2a2a;
+  --sl-color-hairline: #333333;
+  --sl-color-text: #fafafa;
+  --sl-color-text-accent: #ffffff;
+
+  /* Fix selected page and accents for dark */
+  --sl-color-accent-low: #1a1a1a;
+  --sl-color-accent: #ffffff;
+  --sl-color-accent-high: #ffffff;
+}
+
+/* Logo sizing */
+.site-title img {
+  height: 2rem;
+  width: auto;
+}
+
+/* Sidebar links - better contrast */
+:root[data-theme="light"] .sidebar-content a {
+  color: #404040;
+}
+
+:root[data-theme="light"] .sidebar-content a:hover {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .sidebar-content a[aria-current="page"] {
+  color: #0a0a0a;
+  font-weight: 600;
+  background: #f0f0f0;
+}
+
+:root[data-theme="dark"] .sidebar-content a {
+  color: #a0a0a0;
+}
+
+:root[data-theme="dark"] .sidebar-content a:hover {
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .sidebar-content a[aria-current="page"] {
+  color: #ffffff;
+  font-weight: 600;
+  background: #1a1a1a;
+}
+
+/* Content links - underlined */
+.sl-markdown-content a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sl-markdown-content a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Code block styling */
+.expressive-code pre {
+  border: 1px solid var(--sl-color-hairline);
+}
+
+/* Table styling - clean minimal look with proper specificity */
+.sl-markdown-content table:not(:where(.not-content *)) {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.9375rem;
+  border: 1px solid var(--sl-color-hairline);
+}
+
+.sl-markdown-content :is(th, td):not(:where(.not-content *)) {
+  border: 1px solid var(--sl-color-hairline);
+  padding: 0.75rem 1rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.sl-markdown-content :is(th:first-child, td:first-child):not(:where(.not-content *)) {
+  padding-inline-start: 1rem;
+}
+
+.sl-markdown-content :is(th:last-child, td:last-child):not(:where(.not-content *)) {
+  padding-inline-end: 1rem;
+}
+
+.sl-markdown-content th:not(:where(.not-content *)) {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] .sl-markdown-content th:not(:where(.not-content *)) {
+  background-color: #1a1a1a;
+}
+
+/* Typography */
+h1,
+h2,
+h3 {
+  font-weight: 600;
+}
+
+h4,
+h5,
+h6 {
+  font-weight: 500;
+}
+
+.sl-markdown-content {
+  line-height: 1.6;
+}
