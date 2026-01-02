@@ -22,8 +22,7 @@ async fn main() -> Result<()> {
     let config = RunnerConfig::from_env();
 
     // Get gRPC address for control-plane communication
-    let grpc_address = std::env::var("GRPC_ADDRESS")
-        .unwrap_or_else(|_| "127.0.0.1:9001".into());
+    let grpc_address = std::env::var("GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".into());
 
     tracing::info!(
         task_queue = %config.temporal_task_queue(),

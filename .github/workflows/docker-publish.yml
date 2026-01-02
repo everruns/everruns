@@ -25,7 +25,7 @@ jobs:
         include:
           - target: api
             dockerfile: docker/Dockerfile.unified
-            image_name: everruns-api
+            image_name: everruns-control-plane
           - target: worker
             dockerfile: docker/Dockerfile.unified
             image_name: everruns-worker

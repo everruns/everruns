@@ -41,7 +41,7 @@ impl TemporalClient {
             target_url,
             namespace: config.temporal_namespace(),
             task_queue: config.temporal_task_queue(),
-            identity: format!("everruns-api-{}", uuid::Uuid::now_v7()),
+            identity: format!("everruns-control-plane-{}", uuid::Uuid::now_v7()),
             worker_binary_id: env!("CARGO_PKG_VERSION").to_string(),
             long_poll_timeout: Duration::from_secs(60),
         };

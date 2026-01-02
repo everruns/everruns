@@ -281,11 +281,11 @@ jobs:
         run: sqlx migrate run --source crates/everruns-storage/migrations
 
       - name: Build API
-        run: cargo build -p everruns-api
+        run: cargo build -p everruns-control-plane
 
       - name: Start API server
         run: |
-          cargo run -p everruns-api &
+          cargo run -p everruns-control-plane &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
           # Wait for API to be ready
@@ -293,7 +293,7 @@ jobs:
           echo "API is ready"
 
       - name: Run integration tests
-        run: cargo test -p everruns-api --test integration_test -- --ignored --test-threads=1
+        run: cargo test -p everruns-control-plane --test integration_test -- --ignored --test-threads=1
 
       - name: Stop API server
         if: always()
@@ -340,7 +340,7 @@ jobs:
         include:
           - target: api
             dockerfile: docker/Dockerfile.unified
-            image: everruns-api
+            image: everruns-control-plane
           - target: worker
             dockerfile: docker/Dockerfile.unified
             image: everruns-worker

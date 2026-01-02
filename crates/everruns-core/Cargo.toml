@@ -41,7 +41,7 @@ base64.workspace = true
 # URL parsing
 url = "2"
 
-# OpenAPI schema generation (optional, enabled by everruns-api)
+# OpenAPI schema generation (optional, enabled by everruns-control-plane)
 utoipa = { workspace = true, optional = true }
 
 # Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions

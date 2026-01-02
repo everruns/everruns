@@ -447,7 +447,9 @@ impl WorkerService for WorkerServiceImpl {
             })
             .collect();
 
-        Ok(Response::new(SessionListDirectoryResponse { files: proto_files }))
+        Ok(Response::new(SessionListDirectoryResponse {
+            files: proto_files,
+        }))
     }
 
     async fn session_stat_file(
