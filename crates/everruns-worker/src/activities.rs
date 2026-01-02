@@ -131,12 +131,11 @@ pub async fn act_activity(db: Database, input: ActInput) -> Result<ActResult> {
         "Executing act_activity"
     );
 
-    let message_store = DbMessageStore::new(db.clone());
     let tool_executor = ToolRegistry::with_defaults();
     let event_emitter = DbEventEmitter::new(db.clone());
     let file_store = Arc::new(DbSessionFileStore::new(db));
 
-    let atom = ActAtom::with_file_store(message_store, tool_executor, event_emitter, file_store);
+    let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store);
 
     atom.execute(input)
         .await

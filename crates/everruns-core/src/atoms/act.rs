@@ -4,9 +4,11 @@
 //! 1. Emitting act.started event
 //! 2. Executing multiple tool calls in parallel (with tool.call_started/completed events)
 //! 3. Handling errors, timeouts, and cancellations as "normal" results
-//! 4. Storing tool result messages
-//! 5. Emitting act.completed event
-//! 6. Returning all tool results (success, error, timeout, or cancelled)
+//! 4. Emitting act.completed event
+//! 5. Returning all tool results (success, error, timeout, or cancelled)
+//!
+//! Tool results are emitted as `tool.call_completed` events and returned in ActResult.
+//! Messages are derived from events - no separate message storage is needed.
 //!
 //! NOTES from Python spec:
 //! - Tools call runs in parallel
@@ -27,9 +29,9 @@ use crate::events::{
     ActCompletedData, ActStartedData, Event, EventContext, ToolCallCompletedData,
     ToolCallStartedData,
 };
-use crate::message::{ContentPart, Message};
+use crate::message::ContentPart;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{EventEmitter, MessageStore, SessionFileStore, ToolContext, ToolExecutor};
+use crate::traits::{EventEmitter, SessionFileStore, ToolContext, ToolExecutor};
 
 // ============================================================================
 // Input and Output Types
@@ -82,32 +84,30 @@ pub struct ActResult {
 /// 1. Emits act.started event
 /// 2. Executes all tool calls in parallel (emitting tool.call_started/completed for each)
 /// 3. Handles errors, timeouts, and cancellations gracefully
-/// 4. Stores tool result messages for each call
-/// 5. Emits act.completed event
-/// 6. Returns comprehensive results for all tools
-pub struct ActAtom<M, T, E>
+/// 4. Emits act.completed event
+/// 5. Returns comprehensive results for all tools
+///
+/// Tool results are emitted as events and returned in ActResult.
+/// Messages are derived from events by the message store.
+pub struct ActAtom<T, E>
 where
-    M: MessageStore,
     T: ToolExecutor,
     E: EventEmitter,
 {
-    message_store: M,
     tool_executor: T,
     event_emitter: E,
     /// Optional file store for context-aware tools
     file_store: Option<Arc<dyn SessionFileStore>>,
 }
 
-impl<M, T, E> ActAtom<M, T, E>
+impl<T, E> ActAtom<T, E>
 where
-    M: MessageStore,
     T: ToolExecutor,
     E: EventEmitter,
 {
     /// Create a new ActAtom
-    pub fn new(message_store: M, tool_executor: T, event_emitter: E) -> Self {
+    pub fn new(tool_executor: T, event_emitter: E) -> Self {
         Self {
-            message_store,
             tool_executor,
             event_emitter,
             file_store: None,
@@ -116,13 +116,11 @@ where
 
     /// Create a new ActAtom with a file store for context-aware tools
     pub fn with_file_store(
-        message_store: M,
         tool_executor: T,
         event_emitter: E,
         file_store: Arc<dyn SessionFileStore>,
     ) -> Self {
         Self {
-            message_store,
             tool_executor,
             event_emitter,
             file_store: Some(file_store),
@@ -131,9 +129,8 @@ where
 }
 
 #[async_trait]
-impl<M, T, E> Atom for ActAtom<M, T, E>
+impl<T, E> Atom for ActAtom<T, E>
 where
-    M: MessageStore + Send + Sync + Clone,
     T: ToolExecutor + Send + Sync,
     E: EventEmitter + Send + Sync,
 {
@@ -214,24 +211,6 @@ where
         let success_count = results.iter().filter(|r| r.success).count();
         let error_count = results.iter().filter(|r| !r.success).count();
 
-        // Store tool result messages
-        for result in &results {
-            let message = Message::tool_result(
-                &result.tool_call.id,
-                result.result.result.clone(),
-                result.result.error.clone(),
-            );
-            // Ignore storage errors - the results are still valid
-            if let Err(e) = self.message_store.store(context.session_id, message).await {
-                tracing::warn!(
-                    session_id = %context.session_id,
-                    tool_call_id = %result.tool_call.id,
-                    error = %e,
-                    "ActAtom: failed to store tool result"
-                );
-            }
-        }
-
         // Emit act.completed event
         if let Err(e) = self
             .event_emitter
@@ -270,9 +249,8 @@ where
     }
 }
 
-impl<M, T, E> ActAtom<M, T, E>
+impl<T, E> ActAtom<T, E>
 where
-    M: MessageStore + Send + Sync + Clone,
     T: ToolExecutor + Send + Sync,
     E: EventEmitter + Send + Sync,
 {
@@ -480,7 +458,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::InMemoryMessageStore;
     use crate::tools::ToolRegistry;
     use crate::traits::NoopEventEmitter;
     use serde_json::json;
@@ -488,10 +465,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_act_atom_empty_tool_calls() {
-        let store = InMemoryMessageStore::new();
         let executor = ToolRegistry::with_defaults();
         let event_emitter = NoopEventEmitter;
-        let atom = ActAtom::new(store, executor, event_emitter);
+        let atom = ActAtom::new(executor, event_emitter);
 
         let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
         let input = ActInput {
@@ -510,10 +486,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_act_atom_tool_not_found() {
-        let store = InMemoryMessageStore::new();
         let executor = ToolRegistry::with_defaults();
         let event_emitter = NoopEventEmitter;
-        let atom = ActAtom::new(store, executor, event_emitter);
+        let atom = ActAtom::new(executor, event_emitter);
 
         let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
         let input = ActInput {

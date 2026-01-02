@@ -139,13 +139,13 @@ function eventsToMessages(events: Event[]): Message[] {
   // Note: Tool calls are embedded in message.agent events via ContentPart::ToolCall
   // Note: Tool results now come from tool.call_completed events (not message.tool_result)
   const relevantEvents = events.filter(e =>
-    e.event_type === "message.user" ||
-    e.event_type === "message.agent" ||
-    e.event_type === "tool.call_completed"
+    e.type === "message.user" ||
+    e.type === "message.agent" ||
+    e.type === "tool.call_completed"
   );
 
-  return relevantEvents.map(event => {
-    if (event.event_type === "tool.call_completed") {
+  return relevantEvents.map((event, index) => {
+    if (event.type === "tool.call_completed") {
       // Convert tool.call_completed to a tool_result message
       const data = event.data as {
         tool_call_id: string;
@@ -164,12 +164,12 @@ function eventsToMessages(events: Event[]): Message[] {
       return {
         id: event.id,
         session_id: event.session_id,
-        sequence: event.sequence,
+        sequence: event.sequence ?? index,
         role: "tool_result" as Message["role"],
         content,
         metadata: undefined,
         tool_call_id: data.tool_call_id,
-        created_at: event.created_at,
+        created_at: event.ts,
       };
     }
 
@@ -195,12 +195,12 @@ function eventsToMessages(events: Event[]): Message[] {
     return {
       id: message?.id || event.id,
       session_id: event.session_id,
-      sequence: event.sequence,
-      role: roleMap[event.event_type] ?? message?.role as Message["role"],
+      sequence: event.sequence ?? index,
+      role: roleMap[event.type] ?? message?.role as Message["role"],
       content: message?.content || [],
       metadata: undefined,
       tool_call_id: null,
-      created_at: message?.created_at ?? event.created_at,
+      created_at: message?.created_at ?? event.ts,
     };
   });
 }

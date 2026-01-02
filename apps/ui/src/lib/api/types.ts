@@ -168,16 +168,30 @@ export function getToolCallsFromContent(content: ContentPart[]): Array<{ id: str
 }
 
 // ============================================
-// Event types (M2) - SSE notifications
+// Event types - SSE notifications following standard event protocol
 // ============================================
 
+/** Event context for correlation */
+export interface EventContext {
+  session_id: string;
+  turn_id?: string;
+  input_message_id?: string;
+  exec_id?: string;
+}
+
+/** Standard event schema matching core::Event */
 export interface Event {
   id: string;
+  /** Event type using dot notation (e.g., "message.user", "tool.call_completed") */
+  type: string;
+  /** ISO timestamp */
+  ts: string;
   session_id: string;
-  sequence: number;
-  event_type: string;
+  context: EventContext;
   data: Record<string, unknown>;
-  created_at: string;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  sequence?: number;
 }
 
 export interface CreateEventRequest {

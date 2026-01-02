@@ -184,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
         driver_registry,
         event_emitter.clone(),
     );
-    let act_atom = ActAtom::new(message_store.clone(), tools.clone(), event_emitter.clone());
+    let act_atom = ActAtom::new(tools.clone(), event_emitter.clone());
 
     // =========================================================================
     // Step 1: Input Atom - Record user message

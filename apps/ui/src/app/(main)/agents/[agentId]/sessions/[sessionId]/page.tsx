@@ -475,11 +475,11 @@ export default function SessionDetailPage({
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="font-mono text-xs">
-                          {event.event_type}
+                          {event.type}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {new Date(event.created_at).toLocaleString()}
+                        {new Date(event.ts).toLocaleString()}
                       </TableCell>
                       <TableCell className="font-mono text-xs max-w-[500px]">
                         <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
