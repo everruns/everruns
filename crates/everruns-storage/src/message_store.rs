@@ -161,6 +161,7 @@ impl MessageStore for DbMessageStore {
 /// Convert event data to a Message
 ///
 /// Handles multiple formats:
+/// - Full Event structure: { "type": "...", "data": { ... } }
 /// - Message events: { "message": { "id", "role", "content", ... } }
 /// - Legacy message format: { "message_id", "role", "content", ... }
 /// - Tool call completed: { "tool_call_id", "result", "error", ... }
@@ -168,12 +169,30 @@ fn event_to_message(
     data: &serde_json::Value,
     created_at: DateTime<Utc>,
 ) -> std::result::Result<Message, String> {
-    // Try new format first (message wrapper)
+    // Check if this is a full Event structure (has "type" and "data" fields)
+    // DbEventEmitter stores the full Event, so we need to unwrap it
+    if let (Some(event_type), Some(event_data)) = (data.get("type"), data.get("data")) {
+        let event_type_str = event_type.as_str().unwrap_or("");
+
+        // Handle tool.call_completed events
+        if event_type_str == "tool.call_completed" {
+            return parse_tool_call_completed(event_data, created_at);
+        }
+
+        // Handle message events - the data contains the message directly
+        if event_type_str == "message.user" || event_type_str == "message.agent" {
+            if let Some(message_obj) = event_data.get("message") {
+                return parse_message_object(message_obj, created_at);
+            }
+        }
+    }
+
+    // Try message wrapper format (for events stored with just data, not full Event)
     if let Some(message_obj) = data.get("message") {
         return parse_message_object(message_obj, created_at);
     }
 
-    // Check if this is a tool.call_completed event (has tool_call_id at top level)
+    // Check if this is a tool.call_completed event at top level (legacy/direct format)
     if data.get("tool_call_id").is_some() {
         return parse_tool_call_completed(data, created_at);
     }
@@ -344,7 +363,8 @@ pub fn create_db_message_store(db: Database) -> DbMessageStore {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::{ContentPart, ToolCall};
+    use everruns_core::events::EventContext;
+    use everruns_core::{ContentPart, Event, ToolCall, ToolCallCompletedData};
     use serde_json::json;
 
     use super::*;
@@ -674,5 +694,136 @@ mod tests {
         } else {
             panic!("Expected ToolResult content part");
         }
+    }
+
+    #[test]
+    fn test_event_to_message_real_tool_call_completed_success() {
+        // Use actual ToolCallCompletedData to verify serialization format matches
+        let completed_data = ToolCallCompletedData::success(
+            "call_real_123".to_string(),
+            "get_weather".to_string(),
+            vec![ContentPart::text("Temperature: 72°F")],
+        );
+
+        // Serialize to JSON (this is what gets stored in DB)
+        let data = serde_json::to_value(&completed_data).unwrap();
+        println!("Serialized ToolCallCompletedData: {}", serde_json::to_string_pretty(&data).unwrap());
+
+        // Verify the structure has tool_call_id at top level
+        assert!(data.get("tool_call_id").is_some(), "tool_call_id should be at top level");
+        assert_eq!(data.get("tool_call_id").unwrap().as_str(), Some("call_real_123"));
+
+        // Now parse it back as a message
+        let result = event_to_message(&data, Utc::now());
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+
+        let message = result.unwrap();
+        assert_eq!(message.role, MessageRole::ToolResult);
+        assert_eq!(message.tool_call_id(), Some("call_real_123"));
+    }
+
+    #[test]
+    fn test_event_to_message_real_tool_call_completed_failure() {
+        // Use actual ToolCallCompletedData::failure
+        let completed_data = ToolCallCompletedData::failure(
+            "call_fail_456".to_string(),
+            "read_file".to_string(),
+            "error".to_string(),
+            "File not found: /nonexistent".to_string(),
+        );
+
+        let data = serde_json::to_value(&completed_data).unwrap();
+        println!("Serialized failure: {}", serde_json::to_string_pretty(&data).unwrap());
+
+        let result = event_to_message(&data, Utc::now());
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+
+        let message = result.unwrap();
+        assert_eq!(message.role, MessageRole::ToolResult);
+        assert_eq!(message.tool_call_id(), Some("call_fail_456"));
+
+        if let ContentPart::ToolResult(tr) = &message.content[0] {
+            assert_eq!(tr.error.as_deref(), Some("File not found: /nonexistent"));
+        } else {
+            panic!("Expected ToolResult content part");
+        }
+    }
+
+    #[test]
+    fn test_event_to_message_full_event_structure() {
+        // This test simulates what's ACTUALLY stored in the database:
+        // The full Event is serialized, not just EventData
+        let session_id = Uuid::now_v7();
+        let completed_data = ToolCallCompletedData::success(
+            "call_full_event_123".to_string(),
+            "search".to_string(),
+            vec![ContentPart::text("Found 10 results")],
+        );
+
+        // Create a full Event (this is what DbEventEmitter does)
+        let event = Event::new(session_id, EventContext::empty(), completed_data);
+
+        // Serialize the full Event (this is what gets stored in DB data column)
+        let stored_data = serde_json::to_value(&event).unwrap();
+        println!(
+            "Full Event stored in DB: {}",
+            serde_json::to_string_pretty(&stored_data).unwrap()
+        );
+
+        // Check that tool_call_id is NESTED under "data", not at top level
+        assert!(
+            stored_data.get("data").is_some(),
+            "Event should have 'data' field"
+        );
+        assert!(
+            stored_data.get("data").unwrap().get("tool_call_id").is_some(),
+            "tool_call_id should be nested under 'data'"
+        );
+        assert!(
+            stored_data.get("tool_call_id").is_none(),
+            "tool_call_id should NOT be at top level of stored Event"
+        );
+
+        // Now try to parse it - this is what the current code does
+        let result = event_to_message(&stored_data, Utc::now());
+
+        // This should work if we handle the full Event structure
+        assert!(
+            result.is_ok(),
+            "Should parse full Event structure. Error: {:?}",
+            result.err()
+        );
+
+        let message = result.unwrap();
+        assert_eq!(message.role, MessageRole::ToolResult);
+        assert_eq!(message.tool_call_id(), Some("call_full_event_123"));
+    }
+
+    #[test]
+    fn test_event_to_message_full_message_event_structure() {
+        use everruns_core::events::MessageAgentData;
+
+        // Test that full message.agent events are also parsed correctly
+        let session_id = Uuid::now_v7();
+        let message = Message::assistant("Hello from the agent!");
+        let message_data = MessageAgentData::new(message);
+
+        let event = Event::new(session_id, EventContext::empty(), message_data);
+        let stored_data = serde_json::to_value(&event).unwrap();
+        println!(
+            "Full message.agent Event: {}",
+            serde_json::to_string_pretty(&stored_data).unwrap()
+        );
+
+        let result = event_to_message(&stored_data, Utc::now());
+        assert!(
+            result.is_ok(),
+            "Should parse full message.agent Event. Error: {:?}",
+            result.err()
+        );
+
+        let parsed = result.unwrap();
+        assert_eq!(parsed.role, MessageRole::Assistant);
+        assert_eq!(parsed.text(), Some("Hello from the agent!"));
     }
 }
