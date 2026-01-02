@@ -4,6 +4,45 @@
 
 Everruns is a durable AI agent execution platform built on Rust and Temporal. It provides APIs for managing agents, threads, and runs with streaming event output via SSE. The architecture prioritizes durability, observability, and developer experience.
 
+## System Architecture
+
+```mermaid
+graph TB
+    subgraph Clients
+        UI[Web UI]
+        API_Client[API Clients]
+    end
+
+    subgraph Control Plane
+        REST[REST API<br/>:9000]
+        GRPC[gRPC Server<br/>:9001]
+        Services[Services Layer]
+        Storage[(PostgreSQL)]
+    end
+
+    subgraph Workers
+        Worker[Temporal Worker]
+        Atoms[Atoms<br/>Input/Reason/Act]
+        LLM[LLM Providers]
+    end
+
+    subgraph Infrastructure
+        Temporal[Temporal Server]
+    end
+
+    UI --> REST
+    API_Client --> REST
+    REST --> Services
+    Services --> Storage
+    GRPC --> Services
+
+    Worker -->|gRPC| GRPC
+    Worker -->|Poll Tasks| Temporal
+    REST -->|Start Workflow| Temporal
+    Worker --> Atoms
+    Atoms --> LLM
+```
+
 ## Requirements
 
 ### Core Architecture
@@ -13,14 +52,36 @@ Everruns is a durable AI agent execution platform built on Rust and Temporal. It
    - `control-plane/` → `everruns-control-plane` - HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - Temporal worker, workflows, activities, gRPC client adapters
    - `schemas/` → `everruns-schemas` - Shared type definitions (source of truth for all data structures)
-   - `runtime/` → `everruns-runtime` - Runtime traits and abstractions
+   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers)
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ control-plane
-   - `core/` → `everruns-core` - Core agent abstractions (traits, executor, tools, events, capabilities)
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
    - See [specs/documentation.md](documentation.md) for detailed specification
+
+### Crate Dependency Graph
+
+```mermaid
+graph TD
+    schemas[schemas]
+    core[core]
+    openai[openai]
+    anthropic[anthropic]
+    protocol[internal-protocol]
+    worker[worker]
+    cp[control-plane]
+
+    schemas --> core
+    schemas --> protocol
+    core --> openai
+    core --> anthropic
+    core --> worker
+    protocol --> worker
+    protocol --> cp
+    core --> cp
+    worker -.->|gRPC| cp
+```
 
 ### Data Layer
 
@@ -61,7 +122,35 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - Clear boundary between control-plane (owns state) and workers (stateless executors)
    - Batched operations reduce round trips (4 DB calls → 1 gRPC call)
 
-See [specs/architecture-v2-proposal.md](architecture-v2-proposal.md) for detailed design.
+### Worker Communication Flow
+
+```mermaid
+sequenceDiagram
+    participant W as Worker
+    participant CP as Control Plane (gRPC)
+    participant T as Temporal
+    participant LLM as LLM Provider
+
+    W->>T: Poll for tasks
+    T-->>W: TurnWorkflow task
+    W->>CP: GetTurnContext(session_id)
+    CP-->>W: Agent + Session + Messages + Model
+    W->>CP: EmitEvent(turn.started)
+
+    loop Reason-Act Loop
+        W->>LLM: Generate completion
+        LLM-->>W: Response + Tool calls
+        W->>CP: EmitEvent(llm.generation)
+
+        opt Tool Execution
+            W->>W: Execute tools locally
+            W->>CP: EmitEvent(tool.completed)
+        end
+    end
+
+    W->>CP: EmitEvent(turn.completed)
+    W->>T: Complete workflow
+```
 
 ### Core Abstractions (`everruns-core`)
 

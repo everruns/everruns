@@ -397,7 +397,6 @@ everruns/
 │   ├── control-plane/    # HTTP API + gRPC server + database layer (everruns-control-plane)
 │   ├── worker/           # Temporal worker with gRPC client (everruns-worker)
 │   ├── schemas/          # Shared type definitions (everruns-schemas)
-│   ├── runtime/          # Agent execution engine (everruns-runtime)
 │   ├── internal-protocol/ # gRPC protocol definitions (everruns-internal-protocol)
 │   ├── core/    # Core abstractions, domain entities, tools
 │   ├── openai/           # OpenAI provider (everruns-openai)
