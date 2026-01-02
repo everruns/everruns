@@ -17,8 +17,8 @@ sqlx.workspace = true
 
 everruns-storage = { path = "../everruns-storage" }
 everruns-core = { path = "../everruns-core" }
-everruns-openai = { path = "../everruns-openai" }
-everruns-anthropic = { path = "../everruns-anthropic" }
+everruns-openai = { path = "../openai" }
+everruns-anthropic = { path = "../anthropic" }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-schemas = { path = "../schemas" }
 

@@ -1,12 +1,12 @@
 [package]
-name = "everruns-api"
+name = "everruns-control-plane"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-default-run = "everruns-api"
+default-run = "everruns-control-plane"
 
 [[bin]]
-name = "everruns-api"
+name = "everruns-control-plane"
 path = "src/main.rs"
 
 [[bin]]
@@ -44,7 +44,7 @@ regex.workspace = true
 
 everruns-core = { path = "../everruns-core", features = ["openapi"] }
 everruns-storage = { path = "../everruns-storage" }
-everruns-worker = { path = "../everruns-worker" }
+everruns-worker = { path = "../worker" }
 everruns-internal-protocol = { path = "../internal-protocol" }
 
 # gRPC

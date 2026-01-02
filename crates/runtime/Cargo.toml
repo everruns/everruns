@@ -57,5 +57,5 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 wiremock = "0.6"
 # Provider crates for examples
-everruns-openai = { path = "../everruns-openai" }
-everruns-anthropic = { path = "../everruns-anthropic" }
+everruns-openai = { path = "../openai" }
+everruns-anthropic = { path = "../anthropic" }

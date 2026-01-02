@@ -83,11 +83,11 @@ start_api() {
     export TEMPORAL_ADDRESS="localhost:7233"
     export AUTH_MODE="none"
 
-    # Build API
-    cargo build -p everruns-api > /dev/null 2>&1
+    # Build API (control-plane)
+    cargo build -p everruns-control-plane > /dev/null 2>&1
 
     # Start API in background
-    RUST_LOG=info cargo run -p everruns-api > "$API_LOG" 2>&1 &
+    RUST_LOG=info cargo run -p everruns-control-plane > "$API_LOG" 2>&1 &
     API_PID=$!
 
     # Wait for API to be ready

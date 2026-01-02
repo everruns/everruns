@@ -61,8 +61,8 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 wiremock = "0.6"
 # Provider crates for examples (dev-only, not a runtime dependency)
-everruns-openai = { path = "../everruns-openai" }
-everruns-anthropic = { path = "../everruns-anthropic" }
+everruns-openai = { path = "../openai" }
+everruns-anthropic = { path = "../anthropic" }
 
 [[example]]
 name = "turn_based_execution"
