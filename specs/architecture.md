@@ -51,8 +51,7 @@ graph TB
 2. **Crate Separation** (folder → package name):
    - `control-plane/` → `everruns-control-plane` - HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - Temporal worker, workflows, activities, gRPC client adapters
-   - `schemas/` → `everruns-schemas` - Shared type definitions (source of truth for all data structures)
-   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers)
+   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, shared types)
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ control-plane
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
@@ -64,7 +63,6 @@ graph TB
 
 ```mermaid
 graph TD
-    schemas[schemas]
     core[core]
     openai[openai]
     anthropic[anthropic]
@@ -72,10 +70,9 @@ graph TD
     worker[worker]
     cp[control-plane]
 
-    schemas --> core
-    schemas --> protocol
     core --> openai
     core --> anthropic
+    core --> protocol
     core --> worker
     protocol --> worker
     protocol --> cp
@@ -219,14 +216,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 #### Layer Separation
 
-1. **Schemas Layer** (`schemas/` → `everruns-schemas`):
-   - Source of truth for all shared data structures
-   - Domain types: `Agent`, `Session`, `Message`, `Event`, `ContentPart`
-   - Tool types: `ToolCall`, `ToolResult`, `ToolDefinition`
-   - LLM types: `LlmProviderType`, `ModelWithProvider`
-   - Optional OpenAPI support via feature flag
-
-2. **Storage Layer** (`control-plane/src/storage/`):
+1. **Storage Layer** (`control-plane/src/storage/`):
    - Database models use `Row` suffix (e.g., `AgentRow`, `SessionRow`, `EventRow`)
    - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateEventRow`)
    - Update structs use `Update` prefix (e.g., `UpdateAgent`)
@@ -234,7 +224,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
    - Migrations in `control-plane/migrations/`
    - Note: Messages are stored as events (see `specs/models.md`)
 
-3. **Core Layer** (`core/`):
+2. **Core Layer** (`core/` → `everruns-core`):
    - Contains shared domain types used across layers (e.g., `ContentPart`, `Controls`, `Message`)
    - Contains domain entity types (e.g., `Agent`, `Session`, `LlmProvider`, `Event`, `Capability`)
    - Provides trait definitions (`MessageStore`, `EventEmitter`, `LlmProvider` trait, `ToolExecutor`)
@@ -242,7 +232,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
    - Domain types are DB-agnostic and serializable
    - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
-4. **Control-Plane Layer** (`control-plane/` → `everruns-control-plane`):
+3. **Control-Plane Layer** (`control-plane/` → `everruns-control-plane`):
    - HTTP API (axum) on port 9000 - public REST API
    - gRPC server (tonic) on port 9001 - internal WorkerService
    - API contracts (DTOs) are collocated with their routes in the same module
@@ -250,17 +240,17 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
    - Input types for user-facing APIs use `Input` prefix (e.g., `InputMessage`, `InputContentPart`)
    - Request/response wrappers use `Request`/`Response` suffix
 
-5. **Service Layer** (`control-plane/services/`):
+4. **Service Layer** (`control-plane/services/`):
    - Services accept API contracts (request types) and return domain types
    - Services handle conversion from API contracts to storage Row types
    - Services own business logic, validation, and orchestration
    - Services call repositories (via Database) for persistence
    - Each controller module has a corresponding service (e.g., `agents.rs` → `AgentService`)
 
-6. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
+5. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
    - gRPC protocol definitions (proto files)
    - Generated Rust types via tonic-build
-   - Conversion functions between proto types and schema types
+   - Conversion functions between proto types and core types
 
 #### Type Flow Example
 

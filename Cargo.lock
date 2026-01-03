@@ -875,7 +875,7 @@ name = "everruns-internal-protocol"
 version = "0.2.0"
 dependencies = [
  "chrono",
- "everruns-schemas",
+ "everruns-core",
  "prost 0.13.5",
  "prost-types 0.13.5",
  "serde",
@@ -904,19 +904,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-schemas"
-version = "0.2.0"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "utoipa",
- "uuid 1.19.0",
-]
-
-[[package]]
 name = "everruns-worker"
 version = "0.2.0"
 dependencies = [
@@ -927,7 +914,6 @@ dependencies = [
  "everruns-core",
  "everruns-internal-protocol",
  "everruns-openai",
- "everruns-schemas",
  "futures",
  "hex",
  "prost 0.13.5",

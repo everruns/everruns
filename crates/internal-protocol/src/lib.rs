@@ -86,9 +86,7 @@ pub fn datetime_to_proto_timestamp(value: DateTime<Utc>) -> proto::Timestamp {
 // ============================================================================
 
 /// Convert proto Agent to schemas Agent using JSON
-pub fn proto_agent_to_schema(
-    value: proto::Agent,
-) -> Result<everruns_schemas::Agent, ConversionError> {
+pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent, ConversionError> {
     // Serialize proto to JSON, then deserialize to schema type
     // This is simpler and more maintainable than field-by-field conversion
     let tags: Vec<String> = vec![];
@@ -108,7 +106,7 @@ pub fn proto_agent_to_schema(
 }
 
 /// Convert schemas Agent to proto Agent
-pub fn schema_agent_to_proto(value: &everruns_schemas::Agent) -> proto::Agent {
+pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
     proto::Agent {
         id: Some(uuid_to_proto_uuid(value.id)),
         name: value.name.clone(),
@@ -127,7 +125,7 @@ pub fn schema_agent_to_proto(value: &everruns_schemas::Agent) -> proto::Agent {
 /// Convert proto Session to schemas Session using JSON
 pub fn proto_session_to_schema(
     value: proto::Session,
-) -> Result<everruns_schemas::Session, ConversionError> {
+) -> Result<everruns_core::Session, ConversionError> {
     let tags: Vec<String> = vec![];
     let started_at: Option<String> = None;
     let finished_at: Option<String> = None;
@@ -146,7 +144,7 @@ pub fn proto_session_to_schema(
 }
 
 /// Convert schemas Session to proto Session
-pub fn schema_session_to_proto(value: &everruns_schemas::Session) -> proto::Session {
+pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session {
     proto::Session {
         id: Some(uuid_to_proto_uuid(value.id)),
         agent_id: Some(uuid_to_proto_uuid(value.agent_id)),
@@ -161,7 +159,7 @@ pub fn schema_session_to_proto(value: &everruns_schemas::Session) -> proto::Sess
 /// Convert proto Message to schemas Message
 pub fn proto_message_to_schema(
     value: proto::Message,
-) -> Result<everruns_schemas::Message, ConversionError> {
+) -> Result<everruns_core::Message, ConversionError> {
     let id = value
         .id
         .as_ref()
@@ -173,8 +171,8 @@ pub fn proto_message_to_schema(
         .map(proto_timestamp_to_datetime)
         .ok_or(ConversionError::MissingField("created_at"))?;
 
-    let content: Vec<everruns_schemas::ContentPart> = serde_json::from_str(&value.content_json)?;
-    let controls: Option<everruns_schemas::Controls> = value
+    let content: Vec<everruns_core::ContentPart> = serde_json::from_str(&value.content_json)?;
+    let controls: Option<everruns_core::Controls> = value
         .controls_json
         .as_ref()
         .filter(|s| !s.is_empty())
@@ -189,7 +187,7 @@ pub fn proto_message_to_schema(
 
     let role = parse_message_role(&value.role);
 
-    Ok(everruns_schemas::Message {
+    Ok(everruns_core::Message {
         id,
         role,
         content,
@@ -200,7 +198,7 @@ pub fn proto_message_to_schema(
 }
 
 /// Convert schemas Message to proto Message
-pub fn schema_message_to_proto(value: &everruns_schemas::Message) -> proto::Message {
+pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message {
     proto::Message {
         id: Some(uuid_to_proto_uuid(value.id)),
         role: value.role.to_string(),
@@ -218,9 +216,7 @@ pub fn schema_message_to_proto(value: &everruns_schemas::Message) -> proto::Mess
 }
 
 /// Convert proto Event to schemas Event
-pub fn proto_event_to_schema(
-    value: proto::Event,
-) -> Result<everruns_schemas::Event, ConversionError> {
+pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event, ConversionError> {
     let id = value
         .id
         .as_ref()
@@ -242,7 +238,7 @@ pub fn proto_event_to_schema(
         .ok_or(ConversionError::MissingField("session_id"))?;
     let session_id = proto_uuid_to_uuid(session_id)?;
 
-    let context = everruns_schemas::EventContext {
+    let context = everruns_core::EventContext {
         turn_id: proto_context.turn.map(|t| uuid::Uuid::from_u128(t as u128)), // Simplified
         input_message_id: None,
         exec_id: proto_context
@@ -252,9 +248,9 @@ pub fn proto_event_to_schema(
             .transpose()?,
     };
 
-    let data: everruns_schemas::EventData = serde_json::from_str(&value.data_json)?;
+    let data: everruns_core::EventData = serde_json::from_str(&value.data_json)?;
 
-    Ok(everruns_schemas::Event {
+    Ok(everruns_core::Event {
         id,
         event_type: value.event_type,
         ts,
@@ -268,7 +264,7 @@ pub fn proto_event_to_schema(
 }
 
 /// Convert schemas Event to proto Event
-pub fn schema_event_to_proto(value: &everruns_schemas::Event) -> proto::Event {
+pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
     proto::Event {
         id: Some(uuid_to_proto_uuid(value.id)),
         event_type: value.event_type.clone(),
@@ -285,7 +281,7 @@ pub fn schema_event_to_proto(value: &everruns_schemas::Event) -> proto::Event {
 /// Convert proto SessionFile to schemas SessionFile
 pub fn proto_session_file_to_schema(
     value: proto::SessionFile,
-) -> Result<everruns_schemas::SessionFile, ConversionError> {
+) -> Result<everruns_core::SessionFile, ConversionError> {
     let id = value
         .id
         .as_ref()
@@ -307,7 +303,7 @@ pub fn proto_session_file_to_schema(
         .map(proto_timestamp_to_datetime)
         .ok_or(ConversionError::MissingField("updated_at"))?;
 
-    Ok(everruns_schemas::SessionFile {
+    Ok(everruns_core::SessionFile {
         id,
         session_id,
         path: value.path,
@@ -323,7 +319,7 @@ pub fn proto_session_file_to_schema(
 }
 
 /// Convert schemas SessionFile to proto SessionFile
-pub fn schema_session_file_to_proto(value: &everruns_schemas::SessionFile) -> proto::SessionFile {
+pub fn schema_session_file_to_proto(value: &everruns_core::SessionFile) -> proto::SessionFile {
     proto::SessionFile {
         id: Some(uuid_to_proto_uuid(value.id)),
         session_id: Some(uuid_to_proto_uuid(value.session_id)),
@@ -342,7 +338,7 @@ pub fn schema_session_file_to_proto(value: &everruns_schemas::SessionFile) -> pr
 /// Convert proto FileInfo to schemas FileInfo
 pub fn proto_file_info_to_schema(
     value: proto::FileInfo,
-) -> Result<everruns_schemas::FileInfo, ConversionError> {
+) -> Result<everruns_core::FileInfo, ConversionError> {
     let id = value
         .id
         .as_ref()
@@ -364,7 +360,7 @@ pub fn proto_file_info_to_schema(
         .map(proto_timestamp_to_datetime)
         .ok_or(ConversionError::MissingField("updated_at"))?;
 
-    Ok(everruns_schemas::FileInfo {
+    Ok(everruns_core::FileInfo {
         id,
         session_id,
         path: value.path,
@@ -378,7 +374,7 @@ pub fn proto_file_info_to_schema(
 }
 
 /// Convert schemas FileInfo to proto FileInfo
-pub fn schema_file_info_to_proto(value: &everruns_schemas::FileInfo) -> proto::FileInfo {
+pub fn schema_file_info_to_proto(value: &everruns_core::FileInfo) -> proto::FileInfo {
     proto::FileInfo {
         id: Some(uuid_to_proto_uuid(value.id)),
         session_id: Some(uuid_to_proto_uuid(value.session_id)),
@@ -395,7 +391,7 @@ pub fn schema_file_info_to_proto(value: &everruns_schemas::FileInfo) -> proto::F
 /// Convert proto FileStat to schemas FileStat
 pub fn proto_file_stat_to_schema(
     value: proto::FileStat,
-) -> Result<everruns_schemas::FileStat, ConversionError> {
+) -> Result<everruns_core::FileStat, ConversionError> {
     let created_at = value
         .created_at
         .as_ref()
@@ -407,7 +403,7 @@ pub fn proto_file_stat_to_schema(
         .map(proto_timestamp_to_datetime)
         .ok_or(ConversionError::MissingField("updated_at"))?;
 
-    Ok(everruns_schemas::FileStat {
+    Ok(everruns_core::FileStat {
         path: value.path,
         name: value.name,
         is_directory: value.is_directory,
@@ -419,7 +415,7 @@ pub fn proto_file_stat_to_schema(
 }
 
 /// Convert schemas FileStat to proto FileStat
-pub fn schema_file_stat_to_proto(value: &everruns_schemas::FileStat) -> proto::FileStat {
+pub fn schema_file_stat_to_proto(value: &everruns_core::FileStat) -> proto::FileStat {
     proto::FileStat {
         path: value.path.clone(),
         name: value.name.clone(),
@@ -432,8 +428,8 @@ pub fn schema_file_stat_to_proto(value: &everruns_schemas::FileStat) -> proto::F
 }
 
 /// Convert proto GrepMatch to schemas GrepMatch
-pub fn proto_grep_match_to_schema(value: proto::GrepMatch) -> everruns_schemas::GrepMatch {
-    everruns_schemas::GrepMatch {
+pub fn proto_grep_match_to_schema(value: proto::GrepMatch) -> everruns_core::GrepMatch {
+    everruns_core::GrepMatch {
         path: value.path,
         line_number: value.line_number as usize,
         line: value.line,
@@ -441,7 +437,7 @@ pub fn proto_grep_match_to_schema(value: proto::GrepMatch) -> everruns_schemas::
 }
 
 /// Convert schemas GrepMatch to proto GrepMatch
-pub fn schema_grep_match_to_proto(value: &everruns_schemas::GrepMatch) -> proto::GrepMatch {
+pub fn schema_grep_match_to_proto(value: &everruns_core::GrepMatch) -> proto::GrepMatch {
     proto::GrepMatch {
         path: value.path.clone(),
         line_number: value.line_number as u64,
@@ -453,12 +449,12 @@ pub fn schema_grep_match_to_proto(value: &everruns_schemas::GrepMatch) -> proto:
 // Helper functions
 // ============================================================================
 
-fn parse_message_role(s: &str) -> everruns_schemas::MessageRole {
+fn parse_message_role(s: &str) -> everruns_core::MessageRole {
     match s.to_lowercase().as_str() {
-        "system" => everruns_schemas::MessageRole::System,
-        "user" => everruns_schemas::MessageRole::User,
-        "assistant" => everruns_schemas::MessageRole::Assistant,
-        "tool_result" => everruns_schemas::MessageRole::ToolResult,
-        _ => everruns_schemas::MessageRole::User,
+        "system" => everruns_core::MessageRole::System,
+        "user" => everruns_core::MessageRole::User,
+        "assistant" => everruns_core::MessageRole::Assistant,
+        "tool_result" => everruns_core::MessageRole::ToolResult,
+        _ => everruns_core::MessageRole::User,
     }
 }

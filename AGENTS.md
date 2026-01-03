@@ -128,13 +128,7 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
 
 #### Layer separation
 
-1. **Schemas Layer** (`schemas/` → `everruns-schemas`):
-   - Source of truth for all shared data structures
-   - Domain types: `Agent`, `Session`, `Message`, `Event`, `ContentPart`
-   - Tool types: `ToolCall`, `ToolResult`, `ToolDefinition`
-   - LLM types: `LlmProviderType`, `ModelWithProvider`
-
-2. **Storage Layer** (`control-plane/src/storage/`):
+1. **Storage Layer** (`control-plane/src/storage/`):
    - Database models use `Row` suffix: `AgentRow`, `SessionRow`, `EventRow`
    - Create input structs: `CreateAgentRow`, `CreateEventRow`
    - Update structs: `UpdateAgent`, `UpdateSession`
@@ -142,20 +136,22 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
    - Migrations in `control-plane/migrations/`
    - Note: Messages are stored as events (see `specs/models.md`)
 
-3. **Core Layer** (`core/`):
-   - Shared domain types: `ContentPart`, `Controls`, `Message`, `ToolCall`
+2. **Core Layer** (`core/` → `everruns-core`):
+   - Source of truth for all shared data structures
+   - Domain types: `Agent`, `Session`, `Message`, `Event`, `ContentPart`
+   - Tool types: `ToolCall`, `ToolResult`, `ToolDefinition`
    - Trait definitions: `MessageStore`, `EventEmitter`, `LlmProvider`
    - Types are DB-agnostic and serializable
    - OpenAPI support via feature flag: `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
-4. **Control-Plane Layer** (`control-plane/` → `everruns-control-plane`):
+3. **Control-Plane Layer** (`control-plane/` → `everruns-control-plane`):
    - HTTP API (axum) on port 9000, gRPC server (tonic) on port 9001
    - API contracts collocated with routes (e.g., `messages.rs` has routes + DTOs)
    - Services accept API DTOs, transform to storage types, store in database
    - Input types: `InputMessage`, `InputContentPart` (for user-facing input)
    - Request wrappers: `CreateMessageRequest`, `CreateAgentRequest`
 
-5. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
+4. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
    - gRPC protocol definitions (proto files) for worker ↔ control-plane
    - Generated Rust types via tonic-build
    - Batched operations: `GetTurnContext`, `EmitEventStream`
@@ -396,9 +392,8 @@ everruns/
 ├── crates/
 │   ├── control-plane/    # HTTP API + gRPC server + database layer (everruns-control-plane)
 │   ├── worker/           # Temporal worker with gRPC client (everruns-worker)
-│   ├── schemas/          # Shared type definitions (everruns-schemas)
+│   ├── core/             # Core abstractions, domain entities, tools (everruns-core)
 │   ├── internal-protocol/ # gRPC protocol definitions (everruns-internal-protocol)
-│   ├── core/    # Core abstractions, domain entities, tools
 │   ├── openai/           # OpenAI provider (everruns-openai)
 │   └── anthropic/        # Anthropic provider (everruns-anthropic)
 ├── docs/                 # Documentation content (published via apps/docs)
