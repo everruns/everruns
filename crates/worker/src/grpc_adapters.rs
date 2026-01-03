@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::events::Event;
+use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
@@ -750,29 +750,43 @@ impl GrpcEventEmitter {
 
 #[async_trait]
 impl EventEmitter for GrpcEventEmitter {
-    async fn emit(&self, event: Event) -> Result<i32> {
+    async fn emit(&self, request: EventRequest) -> Result<Event> {
         let mut client = self.client.inner.lock().await;
 
-        // Convert core Event to proto Event
-        let proto_event = core_event_to_proto(&event)?;
+        // Convert core EventRequest to proto EventRequest
+        let proto_event_request = core_event_request_to_proto(&request)?;
 
-        let request = proto::EmitEventRequest {
-            event: Some(proto_event),
+        let grpc_request = proto::EmitEventRequest {
+            event: Some(proto_event_request),
         };
 
         let response = client
-            .emit_event(request)
+            .emit_event(grpc_request)
             .await
             .map_err(|e| grpc_error(format!("gRPC emit_event failed: {}", e)))?;
 
-        Ok(response.into_inner().seq)
+        // Convert proto Event response back to core Event
+        let proto_event = response
+            .into_inner()
+            .event
+            .ok_or_else(|| grpc_error("No event in response"))?;
+
+        proto_event_to_core(proto_event)
     }
 }
 
-/// Convert everruns_core::Event to proto::Event
-fn core_event_to_proto(event: &Event) -> Result<proto::Event> {
+/// Convert everruns_core::EventRequest to proto::EventRequest
+fn core_event_request_to_proto(request: &EventRequest) -> Result<proto::EventRequest> {
     // Use the typed event conversion from internal-protocol
-    Ok(everruns_internal_protocol::schema_event_to_proto(event))
+    Ok(everruns_internal_protocol::schema_event_request_to_proto(
+        request,
+    ))
+}
+
+/// Convert proto::Event to everruns_core::Event
+fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
+    everruns_internal_protocol::proto_event_to_schema(proto_event)
+        .map_err(|e| grpc_error(format!("Failed to convert proto event: {}", e)))
 }
 
 // ============================================================================

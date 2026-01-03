@@ -26,7 +26,7 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    Event, EventContext, LlmGenerationData, ReasonCompletedData, ReasonStartedData,
+    EventContext, EventRequest, LlmGenerationData, ReasonCompletedData, ReasonStartedData,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
@@ -215,7 +215,7 @@ where
         // Emit reason.started event (note: we'll emit a more detailed event after model resolution)
         if let Err(e) = self
             .event_emitter
-            .emit(Event::new(
+            .emit(EventRequest::new(
                 context.session_id,
                 event_context.clone(),
                 ReasonStartedData {
@@ -241,7 +241,7 @@ where
                 // Emit reason.completed event for success
                 if let Err(e) = self
                     .event_emitter
-                    .emit(Event::new(
+                    .emit(EventRequest::new(
                         context.session_id,
                         event_context.clone(),
                         ReasonCompletedData::success(
@@ -275,7 +275,7 @@ where
                 // Emit reason.completed event for failure
                 if let Err(emit_err) = self
                     .event_emitter
-                    .emit(Event::new(
+                    .emit(EventRequest::new(
                         context.session_id,
                         event_context,
                         ReasonCompletedData::failure(error_msg.clone()),
@@ -439,7 +439,7 @@ where
                     let event_context = EventContext::from_atom_context(context);
                     let _ = self
                         .event_emitter
-                        .emit(Event::new(
+                        .emit(EventRequest::new(
                             session_id,
                             event_context,
                             LlmGenerationData::failure(
@@ -462,7 +462,7 @@ where
         let event_context = EventContext::from_atom_context(context);
         if let Err(e) = self
             .event_emitter
-            .emit(Event::new(
+            .emit(EventRequest::new(
                 session_id,
                 event_context,
                 LlmGenerationData::success(

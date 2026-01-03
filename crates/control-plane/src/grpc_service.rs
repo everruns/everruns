@@ -18,7 +18,9 @@ use everruns_internal_protocol::proto::{
     SessionReadFileResponse, SessionStatFileRequest, SessionStatFileResponse,
     SessionWriteFileRequest, SessionWriteFileResponse,
 };
-use everruns_internal_protocol::{proto_event_to_schema, WorkerService, WorkerServiceServer};
+use everruns_internal_protocol::{
+    proto_event_request_to_schema, schema_event_to_proto, WorkerService, WorkerServiceServer,
+};
 use std::sync::Arc;
 use tonic::{Request, Response, Status, Streaming};
 
@@ -298,11 +300,11 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<Streaming<EmitEventRequest>>,
     ) -> Result<Response<EmitEventStreamResponse>, Status> {
         let mut stream = request.into_inner();
-        let mut events: Vec<everruns_core::Event> = Vec::new();
+        let mut event_requests: Vec<everruns_core::EventRequest> = Vec::new();
 
-        // Collect all events from the stream, converting proto to core types
+        // Collect all event requests from the stream, converting proto to core types
         while let Some(req) = stream.message().await? {
-            let proto_event = match req.event {
+            let proto_event_request = match req.event {
                 Some(e) => e,
                 None => {
                     tracing::warn!("Received emit_event_stream request without event");
@@ -310,23 +312,27 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
-            // Convert proto Event to core Event using typed conversions
-            let core_event = match proto_event_to_schema(proto_event) {
+            // Convert proto EventRequest to core EventRequest using typed conversions
+            let core_event_request = match proto_event_request_to_schema(proto_event_request) {
                 Ok(e) => e,
                 Err(e) => {
-                    tracing::warn!("Failed to convert proto event to core event: {}", e);
+                    tracing::warn!("Failed to convert proto event request to core: {}", e);
                     continue;
                 }
             };
 
-            events.push(core_event);
+            event_requests.push(core_event_request);
         }
 
         // Emit all events through the EventService
-        let events_processed = self.event_service.emit_batch(events).await.map_err(|e| {
-            tracing::error!("Failed to emit event batch: {}", e);
-            Status::internal("Failed to store events")
-        })?;
+        let events_processed = self
+            .event_service
+            .emit_batch(event_requests)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to emit event batch: {}", e);
+                Status::internal("Failed to store events")
+            })?;
 
         Ok(Response::new(EmitEventStreamResponse { events_processed }))
     }
@@ -486,8 +492,8 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<AddMessageResponse>, Status> {
         use chrono::Utc;
         use everruns_core::{
-            ContentPart, Controls, Event, EventContext, Message, MessageAgentData, MessageRole,
-            MessageUserData,
+            ContentPart, Controls, EventContext, EventRequest, Message, MessageAgentData,
+            MessageRole, MessageUserData,
         };
         use everruns_internal_protocol::{
             datetime_to_proto_timestamp, json_to_proto_list, json_to_proto_struct,
@@ -535,14 +541,14 @@ impl WorkerService for WorkerServiceImpl {
             created_at: Utc::now(),
         };
 
-        // Create typed event based on role
-        let event = match role {
-            MessageRole::User => Event::new(
+        // Create typed event request based on role
+        let event_request = match role {
+            MessageRole::User => EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 MessageUserData::new(message.clone()),
             ),
-            MessageRole::Assistant => Event::new(
+            MessageRole::Assistant => EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 MessageAgentData::new(message.clone()),
@@ -556,7 +562,7 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         // Emit through the EventService
-        let _stored_event = self.event_service.emit(event).await.map_err(|e| {
+        let _stored_event = self.event_service.emit(event_request).await.map_err(|e| {
             tracing::error!("Failed to create message event: {}", e);
             Status::internal("Failed to store message")
         })?;
@@ -594,22 +600,27 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<EmitEventRequest>,
     ) -> Result<Response<EmitEventResponse>, Status> {
         let req = request.into_inner();
-        let proto_event = req
+        let proto_event_request = req
             .event
             .ok_or_else(|| Status::invalid_argument("Missing event"))?;
 
-        // Convert proto Event to core Event using typed conversions
-        let core_event = proto_event_to_schema(proto_event)
+        // Convert proto EventRequest to core EventRequest using typed conversions
+        let core_event_request = proto_event_request_to_schema(proto_event_request)
             .map_err(|e| Status::invalid_argument(format!("Invalid event: {}", e)))?;
 
         // Emit through the EventService
-        let stored_event = self.event_service.emit(core_event).await.map_err(|e| {
-            tracing::error!("Failed to emit event: {}", e);
-            Status::internal("Failed to store event")
-        })?;
+        let stored_event = self
+            .event_service
+            .emit(core_event_request)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to emit event: {}", e);
+                Status::internal("Failed to store event")
+            })?;
 
+        // Return the full stored event with id and sequence
         Ok(Response::new(EmitEventResponse {
-            seq: stored_event.sequence.unwrap_or(0),
+            event: Some(schema_event_to_proto(&stored_event)),
         }))
     }
 

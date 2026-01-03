@@ -8,7 +8,9 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::{
-    events::{EventContext, MessageAgentData, MessageUserData, ToolCallCompletedData},
+    events::{
+        EventContext, EventRequest, MessageAgentData, MessageUserData, ToolCallCompletedData,
+    },
     traits::{EventEmitter, InputMessage, MessageStore},
     AgentLoopError, ContentPart, Event, EventData, Message, MessageRole, Result,
 };
@@ -52,13 +54,13 @@ impl MessageStore for DbMessageStore {
         };
 
         // Emit as typed event based on role
-        let event = match message.role {
-            MessageRole::User => Event::new(
+        let event_request = match message.role {
+            MessageRole::User => EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 MessageUserData::new(message.clone()),
             ),
-            MessageRole::Assistant => Event::new(
+            MessageRole::Assistant => EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 MessageAgentData::new(message.clone()),
@@ -70,7 +72,7 @@ impl MessageStore for DbMessageStore {
         };
 
         self.event_emitter
-            .emit(event)
+            .emit(event_request)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -89,14 +91,14 @@ impl MessageStore for DbMessageStore {
             return Ok(());
         }
 
-        let event = Event::new(
+        let event_request = EventRequest::new(
             session_id,
             EventContext::empty(),
             MessageAgentData::new(message),
         );
 
         self.event_emitter
-            .emit(event)
+            .emit(event_request)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 

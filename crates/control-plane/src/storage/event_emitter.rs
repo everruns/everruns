@@ -5,7 +5,7 @@
 //! numbers per session, enabling SSE streaming and event replay.
 
 use async_trait::async_trait;
-use everruns_core::{traits::EventEmitter, AgentLoopError, Event, Result};
+use everruns_core::{traits::EventEmitter, AgentLoopError, Event, EventRequest, Result};
 
 use super::models::CreateEventRow;
 use super::repositories::Database;
@@ -32,12 +32,12 @@ impl DbEventEmitter {
 
 #[async_trait]
 impl EventEmitter for DbEventEmitter {
-    async fn emit(&self, event: Event) -> Result<i32> {
-        let session_id = event.session_id();
-        let event_type = event.event_type.clone();
+    async fn emit(&self, request: EventRequest) -> Result<Event> {
+        let session_id = request.session_id;
+        let event_type = request.event_type.clone();
 
-        // Serialize the full event to JSON for storage
-        let data = serde_json::to_value(&event)
+        // Serialize the request to JSON for storage
+        let data = serde_json::to_value(&request)
             .map_err(|e| AgentLoopError::store(format!("Failed to serialize event: {}", e)))?;
 
         let event_row = self
@@ -50,7 +50,8 @@ impl EventEmitter for DbEventEmitter {
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
-        Ok(event_row.sequence)
+        // Convert EventRequest to Event with the assigned id and sequence
+        Ok(request.into_event(event_row.id, event_row.sequence))
     }
 }
 

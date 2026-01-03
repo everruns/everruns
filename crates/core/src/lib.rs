@@ -102,7 +102,7 @@ pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResu
 pub use agent::{Agent, AgentStatus};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
-    ActCompletedData, ActStartedData, Event, EventBuilder, EventContext, EventData,
+    ActCompletedData, ActStartedData, Event, EventBuilder, EventContext, EventData, EventRequest,
     InputReceivedData, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
     MessageAgentData, MessageUserData, ModelMetadata, ReasonCompletedData, ReasonStartedData,
     SessionStartedData, TokenUsage, ToolCallCompletedData, ToolCallStartedData, ToolCallSummary,

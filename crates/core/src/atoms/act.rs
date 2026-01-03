@@ -26,7 +26,7 @@ use std::sync::Arc;
 use super::{Atom, AtomContext};
 use crate::error::Result;
 use crate::events::{
-    ActCompletedData, ActStartedData, Event, EventContext, ToolCallCompletedData,
+    ActCompletedData, ActStartedData, EventContext, EventRequest, ToolCallCompletedData,
     ToolCallStartedData,
 };
 use crate::message::ContentPart;
@@ -171,7 +171,7 @@ where
         // Emit act.started event
         if let Err(e) = self
             .event_emitter
-            .emit(Event::new(
+            .emit(EventRequest::new(
                 context.session_id,
                 event_context.clone(),
                 ActStartedData::new(&tool_calls),
@@ -214,7 +214,7 @@ where
         // Emit act.completed event
         if let Err(e) = self
             .event_emitter
-            .emit(Event::new(
+            .emit(EventRequest::new(
                 context.session_id,
                 event_context,
                 ActCompletedData {
@@ -275,7 +275,7 @@ where
         // Emit tool.call_started event
         if let Err(e) = self
             .event_emitter
-            .emit(Event::new(
+            .emit(EventRequest::new(
                 context.session_id,
                 event_context.clone(),
                 ToolCallStartedData {
@@ -299,7 +299,7 @@ where
             // Emit tool.call_completed event for error
             if let Err(e) = self
                 .event_emitter
-                .emit(Event::new(
+                .emit(EventRequest::new(
                     context.session_id,
                     event_context,
                     ToolCallCompletedData::failure(
@@ -370,7 +370,7 @@ where
 
                 if let Err(e) = self
                     .event_emitter
-                    .emit(Event::new(
+                    .emit(EventRequest::new(
                         context.session_id,
                         event_context.clone(),
                         completed_data,
@@ -406,7 +406,7 @@ where
                 // Emit tool.call_completed event for error
                 if let Err(emit_err) = self
                     .event_emitter
-                    .emit(Event::new(
+                    .emit(EventRequest::new(
                         context.session_id,
                         event_context,
                         ToolCallCompletedData::failure(

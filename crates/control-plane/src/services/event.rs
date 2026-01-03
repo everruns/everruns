@@ -7,7 +7,7 @@
 
 use crate::storage::{models::CreateEventRow, Database};
 use anyhow::Result;
-use everruns_core::{Event, EventContext, EventData};
+use everruns_core::{Event, EventContext, EventData, EventRequest};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -20,44 +20,41 @@ impl EventService {
         Self { db }
     }
 
-    /// Emit a typed event and store it in the database.
-    /// Returns the stored event with its assigned sequence number.
+    /// Emit a typed event request and store it in the database.
+    /// Returns the stored event with its assigned id and sequence number.
     ///
     /// This is the primary method for event ingestion, used by both
     /// HTTP API and gRPC service.
-    pub async fn emit(&self, event: Event) -> Result<Event> {
-        // Serialize the full event to JSON for storage
-        let data = serde_json::to_value(&event)?;
+    pub async fn emit(&self, request: EventRequest) -> Result<Event> {
+        // Serialize the request to JSON for storage
+        let data = serde_json::to_value(&request)?;
 
         let create_row = CreateEventRow {
-            session_id: event.session_id,
-            event_type: event.event_type.clone(),
+            session_id: request.session_id,
+            event_type: request.event_type.clone(),
             data,
         };
 
         let row = self.db.create_event(create_row).await?;
 
-        // Return the event with the assigned sequence number
-        Ok(Event {
-            sequence: Some(row.sequence),
-            ..event
-        })
+        // Return the event with the assigned id and sequence number
+        Ok(request.into_event(row.id, row.sequence))
     }
 
-    /// Emit a batch of typed events and store them in the database.
+    /// Emit a batch of typed event requests and store them in the database.
     /// Returns the count of successfully stored events.
     ///
     /// This method is optimized for bulk event ingestion from workers.
-    pub async fn emit_batch(&self, events: Vec<Event>) -> Result<i32> {
+    pub async fn emit_batch(&self, requests: Vec<EventRequest>) -> Result<i32> {
         let mut count = 0i32;
 
-        for event in events {
-            // Serialize the full event to JSON for storage
-            let data = serde_json::to_value(&event)?;
+        for request in requests {
+            // Serialize the request to JSON for storage
+            let data = serde_json::to_value(&request)?;
 
             let create_row = CreateEventRow {
-                session_id: event.session_id,
-                event_type: event.event_type.clone(),
+                session_id: request.session_id,
+                event_type: request.event_type.clone(),
                 data,
             };
 

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Atom, AtomContext};
 use crate::error::{AgentLoopError, Result};
-use crate::events::{Event, EventContext, InputReceivedData};
+use crate::events::{EventContext, EventRequest, InputReceivedData};
 use crate::message::Message;
 use crate::traits::{EventEmitter, MessageStore};
 
@@ -110,7 +110,7 @@ where
         // Emit input.received event
         if let Err(e) = self
             .event_emitter
-            .emit(Event::new(
+            .emit(EventRequest::new(
                 context.session_id,
                 event_context,
                 InputReceivedData::new(message.clone()),

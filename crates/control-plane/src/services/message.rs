@@ -9,7 +9,7 @@ use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRo
 use crate::storage::{Database, DbEventEmitter};
 use anyhow::Result;
 use chrono::Utc;
-use everruns_core::events::{EventContext, MessageUserData};
+use everruns_core::events::{EventContext, EventRequest, MessageUserData};
 use everruns_core::traits::EventEmitter;
 use everruns_core::Event;
 use everruns_worker::AgentRunner;
@@ -66,9 +66,9 @@ impl MessageService {
         };
 
         // Emit as typed event using DbEventEmitter
-        let sequence = self
+        let stored_event = self
             .event_emitter
-            .emit(Event::new(
+            .emit(EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 MessageUserData::new(core_message),
@@ -79,7 +79,7 @@ impl MessageService {
         let message = Message {
             id: message_id,
             session_id,
-            sequence,
+            sequence: stored_event.sequence.unwrap_or(0),
             role: MessageRole::User,
             content,
             controls: req.controls,

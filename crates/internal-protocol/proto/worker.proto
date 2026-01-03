@@ -165,6 +165,34 @@ message AddMessageResponse {
 // Event types
 // ============================================================================
 
+// EventRequest - input type for event ingestion (no id or sequence)
+message EventRequest {
+    string event_type = 1;
+    Timestamp ts = 2;
+    EventContext context = 3;
+    // Typed event data - use oneof for type safety
+    oneof data {
+        MessageUserData message_user = 10;
+        MessageAgentData message_agent = 11;
+        TurnStartedData turn_started = 12;
+        TurnCompletedData turn_completed = 13;
+        TurnFailedData turn_failed = 14;
+        InputReceivedData input_received = 15;
+        ReasonStartedData reason_started = 16;
+        ReasonCompletedData reason_completed = 17;
+        ActStartedData act_started = 18;
+        ActCompletedData act_completed = 19;
+        ToolCallStartedData tool_call_started = 20;
+        ToolCallCompletedData tool_call_completed = 21;
+        LlmGenerationData llm_generation = 22;
+        SessionStartedData session_started = 23;
+        RawEventData raw = 24;  // Fallback for unknown types
+    }
+    optional google.protobuf.Struct metadata = 4;  // Optional metadata object
+    repeated string tags = 5;  // Optional tags
+}
+
+// Event - stored event with id and sequence assigned by storage
 message Event {
     Uuid id = 1;
     string event_type = 2;
@@ -190,7 +218,7 @@ message Event {
     }
     optional google.protobuf.Struct metadata = 5;  // Optional metadata object
     repeated string tags = 6;  // Optional tags
-    optional int32 sequence = 7;  // Sequence number within session
+    int32 sequence = 7;  // Sequence number within session (always set for stored events)
 }
 
 message EventContext {
@@ -321,11 +349,11 @@ message RawEventData {
 }
 
 message EmitEventRequest {
-    Event event = 1;
+    EventRequest event = 1;
 }
 
 message EmitEventResponse {
-    int32 seq = 1;
+    Event event = 1;  // The stored event with id and sequence
 }
 
 message EmitEventStreamResponse {
