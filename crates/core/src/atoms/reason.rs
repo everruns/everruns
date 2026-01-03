@@ -589,6 +589,7 @@ where
             crate::llm_models::LlmProviderType::Openai => ProviderType::OpenAI,
             crate::llm_models::LlmProviderType::Anthropic => ProviderType::Anthropic,
             crate::llm_models::LlmProviderType::AzureOpenAI => ProviderType::AzureOpenAI,
+            crate::llm_models::LlmProviderType::LlmSim => ProviderType::LlmSim,
         };
 
         let mut config = ProviderConfig::new(provider_type);

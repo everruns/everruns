@@ -19,6 +19,9 @@ pub enum LlmProviderType {
     Anthropic,
     #[serde(rename = "azure_openai")]
     AzureOpenAI,
+    /// LLM simulator for testing
+    #[serde(rename = "llmsim")]
+    LlmSim,
 }
 
 impl std::fmt::Display for LlmProviderType {
@@ -27,6 +30,7 @@ impl std::fmt::Display for LlmProviderType {
             LlmProviderType::Openai => write!(f, "openai"),
             LlmProviderType::Anthropic => write!(f, "anthropic"),
             LlmProviderType::AzureOpenAI => write!(f, "azure_openai"),
+            LlmProviderType::LlmSim => write!(f, "llmsim"),
         }
     }
 }
@@ -39,6 +43,7 @@ impl std::str::FromStr for LlmProviderType {
             "openai" => Ok(LlmProviderType::Openai),
             "anthropic" => Ok(LlmProviderType::Anthropic),
             "azure_openai" => Ok(LlmProviderType::AzureOpenAI),
+            "llmsim" => Ok(LlmProviderType::LlmSim),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
     }

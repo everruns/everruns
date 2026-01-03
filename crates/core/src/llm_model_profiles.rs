@@ -108,6 +108,7 @@ pub fn get_model_profile(
         LlmProviderType::Openai => get_openai_profile(model_id),
         LlmProviderType::Anthropic => get_anthropic_profile(model_id),
         LlmProviderType::AzureOpenAI => get_openai_profile(model_id), // Azure uses same model IDs
+        LlmProviderType::LlmSim => None, // No profile for simulated LLM
     }
 }
 
