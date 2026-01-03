@@ -942,7 +942,8 @@ async fn test_message_triggers_agent_workflow() {
         if let Ok(resp) = messages_response {
             if resp.status() == 200 {
                 let data: Value = resp.json().await.unwrap_or_default();
-                let messages = data["data"].as_array().unwrap_or(&vec![]);
+                let empty_vec = vec![];
+                let messages = data["data"].as_array().unwrap_or(&empty_vec);
 
                 for msg in messages {
                     if msg["role"] == "assistant" {
