@@ -87,28 +87,27 @@ impl MessageService {
             created_at: now,
         };
 
-        // Start workflow for user message (pass the message_id that triggered this turn)
-        self.start_workflow(agent_id, session_id, message_id).await;
+        // Start workflow for user message in background (don't block the response)
+        // The message is already persisted, so we can return immediately
+        let runner = self.runner.clone();
+        tokio::spawn(async move {
+            if let Err(e) = runner.start_run(session_id, agent_id, message_id).await {
+                tracing::error!(
+                    session_id = %session_id,
+                    input_message_id = %message_id,
+                    error = %e,
+                    "Failed to start turn workflow"
+                );
+            } else {
+                tracing::info!(
+                    session_id = %session_id,
+                    input_message_id = %message_id,
+                    "Turn workflow started"
+                );
+            }
+        });
 
         Ok(message)
-    }
-
-    /// Start turn workflow for the session
-    async fn start_workflow(&self, agent_id: Uuid, session_id: Uuid, input_message_id: Uuid) {
-        if let Err(e) = self
-            .runner
-            .start_run(session_id, agent_id, input_message_id)
-            .await
-        {
-            tracing::error!("Failed to start turn workflow: {}", e);
-            // Don't fail the request, message is already persisted
-        } else {
-            tracing::info!(
-                session_id = %session_id,
-                input_message_id = %input_message_id,
-                "Turn workflow started"
-            );
-        }
     }
 
     pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {

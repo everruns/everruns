@@ -838,3 +838,170 @@ async fn test_session_filesystem() {
 
     println!("Session filesystem test passed!");
 }
+
+/// Test that message creation returns promptly and triggers agent workflow
+///
+/// This test verifies:
+/// 1. Message creation returns within 5 seconds (not blocking on workflow)
+/// 2. After waiting, an assistant response appears (workflow executed)
+#[tokio::test]
+#[ignore]
+async fn test_message_triggers_agent_workflow() {
+    use std::time::{Duration, Instant};
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("Failed to create client");
+
+    println!("Testing message triggers agent workflow...");
+
+    // Step 1: Create agent
+    println!("\nStep 1: Creating agent...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Workflow Test Agent",
+            "system_prompt": "You are a helpful assistant. Respond briefly."
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.id);
+
+    // Step 2: Create session
+    println!("\nStep 2: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .json(&json!({"title": "Workflow Test Session"}))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    // Step 3: Send message and verify it returns promptly (within 5 seconds)
+    println!("\nStep 3: Sending message (should return promptly)...");
+    let start = Instant::now();
+    let message_response = client
+        .post(format!(
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "Say hello in one word."}]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to create message");
+    let elapsed = start.elapsed();
+
+    assert_eq!(
+        message_response.status(),
+        201,
+        "Message creation should succeed"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "Message creation took too long: {:?}. Should not block on workflow start.",
+        elapsed
+    );
+    println!("Message created in {:?}", elapsed);
+
+    let message: Value = message_response
+        .json()
+        .await
+        .expect("Failed to parse message");
+    assert_eq!(message["role"], "user");
+    println!("Created user message: {}", message["id"]);
+
+    // Step 4: Wait for workflow to complete and check for assistant response
+    println!("\nStep 4: Waiting for agent response (up to 30 seconds)...");
+    let mut assistant_found = false;
+    for i in 1..=30 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let messages_response = client
+            .get(format!(
+                "{}/v1/agents/{}/sessions/{}/messages",
+                API_BASE_URL, agent.id, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = messages_response {
+            if resp.status() == 200 {
+                let data: Value = resp.json().await.unwrap_or_default();
+                let messages = data["data"].as_array().unwrap_or(&vec![]);
+
+                for msg in messages {
+                    if msg["role"] == "assistant" {
+                        assistant_found = true;
+                        let content = &msg["content"];
+                        println!("Found assistant response after {}s: {:?}", i, content);
+                        break;
+                    }
+                }
+
+                if assistant_found {
+                    break;
+                }
+            }
+        }
+
+        if i % 5 == 0 {
+            println!("Still waiting... ({}s)", i);
+        }
+    }
+
+    assert!(
+        assistant_found,
+        "Agent workflow did not produce an assistant response within 30 seconds. \
+        Check: 1) Worker is running, 2) LLM provider configured, 3) Default model set"
+    );
+
+    // Step 5: Verify events were created
+    println!("\nStep 5: Verifying events...");
+    let events_response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions/{}/events",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list events");
+
+    assert_eq!(events_response.status(), 200);
+    let events_data: Value = events_response
+        .json()
+        .await
+        .expect("Failed to parse events");
+    let events = events_data["data"]
+        .as_array()
+        .expect("Expected events array");
+    println!("Found {} events", events.len());
+    assert!(
+        events.len() >= 2,
+        "Expected at least 2 events (user message + agent response)"
+    );
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("Message triggers agent workflow test passed!");
+}
