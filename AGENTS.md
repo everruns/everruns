@@ -266,8 +266,8 @@ PRs should include appropriate tests for the changes being made:
   # Unit tests (no external dependencies)
   cargo test
 
-  # Integration tests (requires API running)
-  cargo test --test integration_test -- --ignored
+  # Integration tests (requires API + Worker + Temporal running)
+  cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
   ```
 
 ### Commit message conventions
@@ -366,9 +366,9 @@ Expected output:
 
 ### Alternative testing methods
 
-**Integration tests** (requires API running):
+**Integration tests** (requires API + Worker + Temporal running):
 ```bash
-cargo test --test integration_test -- --ignored
+cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
 ```
 
 **Examples** (requires API running):

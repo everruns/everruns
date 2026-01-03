@@ -1,5 +1,6 @@
-// Integration tests for Everruns API (M2)
-// Run with: cargo test --test integration_test
+// Integration tests for Everruns API
+// Run with: cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
+// Requires: API + Worker + Temporal running (uses LlmSim for workflow tests, no real API keys needed)
 
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{Agent, LlmModel, Session, SessionFile};

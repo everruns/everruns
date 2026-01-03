@@ -79,11 +79,11 @@ This will:
 ### Run Tests
 
 ```bash
-# Run all integration tests
-cargo test --test integration_test -- --ignored
+# Run all integration tests (requires API + Worker + Temporal running)
+cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
 
 # Run a specific test
-cargo test --test integration_test test_full_agent_workflow -- --ignored
+cargo test -p everruns-control-plane --test integration_test test_full_agent_session_workflow -- --test-threads=1
 ```
 
 ### Test Coverage
