@@ -1,10 +1,11 @@
 // Internal Protocol for Worker <-> Control Plane Communication
 //
 // Decision: gRPC with tonic (industry standard, already in stack)
-// Decision: Use JSON serialization for complex domain types to simplify conversion
+// Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
 use chrono::{DateTime, TimeZone, Utc};
+use prost_types::{value::Kind, ListValue, Struct, Value};
 
 // Generated protobuf code
 pub mod proto {
@@ -82,7 +83,90 @@ pub fn datetime_to_proto_timestamp(value: DateTime<Utc>) -> proto::Timestamp {
 }
 
 // ============================================================================
-// Conversion to/from schemas types using JSON serialization
+// Conversion between prost_types and serde_json
+// ============================================================================
+
+/// Convert prost_types::Value to serde_json::Value
+pub fn proto_value_to_json(value: &Value) -> serde_json::Value {
+    match &value.kind {
+        Some(Kind::NullValue(_)) => serde_json::Value::Null,
+        Some(Kind::BoolValue(b)) => serde_json::Value::Bool(*b),
+        Some(Kind::NumberValue(n)) => serde_json::Number::from_f64(*n)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        Some(Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
+        Some(Kind::ListValue(list)) => proto_list_to_json(list),
+        Some(Kind::StructValue(s)) => proto_struct_to_json(s),
+        None => serde_json::Value::Null,
+    }
+}
+
+/// Convert prost_types::ListValue to serde_json::Value (array)
+pub fn proto_list_to_json(list: &ListValue) -> serde_json::Value {
+    serde_json::Value::Array(list.values.iter().map(proto_value_to_json).collect())
+}
+
+/// Convert prost_types::Struct to serde_json::Value (object)
+pub fn proto_struct_to_json(s: &Struct) -> serde_json::Value {
+    serde_json::Value::Object(
+        s.fields
+            .iter()
+            .map(|(k, v)| (k.clone(), proto_value_to_json(v)))
+            .collect(),
+    )
+}
+
+/// Convert serde_json::Value to prost_types::Value
+pub fn json_to_proto_value(value: &serde_json::Value) -> Value {
+    Value {
+        kind: Some(match value {
+            serde_json::Value::Null => Kind::NullValue(0),
+            serde_json::Value::Bool(b) => Kind::BoolValue(*b),
+            serde_json::Value::Number(n) => Kind::NumberValue(n.as_f64().unwrap_or(0.0)),
+            serde_json::Value::String(s) => Kind::StringValue(s.clone()),
+            serde_json::Value::Array(arr) => Kind::ListValue(json_array_to_proto_list(arr)),
+            serde_json::Value::Object(obj) => Kind::StructValue(json_object_to_proto_struct(obj)),
+        }),
+    }
+}
+
+/// Convert JSON array to prost_types::ListValue
+pub fn json_array_to_proto_list(arr: &[serde_json::Value]) -> ListValue {
+    ListValue {
+        values: arr.iter().map(json_to_proto_value).collect(),
+    }
+}
+
+/// Convert JSON object to prost_types::Struct
+pub fn json_object_to_proto_struct(obj: &serde_json::Map<String, serde_json::Value>) -> Struct {
+    Struct {
+        fields: obj
+            .iter()
+            .map(|(k, v)| (k.clone(), json_to_proto_value(v)))
+            .collect(),
+    }
+}
+
+/// Convert serde_json::Value to prost_types::ListValue (assumes array)
+pub fn json_to_proto_list(value: &serde_json::Value) -> ListValue {
+    match value {
+        serde_json::Value::Array(arr) => json_array_to_proto_list(arr),
+        _ => ListValue { values: vec![] },
+    }
+}
+
+/// Convert serde_json::Value to prost_types::Struct (assumes object)
+pub fn json_to_proto_struct(value: &serde_json::Value) -> Struct {
+    match value {
+        serde_json::Value::Object(obj) => json_object_to_proto_struct(obj),
+        _ => Struct {
+            fields: std::collections::BTreeMap::new(),
+        },
+    }
+}
+
+// ============================================================================
+// Conversion to/from schemas types
 // ============================================================================
 
 /// Convert proto Agent to schemas Agent using JSON
@@ -171,18 +255,26 @@ pub fn proto_message_to_schema(
         .map(proto_timestamp_to_datetime)
         .ok_or(ConversionError::MissingField("created_at"))?;
 
-    let content: Vec<everruns_core::ContentPart> = serde_json::from_str(&value.content_json)?;
+    // Convert prost ListValue to Vec<ContentPart>
+    let content_json = value
+        .content
+        .as_ref()
+        .map(proto_list_to_json)
+        .unwrap_or_else(|| serde_json::Value::Array(vec![]));
+    let content: Vec<everruns_core::ContentPart> = serde_json::from_value(content_json)?;
+
+    // Convert prost Struct to Controls
     let controls: Option<everruns_core::Controls> = value
-        .controls_json
+        .controls
         .as_ref()
-        .filter(|s| !s.is_empty())
-        .map(|j| serde_json::from_str(j))
+        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
         .transpose()?;
+
+    // Convert prost Struct to metadata
     let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = value
-        .metadata_json
+        .metadata
         .as_ref()
-        .filter(|s| !s.is_empty())
-        .map(|j| serde_json::from_str(j))
+        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
         .transpose()?;
 
     let role = parse_message_role(&value.role);
@@ -199,18 +291,28 @@ pub fn proto_message_to_schema(
 
 /// Convert schemas Message to proto Message
 pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message {
+    // Convert content to ListValue
+    let content_json = serde_json::to_value(&value.content).unwrap_or_default();
+    let content = Some(json_to_proto_list(&content_json));
+
+    // Convert controls to Struct
+    let controls = value.controls.as_ref().map(|c| {
+        let json = serde_json::to_value(c).unwrap_or_default();
+        json_to_proto_struct(&json)
+    });
+
+    // Convert metadata to Struct
+    let metadata = value.metadata.as_ref().map(|m| {
+        let json = serde_json::to_value(m).unwrap_or_default();
+        json_to_proto_struct(&json)
+    });
+
     proto::Message {
         id: Some(uuid_to_proto_uuid(value.id)),
         role: value.role.to_string(),
-        content_json: serde_json::to_string(&value.content).unwrap_or_default(),
-        controls_json: value
-            .controls
-            .as_ref()
-            .map(|c| serde_json::to_string(c).unwrap_or_default()),
-        metadata_json: value
-            .metadata
-            .as_ref()
-            .map(|m| serde_json::to_string(m).unwrap_or_default()),
+        content,
+        controls,
+        metadata,
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
     }
 }
@@ -259,13 +361,8 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
     // Convert typed event data from proto oneof to core EventData
     let data = proto_event_data_to_schema(value.data)?;
 
-    // Parse optional metadata
-    let metadata: Option<serde_json::Value> = value
-        .metadata_json
-        .as_ref()
-        .filter(|s| !s.is_empty())
-        .map(|s| serde_json::from_str(s))
-        .transpose()?;
+    // Convert optional metadata from prost Struct
+    let metadata: Option<serde_json::Value> = value.metadata.as_ref().map(proto_struct_to_json);
 
     Ok(everruns_core::Event {
         id,
@@ -409,21 +506,26 @@ fn proto_event_data_to_schema(
             let tc = d
                 .tool_call
                 .ok_or(ConversionError::MissingField("tool_call"))?;
+            // Convert prost Struct to serde_json::Value for arguments
+            let arguments = tc
+                .arguments
+                .as_ref()
+                .map(proto_struct_to_json)
+                .unwrap_or_default();
             EventData::ToolCallStarted(ToolCallStartedData {
                 tool_call: ToolCall {
                     id: tc.id,
                     name: tc.name,
-                    arguments: serde_json::from_str(&tc.arguments_json).unwrap_or_default(),
+                    arguments,
                 },
             })
         }
         proto::event::Data::ToolCallCompleted(d) => {
-            let result: Option<Vec<ContentPart>> = d
-                .result_json
-                .as_ref()
-                .filter(|s| !s.is_empty())
-                .map(|s| serde_json::from_str(s))
-                .transpose()?;
+            // Convert prost ListValue to Vec<ContentPart>
+            let result: Option<Vec<ContentPart>> = d.result.as_ref().map(|list| {
+                let json = proto_list_to_json(list);
+                serde_json::from_value(json).unwrap_or_default()
+            });
             EventData::ToolCallCompleted(ToolCallCompletedData {
                 tool_call_id: d.tool_call_id,
                 tool_name: d.tool_name,
@@ -443,13 +545,18 @@ fn proto_event_data_to_schema(
             let meta = d
                 .metadata
                 .ok_or(ConversionError::MissingField("metadata"))?;
+            // Convert prost Struct to serde_json::Value for tool call arguments
             let tool_calls: Vec<ToolCall> = output_data
                 .tool_calls
                 .into_iter()
                 .map(|tc| ToolCall {
                     id: tc.id,
                     name: tc.name,
-                    arguments: serde_json::from_str(&tc.arguments_json).unwrap_or_default(),
+                    arguments: tc
+                        .arguments
+                        .as_ref()
+                        .map(proto_struct_to_json)
+                        .unwrap_or_default(),
                 })
                 .collect();
             EventData::LlmGeneration(LlmGenerationData {
@@ -482,7 +589,13 @@ fn proto_event_data_to_schema(
             })
         }
         proto::event::Data::Raw(d) => {
-            EventData::Raw(serde_json::from_str(&d.json).unwrap_or_default())
+            // Convert prost Value to serde_json::Value
+            let value = d
+                .value
+                .as_ref()
+                .map(proto_value_to_json)
+                .unwrap_or_default();
+            EventData::Raw(value)
         }
     })
 }
@@ -567,8 +680,7 @@ fn schema_event_data_to_proto(data: &everruns_core::EventData) -> proto::event::
                 tool_call: Some(proto::ToolCall {
                     id: d.tool_call.id.clone(),
                     name: d.tool_call.name.clone(),
-                    arguments_json: serde_json::to_string(&d.tool_call.arguments)
-                        .unwrap_or_default(),
+                    arguments: Some(json_to_proto_struct(&d.tool_call.arguments)),
                 }),
             })
         }
@@ -578,10 +690,10 @@ fn schema_event_data_to_proto(data: &everruns_core::EventData) -> proto::event::
                 tool_name: d.tool_name.clone(),
                 success: d.success,
                 status: d.status.clone(),
-                result_json: d
-                    .result
-                    .as_ref()
-                    .map(|r| serde_json::to_string(r).unwrap_or_default()),
+                result: d.result.as_ref().map(|r| {
+                    let json = serde_json::to_value(r).unwrap_or_default();
+                    json_to_proto_list(&json)
+                }),
                 error: d.error.clone(),
             })
         }
@@ -597,8 +709,7 @@ fn schema_event_data_to_proto(data: &everruns_core::EventData) -> proto::event::
                         .map(|tc| proto::ToolCall {
                             id: tc.id.clone(),
                             name: tc.name.clone(),
-                            arguments_json: serde_json::to_string(&tc.arguments)
-                                .unwrap_or_default(),
+                            arguments: Some(json_to_proto_struct(&tc.arguments)),
                         })
                         .collect(),
                 }),
@@ -622,7 +733,7 @@ fn schema_event_data_to_proto(data: &everruns_core::EventData) -> proto::event::
             })
         }
         EventData::Raw(v) => proto::event::Data::Raw(proto::RawEventData {
-            json: serde_json::to_string(v).unwrap_or_default(),
+            value: Some(json_to_proto_value(v)),
         }),
     }
 }
@@ -640,10 +751,7 @@ pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
             exec_id: value.context.exec_id.map(uuid_to_proto_uuid),
         }),
         data: Some(schema_event_data_to_proto(&value.data)),
-        metadata_json: value
-            .metadata
-            .as_ref()
-            .map(|m| serde_json::to_string(m).unwrap_or_default()),
+        metadata: value.metadata.as_ref().map(json_to_proto_struct),
         tags: value.tags.clone().unwrap_or_default(),
         sequence: value.sequence,
     }

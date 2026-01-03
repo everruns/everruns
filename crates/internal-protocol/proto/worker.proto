@@ -2,10 +2,13 @@
 // Decision: gRPC for worker communication (industry standard, already in stack via Temporal)
 // Decision: Rust types in schemas crate are source of truth, proto mirrors them
 // Decision: Batched RPCs for latency optimization (GetTurnContext, EmitEventStream)
+// Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 
 syntax = "proto3";
 
 package everruns.internal;
+
+import "google/protobuf/struct.proto";
 
 // Service for workers to communicate with control plane
 service WorkerService {
@@ -131,9 +134,9 @@ message GetSessionResponse {
 message Message {
     Uuid id = 1;
     string role = 2;
-    string content_json = 3;  // JSON-encoded Vec<ContentPart>
-    optional string controls_json = 4;  // JSON-encoded Controls
-    optional string metadata_json = 5;  // JSON-encoded metadata
+    google.protobuf.ListValue content = 3;  // Vec<ContentPart>
+    optional google.protobuf.Struct controls = 4;  // Controls object
+    optional google.protobuf.Struct metadata = 5;  // metadata object
     Timestamp created_at = 6;
 }
 
@@ -148,9 +151,9 @@ message LoadMessagesResponse {
 message AddMessageRequest {
     Uuid session_id = 1;
     string role = 2;
-    string content_json = 3;
-    optional string controls_json = 4;
-    optional string metadata_json = 5;
+    google.protobuf.ListValue content = 3;
+    optional google.protobuf.Struct controls = 4;
+    optional google.protobuf.Struct metadata = 5;
     repeated string tags = 6;
 }
 
@@ -185,7 +188,7 @@ message Event {
         SessionStartedData session_started = 23;
         RawEventData raw = 24;  // Fallback for unknown types
     }
-    optional string metadata_json = 5;  // Optional metadata
+    optional google.protobuf.Struct metadata = 5;  // Optional metadata object
     repeated string tags = 6;  // Optional tags
     optional int32 sequence = 7;  // Sequence number within session
 }
@@ -276,7 +279,7 @@ message ToolCallStartedData {
 message ToolCall {
     string id = 1;
     string name = 2;
-    string arguments_json = 3;  // JSON-encoded arguments
+    google.protobuf.Struct arguments = 3;  // Tool arguments object
 }
 
 message ToolCallCompletedData {
@@ -284,7 +287,7 @@ message ToolCallCompletedData {
     string tool_name = 2;
     bool success = 3;
     string status = 4;
-    optional string result_json = 5;  // JSON-encoded Vec<ContentPart>
+    optional google.protobuf.ListValue result = 5;  // Vec<ContentPart>
     optional string error = 6;
 }
 
@@ -314,7 +317,7 @@ message SessionStartedData {
 }
 
 message RawEventData {
-    string json = 1;  // Fallback JSON for unknown event types
+    google.protobuf.Value value = 1;  // Fallback for unknown event types (any JSON value)
 }
 
 message EmitEventRequest {

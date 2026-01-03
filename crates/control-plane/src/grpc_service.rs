@@ -248,23 +248,28 @@ impl WorkerService for WorkerServiceImpl {
                 _ => continue,
             };
 
-            // Convert to proto Message
-            let content_json = serde_json::to_string(&message.content).unwrap_or_default();
-            let controls_json = message
-                .controls
-                .as_ref()
-                .map(|c| serde_json::to_string(c).unwrap_or_default());
-            let metadata_json = message
-                .metadata
-                .as_ref()
-                .map(|m| serde_json::to_string(m).unwrap_or_default());
+            // Convert to proto Message using prost types
+            let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
+            let content = Some(everruns_internal_protocol::json_to_proto_list(
+                &content_json_val,
+            ));
+
+            let controls = message.controls.as_ref().map(|c| {
+                let json = serde_json::to_value(c).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
+            let metadata = message.metadata.as_ref().map(|m| {
+                let json = serde_json::to_value(m).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
 
             proto_messages.push(proto::Message {
                 id: Some(uuid_to_proto_uuid(message.id)),
                 role: message.role.to_string(),
-                content_json,
-                controls_json,
-                metadata_json,
+                content,
+                controls,
+                metadata,
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
             });
         }
@@ -444,23 +449,28 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
-            // Convert to proto Message
-            let content_json = serde_json::to_string(&message.content).unwrap_or_default();
-            let controls_json = message
-                .controls
-                .as_ref()
-                .map(|c| serde_json::to_string(c).unwrap_or_default());
-            let metadata_json = message
-                .metadata
-                .as_ref()
-                .map(|m| serde_json::to_string(m).unwrap_or_default());
+            // Convert to proto Message using prost types
+            let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
+            let content = Some(everruns_internal_protocol::json_to_proto_list(
+                &content_json_val,
+            ));
+
+            let controls = message.controls.as_ref().map(|c| {
+                let json = serde_json::to_value(c).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
+            let metadata = message.metadata.as_ref().map(|m| {
+                let json = serde_json::to_value(m).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
 
             proto_messages.push(proto::Message {
                 id: Some(uuid_to_proto_uuid(message.id)),
                 role: message.role.to_string(),
-                content_json,
-                controls_json,
-                metadata_json,
+                content,
+                controls,
+                metadata,
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
             });
         }
@@ -479,29 +489,38 @@ impl WorkerService for WorkerServiceImpl {
             ContentPart, Controls, Event, EventContext, Message, MessageAgentData, MessageRole,
             MessageUserData,
         };
+        use everruns_internal_protocol::{
+            datetime_to_proto_timestamp, json_to_proto_list, json_to_proto_struct,
+            proto_list_to_json, proto_struct_to_json, uuid_to_proto_uuid,
+        };
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Parse content from JSON
-        let content: Vec<ContentPart> = serde_json::from_str(&req.content_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid content_json: {}", e)))?;
+        // Parse content from prost ListValue
+        let content_json = req
+            .content
+            .as_ref()
+            .map(proto_list_to_json)
+            .unwrap_or_else(|| serde_json::Value::Array(vec![]));
+        let content: Vec<ContentPart> = serde_json::from_value(content_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid content: {}", e)))?;
 
-        // Parse optional controls
+        // Parse optional controls from prost Struct
         let controls: Option<Controls> = req
-            .controls_json
+            .controls
             .as_ref()
-            .map(|s| serde_json::from_str(s))
+            .map(|s| serde_json::from_value(proto_struct_to_json(s)))
             .transpose()
-            .map_err(|e| Status::invalid_argument(format!("Invalid controls_json: {}", e)))?;
+            .map_err(|e| Status::invalid_argument(format!("Invalid controls: {}", e)))?;
 
-        // Parse optional metadata
+        // Parse optional metadata from prost Struct
         let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = req
-            .metadata_json
+            .metadata
             .as_ref()
-            .map(|s| serde_json::from_str(s))
+            .map(|s| serde_json::from_value(proto_struct_to_json(s)))
             .transpose()
-            .map_err(|e| Status::invalid_argument(format!("Invalid metadata_json: {}", e)))?;
+            .map_err(|e| Status::invalid_argument(format!("Invalid metadata: {}", e)))?;
 
         // Parse role
         let role = MessageRole::from(req.role.as_str());
@@ -542,25 +561,26 @@ impl WorkerService for WorkerServiceImpl {
             Status::internal("Failed to store message")
         })?;
 
-        // Convert message to proto
-        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+        // Convert message to proto using prost types
+        let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
+        let content = Some(json_to_proto_list(&content_json_val));
 
-        let content_json = serde_json::to_string(&message.content).unwrap_or_default();
-        let controls_json = message
-            .controls
-            .as_ref()
-            .map(|c| serde_json::to_string(c).unwrap_or_default());
-        let metadata_json = message
-            .metadata
-            .as_ref()
-            .map(|m| serde_json::to_string(m).unwrap_or_default());
+        let controls = message.controls.as_ref().map(|c| {
+            let json = serde_json::to_value(c).unwrap_or_default();
+            json_to_proto_struct(&json)
+        });
+
+        let metadata = message.metadata.as_ref().map(|m| {
+            let json = serde_json::to_value(m).unwrap_or_default();
+            json_to_proto_struct(&json)
+        });
 
         let proto_message = proto::Message {
             id: Some(uuid_to_proto_uuid(message.id)),
             role: message.role.to_string(),
-            content_json,
-            controls_json,
-            metadata_json,
+            content,
+            controls,
+            metadata,
             created_at: Some(datetime_to_proto_timestamp(message.created_at)),
         };
 
