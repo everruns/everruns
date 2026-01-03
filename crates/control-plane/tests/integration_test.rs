@@ -846,9 +846,10 @@ async fn test_session_filesystem() {
 /// 2. After waiting, an assistant response appears (workflow executed)
 ///
 /// Requirements: API + Worker + Temporal + LLM provider with API keys.
-/// This test is NOT marked as #[ignore] so it won't run in CI's --ignored mode.
-/// Run manually with: cargo test test_message_triggers_agent_workflow -- --include-ignored
+/// This test requires LLM API keys and is excluded from CI.
+/// Run manually with: cargo test test_message_triggers_agent_workflow -- --ignored
 #[tokio::test]
+#[ignore = "requires LLM API keys - run manually with full infrastructure"]
 async fn test_message_triggers_agent_workflow() {
     use std::time::{Duration, Instant};
 

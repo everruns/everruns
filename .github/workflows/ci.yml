@@ -314,7 +314,10 @@ jobs:
           fi
 
       - name: Run integration tests
-        run: cargo test -p everruns-control-plane --test integration_test -- --ignored --test-threads=1
+        run: |
+          # Run ignored integration tests, but exclude tests that require LLM API keys
+          cargo test -p everruns-control-plane --test integration_test -- --ignored --test-threads=1 \
+            --skip test_message_triggers_agent_workflow
 
       - name: Show logs on failure
         if: failure()
