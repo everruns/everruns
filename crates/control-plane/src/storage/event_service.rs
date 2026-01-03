@@ -5,12 +5,13 @@
 // This service is the central entry point for event ingestion from both
 // HTTP API and gRPC service.
 
-use crate::storage::{models::CreateEventRow, Database};
+use super::{models::CreateEventRow, Database, EventRow};
 use anyhow::Result;
 use everruns_core::{Event, EventContext, EventData, EventRequest};
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct EventService {
     db: Arc<Database>,
 }
@@ -77,7 +78,7 @@ impl EventService {
         Ok(rows.into_iter().map(Self::row_to_event).collect())
     }
 
-    fn row_to_event(row: crate::storage::EventRow) -> Event {
+    fn row_to_event(row: EventRow) -> Event {
         // Try to deserialize the full event from the data column
         // (new format stores the complete event JSON)
         if let Ok(mut event) = serde_json::from_value::<Event>(row.data.clone()) {

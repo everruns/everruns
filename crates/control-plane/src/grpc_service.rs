@@ -4,8 +4,7 @@
 // Decision: This provides a clean boundary and simplifies worker deployment
 // Decision: gRPC service uses the same services layer as HTTP API for consistency
 
-use crate::services::EventService;
-use crate::storage::{Database, EncryptionService};
+use crate::storage::{Database, EncryptionService, EventService};
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
     EmitEventRequest, EmitEventResponse, EmitEventStreamResponse, GetAgentRequest,

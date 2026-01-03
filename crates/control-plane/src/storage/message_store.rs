@@ -11,12 +11,13 @@ use everruns_core::{
     events::{
         EventContext, EventRequest, MessageAgentData, MessageUserData, ToolCallCompletedData,
     },
-    traits::{EventEmitter, InputMessage, MessageStore},
+    traits::{InputMessage, MessageStore},
     AgentLoopError, ContentPart, Event, EventData, Message, MessageRole, Result,
 };
+use std::sync::Arc;
 use uuid::Uuid;
 
-use super::event_emitter::DbEventEmitter;
+use super::event_service::EventService;
 use super::repositories::Database;
 
 // ============================================================================
@@ -30,13 +31,13 @@ use super::repositories::Database;
 #[derive(Clone)]
 pub struct DbMessageStore {
     db: Database,
-    event_emitter: DbEventEmitter,
+    event_service: EventService,
 }
 
 impl DbMessageStore {
     pub fn new(db: Database) -> Self {
-        let event_emitter = DbEventEmitter::new(db.clone());
-        Self { db, event_emitter }
+        let event_service = EventService::new(Arc::new(db.clone()));
+        Self { db, event_service }
     }
 }
 
@@ -71,7 +72,7 @@ impl MessageStore for DbMessageStore {
             }
         };
 
-        self.event_emitter
+        self.event_service
             .emit(event_request)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
@@ -97,7 +98,7 @@ impl MessageStore for DbMessageStore {
             MessageAgentData::new(message),
         );
 
-        self.event_emitter
+        self.event_service
             .emit(event_request)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;

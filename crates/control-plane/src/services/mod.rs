@@ -3,7 +3,6 @@
 
 pub mod agent;
 pub mod capability;
-pub mod event;
 pub mod llm_model;
 pub mod llm_provider;
 pub mod message;
@@ -12,8 +11,6 @@ pub mod session_file;
 
 pub use agent::AgentService;
 pub use capability::CapabilityService;
-#[allow(unused_imports)]
-pub use event::EventService;
 pub use llm_model::LlmModelService;
 pub use llm_provider::LlmProviderService;
 pub use message::MessageService;

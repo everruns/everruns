@@ -12,7 +12,7 @@ use axum::{
 use everruns_core::Event;
 
 use super::common::ListResponse;
-use crate::services::EventService;
+use crate::storage::EventService;
 use futures::{
     stream::{self, Stream},
     StreamExt,

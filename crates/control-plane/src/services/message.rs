@@ -6,11 +6,10 @@
 // - Workflow triggering for user messages
 
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
-use crate::storage::{Database, DbEventEmitter};
+use crate::storage::{Database, EventService};
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::events::{EventContext, EventRequest, MessageUserData};
-use everruns_core::traits::EventEmitter;
 use everruns_core::Event;
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
@@ -18,16 +17,16 @@ use uuid::Uuid;
 
 pub struct MessageService {
     db: Arc<Database>,
-    event_emitter: DbEventEmitter,
+    event_service: EventService,
     runner: Arc<dyn AgentRunner>,
 }
 
 impl MessageService {
     pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
-        let event_emitter = DbEventEmitter::new((*db).clone());
+        let event_service = EventService::new(db.clone());
         Self {
             db,
-            event_emitter,
+            event_service,
             runner,
         }
     }
@@ -65,9 +64,9 @@ impl MessageService {
             created_at: now,
         };
 
-        // Emit as typed event using DbEventEmitter
+        // Emit as typed event using EventService
         let stored_event = self
-            .event_emitter
+            .event_service
             .emit(EventRequest::new(
                 session_id,
                 EventContext::empty(),
