@@ -856,18 +856,20 @@ async fn test_message_triggers_agent_workflow() {
         .post(format!("{}/v1/llm-providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Test Provider",
-            "provider_type": "llmsim",
-            "is_default": false
+            "provider_type": "llmsim"
         }))
         .send()
         .await
         .expect("Failed to create provider");
 
-    assert_eq!(
-        provider_response.status(),
-        201,
-        "Failed to create LlmSim provider"
-    );
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim provider: status={}, body={}",
+            status, body
+        );
+    }
     let provider: LlmProvider = provider_response
         .json()
         .await
@@ -881,18 +883,20 @@ async fn test_message_triggers_agent_workflow() {
         ))
         .json(&json!({
             "model_id": "llmsim-test",
-            "display_name": "LlmSim Test Model",
-            "is_default": false
+            "display_name": "LlmSim Test Model"
         }))
         .send()
         .await
         .expect("Failed to create model");
 
-    assert_eq!(
-        model_response.status(),
-        201,
-        "Failed to create LlmSim model"
-    );
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim model: status={}, body={}",
+            status, body
+        );
+    }
     let model: LlmModel = model_response.json().await.expect("Failed to parse model");
     println!("Created LlmSim model: {}", model.id);
 
