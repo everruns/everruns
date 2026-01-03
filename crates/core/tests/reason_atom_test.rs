@@ -3,7 +3,7 @@
 // These tests verify the full ReasonAtom workflow using the simulated LLM driver,
 // enabling deterministic testing without real LLM API calls.
 //
-// Run with: cargo test -p everruns-core --features llmsim --test reason_atom_test
+// Run with: cargo test -p everruns-core --test reason_atom_test
 
 use everruns_core::agent::{Agent, AgentStatus};
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
@@ -82,13 +82,6 @@ async fn setup_test_environment() -> (
         agent_id,
         session_id,
     )
-}
-
-/// Create a driver registry with LlmSim driver
-fn create_driver_registry() -> DriverRegistry {
-    let mut registry = DriverRegistry::new();
-    register_driver(&mut registry);
-    registry
 }
 
 /// Create a custom driver registry with a specific LlmSim configuration

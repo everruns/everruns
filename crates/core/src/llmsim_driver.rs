@@ -9,8 +9,6 @@
 //
 // Design: This driver is intended for unit and integration tests.
 // It can be configured per-test to return specific responses or tool calls.
-//
-// Note: This module is only compiled when the "llmsim" feature is enabled.
 
 use async_trait::async_trait;
 use futures::stream;

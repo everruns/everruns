@@ -41,8 +41,7 @@ pub mod traits;
 // In-memory implementations for examples and testing
 pub mod memory;
 
-// LLM Simulator driver (optional, for testing)
-#[cfg(feature = "llmsim")]
+// LLM Simulator driver for testing
 pub mod llmsim_driver;
 
 // Note: LLM Driver implementations (AnthropicLlmDriver, OpenAILlmDriver) are now in
