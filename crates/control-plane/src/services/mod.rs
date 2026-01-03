@@ -15,3 +15,7 @@ pub use llm_model::LlmModelService;
 pub use llm_provider::LlmProviderService;
 pub use message::MessageService;
 pub use session::SessionService;
+
+// Re-export EventService from storage for convenience
+// (implementation lives in storage for library access)
+pub use crate::storage::EventService;

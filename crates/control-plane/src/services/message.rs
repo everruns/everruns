@@ -5,8 +5,9 @@
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
 
+use super::EventService;
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
-use crate::storage::{Database, EventService};
+use crate::storage::Database;
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::events::{EventContext, EventRequest, MessageUserData};

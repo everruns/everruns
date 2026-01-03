@@ -4,7 +4,8 @@
 // Decision: This provides a clean boundary and simplifies worker deployment
 // Decision: gRPC service uses the same services layer as HTTP API for consistency
 
-use crate::storage::{Database, EncryptionService, EventService};
+use crate::services::EventService;
+use crate::storage::{Database, EncryptionService};
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
     EmitEventRequest, EmitEventResponse, EmitEventStreamResponse, GetAgentRequest,
@@ -141,15 +142,6 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
         .ok_or_else(|| Status::invalid_argument("Missing UUID"))?;
     uuid::Uuid::parse_str(uuid_str)
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
-}
-
-// Helper to convert proto timestamp to chrono DateTime
-fn proto_to_datetime(ts: &proto::Timestamp) -> chrono::DateTime<chrono::Utc> {
-    use chrono::TimeZone;
-    chrono::Utc
-        .timestamp_opt(ts.seconds, ts.nanos as u32)
-        .single()
-        .unwrap_or_else(chrono::Utc::now)
 }
 
 #[tonic::async_trait]
