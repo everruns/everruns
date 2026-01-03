@@ -10,6 +10,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
+use tracing::Instrument;
 
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
@@ -17,6 +18,7 @@ use everruns_core::llm_driver_registry::{
     LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
     ProviderType,
 };
+use everruns_core::telemetry::gen_ai;
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -206,6 +208,32 @@ impl LlmDriver for AnthropicLlmDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        // Create span with gen-ai semantic conventions
+        let span = tracing::info_span!(
+            "chat",
+            { gen_ai::OPERATION_NAME } = gen_ai::operation::CHAT,
+            { gen_ai::PROVIDER_NAME } = gen_ai::provider::ANTHROPIC,
+            { gen_ai::REQUEST_MODEL } = %config.model,
+            { gen_ai::REQUEST_MAX_TOKENS } = config.max_tokens.unwrap_or(4096),
+            { gen_ai::REQUEST_TEMPERATURE } = config.temperature,
+            { gen_ai::SERVER_ADDRESS } = %self.api_url,
+            { gen_ai::USAGE_INPUT_TOKENS } = tracing::field::Empty,
+            { gen_ai::USAGE_OUTPUT_TOKENS } = tracing::field::Empty,
+            { gen_ai::RESPONSE_FINISH_REASONS } = tracing::field::Empty,
+        );
+
+        self.chat_completion_stream_inner(messages, config)
+            .instrument(span)
+            .await
+    }
+}
+
+impl AnthropicLlmDriver {
+    async fn chat_completion_stream_inner(
+        &self,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream> {
         let (system_prompt, anthropic_messages) = Self::convert_messages(&messages);
 
         let tools = if config.tools.is_empty() {
@@ -265,12 +293,16 @@ impl LlmDriver for AnthropicLlmDriver {
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
 
+        // Capture the current span for recording token usage when stream completes
+        let current_span = tracing::Span::current();
+
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
             let input_tokens = Arc::clone(&input_tokens);
             let output_tokens = Arc::clone(&output_tokens);
             let current_tool_call = Arc::clone(&current_tool_call);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+            let span = current_span.clone();
 
             async move {
                 match result {
@@ -369,6 +401,12 @@ impl LlmDriver for AnthropicLlmDriver {
                             "message_stop" => {
                                 let in_tokens = *input_tokens.lock().unwrap();
                                 let out_tokens = *output_tokens.lock().unwrap();
+
+                                // Record token usage on the span
+                                span.record(gen_ai::USAGE_INPUT_TOKENS, in_tokens);
+                                span.record(gen_ai::USAGE_OUTPUT_TOKENS, out_tokens);
+                                span.record(gen_ai::RESPONSE_FINISH_REASONS, "stop");
+
                                 Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
                                     total_tokens: Some(in_tokens + out_tokens),
                                     prompt_tokens: Some(in_tokens),

@@ -57,6 +57,12 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# OpenTelemetry
+opentelemetry = "0.28"
+opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.29"
+
 # OpenAPI documentation
 utoipa = { version = "5.2", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
