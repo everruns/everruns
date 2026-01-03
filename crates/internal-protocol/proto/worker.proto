@@ -1,0 +1,337 @@
+// Internal protocol for worker <-> control plane communication
+// Decision: gRPC for worker communication (industry standard, already in stack via Temporal)
+// Decision: Rust types in schemas crate are source of truth, proto mirrors them
+// Decision: Batched RPCs for latency optimization (GetTurnContext, EmitEventStream)
+
+syntax = "proto3";
+
+package everruns.internal;
+
+// Service for workers to communicate with control plane
+service WorkerService {
+    // === Batched operations (latency optimized) ===
+
+    // Get all context needed to start a turn (replaces 4 separate calls)
+    // Combines: GetAgent + GetSession + LoadMessages + GetModelWithProvider
+    rpc GetTurnContext(GetTurnContextRequest) returns (GetTurnContextResponse);
+
+    // Stream events to control plane (efficient bulk emission)
+    rpc EmitEventStream(stream EmitEventRequest) returns (EmitEventStreamResponse);
+
+    // === Individual operations (still available) ===
+
+    // Agent operations
+    rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+
+    // Session operations
+    rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+
+    // Message operations
+    rpc LoadMessages(LoadMessagesRequest) returns (LoadMessagesResponse);
+    rpc AddMessage(AddMessageRequest) returns (AddMessageResponse);
+
+    // Event operations
+    rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
+    rpc CommitExec(CommitExecRequest) returns (CommitExecResponse);
+
+    // LLM Provider operations
+    rpc GetModelWithProvider(GetModelWithProviderRequest) returns (GetModelWithProviderResponse);
+    rpc GetDefaultModel(GetDefaultModelRequest) returns (GetDefaultModelResponse);
+
+    // Session file operations (virtual filesystem)
+    rpc SessionReadFile(SessionReadFileRequest) returns (SessionReadFileResponse);
+    rpc SessionWriteFile(SessionWriteFileRequest) returns (SessionWriteFileResponse);
+    rpc SessionDeleteFile(SessionDeleteFileRequest) returns (SessionDeleteFileResponse);
+    rpc SessionListDirectory(SessionListDirectoryRequest) returns (SessionListDirectoryResponse);
+    rpc SessionStatFile(SessionStatFileRequest) returns (SessionStatFileResponse);
+    rpc SessionGrepFiles(SessionGrepFilesRequest) returns (SessionGrepFilesResponse);
+    rpc SessionCreateDirectory(SessionCreateDirectoryRequest) returns (SessionCreateDirectoryResponse);
+}
+
+// ============================================================================
+// Common types
+// ============================================================================
+
+message Uuid {
+    string value = 1;
+}
+
+message Timestamp {
+    int64 seconds = 1;
+    int32 nanos = 2;
+}
+
+// ============================================================================
+// Batched context request/response
+// ============================================================================
+
+message GetTurnContextRequest {
+    Uuid session_id = 1;
+}
+
+message GetTurnContextResponse {
+    Agent agent = 1;
+    Session session = 2;
+    repeated Message messages = 3;
+    ModelWithProvider model = 4;
+}
+
+// ============================================================================
+// Agent types
+// ============================================================================
+
+message Agent {
+    Uuid id = 1;
+    string name = 2;
+    string description = 3;
+    string system_prompt = 4;
+    optional Uuid default_model_id = 5;
+    optional float temperature = 6;
+    optional uint32 max_tokens = 7;
+    string status = 8;
+    Timestamp created_at = 9;
+    Timestamp updated_at = 10;
+    repeated string capability_ids = 11;
+}
+
+message GetAgentRequest {
+    Uuid agent_id = 1;
+}
+
+message GetAgentResponse {
+    optional Agent agent = 1;
+}
+
+// ============================================================================
+// Session types
+// ============================================================================
+
+message Session {
+    Uuid id = 1;
+    Uuid agent_id = 2;
+    string title = 3;
+    string status = 4;
+    Timestamp created_at = 5;
+    Timestamp updated_at = 6;
+    optional Uuid default_model_id = 7;
+}
+
+message GetSessionRequest {
+    Uuid session_id = 1;
+}
+
+message GetSessionResponse {
+    optional Session session = 1;
+}
+
+// ============================================================================
+// Message types
+// ============================================================================
+
+message Message {
+    Uuid id = 1;
+    string role = 2;
+    string content_json = 3;  // JSON-encoded Vec<ContentPart>
+    optional string controls_json = 4;  // JSON-encoded Controls
+    optional string metadata_json = 5;  // JSON-encoded metadata
+    Timestamp created_at = 6;
+}
+
+message LoadMessagesRequest {
+    Uuid session_id = 1;
+}
+
+message LoadMessagesResponse {
+    repeated Message messages = 1;
+}
+
+message AddMessageRequest {
+    Uuid session_id = 1;
+    string role = 2;
+    string content_json = 3;
+    optional string controls_json = 4;
+    optional string metadata_json = 5;
+    repeated string tags = 6;
+}
+
+message AddMessageResponse {
+    Message message = 1;
+}
+
+// ============================================================================
+// Event types
+// ============================================================================
+
+message Event {
+    Uuid id = 1;
+    string event_type = 2;
+    Timestamp ts = 3;
+    EventContext context = 4;
+    string data_json = 5;  // JSON-encoded EventData
+}
+
+message EventContext {
+    Uuid session_id = 1;
+    optional int32 turn = 2;
+    optional Uuid exec_id = 3;  // For idempotency
+}
+
+message EmitEventRequest {
+    Event event = 1;
+}
+
+message EmitEventResponse {
+    int32 seq = 1;
+}
+
+message EmitEventStreamResponse {
+    int32 events_processed = 1;
+}
+
+// Commit an execution ID to prevent duplicate processing on retry
+message CommitExecRequest {
+    Uuid session_id = 1;
+    Uuid exec_id = 2;
+}
+
+message CommitExecResponse {
+    bool committed = 1;  // true if this was a new commit, false if already committed
+}
+
+// ============================================================================
+// LLM Provider types
+// ============================================================================
+
+message ModelWithProvider {
+    string model = 1;
+    string provider_type = 2;
+    optional string api_key = 3;  // Decrypted by control plane
+    optional string base_url = 4;
+}
+
+message GetModelWithProviderRequest {
+    Uuid model_id = 1;
+}
+
+message GetModelWithProviderResponse {
+    optional ModelWithProvider model = 1;
+}
+
+message GetDefaultModelRequest {}
+
+message GetDefaultModelResponse {
+    optional ModelWithProvider model = 1;
+}
+
+// ============================================================================
+// Session file types (virtual filesystem)
+// ============================================================================
+
+message SessionFile {
+    Uuid id = 1;
+    Uuid session_id = 2;
+    string path = 3;
+    string name = 4;
+    optional string content = 5;
+    string encoding = 6;
+    bool is_directory = 7;
+    bool is_readonly = 8;
+    int64 size_bytes = 9;
+    Timestamp created_at = 10;
+    Timestamp updated_at = 11;
+}
+
+message FileInfo {
+    Uuid id = 1;
+    Uuid session_id = 2;
+    string path = 3;
+    string name = 4;
+    bool is_directory = 5;
+    bool is_readonly = 6;
+    int64 size_bytes = 7;
+    Timestamp created_at = 8;
+    Timestamp updated_at = 9;
+}
+
+message FileStat {
+    string path = 1;
+    string name = 2;
+    bool is_directory = 3;
+    bool is_readonly = 4;
+    int64 size_bytes = 5;
+    Timestamp created_at = 6;
+    Timestamp updated_at = 7;
+}
+
+message GrepMatch {
+    string path = 1;
+    uint64 line_number = 2;
+    string line = 3;
+}
+
+message SessionReadFileRequest {
+    Uuid session_id = 1;
+    string path = 2;
+}
+
+message SessionReadFileResponse {
+    optional SessionFile file = 1;
+}
+
+message SessionWriteFileRequest {
+    Uuid session_id = 1;
+    string path = 2;
+    string content = 3;
+    string encoding = 4;
+}
+
+message SessionWriteFileResponse {
+    SessionFile file = 1;
+}
+
+message SessionDeleteFileRequest {
+    Uuid session_id = 1;
+    string path = 2;
+    bool recursive = 3;
+}
+
+message SessionDeleteFileResponse {
+    bool deleted = 1;
+}
+
+message SessionListDirectoryRequest {
+    Uuid session_id = 1;
+    string path = 2;
+}
+
+message SessionListDirectoryResponse {
+    repeated FileInfo files = 1;
+}
+
+message SessionStatFileRequest {
+    Uuid session_id = 1;
+    string path = 2;
+}
+
+message SessionStatFileResponse {
+    optional FileStat stat = 1;
+}
+
+message SessionGrepFilesRequest {
+    Uuid session_id = 1;
+    string pattern = 2;
+    optional string path_pattern = 3;
+}
+
+message SessionGrepFilesResponse {
+    repeated GrepMatch matches = 1;
+}
+
+message SessionCreateDirectoryRequest {
+    Uuid session_id = 1;
+    string path = 2;
+}
+
+message SessionCreateDirectoryResponse {
+    FileInfo directory = 1;
+}

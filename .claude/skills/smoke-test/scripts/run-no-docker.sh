@@ -70,7 +70,7 @@ run_migrations() {
         cargo install sqlx-cli --no-default-features --features postgres > /dev/null 2>&1
     fi
 
-    sqlx migrate run --source crates/everruns-storage/migrations > /dev/null 2>&1
+    sqlx migrate run --source crates/control-plane/migrations > /dev/null 2>&1
     check_pass "Migrations - applied successfully"
 }
 
@@ -83,11 +83,11 @@ start_api() {
     export TEMPORAL_ADDRESS="localhost:7233"
     export AUTH_MODE="none"
 
-    # Build API
-    cargo build -p everruns-api > /dev/null 2>&1
+    # Build API (control-plane)
+    cargo build -p everruns-control-plane > /dev/null 2>&1
 
     # Start API in background
-    RUST_LOG=info cargo run -p everruns-api > "$API_LOG" 2>&1 &
+    RUST_LOG=info cargo run -p everruns-control-plane > "$API_LOG" 2>&1 &
     API_PID=$!
 
     # Wait for API to be ready
@@ -110,8 +110,8 @@ start_worker() {
     log_info "Building and starting Temporal worker..."
 
     cd "$PROJECT_ROOT"
-    export DATABASE_URL="$(get_database_url)"
     export TEMPORAL_ADDRESS="localhost:7233"
+    export GRPC_ADDRESS="127.0.0.1:9001"
 
     # Build worker
     cargo build -p everruns-worker > /dev/null 2>&1

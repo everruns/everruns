@@ -6,12 +6,12 @@
 resolver = "2"
 
 members = [
-    "crates/everruns-api",
-    "crates/everruns-worker",
-    "crates/everruns-storage",
-    "crates/everruns-core",
-    "crates/everruns-openai",
-    "crates/everruns-anthropic",
+    "crates/control-plane",
+    "crates/worker",
+    "crates/core",
+    "crates/openai",
+    "crates/anthropic",
+    "crates/internal-protocol",
 ]
 
 [workspace.package]

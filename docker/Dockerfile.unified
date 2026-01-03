@@ -4,7 +4,7 @@
 # Builds both api and worker in a single build with shared dependency cache
 #
 # Usage:
-#   docker build --target api -f docker/Dockerfile.unified -t everruns-api .
+#   docker build --target api -f docker/Dockerfile.unified -t everruns-control-plane .
 #   docker build --target worker -f docker/Dockerfile.unified -t everruns-worker .
 
 # ============================================================================
@@ -52,7 +52,7 @@ FROM deps AS builder-api
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-RUN cargo build --release -p everruns-api
+RUN cargo build --release -p everruns-control-plane
 
 # ============================================================================
 # Stage 4b: Build Worker binary
@@ -71,15 +71,16 @@ FROM gcr.io/distroless/cc-debian12 AS api
 
 WORKDIR /app
 
-COPY --from=builder-api /app/target/release/everruns-api /app/everruns-api
+COPY --from=builder-api /app/target/release/everruns-control-plane /app/everruns-control-plane
 
 EXPOSE 9000
+EXPOSE 9001
 
 ENV RUST_LOG=info
 ENV HOST=0.0.0.0
 ENV PORT=9000
 
-CMD ["/app/everruns-api"]
+CMD ["/app/everruns-control-plane"]
 
 # ============================================================================
 # Stage 5b: Worker Runtime image (distroless for minimal size and security)
@@ -139,7 +140,7 @@ COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 COPY --from=builder-admin /app/target/release/reencrypt-secrets /app/reencrypt-secrets
 
 # Copy migrations
-COPY crates/everruns-storage/migrations /app/migrations
+COPY crates/control-plane/migrations /app/migrations
 
 # Copy entrypoint script
 COPY docker/admin-entrypoint.sh /app/entrypoint.sh

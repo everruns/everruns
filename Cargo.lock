@@ -803,22 +803,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-api"
+name = "everruns-control-plane"
 version = "0.2.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
+ "argon2",
+ "async-trait",
  "axum 0.7.9",
  "axum-extra",
  "base64 0.22.1",
  "chrono",
  "dotenvy",
  "everruns-core",
- "everruns-storage",
+ "everruns-internal-protocol",
  "everruns-worker",
  "futures",
  "hex",
  "http-body-util",
  "jsonwebtoken",
+ "prost 0.13.5",
  "rand 0.8.5",
  "regex",
  "reqwest",
@@ -830,6 +834,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-stream",
+ "tonic 0.12.3",
  "tower 0.5.2",
  "tower-http",
  "tracing",
@@ -866,6 +871,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-internal-protocol"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "everruns-core",
+ "prost 0.13.5",
+ "prost-types 0.13.5",
+ "serde",
+ "serde_json",
+ "tonic 0.12.3",
+ "tonic-build 0.12.3",
+ "uuid 1.19.0",
+]
+
+[[package]]
 name = "everruns-openai"
 version = "0.2.0"
 dependencies = [
@@ -884,30 +904,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-storage"
-version = "0.2.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "argon2",
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "everruns-core",
- "hex",
- "rand 0.8.5",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "uuid 1.19.0",
-]
-
-[[package]]
 name = "everruns-worker"
 version = "0.2.0"
 dependencies = [
@@ -916,8 +912,8 @@ dependencies = [
  "chrono",
  "everruns-anthropic",
  "everruns-core",
+ "everruns-internal-protocol",
  "everruns-openai",
- "everruns-storage",
  "futures",
  "hex",
  "prost 0.13.5",
@@ -926,7 +922,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "sqlx",
  "temporal-sdk-core",
  "temporal-sdk-core-protos",
  "thiserror 2.0.17",
@@ -3860,6 +3855,20 @@ dependencies = [
  "prost-build 0.7.0",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "tonic-build"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9557ce109ea773b399c9b9e5dca39294110b74f1f342cb347a80d1fce8c26a11"
+dependencies = [
+ "prettyplease",
+ "proc-macro2",
+ "prost-build 0.13.5",
+ "prost-types 0.13.5",
+ "quote",
+ "syn 2.0.112",
 ]
 
 [[package]]

@@ -112,7 +112,7 @@ jobs:
           fi
 
       - name: Run migrations
-        run: sqlx migrate run --source crates/everruns-storage/migrations
+        run: sqlx migrate run --source crates/control-plane/migrations
 
       - name: Run tests
         run: cargo test --all-features
@@ -203,6 +203,9 @@ jobs:
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
       TEMPORAL_ADDRESS: localhost:7233
+      GRPC_ADDRESS: 127.0.0.1:9001
+      AUTH_MODE: none
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
 
     steps:
       - uses: actions/checkout@v4
@@ -278,22 +281,55 @@ jobs:
           fi
 
       - name: Run migrations
-        run: sqlx migrate run --source crates/everruns-storage/migrations
+        run: sqlx migrate run --source crates/control-plane/migrations
 
-      - name: Build API
-        run: cargo build -p everruns-api
+      - name: Build API and Worker
+        run: |
+          cargo build -p everruns-control-plane
+          cargo build -p everruns-worker
 
       - name: Start API server
         run: |
-          cargo run -p everruns-api &
+          cargo run -p everruns-control-plane > /tmp/api.log 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
           # Wait for API to be ready
           timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
           echo "API is ready"
 
+      - name: Start Worker
+        run: |
+          cargo run -p everruns-worker > /tmp/worker.log 2>&1 &
+          WORKER_PID=$!
+          echo "WORKER_PID=$WORKER_PID" >> $GITHUB_ENV
+          # Give worker time to connect to Temporal
+          sleep 5
+          # Verify worker is still running
+          if kill -0 $WORKER_PID 2>/dev/null; then
+            echo "Worker is running (PID: $WORKER_PID)"
+          else
+            echo "Worker failed to start"
+            cat /tmp/worker.log
+            exit 1
+          fi
+
       - name: Run integration tests
-        run: cargo test -p everruns-api --test integration_test -- --ignored --test-threads=1
+        run: |
+          # Run ignored integration tests, but exclude tests that require LLM API keys
+          cargo test -p everruns-control-plane --test integration_test -- --ignored --test-threads=1 \
+            --skip test_message_triggers_agent_workflow
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== API Logs ==="
+          cat /tmp/api.log || true
+          echo "=== Worker Logs ==="
+          cat /tmp/worker.log || true
+
+      - name: Stop Worker
+        if: always()
+        run: kill $WORKER_PID || true
 
       - name: Stop API server
         if: always()
@@ -340,7 +376,7 @@ jobs:
         include:
           - target: api
             dockerfile: docker/Dockerfile.unified
-            image: everruns-api
+            image: everruns-control-plane
           - target: worker
             dockerfile: docker/Dockerfile.unified
             image: everruns-worker

@@ -107,7 +107,7 @@ case "$command" in
   migrate)
     echo "🔧 Running database migrations..."
     export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-    sqlx migrate run --source crates/everruns-storage/migrations
+    sqlx migrate run --source crates/control-plane/migrations
     echo "✅ Migrations complete!"
     ;;
 
@@ -141,7 +141,7 @@ case "$command" in
 
   api)
     echo "🌐 Starting API server..."
-    cargo run -p everruns-api
+    cargo run -p everruns-control-plane
     ;;
 
   worker)
@@ -156,7 +156,7 @@ case "$command" in
       exit 1
     fi
     export AGENT_RUNNER_MODE=${AGENT_RUNNER_MODE:-temporal}
-    cargo watch -w crates -x 'run -p everruns-api'
+    cargo watch -w crates -x 'run -p everruns-control-plane'
     ;;
 
   watch-worker)
@@ -303,7 +303,7 @@ PY
       done
       # Also kill by name in case PIDs were replaced
       pkill -f "cargo-watch" 2>/dev/null || true
-      pkill -f "everruns-api" 2>/dev/null || true
+      pkill -f "everruns-control-plane" 2>/dev/null || true
       pkill -f "everruns-worker" 2>/dev/null || true
       pkill -f "next dev" 2>/dev/null || true
       echo "✅ Services stopped (Docker still running)"
@@ -332,7 +332,7 @@ PY
     # Run migrations
     echo "3️⃣  Running database migrations..."
     export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-    sqlx migrate run --source crates/everruns-storage/migrations
+    sqlx migrate run --source crates/control-plane/migrations
     echo "   ✅ Migrations complete"
 
     # Wait for Temporal (needed before API/worker connect)
@@ -341,7 +341,7 @@ PY
     # Start API in background with auto-reload (Temporal mode)
     echo "5️⃣  Starting API server with auto-reload (Temporal mode)..."
     export AGENT_RUNNER_MODE=temporal
-    cargo watch -w crates -x 'run -p everruns-api' &
+    cargo watch -w crates -x 'run -p everruns-control-plane' &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
@@ -421,7 +421,7 @@ PY
     fi
 
     # Kill any running cargo/node processes for this project
-    pkill -f "everruns-api" 2>/dev/null || true
+    pkill -f "everruns-control-plane" 2>/dev/null || true
     pkill -f "everruns-worker" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
 

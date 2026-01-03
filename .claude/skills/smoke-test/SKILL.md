@@ -16,6 +16,10 @@ Start the development environment before running tests:
 ./scripts/dev.sh start-all
 ```
 
+**Service Ports:**
+- **HTTP API**: `http://localhost:9000` - REST API for clients and UI
+- **gRPC Service**: `localhost:9001` - Internal worker communication (not tested directly in smoke tests)
+
 **Note on paths:** This document references two types of scripts:
 - **Repo root scripts** (e.g., `./scripts/dev.sh`) - Run from the repository root directory
 - **Skill scripts** (e.g., `run-no-docker.sh`) - Located in `.claude/skills/smoke-test/scripts/`

@@ -1,0 +1,39 @@
+# Anthropic Provider Implementation
+# Decision: Implements the core LlmProvider trait for Claude API
+# Decision: Uses Anthropic's messages API with streaming support
+
+[package]
+name = "everruns-anthropic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Anthropic Claude provider implementation for Everruns"
+
+[dependencies]
+# Core dependencies
+anyhow.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+
+# Async runtime
+tokio.workspace = true
+futures.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+eventsource-stream.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Tracing
+tracing.workspace = true
+
+# Internal dependencies
+everruns-core = { path = "../core" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tracing-subscriber.workspace = true
