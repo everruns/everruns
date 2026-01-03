@@ -39,6 +39,93 @@ impl WorkerServiceImpl {
     pub fn into_server(self) -> WorkerServiceServer<Self> {
         WorkerServiceServer::new(self)
     }
+
+    /// Resolve a model by ID and return with decrypted provider API key
+    async fn resolve_model_with_provider(
+        &self,
+        model_id: uuid::Uuid,
+    ) -> Result<Option<proto::ModelWithProvider>, Status> {
+        let encryption = match &self.encryption {
+            Some(enc) => enc.as_ref().clone(),
+            None => return Ok(None), // No encryption service, can't decrypt API keys
+        };
+
+        let model_row = self
+            .db
+            .get_llm_model(model_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get model: {}", e)))?;
+
+        let model_row = match model_row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let provider_row = self
+            .db
+            .get_llm_provider(model_row.provider_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get provider: {}", e)))?;
+
+        let provider_row = match provider_row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let provider_with_key = self
+            .db
+            .get_provider_with_api_key(&provider_row, &encryption)
+            .map_err(|e| Status::internal(format!("Failed to decrypt API key: {}", e)))?;
+
+        Ok(Some(proto::ModelWithProvider {
+            model: model_row.model_id,
+            provider_type: provider_with_key.provider_type,
+            api_key: provider_with_key.api_key,
+            base_url: provider_with_key.base_url,
+        }))
+    }
+
+    /// Resolve the default model and return with decrypted provider API key
+    async fn resolve_default_model(&self) -> Result<Option<proto::ModelWithProvider>, Status> {
+        let encryption = match &self.encryption {
+            Some(enc) => enc.as_ref().clone(),
+            None => return Ok(None), // No encryption service, can't decrypt API keys
+        };
+
+        let model_row = self
+            .db
+            .get_default_llm_model()
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get default model: {}", e)))?;
+
+        let model_row = match model_row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let provider_row = self
+            .db
+            .get_llm_provider(model_row.provider_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get provider: {}", e)))?;
+
+        let provider_row = match provider_row {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let provider_with_key = self
+            .db
+            .get_provider_with_api_key(&provider_row, &encryption)
+            .map_err(|e| Status::internal(format!("Failed to decrypt API key: {}", e)))?;
+
+        Ok(Some(proto::ModelWithProvider {
+            model: model_row.model_id,
+            provider_type: provider_with_key.provider_type,
+            api_key: provider_with_key.api_key,
+            base_url: provider_with_key.base_url,
+        }))
+    }
 }
 
 // Helper to convert uuid parse error to tonic status
@@ -108,11 +195,77 @@ impl WorkerService for WorkerServiceImpl {
             default_model_id: session_row.model_id.map(uuid_to_proto_uuid),
         };
 
-        // TODO: Load messages from events table
-        let proto_messages: Vec<proto::Message> = vec![];
+        // Load messages from events table
+        let events = self
+            .db
+            .list_message_events(session_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
 
-        // TODO: Get model with provider (decrypted API key)
-        let model: Option<proto::ModelWithProvider> = None;
+        use everruns_core::{ContentPart, Event, EventData, Message};
+
+        let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
+
+        for event_row in events {
+            // Parse the event data to get the message
+            let event: Event = match serde_json::from_value(event_row.data.clone()) {
+                Ok(e) => e,
+                Err(e) => {
+                    tracing::warn!("Failed to parse event {}: {}", event_row.id, e);
+                    continue;
+                }
+            };
+
+            // Extract message from typed event data
+            let message = match event.data {
+                EventData::MessageUser(data) => data.message,
+                EventData::MessageAgent(data) => data.message,
+                EventData::ToolCallCompleted(data) => {
+                    // Convert tool call completion to tool result message
+                    let result: Option<serde_json::Value> = data.result.map(|parts| {
+                        if parts.len() == 1 {
+                            if let ContentPart::Text(t) = &parts[0] {
+                                return serde_json::Value::String(t.text.clone());
+                            }
+                        }
+                        serde_json::to_value(&parts).unwrap_or_default()
+                    });
+                    Message::tool_result(&data.tool_call_id, result, data.error)
+                }
+                _ => continue,
+            };
+
+            // Convert to proto Message
+            let content_json = serde_json::to_string(&message.content).unwrap_or_default();
+            let controls_json = message
+                .controls
+                .as_ref()
+                .map(|c| serde_json::to_string(c).unwrap_or_default());
+            let metadata_json = message
+                .metadata
+                .as_ref()
+                .map(|m| serde_json::to_string(m).unwrap_or_default());
+
+            proto_messages.push(proto::Message {
+                id: Some(uuid_to_proto_uuid(message.id)),
+                role: message.role.to_string(),
+                content_json,
+                controls_json,
+                metadata_json,
+                created_at: Some(datetime_to_proto_timestamp(message.created_at)),
+            });
+        }
+
+        // Get model with provider (decrypted API key)
+        // Priority: session model > agent model > default model
+        let model_id = session_row.model_id.or(agent_row.default_model_id);
+
+        let model: Option<proto::ModelWithProvider> = if let Some(mid) = model_id {
+            self.resolve_model_with_provider(mid).await?
+        } else {
+            // Try to get the default model
+            self.resolve_default_model().await?
+        };
 
         Ok(Response::new(GetTurnContextResponse {
             agent: Some(proto_agent),
@@ -126,12 +279,57 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<Streaming<EmitEventRequest>>,
     ) -> Result<Response<EmitEventStreamResponse>, Status> {
+        use crate::storage::CreateEventRow;
+
         let mut stream = request.into_inner();
         let mut events_processed = 0i32;
 
-        while let Some(_req) = stream.message().await? {
-            // TODO: Store event
-            events_processed += 1;
+        while let Some(req) = stream.message().await? {
+            let event = match req.event {
+                Some(e) => e,
+                None => {
+                    tracing::warn!("Received emit_event_stream request without event");
+                    continue;
+                }
+            };
+
+            let context = match event.context {
+                Some(c) => c,
+                None => {
+                    tracing::warn!("Received event without context");
+                    continue;
+                }
+            };
+
+            let session_id = match parse_uuid(context.session_id.as_ref()) {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!("Invalid session_id in event: {}", e);
+                    continue;
+                }
+            };
+
+            // Parse the event data from JSON
+            let data: serde_json::Value = match serde_json::from_str(&event.data_json) {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!("Invalid event data_json: {}", e);
+                    continue;
+                }
+            };
+
+            let create_event = CreateEventRow {
+                session_id,
+                event_type: event.event_type,
+                data,
+            };
+
+            if let Err(e) = self.db.create_event(create_event).await {
+                tracing::error!("Failed to create event in stream: {}", e);
+                // Continue processing other events
+            } else {
+                events_processed += 1;
+            }
         }
 
         Ok(Response::new(EmitEventStreamResponse { events_processed }))
@@ -398,17 +596,45 @@ impl WorkerService for WorkerServiceImpl {
 
     async fn emit_event(
         &self,
-        _request: Request<EmitEventRequest>,
+        request: Request<EmitEventRequest>,
     ) -> Result<Response<EmitEventResponse>, Status> {
-        // TODO: Implement by storing event
-        Err(Status::unimplemented("emit_event not yet implemented"))
+        use crate::storage::CreateEventRow;
+
+        let req = request.into_inner();
+        let event = req
+            .event
+            .ok_or_else(|| Status::invalid_argument("Missing event"))?;
+
+        let context = event
+            .context
+            .ok_or_else(|| Status::invalid_argument("Missing event context"))?;
+        let session_id = parse_uuid(context.session_id.as_ref())?;
+
+        // Parse the event data from JSON
+        let data: serde_json::Value = serde_json::from_str(&event.data_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid event data_json: {}", e)))?;
+
+        let create_event = CreateEventRow {
+            session_id,
+            event_type: event.event_type,
+            data,
+        };
+
+        let event_row = self.db.create_event(create_event).await.map_err(|e| {
+            tracing::error!("Failed to create event: {}", e);
+            Status::internal("Failed to store event")
+        })?;
+
+        Ok(Response::new(EmitEventResponse {
+            seq: event_row.sequence,
+        }))
     }
 
     async fn commit_exec(
         &self,
         _request: Request<CommitExecRequest>,
     ) -> Result<Response<CommitExecResponse>, Status> {
-        // TODO: Implement exec_id commit tracking
+        // No-op for now - exec_id tracking for idempotency can be added later
         Ok(Response::new(CommitExecResponse { committed: true }))
     }
 
@@ -578,13 +804,81 @@ impl WorkerService for WorkerServiceImpl {
 
     async fn session_write_file(
         &self,
-        _request: Request<SessionWriteFileRequest>,
+        request: Request<SessionWriteFileRequest>,
     ) -> Result<Response<SessionWriteFileResponse>, Status> {
-        // TODO: Database doesn't have upsert_session_file - need to implement
-        // For now, return unimplemented
-        Err(Status::unimplemented(
-            "session_write_file not yet implemented - requires database method",
-        ))
+        use crate::storage::{CreateSessionFileRow, UpdateSessionFile};
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        // Convert content to bytes
+        let content = req.content.into_bytes();
+
+        // Check if file already exists
+        let existing = self
+            .db
+            .get_session_file(session_id, &req.path)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to check file: {}", e)))?;
+
+        let file_row = if let Some(_existing_file) = existing {
+            // Update existing file
+            let update = UpdateSessionFile {
+                content: Some(content),
+                is_readonly: None,
+            };
+            self.db
+                .update_session_file(session_id, &req.path, update)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to update file: {}", e)))?
+                .ok_or_else(|| Status::internal("File disappeared during update"))?
+        } else {
+            // Create new file
+            let create = CreateSessionFileRow {
+                session_id,
+                path: req.path.clone(),
+                content: Some(content),
+                is_directory: false,
+                is_readonly: false,
+            };
+            self.db
+                .create_session_file(create)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to create file: {}", e)))?
+        };
+
+        // Derive name from path
+        fn name_from_path(path: &str) -> String {
+            if path == "/" {
+                "/".to_string()
+            } else {
+                path.rsplit('/').next().unwrap_or(path).to_string()
+            }
+        }
+
+        let content_str = file_row
+            .content
+            .as_ref()
+            .map(|bytes| String::from_utf8_lossy(bytes).to_string());
+
+        let proto_file = proto::SessionFile {
+            id: Some(uuid_to_proto_uuid(file_row.id)),
+            session_id: Some(uuid_to_proto_uuid(file_row.session_id)),
+            path: file_row.path.clone(),
+            name: name_from_path(&file_row.path),
+            content: content_str,
+            encoding: "text".to_string(),
+            is_directory: file_row.is_directory,
+            is_readonly: file_row.is_readonly,
+            size_bytes: file_row.size_bytes,
+            created_at: Some(datetime_to_proto_timestamp(file_row.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(file_row.updated_at)),
+        };
+
+        Ok(Response::new(SessionWriteFileResponse {
+            file: Some(proto_file),
+        }))
     }
 
     async fn session_delete_file(
@@ -695,22 +989,134 @@ impl WorkerService for WorkerServiceImpl {
 
     async fn session_grep_files(
         &self,
-        _request: Request<SessionGrepFilesRequest>,
+        request: Request<SessionGrepFilesRequest>,
     ) -> Result<Response<SessionGrepFilesResponse>, Status> {
-        // TODO: The current database grep returns file info, not line matches
-        // Need to implement proper line-by-line grep functionality
-        Err(Status::unimplemented(
-            "session_grep_files not yet implemented - requires line-level matching",
-        ))
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        // Compile the regex pattern
+        let regex = regex::Regex::new(&req.pattern)
+            .map_err(|e| Status::invalid_argument(format!("Invalid regex pattern: {}", e)))?;
+
+        // Get all files in the session
+        let files = self
+            .db
+            .list_all_session_files(session_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list files: {}", e)))?;
+
+        let mut matches = Vec::new();
+
+        for file_info in files {
+            // Skip directories
+            if file_info.is_directory {
+                continue;
+            }
+
+            // If path_pattern is specified, filter by it
+            if let Some(ref path_pattern) = req.path_pattern {
+                if !file_info.path.contains(path_pattern) {
+                    continue;
+                }
+            }
+
+            // Read the file content
+            let file = match self.db.get_session_file(session_id, &file_info.path).await {
+                Ok(Some(f)) => f,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::warn!("Failed to read file {}: {}", file_info.path, e);
+                    continue;
+                }
+            };
+
+            // Get content as string
+            let content = match &file.content {
+                Some(bytes) => match std::str::from_utf8(bytes) {
+                    Ok(s) => s,
+                    Err(_) => continue, // Skip binary files
+                },
+                None => continue,
+            };
+
+            // Search line by line
+            for (line_idx, line) in content.lines().enumerate() {
+                if regex.is_match(line) {
+                    matches.push(proto::GrepMatch {
+                        path: file_info.path.clone(),
+                        line_number: (line_idx + 1) as u64,
+                        line: line.to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(Response::new(SessionGrepFilesResponse { matches }))
     }
 
     async fn session_create_directory(
         &self,
-        _request: Request<SessionCreateDirectoryRequest>,
+        request: Request<SessionCreateDirectoryRequest>,
     ) -> Result<Response<SessionCreateDirectoryResponse>, Status> {
-        // TODO: Database doesn't have upsert_session_file - need to implement
-        Err(Status::unimplemented(
-            "session_create_directory not yet implemented - requires database method",
-        ))
+        use crate::storage::CreateSessionFileRow;
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        // Check if directory already exists
+        let existing = self
+            .db
+            .get_session_file(session_id, &req.path)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to check directory: {}", e)))?;
+
+        let file_row = if let Some(existing_file) = existing {
+            // Directory already exists, return it
+            if !existing_file.is_directory {
+                return Err(Status::already_exists(
+                    "A file with this path already exists",
+                ));
+            }
+            existing_file
+        } else {
+            // Create new directory
+            let create = CreateSessionFileRow {
+                session_id,
+                path: req.path.clone(),
+                content: None,
+                is_directory: true,
+                is_readonly: false,
+            };
+            self.db
+                .create_session_file(create)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to create directory: {}", e)))?
+        };
+
+        // Derive name from path
+        fn name_from_path(path: &str) -> String {
+            if path == "/" {
+                "/".to_string()
+            } else {
+                path.rsplit('/').next().unwrap_or(path).to_string()
+            }
+        }
+
+        let proto_file_info = proto::FileInfo {
+            id: Some(uuid_to_proto_uuid(file_row.id)),
+            session_id: Some(uuid_to_proto_uuid(file_row.session_id)),
+            path: file_row.path.clone(),
+            name: name_from_path(&file_row.path),
+            is_directory: file_row.is_directory,
+            is_readonly: file_row.is_readonly,
+            size_bytes: file_row.size_bytes,
+            created_at: Some(datetime_to_proto_timestamp(file_row.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(file_row.updated_at)),
+        };
+
+        Ok(Response::new(SessionCreateDirectoryResponse {
+            directory: Some(proto_file_info),
+        }))
     }
 }
