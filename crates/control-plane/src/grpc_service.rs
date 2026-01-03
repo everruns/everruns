@@ -598,13 +598,25 @@ impl WorkerService for WorkerServiceImpl {
             }
         };
 
-        // Create and store the event
+        // Create and store the event with full Event structure
+        // (matches what DbEventEmitter stores)
         use crate::storage::CreateEventRow;
+
+        let event_id = uuid::Uuid::now_v7();
+        let ts = Utc::now();
+        let full_event = serde_json::json!({
+            "id": event_id.to_string(),
+            "type": event_type,
+            "ts": ts.to_rfc3339(),
+            "session_id": session_id.to_string(),
+            "context": {},
+            "data": event_data,
+        });
 
         let create_event = CreateEventRow {
             session_id,
             event_type: event_type.to_string(),
-            data: event_data,
+            data: full_event,
         };
 
         let _event_row = self.db.create_event(create_event).await.map_err(|e| {
