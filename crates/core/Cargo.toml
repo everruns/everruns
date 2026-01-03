@@ -52,9 +52,13 @@ utoipa = { workspace = true, optional = true }
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
 eventsource-stream = "0.2"
 
+# LLM simulation for testing (optional)
+llmsim = { git = "https://github.com/chaliy/llmsim.git", optional = true }
+
 [features]
 default = []
 openapi = ["utoipa"]
+llmsim = ["dep:llmsim"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
