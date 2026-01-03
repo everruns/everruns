@@ -8,7 +8,6 @@ use serde_json::{json, Value};
 const API_BASE_URL: &str = "http://localhost:9000";
 
 #[tokio::test]
-#[ignore] // Run with: cargo test --test integration_test -- --ignored
 async fn test_full_agent_session_workflow() {
     let client = reqwest::Client::new();
 
@@ -198,7 +197,6 @@ async fn test_full_agent_session_workflow() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_health_endpoint() {
     let client = reqwest::Client::new();
 
@@ -216,7 +214,6 @@ async fn test_health_endpoint() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_openapi_spec() {
     let client = reqwest::Client::new();
 
@@ -234,7 +231,6 @@ async fn test_openapi_spec() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_llm_provider_and_model_workflow() {
     let client = reqwest::Client::new();
 
@@ -312,7 +308,6 @@ async fn test_llm_provider_and_model_workflow() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_llm_model_profile() {
     let client = reqwest::Client::new();
 
@@ -421,7 +416,6 @@ async fn test_llm_model_profile() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_session_inherits_agent_default_model() {
     let client = reqwest::Client::new();
 
@@ -591,7 +585,6 @@ async fn test_session_inherits_agent_default_model() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_session_filesystem() {
     let client = reqwest::Client::new();
 
@@ -845,11 +838,8 @@ async fn test_session_filesystem() {
 /// 1. Message creation returns within 5 seconds (not blocking on workflow)
 /// 2. After waiting, an assistant response appears (workflow executed)
 ///
-/// Requirements: API + Worker + Temporal + LLM provider with API keys.
-/// This test requires LLM API keys and is excluded from CI.
-/// Run manually with: cargo test test_message_triggers_agent_workflow -- --ignored
+/// Requirements: API + Worker + Temporal (uses LlmSim provider, no real API keys needed).
 #[tokio::test]
-#[ignore = "requires LLM API keys - run manually with full infrastructure"]
 async fn test_message_triggers_agent_workflow() {
     use std::time::{Duration, Instant};
 
@@ -860,13 +850,64 @@ async fn test_message_triggers_agent_workflow() {
 
     println!("Testing message triggers agent workflow...");
 
-    // Step 1: Create agent
-    println!("\nStep 1: Creating agent...");
+    // Step 0: Create LlmSim provider and model (no real API keys needed)
+    println!("\nStep 0: Creating LlmSim provider and model...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "LlmSim Test Provider",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created LlmSim provider: {}", provider.id);
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-test",
+            "display_name": "LlmSim Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim model: status={}, body={}",
+            status, body
+        );
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created LlmSim model: {}", model.id);
+
+    // Step 1: Create agent with LlmSim model
+    println!("\nStep 1: Creating agent with LlmSim model...");
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
             "name": "Workflow Test Agent",
-            "system_prompt": "You are a helpful assistant. Respond briefly."
+            "system_prompt": "You are a helpful assistant. Respond briefly.",
+            "default_model_id": model.id.to_string()
         }))
         .send()
         .await
@@ -874,7 +915,10 @@ async fn test_message_triggers_agent_workflow() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!(
+        "Created agent: {} with model: {:?}",
+        agent.id, agent.default_model_id
+    );
 
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
@@ -949,11 +993,25 @@ async fn test_message_triggers_agent_workflow() {
                 let empty_vec = vec![];
                 let messages = data["data"].as_array().unwrap_or(&empty_vec);
 
+                // Debug: print message count and roles on first check and every 10s
+                if i == 1 || i % 10 == 0 {
+                    println!(
+                        "  [{}s] Found {} messages, roles: {:?}",
+                        i,
+                        messages.len(),
+                        messages
+                            .iter()
+                            .map(|m| m["role"].as_str().unwrap_or("?"))
+                            .collect::<Vec<_>>()
+                    );
+                }
+
                 for msg in messages {
-                    if msg["role"] == "assistant" {
+                    // API returns "agent" role (not "assistant")
+                    if msg["role"] == "agent" {
                         assistant_found = true;
                         let content = &msg["content"];
-                        println!("Found assistant response after {}s: {:?}", i, content);
+                        println!("Found agent response after {}s: {:?}", i, content);
                         break;
                     }
                 }
@@ -964,14 +1022,48 @@ async fn test_message_triggers_agent_workflow() {
             }
         }
 
-        if i % 5 == 0 {
+        if i % 5 == 0 && !assistant_found {
             println!("Still waiting... ({}s)", i);
+        }
+    }
+
+    // If we didn't find an agent response, check events for debugging
+    if !assistant_found {
+        println!("\nDebug: Checking events for session...");
+        if let Ok(resp) = client
+            .get(format!(
+                "{}/v1/agents/{}/sessions/{}/events",
+                API_BASE_URL, agent.id, session.id
+            ))
+            .send()
+            .await
+        {
+            if resp.status() == 200 {
+                if let Ok(data) = resp.json::<Value>().await {
+                    let events = data["data"].as_array();
+                    println!("  Events count: {}", events.map(|e| e.len()).unwrap_or(0));
+                    if let Some(events) = events {
+                        for (i, event) in events.iter().enumerate().take(10) {
+                            println!(
+                                "  Event {}: type={}, data_preview={}",
+                                i,
+                                event["type"].as_str().unwrap_or("?"),
+                                &event["data"]
+                                    .to_string()
+                                    .chars()
+                                    .take(100)
+                                    .collect::<String>()
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 
     assert!(
         assistant_found,
-        "Agent workflow did not produce an assistant response within 30 seconds. \
+        "Agent workflow did not produce an agent response within 30 seconds. \
         Check: 1) Worker is running, 2) LLM provider configured, 3) Default model set"
     );
 
@@ -1007,6 +1099,16 @@ async fn test_message_triggers_agent_workflow() {
         .send()
         .await
         .expect("Failed to delete agent");
+    client
+        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
 
     println!("Message triggers agent workflow test passed!");
 }

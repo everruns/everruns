@@ -397,6 +397,8 @@ pub enum ProviderType {
     OpenAI,
     Anthropic,
     AzureOpenAI,
+    /// LLM simulator for testing (uses llmsim crate)
+    LlmSim,
 }
 
 impl std::str::FromStr for ProviderType {
@@ -407,6 +409,7 @@ impl std::str::FromStr for ProviderType {
             "openai" => Ok(ProviderType::OpenAI),
             "anthropic" => Ok(ProviderType::Anthropic),
             "azure_openai" => Ok(ProviderType::AzureOpenAI),
+            "llmsim" => Ok(ProviderType::LlmSim),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
     }
@@ -418,6 +421,7 @@ impl std::fmt::Display for ProviderType {
             ProviderType::OpenAI => write!(f, "openai"),
             ProviderType::Anthropic => write!(f, "anthropic"),
             ProviderType::AzureOpenAI => write!(f, "azure_openai"),
+            ProviderType::LlmSim => write!(f, "llmsim"),
         }
     }
 }
@@ -510,15 +514,23 @@ impl DriverRegistry {
 
     /// Create an LLM driver based on configuration
     ///
-    /// API keys must be provided in the config. This function does NOT fall back to
+    /// API keys must be provided in the config for real providers. This function does NOT fall back to
     /// environment variables. Keys should be decrypted from the database and passed here.
+    /// Exception: LlmSim provider does not require an API key.
     ///
     /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
     pub fn create_driver(&self, config: &ProviderConfig) -> Result<BoxedLlmDriver> {
-        // API key is required - it should be decrypted from the database
-        let api_key = config.api_key.as_ref().ok_or_else(|| {
-            AgentLoopError::llm("API key is required. Configure the API key in provider settings.")
-        })?;
+        // API key is required for real providers, but not for LlmSim (testing)
+        let api_key = if config.provider_type == ProviderType::LlmSim {
+            // LlmSim doesn't need a real API key
+            config.api_key.as_deref().unwrap_or("")
+        } else {
+            config.api_key.as_ref().ok_or_else(|| {
+                AgentLoopError::llm(
+                    "API key is required. Configure the API key in provider settings.",
+                )
+            })?
+        };
 
         // Look up the factory for this provider type
         let factory = self.factories.get(&config.provider_type).ok_or_else(|| {

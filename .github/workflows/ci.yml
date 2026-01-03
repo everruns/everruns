@@ -58,7 +58,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
-    name: Test Suite
+    name: Unit Tests
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -114,8 +114,8 @@ jobs:
       - name: Run migrations
         run: sqlx migrate run --source crates/control-plane/migrations
 
-      - name: Run tests
-        run: cargo test --all-features
+      - name: Run unit tests
+        run: cargo test --all-features --lib --bins
 
   build:
     name: Build Check
@@ -315,9 +315,8 @@ jobs:
 
       - name: Run integration tests
         run: |
-          # Run ignored integration tests, but exclude tests that require LLM API keys
-          cargo test -p everruns-control-plane --test integration_test -- --ignored --test-threads=1 \
-            --skip test_message_triggers_agent_workflow
+          # Run integration tests (uses LlmSim for workflow tests, no real API keys needed)
+          cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
 
       - name: Show logs on failure
         if: failure()
