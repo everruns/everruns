@@ -166,30 +166,14 @@ message AddMessageResponse {
 // ============================================================================
 
 // EventRequest - input type for event ingestion (no id or sequence)
+// Data is untyped Struct - deserialized based on event_type field
 message EventRequest {
     string event_type = 1;
     Timestamp ts = 2;
     EventContext context = 3;
-    // Typed event data - use oneof for type safety
-    oneof data {
-        MessageUserData message_user = 10;
-        MessageAgentData message_agent = 11;
-        TurnStartedData turn_started = 12;
-        TurnCompletedData turn_completed = 13;
-        TurnFailedData turn_failed = 14;
-        InputReceivedData input_received = 15;
-        ReasonStartedData reason_started = 16;
-        ReasonCompletedData reason_completed = 17;
-        ActStartedData act_started = 18;
-        ActCompletedData act_completed = 19;
-        ToolCallStartedData tool_call_started = 20;
-        ToolCallCompletedData tool_call_completed = 21;
-        LlmGenerationData llm_generation = 22;
-        SessionStartedData session_started = 23;
-        RawEventData raw = 24;  // Fallback for unknown types
-    }
-    optional google.protobuf.Struct metadata = 4;  // Optional metadata object
-    repeated string tags = 5;  // Optional tags
+    google.protobuf.Struct data = 4;  // Event-specific payload (deserialized based on event_type)
+    optional google.protobuf.Struct metadata = 5;  // Optional metadata object
+    repeated string tags = 6;  // Optional tags
 }
 
 // Event - stored event with id and sequence assigned by storage
@@ -198,154 +182,17 @@ message Event {
     string event_type = 2;
     Timestamp ts = 3;
     EventContext context = 4;
-    // Typed event data - use oneof for type safety
-    oneof data {
-        MessageUserData message_user = 10;
-        MessageAgentData message_agent = 11;
-        TurnStartedData turn_started = 12;
-        TurnCompletedData turn_completed = 13;
-        TurnFailedData turn_failed = 14;
-        InputReceivedData input_received = 15;
-        ReasonStartedData reason_started = 16;
-        ReasonCompletedData reason_completed = 17;
-        ActStartedData act_started = 18;
-        ActCompletedData act_completed = 19;
-        ToolCallStartedData tool_call_started = 20;
-        ToolCallCompletedData tool_call_completed = 21;
-        LlmGenerationData llm_generation = 22;
-        SessionStartedData session_started = 23;
-        RawEventData raw = 24;  // Fallback for unknown types
-    }
-    optional google.protobuf.Struct metadata = 5;  // Optional metadata object
-    repeated string tags = 6;  // Optional tags
-    int32 sequence = 7;  // Sequence number within session (always set for stored events)
+    google.protobuf.Struct data = 5;  // Event-specific payload (deserialized based on event_type)
+    optional google.protobuf.Struct metadata = 6;  // Optional metadata object
+    repeated string tags = 7;  // Optional tags
+    int32 sequence = 8;  // Sequence number within session (always set for stored events)
 }
 
 message EventContext {
     Uuid session_id = 1;
-    optional Uuid turn_id = 2;  // Changed from int32 to Uuid
-    optional Uuid input_message_id = 3;  // Added
+    optional Uuid turn_id = 2;
+    optional Uuid input_message_id = 3;
     optional Uuid exec_id = 4;  // For idempotency
-}
-
-// Typed event data messages
-
-message MessageUserData {
-    Message message = 1;
-}
-
-message MessageAgentData {
-    Message message = 1;
-    optional ModelMetadata metadata = 2;
-    optional TokenUsage usage = 3;
-}
-
-message ModelMetadata {
-    string model = 1;
-    optional Uuid model_id = 2;
-    optional Uuid provider_id = 3;
-}
-
-message TokenUsage {
-    uint32 input_tokens = 1;
-    uint32 output_tokens = 2;
-}
-
-message TurnStartedData {
-    Uuid turn_id = 1;
-    Uuid input_message_id = 2;
-}
-
-message TurnCompletedData {
-    Uuid turn_id = 1;
-    uint64 iterations = 2;
-    optional uint64 duration_ms = 3;
-}
-
-message TurnFailedData {
-    Uuid turn_id = 1;
-    string error = 2;
-    optional string error_code = 3;
-}
-
-message InputReceivedData {
-    Message message = 1;
-}
-
-message ReasonStartedData {
-    Uuid agent_id = 1;
-    optional ModelMetadata metadata = 2;
-}
-
-message ReasonCompletedData {
-    bool success = 1;
-    optional string text_preview = 2;
-    bool has_tool_calls = 3;
-    uint64 tool_call_count = 4;
-    optional string error = 5;
-}
-
-message ActStartedData {
-    repeated ToolCallSummary tool_calls = 1;
-}
-
-message ToolCallSummary {
-    string id = 1;
-    string name = 2;
-}
-
-message ActCompletedData {
-    bool completed = 1;
-    uint64 success_count = 2;
-    uint64 error_count = 3;
-}
-
-message ToolCallStartedData {
-    ToolCall tool_call = 1;
-}
-
-message ToolCall {
-    string id = 1;
-    string name = 2;
-    google.protobuf.Struct arguments = 3;  // Tool arguments object
-}
-
-message ToolCallCompletedData {
-    string tool_call_id = 1;
-    string tool_name = 2;
-    bool success = 3;
-    string status = 4;
-    optional google.protobuf.ListValue result = 5;  // Vec<ContentPart>
-    optional string error = 6;
-}
-
-message LlmGenerationData {
-    repeated Message messages = 1;
-    LlmGenerationOutput output = 2;
-    LlmGenerationMetadata metadata = 3;
-}
-
-message LlmGenerationOutput {
-    optional string text = 1;
-    repeated ToolCall tool_calls = 2;
-}
-
-message LlmGenerationMetadata {
-    string model = 1;
-    optional string provider = 2;
-    optional TokenUsage usage = 3;
-    optional uint64 duration_ms = 4;
-    bool success = 5;
-    optional string error = 6;
-}
-
-message SessionStartedData {
-    Uuid agent_id = 1;
-    optional Uuid model_id = 2;
-}
-
-message RawEventData {
-    google.protobuf.Value value = 1;  // Fallback for unknown event types (any JSON value)
 }
 
 message EmitEventRequest {
