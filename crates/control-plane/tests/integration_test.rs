@@ -993,6 +993,19 @@ async fn test_message_triggers_agent_workflow() {
                 let empty_vec = vec![];
                 let messages = data["data"].as_array().unwrap_or(&empty_vec);
 
+                // Debug: print message count and roles on first check and every 10s
+                if i == 1 || i % 10 == 0 {
+                    println!(
+                        "  [{}s] Found {} messages, roles: {:?}",
+                        i,
+                        messages.len(),
+                        messages
+                            .iter()
+                            .map(|m| m["role"].as_str().unwrap_or("?"))
+                            .collect::<Vec<_>>()
+                    );
+                }
+
                 for msg in messages {
                     // API returns "agent" role (not "assistant")
                     if msg["role"] == "agent" {
@@ -1009,8 +1022,42 @@ async fn test_message_triggers_agent_workflow() {
             }
         }
 
-        if i % 5 == 0 {
+        if i % 5 == 0 && !assistant_found {
             println!("Still waiting... ({}s)", i);
+        }
+    }
+
+    // If we didn't find an agent response, check events for debugging
+    if !assistant_found {
+        println!("\nDebug: Checking events for session...");
+        if let Ok(resp) = client
+            .get(format!(
+                "{}/v1/agents/{}/sessions/{}/events",
+                API_BASE_URL, agent.id, session.id
+            ))
+            .send()
+            .await
+        {
+            if resp.status() == 200 {
+                if let Ok(data) = resp.json::<Value>().await {
+                    let events = data["data"].as_array();
+                    println!("  Events count: {}", events.map(|e| e.len()).unwrap_or(0));
+                    if let Some(events) = events {
+                        for (i, event) in events.iter().enumerate().take(10) {
+                            println!(
+                                "  Event {}: type={}, data_preview={}",
+                                i,
+                                event["type"].as_str().unwrap_or("?"),
+                                &event["data"]
+                                    .to_string()
+                                    .chars()
+                                    .take(100)
+                                    .collect::<String>()
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 
