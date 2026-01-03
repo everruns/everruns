@@ -239,8 +239,16 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
     let session_id = proto_uuid_to_uuid(session_id)?;
 
     let context = everruns_core::EventContext {
-        turn_id: proto_context.turn.map(|t| uuid::Uuid::from_u128(t as u128)), // Simplified
-        input_message_id: None,
+        turn_id: proto_context
+            .turn_id
+            .as_ref()
+            .map(proto_uuid_to_uuid)
+            .transpose()?,
+        input_message_id: proto_context
+            .input_message_id
+            .as_ref()
+            .map(proto_uuid_to_uuid)
+            .transpose()?,
         exec_id: proto_context
             .exec_id
             .as_ref()
@@ -248,7 +256,16 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
             .transpose()?,
     };
 
-    let data: everruns_core::EventData = serde_json::from_str(&value.data_json)?;
+    // Convert typed event data from proto oneof to core EventData
+    let data = proto_event_data_to_schema(value.data)?;
+
+    // Parse optional metadata
+    let metadata: Option<serde_json::Value> = value
+        .metadata_json
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .map(|s| serde_json::from_str(s))
+        .transpose()?;
 
     Ok(everruns_core::Event {
         id,
@@ -257,10 +274,357 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
         session_id,
         context,
         data,
-        metadata: None,
-        tags: None,
-        sequence: None,
+        metadata,
+        tags: if value.tags.is_empty() {
+            None
+        } else {
+            Some(value.tags)
+        },
+        sequence: value.sequence,
     })
+}
+
+/// Convert proto event data (oneof) to core EventData
+fn proto_event_data_to_schema(
+    data: Option<proto::event::Data>,
+) -> Result<everruns_core::EventData, ConversionError> {
+    use everruns_core::*;
+
+    let data = data.ok_or(ConversionError::MissingField("data"))?;
+
+    Ok(match data {
+        proto::event::Data::MessageUser(d) => {
+            let message = d.message.ok_or(ConversionError::MissingField("message"))?;
+            EventData::MessageUser(MessageUserData::new(proto_message_to_schema(message)?))
+        }
+        proto::event::Data::MessageAgent(d) => {
+            let message = d.message.ok_or(ConversionError::MissingField("message"))?;
+            let mut data = MessageAgentData::new(proto_message_to_schema(message)?);
+            if let Some(meta) = d.metadata {
+                data.metadata = Some(ModelMetadata {
+                    model: meta.model,
+                    model_id: meta.model_id.as_ref().map(proto_uuid_to_uuid).transpose()?,
+                    provider_id: meta
+                        .provider_id
+                        .as_ref()
+                        .map(proto_uuid_to_uuid)
+                        .transpose()?,
+                });
+            }
+            if let Some(usage) = d.usage {
+                data.usage = Some(TokenUsage {
+                    input_tokens: usage.input_tokens,
+                    output_tokens: usage.output_tokens,
+                });
+            }
+            EventData::MessageAgent(data)
+        }
+        proto::event::Data::TurnStarted(d) => {
+            let turn_id = d
+                .turn_id
+                .as_ref()
+                .ok_or(ConversionError::MissingField("turn_id"))?;
+            let input_message_id = d
+                .input_message_id
+                .as_ref()
+                .ok_or(ConversionError::MissingField("input_message_id"))?;
+            EventData::TurnStarted(TurnStartedData {
+                turn_id: proto_uuid_to_uuid(turn_id)?,
+                input_message_id: proto_uuid_to_uuid(input_message_id)?,
+            })
+        }
+        proto::event::Data::TurnCompleted(d) => {
+            let turn_id = d
+                .turn_id
+                .as_ref()
+                .ok_or(ConversionError::MissingField("turn_id"))?;
+            EventData::TurnCompleted(TurnCompletedData {
+                turn_id: proto_uuid_to_uuid(turn_id)?,
+                iterations: d.iterations as usize,
+                duration_ms: d.duration_ms,
+            })
+        }
+        proto::event::Data::TurnFailed(d) => {
+            let turn_id = d
+                .turn_id
+                .as_ref()
+                .ok_or(ConversionError::MissingField("turn_id"))?;
+            EventData::TurnFailed(TurnFailedData {
+                turn_id: proto_uuid_to_uuid(turn_id)?,
+                error: d.error,
+                error_code: d.error_code,
+            })
+        }
+        proto::event::Data::InputReceived(d) => {
+            let message = d.message.ok_or(ConversionError::MissingField("message"))?;
+            EventData::InputReceived(InputReceivedData::new(proto_message_to_schema(message)?))
+        }
+        proto::event::Data::ReasonStarted(d) => {
+            let agent_id = d
+                .agent_id
+                .as_ref()
+                .ok_or(ConversionError::MissingField("agent_id"))?;
+            let metadata = if let Some(meta) = d.metadata {
+                Some(ModelMetadata {
+                    model: meta.model,
+                    model_id: meta.model_id.as_ref().map(proto_uuid_to_uuid).transpose()?,
+                    provider_id: meta
+                        .provider_id
+                        .as_ref()
+                        .map(proto_uuid_to_uuid)
+                        .transpose()?,
+                })
+            } else {
+                None
+            };
+            EventData::ReasonStarted(ReasonStartedData {
+                agent_id: proto_uuid_to_uuid(agent_id)?,
+                metadata,
+            })
+        }
+        proto::event::Data::ReasonCompleted(d) => EventData::ReasonCompleted(ReasonCompletedData {
+            success: d.success,
+            text_preview: d.text_preview,
+            has_tool_calls: d.has_tool_calls,
+            tool_call_count: d.tool_call_count as usize,
+            error: d.error,
+        }),
+        proto::event::Data::ActStarted(d) => {
+            let tool_calls = d
+                .tool_calls
+                .into_iter()
+                .map(|tc| ToolCallSummary {
+                    id: tc.id,
+                    name: tc.name,
+                })
+                .collect();
+            EventData::ActStarted(ActStartedData { tool_calls })
+        }
+        proto::event::Data::ActCompleted(d) => EventData::ActCompleted(ActCompletedData {
+            completed: d.completed,
+            success_count: d.success_count as usize,
+            error_count: d.error_count as usize,
+        }),
+        proto::event::Data::ToolCallStarted(d) => {
+            let tc = d
+                .tool_call
+                .ok_or(ConversionError::MissingField("tool_call"))?;
+            EventData::ToolCallStarted(ToolCallStartedData {
+                tool_call: ToolCall {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: serde_json::from_str(&tc.arguments_json).unwrap_or_default(),
+                },
+            })
+        }
+        proto::event::Data::ToolCallCompleted(d) => {
+            let result: Option<Vec<ContentPart>> = d
+                .result_json
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|s| serde_json::from_str(s))
+                .transpose()?;
+            EventData::ToolCallCompleted(ToolCallCompletedData {
+                tool_call_id: d.tool_call_id,
+                tool_name: d.tool_name,
+                success: d.success,
+                status: d.status,
+                result,
+                error: d.error,
+            })
+        }
+        proto::event::Data::LlmGeneration(d) => {
+            let messages: std::result::Result<Vec<Message>, ConversionError> = d
+                .messages
+                .into_iter()
+                .map(proto_message_to_schema)
+                .collect();
+            let output_data = d.output.ok_or(ConversionError::MissingField("output"))?;
+            let meta = d
+                .metadata
+                .ok_or(ConversionError::MissingField("metadata"))?;
+            let tool_calls: Vec<ToolCall> = output_data
+                .tool_calls
+                .into_iter()
+                .map(|tc| ToolCall {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: serde_json::from_str(&tc.arguments_json).unwrap_or_default(),
+                })
+                .collect();
+            EventData::LlmGeneration(LlmGenerationData {
+                messages: messages?,
+                output: LlmGenerationOutput {
+                    text: output_data.text,
+                    tool_calls,
+                },
+                metadata: LlmGenerationMetadata {
+                    model: meta.model,
+                    provider: meta.provider,
+                    usage: meta.usage.map(|u| TokenUsage {
+                        input_tokens: u.input_tokens,
+                        output_tokens: u.output_tokens,
+                    }),
+                    duration_ms: meta.duration_ms,
+                    success: meta.success,
+                    error: meta.error,
+                },
+            })
+        }
+        proto::event::Data::SessionStarted(d) => {
+            let agent_id = d
+                .agent_id
+                .as_ref()
+                .ok_or(ConversionError::MissingField("agent_id"))?;
+            EventData::SessionStarted(SessionStartedData {
+                agent_id: proto_uuid_to_uuid(agent_id)?,
+                model_id: d.model_id.as_ref().map(proto_uuid_to_uuid).transpose()?,
+            })
+        }
+        proto::event::Data::Raw(d) => {
+            EventData::Raw(serde_json::from_str(&d.json).unwrap_or_default())
+        }
+    })
+}
+
+/// Convert core EventData to proto event data (oneof)
+fn schema_event_data_to_proto(data: &everruns_core::EventData) -> proto::event::Data {
+    use everruns_core::EventData;
+
+    match data {
+        EventData::MessageUser(d) => proto::event::Data::MessageUser(proto::MessageUserData {
+            message: Some(schema_message_to_proto(&d.message)),
+        }),
+        EventData::MessageAgent(d) => proto::event::Data::MessageAgent(proto::MessageAgentData {
+            message: Some(schema_message_to_proto(&d.message)),
+            metadata: d.metadata.as_ref().map(|m| proto::ModelMetadata {
+                model: m.model.clone(),
+                model_id: m.model_id.map(uuid_to_proto_uuid),
+                provider_id: m.provider_id.map(uuid_to_proto_uuid),
+            }),
+            usage: d.usage.as_ref().map(|u| proto::TokenUsage {
+                input_tokens: u.input_tokens,
+                output_tokens: u.output_tokens,
+            }),
+        }),
+        EventData::TurnStarted(d) => proto::event::Data::TurnStarted(proto::TurnStartedData {
+            turn_id: Some(uuid_to_proto_uuid(d.turn_id)),
+            input_message_id: Some(uuid_to_proto_uuid(d.input_message_id)),
+        }),
+        EventData::TurnCompleted(d) => {
+            proto::event::Data::TurnCompleted(proto::TurnCompletedData {
+                turn_id: Some(uuid_to_proto_uuid(d.turn_id)),
+                iterations: d.iterations as u64,
+                duration_ms: d.duration_ms,
+            })
+        }
+        EventData::TurnFailed(d) => proto::event::Data::TurnFailed(proto::TurnFailedData {
+            turn_id: Some(uuid_to_proto_uuid(d.turn_id)),
+            error: d.error.clone(),
+            error_code: d.error_code.clone(),
+        }),
+        EventData::InputReceived(d) => {
+            proto::event::Data::InputReceived(proto::InputReceivedData {
+                message: Some(schema_message_to_proto(&d.message)),
+            })
+        }
+        EventData::ReasonStarted(d) => {
+            proto::event::Data::ReasonStarted(proto::ReasonStartedData {
+                agent_id: Some(uuid_to_proto_uuid(d.agent_id)),
+                metadata: d.metadata.as_ref().map(|m| proto::ModelMetadata {
+                    model: m.model.clone(),
+                    model_id: m.model_id.map(uuid_to_proto_uuid),
+                    provider_id: m.provider_id.map(uuid_to_proto_uuid),
+                }),
+            })
+        }
+        EventData::ReasonCompleted(d) => {
+            proto::event::Data::ReasonCompleted(proto::ReasonCompletedData {
+                success: d.success,
+                text_preview: d.text_preview.clone(),
+                has_tool_calls: d.has_tool_calls,
+                tool_call_count: d.tool_call_count as u64,
+                error: d.error.clone(),
+            })
+        }
+        EventData::ActStarted(d) => proto::event::Data::ActStarted(proto::ActStartedData {
+            tool_calls: d
+                .tool_calls
+                .iter()
+                .map(|tc| proto::ToolCallSummary {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                })
+                .collect(),
+        }),
+        EventData::ActCompleted(d) => proto::event::Data::ActCompleted(proto::ActCompletedData {
+            completed: d.completed,
+            success_count: d.success_count as u64,
+            error_count: d.error_count as u64,
+        }),
+        EventData::ToolCallStarted(d) => {
+            proto::event::Data::ToolCallStarted(proto::ToolCallStartedData {
+                tool_call: Some(proto::ToolCall {
+                    id: d.tool_call.id.clone(),
+                    name: d.tool_call.name.clone(),
+                    arguments_json: serde_json::to_string(&d.tool_call.arguments)
+                        .unwrap_or_default(),
+                }),
+            })
+        }
+        EventData::ToolCallCompleted(d) => {
+            proto::event::Data::ToolCallCompleted(proto::ToolCallCompletedData {
+                tool_call_id: d.tool_call_id.clone(),
+                tool_name: d.tool_name.clone(),
+                success: d.success,
+                status: d.status.clone(),
+                result_json: d
+                    .result
+                    .as_ref()
+                    .map(|r| serde_json::to_string(r).unwrap_or_default()),
+                error: d.error.clone(),
+            })
+        }
+        EventData::LlmGeneration(d) => {
+            proto::event::Data::LlmGeneration(proto::LlmGenerationData {
+                messages: d.messages.iter().map(schema_message_to_proto).collect(),
+                output: Some(proto::LlmGenerationOutput {
+                    text: d.output.text.clone(),
+                    tool_calls: d
+                        .output
+                        .tool_calls
+                        .iter()
+                        .map(|tc| proto::ToolCall {
+                            id: tc.id.clone(),
+                            name: tc.name.clone(),
+                            arguments_json: serde_json::to_string(&tc.arguments)
+                                .unwrap_or_default(),
+                        })
+                        .collect(),
+                }),
+                metadata: Some(proto::LlmGenerationMetadata {
+                    model: d.metadata.model.clone(),
+                    provider: d.metadata.provider.clone(),
+                    usage: d.metadata.usage.as_ref().map(|u| proto::TokenUsage {
+                        input_tokens: u.input_tokens,
+                        output_tokens: u.output_tokens,
+                    }),
+                    duration_ms: d.metadata.duration_ms,
+                    success: d.metadata.success,
+                    error: d.metadata.error.clone(),
+                }),
+            })
+        }
+        EventData::SessionStarted(d) => {
+            proto::event::Data::SessionStarted(proto::SessionStartedData {
+                agent_id: Some(uuid_to_proto_uuid(d.agent_id)),
+                model_id: d.model_id.map(uuid_to_proto_uuid),
+            })
+        }
+        EventData::Raw(v) => proto::event::Data::Raw(proto::RawEventData {
+            json: serde_json::to_string(v).unwrap_or_default(),
+        }),
+    }
 }
 
 /// Convert schemas Event to proto Event
@@ -271,10 +635,17 @@ pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
         ts: Some(datetime_to_proto_timestamp(value.ts)),
         context: Some(proto::EventContext {
             session_id: Some(uuid_to_proto_uuid(value.session_id)),
-            turn: value.context.turn_id.map(|u| u.as_u128() as i32), // Simplified
+            turn_id: value.context.turn_id.map(uuid_to_proto_uuid),
+            input_message_id: value.context.input_message_id.map(uuid_to_proto_uuid),
             exec_id: value.context.exec_id.map(uuid_to_proto_uuid),
         }),
-        data_json: serde_json::to_string(&value.data).unwrap_or_default(),
+        data: Some(schema_event_data_to_proto(&value.data)),
+        metadata_json: value
+            .metadata
+            .as_ref()
+            .map(|m| serde_json::to_string(m).unwrap_or_default()),
+        tags: value.tags.clone().unwrap_or_default(),
+        sequence: value.sequence,
     }
 }
 

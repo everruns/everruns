@@ -762,22 +762,8 @@ impl EventEmitter for GrpcEventEmitter {
 
 /// Convert everruns_core::Event to proto::Event
 fn core_event_to_proto(event: &Event) -> Result<proto::Event> {
-    use everruns_internal_protocol::datetime_to_proto_timestamp;
-
-    let data_json = serde_json::to_string(&event.data)
-        .map_err(|e| grpc_error(format!("Failed to serialize event data: {}", e)))?;
-
-    Ok(proto::Event {
-        id: Some(uuid_to_proto(event.id)),
-        event_type: event.event_type.clone(),
-        ts: Some(datetime_to_proto_timestamp(event.ts)),
-        context: Some(proto::EventContext {
-            session_id: Some(uuid_to_proto(event.session_id)),
-            turn: event.context.turn_id.map(|u| u.as_u128() as i32),
-            exec_id: event.context.exec_id.map(uuid_to_proto),
-        }),
-        data_json,
-    })
+    // Use the typed event conversion from internal-protocol
+    Ok(everruns_internal_protocol::schema_event_to_proto(event))
 }
 
 // ============================================================================
