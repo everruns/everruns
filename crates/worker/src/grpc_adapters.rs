@@ -772,8 +772,9 @@ fn core_event_to_proto(event: &Event) -> Result<proto::Event> {
         ts: Some(datetime_to_proto_timestamp(event.ts)),
         context: Some(proto::EventContext {
             session_id: Some(uuid_to_proto(event.session_id)),
-            turn: event.context.turn_id.map(|u| u.as_u128() as i32),
+            turn_id: event.context.turn_id.map(uuid_to_proto),
             exec_id: event.context.exec_id.map(uuid_to_proto),
+            input_message_id: event.context.input_message_id.map(uuid_to_proto),
         }),
         data_json,
     })
