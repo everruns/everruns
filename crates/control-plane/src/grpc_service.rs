@@ -138,6 +138,15 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
 }
 
+// Helper to convert proto timestamp to chrono DateTime
+fn proto_to_datetime(ts: &proto::Timestamp) -> chrono::DateTime<chrono::Utc> {
+    use chrono::TimeZone;
+    chrono::Utc
+        .timestamp_opt(ts.seconds, ts.nanos as u32)
+        .single()
+        .unwrap_or_else(chrono::Utc::now)
+}
+
 #[tonic::async_trait]
 impl WorkerService for WorkerServiceImpl {
     // ========================================================================
@@ -309,8 +318,16 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
+            let event_id = match parse_uuid(event.id.as_ref()) {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!("Invalid event_id in event: {}", e);
+                    continue;
+                }
+            };
+
             // Parse the event data from JSON
-            let data: serde_json::Value = match serde_json::from_str(&event.data_json) {
+            let event_data: serde_json::Value = match serde_json::from_str(&event.data_json) {
                 Ok(d) => d,
                 Err(e) => {
                     tracing::warn!("Invalid event data_json: {}", e);
@@ -318,10 +335,38 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
+            // Convert proto timestamp to chrono DateTime
+            let ts = event
+                .ts
+                .as_ref()
+                .map(proto_to_datetime)
+                .unwrap_or_else(chrono::Utc::now);
+
+            // Build event context
+            let turn_id = context.turn.map(|t| uuid::Uuid::from_u128(t as u128));
+            let exec_id = context
+                .exec_id
+                .as_ref()
+                .and_then(|u| uuid::Uuid::parse_str(&u.value).ok());
+            let event_context = serde_json::json!({
+                "turn_id": turn_id,
+                "exec_id": exec_id,
+            });
+
+            // Reconstruct the full Event structure to match what DbEventEmitter stores
+            let full_event = serde_json::json!({
+                "id": event_id.to_string(),
+                "type": &event.event_type,
+                "ts": ts.to_rfc3339(),
+                "session_id": session_id.to_string(),
+                "context": event_context,
+                "data": event_data,
+            });
+
             let create_event = CreateEventRow {
                 session_id,
                 event_type: event.event_type,
-                data,
+                data: full_event,
             };
 
             if let Err(e) = self.db.create_event(create_event).await {
@@ -609,15 +654,45 @@ impl WorkerService for WorkerServiceImpl {
             .context
             .ok_or_else(|| Status::invalid_argument("Missing event context"))?;
         let session_id = parse_uuid(context.session_id.as_ref())?;
+        let event_id = parse_uuid(event.id.as_ref())?;
 
         // Parse the event data from JSON
-        let data: serde_json::Value = serde_json::from_str(&event.data_json)
+        let event_data: serde_json::Value = serde_json::from_str(&event.data_json)
             .map_err(|e| Status::invalid_argument(format!("Invalid event data_json: {}", e)))?;
+
+        // Convert proto timestamp to chrono DateTime
+        let ts = event
+            .ts
+            .as_ref()
+            .map(proto_to_datetime)
+            .unwrap_or_else(chrono::Utc::now);
+
+        // Build event context
+        let turn_id = context.turn.map(|t| uuid::Uuid::from_u128(t as u128));
+        let exec_id = context
+            .exec_id
+            .as_ref()
+            .and_then(|u| uuid::Uuid::parse_str(&u.value).ok());
+        let event_context = serde_json::json!({
+            "turn_id": turn_id,
+            "exec_id": exec_id,
+        });
+
+        // Reconstruct the full Event structure to match what DbEventEmitter stores
+        // This ensures consistent data format for message parsing
+        let full_event = serde_json::json!({
+            "id": event_id.to_string(),
+            "type": &event.event_type,
+            "ts": ts.to_rfc3339(),
+            "session_id": session_id.to_string(),
+            "context": event_context,
+            "data": event_data,
+        });
 
         let create_event = CreateEventRow {
             session_id,
             event_type: event.event_type,
-            data,
+            data: full_event,
         };
 
         let event_row = self.db.create_event(create_event).await.map_err(|e| {
