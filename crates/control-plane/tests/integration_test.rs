@@ -845,11 +845,10 @@ async fn test_session_filesystem() {
 /// 1. Message creation returns within 5 seconds (not blocking on workflow)
 /// 2. After waiting, an assistant response appears (workflow executed)
 ///
-/// Requirements: API + Worker + Temporal + LLM provider with API keys.
-/// This test requires LLM API keys and is excluded from CI.
-/// Run manually with: cargo test test_message_triggers_agent_workflow -- --ignored
+/// Requirements: API + Worker + Temporal (uses LlmSim provider, no real API keys needed).
+/// Run with: cargo test test_message_triggers_agent_workflow -- --ignored
 #[tokio::test]
-#[ignore = "requires LLM API keys - run manually with full infrastructure"]
+#[ignore] // Requires running API, Worker, and Temporal
 async fn test_message_triggers_agent_workflow() {
     use std::time::{Duration, Instant};
 
@@ -860,13 +859,60 @@ async fn test_message_triggers_agent_workflow() {
 
     println!("Testing message triggers agent workflow...");
 
-    // Step 1: Create agent
-    println!("\nStep 1: Creating agent...");
+    // Step 0: Create LlmSim provider and model (no real API keys needed)
+    println!("\nStep 0: Creating LlmSim provider and model...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "LlmSim Test Provider",
+            "provider_type": "llmsim",
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    assert_eq!(
+        provider_response.status(),
+        201,
+        "Failed to create LlmSim provider"
+    );
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created LlmSim provider: {}", provider.id);
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-test",
+            "display_name": "LlmSim Test Model",
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    assert_eq!(
+        model_response.status(),
+        201,
+        "Failed to create LlmSim model"
+    );
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created LlmSim model: {}", model.id);
+
+    // Step 1: Create agent with LlmSim model
+    println!("\nStep 1: Creating agent with LlmSim model...");
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
             "name": "Workflow Test Agent",
-            "system_prompt": "You are a helpful assistant. Respond briefly."
+            "system_prompt": "You are a helpful assistant. Respond briefly.",
+            "default_model_id": model.id.to_string()
         }))
         .send()
         .await
@@ -874,7 +920,10 @@ async fn test_message_triggers_agent_workflow() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {}", agent.id);
+    println!(
+        "Created agent: {} with model: {:?}",
+        agent.id, agent.default_model_id
+    );
 
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
@@ -1007,6 +1056,16 @@ async fn test_message_triggers_agent_workflow() {
         .send()
         .await
         .expect("Failed to delete agent");
+    client
+        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
 
     println!("Message triggers agent workflow test passed!");
 }

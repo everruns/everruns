@@ -12,10 +12,12 @@ use everruns_core::{
 /// This registers drivers for:
 /// - OpenAI (and Azure OpenAI)
 /// - Anthropic Claude
+/// - LlmSim (for testing)
 pub fn create_driver_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
     everruns_openai::register_driver(&mut registry);
     everruns_anthropic::register_driver(&mut registry);
+    everruns_core::llmsim_driver::register_driver(&mut registry);
     registry
 }
 
