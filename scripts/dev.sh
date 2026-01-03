@@ -367,12 +367,7 @@ PY
         sleep 1
       done
 
-      # Check if yq and jq are available for seeding
-      if command -v yq &> /dev/null && command -v jq &> /dev/null; then
-        "$SCRIPT_DIR/seed-agents.sh" 2>&1 | sed 's/^/   /'
-      else
-        echo "   ⚠️  Skipping seed: yq and jq required (install with: pip install yq && apt-get install jq)"
-      fi
+      "$SCRIPT_DIR/seed-agents.sh" 2>&1 | sed 's/^/   /'
     ) &
     SEED_PID=$!
 
