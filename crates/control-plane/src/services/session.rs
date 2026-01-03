@@ -9,7 +9,7 @@ use everruns_core::{Session, SessionStatus};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::sessions::{CreateSessionRequest, UpdateSessionRequest};
+use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
 
 pub struct SessionService {
     db: Arc<Database>,

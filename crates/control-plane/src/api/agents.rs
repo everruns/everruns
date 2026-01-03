@@ -9,7 +9,7 @@ use axum::{
 };
 use everruns_core::{Agent, AgentStatus, CapabilityId};
 
-use crate::common::ListResponse;
+use super::common::ListResponse;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;

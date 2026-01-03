@@ -11,7 +11,7 @@ use axum::{
 };
 use everruns_core::Event;
 
-use crate::common::ListResponse;
+use super::common::ListResponse;
 use crate::services::EventService;
 use futures::{
     stream::{self, Stream},

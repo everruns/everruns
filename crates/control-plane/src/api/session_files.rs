@@ -22,7 +22,7 @@ use axum::{
 };
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
 
-use crate::common::ListResponse;
+use super::common::ListResponse;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

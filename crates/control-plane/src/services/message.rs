@@ -5,7 +5,7 @@
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
 
-use crate::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
+use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use crate::storage::{Database, DbEventEmitter};
 use anyhow::Result;
 use chrono::Utc;

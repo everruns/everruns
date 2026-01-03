@@ -2,26 +2,17 @@
 // Decision: Flexible auth with support for no-auth, admin-only, and full auth modes
 // M2: Agent/Session/Messages model with Events as SSE notifications
 
-mod agents;
+mod api;
 mod auth;
-mod capabilities;
-mod common;
-mod events;
 mod grpc_service;
-mod llm_models;
-mod llm_providers;
-mod messages;
 mod services;
-mod session_files;
-mod sessions;
 pub mod storage;
-mod users;
 
 use crate::storage::{Database, EncryptionService};
 use anyhow::{Context, Result};
+use api::ListResponse;
 use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
-use common::ListResponse;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
     // Event data types
@@ -92,43 +83,43 @@ struct HealthState {
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        agents::create_agent,
-        agents::list_agents,
-        agents::get_agent,
-        agents::update_agent,
-        agents::delete_agent,
-        sessions::create_session,
-        sessions::list_sessions,
-        sessions::get_session,
-        sessions::update_session,
-        sessions::delete_session,
-        messages::create_message,
-        messages::list_messages,
-        events::stream_sse,
-        events::list_events,
-        llm_providers::create_provider,
-        llm_providers::list_providers,
-        llm_providers::get_provider,
-        llm_providers::update_provider,
-        llm_providers::delete_provider,
-        llm_models::create_model,
-        llm_models::list_provider_models,
-        llm_models::list_all_models,
-        llm_models::get_model,
-        llm_models::update_model,
-        llm_models::delete_model,
-        capabilities::list_capabilities,
-        capabilities::get_capability,
-        users::list_users,
-        session_files::get_root,
-        session_files::get_path,
-        session_files::create_path,
-        session_files::update_path,
-        session_files::delete_path,
-        session_files::move_file,
-        session_files::copy_file,
-        session_files::grep_files,
-        session_files::stat_file,
+        api::agents::create_agent,
+        api::agents::list_agents,
+        api::agents::get_agent,
+        api::agents::update_agent,
+        api::agents::delete_agent,
+        api::sessions::create_session,
+        api::sessions::list_sessions,
+        api::sessions::get_session,
+        api::sessions::update_session,
+        api::sessions::delete_session,
+        api::messages::create_message,
+        api::messages::list_messages,
+        api::events::stream_sse,
+        api::events::list_events,
+        api::llm_providers::create_provider,
+        api::llm_providers::list_providers,
+        api::llm_providers::get_provider,
+        api::llm_providers::update_provider,
+        api::llm_providers::delete_provider,
+        api::llm_models::create_model,
+        api::llm_models::list_provider_models,
+        api::llm_models::list_all_models,
+        api::llm_models::get_model,
+        api::llm_models::update_model,
+        api::llm_models::delete_model,
+        api::capabilities::list_capabilities,
+        api::capabilities::get_capability,
+        api::users::list_users,
+        api::session_files::get_root,
+        api::session_files::get_path,
+        api::session_files::create_path,
+        api::session_files::update_path,
+        api::session_files::delete_path,
+        api::session_files::move_file,
+        api::session_files::copy_file,
+        api::session_files::grep_files,
+        api::session_files::stat_file,
     ),
     components(
         schemas(
@@ -143,31 +134,31 @@ struct HealthState {
             LlmGenerationData, LlmGenerationOutput, LlmGenerationMetadata,
             SessionStartedData,
             // Agent/Session types
-            agents::CreateAgentRequest, agents::UpdateAgentRequest,
-            sessions::CreateSessionRequest, sessions::UpdateSessionRequest,
-            messages::Message, messages::MessageRole, messages::ContentPart, messages::InputContentPart,
-            messages::CreateMessageRequest, messages::InputMessage,
-            messages::Controls, messages::ReasoningConfig,
+            api::agents::CreateAgentRequest, api::agents::UpdateAgentRequest,
+            api::sessions::CreateSessionRequest, api::sessions::UpdateSessionRequest,
+            api::messages::Message, api::messages::MessageRole, api::messages::ContentPart, api::messages::InputContentPart,
+            api::messages::CreateMessageRequest, api::messages::InputMessage,
+            api::messages::Controls, api::messages::ReasoningConfig,
             ListResponse<Agent>,
             ListResponse<Session>,
-            ListResponse<messages::Message>,
+            ListResponse<api::messages::Message>,
             ListResponse<Event>,
             LlmProvider, LlmProviderType, LlmProviderStatus,
             LlmModel, LlmModelWithProvider, LlmModelStatus,
-            llm_providers::CreateLlmProviderRequest,
-            llm_providers::UpdateLlmProviderRequest,
-            llm_models::CreateLlmModelRequest,
-            llm_models::UpdateLlmModelRequest,
+            api::llm_providers::CreateLlmProviderRequest,
+            api::llm_providers::UpdateLlmProviderRequest,
+            api::llm_models::CreateLlmModelRequest,
+            api::llm_models::UpdateLlmModelRequest,
             CapabilityInfo,  // CapabilityId and CapabilityStatus use value_type = String in schemas
             ListResponse<CapabilityInfo>,
-            users::User,
-            users::ListUsersQuery,
-            ListResponse<users::User>,
+            api::users::User,
+            api::users::ListUsersQuery,
+            ListResponse<api::users::User>,
             SessionFile, FileInfo, FileStat, GrepMatch, GrepResult,
-            session_files::CreateFileRequest, session_files::UpdateFileRequest,
-            session_files::MoveFileRequest, session_files::CopyFileRequest,
-            session_files::GrepRequest, session_files::DeleteResponse,
-            session_files::GetQuery, session_files::DeleteQuery, session_files::GetResponse,
+            api::session_files::CreateFileRequest, api::session_files::UpdateFileRequest,
+            api::session_files::MoveFileRequest, api::session_files::CopyFileRequest,
+            api::session_files::GrepRequest, api::session_files::DeleteResponse,
+            api::session_files::GetQuery, api::session_files::DeleteQuery, api::session_files::GetResponse,
             ListResponse<FileInfo>,
             ListResponse<GrepResult>,
             // Tool types
@@ -259,16 +250,16 @@ async fn main() -> Result<()> {
     let auth_state = auth::AuthState::new(auth_config.clone(), db.clone());
 
     // Create module-specific states
-    let agents_state = agents::AppState::new(db.clone());
-    let sessions_state = sessions::AppState::new(db.clone());
-    let messages_state = messages::AppState::new(db.clone(), runner.clone());
-    let events_state = events::AppState::new(db.clone());
-    let llm_providers_state = llm_providers::AppState::new(db.clone(), encryption.clone());
-    let llm_models_state = llm_models::AppState::new(db.clone());
+    let agents_state = api::agents::AppState::new(db.clone());
+    let sessions_state = api::sessions::AppState::new(db.clone());
+    let messages_state = api::messages::AppState::new(db.clone(), runner.clone());
+    let events_state = api::events::AppState::new(db.clone());
+    let llm_providers_state = api::llm_providers::AppState::new(db.clone(), encryption.clone());
+    let llm_models_state = api::llm_models::AppState::new(db.clone());
     let capability_service = Arc::new(services::CapabilityService::new(db.clone()));
-    let capabilities_state = capabilities::AppState::new(capability_service);
-    let session_files_state = session_files::AppState::new(db.clone());
-    let users_state = users::UsersState {
+    let capabilities_state = api::capabilities::AppState::new(capability_service);
+    let session_files_state = api::session_files::AppState::new(db.clone());
+    let users_state = api::users::UsersState {
         db: db.clone(),
         auth: auth_state.clone(),
     };
@@ -303,15 +294,15 @@ async fn main() -> Result<()> {
     // because /v1/llm-providers/{provider_id}/models is more specific
     // than /v1/llm-providers/{id}
     let api_routes = Router::new()
-        .merge(agents::routes(agents_state))
-        .merge(sessions::routes(sessions_state))
-        .merge(messages::routes(messages_state))
-        .merge(events::routes(events_state))
-        .merge(llm_models::routes(llm_models_state))
-        .merge(llm_providers::routes(llm_providers_state))
-        .merge(capabilities::routes(capabilities_state))
-        .merge(session_files::routes(session_files_state))
-        .merge(users::routes(users_state))
+        .merge(api::agents::routes(agents_state))
+        .merge(api::sessions::routes(sessions_state))
+        .merge(api::messages::routes(messages_state))
+        .merge(api::events::routes(events_state))
+        .merge(api::llm_models::routes(llm_models_state))
+        .merge(api::llm_providers::routes(llm_providers_state))
+        .merge(api::capabilities::routes(capabilities_state))
+        .merge(api::session_files::routes(session_files_state))
+        .merge(api::users::routes(users_state))
         .merge(auth::routes(auth_state));
 
     // Build main router with health (not prefixed) and prefixed API routes
