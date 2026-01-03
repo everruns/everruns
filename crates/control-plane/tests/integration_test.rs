@@ -994,10 +994,11 @@ async fn test_message_triggers_agent_workflow() {
                 let messages = data["data"].as_array().unwrap_or(&empty_vec);
 
                 for msg in messages {
-                    if msg["role"] == "assistant" {
+                    // API returns "agent" role (not "assistant")
+                    if msg["role"] == "agent" {
                         assistant_found = true;
                         let content = &msg["content"];
-                        println!("Found assistant response after {}s: {:?}", i, content);
+                        println!("Found agent response after {}s: {:?}", i, content);
                         break;
                     }
                 }
@@ -1015,7 +1016,7 @@ async fn test_message_triggers_agent_workflow() {
 
     assert!(
         assistant_found,
-        "Agent workflow did not produce an assistant response within 30 seconds. \
+        "Agent workflow did not produce an agent response within 30 seconds. \
         Check: 1) Worker is running, 2) LLM provider configured, 3) Default model set"
     );
 
