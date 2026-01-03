@@ -143,7 +143,7 @@ GET /v1/agents/{id}/sessions/{id}/fs/src
 
 **Grep Search:**
 ```json
-POST /v1/agents/{id}/sessions/{id}/fs/_actions/grep
+POST /v1/agents/{id}/sessions/{id}/fs/_/grep
 {
   "pattern": "fn\\s+\\w+",
   "path_pattern": "*.rs"

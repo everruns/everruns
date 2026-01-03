@@ -201,20 +201,27 @@ This convention ensures consistent, predictable event type names across the syst
    - `message.agent` - Agent response (from LLM, may contain tool calls in content)
    - `message.tool_result` - Tool execution result
 
-2. **Step Events** - Workflow progress notifications
-   - `step.started` - Started processing (e.g., LLM call began)
-   - `step.generating` - Generation in progress (streaming delta)
-   - `step.generated` - Generation complete
-   - `step.error` - Step failed
+2. **Turn Events** - Turn lifecycle notifications
+   - `turn.started` - Turn execution started
+   - `turn.completed` - Turn completed successfully
+   - `turn.failed` - Turn failed
 
-3. **Tool Events** - Tool execution notifications
-   - `tool.started` - Tool execution began
-   - `tool.completed` - Tool execution finished
+3. **Atom Events** - Atom lifecycle notifications
+   - `input.received` - User input received
+   - `reason.started` - ReasonAtom started (LLM inference began)
+   - `reason.completed` - ReasonAtom completed (LLM response received)
+   - `act.started` - ActAtom started (tool batch execution)
+   - `act.completed` - ActAtom completed
 
-4. **Session Events** - Session lifecycle
+4. **Tool Events** - Individual tool execution
+   - `tool.call_started` - Tool execution began
+   - `tool.call_completed` - Tool execution finished (includes result)
+
+5. **LLM Events** - LLM API visibility
+   - `llm.generation` - Full LLM API call with messages and response
+
+6. **Session Events** - Session lifecycle
    - `session.started` - Session began processing
-   - `session.completed` - Session finished successfully
-   - `session.failed` - Session encountered error
 
 ## Flow Example
 
@@ -223,23 +230,28 @@ User sends: "How much is 2+2?"
 
 1. POST /v1/agents/{id}/sessions/{id}/messages
    → Creates Message(role=user, content: { text: "How much is 2+2?" })
+   → Emits Event(message.user)
    → Triggers session workflow
 
 2. Workflow starts
    → Updates Session(status=running)
    → Emits Event(session.started)
 
-3. LLM call starts
-   → Emits Event(step.started)
+3. Turn starts
+   → Emits Event(turn.started)
+   → Emits Event(input.received)
 
-4. LLM responds (non-streaming for M2)
+4. LLM call (ReasonAtom)
+   → Emits Event(reason.started)
+   → LLM responds
    → Creates Message(role=assistant, content: { text: "The answer is 4" })
-   → Emits Event(step.finished)
-   → Emits Event(message.created, data: { message_id: "..." })
+   → Emits Event(reason.completed)
+   → Emits Event(llm.generation)
+   → Emits Event(message.agent)
 
-5. Session cycle complete (ready for more messages)
+5. Turn complete
+   → Emits Event(turn.completed)
    → Updates Session(status=pending)
-   → Emits Event(session.finished)
 
 User can send another message to continue the conversation.
 ```
