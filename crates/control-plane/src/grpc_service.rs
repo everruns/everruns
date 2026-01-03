@@ -283,10 +283,117 @@ impl WorkerService for WorkerServiceImpl {
 
     async fn add_message(
         &self,
-        _request: Request<AddMessageRequest>,
+        request: Request<AddMessageRequest>,
     ) -> Result<Response<AddMessageResponse>, Status> {
-        // TODO: Implement by creating message event
-        Err(Status::unimplemented("add_message not yet implemented"))
+        use chrono::Utc;
+        use everruns_core::{
+            ContentPart, Controls, Message, MessageAgentData, MessageRole, MessageUserData,
+            MESSAGE_AGENT, MESSAGE_USER,
+        };
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        // Parse content from JSON
+        let content: Vec<ContentPart> = serde_json::from_str(&req.content_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid content_json: {}", e)))?;
+
+        // Parse optional controls
+        let controls: Option<Controls> = req
+            .controls_json
+            .as_ref()
+            .map(|s| serde_json::from_str(s))
+            .transpose()
+            .map_err(|e| Status::invalid_argument(format!("Invalid controls_json: {}", e)))?;
+
+        // Parse optional metadata
+        let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = req
+            .metadata_json
+            .as_ref()
+            .map(|s| serde_json::from_str(s))
+            .transpose()
+            .map_err(|e| Status::invalid_argument(format!("Invalid metadata_json: {}", e)))?;
+
+        // Parse role
+        let role = MessageRole::from(req.role.as_str());
+
+        // Create the message
+        let message = Message {
+            id: uuid::Uuid::now_v7(),
+            role: role.clone(),
+            content,
+            controls,
+            metadata,
+            created_at: Utc::now(),
+        };
+
+        // Create event data based on role
+        let (event_type, event_data) = match role {
+            MessageRole::User => {
+                let data = MessageUserData::new(message.clone());
+                (
+                    MESSAGE_USER,
+                    serde_json::to_value(&data).map_err(|e| {
+                        Status::internal(format!("Failed to serialize event data: {}", e))
+                    })?,
+                )
+            }
+            MessageRole::Assistant => {
+                let data = MessageAgentData::new(message.clone());
+                (
+                    MESSAGE_AGENT,
+                    serde_json::to_value(&data).map_err(|e| {
+                        Status::internal(format!("Failed to serialize event data: {}", e))
+                    })?,
+                )
+            }
+            MessageRole::System | MessageRole::ToolResult => {
+                // System and tool messages are typically stored via emit_event
+                return Err(Status::invalid_argument(
+                    "System and tool messages should be added via emit_event",
+                ));
+            }
+        };
+
+        // Create and store the event
+        use crate::storage::CreateEventRow;
+
+        let create_event = CreateEventRow {
+            session_id,
+            event_type: event_type.to_string(),
+            data: event_data,
+        };
+
+        let _event_row = self.db.create_event(create_event).await.map_err(|e| {
+            tracing::error!("Failed to create message event: {}", e);
+            Status::internal("Failed to store message")
+        })?;
+
+        // Convert message to proto
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let content_json = serde_json::to_string(&message.content).unwrap_or_default();
+        let controls_json = message
+            .controls
+            .as_ref()
+            .map(|c| serde_json::to_string(c).unwrap_or_default());
+        let metadata_json = message
+            .metadata
+            .as_ref()
+            .map(|m| serde_json::to_string(m).unwrap_or_default());
+
+        let proto_message = proto::Message {
+            id: Some(uuid_to_proto_uuid(message.id)),
+            role: message.role.to_string(),
+            content_json,
+            controls_json,
+            metadata_json,
+            created_at: Some(datetime_to_proto_timestamp(message.created_at)),
+        };
+
+        Ok(Response::new(AddMessageResponse {
+            message: Some(proto_message),
+        }))
     }
 
     async fn emit_event(

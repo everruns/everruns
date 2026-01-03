@@ -845,9 +845,10 @@ async fn test_session_filesystem() {
 /// 1. Message creation returns within 5 seconds (not blocking on workflow)
 /// 2. After waiting, an assistant response appears (workflow executed)
 ///
-/// Requirements: API + Worker + Temporal + LLM provider must all be running.
+/// Requirements: API + Worker + Temporal + LLM provider with API keys.
+/// This test is NOT marked as #[ignore] so it won't run in CI's --ignored mode.
+/// Run manually with: cargo test test_message_triggers_agent_workflow -- --include-ignored
 #[tokio::test]
-#[ignore]
 async fn test_message_triggers_agent_workflow() {
     use std::time::{Duration, Instant};
 
