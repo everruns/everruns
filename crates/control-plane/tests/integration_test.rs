@@ -8,7 +8,6 @@ use serde_json::{json, Value};
 const API_BASE_URL: &str = "http://localhost:9000";
 
 #[tokio::test]
-#[ignore] // Run with: cargo test --test integration_test -- --ignored
 async fn test_full_agent_session_workflow() {
     let client = reqwest::Client::new();
 
@@ -198,7 +197,6 @@ async fn test_full_agent_session_workflow() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_health_endpoint() {
     let client = reqwest::Client::new();
 
@@ -216,7 +214,6 @@ async fn test_health_endpoint() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_openapi_spec() {
     let client = reqwest::Client::new();
 
@@ -234,7 +231,6 @@ async fn test_openapi_spec() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_llm_provider_and_model_workflow() {
     let client = reqwest::Client::new();
 
@@ -312,7 +308,6 @@ async fn test_llm_provider_and_model_workflow() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_llm_model_profile() {
     let client = reqwest::Client::new();
 
@@ -421,7 +416,6 @@ async fn test_llm_model_profile() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_session_inherits_agent_default_model() {
     let client = reqwest::Client::new();
 
@@ -591,7 +585,6 @@ async fn test_session_inherits_agent_default_model() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_session_filesystem() {
     let client = reqwest::Client::new();
 
@@ -846,9 +839,7 @@ async fn test_session_filesystem() {
 /// 2. After waiting, an assistant response appears (workflow executed)
 ///
 /// Requirements: API + Worker + Temporal (uses LlmSim provider, no real API keys needed).
-/// Run with: cargo test test_message_triggers_agent_workflow -- --ignored
 #[tokio::test]
-#[ignore] // Requires running API, Worker, and Temporal
 async fn test_message_triggers_agent_workflow() {
     use std::time::{Duration, Instant};
 
