@@ -172,8 +172,9 @@ message Event {
 
 message EventContext {
     Uuid session_id = 1;
-    optional int32 turn = 2;
+    optional Uuid turn_id = 2;  // Turn UUID
     optional Uuid exec_id = 3;  // For idempotency
+    optional Uuid input_message_id = 4;  // Input message that triggered the turn
 }
 
 message EmitEventRequest {

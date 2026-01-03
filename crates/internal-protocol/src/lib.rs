@@ -239,8 +239,16 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
     let session_id = proto_uuid_to_uuid(session_id)?;
 
     let context = everruns_core::EventContext {
-        turn_id: proto_context.turn.map(|t| uuid::Uuid::from_u128(t as u128)), // Simplified
-        input_message_id: None,
+        turn_id: proto_context
+            .turn_id
+            .as_ref()
+            .map(proto_uuid_to_uuid)
+            .transpose()?,
+        input_message_id: proto_context
+            .input_message_id
+            .as_ref()
+            .map(proto_uuid_to_uuid)
+            .transpose()?,
         exec_id: proto_context
             .exec_id
             .as_ref()
@@ -271,7 +279,8 @@ pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
         ts: Some(datetime_to_proto_timestamp(value.ts)),
         context: Some(proto::EventContext {
             session_id: Some(uuid_to_proto_uuid(value.session_id)),
-            turn: value.context.turn_id.map(|u| u.as_u128() as i32), // Simplified
+            turn_id: value.context.turn_id.map(uuid_to_proto_uuid),
+            input_message_id: value.context.input_message_id.map(uuid_to_proto_uuid),
             exec_id: value.context.exec_id.map(uuid_to_proto_uuid),
         }),
         data_json: serde_json::to_string(&value.data).unwrap_or_default(),

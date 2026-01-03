@@ -280,12 +280,14 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<Streaming<EmitEventRequest>>,
     ) -> Result<Response<EmitEventStreamResponse>, Status> {
         use crate::storage::CreateEventRow;
+        use everruns_core::{Event, EventContext, EventData};
+        use everruns_internal_protocol::proto_timestamp_to_datetime;
 
         let mut stream = request.into_inner();
         let mut events_processed = 0i32;
 
         while let Some(req) = stream.message().await? {
-            let event = match req.event {
+            let proto_event = match req.event {
                 Some(e) => e,
                 None => {
                     tracing::warn!("Received emit_event_stream request without event");
@@ -293,7 +295,7 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
-            let context = match event.context {
+            let proto_context = match proto_event.context {
                 Some(c) => c,
                 None => {
                     tracing::warn!("Received event without context");
@@ -301,7 +303,7 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
-            let session_id = match parse_uuid(context.session_id.as_ref()) {
+            let session_id = match parse_uuid(proto_context.session_id.as_ref()) {
                 Ok(id) => id,
                 Err(e) => {
                     tracing::warn!("Invalid session_id in event: {}", e);
@@ -310,7 +312,7 @@ impl WorkerService for WorkerServiceImpl {
             };
 
             // Parse the event data from JSON
-            let data: serde_json::Value = match serde_json::from_str(&event.data_json) {
+            let event_data: EventData = match serde_json::from_str(&proto_event.data_json) {
                 Ok(d) => d,
                 Err(e) => {
                     tracing::warn!("Invalid event data_json: {}", e);
@@ -318,9 +320,60 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
+            // Reconstruct the full Event struct to store (matches DbEventEmitter behavior)
+            let event_id = match parse_uuid(proto_event.id.as_ref()) {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!("Invalid event id: {}", e);
+                    continue;
+                }
+            };
+
+            let ts = proto_event
+                .ts
+                .as_ref()
+                .map(proto_timestamp_to_datetime)
+                .unwrap_or_else(chrono::Utc::now);
+
+            let event_context = EventContext {
+                turn_id: proto_context
+                    .turn_id
+                    .as_ref()
+                    .and_then(|u| uuid::Uuid::parse_str(&u.value).ok()),
+                input_message_id: proto_context
+                    .input_message_id
+                    .as_ref()
+                    .and_then(|u| uuid::Uuid::parse_str(&u.value).ok()),
+                exec_id: proto_context
+                    .exec_id
+                    .as_ref()
+                    .and_then(|u| uuid::Uuid::parse_str(&u.value).ok()),
+            };
+
+            let full_event = Event {
+                id: event_id,
+                event_type: proto_event.event_type.clone(),
+                ts,
+                session_id,
+                context: event_context,
+                data: event_data,
+                metadata: None,
+                tags: None,
+                sequence: None,
+            };
+
+            // Serialize the full event to JSON for storage
+            let data = match serde_json::to_value(&full_event) {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::error!("Failed to serialize event: {}", e);
+                    continue;
+                }
+            };
+
             let create_event = CreateEventRow {
                 session_id,
-                event_type: event.event_type,
+                event_type: proto_event.event_type,
                 data,
             };
 
@@ -599,24 +652,68 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<EmitEventRequest>,
     ) -> Result<Response<EmitEventResponse>, Status> {
         use crate::storage::CreateEventRow;
+        use everruns_core::{Event, EventContext, EventData};
+        use everruns_internal_protocol::proto_timestamp_to_datetime;
 
         let req = request.into_inner();
-        let event = req
+        let proto_event = req
             .event
             .ok_or_else(|| Status::invalid_argument("Missing event"))?;
 
-        let context = event
+        let proto_context = proto_event
             .context
             .ok_or_else(|| Status::invalid_argument("Missing event context"))?;
-        let session_id = parse_uuid(context.session_id.as_ref())?;
+        let session_id = parse_uuid(proto_context.session_id.as_ref())?;
 
         // Parse the event data from JSON
-        let data: serde_json::Value = serde_json::from_str(&event.data_json)
+        let event_data: EventData = serde_json::from_str(&proto_event.data_json)
             .map_err(|e| Status::invalid_argument(format!("Invalid event data_json: {}", e)))?;
+
+        // Reconstruct the full Event struct to store (matches DbEventEmitter behavior)
+        let event_id = parse_uuid(proto_event.id.as_ref())?;
+        let ts = proto_event
+            .ts
+            .as_ref()
+            .map(proto_timestamp_to_datetime)
+            .unwrap_or_else(chrono::Utc::now);
+
+        // Reconstruct context from proto
+        let event_context = EventContext {
+            turn_id: proto_context
+                .turn_id
+                .as_ref()
+                .and_then(|u| uuid::Uuid::parse_str(&u.value).ok()),
+            input_message_id: proto_context
+                .input_message_id
+                .as_ref()
+                .and_then(|u| uuid::Uuid::parse_str(&u.value).ok()),
+            exec_id: proto_context
+                .exec_id
+                .as_ref()
+                .and_then(|u| uuid::Uuid::parse_str(&u.value).ok()),
+        };
+
+        let full_event = Event {
+            id: event_id,
+            event_type: proto_event.event_type.clone(),
+            ts,
+            session_id,
+            context: event_context,
+            data: event_data,
+            metadata: None,
+            tags: None,
+            sequence: None,
+        };
+
+        // Serialize the full event to JSON for storage (matches DbEventEmitter)
+        let data = serde_json::to_value(&full_event).map_err(|e| {
+            tracing::error!("Failed to serialize event: {}", e);
+            Status::internal("Failed to serialize event")
+        })?;
 
         let create_event = CreateEventRow {
             session_id,
-            event_type: event.event_type,
+            event_type: proto_event.event_type,
             data,
         };
 
