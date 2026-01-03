@@ -80,6 +80,8 @@ case "$command" in
     echo "   - Postgres: localhost:5432"
     echo "   - Temporal: localhost:7233"
     echo "   - Temporal UI: http://localhost:8080"
+    echo "   - Jaeger UI: http://localhost:16686"
+    echo "   - OTLP gRPC: localhost:4317"
     ;;
 
   stop)
@@ -398,9 +400,12 @@ PY
     echo "   ⚙️  Worker:      running (auto-reload)"
     echo "   🖥️  UI:          http://localhost:9100 (hot reload)"
     echo "   ⏱️  Temporal UI: http://localhost:8080"
+    echo "   🔍 Jaeger UI:   http://localhost:16686"
     echo ""
     echo "👀 Edit code in crates/ and services will auto-restart"
     echo "💡 Press Ctrl+C to stop services (Docker will keep running)"
+    echo ""
+    echo "📊 To enable tracing, set: export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"
     echo ""
 
     # Wait for processes
