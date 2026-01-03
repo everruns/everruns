@@ -69,9 +69,9 @@ pub struct ActResult {
     /// Whether all tool calls completed (regardless of success/failure)
     pub completed: bool,
     /// Number of successful tool calls
-    pub success_count: usize,
+    pub success_count: u32,
     /// Number of failed tool calls
-    pub error_count: usize,
+    pub error_count: u32,
 }
 
 // ============================================================================
@@ -208,8 +208,8 @@ where
         let results = join_all(futures).await;
 
         // Count successes and errors
-        let success_count = results.iter().filter(|r| r.success).count();
-        let error_count = results.iter().filter(|r| !r.success).count();
+        let success_count = results.iter().filter(|r| r.success).count() as u32;
+        let error_count = results.iter().filter(|r| !r.success).count() as u32;
 
         // Emit act.completed event
         if let Err(e) = self

@@ -247,7 +247,7 @@ where
                         ReasonCompletedData::success(
                             &result.text,
                             result.has_tool_calls,
-                            result.tool_calls.len(),
+                            result.tool_calls.len() as u32,
                         ),
                     ))
                     .await

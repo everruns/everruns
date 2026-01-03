@@ -361,7 +361,7 @@ pub struct ReasonCompletedData {
     pub has_tool_calls: bool,
 
     /// Number of tool calls requested
-    pub tool_call_count: usize,
+    pub tool_call_count: u32,
 
     /// Error message if failed
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -369,7 +369,7 @@ pub struct ReasonCompletedData {
 }
 
 impl ReasonCompletedData {
-    pub fn success(text: &str, has_tool_calls: bool, tool_call_count: usize) -> Self {
+    pub fn success(text: &str, has_tool_calls: bool, tool_call_count: u32) -> Self {
         let text_preview = if text.is_empty() {
             None
         } else {
@@ -437,10 +437,10 @@ pub struct ActCompletedData {
     pub completed: bool,
 
     /// Number of successful tool calls
-    pub success_count: usize,
+    pub success_count: u32,
 
     /// Number of failed tool calls
-    pub error_count: usize,
+    pub error_count: u32,
 }
 
 /// Data for tool.call_started event
@@ -635,7 +635,7 @@ pub struct TurnCompletedData {
     pub turn_id: Uuid,
 
     /// Number of iterations in this turn
-    pub iterations: usize,
+    pub iterations: u32,
 
     /// Duration in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
