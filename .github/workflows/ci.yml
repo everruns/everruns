@@ -203,6 +203,11 @@ jobs:
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns
       TEMPORAL_ADDRESS: localhost:7233
+      GRPC_ADDRESS: 127.0.0.1:9001
+      AUTH_MODE: none
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -280,20 +285,50 @@ jobs:
       - name: Run migrations
         run: sqlx migrate run --source crates/control-plane/migrations
 
-      - name: Build API
-        run: cargo build -p everruns-control-plane
+      - name: Build API and Worker
+        run: |
+          cargo build -p everruns-control-plane
+          cargo build -p everruns-worker
 
       - name: Start API server
         run: |
-          cargo run -p everruns-control-plane &
+          cargo run -p everruns-control-plane > /tmp/api.log 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
           # Wait for API to be ready
           timeout 30 bash -c 'until curl -s http://localhost:9000/health > /dev/null; do sleep 1; done'
           echo "API is ready"
 
+      - name: Start Worker
+        run: |
+          cargo run -p everruns-worker > /tmp/worker.log 2>&1 &
+          WORKER_PID=$!
+          echo "WORKER_PID=$WORKER_PID" >> $GITHUB_ENV
+          # Give worker time to connect to Temporal
+          sleep 5
+          # Verify worker is still running
+          if kill -0 $WORKER_PID 2>/dev/null; then
+            echo "Worker is running (PID: $WORKER_PID)"
+          else
+            echo "Worker failed to start"
+            cat /tmp/worker.log
+            exit 1
+          fi
+
       - name: Run integration tests
         run: cargo test -p everruns-control-plane --test integration_test -- --ignored --test-threads=1
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== API Logs ==="
+          cat /tmp/api.log || true
+          echo "=== Worker Logs ==="
+          cat /tmp/worker.log || true
+
+      - name: Stop Worker
+        if: always()
+        run: kill $WORKER_PID || true
 
       - name: Stop API server
         if: always()

@@ -846,7 +846,6 @@ async fn test_session_filesystem() {
 /// 2. After waiting, an assistant response appears (workflow executed)
 ///
 /// Requirements: API + Worker + Temporal + LLM provider must all be running.
-/// Skips automatically if infrastructure is not available.
 #[tokio::test]
 #[ignore]
 async fn test_message_triggers_agent_workflow() {
@@ -856,13 +855,6 @@ async fn test_message_triggers_agent_workflow() {
         .timeout(Duration::from_secs(10))
         .build()
         .expect("Failed to create client");
-
-    // Check if API is available - skip test if not
-    let health_check = client.get(format!("{}/health", API_BASE_URL)).send().await;
-    if health_check.is_err() {
-        println!("Skipping test: API not available at {}", API_BASE_URL);
-        return;
-    }
 
     println!("Testing message triggers agent workflow...");
 
