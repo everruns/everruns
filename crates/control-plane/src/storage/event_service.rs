@@ -27,19 +27,29 @@ impl EventService {
     /// This is the primary method for event ingestion, used by both
     /// HTTP API and gRPC service.
     pub async fn emit(&self, request: EventRequest) -> Result<Event> {
-        // Serialize the request to JSON for storage
-        let data = serde_json::to_value(&request)?;
+        // Generate id upfront so we can store the complete Event
+        // (EventRequest doesn't have id, but Event does)
+        let id = Uuid::now_v7();
+
+        // Convert to full Event with the pre-generated id (sequence=0 as placeholder)
+        let event = request.into_event(id, 0);
+
+        // Serialize the complete Event (with id) for storage
+        let data = serde_json::to_value(&event)?;
 
         let create_row = CreateEventRow {
-            session_id: request.session_id,
-            event_type: request.event_type.clone(),
+            session_id: event.session_id,
+            event_type: event.event_type.clone(),
             data,
         };
 
         let row = self.db.create_event(create_row).await?;
 
-        // Return the event with the assigned id and sequence number
-        Ok(request.into_event(row.id, row.sequence))
+        // Return the event with the actual sequence number from DB
+        Ok(Event {
+            sequence: Some(row.sequence),
+            ..event
+        })
     }
 
     /// Emit a batch of typed event requests and store them in the database.
@@ -50,12 +60,18 @@ impl EventService {
         let mut count = 0i32;
 
         for request in requests {
-            // Serialize the request to JSON for storage
-            let data = serde_json::to_value(&request)?;
+            // Generate id upfront so we can store the complete Event
+            let id = Uuid::now_v7();
+
+            // Convert to full Event with the pre-generated id
+            let event = request.into_event(id, 0);
+
+            // Serialize the complete Event (with id) for storage
+            let data = serde_json::to_value(&event)?;
 
             let create_row = CreateEventRow {
-                session_id: request.session_id,
-                event_type: request.event_type.clone(),
+                session_id: event.session_id,
+                event_type: event.event_type.clone(),
                 data,
             };
 
