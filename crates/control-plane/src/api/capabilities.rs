@@ -14,7 +14,7 @@ use axum::{
 };
 use everruns_core::{CapabilityId, CapabilityInfo};
 
-use crate::common::ListResponse;
+use super::common::ListResponse;
 use std::sync::Arc;
 
 use crate::services::CapabilityService;

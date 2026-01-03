@@ -11,7 +11,7 @@ use everruns_core::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::llm_models::{CreateLlmModelRequest, UpdateLlmModelRequest};
+use crate::api::llm_models::{CreateLlmModelRequest, UpdateLlmModelRequest};
 
 pub struct LlmModelService {
     db: Arc<Database>,

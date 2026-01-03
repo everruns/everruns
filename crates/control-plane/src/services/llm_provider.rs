@@ -10,7 +10,7 @@ use everruns_core::{LlmProviderStatus, LlmProviderType};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::llm_providers::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
+use crate::api::llm_providers::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
 
 pub struct LlmProviderService {
     db: Arc<Database>,

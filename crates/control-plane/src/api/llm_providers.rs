@@ -14,7 +14,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::common::ListResponse;
+use super::common::ListResponse;
 use crate::services::LlmProviderService;
 
 #[derive(Clone)]

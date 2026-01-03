@@ -9,7 +9,7 @@ use everruns_core::{Agent, AgentStatus, CapabilityId};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::agents::{CreateAgentRequest, UpdateAgentRequest};
+use crate::api::agents::{CreateAgentRequest, UpdateAgentRequest};
 
 pub struct AgentService {
     db: Arc<Database>,

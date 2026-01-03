@@ -10,7 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 
-use crate::common::ListResponse;
+use super::common::ListResponse;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
