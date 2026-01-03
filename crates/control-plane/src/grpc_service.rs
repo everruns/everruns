@@ -7,7 +7,7 @@
 // - Adapting to the events-based message storage
 // - Integration with existing services
 
-use crate::storage::Database;
+use crate::storage::{Database, EncryptionService};
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
     EmitEventRequest, EmitEventResponse, EmitEventStreamResponse, GetAgentRequest,
@@ -27,11 +27,12 @@ use tonic::{Request, Response, Status, Streaming};
 /// gRPC service implementation for worker communication
 pub struct WorkerServiceImpl {
     db: Arc<Database>,
+    encryption: Option<Arc<EncryptionService>>,
 }
 
 impl WorkerServiceImpl {
-    pub fn new(db: Arc<Database>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
+        Self { db, encryption }
     }
 
     /// Create a tonic server for this service
@@ -306,18 +307,113 @@ impl WorkerService for WorkerServiceImpl {
 
     async fn get_model_with_provider(
         &self,
-        _request: Request<GetModelWithProviderRequest>,
+        request: Request<GetModelWithProviderRequest>,
     ) -> Result<Response<GetModelWithProviderResponse>, Status> {
-        // TODO: Implement with decrypted API key
-        Ok(Response::new(GetModelWithProviderResponse { model: None }))
+        let req = request.into_inner();
+        let model_id = parse_uuid(req.model_id.as_ref())?;
+
+        // Check if encryption service is available
+        let encryption = match &self.encryption {
+            Some(enc) => enc.as_ref().clone(),
+            None => {
+                return Err(Status::unavailable(
+                    "Encryption service not configured - cannot decrypt API keys",
+                ));
+            }
+        };
+
+        // Look up the model
+        let model_row = self
+            .db
+            .get_llm_model(model_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get model: {}", e)))?;
+
+        let model_row = match model_row {
+            Some(row) => row,
+            None => return Ok(Response::new(GetModelWithProviderResponse { model: None })),
+        };
+
+        // Look up the provider
+        let provider_row = self
+            .db
+            .get_llm_provider(model_row.provider_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get provider: {}", e)))?;
+
+        let provider_row = match provider_row {
+            Some(row) => row,
+            None => return Ok(Response::new(GetModelWithProviderResponse { model: None })),
+        };
+
+        // Decrypt the API key
+        let provider_with_key = self
+            .db
+            .get_provider_with_api_key(&provider_row, &encryption)
+            .map_err(|e| Status::internal(format!("Failed to decrypt API key: {}", e)))?;
+
+        Ok(Response::new(GetModelWithProviderResponse {
+            model: Some(proto::ModelWithProvider {
+                model: model_row.model_id,
+                provider_type: provider_with_key.provider_type,
+                api_key: provider_with_key.api_key,
+                base_url: provider_with_key.base_url,
+            }),
+        }))
     }
 
     async fn get_default_model(
         &self,
         _request: Request<GetDefaultModelRequest>,
     ) -> Result<Response<GetDefaultModelResponse>, Status> {
-        // TODO: Implement with decrypted API key
-        Ok(Response::new(GetDefaultModelResponse { model: None }))
+        // Check if encryption service is available
+        let encryption = match &self.encryption {
+            Some(enc) => enc.as_ref().clone(),
+            None => {
+                return Err(Status::unavailable(
+                    "Encryption service not configured - cannot decrypt API keys",
+                ));
+            }
+        };
+
+        // Look up the default model
+        let model_row = self
+            .db
+            .get_default_llm_model()
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get default model: {}", e)))?;
+
+        let model_row = match model_row {
+            Some(row) => row,
+            None => return Ok(Response::new(GetDefaultModelResponse { model: None })),
+        };
+
+        // Look up the provider
+        let provider_row = self
+            .db
+            .get_llm_provider(model_row.provider_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get provider: {}", e)))?;
+
+        let provider_row = match provider_row {
+            Some(row) => row,
+            None => return Ok(Response::new(GetDefaultModelResponse { model: None })),
+        };
+
+        // Decrypt the API key
+        let provider_with_key = self
+            .db
+            .get_provider_with_api_key(&provider_row, &encryption)
+            .map_err(|e| Status::internal(format!("Failed to decrypt API key: {}", e)))?;
+
+        Ok(Response::new(GetDefaultModelResponse {
+            model: Some(proto::ModelWithProvider {
+                model: model_row.model_id,
+                provider_type: provider_with_key.provider_type,
+                api_key: provider_with_key.api_key,
+                base_url: provider_with_key.base_url,
+            }),
+        }))
     }
 
     // ========================================================================

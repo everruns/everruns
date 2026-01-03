@@ -356,8 +356,9 @@ async fn main() -> Result<()> {
     // Start gRPC server for worker communication
     let grpc_addr = std::env::var("GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9001".to_string());
     let grpc_db = db.clone();
+    let grpc_encryption = encryption.clone();
     tokio::spawn(async move {
-        let grpc_service = grpc_service::WorkerServiceImpl::new(grpc_db);
+        let grpc_service = grpc_service::WorkerServiceImpl::new(grpc_db, grpc_encryption);
         let addr = grpc_addr.parse().expect("Invalid GRPC_ADDR");
         tracing::info!("gRPC server listening on {}", addr);
         if let Err(e) = tonic::transport::Server::builder()
