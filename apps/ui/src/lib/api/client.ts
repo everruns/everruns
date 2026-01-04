@@ -101,12 +101,3 @@ export function getBackendUrl(): string {
   return API_BASE;
 }
 
-/**
- * Get the direct API URL for operations that bypass the Next.js proxy
- * (e.g., Server-Sent Events which need direct browser connections)
- *
- * Uses NEXT_PUBLIC_API_URL env var, falls back to localhost:9000
- */
-export function getDirectApiUrl(): string {
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000";
-}
