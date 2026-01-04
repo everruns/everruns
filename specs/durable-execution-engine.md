@@ -1188,34 +1188,34 @@ impl DurableMetrics {
 pub fn admin_router(state: AdminState) -> Router {
     Router::new()
         // Worker management
-        .route("/api/admin/workers", get(list_workers))
-        .route("/api/admin/workers/:id", get(get_worker))
-        .route("/api/admin/workers/:id/drain", post(drain_worker))
+        .route("/api/durable/workers", get(list_workers))
+        .route("/api/durable/workers/:id", get(get_worker))
+        .route("/api/durable/workers/:id/drain", post(drain_worker))
 
         // Workflow inspection
-        .route("/api/admin/workflows", get(list_workflows))
-        .route("/api/admin/workflows/:id", get(get_workflow))
-        .route("/api/admin/workflows/:id/events", get(get_workflow_events))
-        .route("/api/admin/workflows/:id/signal", post(send_signal))
-        .route("/api/admin/workflows/:id/cancel", post(cancel_workflow))
+        .route("/api/durable/workflows", get(list_workflows))
+        .route("/api/durable/workflows/:id", get(get_workflow))
+        .route("/api/durable/workflows/:id/events", get(get_workflow_events))
+        .route("/api/durable/workflows/:id/signal", post(send_signal))
+        .route("/api/durable/workflows/:id/cancel", post(cancel_workflow))
 
         // Task queue
-        .route("/api/admin/tasks", get(list_tasks))
-        .route("/api/admin/tasks/stats", get(get_task_stats))
+        .route("/api/durable/tasks", get(list_tasks))
+        .route("/api/durable/tasks/stats", get(get_task_stats))
 
         // Dead letter queue
-        .route("/api/admin/dlq", get(list_dlq))
-        .route("/api/admin/dlq/:id/requeue", post(requeue_dlq))
-        .route("/api/admin/dlq/:id", delete(delete_dlq))
-        .route("/api/admin/dlq/purge", post(purge_dlq))
+        .route("/api/durable/dlq", get(list_dlq))
+        .route("/api/durable/dlq/:id/requeue", post(requeue_dlq))
+        .route("/api/durable/dlq/:id", delete(delete_dlq))
+        .route("/api/durable/dlq/purge", post(purge_dlq))
 
         // Circuit breakers
-        .route("/api/admin/circuit-breakers", get(list_circuit_breakers))
-        .route("/api/admin/circuit-breakers/:key/reset", post(reset_circuit_breaker))
+        .route("/api/durable/circuit-breakers", get(list_circuit_breakers))
+        .route("/api/durable/circuit-breakers/:key/reset", post(reset_circuit_breaker))
 
         // System health
-        .route("/api/admin/health", get(system_health))
-        .route("/api/admin/metrics", get(prometheus_metrics))
+        .route("/api/durable/health", get(system_health))
+        .route("/api/durable/metrics", get(prometheus_metrics))
 
         .with_state(state)
 }
@@ -1307,7 +1307,7 @@ pub struct ActivityTypeStats {
 ### Example API Responses
 
 ```json
-// GET /api/admin/workers
+// GET /api/durable/workers
 {
   "workers": [
     {
@@ -1337,7 +1337,7 @@ pub struct ActivityTypeStats {
   }
 }
 
-// GET /api/admin/health
+// GET /api/durable/health
 {
   "status": "healthy",
   "total_workers": 5,
