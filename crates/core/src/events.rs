@@ -413,6 +413,27 @@ impl From<&ToolCall> for ToolCallSummary {
     }
 }
 
+/// Summary of a tool definition (compact form for events)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ToolDefinitionSummary {
+    /// Tool name
+    pub name: String,
+    /// Tool description
+    pub description: String,
+}
+
+impl From<&crate::tool_types::ToolDefinition> for ToolDefinitionSummary {
+    fn from(tool: &crate::tool_types::ToolDefinition) -> Self {
+        match tool {
+            crate::tool_types::ToolDefinition::Builtin(builtin) => Self {
+                name: builtin.name.clone(),
+                description: builtin.description.clone(),
+            },
+        }
+    }
+}
+
 /// Data for act.started event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -554,6 +575,10 @@ pub struct LlmGenerationData {
     /// Messages sent to the LLM (including system prompt)
     pub messages: Vec<Message>,
 
+    /// Tools available to the LLM for this generation
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ToolDefinitionSummary>,
+
     /// Output from the LLM
     pub output: LlmGenerationOutput,
 
@@ -563,8 +588,10 @@ pub struct LlmGenerationData {
 
 impl LlmGenerationData {
     /// Create a successful generation event
+    #[allow(clippy::too_many_arguments)]
     pub fn success(
         messages: Vec<Message>,
+        tools: Vec<ToolDefinitionSummary>,
         text: Option<String>,
         tool_calls: Vec<ToolCall>,
         model: String,
@@ -574,6 +601,7 @@ impl LlmGenerationData {
     ) -> Self {
         Self {
             messages,
+            tools,
             output: LlmGenerationOutput { text, tool_calls },
             metadata: LlmGenerationMetadata {
                 model,
@@ -589,6 +617,7 @@ impl LlmGenerationData {
     /// Create a failed generation event
     pub fn failure(
         messages: Vec<Message>,
+        tools: Vec<ToolDefinitionSummary>,
         model: String,
         provider: Option<String>,
         error: String,
@@ -596,6 +625,7 @@ impl LlmGenerationData {
     ) -> Self {
         Self {
             messages,
+            tools,
             output: LlmGenerationOutput {
                 text: None,
                 tool_calls: vec![],
@@ -1094,9 +1124,14 @@ mod tests {
     #[test]
     fn test_llm_generation_data_success() {
         let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
+        let tools = vec![ToolDefinitionSummary {
+            name: "get_weather".to_string(),
+            description: "Get weather for a city".to_string(),
+        }];
         let tool_calls = vec![];
         let data = LlmGenerationData::success(
             messages.clone(),
+            tools,
             Some("Hi there!".to_string()),
             tool_calls,
             "gpt-4o".to_string(),
@@ -1109,6 +1144,8 @@ mod tests {
         );
 
         assert_eq!(data.messages.len(), 2);
+        assert_eq!(data.tools.len(), 1);
+        assert_eq!(data.tools[0].name, "get_weather");
         assert_eq!(data.output.text, Some("Hi there!".to_string()));
         assert!(data.output.tool_calls.is_empty());
         assert!(data.metadata.success);
@@ -1122,6 +1159,7 @@ mod tests {
         let messages = vec![Message::user("Hello")];
         let data = LlmGenerationData::failure(
             messages,
+            vec![],
             "gpt-4o".to_string(),
             Some("openai".to_string()),
             "Rate limit exceeded".to_string(),
@@ -1138,6 +1176,7 @@ mod tests {
     fn test_llm_generation_event_data() {
         let data = LlmGenerationData::success(
             vec![Message::user("test")],
+            vec![],
             Some("response".to_string()),
             vec![],
             "model".to_string(),
