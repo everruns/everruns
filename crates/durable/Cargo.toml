@@ -1,0 +1,72 @@
+# Durable Execution Engine
+#
+# A PostgreSQL-backed workflow orchestration engine providing:
+# - Event-sourced workflow persistence
+# - Automatic retries with exponential backoff
+# - Circuit breakers for external service protection
+# - Distributed task queue with backpressure
+# - OpenTelemetry integration for observability
+#
+# This crate is designed to be testable in isolation with comprehensive
+# unit tests, integration tests, and load/stress tests.
+
+[package]
+name = "everruns-durable"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }
+async-trait.workspace = true
+futures.workspace = true
+
+# Database
+sqlx.workspace = true
+
+# Serialization
+serde = { workspace = true }
+serde_json.workspace = true
+
+# UUID and time
+uuid.workspace = true
+chrono.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Observability
+tracing.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+tracing-opentelemetry.workspace = true
+
+# HTTP for admin API
+axum.workspace = true
+tower.workspace = true
+
+# OpenAPI documentation
+utoipa.workspace = true
+
+# Utilities
+rand.workspace = true
+dashmap = "6"
+parking_lot = "0.12"
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = { version = "0.5", features = ["async_tokio"] }
+test-log = { version = "0.2", features = ["trace"] }
+
+# Benchmarks will be added in Phase 5: Load Testing
+# [[bench]]
+# name = "workflow_throughput"
+# harness = false
+#
+# [[bench]]
+# name = "task_claiming"
+# harness = false
