@@ -18,6 +18,9 @@
 pub mod capability_types;
 pub mod tool_types;
 
+// Telemetry (OpenTelemetry with gen-ai semantic conventions)
+pub mod telemetry;
+
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;

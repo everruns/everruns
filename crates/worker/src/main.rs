@@ -1,20 +1,25 @@
 use anyhow::{Context, Result};
+use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
 use everruns_worker::{RunnerConfig, TemporalWorker};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging with LOG_LEVEL env var (default: debug)
-    // Supports: trace, debug, info, warn, error
-    // Can also use RUST_LOG for more fine-grained control
-    let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "debug".to_string());
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| format!("everruns_worker={}", log_level).into());
+    // Initialize telemetry with OpenTelemetry support
+    // Configure via environment variables:
+    // - OTEL_SERVICE_NAME: Service name (default: "everruns-worker")
+    // - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (e.g., "http://localhost:4317")
+    // - RUST_LOG or LOG_LEVEL: Log filter (default: "everruns_worker=debug")
+    let mut telemetry_config = TelemetryConfig::from_env();
+    if telemetry_config.service_name == "everruns" {
+        telemetry_config.service_name = "everruns-worker".to_string();
+    }
+    if telemetry_config.log_filter.is_none() {
+        let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "debug".to_string());
+        telemetry_config.log_filter = Some(format!("everruns_worker={}", log_level));
+    }
 
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Keep the guard alive for the lifetime of the application
+    let _telemetry_guard = init_telemetry(telemetry_config);
 
     tracing::info!("everrun-worker starting...");
 
