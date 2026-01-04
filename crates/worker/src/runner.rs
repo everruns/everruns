@@ -12,8 +12,9 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use everruns_core::telemetry::gen_ai;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, Instrument};
 use uuid::Uuid;
 
 use crate::client::TemporalClient;
@@ -130,15 +131,16 @@ impl TemporalRunner {
     }
 }
 
-#[async_trait]
-impl AgentRunner for TemporalRunner {
-    /// Start a turn workflow for the given session
-    async fn start_run(
+impl TemporalRunner {
+    /// Inner implementation for start_run with instrumentation
+    async fn start_run_inner(
         &self,
         session_id: Uuid,
         agent_id: Uuid,
         input_message_id: Uuid,
     ) -> Result<()> {
+        let span = tracing::Span::current();
+
         info!(
             session_id = %session_id,
             agent_id = %agent_id,
@@ -159,6 +161,10 @@ impl AgentRunner for TemporalRunner {
         // Workflow ID is derived from session_id (session-{session_id})
         let workflow_id = TemporalClient::workflow_id_for_session(session_id);
 
+        // Record workflow IDs on span
+        span.record("workflow.id", workflow_id.as_str());
+        span.record("workflow.run_id", response.run_id.as_str());
+
         info!(
             session_id = %session_id,
             workflow_id = %workflow_id,
@@ -167,6 +173,39 @@ impl AgentRunner for TemporalRunner {
         );
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl AgentRunner for TemporalRunner {
+    /// Start a turn workflow for the given session
+    async fn start_run(
+        &self,
+        session_id: Uuid,
+        agent_id: Uuid,
+        input_message_id: Uuid,
+    ) -> Result<()> {
+        // Create span with gen-ai semantic conventions for agent invocation
+        // Span name format: "invoke_agent {agent_id}" per OTel spec
+        let span_name = format!("invoke_agent {}", agent_id);
+        let span = tracing::info_span!(
+            "gen_ai.invoke_agent",
+            "otel.name" = %span_name,
+            "otel.kind" = "client",
+            // Operation
+            "gen_ai.operation.name" = gen_ai::operation::INVOKE_AGENT,
+            // Agent attributes
+            "gen_ai.agent.id" = %agent_id,
+            // Conversation context
+            "gen_ai.conversation.id" = %session_id,
+            // Workflow attributes (filled after start)
+            "workflow.id" = tracing::field::Empty,
+            "workflow.run_id" = tracing::field::Empty,
+        );
+
+        self.start_run_inner(session_id, agent_id, input_message_id)
+            .instrument(span)
+            .await
     }
 
     async fn cancel_run(&self, session_id: Uuid) -> Result<()> {

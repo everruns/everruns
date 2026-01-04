@@ -193,15 +193,24 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
             "gen_ai.chat",
             "otel.name" = %span_name,
             "otel.kind" = "client",
+            // Operation and provider
             "gen_ai.operation.name" = gen_ai::operation::CHAT,
             "gen_ai.system" = gen_ai::provider::OPENAI,
+            // Request attributes
             "gen_ai.request.model" = %config.model,
             "gen_ai.request.max_tokens" = config.max_tokens,
             "gen_ai.request.temperature" = config.temperature,
+            // Server info
             "server.address" = %self.api_url,
+            // Response attributes (filled dynamically)
+            "gen_ai.response.id" = tracing::field::Empty,
+            "gen_ai.response.model" = tracing::field::Empty,
+            "gen_ai.response.finish_reasons" = tracing::field::Empty,
+            // Usage metrics (filled dynamically)
             "gen_ai.usage.input_tokens" = tracing::field::Empty,
             "gen_ai.usage.output_tokens" = tracing::field::Empty,
-            "gen_ai.response.finish_reasons" = tracing::field::Empty,
+            // Output type
+            "gen_ai.output.type" = gen_ai::output_type::TEXT,
         );
 
         self.chat_completion_stream_inner(messages, config)
@@ -261,6 +270,9 @@ impl OpenAIProtocolLlmDriver {
         let total_tokens = Arc::new(Mutex::new(0u32));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        // Track response ID and actual model from first chunk
+        let response_id = Arc::new(Mutex::new(Option::<String>::None));
+        let response_model = Arc::new(Mutex::new(Option::<String>::None));
 
         // Capture the current span for recording token usage when stream completes
         let current_span = tracing::Span::current();
@@ -270,6 +282,8 @@ impl OpenAIProtocolLlmDriver {
             let total_tokens = Arc::clone(&total_tokens);
             let prompt_tokens = Arc::clone(&prompt_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+            let response_id = Arc::clone(&response_id);
+            let response_model = Arc::clone(&response_model);
             let span = current_span.clone();
 
             async move {
@@ -297,6 +311,22 @@ impl OpenAIProtocolLlmDriver {
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
                             Ok(chunk) => {
+                                // Capture response ID and model from first chunk
+                                if let Some(id) = &chunk.id {
+                                    let mut resp_id = response_id.lock().unwrap();
+                                    if resp_id.is_none() {
+                                        *resp_id = Some(id.clone());
+                                        span.record(gen_ai::RESPONSE_ID, id.as_str());
+                                    }
+                                }
+                                if let Some(m) = &chunk.model {
+                                    let mut resp_model = response_model.lock().unwrap();
+                                    if resp_model.is_none() {
+                                        *resp_model = Some(m.clone());
+                                        span.record(gen_ai::RESPONSE_MODEL, m.as_str());
+                                    }
+                                }
+
                                 // Capture usage from chunk if available
                                 if let Some(usage) = &chunk.usage {
                                     if let Some(pt) = usage.prompt_tokens {
@@ -510,6 +540,12 @@ struct OpenAiFunctionCall {
 
 #[derive(Debug, Deserialize)]
 struct OpenAiStreamChunk {
+    /// Unique identifier for this completion
+    #[serde(default)]
+    id: Option<String>,
+    /// Model used for completion (may differ from requested)
+    #[serde(default)]
+    model: Option<String>,
     choices: Vec<OpenAiStreamChoice>,
     #[serde(default)]
     usage: Option<OpenAiUsage>,

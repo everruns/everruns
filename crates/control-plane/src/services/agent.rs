@@ -5,8 +5,10 @@ use crate::storage::{
     AgentRow, Database,
 };
 use anyhow::Result;
+use everruns_core::telemetry::gen_ai;
 use everruns_core::{Agent, AgentStatus, CapabilityId};
 use std::sync::Arc;
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::api::agents::{CreateAgentRequest, UpdateAgentRequest};
@@ -21,6 +23,28 @@ impl AgentService {
     }
 
     pub async fn create(&self, req: CreateAgentRequest) -> Result<Agent> {
+        // Create span with gen-ai semantic conventions for agent creation
+        // Span name format: "create_agent {agent_name}" per OTel spec
+        let span_name = format!("create_agent {}", req.name);
+        let span = tracing::info_span!(
+            "gen_ai.create_agent",
+            "otel.name" = %span_name,
+            "otel.kind" = "internal",
+            // Operation
+            "gen_ai.operation.name" = gen_ai::operation::CREATE_AGENT,
+            // Agent attributes
+            "gen_ai.agent.name" = %req.name,
+            "gen_ai.agent.description" = req.description.as_deref().unwrap_or(""),
+            // Result attributes (filled after creation)
+            "gen_ai.agent.id" = tracing::field::Empty,
+        );
+
+        self.create_inner(req).instrument(span).await
+    }
+
+    async fn create_inner(&self, req: CreateAgentRequest) -> Result<Agent> {
+        let span = tracing::Span::current();
+
         let input = CreateAgentRow {
             name: req.name,
             description: req.description,
@@ -30,6 +54,9 @@ impl AgentService {
         };
         let row = self.db.create_agent(input).await?;
         let agent_id = row.id;
+
+        // Record agent ID on span
+        span.record("gen_ai.agent.id", agent_id.to_string().as_str());
 
         // Set capabilities if provided
         let capabilities = if !req.capabilities.is_empty() {

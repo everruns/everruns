@@ -96,6 +96,22 @@ pub mod gen_ai {
     /// Requested encoding formats
     pub const REQUEST_ENCODING_FORMATS: &str = "gen_ai.request.encoding_formats";
 
+    // Additional request attributes
+    /// Number of response candidates to generate
+    pub const REQUEST_CHOICE_COUNT: &str = "gen_ai.request.choice.count";
+
+    // Output attributes
+    /// Output modality type (text, image, json, speech)
+    pub const OUTPUT_TYPE: &str = "gen_ai.output.type";
+
+    // Agent attributes (extension for agent frameworks)
+    /// Agent identifier
+    pub const AGENT_ID: &str = "gen_ai.agent.id";
+    /// Agent name
+    pub const AGENT_NAME: &str = "gen_ai.agent.name";
+    /// Agent description
+    pub const AGENT_DESCRIPTION: &str = "gen_ai.agent.description";
+
     // Server attributes
     /// GenAI server address
     pub const SERVER_ADDRESS: &str = "server.address";
@@ -127,6 +143,14 @@ pub mod gen_ai {
         pub const FUNCTION: &str = "function";
         pub const EXTENSION: &str = "extension";
         pub const DATASTORE: &str = "datastore";
+    }
+
+    /// Output types as per semantic conventions
+    pub mod output_type {
+        pub const TEXT: &str = "text";
+        pub const IMAGE: &str = "image";
+        pub const JSON: &str = "json";
+        pub const SPEECH: &str = "speech";
     }
 }
 
@@ -344,6 +368,38 @@ pub fn tool_span_name(tool_name: &str) -> String {
     format!("{} {}", gen_ai::operation::EXECUTE_TOOL, tool_name)
 }
 
+/// Create a span name for text completion following gen-ai conventions
+///
+/// Format: `text_completion {model_name}`
+/// Example: "text_completion gpt-3.5-turbo-instruct"
+pub fn text_completion_span_name(model: &str) -> String {
+    format!("{} {}", gen_ai::operation::TEXT_COMPLETION, model)
+}
+
+/// Create a span name for agent creation following gen-ai conventions
+///
+/// Format: `create_agent {agent_name}`
+/// Example: "create_agent customer_support_agent"
+pub fn create_agent_span_name(agent_name: &str) -> String {
+    format!("{} {}", gen_ai::operation::CREATE_AGENT, agent_name)
+}
+
+/// Create a span name for agent invocation following gen-ai conventions
+///
+/// Format: `invoke_agent {agent_name}`
+/// Example: "invoke_agent customer_support_agent"
+pub fn invoke_agent_span_name(agent_name: &str) -> String {
+    format!("{} {}", gen_ai::operation::INVOKE_AGENT, agent_name)
+}
+
+/// Create a span name for embeddings following gen-ai conventions
+///
+/// Format: `embeddings {model_name}`
+/// Example: "embeddings text-embedding-ada-002"
+pub fn embeddings_span_name(model: &str) -> String {
+    format!("{} {}", gen_ai::operation::EMBEDDINGS, model)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,6 +414,38 @@ mod tests {
     fn test_tool_span_name() {
         assert_eq!(tool_span_name("read_file"), "execute_tool read_file");
         assert_eq!(tool_span_name("web_search"), "execute_tool web_search");
+    }
+
+    #[test]
+    fn test_text_completion_span_name() {
+        assert_eq!(
+            text_completion_span_name("gpt-3.5-turbo-instruct"),
+            "text_completion gpt-3.5-turbo-instruct"
+        );
+    }
+
+    #[test]
+    fn test_create_agent_span_name() {
+        assert_eq!(
+            create_agent_span_name("customer_support"),
+            "create_agent customer_support"
+        );
+    }
+
+    #[test]
+    fn test_invoke_agent_span_name() {
+        assert_eq!(
+            invoke_agent_span_name("customer_support"),
+            "invoke_agent customer_support"
+        );
+    }
+
+    #[test]
+    fn test_embeddings_span_name() {
+        assert_eq!(
+            embeddings_span_name("text-embedding-ada-002"),
+            "embeddings text-embedding-ada-002"
+        );
     }
 
     #[test]

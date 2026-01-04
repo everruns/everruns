@@ -22,6 +22,7 @@ use async_trait::async_trait;
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::Instrument;
 
 use super::{Atom, AtomContext};
 use crate::error::Result;
@@ -30,6 +31,7 @@ use crate::events::{
     ToolCallStartedData,
 };
 use crate::message::ContentPart;
+use crate::telemetry::gen_ai;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{EventEmitter, SessionFileStore, ToolContext, ToolExecutor};
 
@@ -261,6 +263,41 @@ where
         tool_call: ToolCall,
         tool_def: Option<&ToolDefinition>,
     ) -> ToolCallResult {
+        // Create span with gen-ai semantic conventions for tool execution
+        // Span name format: "execute_tool {tool_name}" per OTel spec
+        let span_name = format!("execute_tool {}", tool_call.name);
+        let span = tracing::info_span!(
+            "gen_ai.execute_tool",
+            "otel.name" = %span_name,
+            "otel.kind" = "internal",
+            // Operation
+            "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+            // Tool attributes
+            "gen_ai.tool.name" = %tool_call.name,
+            "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
+            "gen_ai.tool.call.id" = %tool_call.id,
+            // Conversation context
+            "gen_ai.conversation.id" = %context.session_id,
+            // Result (filled after execution)
+            "tool.success" = tracing::field::Empty,
+            "tool.status" = tracing::field::Empty,
+        );
+
+        self.execute_single_tool_inner(context, tool_call, tool_def)
+            .instrument(span)
+            .await
+    }
+
+    /// Inner implementation of single tool execution (for instrumentation)
+    async fn execute_single_tool_inner(
+        &self,
+        context: &AtomContext,
+        tool_call: ToolCall,
+        tool_def: Option<&ToolDefinition>,
+    ) -> ToolCallResult {
+        // Get current span for recording results
+        let span = tracing::Span::current();
+
         tracing::debug!(
             session_id = %context.session_id,
             turn_id = %context.turn_id,
@@ -318,6 +355,10 @@ where
                     "ActAtom: failed to emit tool.call_completed event"
                 );
             }
+
+            // Record result on span
+            span.record("tool.success", false);
+            span.record("tool.status", "error");
 
             return ToolCallResult {
                 tool_call: tool_call.clone(),
@@ -393,6 +434,10 @@ where
                     "ActAtom: tool execution completed"
                 );
 
+                // Record result on span
+                span.record("tool.success", success);
+                span.record("tool.status", status);
+
                 ToolCallResult {
                     tool_call,
                     result: tool_result,
@@ -433,6 +478,10 @@ where
                     error = %e,
                     "ActAtom: tool execution failed"
                 );
+
+                // Record result on span
+                span.record("tool.success", false);
+                span.record("tool.status", "error");
 
                 ToolCallResult {
                     tool_call: tool_call.clone(),
