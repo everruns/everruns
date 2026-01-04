@@ -185,6 +185,26 @@ OpenAI-specific LLM provider implementation:
 3. **Streaming Support**: Full SSE streaming with tool call support
 4. **Native API Access**: Direct methods for OpenAI-specific functionality
 
+### LlmSim Driver (Testing)
+
+For integration testing without real API keys, Everruns uses [llmsim](https://github.com/chaliy/llmsim) - a simulated LLM driver:
+
+1. **Provider Type**: `llmsim` - registered as `LlmProviderType::LlmSim`
+2. **No API Keys Required**: Tests can run without external dependencies
+3. **Configurable Responses**: Supports fixed responses, echo mode, lorem ipsum generation, and tool call simulation
+4. **Latency Simulation**: Optional latency profiles for realistic timing
+5. **Usage**: Create an `llmsim` provider and model in tests, then use it as the agent's default model
+
+Example test setup:
+```rust
+// Create LlmSim provider (no API key needed)
+let provider = create_provider("llmsim", "Test Provider");
+let model = create_model(provider.id, "llmsim-test", "LlmSim Test Model");
+
+// Create agent with LlmSim model
+let agent = create_agent("Test Agent", model.id);
+```
+
 ### Capabilities System
 
 Capabilities are modular functionality units that extend Agent behavior. See [specs/capabilities.md](capabilities.md) for detailed specification.
