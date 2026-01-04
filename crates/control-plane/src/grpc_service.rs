@@ -2,11 +2,9 @@
 //
 // Decision: Workers communicate with control plane via gRPC for all database operations
 // Decision: This provides a clean boundary and simplifies worker deployment
-//
-// NOTE: This is a placeholder implementation. Full integration requires:
-// - Adapting to the events-based message storage
-// - Integration with existing services
+// Decision: gRPC service uses the same services layer as HTTP API for consistency
 
+use crate::services::EventService;
 use crate::storage::{Database, EncryptionService};
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
@@ -20,7 +18,9 @@ use everruns_internal_protocol::proto::{
     SessionReadFileResponse, SessionStatFileRequest, SessionStatFileResponse,
     SessionWriteFileRequest, SessionWriteFileResponse,
 };
-use everruns_internal_protocol::{WorkerService, WorkerServiceServer};
+use everruns_internal_protocol::{
+    proto_event_request_to_schema, schema_event_to_proto, WorkerService, WorkerServiceServer,
+};
 use std::sync::Arc;
 use tonic::{Request, Response, Status, Streaming};
 
@@ -28,11 +28,17 @@ use tonic::{Request, Response, Status, Streaming};
 pub struct WorkerServiceImpl {
     db: Arc<Database>,
     encryption: Option<Arc<EncryptionService>>,
+    event_service: EventService,
 }
 
 impl WorkerServiceImpl {
     pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
-        Self { db, encryption }
+        let event_service = EventService::new(db.clone());
+        Self {
+            db,
+            encryption,
+            event_service,
+        }
     }
 
     /// Create a tonic server for this service
@@ -138,15 +144,6 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
 }
 
-// Helper to convert proto timestamp to chrono DateTime
-fn proto_to_datetime(ts: &proto::Timestamp) -> chrono::DateTime<chrono::Utc> {
-    use chrono::TimeZone;
-    chrono::Utc
-        .timestamp_opt(ts.seconds, ts.nanos as u32)
-        .single()
-        .unwrap_or_else(chrono::Utc::now)
-}
-
 #[tonic::async_trait]
 impl WorkerService for WorkerServiceImpl {
     // ========================================================================
@@ -244,23 +241,28 @@ impl WorkerService for WorkerServiceImpl {
                 _ => continue,
             };
 
-            // Convert to proto Message
-            let content_json = serde_json::to_string(&message.content).unwrap_or_default();
-            let controls_json = message
-                .controls
-                .as_ref()
-                .map(|c| serde_json::to_string(c).unwrap_or_default());
-            let metadata_json = message
-                .metadata
-                .as_ref()
-                .map(|m| serde_json::to_string(m).unwrap_or_default());
+            // Convert to proto Message using prost types
+            let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
+            let content = Some(everruns_internal_protocol::json_to_proto_list(
+                &content_json_val,
+            ));
+
+            let controls = message.controls.as_ref().map(|c| {
+                let json = serde_json::to_value(c).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
+            let metadata = message.metadata.as_ref().map(|m| {
+                let json = serde_json::to_value(m).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
 
             proto_messages.push(proto::Message {
                 id: Some(uuid_to_proto_uuid(message.id)),
                 role: message.role.to_string(),
-                content_json,
-                controls_json,
-                metadata_json,
+                content,
+                controls,
+                metadata,
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
             });
         }
@@ -288,13 +290,12 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<Streaming<EmitEventRequest>>,
     ) -> Result<Response<EmitEventStreamResponse>, Status> {
-        use crate::storage::CreateEventRow;
-
         let mut stream = request.into_inner();
-        let mut events_processed = 0i32;
+        let mut event_requests: Vec<everruns_core::EventRequest> = Vec::new();
 
+        // Collect all event requests from the stream, converting proto to core types
         while let Some(req) = stream.message().await? {
-            let event = match req.event {
+            let proto_event_request = match req.event {
                 Some(e) => e,
                 None => {
                     tracing::warn!("Received emit_event_stream request without event");
@@ -302,80 +303,27 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
-            let context = match event.context {
-                Some(c) => c,
-                None => {
-                    tracing::warn!("Received event without context");
-                    continue;
-                }
-            };
-
-            let session_id = match parse_uuid(context.session_id.as_ref()) {
-                Ok(id) => id,
+            // Convert proto EventRequest to core EventRequest using typed conversions
+            let core_event_request = match proto_event_request_to_schema(proto_event_request) {
+                Ok(e) => e,
                 Err(e) => {
-                    tracing::warn!("Invalid session_id in event: {}", e);
+                    tracing::warn!("Failed to convert proto event request to core: {}", e);
                     continue;
                 }
             };
 
-            let event_id = match parse_uuid(event.id.as_ref()) {
-                Ok(id) => id,
-                Err(e) => {
-                    tracing::warn!("Invalid event_id in event: {}", e);
-                    continue;
-                }
-            };
-
-            // Parse the event data from JSON
-            let event_data: serde_json::Value = match serde_json::from_str(&event.data_json) {
-                Ok(d) => d,
-                Err(e) => {
-                    tracing::warn!("Invalid event data_json: {}", e);
-                    continue;
-                }
-            };
-
-            // Convert proto timestamp to chrono DateTime
-            let ts = event
-                .ts
-                .as_ref()
-                .map(proto_to_datetime)
-                .unwrap_or_else(chrono::Utc::now);
-
-            // Build event context
-            let turn_id = context.turn.map(|t| uuid::Uuid::from_u128(t as u128));
-            let exec_id = context
-                .exec_id
-                .as_ref()
-                .and_then(|u| uuid::Uuid::parse_str(&u.value).ok());
-            let event_context = serde_json::json!({
-                "turn_id": turn_id,
-                "exec_id": exec_id,
-            });
-
-            // Reconstruct the full Event structure to match what DbEventEmitter stores
-            let full_event = serde_json::json!({
-                "id": event_id.to_string(),
-                "type": &event.event_type,
-                "ts": ts.to_rfc3339(),
-                "session_id": session_id.to_string(),
-                "context": event_context,
-                "data": event_data,
-            });
-
-            let create_event = CreateEventRow {
-                session_id,
-                event_type: event.event_type,
-                data: full_event,
-            };
-
-            if let Err(e) = self.db.create_event(create_event).await {
-                tracing::error!("Failed to create event in stream: {}", e);
-                // Continue processing other events
-            } else {
-                events_processed += 1;
-            }
+            event_requests.push(core_event_request);
         }
+
+        // Emit all events through the EventService
+        let events_processed = self
+            .event_service
+            .emit_batch(event_requests)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to emit event batch: {}", e);
+                Status::internal("Failed to store events")
+            })?;
 
         Ok(Response::new(EmitEventStreamResponse { events_processed }))
     }
@@ -498,23 +446,28 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
-            // Convert to proto Message
-            let content_json = serde_json::to_string(&message.content).unwrap_or_default();
-            let controls_json = message
-                .controls
-                .as_ref()
-                .map(|c| serde_json::to_string(c).unwrap_or_default());
-            let metadata_json = message
-                .metadata
-                .as_ref()
-                .map(|m| serde_json::to_string(m).unwrap_or_default());
+            // Convert to proto Message using prost types
+            let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
+            let content = Some(everruns_internal_protocol::json_to_proto_list(
+                &content_json_val,
+            ));
+
+            let controls = message.controls.as_ref().map(|c| {
+                let json = serde_json::to_value(c).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
+            let metadata = message.metadata.as_ref().map(|m| {
+                let json = serde_json::to_value(m).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
 
             proto_messages.push(proto::Message {
                 id: Some(uuid_to_proto_uuid(message.id)),
                 role: message.role.to_string(),
-                content_json,
-                controls_json,
-                metadata_json,
+                content,
+                controls,
+                metadata,
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
             });
         }
@@ -530,32 +483,41 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<AddMessageResponse>, Status> {
         use chrono::Utc;
         use everruns_core::{
-            ContentPart, Controls, Message, MessageAgentData, MessageRole, MessageUserData,
-            MESSAGE_AGENT, MESSAGE_USER,
+            ContentPart, Controls, EventContext, EventRequest, Message, MessageAgentData,
+            MessageRole, MessageUserData,
+        };
+        use everruns_internal_protocol::{
+            datetime_to_proto_timestamp, json_to_proto_list, json_to_proto_struct,
+            proto_list_to_json, proto_struct_to_json, uuid_to_proto_uuid,
         };
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Parse content from JSON
-        let content: Vec<ContentPart> = serde_json::from_str(&req.content_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid content_json: {}", e)))?;
+        // Parse content from prost ListValue
+        let content_json = req
+            .content
+            .as_ref()
+            .map(proto_list_to_json)
+            .unwrap_or_else(|| serde_json::Value::Array(vec![]));
+        let content: Vec<ContentPart> = serde_json::from_value(content_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid content: {}", e)))?;
 
-        // Parse optional controls
+        // Parse optional controls from prost Struct
         let controls: Option<Controls> = req
-            .controls_json
+            .controls
             .as_ref()
-            .map(|s| serde_json::from_str(s))
+            .map(|s| serde_json::from_value(proto_struct_to_json(s)))
             .transpose()
-            .map_err(|e| Status::invalid_argument(format!("Invalid controls_json: {}", e)))?;
+            .map_err(|e| Status::invalid_argument(format!("Invalid controls: {}", e)))?;
 
-        // Parse optional metadata
+        // Parse optional metadata from prost Struct
         let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = req
-            .metadata_json
+            .metadata
             .as_ref()
-            .map(|s| serde_json::from_str(s))
+            .map(|s| serde_json::from_value(proto_struct_to_json(s)))
             .transpose()
-            .map_err(|e| Status::invalid_argument(format!("Invalid metadata_json: {}", e)))?;
+            .map_err(|e| Status::invalid_argument(format!("Invalid metadata: {}", e)))?;
 
         // Parse role
         let role = MessageRole::from(req.role.as_str());
@@ -570,26 +532,18 @@ impl WorkerService for WorkerServiceImpl {
             created_at: Utc::now(),
         };
 
-        // Create event data based on role
-        let (event_type, event_data) = match role {
-            MessageRole::User => {
-                let data = MessageUserData::new(message.clone());
-                (
-                    MESSAGE_USER,
-                    serde_json::to_value(&data).map_err(|e| {
-                        Status::internal(format!("Failed to serialize event data: {}", e))
-                    })?,
-                )
-            }
-            MessageRole::Assistant => {
-                let data = MessageAgentData::new(message.clone());
-                (
-                    MESSAGE_AGENT,
-                    serde_json::to_value(&data).map_err(|e| {
-                        Status::internal(format!("Failed to serialize event data: {}", e))
-                    })?,
-                )
-            }
+        // Create typed event request based on role
+        let event_request = match role {
+            MessageRole::User => EventRequest::new(
+                session_id,
+                EventContext::empty(),
+                MessageUserData::new(message.clone()),
+            ),
+            MessageRole::Assistant => EventRequest::new(
+                session_id,
+                EventContext::empty(),
+                MessageAgentData::new(message.clone()),
+            ),
             MessageRole::System | MessageRole::ToolResult => {
                 // System and tool messages are typically stored via emit_event
                 return Err(Status::invalid_argument(
@@ -598,51 +552,32 @@ impl WorkerService for WorkerServiceImpl {
             }
         };
 
-        // Create and store the event with full Event structure
-        // (matches what DbEventEmitter stores)
-        use crate::storage::CreateEventRow;
-
-        let event_id = uuid::Uuid::now_v7();
-        let ts = Utc::now();
-        let full_event = serde_json::json!({
-            "id": event_id.to_string(),
-            "type": event_type,
-            "ts": ts.to_rfc3339(),
-            "session_id": session_id.to_string(),
-            "context": {},
-            "data": event_data,
-        });
-
-        let create_event = CreateEventRow {
-            session_id,
-            event_type: event_type.to_string(),
-            data: full_event,
-        };
-
-        let _event_row = self.db.create_event(create_event).await.map_err(|e| {
+        // Emit through the EventService
+        let _stored_event = self.event_service.emit(event_request).await.map_err(|e| {
             tracing::error!("Failed to create message event: {}", e);
             Status::internal("Failed to store message")
         })?;
 
-        // Convert message to proto
-        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+        // Convert message to proto using prost types
+        let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
+        let content = Some(json_to_proto_list(&content_json_val));
 
-        let content_json = serde_json::to_string(&message.content).unwrap_or_default();
-        let controls_json = message
-            .controls
-            .as_ref()
-            .map(|c| serde_json::to_string(c).unwrap_or_default());
-        let metadata_json = message
-            .metadata
-            .as_ref()
-            .map(|m| serde_json::to_string(m).unwrap_or_default());
+        let controls = message.controls.as_ref().map(|c| {
+            let json = serde_json::to_value(c).unwrap_or_default();
+            json_to_proto_struct(&json)
+        });
+
+        let metadata = message.metadata.as_ref().map(|m| {
+            let json = serde_json::to_value(m).unwrap_or_default();
+            json_to_proto_struct(&json)
+        });
 
         let proto_message = proto::Message {
             id: Some(uuid_to_proto_uuid(message.id)),
             role: message.role.to_string(),
-            content_json,
-            controls_json,
-            metadata_json,
+            content,
+            controls,
+            metadata,
             created_at: Some(datetime_to_proto_timestamp(message.created_at)),
         };
 
@@ -655,65 +590,28 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<EmitEventRequest>,
     ) -> Result<Response<EmitEventResponse>, Status> {
-        use crate::storage::CreateEventRow;
-
         let req = request.into_inner();
-        let event = req
+        let proto_event_request = req
             .event
             .ok_or_else(|| Status::invalid_argument("Missing event"))?;
 
-        let context = event
-            .context
-            .ok_or_else(|| Status::invalid_argument("Missing event context"))?;
-        let session_id = parse_uuid(context.session_id.as_ref())?;
-        let event_id = parse_uuid(event.id.as_ref())?;
+        // Convert proto EventRequest to core EventRequest using typed conversions
+        let core_event_request = proto_event_request_to_schema(proto_event_request)
+            .map_err(|e| Status::invalid_argument(format!("Invalid event: {}", e)))?;
 
-        // Parse the event data from JSON
-        let event_data: serde_json::Value = serde_json::from_str(&event.data_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid event data_json: {}", e)))?;
+        // Emit through the EventService
+        let stored_event = self
+            .event_service
+            .emit(core_event_request)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to emit event: {}", e);
+                Status::internal("Failed to store event")
+            })?;
 
-        // Convert proto timestamp to chrono DateTime
-        let ts = event
-            .ts
-            .as_ref()
-            .map(proto_to_datetime)
-            .unwrap_or_else(chrono::Utc::now);
-
-        // Build event context
-        let turn_id = context.turn.map(|t| uuid::Uuid::from_u128(t as u128));
-        let exec_id = context
-            .exec_id
-            .as_ref()
-            .and_then(|u| uuid::Uuid::parse_str(&u.value).ok());
-        let event_context = serde_json::json!({
-            "turn_id": turn_id,
-            "exec_id": exec_id,
-        });
-
-        // Reconstruct the full Event structure to match what DbEventEmitter stores
-        // This ensures consistent data format for message parsing
-        let full_event = serde_json::json!({
-            "id": event_id.to_string(),
-            "type": &event.event_type,
-            "ts": ts.to_rfc3339(),
-            "session_id": session_id.to_string(),
-            "context": event_context,
-            "data": event_data,
-        });
-
-        let create_event = CreateEventRow {
-            session_id,
-            event_type: event.event_type,
-            data: full_event,
-        };
-
-        let event_row = self.db.create_event(create_event).await.map_err(|e| {
-            tracing::error!("Failed to create event: {}", e);
-            Status::internal("Failed to store event")
-        })?;
-
+        // Return the full stored event with id and sequence
         Ok(Response::new(EmitEventResponse {
-            seq: event_row.sequence,
+            event: Some(schema_event_to_proto(&stored_event)),
         }))
     }
 

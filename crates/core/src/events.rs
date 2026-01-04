@@ -361,7 +361,7 @@ pub struct ReasonCompletedData {
     pub has_tool_calls: bool,
 
     /// Number of tool calls requested
-    pub tool_call_count: usize,
+    pub tool_call_count: u32,
 
     /// Error message if failed
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -369,7 +369,7 @@ pub struct ReasonCompletedData {
 }
 
 impl ReasonCompletedData {
-    pub fn success(text: &str, has_tool_calls: bool, tool_call_count: usize) -> Self {
+    pub fn success(text: &str, has_tool_calls: bool, tool_call_count: u32) -> Self {
         let text_preview = if text.is_empty() {
             None
         } else {
@@ -437,10 +437,10 @@ pub struct ActCompletedData {
     pub completed: bool,
 
     /// Number of successful tool calls
-    pub success_count: usize,
+    pub success_count: u32,
 
     /// Number of failed tool calls
-    pub error_count: usize,
+    pub error_count: u32,
 }
 
 /// Data for tool.call_started event
@@ -635,7 +635,7 @@ pub struct TurnCompletedData {
     pub turn_id: Uuid,
 
     /// Number of iterations in this turn
-    pub iterations: usize,
+    pub iterations: u32,
 
     /// Duration in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -856,6 +856,89 @@ impl From<SessionStartedData> for EventData {
 impl From<serde_json::Value> for EventData {
     fn from(data: serde_json::Value) -> Self {
         EventData::Raw(data)
+    }
+}
+
+// ============================================================================
+// Event Request (input type without id/sequence)
+// ============================================================================
+
+/// Request to create a new event.
+///
+/// This is the input type for event ingestion. It contains all the data
+/// needed to create an event, but without the `id` and `sequence` fields
+/// which are assigned by the storage layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct EventRequest {
+    /// Event type in dot notation
+    #[serde(rename = "type")]
+    pub event_type: String,
+
+    /// Event timestamp
+    pub ts: DateTime<Utc>,
+
+    /// Session this event belongs to
+    pub session_id: Uuid,
+
+    /// Correlation context
+    pub context: EventContext,
+
+    /// Event-specific payload
+    pub data: EventData,
+
+    /// Arbitrary metadata for the event
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+
+    /// Tags for filtering and categorization
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+}
+
+impl EventRequest {
+    /// Create a new event request with the given session_id, context, and typed data
+    ///
+    /// The event type is automatically inferred from the data type.
+    pub fn new(session_id: Uuid, context: EventContext, data: impl Into<EventData>) -> Self {
+        let data = data.into();
+        let event_type = data.event_type().to_string();
+        Self {
+            event_type,
+            ts: Utc::now(),
+            session_id,
+            context,
+            data,
+            metadata: None,
+            tags: None,
+        }
+    }
+
+    /// Set metadata
+    pub fn with_metadata(mut self, metadata: serde_json::Value) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+
+    /// Set tags
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = Some(tags);
+        self
+    }
+
+    /// Convert to an Event with the given id and sequence
+    pub fn into_event(self, id: Uuid, sequence: i32) -> Event {
+        Event {
+            id,
+            event_type: self.event_type,
+            ts: self.ts,
+            session_id: self.session_id,
+            context: self.context,
+            data: self.data,
+            metadata: self.metadata,
+            tags: self.tags,
+            sequence: Some(sequence),
+        }
     }
 }
 

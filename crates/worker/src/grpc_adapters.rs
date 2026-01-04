@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::events::Event;
+use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
@@ -16,7 +16,10 @@ use everruns_core::traits::{
 };
 use everruns_core::{Agent, Message, Session};
 use everruns_internal_protocol::proto;
-use everruns_internal_protocol::WorkerServiceClient;
+use everruns_internal_protocol::{
+    json_to_proto_list, json_to_proto_struct, proto_list_to_json, proto_struct_to_json,
+    WorkerServiceClient,
+};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tonic::transport::Channel;
@@ -98,29 +101,29 @@ impl MessageStore for GrpcMessageStore {
     async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
         let mut client = self.client.inner.lock().await;
 
-        let content_json = serde_json::to_string(&input.content)
+        // Convert content to prost ListValue
+        let content_json = serde_json::to_value(&input.content)
             .map_err(|e| grpc_error(format!("JSON serialization failed: {}", e)))?;
+        let content = Some(json_to_proto_list(&content_json));
 
-        let controls_json = input
-            .controls
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()
-            .map_err(|e| grpc_error(format!("JSON serialization failed: {}", e)))?;
+        // Convert controls to prost Struct
+        let controls = input.controls.as_ref().map(|c| {
+            let json = serde_json::to_value(c).unwrap_or_default();
+            json_to_proto_struct(&json)
+        });
 
-        let metadata_json = input
-            .metadata
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()
-            .map_err(|e| grpc_error(format!("JSON serialization failed: {}", e)))?;
+        // Convert metadata to prost Struct
+        let metadata = input.metadata.as_ref().map(|m| {
+            let json = serde_json::to_value(m).unwrap_or_default();
+            json_to_proto_struct(&json)
+        });
 
         let request = proto::AddMessageRequest {
             session_id: Some(uuid_to_proto(session_id)),
             role: input.role.to_string(),
-            content_json,
-            controls_json,
-            metadata_json,
+            content,
+            controls,
+            metadata,
             tags: input.tags,
         };
 
@@ -168,22 +171,28 @@ impl MessageStore for GrpcMessageStore {
 fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
     let id = proto_uuid_to_uuid(proto_msg.id.as_ref())?;
 
-    let content: Vec<everruns_core::ContentPart> = serde_json::from_str(&proto_msg.content_json)
+    // Convert prost ListValue to Vec<ContentPart>
+    let content_json = proto_msg
+        .content
+        .as_ref()
+        .map(proto_list_to_json)
+        .unwrap_or_else(|| serde_json::Value::Array(vec![]));
+    let content: Vec<everruns_core::ContentPart> = serde_json::from_value(content_json)
         .map_err(|e| grpc_error(format!("Failed to parse message content: {}", e)))?;
 
+    // Convert prost Struct to Controls
     let controls: Option<everruns_core::Controls> = proto_msg
-        .controls_json
+        .controls
         .as_ref()
-        .filter(|s| !s.is_empty())
-        .map(|j| serde_json::from_str(j))
+        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
         .transpose()
         .map_err(|e| grpc_error(format!("Failed to parse message controls: {}", e)))?;
 
+    // Convert prost Struct to metadata
     let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = proto_msg
-        .metadata_json
+        .metadata
         .as_ref()
-        .filter(|s| !s.is_empty())
-        .map(|j| serde_json::from_str(j))
+        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
         .transpose()
         .map_err(|e| grpc_error(format!("Failed to parse message metadata: {}", e)))?;
 
@@ -741,43 +750,43 @@ impl GrpcEventEmitter {
 
 #[async_trait]
 impl EventEmitter for GrpcEventEmitter {
-    async fn emit(&self, event: Event) -> Result<i32> {
+    async fn emit(&self, request: EventRequest) -> Result<Event> {
         let mut client = self.client.inner.lock().await;
 
-        // Convert core Event to proto Event
-        let proto_event = core_event_to_proto(&event)?;
+        // Convert core EventRequest to proto EventRequest
+        let proto_event_request = core_event_request_to_proto(&request)?;
 
-        let request = proto::EmitEventRequest {
-            event: Some(proto_event),
+        let grpc_request = proto::EmitEventRequest {
+            event: Some(proto_event_request),
         };
 
         let response = client
-            .emit_event(request)
+            .emit_event(grpc_request)
             .await
             .map_err(|e| grpc_error(format!("gRPC emit_event failed: {}", e)))?;
 
-        Ok(response.into_inner().seq)
+        // Convert proto Event response back to core Event
+        let proto_event = response
+            .into_inner()
+            .event
+            .ok_or_else(|| grpc_error("No event in response"))?;
+
+        proto_event_to_core(proto_event)
     }
 }
 
-/// Convert everruns_core::Event to proto::Event
-fn core_event_to_proto(event: &Event) -> Result<proto::Event> {
-    use everruns_internal_protocol::datetime_to_proto_timestamp;
+/// Convert everruns_core::EventRequest to proto::EventRequest
+fn core_event_request_to_proto(request: &EventRequest) -> Result<proto::EventRequest> {
+    // Use the typed event conversion from internal-protocol
+    Ok(everruns_internal_protocol::schema_event_request_to_proto(
+        request,
+    ))
+}
 
-    let data_json = serde_json::to_string(&event.data)
-        .map_err(|e| grpc_error(format!("Failed to serialize event data: {}", e)))?;
-
-    Ok(proto::Event {
-        id: Some(uuid_to_proto(event.id)),
-        event_type: event.event_type.clone(),
-        ts: Some(datetime_to_proto_timestamp(event.ts)),
-        context: Some(proto::EventContext {
-            session_id: Some(uuid_to_proto(event.session_id)),
-            turn: event.context.turn_id.map(|u| u.as_u128() as i32),
-            exec_id: event.context.exec_id.map(uuid_to_proto),
-        }),
-        data_json,
-    })
+/// Convert proto::Event to everruns_core::Event
+fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
+    everruns_internal_protocol::proto_event_to_schema(proto_event)
+        .map_err(|e| grpc_error(format!("Failed to convert proto event: {}", e)))
 }
 
 // ============================================================================

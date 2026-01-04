@@ -8,6 +8,9 @@ mod grpc_service;
 mod services;
 pub mod storage;
 
+// Re-export EventService at crate root for storage layer access
+pub use services::EventService;
+
 use crate::storage::{Database, EncryptionService};
 use anyhow::{Context, Result};
 use api::ListResponse;

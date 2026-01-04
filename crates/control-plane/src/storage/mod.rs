@@ -6,11 +6,9 @@
 // - DbMessageStore: implements MessageStore for message persistence
 // - DbSessionFileStore: implements SessionFileStore for session filesystem
 // - DbLlmProviderStore: implements LlmProviderStore for LLM provider retrieval
-// - DbEventEmitter: implements EventEmitter for atom event persistence
 
 pub mod agent_store;
 pub mod encryption;
-pub mod event_emitter;
 pub mod llm_provider_store;
 pub mod message_store;
 pub mod models;
@@ -19,12 +17,14 @@ pub mod repositories;
 pub mod session_file_store;
 pub mod session_store;
 
+#[cfg(test)]
+mod event_tests;
+
 pub use agent_store::{create_db_agent_store, DbAgentStore};
 pub use encryption::{
     generate_encryption_key, EncryptedColumn, EncryptedPayload, EncryptionService,
     ENCRYPTED_COLUMNS,
 };
-pub use event_emitter::{create_db_event_emitter, DbEventEmitter};
 pub use llm_provider_store::{create_db_llm_provider_store, DbLlmProviderStore};
 pub use message_store::{create_db_message_store, DbMessageStore};
 pub use models::*;

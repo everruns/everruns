@@ -391,7 +391,7 @@ impl std::fmt::Debug for ToolContext {
 // EventEmitter - For emitting events
 // ============================================================================
 
-use crate::events::Event;
+use crate::events::{Event, EventRequest};
 
 /// Trait for emitting events following the standard event protocol
 ///
@@ -405,10 +405,11 @@ use crate::events::Event;
 /// See specs/events.md for the full event protocol specification.
 #[async_trait]
 pub trait EventEmitter: Send + Sync {
-    /// Emit an event
+    /// Emit an event request
     ///
-    /// Returns the assigned sequence number within the session.
-    async fn emit(&self, event: Event) -> Result<i32>;
+    /// Takes an EventRequest (without id/sequence) and returns the stored Event
+    /// with id and sequence assigned by the storage layer.
+    async fn emit(&self, request: EventRequest) -> Result<Event>;
 }
 
 /// No-op event emitter for when event emission is not needed
@@ -419,7 +420,8 @@ pub struct NoopEventEmitter;
 
 #[async_trait]
 impl EventEmitter for NoopEventEmitter {
-    async fn emit(&self, _event: Event) -> Result<i32> {
-        Ok(0)
+    async fn emit(&self, request: EventRequest) -> Result<Event> {
+        // Return a dummy event with sequence 0
+        Ok(request.into_event(uuid::Uuid::now_v7(), 0))
     }
 }

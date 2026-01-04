@@ -2,15 +2,16 @@
 //
 // Events are SSE notifications following the standard event protocol.
 // Events are stored in the events table and streamed to clients via SSE.
+// This service is the central entry point for event ingestion from both
+// HTTP API and gRPC service.
 
-#![allow(dead_code)]
-
-use crate::storage::{models::CreateEventRow, Database};
+use crate::storage::{models::CreateEventRow, Database, EventRow};
 use anyhow::Result;
-use everruns_core::{Event, EventContext, EventData};
+use everruns_core::{Event, EventContext, EventData, EventRequest};
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct EventService {
     db: Arc<Database>,
 }
@@ -20,6 +21,69 @@ impl EventService {
         Self { db }
     }
 
+    /// Emit a typed event request and store it in the database.
+    /// Returns the stored event with its assigned id and sequence number.
+    ///
+    /// This is the primary method for event ingestion, used by both
+    /// HTTP API and gRPC service.
+    pub async fn emit(&self, request: EventRequest) -> Result<Event> {
+        // Generate id upfront so we can store the complete Event
+        // (EventRequest doesn't have id, but Event does)
+        let id = Uuid::now_v7();
+
+        // Convert to full Event with the pre-generated id (sequence=0 as placeholder)
+        let event = request.into_event(id, 0);
+
+        // Serialize the complete Event (with id) for storage
+        let data = serde_json::to_value(&event)?;
+
+        let create_row = CreateEventRow {
+            session_id: event.session_id,
+            event_type: event.event_type.clone(),
+            data,
+        };
+
+        let row = self.db.create_event(create_row).await?;
+
+        // Return the event with the actual sequence number from DB
+        Ok(Event {
+            sequence: Some(row.sequence),
+            ..event
+        })
+    }
+
+    /// Emit a batch of typed event requests and store them in the database.
+    /// Returns the count of successfully stored events.
+    ///
+    /// This method is optimized for bulk event ingestion from workers.
+    pub async fn emit_batch(&self, requests: Vec<EventRequest>) -> Result<i32> {
+        let mut count = 0i32;
+
+        for request in requests {
+            // Generate id upfront so we can store the complete Event
+            let id = Uuid::now_v7();
+
+            // Convert to full Event with the pre-generated id
+            let event = request.into_event(id, 0);
+
+            // Serialize the complete Event (with id) for storage
+            let data = serde_json::to_value(&event)?;
+
+            let create_row = CreateEventRow {
+                session_id: event.session_id,
+                event_type: event.event_type.clone(),
+                data,
+            };
+
+            self.db.create_event(create_row).await?;
+            count += 1;
+        }
+
+        Ok(count)
+    }
+
+    /// Create an event from raw row data (legacy API support)
+    #[allow(dead_code)]
     pub async fn create(&self, input: CreateEventRow) -> Result<Event> {
         let row = self.db.create_event(input).await?;
         Ok(Self::row_to_event(row))
@@ -30,7 +94,7 @@ impl EventService {
         Ok(rows.into_iter().map(Self::row_to_event).collect())
     }
 
-    fn row_to_event(row: crate::storage::EventRow) -> Event {
+    fn row_to_event(row: EventRow) -> Event {
         // Try to deserialize the full event from the data column
         // (new format stores the complete event JSON)
         if let Ok(mut event) = serde_json::from_value::<Event>(row.data.clone()) {

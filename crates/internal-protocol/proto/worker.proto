@@ -2,10 +2,13 @@
 // Decision: gRPC for worker communication (industry standard, already in stack via Temporal)
 // Decision: Rust types in schemas crate are source of truth, proto mirrors them
 // Decision: Batched RPCs for latency optimization (GetTurnContext, EmitEventStream)
+// Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 
 syntax = "proto3";
 
 package everruns.internal;
+
+import "google/protobuf/struct.proto";
 
 // Service for workers to communicate with control plane
 service WorkerService {
@@ -131,9 +134,9 @@ message GetSessionResponse {
 message Message {
     Uuid id = 1;
     string role = 2;
-    string content_json = 3;  // JSON-encoded Vec<ContentPart>
-    optional string controls_json = 4;  // JSON-encoded Controls
-    optional string metadata_json = 5;  // JSON-encoded metadata
+    google.protobuf.ListValue content = 3;  // Vec<ContentPart>
+    optional google.protobuf.Struct controls = 4;  // Controls object
+    optional google.protobuf.Struct metadata = 5;  // metadata object
     Timestamp created_at = 6;
 }
 
@@ -148,9 +151,9 @@ message LoadMessagesResponse {
 message AddMessageRequest {
     Uuid session_id = 1;
     string role = 2;
-    string content_json = 3;
-    optional string controls_json = 4;
-    optional string metadata_json = 5;
+    google.protobuf.ListValue content = 3;
+    optional google.protobuf.Struct controls = 4;
+    optional google.protobuf.Struct metadata = 5;
     repeated string tags = 6;
 }
 
@@ -162,26 +165,42 @@ message AddMessageResponse {
 // Event types
 // ============================================================================
 
+// EventRequest - input type for event ingestion (no id or sequence)
+// Data is untyped Struct - deserialized based on event_type field
+message EventRequest {
+    string event_type = 1;
+    Timestamp ts = 2;
+    EventContext context = 3;
+    google.protobuf.Struct data = 4;  // Event-specific payload (deserialized based on event_type)
+    optional google.protobuf.Struct metadata = 5;  // Optional metadata object
+    repeated string tags = 6;  // Optional tags
+}
+
+// Event - stored event with id and sequence assigned by storage
 message Event {
     Uuid id = 1;
     string event_type = 2;
     Timestamp ts = 3;
     EventContext context = 4;
-    string data_json = 5;  // JSON-encoded EventData
+    google.protobuf.Struct data = 5;  // Event-specific payload (deserialized based on event_type)
+    optional google.protobuf.Struct metadata = 6;  // Optional metadata object
+    repeated string tags = 7;  // Optional tags
+    int32 sequence = 8;  // Sequence number within session (always set for stored events)
 }
 
 message EventContext {
     Uuid session_id = 1;
-    optional int32 turn = 2;
-    optional Uuid exec_id = 3;  // For idempotency
+    optional Uuid turn_id = 2;
+    optional Uuid input_message_id = 3;
+    optional Uuid exec_id = 4;  // For idempotency
 }
 
 message EmitEventRequest {
-    Event event = 1;
+    EventRequest event = 1;
 }
 
 message EmitEventResponse {
-    int32 seq = 1;
+    Event event = 1;  // The stored event with id and sequence
 }
 
 message EmitEventStreamResponse {

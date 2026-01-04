@@ -12,7 +12,6 @@ pub mod session_file;
 
 pub use agent::AgentService;
 pub use capability::CapabilityService;
-#[allow(unused_imports)]
 pub use event::EventService;
 pub use llm_model::LlmModelService;
 pub use llm_provider::LlmProviderService;
