@@ -192,7 +192,11 @@ pub struct EventRow {
     pub session_id: Uuid,
     pub sequence: i32,
     pub event_type: String,
+    pub ts: DateTime<Utc>,
+    pub context: serde_json::Value,
     pub data: serde_json::Value,
+    pub metadata: Option<serde_json::Value>,
+    pub tags: Option<Vec<String>>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -200,7 +204,11 @@ pub struct EventRow {
 pub struct CreateEventRow {
     pub session_id: Uuid,
     pub event_type: String,
+    pub ts: DateTime<Utc>,
+    pub context: serde_json::Value,
     pub data: serde_json::Value,
+    pub metadata: Option<serde_json::Value>,
+    pub tags: Option<Vec<String>>,
 }
 
 // ============================================
