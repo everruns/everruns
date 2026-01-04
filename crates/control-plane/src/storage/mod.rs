@@ -9,7 +9,6 @@
 
 pub mod agent_store;
 pub mod encryption;
-pub mod event_service;
 pub mod llm_provider_store;
 pub mod message_store;
 pub mod models;
@@ -26,7 +25,6 @@ pub use encryption::{
     generate_encryption_key, EncryptedColumn, EncryptedPayload, EncryptionService,
     ENCRYPTED_COLUMNS,
 };
-pub use event_service::EventService;
 pub use llm_provider_store::{create_db_llm_provider_store, DbLlmProviderStore};
 pub use message_store::{create_db_message_store, DbMessageStore};
 pub use models::*;

@@ -5,7 +5,7 @@
 // This service is the central entry point for event ingestion from both
 // HTTP API and gRPC service.
 
-use super::{models::CreateEventRow, Database, EventRow};
+use crate::storage::{models::CreateEventRow, Database, EventRow};
 use anyhow::Result;
 use everruns_core::{Event, EventContext, EventData, EventRequest};
 use std::sync::Arc;

@@ -17,8 +17,8 @@ use everruns_core::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::event_service::EventService;
 use super::repositories::Database;
+use crate::EventService;
 
 // ============================================================================
 // DbMessageStore - Stores messages as events
