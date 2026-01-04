@@ -268,6 +268,10 @@ pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
     let (tracer_provider, otel_layer) = if let Some(endpoint) = &config.otlp_endpoint {
         match build_otlp_tracer(endpoint, resource) {
             Ok((provider, tracer)) => {
+                eprintln!(
+                    "OpenTelemetry tracing enabled: exporting to {}",
+                    endpoint
+                );
                 let layer = tracing_opentelemetry::layer().with_tracer(tracer);
                 (Some(provider), Some(layer))
             }
@@ -280,6 +284,7 @@ pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
             }
         }
     } else {
+        eprintln!("OpenTelemetry tracing disabled: OTEL_EXPORTER_OTLP_ENDPOINT not set");
         (None, None)
     };
 

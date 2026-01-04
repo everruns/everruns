@@ -405,8 +405,6 @@ PY
     echo "👀 Edit code in crates/ and services will auto-restart"
     echo "💡 Press Ctrl+C to stop services (Docker will keep running)"
     echo ""
-    echo "📊 To enable tracing, set: export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"
-    echo ""
 
     # Wait for processes
     wait
