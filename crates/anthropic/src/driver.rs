@@ -209,17 +209,21 @@ impl LlmDriver for AnthropicLlmDriver {
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         // Create span with gen-ai semantic conventions
+        // Span name format: "{operation} {model}" per OTel spec
+        let span_name = format!("chat {}", config.model);
         let span = tracing::info_span!(
-            "chat",
-            { gen_ai::OPERATION_NAME } = gen_ai::operation::CHAT,
-            { gen_ai::PROVIDER_NAME } = gen_ai::provider::ANTHROPIC,
-            { gen_ai::REQUEST_MODEL } = %config.model,
-            { gen_ai::REQUEST_MAX_TOKENS } = config.max_tokens.unwrap_or(4096),
-            { gen_ai::REQUEST_TEMPERATURE } = config.temperature,
-            { gen_ai::SERVER_ADDRESS } = %self.api_url,
-            { gen_ai::USAGE_INPUT_TOKENS } = tracing::field::Empty,
-            { gen_ai::USAGE_OUTPUT_TOKENS } = tracing::field::Empty,
-            { gen_ai::RESPONSE_FINISH_REASONS } = tracing::field::Empty,
+            "gen_ai.chat",
+            "otel.name" = %span_name,
+            "otel.kind" = "client",
+            "gen_ai.operation.name" = gen_ai::operation::CHAT,
+            "gen_ai.system" = gen_ai::provider::ANTHROPIC,
+            "gen_ai.request.model" = %config.model,
+            "gen_ai.request.max_tokens" = config.max_tokens.unwrap_or(4096),
+            "gen_ai.request.temperature" = config.temperature,
+            "server.address" = %self.api_url,
+            "gen_ai.usage.input_tokens" = tracing::field::Empty,
+            "gen_ai.usage.output_tokens" = tracing::field::Empty,
+            "gen_ai.response.finish_reasons" = tracing::field::Empty,
         );
 
         self.chat_completion_stream_inner(messages, config)

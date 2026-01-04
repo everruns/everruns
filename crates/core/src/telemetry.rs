@@ -265,27 +265,16 @@ pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
     };
 
     // Build OTLP tracer if endpoint is configured
-    let (tracer_provider, otel_layer) = if let Some(endpoint) = &config.otlp_endpoint {
+    let (tracer_provider, otel_layer, otel_status) = if let Some(endpoint) = &config.otlp_endpoint {
         match build_otlp_tracer(endpoint, resource) {
             Ok((provider, tracer)) => {
-                eprintln!(
-                    "OpenTelemetry tracing enabled: exporting to {}",
-                    endpoint
-                );
                 let layer = tracing_opentelemetry::layer().with_tracer(tracer);
-                (Some(provider), Some(layer))
+                (Some(provider), Some(layer), Some(Ok(endpoint.clone())))
             }
-            Err(e) => {
-                eprintln!(
-                    "Failed to initialize OTLP tracer: {}. Continuing without tracing.",
-                    e
-                );
-                (None, None)
-            }
+            Err(e) => (None, None, Some(Err(e.to_string()))),
         }
     } else {
-        eprintln!("OpenTelemetry tracing disabled: OTEL_EXPORTER_OTLP_ENDPOINT not set");
-        (None, None)
+        (None, None, None)
     };
 
     // Initialize the subscriber
@@ -293,6 +282,19 @@ pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
         .with(console_layer)
         .with(otel_layer)
         .init();
+
+    // Log OTEL status after subscriber is initialized
+    match otel_status {
+        Some(Ok(endpoint)) => {
+            tracing::info!(endpoint = %endpoint, "OpenTelemetry tracing enabled");
+        }
+        Some(Err(e)) => {
+            tracing::warn!(error = %e, "Failed to initialize OTLP tracer, continuing without tracing");
+        }
+        None => {
+            tracing::debug!("OpenTelemetry tracing disabled: OTEL_EXPORTER_OTLP_ENDPOINT not set");
+        }
+    }
 
     TelemetryGuard {
         _provider: tracer_provider,
