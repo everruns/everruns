@@ -173,6 +173,17 @@ impl WorkerService for WorkerServiceImpl {
             .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
             .ok_or_else(|| Status::not_found("Agent not found"))?;
 
+        // Get agent capabilities
+        let capability_rows = self
+            .db
+            .get_agent_capabilities(session_row.agent_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get agent capabilities: {}", e)))?;
+        let capability_ids: Vec<String> = capability_rows
+            .into_iter()
+            .map(|c| c.capability_id)
+            .collect();
+
         // Convert rows to proto types
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
@@ -187,7 +198,7 @@ impl WorkerService for WorkerServiceImpl {
             status: agent_row.status.clone(),
             created_at: Some(datetime_to_proto_timestamp(agent_row.created_at)),
             updated_at: Some(datetime_to_proto_timestamp(agent_row.updated_at)),
-            capability_ids: vec![], // Capabilities stored separately, not in AgentRow
+            capability_ids,
         };
 
         let proto_session = proto::Session {
@@ -347,19 +358,37 @@ impl WorkerService for WorkerServiceImpl {
 
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
-        let proto_agent = agent_row.map(|a| proto::Agent {
-            id: Some(uuid_to_proto_uuid(a.id)),
-            name: a.name.clone(),
-            description: a.description.clone().unwrap_or_default(),
-            system_prompt: a.system_prompt.clone(),
-            default_model_id: a.default_model_id.map(uuid_to_proto_uuid),
-            temperature: None, // Not stored in AgentRow
-            max_tokens: None,  // Not stored in AgentRow
-            status: a.status.clone(),
-            created_at: Some(datetime_to_proto_timestamp(a.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(a.updated_at)),
-            capability_ids: vec![], // Capabilities stored separately
-        });
+        let proto_agent = match agent_row {
+            Some(a) => {
+                // Get capabilities for this agent
+                let capability_rows =
+                    self.db
+                        .get_agent_capabilities(agent_id)
+                        .await
+                        .map_err(|e| {
+                            Status::internal(format!("Failed to get agent capabilities: {}", e))
+                        })?;
+                let capability_ids: Vec<String> = capability_rows
+                    .into_iter()
+                    .map(|c| c.capability_id)
+                    .collect();
+
+                Some(proto::Agent {
+                    id: Some(uuid_to_proto_uuid(a.id)),
+                    name: a.name.clone(),
+                    description: a.description.clone().unwrap_or_default(),
+                    system_prompt: a.system_prompt.clone(),
+                    default_model_id: a.default_model_id.map(uuid_to_proto_uuid),
+                    temperature: None, // Not stored in AgentRow
+                    max_tokens: None,  // Not stored in AgentRow
+                    status: a.status.clone(),
+                    created_at: Some(datetime_to_proto_timestamp(a.created_at)),
+                    updated_at: Some(datetime_to_proto_timestamp(a.updated_at)),
+                    capability_ids,
+                })
+            }
+            None => None,
+        };
 
         Ok(Response::new(GetAgentResponse { agent: proto_agent }))
     }
