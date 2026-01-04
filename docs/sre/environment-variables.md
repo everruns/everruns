@@ -148,3 +148,130 @@ Temporal task queue name for agent run workflows.
 |----------|-------|
 | **Required** | No |
 | **Default** | `everruns-agent-runs` |
+
+## OpenTelemetry Configuration
+
+Everruns supports distributed tracing via OpenTelemetry with OTLP export. Traces follow the [Gen-AI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for LLM operations.
+
+### OTEL_EXPORTER_OTLP_ENDPOINT
+
+OTLP endpoint for trace export (e.g., Jaeger, Grafana Tempo, or any OTLP-compatible backend).
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set (tracing disabled) |
+
+**Example:**
+
+```bash
+# For local Jaeger
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+
+# For production Tempo
+OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.monitoring:4317
+```
+
+**Notes:**
+- When set, traces are exported via OTLP/gRPC
+- For local development, Jaeger is included in `docker-compose.yml`
+- Without this variable, only console logging is enabled
+
+### OTEL_SERVICE_NAME
+
+Service name for traces.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `everruns-control-plane` (API), `everruns-worker` (Worker) |
+
+**Example:**
+
+```bash
+OTEL_SERVICE_NAME=everruns-prod-api
+```
+
+### OTEL_SERVICE_VERSION
+
+Service version for traces.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Cargo package version |
+
+### OTEL_ENVIRONMENT
+
+Deployment environment label.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set |
+
+**Example:**
+
+```bash
+OTEL_ENVIRONMENT=production
+```
+
+### OTEL_RECORD_CONTENT
+
+Enable recording of LLM input/output content in traces. **Warning:** May contain sensitive data.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `false` |
+
+**Example:**
+
+```bash
+# Enable content recording (use with caution)
+OTEL_RECORD_CONTENT=true
+```
+
+**Notes:**
+- When enabled, `gen_ai.input.messages` and `gen_ai.output.messages` are recorded
+- Disabled by default for privacy and data size concerns
+- Only enable in development or when debugging specific issues
+
+## Local Development with Jaeger
+
+The `harness/docker-compose.yml` includes Jaeger for local trace visualization:
+
+```bash
+# Start all services including Jaeger
+./scripts/dev.sh start
+
+# Set OTLP endpoint for API and Worker
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+
+# View traces at
+open http://localhost:16686
+```
+
+### Jaeger Ports
+
+| Port | Description |
+|------|-------------|
+| 4317 | OTLP gRPC receiver |
+| 4318 | OTLP HTTP receiver |
+| 16686 | Jaeger UI |
+
+### Gen-AI Trace Attributes
+
+LLM calls include the following OpenTelemetry attributes:
+
+| Attribute | Description |
+|-----------|-------------|
+| `gen_ai.operation.name` | Operation type (`chat`, `embeddings`) |
+| `gen_ai.provider.name` | Provider (`openai`, `anthropic`) |
+| `gen_ai.request.model` | Requested model name |
+| `gen_ai.request.max_tokens` | Maximum tokens requested |
+| `gen_ai.request.temperature` | Sampling temperature |
+| `gen_ai.usage.input_tokens` | Prompt tokens used |
+| `gen_ai.usage.output_tokens` | Completion tokens used |
+| `gen_ai.response.finish_reasons` | Why generation stopped |
+| `server.address` | API endpoint URL |

@@ -13,12 +13,14 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
+use tracing::Instrument;
 
 use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use crate::telemetry::gen_ai;
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
@@ -177,6 +179,36 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        // Create span with gen-ai semantic conventions
+        // Span name format: "{operation} {model}" per OTel spec
+        let span_name = format!("chat {}", config.model);
+        let span = tracing::info_span!(
+            "gen_ai.chat",
+            "otel.name" = %span_name,
+            "otel.kind" = "client",
+            "gen_ai.operation.name" = gen_ai::operation::CHAT,
+            "gen_ai.system" = gen_ai::provider::OPENAI,
+            "gen_ai.request.model" = %config.model,
+            "gen_ai.request.max_tokens" = config.max_tokens,
+            "gen_ai.request.temperature" = config.temperature,
+            "server.address" = %self.api_url,
+            "gen_ai.usage.input_tokens" = tracing::field::Empty,
+            "gen_ai.usage.output_tokens" = tracing::field::Empty,
+            "gen_ai.response.finish_reasons" = tracing::field::Empty,
+        );
+
+        self.chat_completion_stream_inner(messages, config)
+            .instrument(span)
+            .await
+    }
+}
+
+impl OpenAIProtocolLlmDriver {
+    async fn chat_completion_stream_inner(
+        &self,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream> {
         let openai_messages: Vec<OpenAiMessage> =
             messages.iter().map(Self::convert_message).collect();
 
@@ -220,22 +252,37 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
 
         let model = config.model.clone();
         let total_tokens = Arc::new(Mutex::new(0u32));
+        let prompt_tokens = Arc::new(Mutex::new(0u32));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+
+        // Capture the current span for recording token usage when stream completes
+        let current_span = tracing::Span::current();
 
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
             let total_tokens = Arc::clone(&total_tokens);
+            let prompt_tokens = Arc::clone(&prompt_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+            let span = current_span.clone();
 
             async move {
                 match result {
                     Ok(event) => {
                         if event.data == "[DONE]" {
-                            let tokens = *total_tokens.lock().unwrap();
+                            let output_tokens = *total_tokens.lock().unwrap();
+                            let input_tokens = *prompt_tokens.lock().unwrap();
+
+                            // Record token usage on the span
+                            span.record(gen_ai::USAGE_OUTPUT_TOKENS, output_tokens);
+                            if input_tokens > 0 {
+                                span.record(gen_ai::USAGE_INPUT_TOKENS, input_tokens);
+                            }
+                            span.record(gen_ai::RESPONSE_FINISH_REASONS, "stop");
+
                             return Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
-                                total_tokens: Some(tokens),
-                                prompt_tokens: None,
-                                completion_tokens: Some(tokens),
+                                total_tokens: Some(input_tokens + output_tokens),
+                                prompt_tokens: Some(input_tokens),
+                                completion_tokens: Some(output_tokens),
                                 model: Some(model),
                                 finish_reason: Some("stop".to_string()),
                             }));
@@ -243,6 +290,16 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
                             Ok(chunk) => {
+                                // Capture usage from chunk if available
+                                if let Some(usage) = &chunk.usage {
+                                    if let Some(pt) = usage.prompt_tokens {
+                                        *prompt_tokens.lock().unwrap() = pt;
+                                    }
+                                    if let Some(ct) = usage.completion_tokens {
+                                        *total_tokens.lock().unwrap() = ct;
+                                    }
+                                }
+
                                 if let Some(choice) = chunk.choices.first() {
                                     // Handle tool calls
                                     if let Some(tool_calls) = &choice.delta.tool_calls {
@@ -284,7 +341,18 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
 
                                     // Handle finish reason
                                     if let Some(finish_reason) = &choice.finish_reason {
-                                        let tokens = *total_tokens.lock().unwrap();
+                                        let output_tokens = *total_tokens.lock().unwrap();
+                                        let input_tokens = *prompt_tokens.lock().unwrap();
+
+                                        // Record token usage and finish reason
+                                        span.record(gen_ai::USAGE_OUTPUT_TOKENS, output_tokens);
+                                        if input_tokens > 0 {
+                                            span.record(gen_ai::USAGE_INPUT_TOKENS, input_tokens);
+                                        }
+                                        span.record(
+                                            gen_ai::RESPONSE_FINISH_REASONS,
+                                            finish_reason.as_str(),
+                                        );
 
                                         if finish_reason == "tool_calls" {
                                             let tool_calls =
@@ -308,9 +376,9 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                         }
 
                                         return Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
-                                            total_tokens: Some(tokens),
-                                            prompt_tokens: None,
-                                            completion_tokens: Some(tokens),
+                                            total_tokens: Some(input_tokens + output_tokens),
+                                            prompt_tokens: Some(input_tokens),
+                                            completion_tokens: Some(output_tokens),
                                             model: Some(model),
                                             finish_reason: Some(finish_reason.clone()),
                                         }));
@@ -436,6 +504,14 @@ struct OpenAiFunctionCall {
 #[derive(Debug, Deserialize)]
 struct OpenAiStreamChunk {
     choices: Vec<OpenAiStreamChoice>,
+    #[serde(default)]
+    usage: Option<OpenAiUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiUsage {
+    prompt_tokens: Option<u32>,
+    completion_tokens: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

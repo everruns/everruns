@@ -228,9 +228,21 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 ### Infrastructure
 
-1. **Local Development**: Docker Compose in `harness/` for Postgres, Temporal, Temporal UI
+1. **Local Development**: Docker Compose in `harness/` for Postgres, Temporal, Temporal UI, Jaeger
 2. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
 3. **License Compliance**: cargo-deny for dependency license checking
+
+### Observability
+
+1. **OpenTelemetry Integration**: Distributed tracing via OpenTelemetry with OTLP export
+2. **Jaeger**: Local development trace visualization (included in Docker Compose)
+3. **Gen-AI Semantic Conventions**: LLM operations instrumented with [gen-ai semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+4. **Environment Configuration**:
+   - `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP endpoint (e.g., `http://localhost:4317`)
+   - `OTEL_SERVICE_NAME` - Service name for traces
+   - `OTEL_ENVIRONMENT` - Deployment environment label
+
+See [docs/sre/environment-variables.md](../docs/sre/environment-variables.md) for full configuration options.
 
 ### Code Organization Conventions
 
