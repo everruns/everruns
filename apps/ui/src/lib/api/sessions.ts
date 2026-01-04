@@ -9,13 +9,8 @@ import type {
 } from "./types";
 
 // Re-export message functions for backward compatibility
-export {
-  createMessage,
-  listMessages,
-  sendUserMessage,
-  listEvents,
-  getEventStreamUrl,
-} from "./messages";
+export { createMessage, listMessages, sendUserMessage } from "./messages";
+export { listEvents, getEventStreamUrl } from "./events";
 
 // ============================================
 // Session CRUD
