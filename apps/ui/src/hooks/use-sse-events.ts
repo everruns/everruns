@@ -4,9 +4,10 @@
 //              turn.started, turn.completed, turn.failed,
 //              input.received, reason.started, reason.completed,
 //              act.started, act.completed, tool.call_started, tool.call_completed,
-//              session.started
+//              llm.generation, session.started
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { getDirectApiUrl } from "@/lib/api/client";
 
 export interface AggregatedMessage {
   id: string;
@@ -35,7 +36,7 @@ interface UseSSEEventsReturn {
   toolCalls: AggregatedToolCall[];
   isConnected: boolean;
   error: Error | null;
-  // New: raw events for debugging/display
+  // Raw events for debugging/display
   events: SSEEvent[];
 }
 
@@ -53,8 +54,6 @@ interface SSEEvent {
   data: Record<string, unknown>;
   sequence?: number;
 }
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000";
 
 export function useSSEEvents({
   agentId,
@@ -176,6 +175,13 @@ export function useSSEEvents({
           break;
 
         // =====================================================================
+        // LLM Events (for observability)
+        // =====================================================================
+        case "llm.generation":
+          // LLM generation event with full API call details - stored for observability
+          break;
+
+        // =====================================================================
         // Session Events
         // =====================================================================
         case "session.started":
@@ -197,7 +203,9 @@ export function useSSEEvents({
       return;
     }
 
-    const url = `${API_BASE}/v1/agents/${agentId}/sessions/${sessionId}/sse`;
+    // Use direct API URL for SSE (bypasses Next.js proxy)
+    const apiBaseUrl = getDirectApiUrl();
+    const url = `${apiBaseUrl}/v1/agents/${agentId}/sessions/${sessionId}/sse`;
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
@@ -229,6 +237,8 @@ export function useSSEEvents({
       "act.completed",
       "tool.call_started",
       "tool.call_completed",
+      // LLM events
+      "llm.generation",
       // Session events
       "session.started",
     ];

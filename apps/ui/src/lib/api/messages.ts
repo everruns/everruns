@@ -1,7 +1,7 @@
 // Message API functions
 // Messages are PRIMARY data, Events are SSE notifications
 
-import { api } from "./client";
+import { api, getDirectApiUrl } from "./client";
 import type {
   Message,
   Event,
@@ -68,7 +68,7 @@ export async function listEvents(
 }
 
 // SSE event stream URL builder
+// Uses direct API URL (bypasses Next.js proxy) for browser EventSource connections
 export function getEventStreamUrl(agentId: string, sessionId: string): string {
-  const baseUrl = api.defaults.baseURL || "";
-  return `${baseUrl}/v1/agents/${agentId}/sessions/${sessionId}/sse`;
+  return `${getDirectApiUrl()}/v1/agents/${agentId}/sessions/${sessionId}/sse`;
 }

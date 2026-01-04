@@ -38,14 +38,15 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
     return `${Math.round(seconds / 60)}m ${seconds % 60}s`;
   };
 
+  // Session status: pending → running → pending (cycles) | failed
+  // Sessions return to "pending" after processing - there is no "completed" state
   const getStatusBadge = (session: Session) => {
     switch (session.status) {
-      case "completed":
-        return <Badge variant="outline" className="bg-green-100 text-green-800">Completed</Badge>;
       case "running":
         return <Badge variant="default">Running</Badge>;
       case "failed":
         return <Badge variant="destructive">Failed</Badge>;
+      case "pending":
       default:
         return <Badge variant="secondary">Pending</Badge>;
     }

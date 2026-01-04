@@ -51,6 +51,8 @@ const mockAgent: Agent = {
   updated_at: "2025-01-01T00:00:00Z",
 };
 
+// Session status: pending → running → pending (cycles) | failed
+// Sessions return to "pending" after processing - there is no "completed" state
 const mockSessions: Session[] = [
   {
     id: "session-1",
@@ -58,10 +60,10 @@ const mockSessions: Session[] = [
     title: "Session with GPT-4o",
     tags: [],
     model_id: "model-1",
-    status: "completed",
+    status: "pending",
     created_at: "2025-01-01T00:00:00Z",
     started_at: "2025-01-01T00:00:01Z",
-    finished_at: "2025-01-01T00:01:00Z",
+    finished_at: null,
   },
   {
     id: "session-2",
@@ -202,12 +204,13 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     expect(screen.queryByText("GPT-4o")).not.toBeInTheDocument();
   });
 
-  it("displays Completed badge alongside model badge", async () => {
+  it("displays Pending badge alongside model badge", async () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
-    // Both model and completion status should be visible for completed session
+    // Both model and status should be visible for pending session
     expect(screen.getByText("GPT-4o")).toBeInTheDocument();
-    expect(screen.getByText("Completed")).toBeInTheDocument();
+    // Session is pending (ready for more input)
+    expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
   });
 
   it("calls useLlmModels hook", async () => {

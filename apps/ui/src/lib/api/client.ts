@@ -84,15 +84,6 @@ export const api = {
   delete: <T>(url: string) => request<T>(url, { method: "DELETE" }),
 };
 
-// Legacy export for backwards compatibility
-export async function apiClient<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const result = await request<T>(endpoint, options);
-  return result.data;
-}
-
 export function getApiBaseUrl(): string {
   return API_BASE;
 }
@@ -108,4 +99,14 @@ export function getBackendUrl(): string {
     return window.location.origin + API_BASE;
   }
   return API_BASE;
+}
+
+/**
+ * Get the direct API URL for operations that bypass the Next.js proxy
+ * (e.g., Server-Sent Events which need direct browser connections)
+ *
+ * Uses NEXT_PUBLIC_API_URL env var, falls back to localhost:9000
+ */
+export function getDirectApiUrl(): string {
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000";
 }
