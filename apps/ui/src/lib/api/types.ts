@@ -46,7 +46,9 @@ export interface UpdateAgentRequest {
 // Session types (M2)
 // ============================================
 
-export type SessionStatus = "pending" | "running" | "completed" | "failed";
+// Session status values match API spec: pending → running → pending (cycles) | failed
+// Note: There is NO "completed" status - sessions return to "pending" after processing
+export type SessionStatus = "pending" | "running" | "failed";
 
 export interface Session {
   id: string;

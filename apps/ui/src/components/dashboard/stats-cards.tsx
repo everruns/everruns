@@ -9,13 +9,13 @@ interface StatsCardsProps {
   sessions: Session[];
 }
 
+// Session status: pending → running → pending (cycles) | failed
+// Sessions return to "pending" after processing - there is no "completed" state
 export function StatsCards({ agents, sessions }: StatsCardsProps) {
   const activeAgents = agents.filter((a) => a.status === "active").length;
   const runningSessions = sessions.filter((s) => s.status === "running").length;
-  const completedSessions = sessions.filter((s) => s.status === "completed").length;
-  const totalSessions = sessions.length;
-  const completionRate =
-    totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
+  const pendingSessions = sessions.filter((s) => s.status === "pending").length;
+  const failedSessions = sessions.filter((s) => s.status === "failed").length;
 
   const stats = [
     {
@@ -33,18 +33,18 @@ export function StatsCards({ agents, sessions }: StatsCardsProps) {
       color: "text-yellow-600",
     },
     {
-      title: "Completion Rate",
-      value: `${completionRate}%`,
-      description: `${completedSessions} completed`,
+      title: "Pending Sessions",
+      value: pendingSessions,
+      description: "Ready for input",
       icon: CheckCircle,
       color: "text-green-600",
     },
     {
-      title: "Pending",
-      value: sessions.filter((s) => s.status === "pending").length,
-      description: "Not yet started",
+      title: "Failed Sessions",
+      value: failedSessions,
+      description: "Terminated with error",
       icon: Clock,
-      color: "text-gray-600",
+      color: "text-red-600",
     },
   ];
 

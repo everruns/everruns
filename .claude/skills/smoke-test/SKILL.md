@@ -7,6 +7,38 @@ description: Run API and UI smoke tests to verify the Everruns system works corr
 
 Comprehensive smoke testing for API, UI, database, and system integration.
 
+## IMPORTANT: Mandatory Testing Requirements
+
+**Smoke tests are MANDATORY before completing any task that modifies code.** Do not skip or give up on smoke testing.
+
+### Rules for Agents
+
+1. **Never give up.** If smoke tests fail, troubleshoot the issue. Check logs, fix problems, and retry.
+
+2. **Persist through infrastructure issues.** If dependencies fail to install, try alternative methods. If services fail to start, check ports, logs, and configurations.
+
+3. **Report results.** You MUST report smoke test results to the user, including:
+   - Which tests passed
+   - Which tests failed (with error details)
+   - What troubleshooting steps were attempted
+   - Final status (all passing / some failing / blocked)
+
+4. **Use the checklist.** Run through ALL tests in the "Test Checklist" section below and report on each one.
+
+5. **Don't mark tasks complete without testing.** A PR or code change is not complete until smoke tests have been run and results reported.
+
+### Quick Start for No-Docker Environments
+
+```bash
+# Ensure API keys are available (required for LLM calls)
+export OPENAI_API_KEY="your-key"  # or ANTHROPIC_API_KEY
+
+# Run with sudo to allow PostgreSQL setup
+sudo -E .claude/skills/smoke-test/scripts/run-no-docker.sh
+```
+
+If the script fails, manually start services and run the Test Checklist below.
+
 ## Prerequisites
 
 Start the development environment before running tests:
@@ -444,3 +476,76 @@ curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages
 ```
 
 Expected: An assistant message with LLM-generated text
+
+## Manual Service Startup (Fallback)
+
+If the `run-no-docker.sh` script fails, start services manually:
+
+```bash
+# 1. Ensure PostgreSQL is running
+export PATH="$PATH:/usr/lib/postgresql/16/bin"
+pg_ctl -D /tmp/pgdata -l /tmp/pgdata/pg.log start
+
+# 2. Start Temporal dev server
+temporal server start-dev --db-filename /tmp/temporal.db &> /tmp/temporal.log &
+
+# 3. Set environment variables
+export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
+export TEMPORAL_ADDRESS="localhost:7233"
+export SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32)
+
+# 4. Run migrations
+cd /home/user/everruns
+sqlx database create --database-url "$DATABASE_URL" 2>/dev/null || true
+sqlx migrate run --source crates/control-plane/migrations --database-url "$DATABASE_URL"
+
+# 5. Start API server
+cargo run -p everruns-control-plane &> /tmp/api.log &
+
+# 6. Start worker
+cargo run -p everruns-worker &> /tmp/worker.log &
+
+# 7. Wait for services
+sleep 10
+
+# 8. Run health check
+curl -s http://localhost:9000/health | jq
+```
+
+## Smoke Test Results Template
+
+When reporting smoke test results, use this format:
+
+```
+## Smoke Test Results
+
+### Environment
+- Mode: [Docker / No-Docker]
+- API Key: [OpenAI / Anthropic]
+- Date: [YYYY-MM-DD]
+
+### Test Results
+
+| Test | Status | Notes |
+|------|--------|-------|
+| Health Check | PASS/FAIL | |
+| Auth Config | PASS/FAIL | |
+| Create Agent | PASS/FAIL | |
+| Get Agent | PASS/FAIL | |
+| Update Agent | PASS/FAIL | |
+| List Agents | PASS/FAIL | |
+| Create Session | PASS/FAIL | |
+| Get Session | PASS/FAIL | |
+| Send Message | PASS/FAIL | |
+| List Messages | PASS/FAIL | |
+| Workflow Execution | PASS/FAIL | |
+| Events Sync | PASS/FAIL | |
+| List Sessions | PASS/FAIL | |
+| OpenAPI Spec | PASS/FAIL | |
+| LLM Providers | PASS/FAIL | |
+
+### Summary
+- Total: X/15 tests passing
+- Blocking issues: [None / List issues]
+- Action items: [None / List items]
+```

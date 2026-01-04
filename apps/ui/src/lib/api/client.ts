@@ -84,15 +84,6 @@ export const api = {
   delete: <T>(url: string) => request<T>(url, { method: "DELETE" }),
 };
 
-// Legacy export for backwards compatibility
-export async function apiClient<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const result = await request<T>(endpoint, options);
-  return result.data;
-}
-
 export function getApiBaseUrl(): string {
   return API_BASE;
 }
@@ -109,3 +100,4 @@ export function getBackendUrl(): string {
   }
   return API_BASE;
 }
+

@@ -8,14 +8,9 @@ import type {
   ListResponse,
 } from "./types";
 
-// Re-export message functions for backward compatibility
-export {
-  createMessage,
-  listMessages,
-  sendUserMessage,
-  listEvents,
-  getEventStreamUrl,
-} from "./messages";
+// Re-export message and event functions for convenience
+export { createMessage, listMessages, sendUserMessage } from "./messages";
+export { listEvents } from "./events";
 
 // ============================================
 // Session CRUD

@@ -1,18 +1,12 @@
 // Message API functions
-// Messages are PRIMARY data, Events are SSE notifications
 
 import { api } from "./client";
 import type {
   Message,
-  Event,
   CreateMessageRequest,
   ListResponse,
   Controls,
 } from "./types";
-
-// ============================================
-// Messages (PRIMARY data)
-// ============================================
 
 export async function createMessage(
   agentId: string,
@@ -50,25 +44,4 @@ export async function sendUserMessage(
     },
     controls,
   });
-}
-
-// ============================================
-// Events (SSE notifications)
-// ============================================
-
-// List events for a session (polling alternative to SSE)
-export async function listEvents(
-  agentId: string,
-  sessionId: string
-): Promise<Event[]> {
-  const response = await api.get<ListResponse<Event>>(
-    `/v1/agents/${agentId}/sessions/${sessionId}/events`
-  );
-  return response.data.data;
-}
-
-// SSE event stream URL builder
-export function getEventStreamUrl(agentId: string, sessionId: string): string {
-  const baseUrl = api.defaults.baseURL || "";
-  return `${baseUrl}/v1/agents/${agentId}/sessions/${sessionId}/sse`;
 }
