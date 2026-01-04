@@ -87,13 +87,32 @@ pub fn datetime_to_proto_timestamp(value: DateTime<Utc>) -> proto::Timestamp {
 // ============================================================================
 
 /// Convert prost_types::Value to serde_json::Value
+///
+/// Note: Proto Struct's NumberValue is always f64, but we preserve integer
+/// types when possible to ensure correct deserialization into u32/u64 fields.
 pub fn proto_value_to_json(value: &Value) -> serde_json::Value {
     match &value.kind {
         Some(Kind::NullValue(_)) => serde_json::Value::Null,
         Some(Kind::BoolValue(b)) => serde_json::Value::Bool(*b),
-        Some(Kind::NumberValue(n)) => serde_json::Number::from_f64(*n)
-            .map(serde_json::Value::Number)
-            .unwrap_or(serde_json::Value::Null),
+        Some(Kind::NumberValue(n)) => {
+            // Check if the number is a whole number that can be represented as an integer.
+            // This is important because proto Struct's NumberValue is always f64,
+            // but many Rust structs have u32/u64 fields that can't deserialize floats.
+            if n.fract() == 0.0 {
+                // Try to convert to i64 first (handles negative integers and most cases)
+                if *n >= i64::MIN as f64 && *n <= i64::MAX as f64 {
+                    return serde_json::Value::Number(serde_json::Number::from(*n as i64));
+                }
+                // For very large positive integers, try u64
+                if *n >= 0.0 && *n <= u64::MAX as f64 {
+                    return serde_json::Value::Number(serde_json::Number::from(*n as u64));
+                }
+            }
+            // Fall back to f64 for actual floating point numbers
+            serde_json::Number::from_f64(*n)
+                .map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null)
+        }
         Some(Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
         Some(Kind::ListValue(list)) => proto_list_to_json(list),
         Some(Kind::StructValue(s)) => proto_struct_to_json(s),
@@ -776,5 +795,206 @@ fn parse_message_role(s: &str) -> everruns_core::MessageRole {
         "assistant" => everruns_core::MessageRole::Assistant,
         "tool_result" => everruns_core::MessageRole::ToolResult,
         _ => everruns_core::MessageRole::User,
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_proto_value_to_json_preserves_integers() {
+        // Integer zero
+        let value = Value {
+            kind: Some(Kind::NumberValue(0.0)),
+        };
+        let json = proto_value_to_json(&value);
+        assert!(json.is_number());
+        assert_eq!(json.as_i64(), Some(0));
+        // Verify it's an integer, not a float (important for serde deserialization)
+        let json_str = serde_json::to_string(&json).unwrap();
+        assert_eq!(json_str, "0", "Should serialize as integer, not 0.0");
+
+        // Positive integer
+        let value = Value {
+            kind: Some(Kind::NumberValue(42.0)),
+        };
+        let json = proto_value_to_json(&value);
+        assert_eq!(json.as_i64(), Some(42));
+        let json_str = serde_json::to_string(&json).unwrap();
+        assert_eq!(json_str, "42");
+
+        // Negative integer
+        let value = Value {
+            kind: Some(Kind::NumberValue(-100.0)),
+        };
+        let json = proto_value_to_json(&value);
+        assert_eq!(json.as_i64(), Some(-100));
+
+        // Large u64 value (like duration_ms)
+        let value = Value {
+            kind: Some(Kind::NumberValue(5314.0)),
+        };
+        let json = proto_value_to_json(&value);
+        assert_eq!(json.as_u64(), Some(5314));
+    }
+
+    #[test]
+    fn test_proto_value_to_json_preserves_floats() {
+        // Actual float with fractional part
+        let value = Value {
+            kind: Some(Kind::NumberValue(1.5)),
+        };
+        let json = proto_value_to_json(&value);
+        assert!(json.is_f64());
+        assert!((json.as_f64().unwrap() - 1.5).abs() < f64::EPSILON);
+
+        // Negative float
+        let value = Value {
+            kind: Some(Kind::NumberValue(-2.5)),
+        };
+        let json = proto_value_to_json(&value);
+        assert!(json.is_f64());
+        assert!((json.as_f64().unwrap() - (-2.5)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_proto_struct_roundtrip_with_integers() {
+        // Test that integers survive a JSON -> Proto -> JSON roundtrip
+        let original = serde_json::json!({
+            "tool_call_count": 2,
+            "success_count": 5,
+            "duration_ms": 5314
+        });
+
+        // Convert to proto struct
+        let proto_struct = json_to_proto_struct(&original);
+
+        // Convert back to JSON
+        let result = proto_struct_to_json(&proto_struct);
+
+        // Verify integers are preserved
+        assert_eq!(result["tool_call_count"].as_u64(), Some(2));
+        assert_eq!(result["success_count"].as_u64(), Some(5));
+        assert_eq!(result["duration_ms"].as_u64(), Some(5314));
+
+        // Most importantly: verify they can deserialize into u32/u64
+        #[derive(serde::Deserialize)]
+        struct TestStruct {
+            tool_call_count: u32,
+            success_count: u32,
+            duration_ms: u64,
+        }
+
+        let deserialized: TestStruct = serde_json::from_value(result).unwrap();
+        assert_eq!(deserialized.tool_call_count, 2);
+        assert_eq!(deserialized.success_count, 5);
+        assert_eq!(deserialized.duration_ms, 5314);
+    }
+
+    #[test]
+    fn test_reason_completed_data_roundtrip() {
+        use everruns_core::events::ReasonCompletedData;
+
+        // Create test data
+        let data = ReasonCompletedData::success("Test response", true, 3);
+
+        // Serialize to JSON
+        let json = serde_json::to_value(&data).unwrap();
+
+        // Convert to proto struct and back
+        let proto_struct = json_to_proto_struct(&json);
+        let result_json = proto_struct_to_json(&proto_struct);
+
+        // Deserialize back to ReasonCompletedData
+        let result: ReasonCompletedData = serde_json::from_value(result_json).unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.tool_call_count, 3);
+        assert!(result.has_tool_calls);
+    }
+
+    #[test]
+    fn test_proto_agent_includes_capability_ids() {
+        use chrono::Utc;
+        use everruns_core::CapabilityId;
+        use uuid::Uuid;
+
+        // Create an Agent with capabilities
+        let agent = everruns_core::Agent {
+            id: Uuid::now_v7(),
+            name: "Test Agent".to_string(),
+            description: Some("Test description".to_string()),
+            system_prompt: "You are a helpful assistant".to_string(),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![
+                CapabilityId::new("tools:read_file"),
+                CapabilityId::new("tools:write_file"),
+            ],
+            status: everruns_core::AgentStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Convert to proto
+        let proto_agent = schema_agent_to_proto(&agent);
+
+        // Verify capability_ids are preserved
+        assert_eq!(proto_agent.capability_ids.len(), 2);
+        assert!(proto_agent
+            .capability_ids
+            .contains(&"tools:read_file".to_string()));
+        assert!(proto_agent
+            .capability_ids
+            .contains(&"tools:write_file".to_string()));
+
+        // Convert back to schema
+        let schema_agent = proto_agent_to_schema(proto_agent).unwrap();
+
+        // Verify capabilities survive roundtrip
+        assert_eq!(schema_agent.capabilities.len(), 2);
+        assert!(schema_agent
+            .capabilities
+            .contains(&CapabilityId::new("tools:read_file")));
+        assert!(schema_agent
+            .capabilities
+            .contains(&CapabilityId::new("tools:write_file")));
+    }
+
+    #[test]
+    fn test_proto_agent_without_capabilities() {
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        // Create an Agent without capabilities
+        let agent = everruns_core::Agent {
+            id: Uuid::now_v7(),
+            name: "Test Agent".to_string(),
+            description: None,
+            system_prompt: "You are a helpful assistant".to_string(),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            status: everruns_core::AgentStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Convert to proto
+        let proto_agent = schema_agent_to_proto(&agent);
+
+        // Verify capability_ids are empty
+        assert!(proto_agent.capability_ids.is_empty());
+
+        // Convert back to schema
+        let schema_agent = proto_agent_to_schema(proto_agent).unwrap();
+
+        // Verify capabilities remain empty
+        assert!(schema_agent.capabilities.is_empty());
     }
 }
