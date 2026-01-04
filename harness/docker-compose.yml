@@ -46,10 +46,8 @@ services:
       - "8080:8080"
 
   jaeger:
-    image: jaegertracing/all-in-one:1.64
+    image: jaegertracing/jaeger:2.4.0
     container_name: everruns-jaeger
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
     ports:
       # OTLP gRPC receiver
       - "4317:4317"
@@ -57,8 +55,6 @@ services:
       - "4318:4318"
       # Jaeger UI
       - "16686:16686"
-      # Jaeger thrift compact (for backward compatibility)
-      - "6831:6831/udp"
 
 volumes:
   postgres_data:
