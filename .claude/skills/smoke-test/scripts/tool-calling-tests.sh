@@ -447,7 +447,7 @@ test_webfetch_capability() {
     log_verbose "Checking WebFetch capability is available..."
 
     local response=$(curl -s "$API_URL/v1/capabilities")
-    local web_fetch=$(echo "$response" | jq '.items[] | select(.id == "web_fetch")')
+    local web_fetch=$(echo "$response" | jq '.data[] | select(.id == "web_fetch")')
 
     if [ -z "$web_fetch" ] || [ "$web_fetch" = "null" ]; then
         log_error "web_fetch capability not found in capabilities list"
@@ -642,7 +642,7 @@ test_current_time_capability() {
     log_verbose "Checking CurrentTime capability is available..."
 
     local response=$(curl -s "$API_URL/v1/capabilities")
-    local current_time=$(echo "$response" | jq '.items[] | select(.id == "current_time")')
+    local current_time=$(echo "$response" | jq '.data[] | select(.id == "current_time")')
 
     if [ -z "$current_time" ] || [ "$current_time" = "null" ]; then
         log_error "current_time capability not found in capabilities list"
