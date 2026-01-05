@@ -143,6 +143,8 @@ case "$command" in
 
   api)
     echo "🌐 Starting API server..."
+    # Allow CORS from UI (localhost:9100) for SSE connections
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     cargo run -p everruns-control-plane
     ;;
 
@@ -158,6 +160,8 @@ case "$command" in
       exit 1
     fi
     export AGENT_RUNNER_MODE=${AGENT_RUNNER_MODE:-temporal}
+    # Allow CORS from UI (localhost:9100) for SSE connections
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     cargo watch -w crates -x 'run -p everruns-control-plane'
     ;;
 
@@ -343,6 +347,8 @@ PY
     # Start API in background with auto-reload (Temporal mode)
     echo "5️⃣  Starting API server with auto-reload (Temporal mode)..."
     export AGENT_RUNNER_MODE=temporal
+    # Allow CORS from UI (localhost:9100) for SSE connections
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     cargo watch -w crates -x 'run -p everruns-control-plane' &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
