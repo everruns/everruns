@@ -257,9 +257,7 @@ mod tests {
 
         assert_eq!(event.activity_id(), Some("my-activity"));
 
-        let start_event = WorkflowEvent::WorkflowStarted {
-            input: json!({}),
-        };
+        let start_event = WorkflowEvent::WorkflowStarted { input: json!({}) };
         assert_eq!(start_event.activity_id(), None);
     }
 

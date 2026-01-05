@@ -98,7 +98,8 @@ mod tests {
 
     #[test]
     fn test_custom_signal() {
-        let signal = WorkflowSignal::custom("order_updated", serde_json::json!({"status": "shipped"}));
+        let signal =
+            WorkflowSignal::custom("order_updated", serde_json::json!({"status": "shipped"}));
 
         assert_eq!(signal.signal_type, "order_updated");
         assert!(!signal.is_cancel());

@@ -12,7 +12,9 @@ use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
 use crate::activity::ActivityError;
-use crate::persistence::{StoreError, TaskDefinition, TraceContext, WorkflowEventStore, WorkflowStatus};
+use crate::persistence::{
+    StoreError, TaskDefinition, TraceContext, WorkflowEventStore, WorkflowStatus,
+};
 use crate::workflow::{WorkflowAction, WorkflowEvent, WorkflowSignal};
 
 use super::registry::{AnyWorkflow, RegistryError, WorkflowRegistry};
@@ -162,7 +164,12 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
 
         // Create workflow in store
         self.store
-            .create_workflow(workflow_id, W::TYPE, input_json.clone(), trace_context.as_ref())
+            .create_workflow(
+                workflow_id,
+                W::TYPE,
+                input_json.clone(),
+                trace_context.as_ref(),
+            )
             .await?;
 
         // Append WorkflowStarted event
@@ -204,11 +211,17 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
     /// This replays the workflow from its event history and processes any
     /// new actions that result from recent events.
     #[instrument(skip(self))]
-    pub async fn process_workflow(&self, workflow_id: Uuid) -> Result<ProcessResult, ExecutorError> {
+    pub async fn process_workflow(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<ProcessResult, ExecutorError> {
         // Get workflow info including type and status
         let workflow_info = self.store.get_workflow_info(workflow_id).await?;
 
-        if matches!(workflow_info.status, WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled) {
+        if matches!(
+            workflow_info.status,
+            WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled
+        ) {
             debug!(%workflow_id, status = ?workflow_info.status, "workflow already in terminal state");
             return Ok(ProcessResult {
                 completed: true,
@@ -242,7 +255,9 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         }
 
         // Create workflow instance using stored type and input
-        let mut workflow = self.registry.create(&workflow_info.workflow_type, workflow_info.input.clone())?;
+        let mut workflow = self
+            .registry
+            .create(&workflow_info.workflow_type, workflow_info.input.clone())?;
 
         // Track the current sequence (length = next expected sequence for appending)
         let mut current_sequence = events.len() as i32;
@@ -294,7 +309,12 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         if completed {
             if let Some(result) = workflow.result_json() {
                 self.store
-                    .update_workflow_status(workflow_id, WorkflowStatus::Completed, Some(result), None)
+                    .update_workflow_status(
+                        workflow_id,
+                        WorkflowStatus::Completed,
+                        Some(result),
+                        None,
+                    )
                     .await?;
             } else if let Some(error) = workflow.error() {
                 self.store
@@ -321,7 +341,10 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         // Verify workflow exists
         let status = self.store.get_workflow_status(workflow_id).await?;
 
-        if matches!(status, WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled) {
+        if matches!(
+            status,
+            WorkflowStatus::Completed | WorkflowStatus::Failed | WorkflowStatus::Cancelled
+        ) {
             warn!(%workflow_id, ?status, "cannot send signal to completed workflow");
             return Err(ExecutorError::WorkflowCompleted(workflow_id));
         }
@@ -439,11 +462,18 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
                 let _actions = workflow.on_start();
             }
 
-            WorkflowEvent::ActivityCompleted { activity_id, result } => {
+            WorkflowEvent::ActivityCompleted {
+                activity_id,
+                result,
+            } => {
                 let _actions = workflow.on_activity_completed(activity_id, result.clone());
             }
 
-            WorkflowEvent::ActivityFailed { activity_id, error, will_retry } => {
+            WorkflowEvent::ActivityFailed {
+                activity_id,
+                error,
+                will_retry,
+            } => {
                 // Only notify workflow of final failure (when won't retry)
                 if !will_retry {
                     let _actions = workflow.on_activity_failed(activity_id, error);
@@ -734,7 +764,9 @@ mod tests {
         ) -> Vec<WorkflowAction> {
             self.failed = true;
             self.error_message = Some(error.message.clone());
-            vec![WorkflowAction::fail(crate::WorkflowError::new(&error.message))]
+            vec![WorkflowAction::fail(crate::WorkflowError::new(
+                &error.message,
+            ))]
         }
 
         fn is_completed(&self) -> bool {
@@ -752,7 +784,9 @@ mod tests {
         }
 
         fn error(&self) -> Option<crate::WorkflowError> {
-            self.error_message.as_ref().map(|msg| crate::WorkflowError::new(msg))
+            self.error_message
+                .as_ref()
+                .map(|msg| crate::WorkflowError::new(msg))
         }
     }
 
@@ -762,7 +796,10 @@ mod tests {
         let mut executor = WorkflowExecutor::new(store);
         executor.register::<CounterWorkflow>();
 
-        let input = CounterInput { start: 0, target: 3 };
+        let input = CounterInput {
+            start: 0,
+            target: 3,
+        };
         let workflow_id = executor
             .start_workflow::<CounterWorkflow>(input, None)
             .await
@@ -786,7 +823,10 @@ mod tests {
 
         assert!(events.len() >= 2); // WorkflowStarted + ActivityScheduled
         assert!(matches!(events[0].1, WorkflowEvent::WorkflowStarted { .. }));
-        assert!(matches!(events[1].1, WorkflowEvent::ActivityScheduled { .. }));
+        assert!(matches!(
+            events[1].1,
+            WorkflowEvent::ActivityScheduled { .. }
+        ));
     }
 
     #[tokio::test]
@@ -796,7 +836,10 @@ mod tests {
         executor.register::<CounterWorkflow>();
 
         // Start with current >= target, should complete immediately
-        let input = CounterInput { start: 5, target: 3 };
+        let input = CounterInput {
+            start: 5,
+            target: 3,
+        };
         let workflow_id = executor
             .start_workflow::<CounterWorkflow>(input, None)
             .await
@@ -818,7 +861,10 @@ mod tests {
         let mut executor = WorkflowExecutor::new(store);
         executor.register::<CounterWorkflow>();
 
-        let input = CounterInput { start: 0, target: 2 };
+        let input = CounterInput {
+            start: 0,
+            target: 2,
+        };
         let workflow_id = executor
             .start_workflow::<CounterWorkflow>(input, None)
             .await
@@ -826,7 +872,11 @@ mod tests {
 
         // Complete first activity (increment 0 -> 1)
         let result = executor
-            .on_activity_completed(workflow_id, "increment-0", serde_json::json!({ "value": 1 }))
+            .on_activity_completed(
+                workflow_id,
+                "increment-0",
+                serde_json::json!({ "value": 1 }),
+            )
             .await
             .expect("should complete activity");
 
@@ -834,7 +884,11 @@ mod tests {
 
         // Complete second activity (increment 1 -> 2)
         let result = executor
-            .on_activity_completed(workflow_id, "increment-1", serde_json::json!({ "value": 2 }))
+            .on_activity_completed(
+                workflow_id,
+                "increment-1",
+                serde_json::json!({ "value": 2 }),
+            )
             .await
             .expect("should complete activity");
 
@@ -856,7 +910,10 @@ mod tests {
         let mut executor = WorkflowExecutor::new(store);
         executor.register::<CounterWorkflow>();
 
-        let input = CounterInput { start: 0, target: 5 };
+        let input = CounterInput {
+            start: 0,
+            target: 5,
+        };
         let workflow_id = executor
             .start_workflow::<CounterWorkflow>(input, None)
             .await
@@ -887,7 +944,10 @@ mod tests {
         let mut executor = WorkflowExecutor::new(store);
         executor.register::<CounterWorkflow>();
 
-        let input = CounterInput { start: 0, target: 10 };
+        let input = CounterInput {
+            start: 0,
+            target: 10,
+        };
         let workflow_id = executor
             .start_workflow::<CounterWorkflow>(input, None)
             .await
@@ -916,7 +976,10 @@ mod tests {
         executor.register::<CounterWorkflow>();
 
         // Start workflow that completes immediately
-        let input = CounterInput { start: 10, target: 5 };
+        let input = CounterInput {
+            start: 10,
+            target: 5,
+        };
         let workflow_id = executor
             .start_workflow::<CounterWorkflow>(input, None)
             .await
@@ -935,7 +998,10 @@ mod tests {
         let mut executor = WorkflowExecutor::new(store);
         executor.register::<CounterWorkflow>();
 
-        let input = CounterInput { start: 0, target: 3 };
+        let input = CounterInput {
+            start: 0,
+            target: 3,
+        };
         let workflow_id = executor
             .start_workflow::<CounterWorkflow>(input, None)
             .await
@@ -943,15 +1009,27 @@ mod tests {
 
         // Complete activities
         executor
-            .on_activity_completed(workflow_id, "increment-0", serde_json::json!({ "value": 1 }))
+            .on_activity_completed(
+                workflow_id,
+                "increment-0",
+                serde_json::json!({ "value": 1 }),
+            )
             .await
             .unwrap();
         executor
-            .on_activity_completed(workflow_id, "increment-1", serde_json::json!({ "value": 2 }))
+            .on_activity_completed(
+                workflow_id,
+                "increment-1",
+                serde_json::json!({ "value": 2 }),
+            )
             .await
             .unwrap();
         executor
-            .on_activity_completed(workflow_id, "increment-2", serde_json::json!({ "value": 3 }))
+            .on_activity_completed(
+                workflow_id,
+                "increment-2",
+                serde_json::json!({ "value": 3 }),
+            )
             .await
             .unwrap();
 

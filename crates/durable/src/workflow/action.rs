@@ -230,7 +230,8 @@ mod tests {
 
     #[test]
     fn test_schedule_activity_action() {
-        let action = WorkflowAction::schedule_activity("step-1", "my_activity", json!({"key": "value"}));
+        let action =
+            WorkflowAction::schedule_activity("step-1", "my_activity", json!({"key": "value"}));
 
         match action {
             WorkflowAction::ScheduleActivity {

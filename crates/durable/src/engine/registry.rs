@@ -23,11 +23,7 @@ pub trait AnyWorkflow: Send + Sync {
     fn on_start(&mut self) -> Vec<WorkflowAction>;
 
     /// Called when an activity completes
-    fn on_activity_completed(
-        &mut self,
-        activity_id: &str,
-        result: Value,
-    ) -> Vec<WorkflowAction>;
+    fn on_activity_completed(&mut self, activity_id: &str, result: Value) -> Vec<WorkflowAction>;
 
     /// Called when an activity fails
     fn on_activity_failed(
@@ -66,11 +62,7 @@ impl<W: Workflow> AnyWorkflow for WorkflowWrapper<W> {
         self.inner.on_start()
     }
 
-    fn on_activity_completed(
-        &mut self,
-        activity_id: &str,
-        result: Value,
-    ) -> Vec<WorkflowAction> {
+    fn on_activity_completed(&mut self, activity_id: &str, result: Value) -> Vec<WorkflowAction> {
         self.inner.on_activity_completed(activity_id, result)
     }
 
@@ -95,9 +87,9 @@ impl<W: Workflow> AnyWorkflow for WorkflowWrapper<W> {
     }
 
     fn result_json(&self) -> Option<Value> {
-        self.inner.result().map(|r| {
-            serde_json::to_value(r).unwrap_or(Value::Null)
-        })
+        self.inner
+            .result()
+            .map(|r| serde_json::to_value(r).unwrap_or(Value::Null))
     }
 
     fn error(&self) -> Option<WorkflowError> {
@@ -106,7 +98,8 @@ impl<W: Workflow> AnyWorkflow for WorkflowWrapper<W> {
 }
 
 /// Factory function type for creating workflows from JSON input
-pub type WorkflowFactory = Box<dyn Fn(Value) -> Result<Box<dyn AnyWorkflow>, serde_json::Error> + Send + Sync>;
+pub type WorkflowFactory =
+    Box<dyn Fn(Value) -> Result<Box<dyn AnyWorkflow>, serde_json::Error> + Send + Sync>;
 
 /// Registry of workflow factories
 ///
@@ -250,7 +243,9 @@ mod tests {
         ) -> Vec<WorkflowAction> {
             self.completed = true;
             let r: i32 = serde_json::from_value(result).unwrap_or(0);
-            vec![WorkflowAction::complete(serde_json::json!({ "result": r * 2 }))]
+            vec![WorkflowAction::complete(
+                serde_json::json!({ "result": r * 2 }),
+            )]
         }
 
         fn on_activity_failed(
@@ -267,7 +262,9 @@ mod tests {
 
         fn result(&self) -> Option<Self::Output> {
             if self.completed {
-                Some(TestOutput { result: self.input.value * 2 })
+                Some(TestOutput {
+                    result: self.input.value * 2,
+                })
             } else {
                 None
             }
@@ -320,12 +317,18 @@ mod tests {
         // Start workflow
         let actions = workflow.on_start();
         assert_eq!(actions.len(), 1);
-        assert!(matches!(actions[0], WorkflowAction::ScheduleActivity { .. }));
+        assert!(matches!(
+            actions[0],
+            WorkflowAction::ScheduleActivity { .. }
+        ));
 
         // Complete activity
         let actions = workflow.on_activity_completed("compute", serde_json::json!(5));
         assert_eq!(actions.len(), 1);
-        assert!(matches!(actions[0], WorkflowAction::CompleteWorkflow { .. }));
+        assert!(matches!(
+            actions[0],
+            WorkflowAction::CompleteWorkflow { .. }
+        ));
 
         assert!(workflow.is_completed());
     }

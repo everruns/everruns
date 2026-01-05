@@ -154,8 +154,7 @@ mod tests {
 
     #[test]
     fn test_activity_error_with_type() {
-        let error = ActivityError::retryable("connection failed")
-            .with_type("CONNECTION_ERROR");
+        let error = ActivityError::retryable("connection failed").with_type("CONNECTION_ERROR");
 
         assert_eq!(error.error_type, Some("CONNECTION_ERROR".to_string()));
     }

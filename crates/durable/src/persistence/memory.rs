@@ -290,7 +290,11 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         Ok(())
     }
 
-    async fn fail_task(&self, task_id: Uuid, error: &str) -> Result<TaskFailureOutcome, StoreError> {
+    async fn fail_task(
+        &self,
+        task_id: Uuid,
+        error: &str,
+    ) -> Result<TaskFailureOutcome, StoreError> {
         let mut tasks = self.tasks.write();
         let task = tasks
             .get_mut(&task_id)
@@ -366,7 +370,9 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .get_mut(&workflow_id)
             .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
 
-        workflow.signals = workflow.signals.split_off(count.min(workflow.signals.len()));
+        workflow.signals = workflow
+            .signals
+            .split_off(count.min(workflow.signals.len()));
         Ok(())
     }
 
@@ -463,11 +469,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let start = pagination.offset as usize;
         let end = (pagination.offset + pagination.limit) as usize;
 
-        Ok(entries
-            .into_iter()
-            .skip(start)
-            .take(end - start)
-            .collect())
+        Ok(entries.into_iter().skip(start).take(end - start).collect())
     }
 }
 
@@ -560,7 +562,10 @@ mod tests {
             )
             .await;
 
-        assert!(matches!(result, Err(StoreError::ConcurrencyConflict { .. })));
+        assert!(matches!(
+            result,
+            Err(StoreError::ConcurrencyConflict { .. })
+        ));
     }
 
     #[tokio::test]

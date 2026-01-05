@@ -78,12 +78,7 @@ pub struct ActivityContext {
 
 impl ActivityContext {
     /// Create a new activity context
-    pub fn new(
-        workflow_id: Uuid,
-        activity_id: String,
-        attempt: u32,
-        max_attempts: u32,
-    ) -> Self {
+    pub fn new(workflow_id: Uuid, activity_id: String, attempt: u32, max_attempts: u32) -> Self {
         Self {
             attempt_id: Uuid::now_v7(),
             attempt,
@@ -234,8 +229,8 @@ mod tests {
     #[tokio::test]
     async fn test_heartbeat_with_channel() {
         let (tx, mut rx) = mpsc::channel(10);
-        let ctx = ActivityContext::new(Uuid::now_v7(), "step-1".to_string(), 1, 3)
-            .with_heartbeat(tx);
+        let ctx =
+            ActivityContext::new(Uuid::now_v7(), "step-1".to_string(), 1, 3).with_heartbeat(tx);
 
         ctx.heartbeat(Some(serde_json::json!({"progress": 50})))
             .await

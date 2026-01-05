@@ -77,8 +77,8 @@ pub mod prelude {
     pub use crate::activity::{Activity, ActivityContext, ActivityError};
     pub use crate::engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
     pub use crate::persistence::{
-        ClaimedTask, InMemoryWorkflowEventStore, StoreError, TaskDefinition, TraceContext,
-        WorkflowEventStore, WorkflowStatus,
+        ClaimedTask, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, StoreError,
+        TaskDefinition, TraceContext, WorkflowEventStore, WorkflowStatus,
     };
     pub use crate::reliability::{CircuitBreakerConfig, RetryPolicy};
     pub use crate::workflow::{
@@ -90,7 +90,8 @@ pub mod prelude {
 pub use activity::{Activity, ActivityContext, ActivityError};
 pub use engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
 pub use persistence::{
-    InMemoryWorkflowEventStore, StoreError, TraceContext, WorkflowEventStore, WorkflowStatus,
+    InMemoryWorkflowEventStore, PostgresWorkflowEventStore, StoreError, TraceContext,
+    WorkflowEventStore, WorkflowStatus,
 };
 pub use reliability::{CircuitBreakerConfig, RetryPolicy};
 pub use workflow::{

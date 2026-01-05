@@ -246,10 +246,8 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     ) -> Result<i32, StoreError>;
 
     /// Load all events for a workflow (for replay)
-    async fn load_events(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Vec<(i32, WorkflowEvent)>, StoreError>;
+    async fn load_events(&self, workflow_id: Uuid)
+        -> Result<Vec<(i32, WorkflowEvent)>, StoreError>;
 
     /// Update workflow status
     async fn update_workflow_status(
@@ -293,13 +291,12 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     ) -> Result<(), StoreError>;
 
     /// Fail a task (may requeue or send to DLQ)
-    async fn fail_task(&self, task_id: Uuid, error: &str) -> Result<TaskFailureOutcome, StoreError>;
+    async fn fail_task(&self, task_id: Uuid, error: &str)
+        -> Result<TaskFailureOutcome, StoreError>;
 
     /// Find and reclaim stale tasks (no heartbeat)
-    async fn reclaim_stale_tasks(
-        &self,
-        stale_threshold: Duration,
-    ) -> Result<Vec<Uuid>, StoreError>;
+    async fn reclaim_stale_tasks(&self, stale_threshold: Duration)
+        -> Result<Vec<Uuid>, StoreError>;
 
     // =========================================================================
     // Signal Operations

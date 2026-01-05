@@ -231,8 +231,7 @@ mod tests {
 
     #[test]
     fn test_delay_for_attempt() {
-        let policy = RetryPolicy::exponential()
-            .with_jitter(0.0); // Disable jitter for predictable tests
+        let policy = RetryPolicy::exponential().with_jitter(0.0); // Disable jitter for predictable tests
 
         // Attempt 1 (initial) has no delay
         assert_eq!(policy.delay_for_attempt(1), Duration::ZERO);
