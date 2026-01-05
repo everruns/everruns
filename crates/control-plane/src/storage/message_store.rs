@@ -143,21 +143,47 @@ impl MessageStore for DbMessageStore {
 
 /// Convert stored event data to a Message
 ///
-/// Events are stored as full Event structures. We deserialize the Event
-/// and extract the message from the typed EventData.
+/// Handles two formats:
+/// - Legacy format: full Event struct with id, type, data, etc.
+/// - New format: EventData directly (MessageUserData, MessageAgentData, etc.)
 fn event_to_message(
     data: &serde_json::Value,
     event_type: &str,
 ) -> std::result::Result<Message, String> {
-    // Deserialize the full Event structure
-    let event: Event =
-        serde_json::from_value(data.clone()).map_err(|e| format!("invalid event: {}", e))?;
+    // Helper to extract message from EventData
+    let extract_message = |event_data: EventData| -> std::result::Result<Message, String> {
+        match event_data {
+            EventData::MessageUser(d) => Ok(d.message),
+            EventData::MessageAgent(d) => Ok(d.message),
+            EventData::ToolCallCompleted(d) => Ok(tool_call_to_message(d)),
+            _ => Err(format!("unexpected event type for message: {}", event_type)),
+        }
+    };
 
-    // Extract message based on event type
-    match event.data {
-        EventData::MessageUser(data) => Ok(data.message),
-        EventData::MessageAgent(data) => Ok(data.message),
-        EventData::ToolCallCompleted(data) => Ok(tool_call_to_message(data)),
+    // First try to parse as full Event (legacy format)
+    // This has required fields like id, type, session_id, data
+    if let Ok(event) = serde_json::from_value::<Event>(data.clone()) {
+        return extract_message(event.data);
+    }
+
+    // Fallback: try to parse as EventData directly (new format)
+    // Note: EventData has #[serde(untagged)] with Raw variant, so we use type hint
+    match event_type {
+        "message.user" => {
+            let d: MessageUserData = serde_json::from_value(data.clone())
+                .map_err(|e| format!("invalid message.user data: {}", e))?;
+            Ok(d.message)
+        }
+        "message.agent" => {
+            let d: MessageAgentData = serde_json::from_value(data.clone())
+                .map_err(|e| format!("invalid message.agent data: {}", e))?;
+            Ok(d.message)
+        }
+        "tool.call_completed" => {
+            let d: ToolCallCompletedData = serde_json::from_value(data.clone())
+                .map_err(|e| format!("invalid tool.call_completed data: {}", e))?;
+            Ok(tool_call_to_message(d))
+        }
         _ => Err(format!("unexpected event type for message: {}", event_type)),
     }
 }

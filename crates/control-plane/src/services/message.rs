@@ -115,7 +115,12 @@ impl MessageService {
         let mut messages = Vec::with_capacity(events.len());
 
         for event_row in events {
-            match Self::event_to_message(session_id, &event_row.data, event_row.sequence) {
+            match Self::event_to_message(
+                session_id,
+                &event_row.data,
+                &event_row.event_type,
+                event_row.sequence,
+            ) {
                 Ok(message) => messages.push(message),
                 Err(e) => {
                     tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
@@ -128,58 +133,90 @@ impl MessageService {
 
     /// Convert stored event data to API Message
     ///
-    /// Events are stored as full Event structures with typed EventData.
+    /// Handles two formats:
+    /// - Legacy format: full Event struct with id, type, data, etc.
+    /// - New format: EventData directly (MessageUserData, MessageAgentData, etc.)
     fn event_to_message(
         session_id: Uuid,
         data: &serde_json::Value,
+        event_type: &str,
         sequence: i32,
     ) -> std::result::Result<Message, String> {
-        // Deserialize the full Event structure
-        let event: Event =
-            serde_json::from_value(data.clone()).map_err(|e| format!("invalid event: {}", e))?;
-
-        // Extract message from typed EventData
-        let core_message = match &event.data {
-            everruns_core::EventData::MessageUser(data) => &data.message,
-            everruns_core::EventData::MessageAgent(data) => &data.message,
-            everruns_core::EventData::ToolCallCompleted(data) => {
-                // Convert tool result to message
-                let result: Option<serde_json::Value> = data.result.as_ref().map(|parts| {
-                    if parts.len() == 1 {
-                        if let everruns_core::ContentPart::Text(t) = &parts[0] {
-                            return serde_json::Value::String(t.text.clone());
-                        }
+        // Helper to convert EventData to Message
+        let convert =
+            |event_data: everruns_core::EventData| -> std::result::Result<Message, String> {
+                let core_message = match &event_data {
+                    everruns_core::EventData::MessageUser(data) => &data.message,
+                    everruns_core::EventData::MessageAgent(data) => &data.message,
+                    everruns_core::EventData::ToolCallCompleted(data) => {
+                        // Convert tool result to message
+                        let result: Option<serde_json::Value> = data.result.as_ref().map(|parts| {
+                            if parts.len() == 1 {
+                                if let everruns_core::ContentPart::Text(t) = &parts[0] {
+                                    return serde_json::Value::String(t.text.clone());
+                                }
+                            }
+                            serde_json::to_value(parts).unwrap_or_default()
+                        });
+                        let msg = everruns_core::Message::tool_result(
+                            &data.tool_call_id,
+                            result,
+                            data.error.clone(),
+                        );
+                        return Ok(Message {
+                            id: msg.id,
+                            session_id,
+                            sequence,
+                            role: MessageRole::from(msg.role.to_string().as_str()),
+                            content: msg.content,
+                            controls: None,
+                            metadata: None,
+                            created_at: msg.created_at,
+                        });
                     }
-                    serde_json::to_value(parts).unwrap_or_default()
-                });
-                let msg = everruns_core::Message::tool_result(
-                    &data.tool_call_id,
-                    result,
-                    data.error.clone(),
-                );
-                return Ok(Message {
-                    id: msg.id,
+                    _ => return Err("unexpected event type".to_string()),
+                };
+
+                Ok(Message {
+                    id: core_message.id,
                     session_id,
                     sequence,
-                    role: MessageRole::from(msg.role.to_string().as_str()),
-                    content: msg.content,
-                    controls: None,
-                    metadata: None,
-                    created_at: msg.created_at,
-                });
-            }
-            _ => return Err(format!("unexpected event type: {}", event.event_type)),
-        };
+                    role: MessageRole::from(core_message.role.to_string().as_str()),
+                    content: core_message.content.clone(),
+                    controls: core_message.controls.clone(),
+                    metadata: core_message.metadata.clone(),
+                    created_at: core_message.created_at,
+                })
+            };
 
-        Ok(Message {
-            id: core_message.id,
-            session_id,
-            sequence,
-            role: MessageRole::from(core_message.role.to_string().as_str()),
-            content: core_message.content.clone(),
-            controls: core_message.controls.clone(),
-            metadata: core_message.metadata.clone(),
-            created_at: core_message.created_at,
-        })
+        // First try to parse as full Event (legacy format)
+        // This has required fields like id, type, session_id, data
+        if let Ok(event) = serde_json::from_value::<Event>(data.clone()) {
+            return convert(event.data);
+        }
+
+        // Fallback: try to parse as specific EventData type directly (new format)
+        // We use the event_type hint since EventData's Raw variant catches everything
+        match event_type {
+            "message.user" => {
+                let d: everruns_core::events::MessageUserData =
+                    serde_json::from_value(data.clone())
+                        .map_err(|e| format!("invalid message.user data: {}", e))?;
+                convert(everruns_core::EventData::MessageUser(d))
+            }
+            "message.agent" => {
+                let d: everruns_core::events::MessageAgentData =
+                    serde_json::from_value(data.clone())
+                        .map_err(|e| format!("invalid message.agent data: {}", e))?;
+                convert(everruns_core::EventData::MessageAgent(d))
+            }
+            "tool.call_completed" => {
+                let d: everruns_core::events::ToolCallCompletedData =
+                    serde_json::from_value(data.clone())
+                        .map_err(|e| format!("invalid tool.call_completed data: {}", e))?;
+                convert(everruns_core::EventData::ToolCallCompleted(d))
+            }
+            _ => Err(format!("unexpected event type for message: {}", event_type)),
+        }
     }
 }

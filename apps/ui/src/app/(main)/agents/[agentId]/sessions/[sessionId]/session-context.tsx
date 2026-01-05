@@ -95,10 +95,9 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     refetchInterval: shouldPoll ? 1000 : false,
   });
 
-  // Fetch events - used for both chat rendering and events tab
-  const { data: events, isLoading: eventsLoading } = useEvents(agentId, sessionId, {
-    refetchInterval: shouldPoll ? 1000 : false,
-  });
+  // Fetch events using SSE - always enabled for real-time streaming
+  // SSE handles backoff automatically (100ms → 10s when no new events)
+  const { data: events, isLoading: eventsLoading } = useEvents(agentId, sessionId);
 
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">("");
 

@@ -3,13 +3,14 @@
 
 use crate::storage::Database;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::sse::{Event as SseEvent, KeepAlive, Sse},
     routing::get,
     Json, Router,
 };
 use everruns_core::Event;
+use serde::Deserialize;
 
 use super::common::ListResponse;
 use crate::services::EventService;
@@ -21,6 +22,14 @@ use std::{convert::Infallible, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use crate::services::SessionService;
+use utoipa::{IntoParams, ToSchema};
+
+/// Query parameters for event listing
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct EventsQuery {
+    /// Filter events with ID greater than this UUID v7 (monotonically increasing)
+    pub since_id: Option<Uuid>,
+}
 
 // ============================================
 // App State and Routes
@@ -66,7 +75,8 @@ pub fn routes(state: AppState) -> Router {
     path = "/v1/agents/{agent_id}/sessions/{session_id}/sse",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("session_id" = Uuid, Path, description = "Session ID"),
+        EventsQuery
     ),
     responses(
         (status = 200, description = "Event stream", content_type = "text/event-stream"),
@@ -78,6 +88,7 @@ pub fn routes(state: AppState) -> Router {
 pub async fn stream_sse(
     State(state): State<AppState>,
     Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<EventsQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
     // Verify session exists
     let _session = state
@@ -90,43 +101,99 @@ pub async fn stream_sse(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    tracing::info!(session_id = %session_id, "Starting event stream");
+    tracing::info!(session_id = %session_id, since_id = ?query.since_id, "Starting event stream");
 
     let event_service = state.event_service.clone();
+    let initial_since_id = query.since_id;
 
-    // Create stream that replays all events from database
-    // SSE format: event: <type>, data: <full core::Event JSON>
-    let stream = stream::unfold(0i32, move |last_sequence| {
+    // Backoff configuration
+    const MIN_BACKOFF_MS: u64 = 100;
+    const MAX_BACKOFF_MS: u64 = 10_000;
+
+    // State for stream: (last_id, backoff_ms, sent_connected)
+    #[derive(Clone)]
+    struct StreamState {
+        last_id: Option<Uuid>,
+        backoff_ms: u64,
+        sent_connected: bool,
+    }
+
+    let initial_state = StreamState {
+        last_id: initial_since_id,
+        backoff_ms: MIN_BACKOFF_MS,
+        sent_connected: false,
+    };
+
+    // Create stream that replays events from database
+    // Uses since_id (UUID v7) for tracking - monotonically increasing
+    // SSE format: event: <type>, data: <full core::Event JSON>, id: <event UUID>
+    // Includes exponential backoff (100ms → 10s) when no new events
+    let stream = stream::unfold(initial_state, move |state| {
         let event_service = event_service.clone();
         async move {
-            // Fetch events since last sequence using EventService
-            match event_service.list(session_id, Some(last_sequence)).await {
+            // Send initial "connected" event on first iteration
+            if !state.sent_connected {
+                tracing::debug!(session_id = %session_id, "SSE: sending connected event");
+                let connected_event = Ok(SseEvent::default()
+                    .event("connected")
+                    .data(r#"{"status":"connected"}"#));
+                let new_state = StreamState {
+                    sent_connected: true,
+                    ..state
+                };
+                return Some((stream::iter(vec![connected_event]), new_state));
+            }
+
+            // Fetch events since last ID
+            tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
+            match event_service.list(session_id, None, state.last_id).await {
                 Ok(events) if !events.is_empty() => {
-                    // Get the last sequence number for next iteration
-                    let new_sequence = events.last().unwrap().sequence.unwrap_or(last_sequence);
+                    // Get the last event ID for next iteration
+                    let new_last_id = Some(events.last().unwrap().id);
+
+                    tracing::debug!(
+                        session_id = %session_id,
+                        last_id = ?state.last_id,
+                        new_last_id = ?new_last_id,
+                        event_count = events.len(),
+                        "SSE: fetched events"
+                    );
 
                     // Convert events to SSE format with full Event as data
                     let sse_events: Vec<Result<SseEvent, Infallible>> = events
                         .into_iter()
                         .map(|event| {
                             let event_type = event.event_type.clone();
-                            let sequence = event.sequence.unwrap_or(0);
+                            let event_id = event.id.to_string();
                             let json =
                                 serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
 
                             Ok(SseEvent::default()
                                 .event(&event_type)
                                 .data(json)
-                                .id(sequence.to_string()))
+                                .id(event_id))
                         })
                         .collect();
 
-                    Some((stream::iter(sse_events), new_sequence))
+                    // Reset backoff on new events
+                    let new_state = StreamState {
+                        last_id: new_last_id,
+                        backoff_ms: MIN_BACKOFF_MS,
+                        sent_connected: true,
+                    };
+                    Some((stream::iter(sse_events), new_state))
                 }
                 Ok(_) => {
-                    // No new events, wait a bit before polling again
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                    Some((stream::iter(vec![]), last_sequence))
+                    // No new events, wait with exponential backoff
+                    tokio::time::sleep(Duration::from_millis(state.backoff_ms)).await;
+
+                    // Increase backoff for next iteration (double, up to max)
+                    let new_backoff = (state.backoff_ms * 2).min(MAX_BACKOFF_MS);
+                    let new_state = StreamState {
+                        backoff_ms: new_backoff,
+                        ..state
+                    };
+                    Some((stream::iter(vec![]), new_state))
                 }
                 Err(e) => {
                     tracing::error!("Failed to fetch events: {}", e);
@@ -150,7 +217,8 @@ pub async fn stream_sse(
     path = "/v1/agents/{agent_id}/sessions/{session_id}/events",
     params(
         ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("session_id" = Uuid, Path, description = "Session ID"),
+        EventsQuery
     ),
     responses(
         (status = 200, description = "Events list", body = ListResponse<Event>),
@@ -162,6 +230,7 @@ pub async fn stream_sse(
 pub async fn list_events(
     State(state): State<AppState>,
     Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<EventsQuery>,
 ) -> Result<Json<ListResponse<Event>>, StatusCode> {
     // Verify session exists
     let _session = state
@@ -174,10 +243,11 @@ pub async fn list_events(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Fetch all events using EventService (converts rows to core::Event)
+    // Fetch events using EventService (converts rows to core::Event)
+    // Optional since_id filter for incremental fetching
     let events = state
         .event_service
-        .list(session_id, None)
+        .list(session_id, None, query.since_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to list events: {}", e);
