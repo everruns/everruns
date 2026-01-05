@@ -90,6 +90,13 @@ impl EventService {
         Ok(rows.into_iter().map(Self::row_to_event).collect())
     }
 
+    /// List events that represent messages (user, agent, tool results)
+    /// Used by gRPC service to load conversation history for workers.
+    pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<Event>> {
+        let rows = self.db.list_message_events(session_id).await?;
+        Ok(rows.into_iter().map(Self::row_to_event).collect())
+    }
+
     fn row_to_event(row: EventRow) -> Event {
         // Direct mapping from row columns to Event fields
         let data =

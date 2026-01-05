@@ -148,67 +148,28 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
 }
 
-/// Helper to parse event data and extract a Message
+/// Extract a Message from an Event's data field
 ///
-/// Handles two formats:
-/// - Legacy format: full Event struct with id, type, data, etc.
-/// - New format: EventData directly (MessageUserData, MessageAgentData, etc.)
-fn event_row_to_message(
-    data: &serde_json::Value,
-    event_type: &str,
-) -> Option<everruns_core::Message> {
-    use everruns_core::events::{MessageAgentData, MessageUserData, ToolCallCompletedData};
-    use everruns_core::{ContentPart, Event, EventData, Message};
+/// Events returned from EventService already have data parsed into EventData.
+fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::Message> {
+    use everruns_core::{ContentPart, EventData, Message};
 
-    // Helper to extract message from EventData
-    let extract_message = |event_data: EventData| -> Option<Message> {
-        match event_data {
-            EventData::MessageUser(d) => Some(d.message),
-            EventData::MessageAgent(d) => Some(d.message),
-            EventData::ToolCallCompleted(d) => {
-                let result: Option<serde_json::Value> = d.result.map(|parts| {
-                    if parts.len() == 1 {
-                        if let ContentPart::Text(t) = &parts[0] {
-                            return serde_json::Value::String(t.text.clone());
-                        }
-                    }
-                    serde_json::to_value(&parts).unwrap_or_default()
-                });
-                Some(Message::tool_result(&d.tool_call_id, result, d.error))
-            }
-            _ => None,
-        }
-    };
-
-    // First try to parse as full Event (legacy format)
-    if let Ok(event) = serde_json::from_value::<Event>(data.clone()) {
-        return extract_message(event.data);
-    }
-
-    // Fallback: try to parse as specific EventData type directly (new format)
-    match event_type {
-        "message.user" => {
-            let d: MessageUserData = serde_json::from_value(data.clone()).ok()?;
-            Some(d.message)
-        }
-        "message.agent" => {
-            let d: MessageAgentData = serde_json::from_value(data.clone()).ok()?;
-            Some(d.message)
-        }
-        "tool.call_completed" => {
-            let d: ToolCallCompletedData = serde_json::from_value(data.clone()).ok()?;
-            let result: Option<serde_json::Value> = d.result.map(|parts| {
+    match &event.data {
+        EventData::MessageUser(d) => Some(d.message.clone()),
+        EventData::MessageAgent(d) => Some(d.message.clone()),
+        EventData::ToolCallCompleted(d) => {
+            let result: Option<serde_json::Value> = d.result.as_ref().map(|parts| {
                 if parts.len() == 1 {
-                    if let everruns_core::ContentPart::Text(t) = &parts[0] {
+                    if let ContentPart::Text(t) = &parts[0] {
                         return serde_json::Value::String(t.text.clone());
                     }
                 }
-                serde_json::to_value(&parts).unwrap_or_default()
+                serde_json::to_value(parts).unwrap_or_default()
             });
-            Some(everruns_core::Message::tool_result(
+            Some(Message::tool_result(
                 &d.tool_call_id,
                 result,
-                d.error,
+                d.error.clone(),
             ))
         }
         _ => None,
@@ -260,24 +221,24 @@ impl WorkerService for WorkerServiceImpl {
             default_model_id: session_row.model_id.map(uuid_to_proto_uuid),
         };
 
-        // Load messages from events table
+        // Load messages from events using EventService
         let events = self
-            .db
+            .event_service
             .list_message_events(session_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
-        for event_row in events {
-            // Parse the event data to get the message using helper
-            let message = match event_row_to_message(&event_row.data, &event_row.event_type) {
+        for event in events {
+            // Extract message from typed event data
+            let message = match event_to_message(&event) {
                 Some(m) => m,
                 None => {
                     tracing::warn!(
-                        "Failed to parse message from event {}: type={}",
-                        event_row.id,
-                        event_row.event_type
+                        "Failed to extract message from event {}: type={}",
+                        event.id,
+                        event.event_type
                     );
                     continue;
                 }
@@ -431,9 +392,9 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Query events for message-related event types
+        // Query events for message-related event types using EventService
         let events = self
-            .db
+            .event_service
             .list_message_events(session_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
@@ -442,15 +403,15 @@ impl WorkerService for WorkerServiceImpl {
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
-        for event_row in events {
-            // Parse the event data to get the message using helper
-            let message = match event_row_to_message(&event_row.data, &event_row.event_type) {
+        for event in events {
+            // Extract message from typed event data
+            let message = match event_to_message(&event) {
                 Some(m) => m,
                 None => {
                     tracing::warn!(
-                        "Failed to parse message from event {}: type={}",
-                        event_row.id,
-                        event_row.event_type
+                        "Failed to extract message from event {}: type={}",
+                        event.id,
+                        event.event_type
                     );
                     continue;
                 }
