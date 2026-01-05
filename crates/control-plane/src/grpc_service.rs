@@ -4,7 +4,7 @@
 // Decision: This provides a clean boundary and simplifies worker deployment
 // Decision: gRPC service uses the same services layer as HTTP API for consistency
 
-use crate::services::EventService;
+use crate::services::{AgentService, EventService};
 use crate::storage::{Database, EncryptionService};
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
@@ -19,7 +19,8 @@ use everruns_internal_protocol::proto::{
     SessionWriteFileRequest, SessionWriteFileResponse,
 };
 use everruns_internal_protocol::{
-    proto_event_request_to_schema, schema_event_to_proto, WorkerService, WorkerServiceServer,
+    proto_event_request_to_schema, schema_agent_to_proto, schema_event_to_proto, WorkerService,
+    WorkerServiceServer,
 };
 use std::sync::Arc;
 use tonic::{Request, Response, Status, Streaming};
@@ -29,15 +30,18 @@ pub struct WorkerServiceImpl {
     db: Arc<Database>,
     encryption: Option<Arc<EncryptionService>>,
     event_service: EventService,
+    agent_service: AgentService,
 }
 
 impl WorkerServiceImpl {
     pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
         let event_service = EventService::new(db.clone());
+        let agent_service = AgentService::new(db.clone());
         Self {
             db,
             encryption,
             event_service,
+            agent_service,
         }
     }
 
@@ -165,41 +169,18 @@ impl WorkerService for WorkerServiceImpl {
             .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
-        // Get agent
-        let agent_row = self
-            .db
-            .get_agent(session_row.agent_id)
+        // Get agent with capabilities via AgentService
+        let agent = self
+            .agent_service
+            .get(session_row.agent_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
             .ok_or_else(|| Status::not_found("Agent not found"))?;
 
-        // Get agent capabilities
-        let capability_rows = self
-            .db
-            .get_agent_capabilities(session_row.agent_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get agent capabilities: {}", e)))?;
-        let capability_ids: Vec<String> = capability_rows
-            .into_iter()
-            .map(|c| c.capability_id)
-            .collect();
-
-        // Convert rows to proto types
+        // Convert to proto types
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
-        let proto_agent = proto::Agent {
-            id: Some(uuid_to_proto_uuid(agent_row.id)),
-            name: agent_row.name.clone(),
-            description: agent_row.description.clone().unwrap_or_default(),
-            system_prompt: agent_row.system_prompt.clone(),
-            default_model_id: agent_row.default_model_id.map(uuid_to_proto_uuid),
-            temperature: None, // Not stored in AgentRow
-            max_tokens: None,  // Not stored in AgentRow
-            status: agent_row.status.clone(),
-            created_at: Some(datetime_to_proto_timestamp(agent_row.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(agent_row.updated_at)),
-            capability_ids,
-        };
+        let proto_agent = schema_agent_to_proto(&agent);
 
         let proto_session = proto::Session {
             id: Some(uuid_to_proto_uuid(session_row.id)),
@@ -280,7 +261,7 @@ impl WorkerService for WorkerServiceImpl {
 
         // Get model with provider (decrypted API key)
         // Priority: session model > agent model > default model
-        let model_id = session_row.model_id.or(agent_row.default_model_id);
+        let model_id = session_row.model_id.or(agent.default_model_id);
 
         let model: Option<proto::ModelWithProvider> = if let Some(mid) = model_id {
             self.resolve_model_with_provider(mid).await?
@@ -350,45 +331,14 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
-        let agent_row = self
-            .db
-            .get_agent(agent_id)
+        // Get agent with capabilities via AgentService
+        let agent = self
+            .agent_service
+            .get(agent_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
 
-        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
-
-        let proto_agent = match agent_row {
-            Some(a) => {
-                // Get capabilities for this agent
-                let capability_rows =
-                    self.db
-                        .get_agent_capabilities(agent_id)
-                        .await
-                        .map_err(|e| {
-                            Status::internal(format!("Failed to get agent capabilities: {}", e))
-                        })?;
-                let capability_ids: Vec<String> = capability_rows
-                    .into_iter()
-                    .map(|c| c.capability_id)
-                    .collect();
-
-                Some(proto::Agent {
-                    id: Some(uuid_to_proto_uuid(a.id)),
-                    name: a.name.clone(),
-                    description: a.description.clone().unwrap_or_default(),
-                    system_prompt: a.system_prompt.clone(),
-                    default_model_id: a.default_model_id.map(uuid_to_proto_uuid),
-                    temperature: None, // Not stored in AgentRow
-                    max_tokens: None,  // Not stored in AgentRow
-                    status: a.status.clone(),
-                    created_at: Some(datetime_to_proto_timestamp(a.created_at)),
-                    updated_at: Some(datetime_to_proto_timestamp(a.updated_at)),
-                    capability_ids,
-                })
-            }
-            None => None,
-        };
+        let proto_agent = agent.map(|a| schema_agent_to_proto(&a));
 
         Ok(Response::new(GetAgentResponse { agent: proto_agent }))
     }
