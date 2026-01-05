@@ -129,10 +129,9 @@ impl OpenAIProtocolLlmDriver {
             }
         };
 
-        OpenAiMessage {
-            role: Self::convert_role(&msg.role).to_string(),
-            content: Some(content),
-            tool_calls: msg.tool_calls.as_ref().map(|calls| {
+        // OpenAI only accepts tool_calls on assistant messages
+        let tool_calls = if msg.role == LlmMessageRole::Assistant {
+            msg.tool_calls.as_ref().map(|calls| {
                 calls
                     .iter()
                     .map(|tc| OpenAiToolCall {
@@ -144,7 +143,15 @@ impl OpenAIProtocolLlmDriver {
                         },
                     })
                     .collect()
-            }),
+            })
+        } else {
+            None
+        };
+
+        OpenAiMessage {
+            role: Self::convert_role(&msg.role).to_string(),
+            content: Some(content),
+            tool_calls,
             tool_call_id: msg.tool_call_id.clone(),
         }
     }
