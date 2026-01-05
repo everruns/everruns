@@ -248,6 +248,44 @@ See [docs/sre/environment-variables.md](../docs/sre/environment-variables.md) fo
 
 #### Layer Separation
 
+The control-plane follows a strict layered architecture:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Transport Layer                       │
+│  ┌─────────────────────┐  ┌─────────────────────────┐  │
+│  │   HTTP API (axum)   │  │   gRPC Server (tonic)   │  │
+│  │     Port 9000       │  │       Port 9001         │  │
+│  │   (Public REST)     │  │   (Internal Workers)    │  │
+│  └──────────┬──────────┘  └────────────┬────────────┘  │
+└─────────────│──────────────────────────│───────────────┘
+              │                          │
+              ▼                          ▼
+┌─────────────────────────────────────────────────────────┐
+│                    Services Layer                        │
+│  ┌──────────────┐ ┌───────────────┐ ┌────────────────┐ │
+│  │ AgentService │ │ SessionService│ │ EventService   │ │
+│  └──────────────┘ └───────────────┘ └────────────────┘ │
+│  ┌──────────────────┐ ┌─────────────────────────────┐  │
+│  │SessionFileService│ │ LlmResolverService          │  │
+│  └──────────────────┘ └─────────────────────────────┘  │
+│                    (Business Logic)                      │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│                    Storage Layer                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │                   Database                        │   │
+│  │         (PostgreSQL via sqlx)                    │   │
+│  └─────────────────────────────────────────────────┘   │
+│                   (Raw SQL Operations)                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Principle**: Both HTTP API and gRPC handlers access storage ONLY through services.
+No direct database access from transport layer handlers.
+
 1. **Storage Layer** (`control-plane/src/storage/`):
    - Database models use `Row` suffix (e.g., `AgentRow`, `SessionRow`, `EventRow`)
    - Input structs for create operations use `Create` prefix + `Row` suffix (e.g., `CreateEventRow`)
@@ -264,20 +302,29 @@ See [docs/sre/environment-variables.md](../docs/sre/environment-variables.md) fo
    - Domain types are DB-agnostic and serializable
    - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
-3. **Control-Plane Layer** (`control-plane/` → `everruns-control-plane`):
-   - HTTP API (axum) on port 9000 - public REST API
-   - gRPC server (tonic) on port 9001 - internal WorkerService
-   - API contracts (DTOs) are collocated with their routes in the same module
-   - Controllers handle HTTP concerns only, delegating business logic to services
-   - Input types for user-facing APIs use `Input` prefix (e.g., `InputMessage`, `InputContentPart`)
-   - Request/response wrappers use `Request`/`Response` suffix
-
-4. **Service Layer** (`control-plane/services/`):
+3. **Service Layer** (`control-plane/src/services/`):
+   - **Single point of business logic** - both HTTP and gRPC handlers use services
    - Services accept API contracts (request types) and return domain types
    - Services handle conversion from API contracts to storage Row types
    - Services own business logic, validation, and orchestration
    - Services call repositories (via Database) for persistence
-   - Each controller module has a corresponding service (e.g., `agents.rs` → `AgentService`)
+   - Available services:
+     - `AgentService` - Agent CRUD and capability management
+     - `SessionService` - Session CRUD
+     - `EventService` - Event emission and listing
+     - `SessionFileService` - Virtual filesystem operations
+     - `LlmResolverService` - Model resolution with decrypted API keys
+     - `MessageService` - Message operations (delegates to EventService)
+     - `LlmModelService`, `LlmProviderService` - LLM configuration management
+     - `CapabilityService` - Capability listing
+
+4. **Transport Layer** (`control-plane/src/api/`, `control-plane/src/grpc_service.rs`):
+   - **HTTP API** (axum) on port 9000 - public REST API
+   - **gRPC Server** (tonic) on port 9001 - internal WorkerService
+   - API contracts (DTOs) are collocated with their routes in the same module
+   - Handlers handle protocol concerns only, delegating ALL business logic to services
+   - Input types for user-facing APIs use `Input` prefix (e.g., `InputMessage`, `InputContentPart`)
+   - Request/response wrappers use `Request`/`Response` suffix
 
 5. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
    - gRPC protocol definitions (proto files)
@@ -286,21 +333,37 @@ See [docs/sre/environment-variables.md](../docs/sre/environment-variables.md) fo
 
 #### Type Flow Example
 
+Both HTTP and gRPC follow the same pattern through services:
+
 ```
+HTTP API Flow:
 Controller (HTTP)  →  Service (Business Logic)  →  Repository (Storage)
        ↓                      ↓                           ↓
 CreateAgentRequest  →   CreateAgentRow             →   Database
        ↓                      ↓                           ↓
       JSON              Core types used                  SQL
+
+gRPC Service Flow:
+gRPC Handler  →  Service (Business Logic)  →  Repository (Storage)
+       ↓                      ↓                           ↓
+  Proto types   →   Core/Row types          →   Database
+       ↓                      ↓                           ↓
+   Protobuf         Core types used                  SQL
 ```
 
-For agents:
+For HTTP agents endpoint:
 - Controller receives `CreateAgentRequest` (API request type)
 - Controller passes request directly to `AgentService.create(req)`
 - Service converts `CreateAgentRequest` → `CreateAgentRow` (storage type)
 - Service calls repository to store and returns `Agent` (domain type)
 
-For messages:
+For gRPC session operations:
+- gRPC handler receives `GetSessionRequest` (proto type)
+- Handler calls `SessionService.get(session_id)`
+- Service queries database and returns `Session` (domain type)
+- Handler converts `Session` to `proto::Session` for response
+
+For messages (both HTTP and gRPC):
 - `CreateMessageRequest` (API) → contains `InputMessage` with `InputContentPart[]`
 - Service converts `InputContentPart` → `ContentPart` (core type)
 - Service creates `CreateEventRow` (storage) with message data as JSON
