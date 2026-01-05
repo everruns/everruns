@@ -371,4 +371,49 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         filter: DlqFilter,
         pagination: Pagination,
     ) -> Result<Vec<DlqEntry>, StoreError>;
+
+    // =========================================================================
+    // Circuit Breaker Operations (optional, default no-op)
+    // =========================================================================
+
+    /// Create a circuit breaker
+    async fn create_circuit_breaker(
+        &self,
+        _key: &str,
+        _config: &crate::reliability::CircuitBreakerConfig,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Get circuit breaker state
+    async fn get_circuit_breaker(
+        &self,
+        _key: &str,
+    ) -> Result<Option<CircuitBreakerState>, StoreError> {
+        Ok(None)
+    }
+
+    /// Update circuit breaker state
+    async fn update_circuit_breaker(
+        &self,
+        _key: &str,
+        _state: crate::reliability::CircuitState,
+        _failure_count: u32,
+        _success_count: u32,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+}
+
+/// Circuit breaker state
+#[derive(Debug, Clone)]
+pub struct CircuitBreakerState {
+    pub key: String,
+    pub state: crate::reliability::CircuitState,
+    pub failure_count: u32,
+    pub success_count: u32,
+    pub last_failure_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub opened_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub half_open_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }

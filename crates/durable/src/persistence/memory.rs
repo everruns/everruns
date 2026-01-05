@@ -34,6 +34,14 @@ struct TaskState {
     error_history: Vec<String>,
 }
 
+/// Circuit breaker state in memory
+struct CircuitBreakerMemState {
+    state: crate::reliability::CircuitState,
+    failure_count: u32,
+    success_count: u32,
+    opened_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 /// In-memory implementation of WorkflowEventStore
 ///
 /// This is primarily for testing. It stores all data in memory and
@@ -50,6 +58,7 @@ pub struct InMemoryWorkflowEventStore {
     workflows: RwLock<HashMap<Uuid, WorkflowState>>,
     tasks: RwLock<HashMap<Uuid, TaskState>>,
     dlq: RwLock<HashMap<Uuid, DlqEntry>>,
+    circuit_breakers: RwLock<HashMap<String, CircuitBreakerMemState>>,
     #[allow(dead_code)] // Reserved for future global sequence counter
     sequence_counter: AtomicI32,
 }
@@ -61,6 +70,7 @@ impl InMemoryWorkflowEventStore {
             workflows: RwLock::new(HashMap::new()),
             tasks: RwLock::new(HashMap::new()),
             dlq: RwLock::new(HashMap::new()),
+            circuit_breakers: RwLock::new(HashMap::new()),
             sequence_counter: AtomicI32::new(0),
         }
     }
@@ -470,6 +480,88 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let end = (pagination.offset + pagination.limit) as usize;
 
         Ok(entries.into_iter().skip(start).take(end - start).collect())
+    }
+
+    async fn create_circuit_breaker(
+        &self,
+        key: &str,
+        _config: &crate::reliability::CircuitBreakerConfig,
+    ) -> Result<(), StoreError> {
+        let mut breakers = self.circuit_breakers.write();
+        breakers.insert(
+            key.to_string(),
+            CircuitBreakerMemState {
+                state: crate::reliability::CircuitState::Closed,
+                failure_count: 0,
+                success_count: 0,
+                opened_at: None,
+            },
+        );
+        Ok(())
+    }
+
+    async fn get_circuit_breaker(
+        &self,
+        key: &str,
+    ) -> Result<Option<CircuitBreakerState>, StoreError> {
+        let breakers = self.circuit_breakers.read();
+        Ok(breakers.get(key).map(|b| CircuitBreakerState {
+            key: key.to_string(),
+            state: b.state,
+            failure_count: b.failure_count,
+            success_count: b.success_count,
+            last_failure_at: None,
+            opened_at: b.opened_at,
+            half_open_at: None,
+            updated_at: Utc::now(),
+        }))
+    }
+
+    async fn update_circuit_breaker(
+        &self,
+        key: &str,
+        state: crate::reliability::CircuitState,
+        failure_count: u32,
+        success_count: u32,
+    ) -> Result<(), StoreError> {
+        let mut breakers = self.circuit_breakers.write();
+        let breaker = breakers.get_mut(key);
+
+        match breaker {
+            Some(b) => {
+                let opened_at = if state == crate::reliability::CircuitState::Open
+                    && b.state != crate::reliability::CircuitState::Open
+                {
+                    Some(Utc::now())
+                } else if state == crate::reliability::CircuitState::Closed {
+                    None
+                } else {
+                    b.opened_at
+                };
+
+                b.state = state;
+                b.failure_count = failure_count;
+                b.success_count = success_count;
+                b.opened_at = opened_at;
+            }
+            None => {
+                // Create if doesn't exist
+                breakers.insert(
+                    key.to_string(),
+                    CircuitBreakerMemState {
+                        state,
+                        failure_count,
+                        success_count,
+                        opened_at: if state == crate::reliability::CircuitState::Open {
+                            Some(Utc::now())
+                        } else {
+                            None
+                        },
+                    },
+                );
+            }
+        }
+        Ok(())
     }
 }
 

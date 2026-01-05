@@ -12,7 +12,7 @@ mod store;
 pub use memory::InMemoryWorkflowEventStore;
 pub use postgres::PostgresWorkflowEventStore;
 pub use store::{
-    ClaimedTask, DlqEntry, DlqFilter, HeartbeatResponse, Pagination, StoreError, TaskDefinition,
-    TaskFailureOutcome, TaskStatus, TraceContext, WorkerFilter, WorkerInfo, WorkflowEventStore,
-    WorkflowInfo, WorkflowStatus,
+    CircuitBreakerState, ClaimedTask, DlqEntry, DlqFilter, HeartbeatResponse, Pagination,
+    StoreError, TaskDefinition, TaskFailureOutcome, TaskStatus, TraceContext, WorkerFilter,
+    WorkerInfo, WorkflowEventStore, WorkflowInfo, WorkflowStatus,
 };
