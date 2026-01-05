@@ -3,8 +3,12 @@
 // Decision: Workers communicate with control plane via gRPC for all database operations
 // Decision: This provides a clean boundary and simplifies worker deployment
 // Decision: gRPC service uses the same services layer as HTTP API for consistency
+// Decision: No direct database access - all operations go through services layer
 
-use crate::services::{AgentService, EventService};
+use crate::services::{
+    session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
+    AgentService, EventService, LlmResolverService, SessionFileService, SessionService,
+};
 use crate::storage::{Database, EncryptionService};
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
@@ -26,22 +30,30 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status, Streaming};
 
 /// gRPC service implementation for worker communication
+///
+/// This service follows the layered architecture: gRPC -> Services -> Storage
+/// No direct database access is allowed - all operations go through the services layer.
 pub struct WorkerServiceImpl {
-    db: Arc<Database>,
-    encryption: Option<Arc<EncryptionService>>,
     event_service: EventService,
     agent_service: AgentService,
+    session_service: SessionService,
+    session_file_service: SessionFileService,
+    llm_resolver_service: LlmResolverService,
 }
 
 impl WorkerServiceImpl {
     pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
         let event_service = EventService::new(db.clone());
         let agent_service = AgentService::new(db.clone());
+        let session_service = SessionService::new(db.clone());
+        let session_file_service = SessionFileService::new(db.clone());
+        let llm_resolver_service = LlmResolverService::new(db, encryption);
         Self {
-            db,
-            encryption,
             event_service,
             agent_service,
+            session_service,
+            session_file_service,
+            llm_resolver_service,
         }
     }
 
@@ -50,91 +62,16 @@ impl WorkerServiceImpl {
         WorkerServiceServer::new(self)
     }
 
-    /// Resolve a model by ID and return with decrypted provider API key
-    async fn resolve_model_with_provider(
-        &self,
-        model_id: uuid::Uuid,
-    ) -> Result<Option<proto::ModelWithProvider>, Status> {
-        let encryption = match &self.encryption {
-            Some(enc) => enc.as_ref().clone(),
-            None => return Ok(None), // No encryption service, can't decrypt API keys
-        };
-
-        let model_row = self
-            .db
-            .get_llm_model(model_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get model: {}", e)))?;
-
-        let model_row = match model_row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let provider_row = self
-            .db
-            .get_llm_provider(model_row.provider_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get provider: {}", e)))?;
-
-        let provider_row = match provider_row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let provider_with_key = self
-            .db
-            .get_provider_with_api_key(&provider_row, &encryption)
-            .map_err(|e| Status::internal(format!("Failed to decrypt API key: {}", e)))?;
-
-        Ok(Some(proto::ModelWithProvider {
-            model: model_row.model_id,
-            provider_type: provider_with_key.provider_type,
-            api_key: provider_with_key.api_key,
-            base_url: provider_with_key.base_url,
-        }))
-    }
-
-    /// Resolve the default model and return with decrypted provider API key
-    async fn resolve_default_model(&self) -> Result<Option<proto::ModelWithProvider>, Status> {
-        let encryption = match &self.encryption {
-            Some(enc) => enc.as_ref().clone(),
-            None => return Ok(None), // No encryption service, can't decrypt API keys
-        };
-
-        let model_row = self
-            .db
-            .get_default_llm_model()
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get default model: {}", e)))?;
-
-        let model_row = match model_row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let provider_row = self
-            .db
-            .get_llm_provider(model_row.provider_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get provider: {}", e)))?;
-
-        let provider_row = match provider_row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        let provider_with_key = self
-            .db
-            .get_provider_with_api_key(&provider_row, &encryption)
-            .map_err(|e| Status::internal(format!("Failed to decrypt API key: {}", e)))?;
-
-        Ok(Some(proto::ModelWithProvider {
-            model: model_row.model_id,
-            provider_type: provider_with_key.provider_type,
-            api_key: provider_with_key.api_key,
-            base_url: provider_with_key.base_url,
-        }))
+    /// Convert ResolvedModel to proto ModelWithProvider
+    fn resolved_model_to_proto(
+        resolved: crate::services::ResolvedModel,
+    ) -> proto::ModelWithProvider {
+        proto::ModelWithProvider {
+            model: resolved.model_id,
+            provider_type: resolved.provider_type,
+            api_key: resolved.api_key,
+            base_url: resolved.base_url,
+        }
     }
 }
 
@@ -189,20 +126,26 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Get session
-        let session_row = self
-            .db
-            .get_session(session_id)
+        // Get session via SessionService
+        let session = self
+            .session_service
+            .get(session_id)
             .await
-            .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
+            .map_err(|e| {
+                tracing::error!("Failed to get session: {}", e);
+                Status::internal("Failed to get session")
+            })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
         // Get agent with capabilities via AgentService
         let agent = self
             .agent_service
-            .get(session_row.agent_id)
+            .get(session.agent_id)
             .await
-            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
+            .map_err(|e| {
+                tracing::error!("Failed to get agent: {}", e);
+                Status::internal("Failed to get agent")
+            })?
             .ok_or_else(|| Status::not_found("Agent not found"))?;
 
         // Convert to proto types
@@ -211,14 +154,13 @@ impl WorkerService for WorkerServiceImpl {
         let proto_agent = schema_agent_to_proto(&agent);
 
         let proto_session = proto::Session {
-            id: Some(uuid_to_proto_uuid(session_row.id)),
-            agent_id: Some(uuid_to_proto_uuid(session_row.agent_id)),
-            title: session_row.title.clone().unwrap_or_default(),
-            status: session_row.status.clone(),
-            created_at: Some(datetime_to_proto_timestamp(session_row.created_at)),
-            // SessionRow doesn't have updated_at, use created_at as fallback
-            updated_at: Some(datetime_to_proto_timestamp(session_row.created_at)),
-            default_model_id: session_row.model_id.map(uuid_to_proto_uuid),
+            id: Some(uuid_to_proto_uuid(session.id)),
+            agent_id: Some(uuid_to_proto_uuid(session.agent_id)),
+            title: session.title.clone().unwrap_or_default(),
+            status: session.status.to_string(),
+            created_at: Some(datetime_to_proto_timestamp(session.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(session.created_at)),
+            default_model_id: session.model_id.map(uuid_to_proto_uuid),
         };
 
         // Load messages from events using EventService
@@ -226,7 +168,10 @@ impl WorkerService for WorkerServiceImpl {
             .event_service
             .list_message_events(session_id)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to list messages: {}", e);
+                Status::internal("Failed to list messages")
+            })?;
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
@@ -270,15 +215,29 @@ impl WorkerService for WorkerServiceImpl {
             });
         }
 
-        // Get model with provider (decrypted API key)
+        // Get model with provider (decrypted API key) via LlmResolverService
         // Priority: session model > agent model > default model
-        let model_id = session_row.model_id.or(agent.default_model_id);
+        let model_id = session.model_id.or(agent.default_model_id);
 
         let model: Option<proto::ModelWithProvider> = if let Some(mid) = model_id {
-            self.resolve_model_with_provider(mid).await?
+            self.llm_resolver_service
+                .resolve_model(mid)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to resolve model: {}", e);
+                    Status::internal("Failed to resolve model")
+                })?
+                .map(Self::resolved_model_to_proto)
         } else {
             // Try to get the default model
-            self.resolve_default_model().await?
+            self.llm_resolver_service
+                .resolve_default_model()
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to resolve default model: {}", e);
+                    Status::internal("Failed to resolve default model")
+                })?
+                .map(Self::resolved_model_to_proto)
         };
 
         Ok(Response::new(GetTurnContextResponse {
@@ -361,21 +320,20 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        let session_row = self
-            .db
-            .get_session(session_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?;
+        // Get session via SessionService
+        let session = self.session_service.get(session_id).await.map_err(|e| {
+            tracing::error!("Failed to get session: {}", e);
+            Status::internal("Failed to get session")
+        })?;
 
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
-        let proto_session = session_row.map(|s| proto::Session {
+        let proto_session = session.map(|s| proto::Session {
             id: Some(uuid_to_proto_uuid(s.id)),
             agent_id: Some(uuid_to_proto_uuid(s.agent_id)),
             title: s.title.clone().unwrap_or_default(),
-            status: s.status.clone(),
+            status: s.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(s.created_at)),
-            // SessionRow doesn't have updated_at, use created_at as fallback
             updated_at: Some(datetime_to_proto_timestamp(s.created_at)),
             default_model_id: s.model_id.map(uuid_to_proto_uuid),
         });
@@ -602,52 +560,24 @@ impl WorkerService for WorkerServiceImpl {
         let model_id = parse_uuid(req.model_id.as_ref())?;
 
         // Check if encryption service is available
-        let encryption = match &self.encryption {
-            Some(enc) => enc.as_ref().clone(),
-            None => {
-                return Err(Status::unavailable(
-                    "Encryption service not configured - cannot decrypt API keys",
-                ));
-            }
-        };
+        if !self.llm_resolver_service.has_encryption() {
+            return Err(Status::unavailable(
+                "Encryption service not configured - cannot decrypt API keys",
+            ));
+        }
 
-        // Look up the model
-        let model_row = self
-            .db
-            .get_llm_model(model_id)
+        // Resolve model via LlmResolverService
+        let resolved = self
+            .llm_resolver_service
+            .resolve_model(model_id)
             .await
-            .map_err(|e| Status::internal(format!("Failed to get model: {}", e)))?;
-
-        let model_row = match model_row {
-            Some(row) => row,
-            None => return Ok(Response::new(GetModelWithProviderResponse { model: None })),
-        };
-
-        // Look up the provider
-        let provider_row = self
-            .db
-            .get_llm_provider(model_row.provider_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get provider: {}", e)))?;
-
-        let provider_row = match provider_row {
-            Some(row) => row,
-            None => return Ok(Response::new(GetModelWithProviderResponse { model: None })),
-        };
-
-        // Decrypt the API key
-        let provider_with_key = self
-            .db
-            .get_provider_with_api_key(&provider_row, &encryption)
-            .map_err(|e| Status::internal(format!("Failed to decrypt API key: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to resolve model: {}", e);
+                Status::internal("Failed to resolve model")
+            })?;
 
         Ok(Response::new(GetModelWithProviderResponse {
-            model: Some(proto::ModelWithProvider {
-                model: model_row.model_id,
-                provider_type: provider_with_key.provider_type,
-                api_key: provider_with_key.api_key,
-                base_url: provider_with_key.base_url,
-            }),
+            model: resolved.map(Self::resolved_model_to_proto),
         }))
     }
 
@@ -656,57 +586,29 @@ impl WorkerService for WorkerServiceImpl {
         _request: Request<GetDefaultModelRequest>,
     ) -> Result<Response<GetDefaultModelResponse>, Status> {
         // Check if encryption service is available
-        let encryption = match &self.encryption {
-            Some(enc) => enc.as_ref().clone(),
-            None => {
-                return Err(Status::unavailable(
-                    "Encryption service not configured - cannot decrypt API keys",
-                ));
-            }
-        };
+        if !self.llm_resolver_service.has_encryption() {
+            return Err(Status::unavailable(
+                "Encryption service not configured - cannot decrypt API keys",
+            ));
+        }
 
-        // Look up the default model
-        let model_row = self
-            .db
-            .get_default_llm_model()
+        // Resolve default model via LlmResolverService
+        let resolved = self
+            .llm_resolver_service
+            .resolve_default_model()
             .await
-            .map_err(|e| Status::internal(format!("Failed to get default model: {}", e)))?;
-
-        let model_row = match model_row {
-            Some(row) => row,
-            None => return Ok(Response::new(GetDefaultModelResponse { model: None })),
-        };
-
-        // Look up the provider
-        let provider_row = self
-            .db
-            .get_llm_provider(model_row.provider_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get provider: {}", e)))?;
-
-        let provider_row = match provider_row {
-            Some(row) => row,
-            None => return Ok(Response::new(GetDefaultModelResponse { model: None })),
-        };
-
-        // Decrypt the API key
-        let provider_with_key = self
-            .db
-            .get_provider_with_api_key(&provider_row, &encryption)
-            .map_err(|e| Status::internal(format!("Failed to decrypt API key: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to resolve default model: {}", e);
+                Status::internal("Failed to resolve default model")
+            })?;
 
         Ok(Response::new(GetDefaultModelResponse {
-            model: Some(proto::ModelWithProvider {
-                model: model_row.model_id,
-                provider_type: provider_with_key.provider_type,
-                api_key: provider_with_key.api_key,
-                base_url: provider_with_key.base_url,
-            }),
+            model: resolved.map(Self::resolved_model_to_proto),
         }))
     }
 
     // ========================================================================
-    // Session file operations
+    // Session file operations (via SessionFileService)
     // ========================================================================
 
     async fn session_read_file(
@@ -716,43 +618,30 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        let file_row = self
-            .db
-            .get_session_file(session_id, &req.path)
+        // Read file via SessionFileService
+        let file = self
+            .session_file_service
+            .read_file(session_id, &req.path)
             .await
-            .map_err(|e| Status::internal(format!("Failed to read file: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to read file: {}", e);
+                Status::internal("Failed to read file")
+            })?;
 
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
-        // Derive name from path
-        fn name_from_path(path: &str) -> String {
-            if path == "/" {
-                "/".to_string()
-            } else {
-                path.rsplit('/').next().unwrap_or(path).to_string()
-            }
-        }
-
-        let proto_file = file_row.map(|f| {
-            // Convert bytes content to string
-            let content = f
-                .content
-                .as_ref()
-                .map(|bytes| String::from_utf8_lossy(bytes).to_string());
-
-            proto::SessionFile {
-                id: Some(uuid_to_proto_uuid(f.id)),
-                session_id: Some(uuid_to_proto_uuid(f.session_id)),
-                path: f.path.clone(),
-                name: name_from_path(&f.path),
-                content,
-                encoding: "text".to_string(), // Default encoding
-                is_directory: f.is_directory,
-                is_readonly: f.is_readonly,
-                size_bytes: f.size_bytes,
-                created_at: Some(datetime_to_proto_timestamp(f.created_at)),
-                updated_at: Some(datetime_to_proto_timestamp(f.updated_at)),
-            }
+        let proto_file = file.map(|f| proto::SessionFile {
+            id: Some(uuid_to_proto_uuid(f.id)),
+            session_id: Some(uuid_to_proto_uuid(f.session_id)),
+            path: f.path.clone(),
+            name: f.name.clone(),
+            content: f.content,
+            encoding: f.encoding,
+            is_directory: f.is_directory,
+            is_readonly: f.is_readonly,
+            size_bytes: f.size_bytes,
+            created_at: Some(datetime_to_proto_timestamp(f.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(f.updated_at)),
         });
 
         Ok(Response::new(SessionReadFileResponse { file: proto_file }))
@@ -762,74 +651,65 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<SessionWriteFileRequest>,
     ) -> Result<Response<SessionWriteFileResponse>, Status> {
-        use crate::storage::{CreateSessionFileRow, UpdateSessionFile};
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Convert content to bytes
-        let content = req.content.into_bytes();
-
         // Check if file already exists
         let existing = self
-            .db
-            .get_session_file(session_id, &req.path)
+            .session_file_service
+            .read_file(session_id, &req.path)
             .await
-            .map_err(|e| Status::internal(format!("Failed to check file: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to check file: {}", e);
+                Status::internal("Failed to check file")
+            })?;
 
-        let file_row = if let Some(_existing_file) = existing {
+        let file = if existing.is_some() {
             // Update existing file
-            let update = UpdateSessionFile {
-                content: Some(content),
+            let update = UpdateFileInput {
+                content: Some(req.content.clone()),
+                encoding: None,
                 is_readonly: None,
             };
-            self.db
-                .update_session_file(session_id, &req.path, update)
+            self.session_file_service
+                .update_file(session_id, &req.path, update)
                 .await
-                .map_err(|e| Status::internal(format!("Failed to update file: {}", e)))?
+                .map_err(|e| {
+                    tracing::error!("Failed to update file: {}", e);
+                    Status::internal("Failed to update file")
+                })?
                 .ok_or_else(|| Status::internal("File disappeared during update"))?
         } else {
             // Create new file
-            let create = CreateSessionFileRow {
-                session_id,
+            let create = CreateFileInput {
                 path: req.path.clone(),
-                content: Some(content),
-                is_directory: false,
-                is_readonly: false,
+                content: Some(req.content.clone()),
+                encoding: None,
+                is_readonly: None,
             };
-            self.db
-                .create_session_file(create)
+            self.session_file_service
+                .create_file(session_id, create)
                 .await
-                .map_err(|e| Status::internal(format!("Failed to create file: {}", e)))?
+                .map_err(|e| {
+                    tracing::error!("Failed to create file: {}", e);
+                    Status::internal("Failed to create file")
+                })?
         };
 
-        // Derive name from path
-        fn name_from_path(path: &str) -> String {
-            if path == "/" {
-                "/".to_string()
-            } else {
-                path.rsplit('/').next().unwrap_or(path).to_string()
-            }
-        }
-
-        let content_str = file_row
-            .content
-            .as_ref()
-            .map(|bytes| String::from_utf8_lossy(bytes).to_string());
-
         let proto_file = proto::SessionFile {
-            id: Some(uuid_to_proto_uuid(file_row.id)),
-            session_id: Some(uuid_to_proto_uuid(file_row.session_id)),
-            path: file_row.path.clone(),
-            name: name_from_path(&file_row.path),
-            content: content_str,
-            encoding: "text".to_string(),
-            is_directory: file_row.is_directory,
-            is_readonly: file_row.is_readonly,
-            size_bytes: file_row.size_bytes,
-            created_at: Some(datetime_to_proto_timestamp(file_row.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(file_row.updated_at)),
+            id: Some(uuid_to_proto_uuid(file.id)),
+            session_id: Some(uuid_to_proto_uuid(file.session_id)),
+            path: file.path.clone(),
+            name: file.name.clone(),
+            content: file.content,
+            encoding: file.encoding,
+            is_directory: file.is_directory,
+            is_readonly: file.is_readonly,
+            size_bytes: file.size_bytes,
+            created_at: Some(datetime_to_proto_timestamp(file.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(file.updated_at)),
         };
 
         Ok(Response::new(SessionWriteFileResponse {
@@ -844,19 +724,15 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        let deleted = if req.recursive {
-            let count = self
-                .db
-                .delete_session_file_recursive(session_id, &req.path)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to delete file: {}", e)))?;
-            count > 0
-        } else {
-            self.db
-                .delete_session_file(session_id, &req.path)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to delete file: {}", e)))?
-        };
+        // Delete via SessionFileService
+        let deleted = self
+            .session_file_service
+            .delete(session_id, &req.path, req.recursive)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to delete file: {}", e);
+                Status::internal("Failed to delete file")
+            })?;
 
         Ok(Response::new(SessionDeleteFileResponse { deleted }))
     }
@@ -868,22 +744,17 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
+        // List directory via SessionFileService
         let files = self
-            .db
-            .list_session_files(session_id, &req.path)
+            .session_file_service
+            .list_directory(session_id, &req.path)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list directory: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to list directory: {}", e);
+                Status::internal("Failed to list directory")
+            })?;
 
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
-
-        // Derive name from path
-        fn name_from_path(path: &str) -> String {
-            if path == "/" {
-                "/".to_string()
-            } else {
-                path.rsplit('/').next().unwrap_or(path).to_string()
-            }
-        }
 
         let proto_files: Vec<proto::FileInfo> = files
             .iter()
@@ -891,7 +762,7 @@ impl WorkerService for WorkerServiceImpl {
                 id: Some(uuid_to_proto_uuid(f.id)),
                 session_id: Some(uuid_to_proto_uuid(f.session_id)),
                 path: f.path.clone(),
-                name: name_from_path(&f.path),
+                name: f.name.clone(),
                 is_directory: f.is_directory,
                 is_readonly: f.is_readonly,
                 size_bytes: f.size_bytes,
@@ -912,32 +783,26 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Get file info and convert to stat
-        let file = self
-            .db
-            .get_session_file(session_id, &req.path)
+        // Get file stat via SessionFileService
+        let stat = self
+            .session_file_service
+            .stat(session_id, &req.path)
             .await
-            .map_err(|e| Status::internal(format!("Failed to stat file: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to stat file: {}", e);
+                Status::internal("Failed to stat file")
+            })?;
 
         use everruns_internal_protocol::datetime_to_proto_timestamp;
 
-        // Derive name from path
-        fn name_from_path(path: &str) -> String {
-            if path == "/" {
-                "/".to_string()
-            } else {
-                path.rsplit('/').next().unwrap_or(path).to_string()
-            }
-        }
-
-        let proto_stat = file.map(|f| proto::FileStat {
-            path: f.path.clone(),
-            name: name_from_path(&f.path),
-            is_directory: f.is_directory,
-            is_readonly: f.is_readonly,
-            size_bytes: f.size_bytes,
-            created_at: Some(datetime_to_proto_timestamp(f.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(f.updated_at)),
+        let proto_stat = stat.map(|s| proto::FileStat {
+            path: s.path.clone(),
+            name: s.name.clone(),
+            is_directory: s.is_directory,
+            is_readonly: s.is_readonly,
+            size_bytes: s.size_bytes,
+            created_at: Some(datetime_to_proto_timestamp(s.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
         });
 
         Ok(Response::new(SessionStatFileResponse { stat: proto_stat }))
@@ -950,62 +815,36 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Compile the regex pattern
-        let regex = regex::Regex::new(&req.pattern)
-            .map_err(|e| Status::invalid_argument(format!("Invalid regex pattern: {}", e)))?;
+        // Grep via SessionFileService
+        let grep_input = GrepInput {
+            pattern: req.pattern.clone(),
+            path_pattern: req.path_pattern.clone(),
+        };
 
-        // Get all files in the session
-        let files = self
-            .db
-            .list_all_session_files(session_id)
+        let grep_results = self
+            .session_file_service
+            .grep(session_id, grep_input)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list files: {}", e)))?;
-
-        let mut matches = Vec::new();
-
-        for file_info in files {
-            // Skip directories
-            if file_info.is_directory {
-                continue;
-            }
-
-            // If path_pattern is specified, filter by it
-            if let Some(ref path_pattern) = req.path_pattern {
-                if !file_info.path.contains(path_pattern) {
-                    continue;
+            .map_err(|e| {
+                // Check if it's a regex error
+                if e.to_string().contains("regex") {
+                    return Status::invalid_argument(format!("Invalid regex pattern: {}", e));
                 }
-            }
+                tracing::error!("Failed to grep files: {}", e);
+                Status::internal("Failed to grep files")
+            })?;
 
-            // Read the file content
-            let file = match self.db.get_session_file(session_id, &file_info.path).await {
-                Ok(Some(f)) => f,
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::warn!("Failed to read file {}: {}", file_info.path, e);
-                    continue;
-                }
-            };
-
-            // Get content as string
-            let content = match &file.content {
-                Some(bytes) => match std::str::from_utf8(bytes) {
-                    Ok(s) => s,
-                    Err(_) => continue, // Skip binary files
-                },
-                None => continue,
-            };
-
-            // Search line by line
-            for (line_idx, line) in content.lines().enumerate() {
-                if regex.is_match(line) {
-                    matches.push(proto::GrepMatch {
-                        path: file_info.path.clone(),
-                        line_number: (line_idx + 1) as u64,
-                        line: line.to_string(),
-                    });
-                }
-            }
-        }
+        // Convert GrepResult to proto GrepMatch (flatten)
+        let matches: Vec<proto::GrepMatch> = grep_results
+            .into_iter()
+            .flat_map(|result| {
+                result.matches.into_iter().map(|m| proto::GrepMatch {
+                    path: m.path,
+                    line_number: m.line_number as u64,
+                    line: m.line,
+                })
+            })
+            .collect();
 
         Ok(Response::new(SessionGrepFilesResponse { matches }))
     }
@@ -1014,61 +853,40 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<SessionCreateDirectoryRequest>,
     ) -> Result<Response<SessionCreateDirectoryResponse>, Status> {
-        use crate::storage::CreateSessionFileRow;
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Check if directory already exists
-        let existing = self
-            .db
-            .get_session_file(session_id, &req.path)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to check directory: {}", e)))?;
-
-        let file_row = if let Some(existing_file) = existing {
-            // Directory already exists, return it
-            if !existing_file.is_directory {
-                return Err(Status::already_exists(
-                    "A file with this path already exists",
-                ));
-            }
-            existing_file
-        } else {
-            // Create new directory
-            let create = CreateSessionFileRow {
-                session_id,
-                path: req.path.clone(),
-                content: None,
-                is_directory: true,
-                is_readonly: false,
-            };
-            self.db
-                .create_session_file(create)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to create directory: {}", e)))?
+        // Create directory via SessionFileService
+        let create = CreateDirectoryInput {
+            path: req.path.clone(),
         };
 
-        // Derive name from path
-        fn name_from_path(path: &str) -> String {
-            if path == "/" {
-                "/".to_string()
-            } else {
-                path.rsplit('/').next().unwrap_or(path).to_string()
-            }
-        }
+        let file_info = self
+            .session_file_service
+            .create_directory(session_id, create)
+            .await
+            .map_err(|e| {
+                // Check if it's a "file exists" error
+                if e.to_string().contains("file exists") || e.to_string().contains("A file exists")
+                {
+                    return Status::already_exists("A file with this path already exists");
+                }
+                tracing::error!("Failed to create directory: {}", e);
+                Status::internal("Failed to create directory")
+            })?;
 
         let proto_file_info = proto::FileInfo {
-            id: Some(uuid_to_proto_uuid(file_row.id)),
-            session_id: Some(uuid_to_proto_uuid(file_row.session_id)),
-            path: file_row.path.clone(),
-            name: name_from_path(&file_row.path),
-            is_directory: file_row.is_directory,
-            is_readonly: file_row.is_readonly,
-            size_bytes: file_row.size_bytes,
-            created_at: Some(datetime_to_proto_timestamp(file_row.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(file_row.updated_at)),
+            id: Some(uuid_to_proto_uuid(file_info.id)),
+            session_id: Some(uuid_to_proto_uuid(file_info.session_id)),
+            path: file_info.path.clone(),
+            name: file_info.name.clone(),
+            is_directory: file_info.is_directory,
+            is_readonly: file_info.is_readonly,
+            size_bytes: file_info.size_bytes,
+            created_at: Some(datetime_to_proto_timestamp(file_info.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(file_info.updated_at)),
         };
 
         Ok(Response::new(SessionCreateDirectoryResponse {
