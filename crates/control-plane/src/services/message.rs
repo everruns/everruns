@@ -128,58 +128,68 @@ impl MessageService {
 
     /// Convert stored event data to API Message
     ///
-    /// Events are stored as full Event structures with typed EventData.
+    /// Events data column now stores EventData directly (not wrapped in Event).
+    /// We deserialize the EventData and extract the message.
     fn event_to_message(
         session_id: Uuid,
         data: &serde_json::Value,
         sequence: i32,
     ) -> std::result::Result<Message, String> {
-        // Deserialize the full Event structure
+        // Helper to convert EventData to Message
+        let convert = |event_data: everruns_core::EventData| -> std::result::Result<Message, String> {
+            let core_message = match &event_data {
+                everruns_core::EventData::MessageUser(data) => &data.message,
+                everruns_core::EventData::MessageAgent(data) => &data.message,
+                everruns_core::EventData::ToolCallCompleted(data) => {
+                    // Convert tool result to message
+                    let result: Option<serde_json::Value> = data.result.as_ref().map(|parts| {
+                        if parts.len() == 1 {
+                            if let everruns_core::ContentPart::Text(t) = &parts[0] {
+                                return serde_json::Value::String(t.text.clone());
+                            }
+                        }
+                        serde_json::to_value(parts).unwrap_or_default()
+                    });
+                    let msg = everruns_core::Message::tool_result(
+                        &data.tool_call_id,
+                        result,
+                        data.error.clone(),
+                    );
+                    return Ok(Message {
+                        id: msg.id,
+                        session_id,
+                        sequence,
+                        role: MessageRole::from(msg.role.to_string().as_str()),
+                        content: msg.content,
+                        controls: None,
+                        metadata: None,
+                        created_at: msg.created_at,
+                    });
+                }
+                _ => return Err("unexpected event type".to_string()),
+            };
+
+            Ok(Message {
+                id: core_message.id,
+                session_id,
+                sequence,
+                role: MessageRole::from(core_message.role.to_string().as_str()),
+                content: core_message.content.clone(),
+                controls: core_message.controls.clone(),
+                metadata: core_message.metadata.clone(),
+                created_at: core_message.created_at,
+            })
+        };
+
+        // Try to deserialize as EventData directly (new format)
+        if let Ok(event_data) = serde_json::from_value::<everruns_core::EventData>(data.clone()) {
+            return convert(event_data);
+        }
+
+        // Fallback: try to deserialize as full Event (legacy format)
         let event: Event =
             serde_json::from_value(data.clone()).map_err(|e| format!("invalid event: {}", e))?;
 
-        // Extract message from typed EventData
-        let core_message = match &event.data {
-            everruns_core::EventData::MessageUser(data) => &data.message,
-            everruns_core::EventData::MessageAgent(data) => &data.message,
-            everruns_core::EventData::ToolCallCompleted(data) => {
-                // Convert tool result to message
-                let result: Option<serde_json::Value> = data.result.as_ref().map(|parts| {
-                    if parts.len() == 1 {
-                        if let everruns_core::ContentPart::Text(t) = &parts[0] {
-                            return serde_json::Value::String(t.text.clone());
-                        }
-                    }
-                    serde_json::to_value(parts).unwrap_or_default()
-                });
-                let msg = everruns_core::Message::tool_result(
-                    &data.tool_call_id,
-                    result,
-                    data.error.clone(),
-                );
-                return Ok(Message {
-                    id: msg.id,
-                    session_id,
-                    sequence,
-                    role: MessageRole::from(msg.role.to_string().as_str()),
-                    content: msg.content,
-                    controls: None,
-                    metadata: None,
-                    created_at: msg.created_at,
-                });
-            }
-            _ => return Err(format!("unexpected event type: {}", event.event_type)),
-        };
-
-        Ok(Message {
-            id: core_message.id,
-            session_id,
-            sequence,
-            role: MessageRole::from(core_message.role.to_string().as_str()),
-            content: core_message.content.clone(),
-            controls: core_message.controls.clone(),
-            metadata: core_message.metadata.clone(),
-            created_at: core_message.created_at,
-        })
+        convert(event.data)
     }
 }

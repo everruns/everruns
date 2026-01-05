@@ -143,13 +143,23 @@ impl MessageStore for DbMessageStore {
 
 /// Convert stored event data to a Message
 ///
-/// Events are stored as full Event structures. We deserialize the Event
-/// and extract the message from the typed EventData.
+/// Events data column now stores EventData directly (not wrapped in Event).
+/// We deserialize the EventData and extract the message.
 fn event_to_message(
     data: &serde_json::Value,
     event_type: &str,
 ) -> std::result::Result<Message, String> {
-    // Deserialize the full Event structure
+    // Try to deserialize as EventData directly (new format)
+    if let Ok(event_data) = serde_json::from_value::<EventData>(data.clone()) {
+        return match event_data {
+            EventData::MessageUser(data) => Ok(data.message),
+            EventData::MessageAgent(data) => Ok(data.message),
+            EventData::ToolCallCompleted(data) => Ok(tool_call_to_message(data)),
+            _ => Err(format!("unexpected event type for message: {}", event_type)),
+        };
+    }
+
+    // Fallback: try to deserialize as full Event (legacy format)
     let event: Event =
         serde_json::from_value(data.clone()).map_err(|e| format!("invalid event: {}", e))?;
 
