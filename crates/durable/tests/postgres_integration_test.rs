@@ -1,12 +1,10 @@
 //! Integration tests for PostgresWorkflowEventStore
 //!
-//! Run with: cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1 --ignored
+//! Run with: cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
 //!
 //! Requirements:
 //! - PostgreSQL running with DATABASE_URL set or postgres://localhost:5432/everruns_test
-//! - Migrations applied (cargo sqlx migrate run)
-//!
-//! Note: Tests are marked with #[ignore] because they require a real PostgreSQL database.
+//! - Migrations applied (run migrations from crates/control-plane/migrations/)
 
 use std::time::Duration;
 
@@ -72,7 +70,6 @@ async fn cleanup_workflow(store: &PostgresWorkflowEventStore, workflow_id: Uuid)
 // ============================================
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_create_and_get_workflow() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -113,7 +110,6 @@ async fn test_create_and_get_workflow() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_workflow_status_transitions() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -150,7 +146,6 @@ async fn test_workflow_status_transitions() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_workflow_failure() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -180,7 +175,6 @@ async fn test_workflow_failure() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_workflow_not_found() {
     let store = create_test_store().await;
     let fake_id = Uuid::now_v7();
@@ -194,7 +188,6 @@ async fn test_workflow_not_found() {
 // ============================================
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_append_and_load_events() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -249,7 +242,6 @@ async fn test_append_and_load_events() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_optimistic_concurrency_conflict() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -294,7 +286,6 @@ async fn test_optimistic_concurrency_conflict() {
 // ============================================
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_task_enqueue_and_claim() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -335,7 +326,6 @@ async fn test_task_enqueue_and_claim() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_task_claim_by_activity_type() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -388,7 +378,6 @@ async fn test_task_claim_by_activity_type() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_task_complete() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -431,7 +420,6 @@ async fn test_task_complete() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_task_failure_with_retry() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -488,7 +476,6 @@ async fn test_task_failure_with_retry() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_task_exhausts_retries_to_dlq() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -537,7 +524,6 @@ async fn test_task_exhausts_retries_to_dlq() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_heartbeat() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -582,7 +568,6 @@ async fn test_heartbeat() {
 }
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_reclaim_stale_tasks() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -645,7 +630,6 @@ async fn test_reclaim_stale_tasks() {
 // ============================================
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_signals() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -702,7 +686,6 @@ async fn test_signals() {
 // ============================================
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_worker_registration() {
     let store = create_test_store().await;
     let worker_id = format!("test-worker-{}", Uuid::now_v7());
@@ -759,7 +742,6 @@ async fn test_worker_registration() {
 // ============================================
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_dlq_operations() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -839,7 +821,6 @@ async fn test_dlq_operations() {
 // ============================================
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn test_concurrent_task_claiming() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();

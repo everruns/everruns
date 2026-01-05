@@ -147,13 +147,26 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
-        // Check current sequence with lock
+        // Lock the workflow instance row to prevent concurrent modifications
+        sqlx::query(
+            r#"
+            SELECT id FROM durable_workflow_instances
+            WHERE id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| StoreError::Database(e.to_string()))?
+        .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+
+        // Get current sequence (now safe since we hold the lock)
         let row = sqlx::query(
             r#"
             SELECT COALESCE(MAX(sequence_num) + 1, 0) as next_seq
             FROM durable_workflow_events
             WHERE workflow_id = $1
-            FOR UPDATE
             "#,
         )
         .bind(workflow_id)
@@ -161,7 +174,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         .await
         .map_err(|e| StoreError::Database(e.to_string()))?;
 
-        let current_sequence: i32 = row.get::<i64, _>("next_seq") as i32;
+        let current_sequence: i32 = row.get::<i32, _>("next_seq");
 
         if current_sequence != expected_sequence {
             return Err(StoreError::ConcurrencyConflict {
@@ -225,7 +238,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
-            let seq: i32 = row.get::<i64, _>("sequence_num") as i32;
+            let seq: i32 = row.get::<i32, _>("sequence_num");
             let data: serde_json::Value = row.get("event_data");
             let event: WorkflowEvent = serde_json::from_value(data)
                 .map_err(|e| StoreError::Serialization(e.to_string()))?;
@@ -847,6 +860,8 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     #[instrument(skip(self))]
     async fn requeue_from_dlq(&self, dlq_id: Uuid) -> Result<Uuid, StoreError> {
         let task_id = Uuid::now_v7();
+        let default_options = serde_json::to_value(ActivityOptions::default())
+            .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
         // Create new task from DLQ entry
         let result = sqlx::query(
@@ -862,13 +877,14 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 schedule_to_start_timeout_ms, start_to_close_timeout_ms
             )
             SELECT $2, workflow_id, activity_id, activity_type, input,
-                   '{}', 3, 0, 60000, 300000
+                   $3, 3, 0, 60000, 300000
             FROM dlq_entry
             RETURNING id
             "#,
         )
         .bind(dlq_id)
         .bind(task_id)
+        .bind(&default_options)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
