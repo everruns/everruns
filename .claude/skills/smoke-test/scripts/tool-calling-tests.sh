@@ -636,6 +636,87 @@ test_events_sync() {
 }
 
 # ============================================================================
+# Test: CurrentTime Capability Available
+# ============================================================================
+test_current_time_capability() {
+    log_verbose "Checking CurrentTime capability is available..."
+
+    local response=$(curl -s "$API_URL/v1/capabilities")
+    local current_time=$(echo "$response" | jq '.items[] | select(.id == "current_time")')
+
+    if [ -z "$current_time" ] || [ "$current_time" = "null" ]; then
+        log_error "current_time capability not found in capabilities list"
+        return 1
+    fi
+
+    local status=$(echo "$current_time" | jq -r '.status')
+    if [ "$status" != "available" ]; then
+        log_error "current_time capability status is '$status', expected 'available'"
+        return 1
+    fi
+
+    log_verbose "CurrentTime capability is available"
+    return 0
+}
+
+# ============================================================================
+# Test: Dad Joke Agent (CurrentTime Tool)
+# ============================================================================
+test_dad_joke_agent() {
+    log_verbose "Creating Dad Joke Agent with current_time capability..."
+    local agent_id=$(create_agent "Dad Joke Agent" "You are a master of dad jokes. When asked about time, you MUST first use the get_current_time tool to get the actual current time, then craft a hilarious dad joke that incorporates the real time." "Dad joke time test" "current_time")
+
+    if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
+        log_error "Failed to create agent"
+        return 1
+    fi
+
+    log_verbose "Agent ID: $agent_id"
+
+    log_verbose "Creating session..."
+    local session_id=$(create_session "$agent_id" "Dad Joke Time Test")
+
+    if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
+        log_error "Failed to create session"
+        return 1
+    fi
+
+    log_verbose "Sending message: Tell me a joke about the current time!"
+    send_message "$agent_id" "$session_id" "Tell me a joke about the current time!"
+
+    log_verbose "Checking messages..."
+    local messages=$(get_messages "$agent_id" "$session_id")
+
+    # Check for tool calls
+    local tool_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[]] | length')
+    log_verbose "Tool calls found: $tool_calls"
+
+    if [ "$tool_calls" -ge 1 ]; then
+        # Check for get_current_time tool
+        local time_called=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "get_current_time")] | length')
+        if [ "$time_called" -ge 1 ]; then
+            log_verbose "get_current_time tool was called"
+
+            # Check for assistant response
+            local assistant_msgs=$(echo "$messages" | jq '[.data[] | select(.role == "assistant") | select(.content != null)] | length')
+            if [ "$assistant_msgs" -ge 1 ]; then
+                log_verbose "Assistant responded with message"
+                return 0
+            else
+                log_error "Expected assistant response after tool call"
+                return 1
+            fi
+        else
+            log_error "Expected 'get_current_time' tool to be called"
+            return 1
+        fi
+    else
+        log_error "Expected at least 1 tool call, got $tool_calls"
+        return 1
+    fi
+}
+
+# ============================================================================
 # Main Test Runner
 # ============================================================================
 main() {
@@ -689,6 +770,12 @@ main() {
     echo ""
 
     run_test "Events and Messages Sync" test_events_sync || true
+    echo ""
+
+    run_test "CurrentTime Capability Available" test_current_time_capability || true
+    echo ""
+
+    run_test "Dad Joke Agent (CurrentTime Tool)" test_dad_joke_agent || true
     echo ""
 
     # Summary
