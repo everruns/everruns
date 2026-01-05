@@ -101,3 +101,18 @@ export function getBackendUrl(): string {
   return API_BASE;
 }
 
+/**
+ * Get the direct backend URL for SSE connections.
+ * SSE must bypass the Next.js proxy because proxies can buffer responses,
+ * breaking the real-time streaming behavior.
+ */
+export function getDirectBackendUrl(): string {
+  // Use NEXT_PUBLIC_API_URL if set (direct backend URL)
+  // Falls back to localhost:9000 for local development
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  // Default to localhost:9000 for local development
+  return 'http://localhost:9000';
+}
+

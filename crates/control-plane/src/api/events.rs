@@ -133,6 +133,7 @@ pub async fn stream_sse(
         async move {
             // Send initial "connected" event on first iteration
             if !state.sent_connected {
+                tracing::debug!(session_id = %session_id, "SSE: sending connected event");
                 let connected_event = Ok(SseEvent::default()
                     .event("connected")
                     .data(r#"{"status":"connected"}"#));
@@ -144,6 +145,7 @@ pub async fn stream_sse(
             }
 
             // Fetch events since last ID
+            tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
             match event_service.list(session_id, None, state.last_id).await {
                 Ok(events) if !events.is_empty() => {
                     // Get the last event ID for next iteration
