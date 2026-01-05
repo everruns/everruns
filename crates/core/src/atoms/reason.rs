@@ -27,6 +27,7 @@ use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
     EventContext, EventRequest, LlmGenerationData, ReasonCompletedData, ReasonStartedData,
+    ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
@@ -437,6 +438,8 @@ where
                     // Emit llm.generation failure event
                     let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
                     let event_context = EventContext::from_atom_context(context);
+                    let tools_summary: Vec<ToolDefinitionSummary> =
+                        runtime_agent.tools.iter().map(|t| t.into()).collect();
                     let _ = self
                         .event_emitter
                         .emit(EventRequest::new(
@@ -444,6 +447,7 @@ where
                             event_context,
                             LlmGenerationData::failure(
                                 patched_messages.clone(),
+                                tools_summary,
                                 runtime_agent.model.clone(),
                                 Some(model_with_provider.provider_type.to_string()),
                                 err.clone(),
@@ -460,6 +464,8 @@ where
 
         // 13. Emit llm.generation event
         let event_context = EventContext::from_atom_context(context);
+        let tools_summary: Vec<ToolDefinitionSummary> =
+            runtime_agent.tools.iter().map(|t| t.into()).collect();
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
@@ -467,6 +473,7 @@ where
                 event_context,
                 LlmGenerationData::success(
                     patched_messages.clone(),
+                    tools_summary,
                     Some(text.clone()).filter(|s| !s.is_empty()),
                     tool_calls.clone(),
                     runtime_agent.model.clone(),
