@@ -52,6 +52,8 @@ TESTS_FAILED=0
 
 # Cleanup tracking
 AGENTS_TO_CLEANUP=()
+LLM_PROVIDER_ID=""
+LLM_MODEL_CREATED=false
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -92,6 +94,89 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+# Setup LLM provider if not already configured
+setup_llm_provider() {
+    log_info "Checking LLM provider configuration..."
+
+    # Check if there's already a default model
+    local providers=$(curl -s "$API_URL/v1/llm-providers" | jq '.data // []')
+    local provider_count=$(echo "$providers" | jq 'length')
+
+    if [ "$provider_count" -gt 0 ]; then
+        # Check if any provider has a default model
+        for provider_id in $(echo "$providers" | jq -r '.[].id'); do
+            local models=$(curl -s "$API_URL/v1/llm-providers/$provider_id/models" | jq '.data // []')
+            local has_default=$(echo "$models" | jq '[.[] | select(.is_default == true)] | length')
+            if [ "$has_default" -gt 0 ]; then
+                log_info "Found existing default model, skipping LLM setup"
+                return 0
+            fi
+        done
+    fi
+
+    # Need to create provider and model
+    log_info "Setting up LLM provider for tests..."
+
+    # Determine which API key to use
+    local api_key=""
+    local provider_type=""
+    local model_id=""
+
+    if [ -n "$OPENAI_API_KEY" ]; then
+        api_key="$OPENAI_API_KEY"
+        provider_type="openai"
+        model_id="gpt-4o-mini"
+        log_verbose "Using OpenAI provider with gpt-4o-mini"
+    elif [ -n "$ANTHROPIC_API_KEY" ]; then
+        api_key="$ANTHROPIC_API_KEY"
+        provider_type="anthropic"
+        model_id="claude-3-5-haiku-latest"
+        log_verbose "Using Anthropic provider with claude-3-5-haiku-latest"
+    else
+        log_error "No OPENAI_API_KEY or ANTHROPIC_API_KEY found"
+        log_error "Set one of these environment variables to run tool calling tests"
+        return 1
+    fi
+
+    # Create provider
+    local provider_response=$(curl -s -X POST "$API_URL/v1/llm-providers" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"name\": \"Smoke Test Provider\",
+            \"provider_type\": \"$provider_type\",
+            \"api_key\": \"$api_key\"
+        }")
+
+    LLM_PROVIDER_ID=$(echo "$provider_response" | jq -r '.id')
+
+    if [ "$LLM_PROVIDER_ID" = "null" ] || [ -z "$LLM_PROVIDER_ID" ]; then
+        log_error "Failed to create LLM provider: $provider_response"
+        return 1
+    fi
+
+    log_verbose "Created LLM provider: $LLM_PROVIDER_ID"
+
+    # Create default model
+    local model_response=$(curl -s -X POST "$API_URL/v1/llm-providers/$LLM_PROVIDER_ID/models" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"model_id\": \"$model_id\",
+            \"display_name\": \"Test Model\",
+            \"is_default\": true
+        }")
+
+    local model_created_id=$(echo "$model_response" | jq -r '.id')
+
+    if [ "$model_created_id" = "null" ] || [ -z "$model_created_id" ]; then
+        log_error "Failed to create LLM model: $model_response"
+        return 1
+    fi
+
+    LLM_MODEL_CREATED=true
+    log_info "LLM provider and default model configured successfully"
+    return 0
+}
 
 # Helper to run a test
 run_test() {
@@ -734,6 +819,14 @@ main() {
     if ! run_test "API Health Check" test_api_health; then
         log_error "API is not available at $API_URL"
         log_error "Please ensure the API and worker are running"
+        exit 1
+    fi
+    echo ""
+
+    # Setup LLM provider
+    if ! setup_llm_provider; then
+        log_error "Failed to setup LLM provider"
+        log_error "Tool calling tests require an LLM API key"
         exit 1
     fi
     echo ""
