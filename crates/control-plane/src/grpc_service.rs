@@ -148,6 +148,73 @@ fn parse_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<uuid::Uuid, Status> {
         .map_err(|e| Status::invalid_argument(format!("Invalid UUID: {}", e)))
 }
 
+/// Helper to parse event data and extract a Message
+///
+/// Handles two formats:
+/// - Legacy format: full Event struct with id, type, data, etc.
+/// - New format: EventData directly (MessageUserData, MessageAgentData, etc.)
+fn event_row_to_message(
+    data: &serde_json::Value,
+    event_type: &str,
+) -> Option<everruns_core::Message> {
+    use everruns_core::events::{MessageAgentData, MessageUserData, ToolCallCompletedData};
+    use everruns_core::{ContentPart, Event, EventData, Message};
+
+    // Helper to extract message from EventData
+    let extract_message = |event_data: EventData| -> Option<Message> {
+        match event_data {
+            EventData::MessageUser(d) => Some(d.message),
+            EventData::MessageAgent(d) => Some(d.message),
+            EventData::ToolCallCompleted(d) => {
+                let result: Option<serde_json::Value> = d.result.map(|parts| {
+                    if parts.len() == 1 {
+                        if let ContentPart::Text(t) = &parts[0] {
+                            return serde_json::Value::String(t.text.clone());
+                        }
+                    }
+                    serde_json::to_value(&parts).unwrap_or_default()
+                });
+                Some(Message::tool_result(&d.tool_call_id, result, d.error))
+            }
+            _ => None,
+        }
+    };
+
+    // First try to parse as full Event (legacy format)
+    if let Ok(event) = serde_json::from_value::<Event>(data.clone()) {
+        return extract_message(event.data);
+    }
+
+    // Fallback: try to parse as specific EventData type directly (new format)
+    match event_type {
+        "message.user" => {
+            let d: MessageUserData = serde_json::from_value(data.clone()).ok()?;
+            Some(d.message)
+        }
+        "message.agent" => {
+            let d: MessageAgentData = serde_json::from_value(data.clone()).ok()?;
+            Some(d.message)
+        }
+        "tool.call_completed" => {
+            let d: ToolCallCompletedData = serde_json::from_value(data.clone()).ok()?;
+            let result: Option<serde_json::Value> = d.result.map(|parts| {
+                if parts.len() == 1 {
+                    if let everruns_core::ContentPart::Text(t) = &parts[0] {
+                        return serde_json::Value::String(t.text.clone());
+                    }
+                }
+                serde_json::to_value(&parts).unwrap_or_default()
+            });
+            Some(everruns_core::Message::tool_result(
+                &d.tool_call_id,
+                result,
+                d.error,
+            ))
+        }
+        _ => None,
+    }
+}
+
 #[tonic::async_trait]
 impl WorkerService for WorkerServiceImpl {
     // ========================================================================
@@ -200,37 +267,20 @@ impl WorkerService for WorkerServiceImpl {
             .await
             .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
 
-        use everruns_core::{ContentPart, Event, EventData, Message};
-
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
         for event_row in events {
-            // Parse the event data to get the message
-            let event: Event = match serde_json::from_value(event_row.data.clone()) {
-                Ok(e) => e,
-                Err(e) => {
-                    tracing::warn!("Failed to parse event {}: {}", event_row.id, e);
+            // Parse the event data to get the message using helper
+            let message = match event_row_to_message(&event_row.data, &event_row.event_type) {
+                Some(m) => m,
+                None => {
+                    tracing::warn!(
+                        "Failed to parse message from event {}: type={}",
+                        event_row.id,
+                        event_row.event_type
+                    );
                     continue;
                 }
-            };
-
-            // Extract message from typed event data
-            let message = match event.data {
-                EventData::MessageUser(data) => data.message,
-                EventData::MessageAgent(data) => data.message,
-                EventData::ToolCallCompleted(data) => {
-                    // Convert tool call completion to tool result message
-                    let result: Option<serde_json::Value> = data.result.map(|parts| {
-                        if parts.len() == 1 {
-                            if let ContentPart::Text(t) = &parts[0] {
-                                return serde_json::Value::String(t.text.clone());
-                            }
-                        }
-                        serde_json::to_value(&parts).unwrap_or_default()
-                    });
-                    Message::tool_result(&data.tool_call_id, result, data.error)
-                }
-                _ => continue,
             };
 
             // Convert to proto Message using prost types
@@ -388,39 +438,20 @@ impl WorkerService for WorkerServiceImpl {
             .await
             .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
 
-        use everruns_core::{ContentPart, Event, EventData, Message};
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
         for event_row in events {
-            // Parse the event data to get the message
-            let event: Event = match serde_json::from_value(event_row.data.clone()) {
-                Ok(e) => e,
-                Err(e) => {
-                    tracing::warn!("Failed to parse event {}: {}", event_row.id, e);
-                    continue;
-                }
-            };
-
-            // Extract message from typed event data
-            let message = match event.data {
-                EventData::MessageUser(data) => data.message,
-                EventData::MessageAgent(data) => data.message,
-                EventData::ToolCallCompleted(data) => {
-                    // Convert tool call completion to tool result message
-                    let result: Option<serde_json::Value> = data.result.map(|parts| {
-                        if parts.len() == 1 {
-                            if let ContentPart::Text(t) = &parts[0] {
-                                return serde_json::Value::String(t.text.clone());
-                            }
-                        }
-                        serde_json::to_value(&parts).unwrap_or_default()
-                    });
-                    Message::tool_result(&data.tool_call_id, result, data.error)
-                }
-                _ => {
-                    // Not a message event type we care about
+            // Parse the event data to get the message using helper
+            let message = match event_row_to_message(&event_row.data, &event_row.event_type) {
+                Some(m) => m,
+                None => {
+                    tracing::warn!(
+                        "Failed to parse message from event {}: type={}",
+                        event_row.id,
+                        event_row.event_type
+                    );
                     continue;
                 }
             };
