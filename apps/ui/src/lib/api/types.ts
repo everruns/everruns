@@ -46,9 +46,11 @@ export interface UpdateAgentRequest {
 // Session types (M2)
 // ============================================
 
-// Session status values match API spec: pending → running → pending (cycles) | failed
-// Note: There is NO "completed" status - sessions return to "pending" after processing
-export type SessionStatus = "pending" | "running" | "failed";
+// Session status values:
+// - "started": Session just created, no turn executed yet
+// - "active": A turn is currently running
+// - "idle": Turn completed, session waiting for next input
+export type SessionStatus = "started" | "active" | "idle";
 
 export interface Session {
   id: string;
@@ -354,6 +356,18 @@ export interface SessionStartedData {
   model_id?: string;
 }
 
+/** Data for session.activated event (turn started, session now active) */
+export interface SessionActivatedData {
+  turn_id: string;
+  input_message_id: string;
+}
+
+/** Data for session.idled event (turn completed, session now idle) */
+export interface SessionIdledData {
+  turn_id: string;
+  iterations?: number;
+}
+
 /** Union type for all event data types */
 export type EventData =
   | MessageUserData
@@ -370,6 +384,8 @@ export type EventData =
   | ToolCallCompletedData
   | LlmGenerationData
   | SessionStartedData
+  | SessionActivatedData
+  | SessionIdledData
   | Record<string, unknown>; // Raw/unknown event data
 
 export interface CreateEventRequest {

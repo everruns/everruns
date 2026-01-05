@@ -51,8 +51,10 @@ const mockAgent: Agent = {
   updated_at: "2025-01-01T00:00:00Z",
 };
 
-// Session status: pending → running → pending (cycles) | failed
-// Sessions return to "pending" after processing - there is no "completed" state
+// Session status: started → active → idle (cycles)
+// - started: Session just created, no turn executed yet
+// - active: A turn is currently running
+// - idle: Turn completed, session waiting for next input
 const mockSessions: Session[] = [
   {
     id: "session-1",
@@ -60,7 +62,7 @@ const mockSessions: Session[] = [
     title: "Session with GPT-4o",
     tags: [],
     model_id: "model-1",
-    status: "pending",
+    status: "idle",
     created_at: "2025-01-01T00:00:00Z",
     started_at: "2025-01-01T00:00:01Z",
     finished_at: null,
@@ -71,7 +73,7 @@ const mockSessions: Session[] = [
     title: "Session with Claude",
     tags: [],
     model_id: "model-2",
-    status: "pending",
+    status: "idle",
     created_at: "2025-01-01T01:00:00Z",
     started_at: null,
     finished_at: null,
@@ -82,7 +84,7 @@ const mockSessions: Session[] = [
     title: "Session without model",
     tags: [],
     model_id: null,
-    status: "pending",
+    status: "started",
     created_at: "2025-01-01T02:00:00Z",
     started_at: null,
     finished_at: null,

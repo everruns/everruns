@@ -201,6 +201,8 @@ export function useEvents(
         "tool.call_completed",
         "llm.generation",
         "session.started",
+        "session.activated",
+        "session.idled",
       ];
 
       for (const eventType of eventTypes) {

@@ -96,9 +96,9 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
                 {llmModel.display_name}
               </Badge>
             )}
-            {session.status === "running" && <Badge variant="default">Processing...</Badge>}
-            {session.status === "pending" && <Badge variant="secondary">Ready</Badge>}
-            {session.status === "failed" && <Badge variant="destructive">Failed</Badge>}
+            {session.status === "active" && <Badge variant="default">Processing...</Badge>}
+            {session.status === "idle" && <Badge variant="secondary">Ready</Badge>}
+            {session.status === "started" && <Badge variant="outline">New</Badge>}
           </div>
         </div>
 

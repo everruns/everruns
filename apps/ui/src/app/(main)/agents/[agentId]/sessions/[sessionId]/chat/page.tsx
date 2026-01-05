@@ -154,15 +154,13 @@ export default function ChatPage() {
             onKeyDown={handleKeyDown}
             placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
             className="flex-1 min-h-[60px] max-h-[200px] resize-none"
-            disabled={sendMessage.isPending || session?.status === "failed"}
+            disabled={sendMessage.isPending}
           />
           <Button
             type="submit"
             size="icon"
             className="h-[60px] w-[60px]"
-            disabled={
-              !inputValue.trim() || sendMessage.isPending || session?.status === "failed"
-            }
+            disabled={!inputValue.trim() || sendMessage.isPending}
           >
             {sendMessage.isPending ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -197,11 +195,6 @@ export default function ChatPage() {
               </SelectContent>
             </Select>
           </div>
-        )}
-        {session?.status === "failed" && (
-          <p className="text-xs text-muted-foreground text-center mt-2">
-            This session has failed. Start a new session to continue chatting.
-          </p>
         )}
       </div>
     </>

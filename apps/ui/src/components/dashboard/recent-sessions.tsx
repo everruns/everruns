@@ -38,17 +38,19 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
     return `${Math.round(seconds / 60)}m ${seconds % 60}s`;
   };
 
-  // Session status: pending → running → pending (cycles) | failed
-  // Sessions return to "pending" after processing - there is no "completed" state
+  // Session status: started → active → idle (cycles)
+  // - started: Session just created, no turn executed yet
+  // - active: A turn is currently running
+  // - idle: Turn completed, session waiting for next input
   const getStatusBadge = (session: Session) => {
     switch (session.status) {
-      case "running":
-        return <Badge variant="default">Running</Badge>;
-      case "failed":
-        return <Badge variant="destructive">Failed</Badge>;
-      case "pending":
+      case "active":
+        return <Badge variant="default">Active</Badge>;
+      case "idle":
+        return <Badge variant="secondary">Idle</Badge>;
+      case "started":
       default:
-        return <Badge variant="secondary">Pending</Badge>;
+        return <Badge variant="outline">New</Badge>;
     }
   };
 

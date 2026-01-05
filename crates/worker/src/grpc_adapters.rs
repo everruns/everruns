@@ -54,6 +54,27 @@ impl GrpcClient {
             inner: Arc::new(Mutex::new(WorkerServiceClient::new(channel))),
         }
     }
+
+    /// Set session status (started, active, idle)
+    pub async fn set_session_status(&self, session_id: Uuid, status: &str) -> Result<Session> {
+        let request = proto::SetSessionStatusRequest {
+            session_id: Some(uuid_to_proto(session_id)),
+            status: status.to_string(),
+        };
+
+        let mut client = self.inner.lock().await;
+        let response = client
+            .set_session_status(request)
+            .await
+            .map_err(|e| grpc_error(format!("Failed to set session status: {}", e)))?;
+
+        let proto_session = response
+            .into_inner()
+            .session
+            .ok_or_else(|| grpc_error("No session in response"))?;
+
+        proto_session_to_session(proto_session)
+    }
 }
 
 // ============================================================================
@@ -362,11 +383,13 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .unwrap_or_else(chrono::Utc::now);
 
     let status = match proto_session.status.to_lowercase().as_str() {
-        "pending" => everruns_core::SessionStatus::Pending,
-        "running" => everruns_core::SessionStatus::Running,
-        "completed" => everruns_core::SessionStatus::Completed,
-        "failed" => everruns_core::SessionStatus::Failed,
-        _ => everruns_core::SessionStatus::Pending,
+        "started" => everruns_core::SessionStatus::Started,
+        "active" => everruns_core::SessionStatus::Active,
+        "idle" => everruns_core::SessionStatus::Idle,
+        // Handle legacy values during migration
+        "running" => everruns_core::SessionStatus::Active,
+        "pending" | "completed" | "failed" => everruns_core::SessionStatus::Idle,
+        _ => everruns_core::SessionStatus::Started,
     };
 
     Ok(Session {
