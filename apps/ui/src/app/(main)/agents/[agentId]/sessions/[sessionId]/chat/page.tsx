@@ -20,7 +20,6 @@ export default function ChatPage() {
   const {
     agentId,
     sessionId,
-    session,
     llmModel,
     chatEvents,
     toolResultsMap,
