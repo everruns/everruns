@@ -429,10 +429,12 @@ async fn test_task_failure_with_retry() {
         .await
         .unwrap();
 
-    let mut options = ActivityOptions::default();
-    options.retry_policy = RetryPolicy::exponential()
-        .with_max_attempts(3)
-        .with_initial_interval(Duration::from_millis(10));
+    let options = ActivityOptions {
+        retry_policy: RetryPolicy::exponential()
+            .with_max_attempts(3)
+            .with_initial_interval(Duration::from_millis(10)),
+        ..Default::default()
+    };
 
     let task_id = store
         .enqueue_task(TaskDefinition {
@@ -485,10 +487,12 @@ async fn test_task_exhausts_retries_to_dlq() {
         .await
         .unwrap();
 
-    let mut options = ActivityOptions::default();
-    options.retry_policy = RetryPolicy::exponential()
-        .with_max_attempts(2)
-        .with_initial_interval(Duration::from_millis(1));
+    let options = ActivityOptions {
+        retry_policy: RetryPolicy::exponential()
+            .with_max_attempts(2)
+            .with_initial_interval(Duration::from_millis(1)),
+        ..Default::default()
+    };
 
     let task_id = store
         .enqueue_task(TaskDefinition {
@@ -752,8 +756,10 @@ async fn test_dlq_operations() {
         .unwrap();
 
     // Create a task and move it to DLQ
-    let mut options = ActivityOptions::default();
-    options.retry_policy = RetryPolicy::exponential().with_max_attempts(1);
+    let options = ActivityOptions {
+        retry_policy: RetryPolicy::exponential().with_max_attempts(1),
+        ..Default::default()
+    };
 
     let task_id = store
         .enqueue_task(TaskDefinition {

@@ -784,9 +784,7 @@ mod tests {
         }
 
         fn error(&self) -> Option<crate::WorkflowError> {
-            self.error_message
-                .as_ref()
-                .map(|msg| crate::WorkflowError::new(msg))
+            self.error_message.as_ref().map(crate::WorkflowError::new)
         }
     }
 
