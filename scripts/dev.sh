@@ -530,6 +530,106 @@ PY
     echo "✅ All development dependencies ready!"
     ;;
 
+  pre-pr)
+    echo "🔍 Running pre-PR checks..."
+    echo ""
+    FAILED=0
+
+    # 1. Rust formatting
+    echo "1️⃣  Checking Rust formatting..."
+    if cargo fmt --check; then
+      echo "   ✅ Rust formatting OK"
+    else
+      echo "   ❌ Rust formatting failed. Run: cargo fmt"
+      FAILED=1
+    fi
+    echo ""
+
+    # 2. Rust linting
+    echo "2️⃣  Running Clippy..."
+    if cargo clippy --all-targets --all-features -- -D warnings; then
+      echo "   ✅ Clippy passed"
+    else
+      echo "   ❌ Clippy failed"
+      FAILED=1
+    fi
+    echo ""
+
+    # 3. Rust tests
+    echo "3️⃣  Running Rust tests..."
+    if cargo test --all-features; then
+      echo "   ✅ Rust tests passed"
+    else
+      echo "   ❌ Rust tests failed"
+      FAILED=1
+    fi
+    echo ""
+
+    # 4. UI lint
+    echo "4️⃣  Running UI lint..."
+    cd apps/ui
+    if npm run lint; then
+      echo "   ✅ UI lint passed"
+    else
+      echo "   ❌ UI lint failed"
+      FAILED=1
+    fi
+    cd "$PROJECT_ROOT"
+    echo ""
+
+    # 5. UI build
+    echo "5️⃣  Building UI..."
+    cd apps/ui
+    if npm run build; then
+      echo "   ✅ UI build passed"
+    else
+      echo "   ❌ UI build failed"
+      FAILED=1
+    fi
+    cd "$PROJECT_ROOT"
+    echo ""
+
+    # 6. OpenAPI spec freshness
+    echo "6️⃣  Checking OpenAPI spec freshness..."
+    TEMP_SPEC=$(mktemp)
+    if cargo run --bin export-openapi --release 2>/dev/null > "$TEMP_SPEC"; then
+      if diff -q docs/api/openapi.json "$TEMP_SPEC" > /dev/null 2>&1; then
+        echo "   ✅ OpenAPI spec is up to date"
+      else
+        echo "   ❌ OpenAPI spec is out of date!"
+        echo "      Run: ./scripts/export-openapi.sh"
+        FAILED=1
+      fi
+    else
+      echo "   ❌ Failed to generate OpenAPI spec"
+      FAILED=1
+    fi
+    rm -f "$TEMP_SPEC"
+    echo ""
+
+    # 7. Docs build
+    echo "7️⃣  Building docs..."
+    cd apps/docs
+    if npm run check && npm run build; then
+      echo "   ✅ Docs build passed"
+    else
+      echo "   ❌ Docs build failed"
+      FAILED=1
+    fi
+    cd "$PROJECT_ROOT"
+    echo ""
+
+    # Summary
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if [ $FAILED -eq 0 ]; then
+      echo "✅ All pre-PR checks passed!"
+      echo "   Ready to create a pull request."
+    else
+      echo "❌ Some checks failed. Please fix the issues above."
+      exit 1
+    fi
+    ;;
+
   clean)
     echo "🧹 Cleaning build artifacts and Docker volumes..."
     if ! resolve_docker_compose; then
@@ -560,6 +660,7 @@ Commands:
   build       Build all crates
   test        Run tests
   check       Run format, lint, and test checks
+  pre-pr      Run all pre-PR checks (fmt, clippy, tests, UI, OpenAPI, docs)
   api         Start the API server
   worker      Start the worker
   watch-api   Start API with auto-reload on code changes
@@ -577,6 +678,7 @@ Commands:
 Examples:
   $0 init            # First-time setup (install all dependencies)
   $0 start-all       # Start everything with auto-reload
+  $0 pre-pr          # Run all checks before creating a PR
   $0 watch-api       # Just run API with auto-reload
   $0 docs            # Start docs dev server
   $0 stop-all        # Stop everything

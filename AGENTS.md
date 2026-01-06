@@ -229,31 +229,30 @@ Message content uses unified `Vec<ContentPart>` across all layers:
 
 ### Pre-PR checklist
 
-Before creating a pull request, ensure:
-
-1. **Formatting**: Run `cargo fmt` to format all code
-2. **Linting**: Run `cargo clippy -- -D warnings` and fix all warnings
-3. **Tests**: Run `cargo test` to ensure all tests pass
-4. **UI Linting**: Run `npm run lint` in `apps/ui/` to check for oxlint issues
-5. **UI Build**: Run `npm run build` in `apps/ui/` to verify TypeScript and build
-6. **Docs Build**: Run `npm run check && npm run build` in `apps/docs/` to verify docs build
-7. **Smoke tests**: Run smoke tests to verify the system works end-to-end
-8. **Examples**: If adding or modifying examples, validate they run successfully against a running API
-9. **Update specs**: If your changes affect system behavior, update the relevant specs in `specs/`
-10. **Update docs**: If your changes affect usage or configuration, update public docs in `docs/`
+Before creating a pull request, run the pre-PR check script:
 
 ```bash
-# Quick pre-PR check (Rust)
-cargo fmt && cargo clippy -- -D warnings && cargo test
-
-# Quick pre-PR check (UI)
-cd apps/ui && npm run lint && npm run build
-
-# Quick pre-PR check (Docs)
-cd apps/docs && npm run check && npm run build
+./scripts/dev.sh pre-pr
 ```
 
-CI will fail if formatting, linting, tests, UI build, or docs build fail. Always run these locally before pushing.
+This runs all required checks:
+
+1. **Rust formatting**: `cargo fmt --check`
+2. **Rust linting**: `cargo clippy --all-targets --all-features -- -D warnings`
+3. **Rust tests**: `cargo test --all-features`
+4. **UI lint**: `npm run lint` in `apps/ui/`
+5. **UI build**: `npm run build` in `apps/ui/`
+6. **OpenAPI spec freshness**: Verifies `docs/api/openapi.json` matches current code
+7. **Docs build**: `npm run check && npm run build` in `apps/docs/`
+
+Additional manual checks:
+
+- **Smoke tests**: Run smoke tests for end-to-end verification
+- **Examples**: If modifying examples, validate they run against a running API
+- **Update specs**: If changes affect system behavior, update specs in `specs/`
+- **Update docs**: If changes affect usage, update docs in `docs/`
+
+CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` before pushing.
 
 ### UI conventions
 
