@@ -13,6 +13,10 @@ path = "src/main.rs"
 name = "reencrypt-secrets"
 path = "src/bin/reencrypt_secrets.rs"
 
+[[bin]]
+name = "export-openapi"
+path = "src/bin/export_openapi.rs"
+
 [dependencies]
 axum.workspace = true
 axum-extra.workspace = true

@@ -78,10 +78,7 @@ Documentation is published at https://docs.everruns.com/ via Cloudflare Pages.
 The API reference is auto-generated from `docs/api/openapi.json` using `starlight-openapi`. To update the spec:
 
 ```bash
-# Start the API server (requires Docker services running)
-./scripts/dev.sh start-all
-
-# Export the OpenAPI spec from the running API
+# Export the OpenAPI spec (no running server required)
 ./scripts/export-openapi.sh
 
 # Verify the docs build
