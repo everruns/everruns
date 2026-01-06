@@ -17,7 +17,7 @@ pub enum AuthMode {
 }
 
 impl AuthMode {
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "admin" => AuthMode::Admin,
             "full" => AuthMode::Full,
@@ -120,7 +120,7 @@ impl AuthConfig {
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
         let mode = std::env::var("AUTH_MODE")
-            .map(|s| AuthMode::from_str(&s))
+            .map(|s| AuthMode::parse(&s))
             .unwrap_or_default();
 
         let base_url = std::env::var("AUTH_BASE_URL")
@@ -278,13 +278,13 @@ mod tests {
 
     #[test]
     fn test_auth_mode_parsing() {
-        assert_eq!(AuthMode::from_str("none"), AuthMode::None);
-        assert_eq!(AuthMode::from_str("NONE"), AuthMode::None);
-        assert_eq!(AuthMode::from_str("admin"), AuthMode::Admin);
-        assert_eq!(AuthMode::from_str("ADMIN"), AuthMode::Admin);
-        assert_eq!(AuthMode::from_str("full"), AuthMode::Full);
-        assert_eq!(AuthMode::from_str("FULL"), AuthMode::Full);
-        assert_eq!(AuthMode::from_str("invalid"), AuthMode::None);
+        assert_eq!(AuthMode::parse("none"), AuthMode::None);
+        assert_eq!(AuthMode::parse("NONE"), AuthMode::None);
+        assert_eq!(AuthMode::parse("admin"), AuthMode::Admin);
+        assert_eq!(AuthMode::parse("ADMIN"), AuthMode::Admin);
+        assert_eq!(AuthMode::parse("full"), AuthMode::Full);
+        assert_eq!(AuthMode::parse("FULL"), AuthMode::Full);
+        assert_eq!(AuthMode::parse("invalid"), AuthMode::None);
     }
 
     #[test]

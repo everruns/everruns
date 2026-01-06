@@ -33,7 +33,7 @@ docs/
 │       ├── encryption-key-rotation.md
 │       └── production-migrations.md
 └── api/
-    └── overview.md
+    └── openapi.json      # Auto-generated OpenAPI spec
 ```
 
 ### Content Requirements
@@ -102,9 +102,79 @@ npm run check
 npm run build
 ```
 
+### API Reference Generation
+
+API reference documentation is auto-generated from the OpenAPI specification using `starlight-openapi`.
+
+#### Architecture
+
+1. **Source of Truth**: OpenAPI spec generated from Rust code via `utoipa` derive macros
+2. **Export Binary**: `export-openapi` binary generates spec without running full server
+3. **Build-time Generation**: `starlight-openapi` plugin generates static HTML at build time
+4. **Static Output**: No runtime dependencies - works on any static hosting (Cloudflare Pages)
+
+#### Workflow
+
+```bash
+# 1. Generate OpenAPI spec (run when API changes)
+./scripts/export-openapi.sh
+
+# 2. Build docs (spec is read at build time)
+cd apps/docs && npm run build
+```
+
+#### Files
+
+| File | Purpose |
+|------|---------|
+| `docs/api/openapi.json` | Generated OpenAPI spec (committed to repo) |
+| `scripts/export-openapi.sh` | Script to regenerate spec |
+| `crates/control-plane/src/bin/export_openapi.rs` | Binary for spec generation |
+| `crates/control-plane/src/openapi.rs` | Shared OpenAPI definition |
+
+#### Starlight Integration
+
+In `apps/docs/astro.config.mjs`:
+```javascript
+import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
+
+export default defineConfig({
+  integrations: [
+    starlight({
+      plugins: [
+        starlightOpenAPI([{
+          base: "api",
+          label: "API Reference",
+          schema: "../../docs/api/openapi.json",
+        }]),
+      ],
+      sidebar: [
+        // ... other items
+        ...openAPISidebarGroups,  // Auto-generated from spec
+      ],
+    }),
+  ],
+});
+```
+
+#### CI/CD Integration
+
+The OpenAPI spec should be regenerated and committed when API endpoints change:
+
+1. Developer modifies API endpoints or schemas
+2. Run `./scripts/export-openapi.sh` to update spec
+3. Commit `docs/api/openapi.json` with API changes
+4. Docs build in CI reads spec and generates API reference pages
+
+**Freshness Check**: CI includes an `openapi-check` job that:
+- Generates a fresh spec from current code
+- Compares with committed `docs/api/openapi.json`
+- Fails the build if they differ
+
+This ensures developers cannot forget to regenerate the spec after API changes.
+
 ### Future Enhancements
 
-1. **API Reference Generation**: Generate API documentation from OpenAPI spec
-2. **Versioned Documentation**: Support for multiple documentation versions
-3. **Search Analytics**: Track popular search queries to improve docs
-4. **Changelog**: Auto-generate from GitHub releases
+1. **Versioned Documentation**: Support for multiple documentation versions
+2. **Search Analytics**: Track popular search queries to improve docs
+3. **Changelog**: Auto-generate from GitHub releases

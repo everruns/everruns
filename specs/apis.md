@@ -183,6 +183,59 @@ GET /v1/agents/{agent_id}
 | GET | `/swagger-ui/` | Swagger UI for OpenAPI docs |
 | GET | `/api-doc/openapi.json` | OpenAPI specification |
 
+### OpenAPI Spec Generation
+
+The OpenAPI spec is generated from Rust code using `utoipa` derive macros.
+
+#### Export Binary
+
+A standalone binary generates the spec without running the full server:
+
+```bash
+# Generate spec to stdout
+cargo run --bin export-openapi
+
+# Or use the convenience script
+./scripts/export-openapi.sh
+```
+
+The binary is useful for:
+- CI/CD pipelines that need the spec without running services
+- Documentation builds (e.g., Astro Starlight with starlight-openapi)
+- Static spec export for external tools
+
+#### Implementation
+
+The spec is defined in `crates/control-plane/src/openapi.rs`:
+
+```rust
+use utoipa::OpenApi;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        api::agents::create_agent,
+        api::agents::list_agents,
+        // ... all API endpoints
+    ),
+    components(schemas(...)),
+    tags(...)
+)]
+pub struct ApiDoc;
+
+impl ApiDoc {
+    pub fn to_json() -> String {
+        Self::openapi()
+            .to_pretty_json()
+            .expect("Failed to serialize OpenAPI spec")
+    }
+}
+```
+
+The `ApiDoc` struct is shared between:
+- `main.rs` - serves spec at `/api-doc/openapi.json` and Swagger UI
+- `bin/export_openapi.rs` - exports spec to stdout for static generation
+
 ### Response Formats
 
 All endpoints return JSON. Event streaming uses Server-Sent Events (SSE) with `text/event-stream` content type.

@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
 
 // https://astro.build/config
 export default defineConfig({
@@ -11,10 +12,19 @@ export default defineConfig({
         src: "./src/assets/logo.svg",
       },
       favicon: "/favicon.svg",
-      social: {
-        github: "https://github.com/everruns/everruns",
-      },
+      social: [
+        { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
+      ],
       customCss: ["./src/styles/custom.css"],
+      plugins: [
+        starlightOpenAPI([
+          {
+            base: "api",
+            label: "API Reference",
+            schema: "../../docs/api/openapi.json",
+          },
+        ]),
+      ],
       sidebar: [
         {
           label: "Getting Started",
@@ -35,10 +45,8 @@ export default defineConfig({
             },
           ],
         },
-        {
-          label: "API Reference",
-          items: [{ label: "Overview", slug: "api/overview" }],
-        },
+        // Auto-generated API Reference from OpenAPI spec
+        ...openAPISidebarGroups,
       ],
       editLink: {
         baseUrl: "https://github.com/everruns/everruns/edit/main/apps/docs/",

@@ -5,11 +5,11 @@
 // Decision: gRPC service uses the same services layer as HTTP API for consistency
 // Decision: No direct database access - all operations go through services layer
 
-use crate::services::{
+use everruns_control_plane::services::{
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
     AgentService, EventService, LlmResolverService, SessionFileService, SessionService,
 };
-use crate::storage::{Database, EncryptionService};
+use everruns_control_plane::storage::{Database, EncryptionService};
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
     EmitEventRequest, EmitEventResponse, EmitEventStreamResponse, GetAgentRequest,

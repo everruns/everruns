@@ -1,0 +1,4863 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Everruns API",
+    "description": "API for managing AI agents, sessions, messages, and events",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    },
+    "version": "0.2.0"
+  },
+  "paths": {
+    "/v1/agents": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents - List all active agents",
+        "operationId": "list_agents",
+        "responses": {
+          "200": {
+            "description": "List of agents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Agent"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents - Create a new agent",
+        "operationId": "create_agent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Agent created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/{agent_id} - Get agent by ID",
+        "operationId": "get_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "DELETE /v1/agents/{agent_id} - Archive agent",
+        "operationId": "delete_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Agent archived successfully"
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "PATCH /v1/agents/{agent_id} - Update agent",
+        "operationId": "update_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/sessions - List sessions in agent",
+        "operationId": "list_sessions",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Session"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/sessions - Create a new session",
+        "operationId": "create_session",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/sessions/{session_id} - Get session",
+        "operationId": "get_session",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "DELETE /v1/agents/{agent_id}/sessions/{session_id} - Delete session",
+        "operationId": "delete_session",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session deleted successfully"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "PATCH /v1/agents/{agent_id}/sessions/{session_id} - Update session",
+        "operationId": "update_session",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/sessions/{session_id}/events - List events (JSON)",
+        "operationId": "list_events",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "since_id",
+            "in": "query",
+            "description": "Filter events with ID greater than this UUID v7 (monotonically increasing)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Event"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/fs": {
+      "get": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "GET /fs - Get root directory listing",
+        "operationId": "get_root",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "List recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Directory listing"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/fs/_/copy": {
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/_/copy - Copy file",
+        "operationId": "copy_file",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Copied successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot copy directories"
+          },
+          "404": {
+            "description": "Source not found"
+          },
+          "409": {
+            "description": "Destination exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/fs/_/grep": {
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/_/grep - Search files",
+        "operationId": "grep_files",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_GrepResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid regex pattern"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/fs/_/move": {
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/_/move - Move/rename file",
+        "operationId": "move_file",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Moved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path"
+          },
+          "404": {
+            "description": "Source not found"
+          },
+          "409": {
+            "description": "Destination exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/fs/_/stat": {
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/_/stat - Get file or directory stat",
+        "operationId": "stat_file",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stat info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileStat"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}": {
+      "get": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "GET /fs/*path - Get file content or directory listing",
+        "operationId": "get_path",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "List recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File content or directory listing"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "PUT /fs/*path - Update file content",
+        "operationId": "update_path",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot modify readonly file or directory"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/*path - Create file or directory",
+        "operationId": "create_path",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "409": {
+            "description": "Already exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "DELETE /fs/*path - Delete file or directory",
+        "operationId": "delete_path",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "Delete recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Directory not empty"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/messages": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/sessions/{session_id}/messages - List messages (PRIMARY data)",
+        "operationId": "list_messages",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Message"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/sessions/{session_id}/messages - Create message (user message triggers workflow)",
+        "operationId": "create_message",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Message created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/sse": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/sessions/{session_id}/sse - Stream events (SSE notifications)",
+        "operationId": "stream_sse",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "since_id",
+            "in": "query",
+            "description": "Filter events with ID greater than this UUID v7 (monotonically increasing)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "GET /v1/capabilities - List all available capabilities",
+        "operationId": "list_capabilities",
+        "responses": {
+          "200": {
+            "description": "List of available capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_CapabilityInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities/{capability_id}": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "GET /v1/capabilities/{capability_id} - Get a specific capability",
+        "operationId": "get_capability",
+        "parameters": [
+          {
+            "name": "capability_id",
+            "in": "path",
+            "description": "Capability ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Capability found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Capability not found"
+          }
+        }
+      }
+    },
+    "/v1/llm-models": {
+      "get": {
+        "tags": [
+          "llm-models"
+        ],
+        "summary": "List all models across all providers",
+        "operationId": "list_all_models",
+        "responses": {
+          "200": {
+            "description": "List of all models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LlmModelWithProvider"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/llm-models/{id}": {
+      "get": {
+        "tags": [
+          "llm-models"
+        ],
+        "summary": "Get a specific model with provider info and profile",
+        "operationId": "get_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Model found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelWithProvider"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm-models"
+        ],
+        "summary": "Delete a model",
+        "operationId": "delete_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Model deleted"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "llm-models"
+        ],
+        "summary": "Update a model",
+        "operationId": "update_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Model ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Model updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      }
+    },
+    "/v1/llm-providers": {
+      "get": {
+        "tags": [
+          "llm-providers"
+        ],
+        "summary": "List all LLM providers",
+        "operationId": "list_providers",
+        "responses": {
+          "200": {
+            "description": "List of providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_LlmProvider"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "llm-providers"
+        ],
+        "summary": "Create a new LLM provider",
+        "operationId": "create_provider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Provider created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        }
+      }
+    },
+    "/v1/llm-providers/{id}": {
+      "get": {
+        "tags": [
+          "llm-providers"
+        ],
+        "summary": "Get a specific LLM provider",
+        "operationId": "get_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm-providers"
+        ],
+        "summary": "Delete an LLM provider",
+        "operationId": "delete_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Provider deleted"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "llm-providers"
+        ],
+        "summary": "Update an LLM provider",
+        "operationId": "update_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Provider updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      }
+    },
+    "/v1/llm-providers/{provider_id}/models": {
+      "get": {
+        "tags": [
+          "llm-models"
+        ],
+        "summary": "List models for a specific provider",
+        "operationId": "list_provider_models",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LlmModel"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "llm-models"
+        ],
+        "summary": "Create a new model for a provider",
+        "operationId": "create_model",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Provider ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Model created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        }
+      }
+    },
+    "/v1/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "GET /v1/users - List all users",
+        "description": "Lists all users in the system with optional search filtering.\nRequires authentication (admin access recommended).",
+        "operationId": "list_users",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name or email",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActCompletedData": {
+        "type": "object",
+        "description": "Data for act.completed event",
+        "required": [
+          "completed",
+          "success_count",
+          "error_count"
+        ],
+        "properties": {
+          "completed": {
+            "type": "boolean",
+            "description": "Whether all tool calls completed"
+          },
+          "error_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of failed tool calls",
+            "minimum": 0
+          },
+          "success_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of successful tool calls",
+            "minimum": 0
+          }
+        }
+      },
+      "ActStartedData": {
+        "type": "object",
+        "description": "Data for act.started event",
+        "required": [
+          "tool_calls"
+        ],
+        "properties": {
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCallSummary"
+            },
+            "description": "Tool calls to be executed"
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "description": "Agent configuration for agentic loop.\nAn agent defines the behavior and capabilities of an AI assistant.",
+        "required": [
+          "id",
+          "name",
+          "system_prompt",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Capabilities enabled for this agent.\nCapabilities add tools and system prompt modifications."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the agent was created."
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Default LLM model ID for this agent.\nCan be overridden at the session level."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description of what the agent does."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the agent."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the agent."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentStatus",
+            "description": "Current lifecycle status of the agent."
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing and filtering agents."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the agent was last updated."
+          }
+        }
+      },
+      "AgentStatus": {
+        "type": "string",
+        "description": "Agent lifecycle status.\n- `active`: Agent is available for use\n- `archived`: Agent is soft-deleted and hidden from listings",
+        "enum": [
+          "active",
+          "archived"
+        ]
+      },
+      "CapabilityInfo": {
+        "type": "object",
+        "description": "Public capability information (without internal details)\nThis is what gets returned from the API\nNamed CapabilityInfo to distinguish from the Capability trait",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "status"
+        ],
+        "properties": {
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Category for grouping in UI"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what this capability provides"
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Icon name (for UI rendering)"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique capability identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current status"
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "System prompt addition contributed by this capability"
+          },
+          "tool_definitions": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Tool definitions provided by this capability"
+          }
+        }
+      },
+      "ContentPart": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TextContentPart",
+                "description": "Text content"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Text content"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ImageContentPart",
+                "description": "Image content (base64 or URL)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Image content (base64 or URL)"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ToolCallContentPart",
+                "description": "Tool call content (assistant requesting tool execution)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "tool_call"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Tool call content (assistant requesting tool execution)"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ToolResultContentPart",
+                "description": "Tool result content (result of tool execution)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "tool_result"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Tool result content (result of tool execution)"
+          }
+        ],
+        "description": "A part of message content - can be text, image, tool_call, or tool_result\n\nThis is the canonical content part type used across the system.\nAPI layer enables the \"openapi\" feature to add ToSchema derive."
+      },
+      "Controls": {
+        "type": "object",
+        "description": "Runtime controls for message processing",
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Model ID (UUID) to use for this message.\nOverrides session and agent model settings."
+          },
+          "reasoning": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningConfig",
+                "description": "Reasoning configuration"
+              }
+            ]
+          }
+        }
+      },
+      "CopyFileRequest": {
+        "type": "object",
+        "description": "Request to copy a file",
+        "required": [
+          "src_path",
+          "dst_path"
+        ],
+        "properties": {
+          "dst_path": {
+            "type": "string",
+            "description": "Destination path"
+          },
+          "src_path": {
+            "type": "string",
+            "description": "Source path"
+          }
+        }
+      },
+      "CreateAgentRequest": {
+        "type": "object",
+        "description": "Request to create a new agent",
+        "required": [
+          "name",
+          "system_prompt"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Capabilities to enable for this agent.\nCapabilities provide tools and system prompt additions.",
+            "example": [
+              "current_time",
+              "web_fetch"
+            ]
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A human-readable description of what the agent does.",
+            "example": "Handles customer inquiries and support tickets"
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of the agent. Used for display purposes.",
+            "example": "Customer Support Agent"
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "The system prompt that defines the agent's behavior and capabilities.\nThis is sent as the first message in every conversation.",
+            "example": "You are a helpful customer support agent. Be polite and professional."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing and filtering agents.",
+            "example": [
+              "support",
+              "customer-facing"
+            ]
+          }
+        }
+      },
+      "CreateFileRequest": {
+        "type": "object",
+        "description": "Request to create a file",
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "File content (text or base64-encoded)"
+          },
+          "encoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Content encoding: \"text\" or \"base64\""
+          },
+          "is_directory": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether to create a directory instead of a file"
+          },
+          "is_readonly": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether file is read-only"
+          }
+        }
+      },
+      "CreateLlmModelRequest": {
+        "type": "object",
+        "description": "Request to create a new LLM model for a provider",
+        "required": [
+          "model_id",
+          "display_name"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of capabilities this model supports (e.g., \"chat\", \"vision\", \"tools\").",
+            "example": [
+              "chat",
+              "vision",
+              "tools"
+            ]
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable display name for the model.",
+            "example": "GPT-4o"
+          },
+          "is_default": {
+            "type": "boolean",
+            "description": "Whether this model should be the default for the provider.\nOnly one model per provider can be the default.",
+            "example": false
+          },
+          "model_id": {
+            "type": "string",
+            "description": "The model identifier used by the provider's API (e.g., \"gpt-4\", \"claude-3-opus\").",
+            "example": "gpt-4o"
+          }
+        }
+      },
+      "CreateLlmProviderRequest": {
+        "type": "object",
+        "description": "Request to create a new LLM provider",
+        "required": [
+          "name",
+          "provider_type"
+        ],
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base URL for the provider's API. Required for custom endpoints.\nFor standard providers, this can be omitted to use the default URL.",
+            "example": "https://api.openai.com/v1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the provider.",
+            "example": "OpenAI Production"
+          },
+          "provider_type": {
+            "$ref": "#/components/schemas/LlmProviderType",
+            "description": "The type of LLM provider (e.g., openai, anthropic)."
+          }
+        }
+      },
+      "CreateMessageRequest": {
+        "type": "object",
+        "description": "Request to create a message",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "controls": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Controls",
+                "description": "Runtime controls (model, reasoning, etc.)"
+              }
+            ]
+          },
+          "message": {
+            "$ref": "#/components/schemas/InputMessage",
+            "description": "The message to create"
+          },
+          "metadata": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Request-level metadata",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for the message"
+          }
+        }
+      },
+      "CreateSessionRequest": {
+        "type": "object",
+        "description": "Request to create a session",
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The ID of the LLM model to use for this session.\nOverrides the agent's default model if specified."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing and filtering sessions.",
+            "example": [
+              "debugging",
+              "urgent"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable title for the session.",
+            "example": "Debug login issue"
+          }
+        }
+      },
+      "DeleteQuery": {
+        "type": "object",
+        "description": "Query parameters for DELETE requests",
+        "properties": {
+          "recursive": {
+            "type": "boolean",
+            "description": "Whether to delete recursively"
+          }
+        }
+      },
+      "DeleteResponse": {
+        "type": "object",
+        "description": "Response for delete operation",
+        "required": [
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique UUID v7 identifier (monotonically increasing)\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
+        "required": [
+          "id",
+          "type",
+          "ts",
+          "session_id",
+          "context",
+          "data"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/EventContext",
+            "description": "Correlation context"
+          },
+          "data": {
+            "$ref": "#/components/schemas/EventData",
+            "description": "Event-specific payload. The schema depends on the event type.\nSee EventData documentation for the mapping of type to data schema."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique event identifier (UUID v7, monotonically increasing)"
+          },
+          "metadata": {
+            "description": "Arbitrary metadata for the event"
+          },
+          "sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Sequence number within session (for ordering)"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Session this event belongs to"
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for filtering and categorization"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Event timestamp"
+          },
+          "type": {
+            "type": "string",
+            "description": "Event type in dot notation"
+          }
+        }
+      },
+      "EventContext": {
+        "type": "object",
+        "description": "Context for event correlation and tracing",
+        "properties": {
+          "exec_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Atom execution identifier"
+          },
+          "input_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "User message that triggered this turn"
+          },
+          "turn_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Turn identifier (for turn-scoped events)"
+          }
+        }
+      },
+      "EventData": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/MessageUserData"
+          },
+          {
+            "$ref": "#/components/schemas/MessageAgentData"
+          },
+          {
+            "$ref": "#/components/schemas/TurnStartedData"
+          },
+          {
+            "$ref": "#/components/schemas/TurnCompletedData"
+          },
+          {
+            "$ref": "#/components/schemas/TurnFailedData"
+          },
+          {
+            "$ref": "#/components/schemas/InputReceivedData"
+          },
+          {
+            "$ref": "#/components/schemas/ReasonStartedData"
+          },
+          {
+            "$ref": "#/components/schemas/ReasonCompletedData"
+          },
+          {
+            "$ref": "#/components/schemas/ActStartedData"
+          },
+          {
+            "$ref": "#/components/schemas/ActCompletedData"
+          },
+          {
+            "$ref": "#/components/schemas/ToolCallStartedData"
+          },
+          {
+            "$ref": "#/components/schemas/ToolCallCompletedData"
+          },
+          {
+            "$ref": "#/components/schemas/LlmGenerationData"
+          },
+          {
+            "$ref": "#/components/schemas/SessionStartedData"
+          },
+          {
+            "$ref": "#/components/schemas/SessionActivatedData"
+          },
+          {
+            "$ref": "#/components/schemas/SessionIdledData"
+          },
+          {
+            "type": "object",
+            "description": "Raw data for backward compatibility with legacy events"
+          }
+        ],
+        "title": "EventData",
+        "description": "Event-specific payload. The schema depends on the event type field.",
+        "example": {
+          "message": {
+            "content": [],
+            "id": "...",
+            "role": "user"
+          }
+        }
+      },
+      "FileInfo": {
+        "type": "object",
+        "description": "File metadata without content",
+        "required": [
+          "id",
+          "session_id",
+          "path",
+          "name",
+          "is_directory",
+          "is_readonly",
+          "size_bytes",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_directory": {
+            "type": "boolean"
+          },
+          "is_readonly": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FileStat": {
+        "type": "object",
+        "description": "File stat information",
+        "required": [
+          "path",
+          "name",
+          "is_directory",
+          "is_readonly",
+          "size_bytes",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "is_directory": {
+            "type": "boolean"
+          },
+          "is_readonly": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "GetQuery": {
+        "type": "object",
+        "description": "Query parameters for GET requests",
+        "properties": {
+          "recursive": {
+            "type": "boolean",
+            "description": "For directories: whether to list recursively"
+          }
+        }
+      },
+      "GetResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SessionFile"
+          },
+          {
+            "$ref": "#/components/schemas/ListResponse_FileInfo"
+          }
+        ],
+        "description": "Unified response for GET that can be file or directory listing"
+      },
+      "GrepMatch": {
+        "type": "object",
+        "description": "Grep match result",
+        "required": [
+          "path",
+          "line_number",
+          "line"
+        ],
+        "properties": {
+          "line": {
+            "type": "string"
+          },
+          "line_number": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "GrepRequest": {
+        "type": "object",
+        "description": "Request to search files",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "path_pattern": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional path pattern to filter files"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern to search for"
+          }
+        }
+      },
+      "GrepResult": {
+        "type": "object",
+        "description": "Grep result for a file",
+        "required": [
+          "path",
+          "matches"
+        ],
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GrepMatch"
+            }
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "ImageContentPart": {
+        "type": "object",
+        "description": "Image content part (base64 or URL)",
+        "properties": {
+          "base64": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "InputContentPart": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TextContentPart",
+                "description": "Text content"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Text content"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ImageContentPart",
+                "description": "Image content (base64 or URL)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Image content (base64 or URL)"
+          }
+        ],
+        "description": "Input content part - only text and image (for user input)\n\nThis is a subset of ContentPart that users can send.\nTool calls and results are system-generated."
+      },
+      "InputMessage": {
+        "type": "object",
+        "description": "Input message for creating a user message\n\nOnly user messages can be created via the API.\nAgent messages are created internally by the workflow.",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InputContentPart"
+            },
+            "description": "Array of content parts (text and image only)"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MessageRole",
+            "description": "Message role (always \"user\" for API-created messages)"
+          }
+        }
+      },
+      "InputReceivedData": {
+        "type": "object",
+        "description": "Data for input.received event",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/Message",
+            "description": "The user message that was received"
+          }
+        }
+      },
+      "ListResponse_Agent": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Agent configuration for agentic loop.\nAn agent defines the behavior and capabilities of an AI assistant.",
+              "required": [
+                "id",
+                "name",
+                "system_prompt",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Capabilities enabled for this agent.\nCapabilities add tools and system prompt modifications."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was created."
+                },
+                "default_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "Default LLM model ID for this agent.\nCan be overridden at the session level."
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable description of what the agent does."
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Unique identifier for the agent."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name of the agent."
+                },
+                "status": {
+                  "$ref": "#/components/schemas/AgentStatus",
+                  "description": "Current lifecycle status of the agent."
+                },
+                "system_prompt": {
+                  "type": "string",
+                  "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation."
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags for organizing and filtering agents."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the agent was last updated."
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_CapabilityInfo": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Public capability information (without internal details)\nThis is what gets returned from the API\nNamed CapabilityInfo to distinguish from the Capability trait",
+              "required": [
+                "id",
+                "name",
+                "description",
+                "status"
+              ],
+              "properties": {
+                "category": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Category for grouping in UI"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Description of what this capability provides"
+                },
+                "icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Icon name (for UI rendering)"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Unique capability identifier"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Current status"
+                },
+                "system_prompt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "System prompt addition contributed by this capability"
+                },
+                "tool_definitions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "description": "Tool definitions provided by this capability"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_Event": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique UUID v7 identifier (monotonically increasing)\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
+              "required": [
+                "id",
+                "type",
+                "ts",
+                "session_id",
+                "context",
+                "data"
+              ],
+              "properties": {
+                "context": {
+                  "$ref": "#/components/schemas/EventContext",
+                  "description": "Correlation context"
+                },
+                "data": {
+                  "$ref": "#/components/schemas/EventData",
+                  "description": "Event-specific payload. The schema depends on the event type.\nSee EventData documentation for the mapping of type to data schema."
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Unique event identifier (UUID v7, monotonically increasing)"
+                },
+                "metadata": {
+                  "description": "Arbitrary metadata for the event"
+                },
+                "sequence": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Sequence number within session (for ordering)"
+                },
+                "session_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Session this event belongs to"
+                },
+                "tags": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags for filtering and categorization"
+                },
+                "ts": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Event timestamp"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Event type in dot notation"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_FileInfo": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "File metadata without content",
+              "required": [
+                "id",
+                "session_id",
+                "path",
+                "name",
+                "is_directory",
+                "is_readonly",
+                "size_bytes",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "is_directory": {
+                  "type": "boolean"
+                },
+                "is_readonly": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "session_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_GrepResult": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Grep result for a file",
+              "required": [
+                "path",
+                "matches"
+              ],
+              "properties": {
+                "matches": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GrepMatch"
+                  }
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_LlmProvider": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the LlmProvider trait in llm.rs",
+              "required": [
+                "id",
+                "name",
+                "provider_type",
+                "api_key_set",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "api_key_set": {
+                  "type": "boolean",
+                  "description": "Whether an API key is configured (key is never returned)"
+                },
+                "base_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "provider_type": {
+                  "$ref": "#/components/schemas/LlmProviderType"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/LlmProviderStatus"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_Message": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Message - primary conversation data (API response)",
+              "required": [
+                "id",
+                "session_id",
+                "sequence",
+                "role",
+                "content",
+                "created_at"
+              ],
+              "properties": {
+                "content": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ContentPart"
+                  },
+                  "description": "Array of content parts"
+                },
+                "controls": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Controls",
+                      "description": "Runtime controls (model, reasoning, etc.)"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "metadata": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "Message-level metadata (locale, etc.)",
+                  "additionalProperties": {},
+                  "propertyNames": {
+                    "type": "string"
+                  }
+                },
+                "role": {
+                  "$ref": "#/components/schemas/MessageRole"
+                },
+                "sequence": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "session_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_Session": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Session - instance of agentic loop execution.\nA session represents a single conversation with an agent.",
+              "required": [
+                "id",
+                "agent_id",
+                "status",
+                "created_at"
+              ],
+              "properties": {
+                "agent_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "ID of the agent this session belongs to."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the session was created."
+                },
+                "finished_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the session finished (completed or failed)."
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Unique identifier for the session."
+                },
+                "model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+                },
+                "started_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the session started executing."
+                },
+                "status": {
+                  "$ref": "#/components/schemas/SessionStatus",
+                  "description": "Current execution status of the session."
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags for organizing and filtering sessions."
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable title for the session."
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_User": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "User response for listing",
+              "required": [
+                "id",
+                "email",
+                "name",
+                "roles",
+                "created_at"
+              ],
+              "properties": {
+                "auth_provider": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "avatar_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListUsersQuery": {
+        "type": "object",
+        "description": "Query parameters for listing users",
+        "properties": {
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Search query to filter by name or email"
+          }
+        }
+      },
+      "LlmGenerationData": {
+        "type": "object",
+        "description": "Data for llm.generation event\n\nEmitted after each LLM API call to provide full visibility into\nthe messages sent to the model and the response received.",
+        "required": [
+          "messages",
+          "output",
+          "metadata"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "description": "Messages sent to the LLM (including system prompt)"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/LlmGenerationMetadata",
+            "description": "Metadata about the generation"
+          },
+          "output": {
+            "$ref": "#/components/schemas/LlmGenerationOutput",
+            "description": "Output from the LLM"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolDefinitionSummary"
+            },
+            "description": "Tools available to the LLM for this generation"
+          }
+        }
+      },
+      "LlmGenerationMetadata": {
+        "type": "object",
+        "description": "Metadata about an LLM generation",
+        "required": [
+          "model",
+          "success"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Duration of the generation in milliseconds",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error message if generation failed"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model identifier used for generation"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider type (openai, anthropic, etc.)"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the generation was successful"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Token usage statistics"
+              }
+            ]
+          }
+        }
+      },
+      "LlmGenerationOutput": {
+        "type": "object",
+        "description": "LLM generation output",
+        "properties": {
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Text response from the model"
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            },
+            "description": "Tool calls requested by the model"
+          }
+        }
+      },
+      "LlmModel": {
+        "type": "object",
+        "description": "LLM Model entity",
+        "required": [
+          "id",
+          "provider_id",
+          "model_id",
+          "display_name",
+          "capabilities",
+          "is_default",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LlmModelStatus"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LlmModelCost": {
+        "type": "object",
+        "description": "Cost information for the model (per million tokens)",
+        "required": [
+          "input",
+          "output"
+        ],
+        "properties": {
+          "cache_read": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Cached read cost per million tokens (USD), if supported"
+          },
+          "input": {
+            "type": "number",
+            "format": "double",
+            "description": "Input cost per million tokens (USD)"
+          },
+          "output": {
+            "type": "number",
+            "format": "double",
+            "description": "Output cost per million tokens (USD)"
+          }
+        }
+      },
+      "LlmModelLimits": {
+        "type": "object",
+        "description": "Token limits for the model",
+        "required": [
+          "context",
+          "output"
+        ],
+        "properties": {
+          "context": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum context window size in tokens"
+          },
+          "output": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum output tokens"
+          }
+        }
+      },
+      "LlmModelModalities": {
+        "type": "object",
+        "description": "Model modalities for input and output",
+        "required": [
+          "input",
+          "output"
+        ],
+        "properties": {
+          "input": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Modality"
+            },
+            "description": "Supported input modalities"
+          },
+          "output": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Modality"
+            },
+            "description": "Supported output modalities"
+          }
+        }
+      },
+      "LlmModelProfile": {
+        "type": "object",
+        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (https://models.dev/api.json)\n\nNOTE: Currently only includes profiles for:\n- OpenAI: gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini\n- Anthropic: claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku, claude-sonnet-4, claude-opus-4\n\nAdditional model profiles can be added as needed.",
+        "required": [
+          "name",
+          "family",
+          "attachment",
+          "reasoning",
+          "temperature",
+          "tool_call",
+          "structured_output",
+          "open_weights"
+        ],
+        "properties": {
+          "attachment": {
+            "type": "boolean",
+            "description": "Whether the model supports file/image attachments"
+          },
+          "cost": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmModelCost",
+                "description": "Cost per million tokens"
+              }
+            ]
+          },
+          "family": {
+            "type": "string",
+            "description": "Model family (e.g., \"gpt-4o\", \"claude-3-5-sonnet\")"
+          },
+          "knowledge": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Knowledge cutoff date (YYYY-MM-DD format)"
+          },
+          "last_updated": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last updated date (YYYY-MM-DD format)"
+          },
+          "limits": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmModelLimits",
+                "description": "Token limits"
+              }
+            ]
+          },
+          "modalities": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmModelModalities",
+                "description": "Supported modalities"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the model"
+          },
+          "open_weights": {
+            "type": "boolean",
+            "description": "Whether the model has open weights"
+          },
+          "reasoning": {
+            "type": "boolean",
+            "description": "Whether the model has reasoning/chain-of-thought capabilities"
+          },
+          "reasoning_effort": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEffortConfig",
+                "description": "Reasoning effort configuration (for reasoning models)"
+              }
+            ]
+          },
+          "release_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Release date (YYYY-MM-DD format)"
+          },
+          "structured_output": {
+            "type": "boolean",
+            "description": "Whether the model supports structured output (JSON mode)"
+          },
+          "temperature": {
+            "type": "boolean",
+            "description": "Whether temperature control is supported"
+          },
+          "tool_call": {
+            "type": "boolean",
+            "description": "Whether the model supports tool/function calling"
+          }
+        }
+      },
+      "LlmModelStatus": {
+        "type": "string",
+        "description": "LLM model status",
+        "enum": [
+          "active",
+          "disabled"
+        ]
+      },
+      "LlmModelWithProvider": {
+        "type": "object",
+        "description": "LLM Model with provider info",
+        "required": [
+          "id",
+          "provider_id",
+          "model_id",
+          "display_name",
+          "capabilities",
+          "is_default",
+          "status",
+          "created_at",
+          "updated_at",
+          "provider_name",
+          "provider_type"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmModelProfile",
+                "description": "Readonly profile with model capabilities (not persisted to database)"
+              }
+            ]
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider_name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "$ref": "#/components/schemas/LlmProviderType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LlmModelStatus"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LlmProvider": {
+        "type": "object",
+        "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the LlmProvider trait in llm.rs",
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "api_key_set",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "api_key_set": {
+            "type": "boolean",
+            "description": "Whether an API key is configured (key is never returned)"
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "$ref": "#/components/schemas/LlmProviderType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LlmProviderStatus"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LlmProviderStatus": {
+        "type": "string",
+        "description": "LLM provider status",
+        "enum": [
+          "active",
+          "disabled"
+        ]
+      },
+      "LlmProviderType": {
+        "type": "string",
+        "description": "LLM provider type",
+        "enum": [
+          "openai",
+          "anthropic",
+          "azure_openai",
+          "llmsim"
+        ]
+      },
+      "Message": {
+        "type": "object",
+        "description": "A message in the conversation",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentPart"
+            },
+            "description": "Message content as array of content parts (text, images, tool calls, tool results)"
+          },
+          "controls": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Controls",
+                "description": "Runtime controls (model, reasoning, etc.)"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the message was created"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique message ID"
+          },
+          "metadata": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Message-level metadata"
+          },
+          "role": {
+            "$ref": "#/components/schemas/MessageRole",
+            "description": "Message role"
+          }
+        }
+      },
+      "MessageAgentData": {
+        "type": "object",
+        "description": "Data for message.agent event",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/Message",
+            "description": "The agent message"
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelMetadata",
+                "description": "Metadata about the model used"
+              }
+            ]
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Token usage"
+              }
+            ]
+          }
+        }
+      },
+      "MessageRole": {
+        "type": "string",
+        "description": "Message role in the conversation",
+        "enum": [
+          "system",
+          "user",
+          "agent",
+          "tool_result"
+        ]
+      },
+      "MessageUserData": {
+        "type": "object",
+        "description": "Data for message.user event",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/Message",
+            "description": "The user message"
+          }
+        }
+      },
+      "Modality": {
+        "type": "string",
+        "description": "Modality type (text, image, audio, video)",
+        "enum": [
+          "text",
+          "image",
+          "audio",
+          "video"
+        ]
+      },
+      "ModelMetadata": {
+        "type": "object",
+        "description": "Metadata about the model used for generation",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model name (e.g., \"gpt-4o\", \"claude-3-sonnet\")"
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Model ID (internal identifier)"
+          },
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Provider ID (internal identifier)"
+          }
+        }
+      },
+      "MoveFileRequest": {
+        "type": "object",
+        "description": "Request to move/rename a file",
+        "required": [
+          "src_path",
+          "dst_path"
+        ],
+        "properties": {
+          "dst_path": {
+            "type": "string",
+            "description": "Destination path"
+          },
+          "src_path": {
+            "type": "string",
+            "description": "Source path"
+          }
+        }
+      },
+      "ReasonCompletedData": {
+        "type": "object",
+        "description": "Data for reason.completed event",
+        "required": [
+          "success",
+          "has_tool_calls",
+          "tool_call_count"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error message if failed"
+          },
+          "has_tool_calls": {
+            "type": "boolean",
+            "description": "Whether tool calls were requested"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the LLM call succeeded"
+          },
+          "text_preview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Text response preview (first 200 chars)"
+          },
+          "tool_call_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of tool calls requested",
+            "minimum": 0
+          }
+        }
+      },
+      "ReasonStartedData": {
+        "type": "object",
+        "description": "Data for reason.started event",
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Agent ID being used"
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelMetadata",
+                "description": "Metadata about the model being used"
+              }
+            ]
+          }
+        }
+      },
+      "ReasoningConfig": {
+        "type": "object",
+        "description": "Reasoning configuration for the model",
+        "properties": {
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Effort level for reasoning (low, medium, high)"
+          }
+        }
+      },
+      "ReasoningEffort": {
+        "type": "string",
+        "description": "Reasoning effort level for models that support it",
+        "enum": [
+          "none",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "ReasoningEffortConfig": {
+        "type": "object",
+        "description": "Reasoning effort configuration for a model",
+        "required": [
+          "values",
+          "default"
+        ],
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/ReasoningEffort",
+            "description": "Default reasoning effort for this model"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReasoningEffortValue"
+            },
+            "description": "Available reasoning effort values for this model"
+          }
+        }
+      },
+      "ReasoningEffortValue": {
+        "type": "object",
+        "description": "Named reasoning effort value for UI display",
+        "required": [
+          "value",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name (e.g., \"Low\", \"Medium\")"
+          },
+          "value": {
+            "$ref": "#/components/schemas/ReasoningEffort",
+            "description": "The API value (e.g., \"low\", \"medium\")"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "description": "Session - instance of agentic loop execution.\nA session represents a single conversation with an agent.",
+        "required": [
+          "id",
+          "agent_id",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID of the agent this session belongs to."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the session was created."
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the session finished (completed or failed)."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the session."
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the session started executing."
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionStatus",
+            "description": "Current execution status of the session."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing and filtering sessions."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable title for the session."
+          }
+        }
+      },
+      "SessionActivatedData": {
+        "type": "object",
+        "description": "Data for session.activated event (turn started, session now active)",
+        "required": [
+          "turn_id",
+          "input_message_id"
+        ],
+        "properties": {
+          "input_message_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Input message ID that triggered the turn"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn ID that activated the session"
+          }
+        }
+      },
+      "SessionFile": {
+        "type": "object",
+        "description": "Complete file with content",
+        "required": [
+          "id",
+          "session_id",
+          "path",
+          "name",
+          "is_directory",
+          "is_readonly",
+          "size_bytes",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base64-encoded content for binary files, plain text for text files"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "encoding": {
+            "type": "string",
+            "description": "Content encoding: \"text\" or \"base64\""
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_directory": {
+            "type": "boolean"
+          },
+          "is_readonly": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SessionIdledData": {
+        "type": "object",
+        "description": "Data for session.idled event (turn completed, session now idle)",
+        "required": [
+          "turn_id"
+        ],
+        "properties": {
+          "iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of iterations in the completed turn",
+            "minimum": 0
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn ID that just completed"
+          }
+        }
+      },
+      "SessionStartedData": {
+        "type": "object",
+        "description": "Data for session.started event",
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Agent ID"
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Model ID if specified"
+          }
+        }
+      },
+      "SessionStatus": {
+        "type": "string",
+        "description": "Session execution status.\n- `started`: Session just created, no turn executed yet\n- `active`: A turn is currently running\n- `idle`: Turn completed, session waiting for next input",
+        "enum": [
+          "started",
+          "active",
+          "idle"
+        ]
+      },
+      "StatRequest": {
+        "type": "object",
+        "description": "Request to get file stat",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the file or directory"
+          }
+        }
+      },
+      "TextContentPart": {
+        "type": "object",
+        "description": "Text content part",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "TokenUsage": {
+        "type": "object",
+        "description": "Token usage statistics",
+        "required": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ToolCall": {
+        "type": "object",
+        "description": "Tool call from LLM response",
+        "required": [
+          "id",
+          "name",
+          "arguments"
+        ],
+        "properties": {
+          "arguments": {
+            "type": "object",
+            "description": "Arguments as JSON"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique ID for this tool call"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name to execute"
+          }
+        }
+      },
+      "ToolCallCompletedData": {
+        "type": "object",
+        "description": "Data for tool.call_completed event",
+        "required": [
+          "tool_call_id",
+          "tool_name",
+          "success",
+          "status"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error message if failed"
+          },
+          "result": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ContentPart"
+            },
+            "description": "Result content (for successful calls)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Status: \"success\", \"error\", \"timeout\", \"cancelled\""
+          },
+          "success": {
+            "type": "boolean",
+            "description": "Whether the tool call succeeded"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "Tool call ID"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "Tool name"
+          }
+        }
+      },
+      "ToolCallContentPart": {
+        "type": "object",
+        "description": "Tool call content part (assistant requesting tool execution)",
+        "required": [
+          "id",
+          "name",
+          "arguments"
+        ],
+        "properties": {
+          "arguments": {},
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ToolCallStartedData": {
+        "type": "object",
+        "description": "Data for tool.call_started event",
+        "required": [
+          "tool_call"
+        ],
+        "properties": {
+          "tool_call": {
+            "$ref": "#/components/schemas/ToolCall",
+            "description": "The tool call being executed"
+          }
+        }
+      },
+      "ToolCallSummary": {
+        "type": "object",
+        "description": "Summary of a tool call (compact form without arguments)",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ToolDefinitionSummary": {
+        "type": "object",
+        "description": "Summary of a tool definition (compact form for events)",
+        "required": [
+          "name",
+          "description"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Tool description"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tool name"
+          }
+        }
+      },
+      "ToolResultContentPart": {
+        "type": "object",
+        "description": "Tool result content part (result of tool execution)",
+        "required": [
+          "tool_call_id"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {},
+          "tool_call_id": {
+            "type": "string",
+            "description": "ID of the tool call this result corresponds to"
+          }
+        }
+      },
+      "TurnCompletedData": {
+        "type": "object",
+        "description": "Data for turn.completed event",
+        "required": [
+          "turn_id",
+          "iterations"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Duration in milliseconds",
+            "minimum": 0
+          },
+          "iterations": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of iterations in this turn",
+            "minimum": 0
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn identifier"
+          }
+        }
+      },
+      "TurnFailedData": {
+        "type": "object",
+        "description": "Data for turn.failed event",
+        "required": [
+          "turn_id",
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error code"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn identifier"
+          }
+        }
+      },
+      "TurnStartedData": {
+        "type": "object",
+        "description": "Data for turn.started event",
+        "required": [
+          "turn_id",
+          "input_message_id"
+        ],
+        "properties": {
+          "input_message_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Input message ID that triggered this turn"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn identifier"
+          }
+        }
+      },
+      "UpdateAgentRequest": {
+        "type": "object",
+        "description": "Request to update an agent. Only provided fields will be updated.",
+        "properties": {
+          "capabilities": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Capabilities to enable for this agent. Replaces existing capabilities.",
+            "example": [
+              "current_time",
+              "web_fetch"
+            ]
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The ID of the default LLM model to use for this agent."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A human-readable description of what the agent does.",
+            "example": "Updated description for the agent"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the agent. Used for display purposes.",
+            "example": "Updated Support Agent"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentStatus",
+                "description": "The status of the agent. Set to \"archived\" to soft-delete."
+              }
+            ]
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The system prompt that defines the agent's behavior and capabilities.",
+            "example": "You are an updated helpful assistant."
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing and filtering agents.",
+            "example": [
+              "updated-tag"
+            ]
+          }
+        }
+      },
+      "UpdateFileRequest": {
+        "type": "object",
+        "description": "Request to update a file",
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New file content"
+          },
+          "encoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Content encoding: \"text\" or \"base64\""
+          },
+          "is_readonly": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether file is read-only"
+          }
+        }
+      },
+      "UpdateLlmModelRequest": {
+        "type": "object",
+        "description": "Request to update an LLM model. Only provided fields will be updated.",
+        "properties": {
+          "capabilities": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "List of capabilities this model supports.",
+            "example": [
+              "chat",
+              "tools"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for the model.",
+            "example": "GPT-4o Mini"
+          },
+          "is_default": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether this model should be the default for the provider.",
+            "example": true
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model identifier used by the provider's API.",
+            "example": "gpt-4o-mini"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmModelStatus",
+                "description": "The status of the model. Set to \"inactive\" to disable."
+              }
+            ]
+          }
+        }
+      },
+      "UpdateLlmProviderRequest": {
+        "type": "object",
+        "description": "Request to update an LLM provider. Only provided fields will be updated.",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base URL for the provider's API.",
+            "example": "https://api.openai.com/v1"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name for the provider.",
+            "example": "OpenAI Development"
+          },
+          "provider_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmProviderType",
+                "description": "The type of LLM provider (e.g., openai, anthropic)."
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmProviderStatus",
+                "description": "The status of the provider. Set to \"inactive\" to disable."
+              }
+            ]
+          }
+        }
+      },
+      "UpdateSessionRequest": {
+        "type": "object",
+        "description": "Request to update a session. Only provided fields will be updated.",
+        "properties": {
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing and filtering sessions.",
+            "example": [
+              "resolved"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable title for the session.",
+            "example": "Updated session title"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "description": "User response for listing",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "roles",
+          "created_at"
+        ],
+        "properties": {
+          "auth_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "agents",
+      "description": "Agent management endpoints"
+    },
+    {
+      "name": "sessions",
+      "description": "Session management endpoints"
+    },
+    {
+      "name": "messages",
+      "description": "Message management endpoints"
+    },
+    {
+      "name": "events",
+      "description": "Event streaming endpoints (SSE)"
+    },
+    {
+      "name": "llm-providers",
+      "description": "LLM Provider management endpoints"
+    },
+    {
+      "name": "llm-models",
+      "description": "LLM Model management endpoints"
+    },
+    {
+      "name": "capabilities",
+      "description": "Capability management endpoints"
+    },
+    {
+      "name": "users",
+      "description": "User management endpoints"
+    },
+    {
+      "name": "filesystem",
+      "description": "Session virtual filesystem endpoints"
+    }
+  ]
+}

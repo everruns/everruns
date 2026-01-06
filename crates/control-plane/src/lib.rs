@@ -1,12 +1,19 @@
 // Everruns Control Plane Library
 // Decision: Shared library for binaries (API server, CLI tools)
 
-// Event service is exposed at library level for use by storage layer
-// (other services remain binary-only as they depend on API types)
-mod services {
-    pub mod event;
-    pub use event::EventService;
-}
+// API routes and types (shared for OpenAPI generation)
+pub mod api;
 
+// Authentication module
+pub mod auth;
+
+// Services layer
+pub mod services;
+pub use services::CapabilityService;
 pub use services::EventService;
+
+// Storage layer
 pub mod storage;
+
+// OpenAPI spec generation
+pub mod openapi;

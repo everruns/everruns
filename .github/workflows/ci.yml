@@ -365,6 +365,48 @@ jobs:
       - name: Build docs
         run: npm run build
 
+  openapi-check:
+    name: OpenAPI Spec Freshness
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-openapi-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-openapi-
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-cargo-
+
+      - name: Generate fresh OpenAPI spec
+        run: cargo run --bin export-openapi --release > /tmp/openapi-fresh.json
+
+      - name: Compare with committed spec
+        run: |
+          if ! diff -q docs/api/openapi.json /tmp/openapi-fresh.json > /dev/null 2>&1; then
+            echo "❌ OpenAPI spec is out of date!"
+            echo ""
+            echo "The committed docs/api/openapi.json differs from the generated spec."
+            echo "Please run: ./scripts/export-openapi.sh"
+            echo ""
+            echo "Diff (first 50 lines):"
+            diff docs/api/openapi.json /tmp/openapi-fresh.json | head -50
+            exit 1
+          fi
+          echo "✅ OpenAPI spec is up to date"
+
   # Docker builds using matrix for parallel execution
   docker-build:
     name: Docker Build (${{ matrix.target }})

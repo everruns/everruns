@@ -382,7 +382,7 @@ pub async fn oauth_redirect(
     State(state): State<AuthState>,
     Path(provider): Path<String>,
 ) -> Result<Redirect, AuthError> {
-    let provider_enum = OAuthProvider::from_str(&provider)
+    let provider_enum = OAuthProvider::parse(&provider)
         .ok_or_else(|| AuthError::unauthorized("Unknown OAuth provider"))?;
 
     // Generate a random state for CSRF protection
@@ -424,7 +424,7 @@ pub async fn oauth_callback(
     Query(query): Query<OAuthCallbackQuery>,
     jar: CookieJar,
 ) -> Result<(CookieJar, Redirect), AuthError> {
-    let provider_enum = OAuthProvider::from_str(&provider)
+    let provider_enum = OAuthProvider::parse(&provider)
         .ok_or_else(|| AuthError::unauthorized("Unknown OAuth provider"))?;
 
     // TODO: Validate state from session for CSRF protection
