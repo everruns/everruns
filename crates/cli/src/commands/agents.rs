@@ -11,7 +11,7 @@ use uuid::Uuid;
 pub enum AgentsCommand {
     /// Create a new agent
     Create {
-        /// YAML/JSON file with agent definition
+        /// YAML/JSON/Markdown file with agent definition
         #[arg(short, long)]
         file: Option<String>,
 
@@ -108,6 +108,43 @@ struct ListResponse<T> {
     data: Vec<T>,
 }
 
+/// Parse markdown file with YAML front matter.
+/// Format:
+/// ```markdown
+/// ---
+/// name: "agent-name"
+/// capabilities:
+///   - current_time
+/// ---
+/// System prompt goes here as the body.
+/// ```
+fn parse_markdown_frontmatter(content: &str) -> Result<AgentFile> {
+    // Check for front matter delimiter
+    if !content.starts_with("---") {
+        anyhow::bail!("Markdown file must start with YAML front matter (---)");
+    }
+
+    // Find the closing delimiter
+    let rest = &content[3..];
+    let end_pos = rest
+        .find("\n---")
+        .context("Missing closing front matter delimiter (---)")?;
+
+    let front_matter = &rest[..end_pos].trim();
+    let body = rest[end_pos + 4..].trim(); // Skip "\n---"
+
+    // Parse front matter as YAML
+    let mut config: AgentFile =
+        serde_yaml::from_str(front_matter).context("Failed to parse front matter as YAML")?;
+
+    // Body becomes system_prompt if not empty
+    if !body.is_empty() {
+        config.system_prompt = Some(body.to_string());
+    }
+
+    Ok(config)
+}
+
 pub async fn run(
     command: AgentsCommand,
     client: &Client,
@@ -162,18 +199,36 @@ async fn create(
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read file: {}", path))?;
 
-        // Detect format by extension or try both
-        let config: AgentFile = if path.ends_with(".yaml") || path.ends_with(".yml") {
+        // Detect format by extension
+        let config: AgentFile = if path.ends_with(".md") {
+            // Markdown with YAML front matter
+            parse_markdown_frontmatter(&content)
+                .with_context(|| format!("Failed to parse markdown: {}", path))?
+        } else if path.ends_with(".yaml") || path.ends_with(".yml") {
             serde_yaml::from_str(&content)
                 .with_context(|| format!("Failed to parse YAML: {}", path))?
         } else if path.ends_with(".json") {
             serde_json::from_str(&content)
                 .with_context(|| format!("Failed to parse JSON: {}", path))?
         } else {
-            // Try YAML first, then JSON
-            serde_yaml::from_str(&content)
-                .or_else(|_| serde_json::from_str(&content))
-                .with_context(|| format!("Failed to parse file (tried YAML and JSON): {}", path))?
+            // Try markdown first (if starts with ---), then YAML, then JSON
+            if content.starts_with("---") {
+                parse_markdown_frontmatter(&content)
+                    .or_else(|_| serde_yaml::from_str(&content))
+                    .or_else(|_| serde_json::from_str(&content))
+                    .with_context(|| {
+                        format!(
+                            "Failed to parse file (tried markdown, YAML, JSON): {}",
+                            path
+                        )
+                    })?
+            } else {
+                serde_yaml::from_str(&content)
+                    .or_else(|_| serde_json::from_str(&content))
+                    .with_context(|| {
+                        format!("Failed to parse file (tried YAML and JSON): {}", path)
+                    })?
+            }
         };
         config
     } else {
