@@ -29,7 +29,9 @@ everruns --version
 
 ## Configuration
 
-The CLI connects to the Everruns API. Configure the API URL:
+The CLI connects to the Everruns API. By default, it uses the hosted API at `https://app.everruns.com/api`.
+
+For local development, configure the API URL:
 
 ```bash
 # Via command-line flag
@@ -40,7 +42,7 @@ export EVERRUNS_API_URL=http://localhost:9000
 everruns agents list
 ```
 
-Default: `http://localhost:9000`
+Default: `https://app.everruns.com/api`
 
 ## Commands
 

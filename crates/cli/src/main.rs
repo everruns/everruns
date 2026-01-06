@@ -19,7 +19,7 @@ pub struct Cli {
     #[arg(
         long,
         env = "EVERRUNS_API_URL",
-        default_value = "http://localhost:9000"
+        default_value = "https://app.everruns.com/api"
     )]
     pub api_url: String,
 
