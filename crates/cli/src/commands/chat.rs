@@ -119,7 +119,12 @@ pub async fn run(
             if output.is_text() {
                 // Handle message.agent events
                 if event.event_type == "message.agent" {
-                    if let Some(content) = event.data.get("content") {
+                    // Content may be at data.content or data.message.content
+                    let content = event
+                        .data
+                        .get("content")
+                        .or_else(|| event.data.get("message").and_then(|m| m.get("content")));
+                    if let Some(content) = content {
                         if let Some(parts) = content.as_array() {
                             for part in parts {
                                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
@@ -138,6 +143,20 @@ pub async fn run(
                     return Ok(());
                 }
 
+                // Handle reason.completed as turn completion (when no tool calls)
+                // This is a fallback since turn.completed may not be emitted
+                if event.event_type == "reason.completed" {
+                    let has_tool_calls = event
+                        .data
+                        .get("has_tool_calls")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    if !has_tool_calls && !agent_content.is_empty() {
+                        println!("Agent: {}", agent_content);
+                        return Ok(());
+                    }
+                }
+
                 // Handle turn.failed event
                 if event.event_type == "turn.failed" {
                     let error = event
@@ -154,6 +173,18 @@ pub async fn run(
 
                 if event.event_type == "turn.completed" {
                     return Ok(());
+                }
+
+                // Handle reason.completed as turn completion (when no tool calls)
+                if event.event_type == "reason.completed" {
+                    let has_tool_calls = event
+                        .data
+                        .get("has_tool_calls")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    if !has_tool_calls {
+                        return Ok(());
+                    }
                 }
 
                 if event.event_type == "turn.failed" {
