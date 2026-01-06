@@ -244,6 +244,35 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 See [docs/sre/environment-variables.md](../docs/sre/environment-variables.md) for full configuration options.
 
+#### Event-Listener Architecture
+
+Observability is decoupled from business logic through the `EventListener` trait:
+
+```rust
+#[async_trait]
+pub trait EventListener: Send + Sync {
+    async fn on_event(&self, event: &Event);
+    fn event_types(&self) -> Option<Vec<&'static str>> { None }
+    fn name(&self) -> &'static str { "EventListener" }
+}
+```
+
+**Key components**:
+- `EventListener` trait (`core/src/traits.rs`) - Interface for observability backends
+- `OtelEventListener` (`core/src/otel_listener.rs`) - Generates OTel spans from events
+- `EventService` (`control-plane/src/services/event.rs`) - Notifies listeners after event persistence
+
+**Event-to-span mapping** (following gen-ai semantic conventions):
+- `llm.generation` → `chat {model}` span with tokens, finish_reasons, response_id
+- `tool.call_started/completed` → `execute_tool {name}` span
+- `turn.started/completed` → `invoke_agent {turn_id}` span
+
+**Benefits of event-listener architecture**:
+- Business logic (LLM drivers, atoms) emits events, not spans
+- Observability backends are pluggable (OTel, metrics, logging)
+- Single source of truth: events are stored, then converted to spans
+- Easy to add new backends without modifying core code
+
 ### Code Organization Conventions
 
 #### Layer Separation

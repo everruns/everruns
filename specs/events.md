@@ -326,6 +326,16 @@ LLM events provide visibility into the actual LLM API calls.
 
 Emitted after each LLM API call to provide full visibility into the messages sent to the model and the response received. This is useful for debugging, auditing, and understanding the exact prompts and responses.
 
+**Metadata fields** (aligned with gen-ai OTel semantic conventions):
+- `model` - Model name used for generation
+- `provider` - LLM provider (openai, anthropic, etc.)
+- `usage` - Token usage (input_tokens, output_tokens)
+- `duration_ms` - Request duration in milliseconds
+- `success` - Whether the generation succeeded
+- `error` - Error message if failed
+- `finish_reasons` - Array of finish reasons (e.g., `["stop"]`, `["tool_calls"]`)
+- `response_id` - Provider's response ID for correlation
+
 ```json
 {
   "type": "llm.generation",
@@ -364,7 +374,9 @@ Emitted after each LLM API call to provide full visibility into the messages sen
         "output_tokens": 45
       },
       "duration_ms": 1200,
-      "success": true
+      "success": true,
+      "finish_reasons": ["stop"],
+      "response_id": "chatcmpl-abc123"
     }
   }
 }
@@ -498,3 +510,53 @@ WHERE event_type IN ('turn.started', 'turn.completed', 'turn.failed');
 CREATE INDEX idx_events_tool_calls ON events(session_id, sequence)
 WHERE event_type IN ('tool.call_started', 'tool.call_completed');
 ```
+
+## Event Listeners
+
+Event listeners provide a pluggable mechanism for observability backends to react to events without modifying business logic.
+
+### EventListener Trait
+
+```rust
+#[async_trait]
+pub trait EventListener: Send + Sync {
+    /// Called after an event is persisted
+    async fn on_event(&self, event: &Event);
+
+    /// Optional: filter which event types to receive
+    fn event_types(&self) -> Option<Vec<&'static str>> { None }
+
+    /// Human-readable name for logging
+    fn name(&self) -> &'static str { "EventListener" }
+}
+```
+
+### Listener Registration
+
+Listeners are registered with `EventService` at startup:
+
+```rust
+let otel_listener = Arc::new(OtelEventListener::new());
+let event_service = EventService::with_listeners(db, vec![otel_listener]);
+```
+
+### Built-in Listeners
+
+| Listener | Event Types | Purpose |
+|----------|-------------|---------|
+| `OtelEventListener` | `llm.generation`, `tool.call_*`, `turn.*` | Generate OpenTelemetry spans |
+
+### Execution Model
+
+1. Event is persisted to database
+2. All registered listeners are notified synchronously
+3. Listeners should not block; spawn background tasks for heavy processing
+4. Listener failures do not affect event persistence
+
+### Custom Listeners
+
+Custom listeners can be implemented for:
+- Metrics collection (Prometheus, StatsD)
+- Analytics pipelines (event forwarding to data warehouses)
+- Audit logging
+- Real-time alerting
