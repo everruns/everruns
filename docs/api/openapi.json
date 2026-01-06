@@ -2382,6 +2382,12 @@
             "$ref": "#/components/schemas/SessionStartedData"
           },
           {
+            "$ref": "#/components/schemas/SessionActivatedData"
+          },
+          {
+            "$ref": "#/components/schemas/SessionIdledData"
+          },
+          {
             "type": "object",
             "description": "Raw data for backward compatibility with legacy events"
           }
@@ -4126,6 +4132,26 @@
           }
         }
       },
+      "SessionActivatedData": {
+        "type": "object",
+        "description": "Data for session.activated event (turn started, session now active)",
+        "required": [
+          "turn_id",
+          "input_message_id"
+        ],
+        "properties": {
+          "input_message_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Input message ID that triggered the turn"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn ID that activated the session"
+          }
+        }
+      },
       "SessionFile": {
         "type": "object",
         "description": "Complete file with content",
@@ -4186,6 +4212,29 @@
           }
         }
       },
+      "SessionIdledData": {
+        "type": "object",
+        "description": "Data for session.idled event (turn completed, session now idle)",
+        "required": [
+          "turn_id"
+        ],
+        "properties": {
+          "iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of iterations in the completed turn",
+            "minimum": 0
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn ID that just completed"
+          }
+        }
+      },
       "SessionStartedData": {
         "type": "object",
         "description": "Data for session.started event",
@@ -4210,12 +4259,11 @@
       },
       "SessionStatus": {
         "type": "string",
-        "description": "Session execution status.\n- `pending`: Session created but not yet started\n- `running`: Session is actively processing messages\n- `completed`: Session finished successfully\n- `failed`: Session terminated due to an error",
+        "description": "Session execution status.\n- `started`: Session just created, no turn executed yet\n- `active`: A turn is currently running\n- `idle`: Turn completed, session waiting for next input",
         "enum": [
-          "pending",
-          "running",
-          "completed",
-          "failed"
+          "started",
+          "active",
+          "idle"
         ]
       },
       "StatRequest": {
