@@ -470,14 +470,6 @@ impl LlmProviderStore for GrpcLlmProviderStore {
 fn proto_model_with_provider_to_model(
     proto: proto::ModelWithProvider,
 ) -> Result<ModelWithProvider> {
-    tracing::debug!(
-        model = %proto.model,
-        provider_type = %proto.provider_type,
-        has_api_key = proto.api_key.is_some(),
-        api_key_len = proto.api_key.as_ref().map(|k| k.len()).unwrap_or(0),
-        "proto_model_with_provider_to_model received"
-    );
-
     let provider_type = match proto.provider_type.to_lowercase().as_str() {
         "openai" => everruns_core::LlmProviderType::Openai,
         "anthropic" => everruns_core::LlmProviderType::Anthropic,

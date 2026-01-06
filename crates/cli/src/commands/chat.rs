@@ -143,20 +143,6 @@ pub async fn run(
                     return Ok(());
                 }
 
-                // Handle reason.completed as turn completion (when no tool calls)
-                // This is a fallback since turn.completed may not be emitted
-                if event.event_type == "reason.completed" {
-                    let has_tool_calls = event
-                        .data
-                        .get("has_tool_calls")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    if !has_tool_calls && !agent_content.is_empty() {
-                        println!("Agent: {}", agent_content);
-                        return Ok(());
-                    }
-                }
-
                 // Handle turn.failed event
                 if event.event_type == "turn.failed" {
                     let error = event
@@ -173,18 +159,6 @@ pub async fn run(
 
                 if event.event_type == "turn.completed" {
                     return Ok(());
-                }
-
-                // Handle reason.completed as turn completion (when no tool calls)
-                if event.event_type == "reason.completed" {
-                    let has_tool_calls = event
-                        .data
-                        .get("has_tool_calls")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    if !has_tool_calls {
-                        return Ok(());
-                    }
                 }
 
                 if event.event_type == "turn.failed" {
