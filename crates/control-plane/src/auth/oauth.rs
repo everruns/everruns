@@ -23,7 +23,7 @@ impl OAuthProvider {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "google" => Some(OAuthProvider::Google),
             "github" => Some(OAuthProvider::GitHub),
@@ -312,22 +312,22 @@ mod tests {
     #[test]
     fn test_oauth_provider_from_str() {
         assert_eq!(
-            OAuthProvider::from_str("google"),
+            OAuthProvider::parse("google"),
             Some(OAuthProvider::Google)
         );
         assert_eq!(
-            OAuthProvider::from_str("GOOGLE"),
+            OAuthProvider::parse("GOOGLE"),
             Some(OAuthProvider::Google)
         );
         assert_eq!(
-            OAuthProvider::from_str("github"),
+            OAuthProvider::parse("github"),
             Some(OAuthProvider::GitHub)
         );
         assert_eq!(
-            OAuthProvider::from_str("GITHUB"),
+            OAuthProvider::parse("GITHUB"),
             Some(OAuthProvider::GitHub)
         );
-        assert_eq!(OAuthProvider::from_str("invalid"), None);
+        assert_eq!(OAuthProvider::parse("invalid"), None);
     }
 
     #[test]
