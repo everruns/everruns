@@ -311,22 +311,10 @@ mod tests {
 
     #[test]
     fn test_oauth_provider_from_str() {
-        assert_eq!(
-            OAuthProvider::parse("google"),
-            Some(OAuthProvider::Google)
-        );
-        assert_eq!(
-            OAuthProvider::parse("GOOGLE"),
-            Some(OAuthProvider::Google)
-        );
-        assert_eq!(
-            OAuthProvider::parse("github"),
-            Some(OAuthProvider::GitHub)
-        );
-        assert_eq!(
-            OAuthProvider::parse("GITHUB"),
-            Some(OAuthProvider::GitHub)
-        );
+        assert_eq!(OAuthProvider::parse("google"), Some(OAuthProvider::Google));
+        assert_eq!(OAuthProvider::parse("GOOGLE"), Some(OAuthProvider::Google));
+        assert_eq!(OAuthProvider::parse("github"), Some(OAuthProvider::GitHub));
+        assert_eq!(OAuthProvider::parse("GITHUB"), Some(OAuthProvider::GitHub));
         assert_eq!(OAuthProvider::parse("invalid"), None);
     }
 
