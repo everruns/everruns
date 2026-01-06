@@ -24,11 +24,11 @@ pub struct Cli {
     pub api_url: String,
 
     /// Output format
-    #[arg(long, short, default_value = "text", value_parser = ["text", "json", "yaml"])]
+    #[arg(long, short, global = true, default_value = "text", value_parser = ["text", "json", "yaml"])]
     pub output: String,
 
     /// Suppress non-essential output
-    #[arg(long, short)]
+    #[arg(long, short, global = true)]
     pub quiet: bool,
 
     #[command(subcommand)]
