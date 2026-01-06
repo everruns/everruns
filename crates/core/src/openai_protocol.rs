@@ -5,6 +5,10 @@
 //
 // This is the base protocol implementation used in examples.
 // For production use with OpenAI-specific features, use OpenAILlmDriver from everruns-openai.
+//
+// Note: OTel instrumentation is handled via the event-listener pattern.
+// llm.generation events are emitted by ReasonAtom, and OtelEventListener
+// creates the appropriate gen-ai spans. No direct tracing in drivers.
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
@@ -13,14 +17,12 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
-use tracing::Instrument;
 
 use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
-use crate::telemetry::gen_ai;
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
@@ -186,45 +188,9 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        // Create span with gen-ai semantic conventions
-        // Span name format: "{operation} {model}" per OTel spec
-        let span_name = format!("chat {}", config.model);
-        let span = tracing::info_span!(
-            "gen_ai.chat",
-            "otel.name" = %span_name,
-            "otel.kind" = "client",
-            // Operation and provider
-            "gen_ai.operation.name" = gen_ai::operation::CHAT,
-            "gen_ai.system" = gen_ai::provider::OPENAI,
-            // Request attributes
-            "gen_ai.request.model" = %config.model,
-            "gen_ai.request.max_tokens" = config.max_tokens,
-            "gen_ai.request.temperature" = config.temperature,
-            // Server info
-            "server.address" = %self.api_url,
-            // Response attributes (filled dynamically)
-            "gen_ai.response.id" = tracing::field::Empty,
-            "gen_ai.response.model" = tracing::field::Empty,
-            "gen_ai.response.finish_reasons" = tracing::field::Empty,
-            // Usage metrics (filled dynamically)
-            "gen_ai.usage.input_tokens" = tracing::field::Empty,
-            "gen_ai.usage.output_tokens" = tracing::field::Empty,
-            // Output type
-            "gen_ai.output.type" = gen_ai::output_type::TEXT,
-        );
-
-        self.chat_completion_stream_inner(messages, config)
-            .instrument(span)
-            .await
-    }
-}
-
-impl OpenAIProtocolLlmDriver {
-    async fn chat_completion_stream_inner(
-        &self,
-        messages: Vec<LlmMessage>,
-        config: &LlmCallConfig,
-    ) -> Result<LlmResponseStream> {
+        // Note: OTel instrumentation is handled via event listeners.
+        // ReasonAtom emits llm.generation events, and OtelEventListener
+        // creates gen-ai spans from those events.
         let openai_messages: Vec<OpenAiMessage> =
             messages.iter().map(Self::convert_message).collect();
 
@@ -270,21 +236,12 @@ impl OpenAIProtocolLlmDriver {
         let total_tokens = Arc::new(Mutex::new(0u32));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
-        // Track response ID and actual model from first chunk
-        let response_id = Arc::new(Mutex::new(Option::<String>::None));
-        let response_model = Arc::new(Mutex::new(Option::<String>::None));
-
-        // Capture the current span for recording token usage when stream completes
-        let current_span = tracing::Span::current();
 
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
             let total_tokens = Arc::clone(&total_tokens);
             let prompt_tokens = Arc::clone(&prompt_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
-            let response_id = Arc::clone(&response_id);
-            let response_model = Arc::clone(&response_model);
-            let span = current_span.clone();
 
             async move {
                 match result {
@@ -292,13 +249,6 @@ impl OpenAIProtocolLlmDriver {
                         if event.data == "[DONE]" {
                             let output_tokens = *total_tokens.lock().unwrap();
                             let input_tokens = *prompt_tokens.lock().unwrap();
-
-                            // Record token usage on the span
-                            span.record(gen_ai::USAGE_OUTPUT_TOKENS, output_tokens);
-                            if input_tokens > 0 {
-                                span.record(gen_ai::USAGE_INPUT_TOKENS, input_tokens);
-                            }
-                            span.record(gen_ai::RESPONSE_FINISH_REASONS, "stop");
 
                             return Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
                                 total_tokens: Some(input_tokens + output_tokens),
@@ -311,22 +261,6 @@ impl OpenAIProtocolLlmDriver {
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
                             Ok(chunk) => {
-                                // Capture response ID and model from first chunk
-                                if let Some(id) = &chunk.id {
-                                    let mut resp_id = response_id.lock().unwrap();
-                                    if resp_id.is_none() {
-                                        *resp_id = Some(id.clone());
-                                        span.record(gen_ai::RESPONSE_ID, id.as_str());
-                                    }
-                                }
-                                if let Some(m) = &chunk.model {
-                                    let mut resp_model = response_model.lock().unwrap();
-                                    if resp_model.is_none() {
-                                        *resp_model = Some(m.clone());
-                                        span.record(gen_ai::RESPONSE_MODEL, m.as_str());
-                                    }
-                                }
-
                                 // Capture usage from chunk if available
                                 if let Some(usage) = &chunk.usage {
                                     if let Some(pt) = usage.prompt_tokens {
@@ -380,16 +314,6 @@ impl OpenAIProtocolLlmDriver {
                                     if let Some(finish_reason) = &choice.finish_reason {
                                         let output_tokens = *total_tokens.lock().unwrap();
                                         let input_tokens = *prompt_tokens.lock().unwrap();
-
-                                        // Record token usage and finish reason
-                                        span.record(gen_ai::USAGE_OUTPUT_TOKENS, output_tokens);
-                                        if input_tokens > 0 {
-                                            span.record(gen_ai::USAGE_INPUT_TOKENS, input_tokens);
-                                        }
-                                        span.record(
-                                            gen_ai::RESPONSE_FINISH_REASONS,
-                                            finish_reason.as_str(),
-                                        );
 
                                         if finish_reason == "tool_calls" {
                                             let tool_calls =
@@ -539,6 +463,7 @@ struct OpenAiFunctionCall {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // id and model are deserialized but used by event listeners, not directly
 struct OpenAiStreamChunk {
     /// Unique identifier for this completion
     #[serde(default)]

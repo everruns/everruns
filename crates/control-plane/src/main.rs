@@ -15,6 +15,7 @@ use anyhow::{Context, Result};
 use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
+use everruns_core::{EventListener, OtelEventListener};
 use everruns_worker::{create_runner, RunnerConfig};
 use serde::Serialize;
 use std::sync::Arc;
@@ -126,7 +127,11 @@ async fn main() -> Result<()> {
     let agents_state = api::agents::AppState::new(db.clone());
     let sessions_state = api::sessions::AppState::new(db.clone());
     let messages_state = api::messages::AppState::new(db.clone(), runner.clone());
-    let events_state = api::events::AppState::new(db.clone());
+
+    // Create event listeners for observability
+    // OtelEventListener generates gen-ai semantic convention spans from events
+    let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
+    let events_state = api::events::AppState::with_listeners(db.clone(), vec![otel_listener]);
     let llm_providers_state = api::llm_providers::AppState::new(db.clone(), encryption.clone());
     let llm_models_state = api::llm_models::AppState::new(db.clone());
     let capability_service = Arc::new(services::CapabilityService::new(db.clone()));

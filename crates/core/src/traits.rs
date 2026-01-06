@@ -425,3 +425,57 @@ impl EventEmitter for NoopEventEmitter {
         Ok(request.into_event(uuid::Uuid::now_v7(), 0))
     }
 }
+
+// ============================================================================
+// EventListener - For observability and analytics
+// ============================================================================
+
+/// Trait for listening to events after they are emitted and stored.
+///
+/// Event listeners are notified synchronously after an event is persisted.
+/// They can be used for:
+/// - OpenTelemetry span generation (gen-ai semantics)
+/// - External observability integrations (Datadog, NewRelic, etc.)
+/// - Analytics and metrics collection
+/// - Audit logging
+///
+/// Listeners should be fast and non-blocking. For heavy processing,
+/// consider spawning background tasks.
+///
+/// # Example
+///
+/// ```ignore
+/// use everruns_core::traits::EventListener;
+/// use everruns_core::events::Event;
+///
+/// struct MetricsListener;
+///
+/// #[async_trait]
+/// impl EventListener for MetricsListener {
+///     async fn on_event(&self, event: &Event) {
+///         // Record metrics based on event type
+///         metrics::counter!("events", "type" => event.event_type.clone());
+///     }
+/// }
+/// ```
+#[async_trait]
+pub trait EventListener: Send + Sync {
+    /// Called after an event is persisted.
+    ///
+    /// The event has already been stored in the database with its
+    /// assigned ID and sequence number.
+    async fn on_event(&self, event: &Event);
+
+    /// Optional: Filter which event types this listener cares about.
+    ///
+    /// Return `None` to receive all events (default).
+    /// Return `Some(vec!["llm.generation", "tool.call_completed"])` to filter.
+    fn event_types(&self) -> Option<Vec<&'static str>> {
+        None // Receive all events by default
+    }
+
+    /// Human-readable name for logging/debugging.
+    fn name(&self) -> &'static str {
+        "EventListener"
+    }
+}

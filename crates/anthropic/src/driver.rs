@@ -2,6 +2,10 @@
 //
 // Implementation of LlmDriver for Anthropic's Claude API.
 // Uses the Messages API with streaming support.
+//
+// Note: OTel instrumentation is handled via the event-listener pattern.
+// llm.generation events are emitted by ReasonAtom, and OtelEventListener
+// creates the appropriate gen-ai spans. No direct tracing in drivers.
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
@@ -10,7 +14,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
-use tracing::Instrument;
 
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
@@ -18,7 +21,6 @@ use everruns_core::llm_driver_registry::{
     LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
     ProviderType,
 };
-use everruns_core::telemetry::gen_ai;
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -208,45 +210,9 @@ impl LlmDriver for AnthropicLlmDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        // Create span with gen-ai semantic conventions
-        // Span name format: "{operation} {model}" per OTel spec
-        let span_name = format!("chat {}", config.model);
-        let span = tracing::info_span!(
-            "gen_ai.chat",
-            "otel.name" = %span_name,
-            "otel.kind" = "client",
-            // Operation and provider
-            "gen_ai.operation.name" = gen_ai::operation::CHAT,
-            "gen_ai.system" = gen_ai::provider::ANTHROPIC,
-            // Request attributes
-            "gen_ai.request.model" = %config.model,
-            "gen_ai.request.max_tokens" = config.max_tokens.unwrap_or(4096),
-            "gen_ai.request.temperature" = config.temperature,
-            // Server info
-            "server.address" = %self.api_url,
-            // Response attributes (filled dynamically)
-            "gen_ai.response.id" = tracing::field::Empty,
-            "gen_ai.response.model" = tracing::field::Empty,
-            "gen_ai.response.finish_reasons" = tracing::field::Empty,
-            // Usage metrics (filled dynamically)
-            "gen_ai.usage.input_tokens" = tracing::field::Empty,
-            "gen_ai.usage.output_tokens" = tracing::field::Empty,
-            // Output type
-            "gen_ai.output.type" = gen_ai::output_type::TEXT,
-        );
-
-        self.chat_completion_stream_inner(messages, config)
-            .instrument(span)
-            .await
-    }
-}
-
-impl AnthropicLlmDriver {
-    async fn chat_completion_stream_inner(
-        &self,
-        messages: Vec<LlmMessage>,
-        config: &LlmCallConfig,
-    ) -> Result<LlmResponseStream> {
+        // Note: OTel instrumentation is handled via event listeners.
+        // ReasonAtom emits llm.generation events, and OtelEventListener
+        // creates gen-ai spans from those events.
         let (system_prompt, anthropic_messages) = Self::convert_messages(&messages);
 
         let tools = if config.tools.is_empty() {
@@ -305,12 +271,6 @@ impl AnthropicLlmDriver {
         let output_tokens = Arc::new(Mutex::new(0u32));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
-        // Track response ID and actual model from message_start
-        let response_id = Arc::new(Mutex::new(Option::<String>::None));
-        let response_model = Arc::new(Mutex::new(Option::<String>::None));
-
-        // Capture the current span for recording token usage when stream completes
-        let current_span = tracing::Span::current();
 
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
@@ -318,9 +278,6 @@ impl AnthropicLlmDriver {
             let output_tokens = Arc::clone(&output_tokens);
             let current_tool_call = Arc::clone(&current_tool_call);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
-            let response_id = Arc::clone(&response_id);
-            let response_model = Arc::clone(&response_model);
-            let span = current_span.clone();
 
             async move {
                 match result {
@@ -328,27 +285,10 @@ impl AnthropicLlmDriver {
                         // Anthropic uses different event types
                         match event.event.as_str() {
                             "message_start" => {
-                                // Parse message_start for response ID, model, and input token count
+                                // Parse message_start for input token count
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicMessageStart>(&event.data)
                                 {
-                                    // Capture response ID
-                                    if let Some(id) = &data.message.id {
-                                        let mut resp_id = response_id.lock().unwrap();
-                                        if resp_id.is_none() {
-                                            *resp_id = Some(id.clone());
-                                            span.record(gen_ai::RESPONSE_ID, id.as_str());
-                                        }
-                                    }
-                                    // Capture actual model used
-                                    if let Some(m) = &data.message.model {
-                                        let mut resp_model = response_model.lock().unwrap();
-                                        if resp_model.is_none() {
-                                            *resp_model = Some(m.clone());
-                                            span.record(gen_ai::RESPONSE_MODEL, m.as_str());
-                                        }
-                                    }
-                                    // Capture input tokens
                                     if let Some(usage) = data.message.usage {
                                         *input_tokens.lock().unwrap() = usage.input_tokens;
                                     }
@@ -436,11 +376,6 @@ impl AnthropicLlmDriver {
                             "message_stop" => {
                                 let in_tokens = *input_tokens.lock().unwrap();
                                 let out_tokens = *output_tokens.lock().unwrap();
-
-                                // Record token usage on the span
-                                span.record(gen_ai::USAGE_INPUT_TOKENS, in_tokens);
-                                span.record(gen_ai::USAGE_OUTPUT_TOKENS, out_tokens);
-                                span.record(gen_ai::RESPONSE_FINISH_REASONS, "stop");
 
                                 Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
                                     total_tokens: Some(in_tokens + out_tokens),
@@ -607,6 +542,7 @@ struct AnthropicMessageStart {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // id and model are deserialized but used by event listeners, not directly
 struct AnthropicMessageInfo {
     /// Unique identifier for this message
     #[serde(default)]

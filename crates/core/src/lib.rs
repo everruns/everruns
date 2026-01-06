@@ -21,6 +21,9 @@ pub mod tool_types;
 // Telemetry (OpenTelemetry with gen-ai semantic conventions)
 pub mod telemetry;
 
+// OpenTelemetry event listener (generates spans from events)
+pub mod otel_listener;
+
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
@@ -59,7 +62,7 @@ pub use message::{
 };
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
+    EventEmitter, EventListener, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
     NoopEventEmitter, SessionFileStore, SessionStore, ToolContext, ToolExecutor,
 };
 
@@ -121,3 +124,6 @@ pub use llm_models::{
 };
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
+
+// OTel event listener
+pub use otel_listener::OtelEventListener;

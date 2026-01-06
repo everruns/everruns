@@ -9,7 +9,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use everruns_core::Event;
+use everruns_core::{Event, EventListener};
 use serde::Deserialize;
 
 use super::common::ListResponse;
@@ -43,10 +43,20 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Create app state with default event service (no listeners)
+    #[allow(dead_code)]
     pub fn new(db: Arc<Database>) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::new(db)),
+        }
+    }
+
+    /// Create app state with event listeners for observability
+    pub fn with_listeners(db: Arc<Database>, listeners: Vec<Arc<dyn EventListener>>) -> Self {
+        Self {
+            session_service: Arc::new(SessionService::new(db.clone())),
+            event_service: Arc::new(EventService::with_listeners(db, listeners)),
         }
     }
 }
