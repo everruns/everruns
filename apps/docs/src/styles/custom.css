@@ -165,3 +165,58 @@ h6 {
 .sl-markdown-content {
   line-height: 1.6;
 }
+
+/* OpenAPI/Starlight-OpenAPI response examples fix for light mode */
+/* Ensure proper contrast for schema viewers and response examples */
+:root[data-theme="light"] .openapi-explorer pre,
+:root[data-theme="light"] .sl-markdown-content .openapi pre,
+:root[data-theme="light"] [class*="openapi"] pre {
+  background-color: #1a1a1a !important;
+  color: #f5f5f5 !important;
+}
+
+:root[data-theme="light"] .openapi-explorer code,
+:root[data-theme="light"] .sl-markdown-content .openapi code,
+:root[data-theme="light"] [class*="openapi"] pre code {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+/* Schema property names and values */
+:root[data-theme="light"] .schema-property-name,
+:root[data-theme="light"] .property-name {
+  color: #0a0a0a;
+}
+
+/* Response example panels - force dark background for readability */
+:root[data-theme="light"] .response-example,
+:root[data-theme="light"] .example-panel,
+:root[data-theme="light"] [class*="response"] pre,
+:root[data-theme="light"] [class*="example"] pre {
+  background-color: #1f2937 !important;
+  color: #e5e7eb !important;
+  border-radius: 0.5rem;
+}
+
+/* JSON syntax highlighting in examples */
+:root[data-theme="light"] [class*="openapi"] .token.property,
+:root[data-theme="light"] [class*="response"] .token.property {
+  color: #93c5fd !important;
+}
+
+:root[data-theme="light"] [class*="openapi"] .token.string,
+:root[data-theme="light"] [class*="response"] .token.string {
+  color: #86efac !important;
+}
+
+:root[data-theme="light"] [class*="openapi"] .token.number,
+:root[data-theme="light"] [class*="response"] .token.number {
+  color: #fcd34d !important;
+}
+
+:root[data-theme="light"] [class*="openapi"] .token.boolean,
+:root[data-theme="light"] [class*="response"] .token.boolean,
+:root[data-theme="light"] [class*="openapi"] .token.null,
+:root[data-theme="light"] [class*="response"] .token.null {
+  color: #f472b6 !important;
+}
