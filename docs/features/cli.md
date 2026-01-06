@@ -220,17 +220,12 @@ everruns agents list --output yaml
 
 ## Quiet Mode
 
-Suppress non-essential output for scripting:
+Suppress non-essential output:
 
 ```bash
 # Only output the created agent ID
 everruns agents create -f agent.yaml --quiet
 # Output: 550e8400-e29b-41d4-a716-446655440000
-
-# Use in scripts
-AGENT_ID=$(everruns agents create -f agent.yaml -q)
-SESSION_ID=$(everruns sessions create --agent $AGENT_ID -q)
-everruns chat "Hello!" --session $SESSION_ID --agent $AGENT_ID
 ```
 
 ## Examples
@@ -238,17 +233,15 @@ everruns chat "Hello!" --session $SESSION_ID --agent $AGENT_ID
 ### Complete Workflow
 
 ```bash
-# 1. Create an agent
-everruns agents create \
+# 1. Create an agent and extract ID with jq
+AGENT_ID=$(everruns agents create \
   --name "assistant" \
   --system-prompt "You are a helpful assistant." \
   --capability current_time \
-  --quiet > agent_id.txt
-
-AGENT_ID=$(cat agent_id.txt)
+  -o json | jq -r '.id')
 
 # 2. Create a session
-SESSION_ID=$(everruns sessions create --agent $AGENT_ID -q)
+SESSION_ID=$(everruns sessions create --agent $AGENT_ID -o json | jq -r '.id')
 
 # 3. Chat with the agent
 everruns chat "What time is it?" --session $SESSION_ID --agent $AGENT_ID
