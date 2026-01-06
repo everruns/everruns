@@ -20,7 +20,8 @@ use everruns_internal_protocol::proto::{
     SessionDeleteFileResponse, SessionGrepFilesRequest, SessionGrepFilesResponse,
     SessionListDirectoryRequest, SessionListDirectoryResponse, SessionReadFileRequest,
     SessionReadFileResponse, SessionStatFileRequest, SessionStatFileResponse,
-    SessionWriteFileRequest, SessionWriteFileResponse,
+    SessionWriteFileRequest, SessionWriteFileResponse, SetSessionStatusRequest,
+    SetSessionStatusResponse,
 };
 use everruns_internal_protocol::{
     proto_event_request_to_schema, schema_agent_to_proto, schema_event_to_proto, WorkerService,
@@ -340,6 +341,49 @@ impl WorkerService for WorkerServiceImpl {
 
         Ok(Response::new(GetSessionResponse {
             session: proto_session,
+        }))
+    }
+
+    async fn set_session_status(
+        &self,
+        request: Request<SetSessionStatusRequest>,
+    ) -> Result<Response<SetSessionStatusResponse>, Status> {
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        // Validate status value
+        let valid_statuses = ["started", "active", "idle"];
+        if !valid_statuses.contains(&req.status.as_str()) {
+            return Err(Status::invalid_argument(format!(
+                "Invalid status '{}'. Must be one of: started, active, idle",
+                req.status
+            )));
+        }
+
+        let session = self
+            .session_service
+            .update_status(session_id, req.status)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update session status: {}", e);
+                Status::internal("Failed to update session status")
+            })?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        let proto_session = proto::Session {
+            id: Some(uuid_to_proto_uuid(session.id)),
+            agent_id: Some(uuid_to_proto_uuid(session.agent_id)),
+            title: session.title.clone().unwrap_or_default(),
+            status: session.status.to_string(),
+            created_at: Some(datetime_to_proto_timestamp(session.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(session.created_at)),
+            default_model_id: session.model_id.map(uuid_to_proto_uuid),
+        };
+
+        Ok(Response::new(SetSessionStatusResponse {
+            session: Some(proto_session),
         }))
     }
 

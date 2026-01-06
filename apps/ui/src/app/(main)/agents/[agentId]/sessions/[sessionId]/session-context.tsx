@@ -1,10 +1,11 @@
 "use client";
 
-import { createContext, useContext, useState, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useState, useMemo, useEffect, type ReactNode } from "react";
 import { useAgent, useSession, useEvents, useSendMessage, useLlmModel } from "@/hooks";
 import type {
   Agent,
   Session,
+  SessionStatus,
   Event,
   LlmModelWithProvider,
   Controls,
@@ -77,27 +78,53 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
   // Track if user has sent a message and is waiting for response
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
 
-  // First fetch session without polling to get initial status
+  // Track session status locally based on SSE events (no polling needed)
+  const [localStatus, setLocalStatus] = useState<SessionStatus | null>(null);
+
+  // Fetch session once to get initial data
   const { data: session, isLoading: sessionLoading } = useSession(agentId, sessionId);
   const sendMessage = useSendMessage();
 
   // Fetch LLM model info if session has a model_id
   const { data: llmModel } = useLlmModel(session?.model_id ?? "");
 
-  // Determine if session is still processing
-  const isActive = session?.status === "running" || session?.status === "pending";
-
-  // Derive whether we should poll - only when waiting AND session is active
-  const shouldPoll = isWaitingForResponse && isActive;
-
-  // Re-fetch session with polling when shouldPoll changes
-  useSession(agentId, sessionId, {
-    refetchInterval: shouldPoll ? 1000 : false,
-  });
-
   // Fetch events using SSE - always enabled for real-time streaming
   // SSE handles backoff automatically (100ms → 10s when no new events)
   const { data: events, isLoading: eventsLoading } = useEvents(agentId, sessionId);
+
+  // Update local status from SSE events (session.activated, session.idled)
+  useEffect(() => {
+    if (!events || events.length === 0) return;
+
+    // Find the most recent session status event
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i];
+      if (event.type === "session.activated") {
+        setLocalStatus("active");
+        break;
+      }
+      if (event.type === "session.idled") {
+        setLocalStatus("idle");
+        // When session becomes idle, user is no longer waiting for response
+        setIsWaitingForResponse(false);
+        break;
+      }
+    }
+  }, [events]);
+
+  // Reset local status when session changes
+  useEffect(() => {
+    setLocalStatus(null);
+  }, [sessionId]);
+
+  // Use local status if available, otherwise fall back to session status
+  const effectiveStatus = localStatus ?? session?.status;
+
+  // Determine if session is actively processing (only "active" means processing)
+  const isActive = effectiveStatus === "active";
+
+  // shouldPoll is no longer needed - we use SSE events for real-time status
+  const shouldPoll = false;
 
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">("");
 

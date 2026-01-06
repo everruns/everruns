@@ -131,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
         title: Some("Weather Query".to_string()),
         tags: vec![],
         model_id: None,
-        status: SessionStatus::Pending,
+        status: SessionStatus::Started,
         created_at: now,
         started_at: None,
         finished_at: None,

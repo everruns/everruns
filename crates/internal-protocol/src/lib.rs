@@ -284,6 +284,8 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ToolCallCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::LlmGeneration(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::SessionIdled(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::Raw(v) => v.clone(),
     }
 }

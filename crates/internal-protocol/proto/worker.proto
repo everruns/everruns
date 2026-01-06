@@ -28,6 +28,7 @@ service WorkerService {
 
     // Session operations
     rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+    rpc SetSessionStatus(SetSessionStatusRequest) returns (SetSessionStatusResponse);
 
     // Message operations
     rpc LoadMessages(LoadMessagesRequest) returns (LoadMessagesResponse);
@@ -125,6 +126,15 @@ message GetSessionRequest {
 
 message GetSessionResponse {
     optional Session session = 1;
+}
+
+message SetSessionStatusRequest {
+    Uuid session_id = 1;
+    string status = 2;  // "started", "active", "idle"
+}
+
+message SetSessionStatusResponse {
+    Session session = 1;
 }
 
 // ============================================================================

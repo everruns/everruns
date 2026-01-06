@@ -242,18 +242,11 @@ async fn listen_to_sse(url: &str) -> Result<String, Box<dyn std::error::Error + 
                                     return Ok(agent_response);
                                 }
                             }
-                            "session.status" => {
-                                if let Some(status) =
-                                    event.data.get("status").and_then(|s| s.as_str())
-                                {
-                                    println!("   [Session Status] {}", status);
-                                    // If session is back to pending after running, we're done
-                                    if status == "pending"
-                                        && seen_tool_result
-                                        && !agent_response.is_empty()
-                                    {
-                                        return Ok(agent_response);
-                                    }
+                            "session.idled" => {
+                                println!("   [Session Idle] Turn completed");
+                                // Session is now idle (turn completed), we're done if we have a response
+                                if seen_tool_result && !agent_response.is_empty() {
+                                    return Ok(agent_response);
                                 }
                             }
                             _ => {}

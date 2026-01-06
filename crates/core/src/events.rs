@@ -39,6 +39,8 @@ pub const LLM_GENERATION: &str = "llm.generation";
 
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
+pub const SESSION_ACTIVATED: &str = "session.activated";
+pub const SESSION_IDLED: &str = "session.idled";
 
 // ============================================================================
 // Event Context
@@ -703,6 +705,29 @@ pub struct SessionStartedData {
     pub model_id: Option<Uuid>,
 }
 
+/// Data for session.activated event (turn started, session now active)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionActivatedData {
+    /// Turn ID that activated the session
+    pub turn_id: Uuid,
+
+    /// Input message ID that triggered the turn
+    pub input_message_id: Uuid,
+}
+
+/// Data for session.idled event (turn completed, session now idle)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionIdledData {
+    /// Turn ID that just completed
+    pub turn_id: Uuid,
+
+    /// Number of iterations in the completed turn
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iterations: Option<u32>,
+}
+
 // ============================================================================
 // EventData Enum - Typed event payloads
 // ============================================================================
@@ -729,6 +754,8 @@ pub struct SessionStartedData {
 /// - `tool.call_completed` → ToolCallCompletedData
 /// - `llm.generation` → LlmGenerationData
 /// - `session.started` → SessionStartedData
+/// - `session.activated` → SessionActivatedData
+/// - `session.idled` → SessionIdledData
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -761,6 +788,8 @@ pub enum EventData {
 
     // Session events
     SessionStarted(SessionStartedData),
+    SessionActivated(SessionActivatedData),
+    SessionIdled(SessionIdledData),
 
     /// Raw data for backward compatibility with legacy events
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
@@ -788,6 +817,8 @@ impl EventData {
             EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::SessionStarted(_) => SESSION_STARTED,
+            EventData::SessionActivated(_) => SESSION_ACTIVATED,
+            EventData::SessionIdled(_) => SESSION_IDLED,
             EventData::Raw(_) => UNKNOWN,
         }
     }
@@ -880,6 +911,18 @@ impl From<LlmGenerationData> for EventData {
 impl From<SessionStartedData> for EventData {
     fn from(data: SessionStartedData) -> Self {
         EventData::SessionStarted(data)
+    }
+}
+
+impl From<SessionActivatedData> for EventData {
+    fn from(data: SessionActivatedData) -> Self {
+        EventData::SessionActivated(data)
+    }
+}
+
+impl From<SessionIdledData> for EventData {
+    fn from(data: SessionIdledData) -> Self {
+        EventData::SessionIdled(data)
     }
 }
 

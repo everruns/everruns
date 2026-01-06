@@ -418,7 +418,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             INSERT INTO sessions (agent_id, title, tags, model_id, status)
-            VALUES ($1, $2, $3, $4, 'pending')
+            VALUES ($1, $2, $3, $4, 'started')
             RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
             "#,
         )
