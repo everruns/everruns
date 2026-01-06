@@ -12,6 +12,9 @@ END;
 -- Drop the old constraint
 ALTER TABLE sessions DROP CONSTRAINT IF EXISTS sessions_status_check;
 
+-- Update the default value
+ALTER TABLE sessions ALTER COLUMN status SET DEFAULT 'started';
+
 -- Add the new constraint with new status values
 ALTER TABLE sessions ADD CONSTRAINT sessions_status_check
     CHECK (status IN ('started', 'active', 'idle'));
