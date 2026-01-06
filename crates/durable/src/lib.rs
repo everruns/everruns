@@ -67,8 +67,8 @@ pub mod activity;
 pub mod engine;
 pub mod persistence;
 pub mod reliability;
+pub mod worker;
 pub mod workflow;
-// pub mod worker;      // Phase 4
 // pub mod observability; // Phase 5
 // pub mod admin;       // Phase 5
 
@@ -81,6 +81,7 @@ pub mod prelude {
         TaskDefinition, TraceContext, WorkflowEventStore, WorkflowStatus,
     };
     pub use crate::reliability::{CircuitBreakerConfig, RetryPolicy};
+    pub use crate::worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
     pub use crate::workflow::{
         ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,
     };
@@ -94,6 +95,7 @@ pub use persistence::{
     WorkflowEventStore, WorkflowStatus,
 };
 pub use reliability::{CircuitBreakerConfig, RetryPolicy};
+pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{
     ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,
 };
