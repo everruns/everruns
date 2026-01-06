@@ -52,6 +52,8 @@ TESTS_FAILED=0
 
 # Cleanup tracking
 AGENTS_TO_CLEANUP=()
+LLM_PROVIDER_ID=""
+LLM_MODEL_CREATED=false
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -92,6 +94,89 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+# Setup LLM provider if not already configured
+setup_llm_provider() {
+    log_info "Checking LLM provider configuration..."
+
+    # Check if there's already a default model
+    local providers=$(curl -s "$API_URL/v1/llm-providers" | jq '.data // []')
+    local provider_count=$(echo "$providers" | jq 'length')
+
+    if [ "$provider_count" -gt 0 ]; then
+        # Check if any provider has a default model
+        for provider_id in $(echo "$providers" | jq -r '.[].id'); do
+            local models=$(curl -s "$API_URL/v1/llm-providers/$provider_id/models" | jq '.data // []')
+            local has_default=$(echo "$models" | jq '[.[] | select(.is_default == true)] | length')
+            if [ "$has_default" -gt 0 ]; then
+                log_info "Found existing default model, skipping LLM setup"
+                return 0
+            fi
+        done
+    fi
+
+    # Need to create provider and model
+    log_info "Setting up LLM provider for tests..."
+
+    # Determine which API key to use
+    local api_key=""
+    local provider_type=""
+    local model_id=""
+
+    if [ -n "$OPENAI_API_KEY" ]; then
+        api_key="$OPENAI_API_KEY"
+        provider_type="openai"
+        model_id="gpt-4o-mini"
+        log_verbose "Using OpenAI provider with gpt-4o-mini"
+    elif [ -n "$ANTHROPIC_API_KEY" ]; then
+        api_key="$ANTHROPIC_API_KEY"
+        provider_type="anthropic"
+        model_id="claude-3-5-haiku-latest"
+        log_verbose "Using Anthropic provider with claude-3-5-haiku-latest"
+    else
+        log_error "No OPENAI_API_KEY or ANTHROPIC_API_KEY found"
+        log_error "Set one of these environment variables to run tool calling tests"
+        return 1
+    fi
+
+    # Create provider
+    local provider_response=$(curl -s -X POST "$API_URL/v1/llm-providers" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"name\": \"Smoke Test Provider\",
+            \"provider_type\": \"$provider_type\",
+            \"api_key\": \"$api_key\"
+        }")
+
+    LLM_PROVIDER_ID=$(echo "$provider_response" | jq -r '.id')
+
+    if [ "$LLM_PROVIDER_ID" = "null" ] || [ -z "$LLM_PROVIDER_ID" ]; then
+        log_error "Failed to create LLM provider: $provider_response"
+        return 1
+    fi
+
+    log_verbose "Created LLM provider: $LLM_PROVIDER_ID"
+
+    # Create default model
+    local model_response=$(curl -s -X POST "$API_URL/v1/llm-providers/$LLM_PROVIDER_ID/models" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"model_id\": \"$model_id\",
+            \"display_name\": \"Test Model\",
+            \"is_default\": true
+        }")
+
+    local model_created_id=$(echo "$model_response" | jq -r '.id')
+
+    if [ "$model_created_id" = "null" ] || [ -z "$model_created_id" ]; then
+        log_error "Failed to create LLM model: $model_response"
+        return 1
+    fi
+
+    LLM_MODEL_CREATED=true
+    log_info "LLM provider and default model configured successfully"
+    return 0
+}
 
 # Helper to run a test
 run_test() {
@@ -447,7 +532,7 @@ test_webfetch_capability() {
     log_verbose "Checking WebFetch capability is available..."
 
     local response=$(curl -s "$API_URL/v1/capabilities")
-    local web_fetch=$(echo "$response" | jq '.items[] | select(.id == "web_fetch")')
+    local web_fetch=$(echo "$response" | jq '.data[] | select(.id == "web_fetch")')
 
     if [ -z "$web_fetch" ] || [ "$web_fetch" = "null" ]; then
         log_error "web_fetch capability not found in capabilities list"
@@ -636,6 +721,87 @@ test_events_sync() {
 }
 
 # ============================================================================
+# Test: CurrentTime Capability Available
+# ============================================================================
+test_current_time_capability() {
+    log_verbose "Checking CurrentTime capability is available..."
+
+    local response=$(curl -s "$API_URL/v1/capabilities")
+    local current_time=$(echo "$response" | jq '.data[] | select(.id == "current_time")')
+
+    if [ -z "$current_time" ] || [ "$current_time" = "null" ]; then
+        log_error "current_time capability not found in capabilities list"
+        return 1
+    fi
+
+    local status=$(echo "$current_time" | jq -r '.status')
+    if [ "$status" != "available" ]; then
+        log_error "current_time capability status is '$status', expected 'available'"
+        return 1
+    fi
+
+    log_verbose "CurrentTime capability is available"
+    return 0
+}
+
+# ============================================================================
+# Test: Dad Joke Agent (CurrentTime Tool)
+# ============================================================================
+test_dad_joke_agent() {
+    log_verbose "Creating Dad Joke Agent with current_time capability..."
+    local agent_id=$(create_agent "Dad Joke Agent" "You are a master of dad jokes. When asked about time, you MUST first use the get_current_time tool to get the actual current time, then craft a hilarious dad joke that incorporates the real time." "Dad joke time test" "current_time")
+
+    if [ -z "$agent_id" ] || [ "$agent_id" = "null" ]; then
+        log_error "Failed to create agent"
+        return 1
+    fi
+
+    log_verbose "Agent ID: $agent_id"
+
+    log_verbose "Creating session..."
+    local session_id=$(create_session "$agent_id" "Dad Joke Time Test")
+
+    if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
+        log_error "Failed to create session"
+        return 1
+    fi
+
+    log_verbose "Sending message: Tell me a joke about the current time!"
+    send_message "$agent_id" "$session_id" "Tell me a joke about the current time!"
+
+    log_verbose "Checking messages..."
+    local messages=$(get_messages "$agent_id" "$session_id")
+
+    # Check for tool calls
+    local tool_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[]] | length')
+    log_verbose "Tool calls found: $tool_calls"
+
+    if [ "$tool_calls" -ge 1 ]; then
+        # Check for get_current_time tool
+        local time_called=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "get_current_time")] | length')
+        if [ "$time_called" -ge 1 ]; then
+            log_verbose "get_current_time tool was called"
+
+            # Check for assistant response
+            local assistant_msgs=$(echo "$messages" | jq '[.data[] | select(.role == "assistant") | select(.content != null)] | length')
+            if [ "$assistant_msgs" -ge 1 ]; then
+                log_verbose "Assistant responded with message"
+                return 0
+            else
+                log_error "Expected assistant response after tool call"
+                return 1
+            fi
+        else
+            log_error "Expected 'get_current_time' tool to be called"
+            return 1
+        fi
+    else
+        log_error "Expected at least 1 tool call, got $tool_calls"
+        return 1
+    fi
+}
+
+# ============================================================================
 # Main Test Runner
 # ============================================================================
 main() {
@@ -653,6 +819,14 @@ main() {
     if ! run_test "API Health Check" test_api_health; then
         log_error "API is not available at $API_URL"
         log_error "Please ensure the API and worker are running"
+        exit 1
+    fi
+    echo ""
+
+    # Setup LLM provider
+    if ! setup_llm_provider; then
+        log_error "Failed to setup LLM provider"
+        log_error "Tool calling tests require an LLM API key"
         exit 1
     fi
     echo ""
@@ -689,6 +863,12 @@ main() {
     echo ""
 
     run_test "Events and Messages Sync" test_events_sync || true
+    echo ""
+
+    run_test "CurrentTime Capability Available" test_current_time_capability || true
+    echo ""
+
+    run_test "Dad Joke Agent (CurrentTime Tool)" test_dad_joke_agent || true
     echo ""
 
     # Summary

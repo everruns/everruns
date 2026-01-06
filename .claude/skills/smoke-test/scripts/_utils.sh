@@ -69,13 +69,10 @@ check_openai_key() {
 # Check/generate SECRETS_ENCRYPTION_KEY
 check_encryption_key() {
     if [ -z "$SECRETS_ENCRYPTION_KEY" ]; then
-        # Generate a test encryption key for smoke testing
-        local key_bytes
-        key_bytes=$(python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())" 2>/dev/null || \
-                   openssl rand -base64 32 2>/dev/null || \
-                   head -c 32 /dev/urandom | base64)
-        export SECRETS_ENCRYPTION_KEY="kek-test:$key_bytes"
-        log_info "Generated test SECRETS_ENCRYPTION_KEY"
+        # Use the standard encryption key from .env.example for smoke testing
+        # This ensures consistency between API and worker
+        export SECRETS_ENCRYPTION_KEY="kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY="
+        log_info "Using standard SECRETS_ENCRYPTION_KEY from .env.example"
     else
         log_info "SECRETS_ENCRYPTION_KEY is set"
     fi
