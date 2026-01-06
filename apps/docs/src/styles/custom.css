@@ -85,6 +85,28 @@
   background: #f0f0f0;
 }
 
+/* Sidebar group labels (section headers) - fix light theme visibility */
+:root[data-theme="light"] .sidebar-content summary,
+:root[data-theme="light"] .sidebar-content .large,
+:root[data-theme="light"] .sidebar-content details > summary,
+:root[data-theme="light"] [data-scope="sidebar"] summary,
+:root[data-theme="light"] .top-level > li > details > summary span,
+:root[data-theme="light"] .sidebar summary span {
+  color: #1a1a1a !important;
+  font-weight: 600;
+}
+
+/* Ensure all sidebar text is visible in light mode */
+:root[data-theme="light"] .sidebar-content,
+:root[data-theme="light"] .sidebar-content * {
+  color: #404040;
+}
+
+:root[data-theme="light"] .sidebar-content summary,
+:root[data-theme="light"] .sidebar-content details > summary {
+  color: #0a0a0a !important;
+}
+
 :root[data-theme="dark"] .sidebar-content a {
   color: #a0a0a0;
 }
