@@ -17,13 +17,32 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use uuid::Uuid;
 
+use crate::event_listeners::EventListener;
 use crate::events::{
     Event, EventData, LlmGenerationData, ToolCallCompletedData, ToolCallStartedData,
     TurnCompletedData, TurnStartedData, LLM_GENERATION, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
     TURN_COMPLETED, TURN_STARTED,
 };
 use crate::telemetry::gen_ai;
-use crate::traits::EventListener;
+
+// ============================================================================
+// Internal Span Tracking
+// ============================================================================
+
+/// Info tracked for in-flight tool calls
+#[allow(dead_code)]
+struct ToolCallSpanInfo {
+    tool_name: String,
+    started_at: std::time::Instant,
+}
+
+/// Info tracked for in-flight turns
+#[allow(dead_code)]
+struct TurnSpanInfo {
+    session_id: Uuid,
+    agent_id: Option<Uuid>,
+    started_at: std::time::Instant,
+}
 
 // ============================================================================
 // OtelEventListener
@@ -37,29 +56,26 @@ use crate::traits::EventListener;
 /// - `turn.started/completed` → `invoke_agent {agent_id}` span
 ///
 /// Spans are created synchronously when events are received.
+///
+/// # Example
+///
+/// ```ignore
+/// use everruns_core::observation::OtelEventListener;
+/// use everruns_core::EventListener;
+///
+/// let listener = OtelEventListener::new();
+///
+/// // Register with event service
+/// event_service.add_listener(Arc::new(listener));
+/// ```
 pub struct OtelEventListener {
     /// Track in-flight tool calls for span correlation
     /// Key: tool_call_id, Value: span handle info
-    #[allow(dead_code)]
     tool_call_spans: Mutex<HashMap<String, ToolCallSpanInfo>>,
 
     /// Track in-flight turns for span correlation
     /// Key: turn_id, Value: span handle info
-    #[allow(dead_code)]
     turn_spans: Mutex<HashMap<Uuid, TurnSpanInfo>>,
-}
-
-#[allow(dead_code)]
-struct ToolCallSpanInfo {
-    tool_name: String,
-    started_at: std::time::Instant,
-}
-
-#[allow(dead_code)]
-struct TurnSpanInfo {
-    session_id: Uuid,
-    agent_id: Option<Uuid>,
-    started_at: std::time::Instant,
 }
 
 impl Default for OtelEventListener {
@@ -246,6 +262,18 @@ impl OtelEventListener {
             "Turn completed"
         );
     }
+
+    /// Get the number of tracked in-flight tool calls (for testing)
+    #[cfg(test)]
+    fn pending_tool_calls(&self) -> usize {
+        self.tool_call_spans.lock().unwrap().len()
+    }
+
+    /// Get the number of tracked in-flight turns (for testing)
+    #[cfg(test)]
+    fn pending_turns(&self) -> usize {
+        self.turn_spans.lock().unwrap().len()
+    }
 }
 
 #[async_trait]
@@ -297,6 +325,8 @@ mod tests {
     use super::*;
     use crate::events::{EventContext, LlmGenerationMetadata, LlmGenerationOutput, TokenUsage};
     use crate::message::Message;
+    use crate::tool_types::ToolCall;
+    use serde_json::json;
 
     #[tokio::test]
     async fn test_otel_listener_creation() {
@@ -305,9 +335,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_otel_listener_default() {
+        let listener = OtelEventListener::default();
+        assert_eq!(listener.name(), "OtelEventListener");
+    }
+
+    #[tokio::test]
     async fn test_otel_listener_event_types() {
         let listener = OtelEventListener::new();
         let types = listener.event_types().unwrap();
+        assert_eq!(types.len(), 5);
         assert!(types.contains(&LLM_GENERATION));
         assert!(types.contains(&TOOL_CALL_STARTED));
         assert!(types.contains(&TOOL_CALL_COMPLETED));
@@ -316,7 +353,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handle_llm_generation() {
+    async fn test_handle_llm_generation_success() {
         let listener = OtelEventListener::new();
 
         let data = LlmGenerationData {
@@ -349,5 +386,271 @@ mod tests {
 
         // Should not panic
         listener.on_event(&event).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_llm_generation_with_tool_calls() {
+        let listener = OtelEventListener::new();
+
+        let tool_calls = vec![ToolCall {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: json!({"city": "Tokyo"}),
+        }];
+
+        let data = LlmGenerationData {
+            messages: vec![Message::user("What's the weather?")],
+            tools: vec![],
+            output: LlmGenerationOutput {
+                text: Some("Let me check...".to_string()),
+                tool_calls,
+            },
+            metadata: LlmGenerationMetadata {
+                model: "gpt-4o".to_string(),
+                provider: Some("openai".to_string()),
+                usage: Some(TokenUsage {
+                    input_tokens: 20,
+                    output_tokens: 15,
+                }),
+                duration_ms: Some(200),
+                success: true,
+                error: None,
+                finish_reasons: Some(vec!["tool_calls".to_string()]),
+                response_id: Some("resp_456".to_string()),
+            },
+        };
+
+        let event = Event::new(
+            Uuid::now_v7(),
+            EventContext::empty(),
+            EventData::LlmGeneration(data),
+        );
+
+        listener.on_event(&event).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_llm_generation_without_optional_fields() {
+        let listener = OtelEventListener::new();
+
+        let data = LlmGenerationData {
+            messages: vec![Message::user("Hello")],
+            tools: vec![],
+            output: LlmGenerationOutput {
+                text: Some("Hi!".to_string()),
+                tool_calls: vec![],
+            },
+            metadata: LlmGenerationMetadata {
+                model: "claude-3".to_string(),
+                provider: None, // No provider
+                usage: None,    // No usage
+                duration_ms: None,
+                success: true,
+                error: None,
+                finish_reasons: None, // No finish reasons
+                response_id: None,    // No response ID
+            },
+        };
+
+        let event = Event::new(
+            Uuid::now_v7(),
+            EventContext::empty(),
+            EventData::LlmGeneration(data),
+        );
+
+        // Should not panic with missing optional fields
+        listener.on_event(&event).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_tool_call_lifecycle() {
+        let listener = OtelEventListener::new();
+
+        // Start a tool call
+        let started_data = ToolCallStartedData {
+            tool_call: ToolCall {
+                id: "call_abc".to_string(),
+                name: "calculate".to_string(),
+                arguments: json!({}),
+            },
+        };
+
+        let start_event = Event::new(
+            Uuid::now_v7(),
+            EventContext::empty(),
+            EventData::ToolCallStarted(started_data),
+        );
+
+        listener.on_event(&start_event).await;
+        assert_eq!(listener.pending_tool_calls(), 1);
+
+        // Complete the tool call
+        let completed_data = ToolCallCompletedData {
+            tool_call_id: "call_abc".to_string(),
+            tool_name: "calculate".to_string(),
+            success: true,
+            status: "success".to_string(),
+            result: None,
+            error: None,
+        };
+
+        let complete_event = Event::new(
+            Uuid::now_v7(),
+            EventContext::empty(),
+            EventData::ToolCallCompleted(completed_data),
+        );
+
+        listener.on_event(&complete_event).await;
+        assert_eq!(listener.pending_tool_calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_tool_call_completed_without_start() {
+        let listener = OtelEventListener::new();
+
+        // Complete a tool call that was never started (e.g., after restart)
+        let completed_data = ToolCallCompletedData {
+            tool_call_id: "orphan_call".to_string(),
+            tool_name: "unknown_tool".to_string(),
+            success: false,
+            status: "error".to_string(),
+            result: None,
+            error: Some("Connection timeout".to_string()),
+        };
+
+        let event = Event::new(
+            Uuid::now_v7(),
+            EventContext::empty(),
+            EventData::ToolCallCompleted(completed_data),
+        );
+
+        // Should not panic
+        listener.on_event(&event).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_turn_lifecycle() {
+        let listener = OtelEventListener::new();
+        let turn_id = Uuid::now_v7();
+        let session_id = Uuid::now_v7();
+
+        // Start a turn
+        let started_data = TurnStartedData {
+            turn_id,
+            input_message_id: Uuid::now_v7(),
+        };
+
+        let start_event = Event::new(
+            session_id,
+            EventContext::empty(),
+            EventData::TurnStarted(started_data),
+        );
+
+        listener.on_event(&start_event).await;
+        assert_eq!(listener.pending_turns(), 1);
+
+        // Complete the turn
+        let completed_data = TurnCompletedData {
+            turn_id,
+            iterations: 3,
+            duration_ms: Some(1500),
+        };
+
+        let complete_event = Event::new(
+            session_id,
+            EventContext::empty(),
+            EventData::TurnCompleted(completed_data),
+        );
+
+        listener.on_event(&complete_event).await;
+        assert_eq!(listener.pending_turns(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_turn_completed_without_start() {
+        let listener = OtelEventListener::new();
+
+        // Complete a turn that was never started
+        let completed_data = TurnCompletedData {
+            turn_id: Uuid::now_v7(),
+            iterations: 1,
+            duration_ms: None, // No duration provided
+        };
+
+        let event = Event::new(
+            Uuid::now_v7(),
+            EventContext::empty(),
+            EventData::TurnCompleted(completed_data),
+        );
+
+        // Should not panic
+        listener.on_event(&event).await;
+    }
+
+    #[tokio::test]
+    async fn test_unhandled_event_types() {
+        use crate::events::MessageUserData;
+
+        let listener = OtelEventListener::new();
+
+        // Send an event type that OtelEventListener doesn't handle
+        let event = Event::new(
+            Uuid::now_v7(),
+            EventContext::empty(),
+            EventData::MessageUser(MessageUserData {
+                message: Message::user("Hello"),
+            }),
+        );
+
+        // Should not panic, just ignore
+        listener.on_event(&event).await;
+    }
+
+    #[tokio::test]
+    async fn test_multiple_concurrent_tool_calls() {
+        let listener = OtelEventListener::new();
+
+        // Start multiple tool calls
+        for i in 0..3 {
+            let started_data = ToolCallStartedData {
+                tool_call: ToolCall {
+                    id: format!("call_{}", i),
+                    name: format!("tool_{}", i),
+                    arguments: json!({}),
+                },
+            };
+
+            let event = Event::new(
+                Uuid::now_v7(),
+                EventContext::empty(),
+                EventData::ToolCallStarted(started_data),
+            );
+
+            listener.on_event(&event).await;
+        }
+
+        assert_eq!(listener.pending_tool_calls(), 3);
+
+        // Complete them in different order
+        for i in [2, 0, 1] {
+            let completed_data = ToolCallCompletedData {
+                tool_call_id: format!("call_{}", i),
+                tool_name: format!("tool_{}", i),
+                success: true,
+                status: "success".to_string(),
+                result: None,
+                error: None,
+            };
+
+            let event = Event::new(
+                Uuid::now_v7(),
+                EventContext::empty(),
+                EventData::ToolCallCompleted(completed_data),
+            );
+
+            listener.on_event(&event).await;
+        }
+
+        assert_eq!(listener.pending_tool_calls(), 0);
     }
 }
