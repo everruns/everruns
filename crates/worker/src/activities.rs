@@ -51,15 +51,16 @@ pub use everruns_core::atoms::{
 ///
 /// This activity:
 /// 1. Sets session status to "active" and emits session.activated event
-/// 2. Emits input.started event
-/// 3. Retrieves the user message from the message store
-/// 4. Emits input.completed event
-/// 5. Returns the message for downstream processing
+/// 2. Emits turn.started event
+/// 3. Retrieves the user message from the message store (emits input.received event)
+/// 4. Returns the message for downstream processing
 pub async fn input_activity(
     grpc_client: GrpcClient,
     input: InputAtomInput,
 ) -> Result<InputAtomResult> {
-    use everruns_core::events::{EventContext, EventRequest, SessionActivatedData};
+    use everruns_core::events::{
+        EventContext, EventRequest, SessionActivatedData, TurnStartedData,
+    };
     use everruns_core::traits::EventEmitter;
 
     tracing::info!(
@@ -91,6 +92,19 @@ pub async fn input_activity(
         tracing::warn!(error = %e, "Failed to emit session.activated event");
     }
 
+    // Emit turn.started event
+    let turn_started_event = EventRequest::new(
+        input.context.session_id,
+        EventContext::turn(input.context.turn_id, input.context.input_message_id),
+        TurnStartedData {
+            turn_id: input.context.turn_id,
+            input_message_id: input.context.input_message_id,
+        },
+    );
+    if let Err(e) = event_emitter.emit(turn_started_event).await {
+        tracing::warn!(error = %e, "Failed to emit turn.started event");
+    }
+
     let message_store = GrpcMessageStore::new(grpc_client.clone());
     let atom = InputAtom::new(message_store, event_emitter);
 
@@ -109,11 +123,11 @@ pub async fn input_activity(
 /// 5. Stores the assistant response
 /// 6. Emits reason.completed event
 /// 7. Returns the result with tool calls (if any)
-/// 8. If turn completes (no tool calls), sets session status to "idle" and emits session.idled
+/// 8. If turn completes (no tool calls), emits turn.completed, sets session status to "idle" and emits session.idled
 ///
 /// Note: API key decryption is handled by the control-plane gRPC service.
 pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Result<ReasonResult> {
-    use everruns_core::events::{EventContext, EventRequest, SessionIdledData};
+    use everruns_core::events::{EventContext, EventRequest, SessionIdledData, TurnCompletedData};
     use everruns_core::traits::EventEmitter;
 
     tracing::info!(
@@ -159,8 +173,22 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
             tracing::warn!(error = %e, "Failed to set session status to idle");
         }
 
+        // Emit turn.completed event
+        let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
+        let turn_completed_event = EventRequest::new(
+            session_id,
+            EventContext::turn(turn_id, input_message_id),
+            TurnCompletedData {
+                turn_id,
+                iterations: 1, // TODO: Track actual iterations when workflow supports it
+                duration_ms: None,
+            },
+        );
+        if let Err(e) = event_emitter.emit(turn_completed_event).await {
+            tracing::warn!(error = %e, "Failed to emit turn.completed event");
+        }
+
         // Emit session.idled event
-        let idle_emitter = GrpcEventEmitter::new(grpc_client);
         let idled_event = EventRequest::new(
             session_id,
             EventContext::turn(turn_id, input_message_id),
@@ -169,7 +197,7 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
                 iterations: None, // We don't track iterations in the activity
             },
         );
-        if let Err(e) = idle_emitter.emit(idled_event).await {
+        if let Err(e) = event_emitter.emit(idled_event).await {
             tracing::warn!(error = %e, "Failed to emit session.idled event");
         }
     }
