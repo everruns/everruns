@@ -1019,6 +1019,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-cli"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror 2.0.17",
+ "tokio",
+ "uuid 1.19.0",
+]
+
+[[package]]
 name = "everruns-control-plane"
 version = "0.2.0"
 dependencies = [
