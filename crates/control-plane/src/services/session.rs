@@ -61,6 +61,16 @@ impl SessionService {
         Ok(row.map(Self::row_to_session))
     }
 
+    /// Update session status (used by worker via gRPC)
+    pub async fn update_status(&self, id: Uuid, status: String) -> Result<Option<Session>> {
+        let input = UpdateSession {
+            status: Some(status),
+            ..Default::default()
+        };
+        let row = self.db.update_session(id, input).await?;
+        Ok(row.map(Self::row_to_session))
+    }
+
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
         self.db.delete_session(id).await
     }

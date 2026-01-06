@@ -11,31 +11,27 @@ use uuid::Uuid;
 use utoipa::ToSchema;
 
 /// Session execution status.
-/// - `pending`: Session created but not yet started
-/// - `running`: Session is actively processing messages
-/// - `completed`: Session finished successfully
-/// - `failed`: Session terminated due to an error
+/// - `started`: Session just created, no turn executed yet
+/// - `active`: A turn is currently running
+/// - `idle`: Turn completed, session waiting for next input
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
-    /// Session created but not yet started.
-    Pending,
-    /// Session is actively processing messages.
-    Running,
-    /// Session finished successfully.
-    Completed,
-    /// Session terminated due to an error.
-    Failed,
+    /// Session just created, no turn executed yet.
+    Started,
+    /// A turn is currently running (session is active).
+    Active,
+    /// Turn completed, session waiting for next input (idle).
+    Idle,
 }
 
 impl std::fmt::Display for SessionStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SessionStatus::Pending => write!(f, "pending"),
-            SessionStatus::Running => write!(f, "running"),
-            SessionStatus::Completed => write!(f, "completed"),
-            SessionStatus::Failed => write!(f, "failed"),
+            SessionStatus::Started => write!(f, "started"),
+            SessionStatus::Active => write!(f, "active"),
+            SessionStatus::Idle => write!(f, "idle"),
         }
     }
 }
@@ -43,10 +39,12 @@ impl std::fmt::Display for SessionStatus {
 impl From<&str> for SessionStatus {
     fn from(s: &str) -> Self {
         match s {
-            "running" => SessionStatus::Running,
-            "completed" => SessionStatus::Completed,
-            "failed" => SessionStatus::Failed,
-            _ => SessionStatus::Pending,
+            "active" => SessionStatus::Active,
+            "idle" => SessionStatus::Idle,
+            // Handle legacy values during migration
+            "running" => SessionStatus::Active,
+            "pending" | "completed" | "failed" => SessionStatus::Idle,
+            _ => SessionStatus::Started,
         }
     }
 }
