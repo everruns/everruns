@@ -1538,49 +1538,55 @@ impl TimeoutManager {
 
 ## Implementation Phases
 
-### Phase 1: Core Abstractions
-- [ ] Workflow and Activity traits
-- [ ] WorkflowAction enum
-- [ ] WorkflowSignal for cancellation
-- [ ] In-memory WorkflowEventStore for testing
-- [ ] Basic WorkflowExecutor (no persistence)
-- [ ] Unit tests for state machines
+### Phase 1: Core Abstractions ✅
+- [x] Workflow and Activity traits
+- [x] WorkflowAction enum
+- [x] WorkflowSignal for cancellation
+- [x] In-memory WorkflowEventStore for testing
+- [x] Basic WorkflowExecutor (no persistence)
+- [x] Unit tests for state machines
 
-### Phase 2: Persistence Layer
-- [ ] PostgreSQL migrations (with `durable_` prefix)
-- [ ] PostgresWorkflowEventStore implementation
-- [ ] Task queue with claim/complete (optimized for scale)
-- [ ] WorkflowEvent replay for recovery
-- [ ] Integration tests with PostgreSQL
+### Phase 2: Persistence Layer ✅
+- [x] PostgreSQL migrations (with `durable_` prefix)
+- [x] PostgresWorkflowEventStore implementation
+- [x] Task queue with claim/complete (optimized for scale)
+- [x] WorkflowEvent replay for recovery
+- [x] Integration tests with PostgreSQL
 
-### Phase 3: Reliability Features
-- [ ] RetryPolicy implementation
-- [ ] CircuitBreaker implementation (distributed)
-- [ ] Timeout manager
-- [ ] Dead letter queue
-- [ ] Integration tests for reliability
+### Phase 3: Reliability Features ✅
+- [x] RetryPolicy implementation
+- [x] CircuitBreaker implementation (distributed)
+- [x] Timeout manager
+- [x] Dead letter queue
+- [x] Integration tests for reliability
 
-### Phase 4: Worker Pool & Backpressure
-- [ ] WorkerPool with concurrency control
-- [ ] Worker registry and heartbeat
-- [ ] Backpressure implementation
-- [ ] Heartbeat batching
-- [ ] Graceful shutdown and draining
-- [ ] Stale task reclamation
+### Phase 4: Worker Pool & Backpressure ✅
+- [x] WorkerPool with concurrency control
+- [x] Worker registry and heartbeat
+- [x] Backpressure implementation
+- [x] Heartbeat batching
+- [x] Graceful shutdown and draining
+- [x] Stale task reclamation
 
-### Phase 5: Observability
+### Phase 5: Observability (TODO: Followup)
+> **Note:** This phase will be implemented as a followup after core functionality is validated.
+
 - [ ] OpenTelemetry tracing integration
 - [ ] Metrics (Prometheus/OTel)
 - [ ] Admin API endpoints
 - [ ] Trace context propagation
 
-### Phase 6: Scale Testing
+### Phase 6: Scale Testing (TODO: Followup)
+> **Note:** This phase will be implemented as a followup to validate performance at scale.
+
 - [ ] 1000-worker scale test
 - [ ] Task claiming benchmark
 - [ ] Connection pool tuning
 - [ ] Performance regression tests
 
-### Phase 7: Integration with Everruns
+### Phase 7: Integration with Everruns (TODO: Followup)
+> **Note:** This phase will be implemented as a followup to replace Temporal dependency.
+
 - [ ] Migrate TurnWorkflow to new engine
 - [ ] Update worker crate to use durable engine
 - [ ] Remove Temporal dependencies
