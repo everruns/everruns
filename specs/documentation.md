@@ -166,6 +166,13 @@ The OpenAPI spec should be regenerated and committed when API endpoints change:
 3. Commit `docs/api/openapi.json` with API changes
 4. Docs build in CI reads spec and generates API reference pages
 
+**Freshness Check**: CI includes an `openapi-check` job that:
+- Generates a fresh spec from current code
+- Compares with committed `docs/api/openapi.json`
+- Fails the build if they differ
+
+This ensures developers cannot forget to regenerate the spec after API changes.
+
 ### Future Enhancements
 
 1. **Versioned Documentation**: Support for multiple documentation versions
