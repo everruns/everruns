@@ -646,6 +646,15 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to resolve default model")
             })?;
 
+        tracing::debug!(
+            model_id = %model_row.model_id,
+            provider_type = %provider_with_key.provider_type,
+            has_api_key = provider_with_key.api_key.is_some(),
+            api_key_len = provider_with_key.api_key.as_ref().map(|k| k.len()).unwrap_or(0),
+            has_base_url = provider_with_key.base_url.is_some(),
+            "get_default_model returning model"
+        );
+
         Ok(Response::new(GetDefaultModelResponse {
             model: resolved.map(Self::resolved_model_to_proto),
         }))
