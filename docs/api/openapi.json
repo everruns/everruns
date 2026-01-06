@@ -1,0 +1,1043 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Everruns API",
+    "description": "API for managing AI agents, sessions, messages, and events",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    },
+    "version": "0.2.0"
+  },
+  "paths": {
+    "/v1/agents": {
+      "get": {
+        "tags": ["agents"],
+        "summary": "List all active agents",
+        "operationId": "list_agents",
+        "responses": {
+          "200": {
+            "description": "List of agents"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": ["agents"],
+        "summary": "Create a new agent",
+        "operationId": "create_agent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Agent created successfully"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}": {
+      "get": {
+        "tags": ["agents"],
+        "summary": "Get agent by ID",
+        "operationId": "get_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent found"
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["agents"],
+        "summary": "Update agent",
+        "operationId": "update_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent updated successfully"
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["agents"],
+        "summary": "Archive agent",
+        "operationId": "delete_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Agent archived successfully"
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions": {
+      "get": {
+        "tags": ["sessions"],
+        "summary": "List sessions in agent",
+        "operationId": "list_sessions",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of sessions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": ["sessions"],
+        "summary": "Create a new session",
+        "operationId": "create_session",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session created successfully"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}": {
+      "get": {
+        "tags": ["sessions"],
+        "summary": "Get session",
+        "operationId": "get_session",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session found"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["sessions"],
+        "summary": "Update session",
+        "operationId": "update_session",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session updated successfully"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["sessions"],
+        "summary": "Delete session",
+        "operationId": "delete_session",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session deleted successfully"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/messages": {
+      "get": {
+        "tags": ["messages"],
+        "summary": "List messages (PRIMARY data)",
+        "operationId": "list_messages",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of messages"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": ["messages"],
+        "summary": "Create message (user message triggers workflow)",
+        "operationId": "create_message",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Message created successfully"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/events": {
+      "get": {
+        "tags": ["events"],
+        "summary": "List events (JSON)",
+        "operationId": "list_events",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "since_id",
+            "in": "query",
+            "description": "Filter events with ID greater than this UUID v7",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events list"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/sessions/{session_id}/sse": {
+      "get": {
+        "tags": ["events"],
+        "summary": "Stream events (SSE notifications)",
+        "operationId": "stream_sse",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "since_id",
+            "in": "query",
+            "description": "Filter events with ID greater than this UUID v7",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/llm-providers": {
+      "get": {
+        "tags": ["llm-providers"],
+        "summary": "List all LLM providers",
+        "operationId": "list_providers",
+        "responses": {
+          "200": {
+            "description": "List of providers"
+          }
+        }
+      },
+      "post": {
+        "tags": ["llm-providers"],
+        "summary": "Create a new LLM provider",
+        "operationId": "create_provider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Provider created"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        }
+      }
+    },
+    "/v1/llm-providers/{id}": {
+      "get": {
+        "tags": ["llm-providers"],
+        "summary": "Get a specific LLM provider",
+        "operationId": "get_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider found"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["llm-providers"],
+        "summary": "Update an LLM provider",
+        "operationId": "update_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider updated"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["llm-providers"],
+        "summary": "Delete an LLM provider",
+        "operationId": "delete_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Provider deleted"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      }
+    },
+    "/v1/llm-models": {
+      "get": {
+        "tags": ["llm-models"],
+        "summary": "List all models across all providers",
+        "operationId": "list_all_models",
+        "responses": {
+          "200": {
+            "description": "List of all models"
+          }
+        }
+      }
+    },
+    "/v1/llm-models/{id}": {
+      "get": {
+        "tags": ["llm-models"],
+        "summary": "Get a specific model with provider info and profile",
+        "operationId": "get_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Model found"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["llm-models"],
+        "summary": "Update a model",
+        "operationId": "update_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Model updated"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["llm-models"],
+        "summary": "Delete a model",
+        "operationId": "delete_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Model deleted"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      }
+    },
+    "/v1/llm-providers/{provider_id}/models": {
+      "get": {
+        "tags": ["llm-models"],
+        "summary": "List models for a specific provider",
+        "operationId": "list_provider_models",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of models"
+          }
+        }
+      },
+      "post": {
+        "tags": ["llm-models"],
+        "summary": "Create a new model for a provider",
+        "operationId": "create_model",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Model created"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        }
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "tags": ["capabilities"],
+        "summary": "List all available capabilities",
+        "operationId": "list_capabilities",
+        "responses": {
+          "200": {
+            "description": "List of available capabilities"
+          }
+        }
+      }
+    },
+    "/v1/capabilities/{capability_id}": {
+      "get": {
+        "tags": ["capabilities"],
+        "summary": "Get a specific capability",
+        "operationId": "get_capability",
+        "parameters": [
+          {
+            "name": "capability_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Capability found"
+          },
+          "404": {
+            "description": "Capability not found"
+          }
+        }
+      }
+    },
+    "/v1/users": {
+      "get": {
+        "tags": ["users"],
+        "summary": "List all users",
+        "operationId": "list_users",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name or email",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of users"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateAgentRequest": {
+        "type": "object",
+        "required": ["name", "system_prompt"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the agent",
+            "example": "Customer Support Agent"
+          },
+          "description": {
+            "type": "string",
+            "description": "A human-readable description of what the agent does"
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "The system prompt that defines the agent's behavior"
+          },
+          "default_model_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The ID of the default LLM model to use"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing agents"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Capabilities to enable for this agent"
+          }
+        }
+      },
+      "UpdateAgentRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "system_prompt": {
+            "type": "string"
+          },
+          "default_model_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "archived"]
+          }
+        }
+      },
+      "CreateSessionRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Human-readable title for the session"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Override agent's default model"
+          }
+        }
+      },
+      "CreateMessageRequest": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/InputMessage"
+          },
+          "controls": {
+            "type": "object",
+            "description": "Runtime controls (model, reasoning, etc.)"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Request-level metadata"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "InputMessage": {
+        "type": "object",
+        "required": ["content"],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["user"],
+            "default": "user"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InputContentPart"
+            }
+          }
+        }
+      },
+      "InputContentPart": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["type", "text"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["text"]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "image"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["image"]
+              },
+              "image": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "base64": {
+                    "type": "string"
+                  },
+                  "media_type": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CreateLlmProviderRequest": {
+        "type": "object",
+        "required": ["name", "provider_type"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the provider"
+          },
+          "provider_type": {
+            "type": "string",
+            "enum": ["openai", "anthropic", "azure_openai", "llmsim"]
+          },
+          "base_url": {
+            "type": "string",
+            "description": "Base URL for the provider's API"
+          },
+          "api_key": {
+            "type": "string",
+            "description": "API key (encrypted at rest)"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "agents",
+      "description": "Agent management endpoints"
+    },
+    {
+      "name": "sessions",
+      "description": "Session management endpoints"
+    },
+    {
+      "name": "messages",
+      "description": "Message management endpoints"
+    },
+    {
+      "name": "events",
+      "description": "Event streaming endpoints (SSE)"
+    },
+    {
+      "name": "llm-providers",
+      "description": "LLM Provider management endpoints"
+    },
+    {
+      "name": "llm-models",
+      "description": "LLM Model management endpoints"
+    },
+    {
+      "name": "capabilities",
+      "description": "Capability management endpoints"
+    },
+    {
+      "name": "users",
+      "description": "User management endpoints"
+    },
+    {
+      "name": "filesystem",
+      "description": "Session virtual filesystem endpoints"
+    }
+  ]
+}

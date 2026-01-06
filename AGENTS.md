@@ -71,7 +71,24 @@ Documentation is published at https://docs.everruns.com/ via Cloudflare Pages.
   - `environment-variables.md` - Configuration environment variables
   - `admin-container.md` - Admin container usage guide
   - `runbooks/` - Operational runbooks for common tasks
-- `docs/api/` - API reference documentation
+- `docs/api/` - API reference documentation (auto-generated from OpenAPI spec)
+
+**API Reference documentation:**
+
+The API reference is auto-generated from `docs/api/openapi.json` using `starlight-openapi`. To update the spec:
+
+```bash
+# Start the API server (requires Docker services running)
+./scripts/dev.sh start-all
+
+# Export the OpenAPI spec from the running API
+./scripts/export-openapi.sh
+
+# Verify the docs build
+cd apps/docs && npm run build
+```
+
+The spec should be regenerated and committed whenever API endpoints change.
 
 **Development:**
 ```bash
