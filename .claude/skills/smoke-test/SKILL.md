@@ -261,6 +261,50 @@ Additional test scenarios are available in the `scenarios/` folder:
 - **[Task List](scenarios/task-list.md)** - Tests for task management capability (TaskList capability with write_todos tool)
 - **[File System](scenarios/file-system.md)** - Tests for session virtual filesystem (create, read, update, delete files/directories)
 
+### Durable Execution Engine Tests
+
+The `everruns-durable` crate provides a custom workflow orchestration engine. Run these tests to verify the durable execution layer.
+
+**Note:** Phases 5-7 (Observability, Scale Testing, Integration) are TODO followups. See `specs/durable-execution-engine.md`.
+
+#### 1. Unit Tests (No External Dependencies)
+```bash
+cargo test -p everruns-durable --lib
+```
+Expected: 91+ tests passing (workflow, activity, reliability, worker modules)
+
+#### 2. Integration Tests (Requires PostgreSQL)
+```bash
+# Ensure PostgreSQL is running with test database
+sudo service postgresql start || pg_ctl -D /tmp/pgdata start
+
+# Create test database if needed
+psql -U postgres -c "CREATE DATABASE everruns_test;" 2>/dev/null || true
+
+# Run migrations on test database
+DATABASE_URL="postgres://postgres:postgres@localhost/everruns_test" \
+  sqlx migrate run --source crates/control-plane/migrations
+
+# Clean test data and run integration tests
+psql -U postgres -d everruns_test -c "TRUNCATE durable_workflow_instances CASCADE;"
+cargo test -p everruns-durable --test postgres_integration_test -- --test-threads=1
+```
+Expected: 17 tests passing (workflow lifecycle, task queue, signals, workers, DLQ)
+
+#### 3. Clippy Lints
+```bash
+cargo clippy -p everruns-durable -- -D warnings
+```
+Expected: No warnings or errors
+
+#### Quick Durable Test Script
+```bash
+# One-liner to run all durable tests
+cargo test -p everruns-durable --lib && \
+cargo clippy -p everruns-durable -- -D warnings && \
+echo "✅ Durable unit tests and clippy passed"
+```
+
 ### UI Tests
 
 Run these after API tests pass. Requires UI running (`./scripts/dev.sh ui`).
@@ -524,7 +568,7 @@ When reporting smoke test results, use this format:
 - API Key: [OpenAI / Anthropic]
 - Date: [YYYY-MM-DD]
 
-### Test Results
+### API Test Results
 
 | Test | Status | Notes |
 |------|--------|-------|
@@ -544,8 +588,17 @@ When reporting smoke test results, use this format:
 | OpenAPI Spec | PASS/FAIL | |
 | LLM Providers | PASS/FAIL | |
 
+### Durable Execution Engine Results
+
+| Test | Status | Notes |
+|------|--------|-------|
+| Unit Tests (91+) | PASS/FAIL | |
+| Integration Tests (17) | PASS/FAIL | Requires PostgreSQL |
+| Clippy Lints | PASS/FAIL | |
+
 ### Summary
-- Total: X/15 tests passing
+- API Tests: X/15 passing
+- Durable Tests: X/3 passing (91 unit + 17 integration + clippy)
 - Blocking issues: [None / List issues]
 - Action items: [None / List items]
 ```
