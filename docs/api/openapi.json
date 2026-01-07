@@ -9,6 +9,12 @@
     },
     "version": "0.2.0"
   },
+  "servers": [
+    {
+      "url": "https://app.everruns.com/api",
+      "description": "Production API"
+    }
+  ],
   "paths": {
     "/v1/agents": {
       "get": {
