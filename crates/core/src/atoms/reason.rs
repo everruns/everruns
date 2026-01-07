@@ -79,50 +79,6 @@ fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
     result
 }
 
-/// Filter out orphaned tool result messages.
-///
-/// OpenAI requires that tool result messages must follow an assistant message
-/// that contains the corresponding tool_call. This function removes tool result
-/// messages that don't have a matching tool_call in any preceding assistant message.
-fn filter_orphaned_tool_results(messages: &[Message]) -> Vec<Message> {
-    // Collect all tool_call IDs from assistant messages
-    let mut known_tool_call_ids = std::collections::HashSet::new();
-
-    for msg in messages {
-        if msg.role == MessageRole::Assistant {
-            for tc in msg.tool_calls() {
-                known_tool_call_ids.insert(tc.id.clone());
-            }
-        }
-    }
-
-    // Filter out tool result messages without a corresponding tool_call
-    messages
-        .iter()
-        .filter(|msg| {
-            if msg.role == MessageRole::ToolResult {
-                // Keep only if there's a matching tool_call
-                if let Some(tool_call_id) = msg.tool_call_id() {
-                    let has_matching_call = known_tool_call_ids.contains(tool_call_id);
-                    if !has_matching_call {
-                        tracing::warn!(
-                            tool_call_id = %tool_call_id,
-                            "Filtering orphaned tool result message without matching tool_call"
-                        );
-                    }
-                    has_matching_call
-                } else {
-                    tracing::warn!("Filtering tool result message without tool_call_id");
-                    false
-                }
-            } else {
-                true
-            }
-        })
-        .cloned()
-        .collect()
-}
-
 // ============================================================================
 // Input and Output Types
 // ============================================================================
@@ -420,11 +376,8 @@ where
             .and_then(|c| c.reasoning.as_ref())
             .and_then(|r| r.effort.clone());
 
-        // 9. Fix message context for LLM API compatibility:
-        //    - First filter orphaned tool results (tool results without matching tool_calls)
-        //    - Then patch dangling tool calls (add cancelled results for tool calls without responses)
-        let filtered_messages = filter_orphaned_tool_results(&messages);
-        let patched_messages = patch_dangling_tool_calls(&filtered_messages);
+        // 9. Patch dangling tool calls (add cancelled results for tool calls without responses)
+        let patched_messages = patch_dangling_tool_calls(&messages);
 
         // 10. Build LLM messages
         let mut llm_messages = Vec::new();
@@ -729,104 +682,5 @@ mod tests {
         assert_eq!(patched.len(), 4);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
         assert_eq!(patched[2].tool_call_id(), Some("call_456"));
-    }
-
-    #[test]
-    fn test_filter_orphaned_tool_results_no_orphans() {
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"city": "NYC"}),
-        };
-
-        let messages = vec![
-            Message::user("What's the weather?"),
-            Message::assistant_with_tools("Let me check", vec![tool_call]),
-            Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
-        ];
-
-        let filtered = filter_orphaned_tool_results(&messages);
-        assert_eq!(filtered.len(), 3);
-    }
-
-    #[test]
-    fn test_filter_orphaned_tool_results_with_orphan() {
-        // Tool result without any matching tool_call - should be filtered out
-        let messages = vec![
-            Message::user("What's the weather?"),
-            Message::tool_result(
-                "orphan_call_id",
-                Some(serde_json::json!({"temp": 72})),
-                None,
-            ),
-            Message::assistant("I don't know"),
-        ];
-
-        let filtered = filter_orphaned_tool_results(&messages);
-        assert_eq!(filtered.len(), 2);
-        assert_eq!(filtered[0].role, MessageRole::User);
-        assert_eq!(filtered[1].role, MessageRole::Assistant);
-    }
-
-    #[test]
-    fn test_filter_orphaned_tool_results_mixed() {
-        // Mix of valid and orphaned tool results
-        let tool_call = ToolCall {
-            id: "valid_call".to_string(),
-            name: "get_time".to_string(),
-            arguments: serde_json::json!({}),
-        };
-
-        let messages = vec![
-            Message::user("What time is it?"),
-            Message::assistant_with_tools("Let me check", vec![tool_call]),
-            Message::tool_result(
-                "valid_call",
-                Some(serde_json::json!({"time": "12:00"})),
-                None,
-            ),
-            Message::tool_result(
-                "orphan_call",
-                Some(serde_json::json!({"orphan": "data"})),
-                None,
-            ),
-            Message::assistant("It's 12:00"),
-        ];
-
-        let filtered = filter_orphaned_tool_results(&messages);
-        // Should keep: user, assistant with tools, valid tool result, final assistant
-        // Should filter: orphan tool result
-        assert_eq!(filtered.len(), 4);
-        assert_eq!(filtered[2].tool_call_id(), Some("valid_call"));
-    }
-
-    #[test]
-    fn test_filter_and_patch_combined() {
-        // Test the combined flow: filter orphans first, then patch dangling calls
-        let tool_call = ToolCall {
-            id: "call_1".to_string(),
-            name: "search".to_string(),
-            arguments: serde_json::json!({}),
-        };
-
-        let messages = vec![
-            Message::user("Search and calculate"),
-            // Tool result without matching tool_call (orphan)
-            Message::tool_result("orphan_id", Some(serde_json::json!({})), None),
-            // Assistant with tool call but no result (dangling)
-            Message::assistant_with_tools("Searching...", vec![tool_call]),
-        ];
-
-        // First filter orphans
-        let filtered = filter_orphaned_tool_results(&messages);
-        assert_eq!(filtered.len(), 2); // user + assistant with tools (orphan removed)
-
-        // Then patch dangling calls
-        let patched = patch_dangling_tool_calls(&filtered);
-        assert_eq!(patched.len(), 3); // user + assistant + synthetic result
-
-        // Verify the synthetic result was added
-        assert_eq!(patched[2].role, MessageRole::ToolResult);
-        assert_eq!(patched[2].tool_call_id(), Some("call_1"));
     }
 }
