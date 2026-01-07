@@ -4,7 +4,9 @@
 // These are hard limits, not configurable. Values chosen to allow legitimate
 // use while preventing resource exhaustion attacks.
 
+use super::common::ErrorResponse;
 use axum::http::StatusCode;
+use axum::Json;
 
 // =============================================================================
 // Input Size Limits
@@ -30,6 +32,10 @@ pub const MAX_AGENT_CAPABILITIES: usize = 250;
 /// 3 MB accommodates large system prompts with metadata.
 pub const MAX_AGENT_IMPORT_FILE_BYTES: usize = 3 * 1024 * 1024; // 3 MB
 
+/// Generic validation error message returned to clients.
+/// Intentionally vague to avoid leaking which field exceeded limits.
+pub const VALIDATION_ERROR_MESSAGE: &str = "Input exceeds allowed limits";
+
 // =============================================================================
 // Validation Functions
 // =============================================================================
@@ -47,7 +53,16 @@ impl From<ValidationError> for (StatusCode, String) {
     fn from(_: ValidationError) -> Self {
         (
             StatusCode::BAD_REQUEST,
-            "Input exceeds allowed limits".to_string(),
+            VALIDATION_ERROR_MESSAGE.to_string(),
+        )
+    }
+}
+
+impl From<ValidationError> for (StatusCode, Json<ErrorResponse>) {
+    fn from(_: ValidationError) -> Self {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(VALIDATION_ERROR_MESSAGE)),
         )
     }
 }
