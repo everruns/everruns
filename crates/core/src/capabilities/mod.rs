@@ -28,6 +28,10 @@ pub use crate::capability_types::{CapabilityId, CapabilityStatus};
 // ============================================================================
 
 mod current_time;
+mod fake_aws;
+mod fake_crm;
+mod fake_financial;
+mod fake_warehouse;
 mod file_system;
 mod noop;
 mod research;
@@ -39,6 +43,28 @@ mod web_fetch;
 
 // Re-export capabilities
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
+pub use fake_aws::{
+    AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
+    AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
+    AwsListIamUsersTool, AwsListRdsDatabasesTool, AwsListS3BucketsTool, AwsListSecurityGroupsTool,
+    AwsStopEc2InstanceTool, FakeAwsCapability,
+};
+pub use fake_crm::{
+    CrmAddInteractionTool, CrmCreateCustomerTool, CrmCreateTicketTool, CrmGetCustomerTool,
+    CrmListCustomersTool, CrmListTicketsTool, CrmSearchCustomersTool, CrmUpdateTicketTool,
+    FakeCrmCapability,
+};
+pub use fake_financial::{
+    FakeFinancialCapability, FinanceCreateBudgetTool, FinanceCreateTransactionTool,
+    FinanceForecastCashFlowTool, FinanceGetBalanceTool, FinanceGetExpenseReportTool,
+    FinanceGetRevenueReportTool, FinanceListBudgetsTool, FinanceListTransactionsTool,
+};
+pub use fake_warehouse::{
+    FakeWarehouseCapability, WarehouseCreateInvoiceTool, WarehouseCreateOrderTool,
+    WarehouseCreateShipmentTool, WarehouseGetInventoryTool, WarehouseInventoryReportTool,
+    WarehouseListOrdersTool, WarehouseListShipmentsTool, WarehouseProcessReturnTool,
+    WarehouseUpdateInventoryTool, WarehouseUpdateShipmentStatusTool,
+};
 pub use file_system::{
     DeleteFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool, ReadFileTool,
     StatFileTool, WriteFileTool,
@@ -179,6 +205,11 @@ impl CapabilityRegistry {
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
         registry.register(WebFetchCapability);
+        // Fake demo capabilities
+        registry.register(FakeWarehouseCapability);
+        registry.register(FakeAwsCapability);
+        registry.register(FakeCrmCapability);
+        registry.register(FakeFinancialCapability);
         registry
     }
 
@@ -473,7 +504,11 @@ mod tests {
         assert!(registry.has(CapabilityId::TEST_WEATHER));
         assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
         assert!(registry.has(CapabilityId::WEB_FETCH));
-        assert_eq!(registry.len(), 9);
+        assert!(registry.has(CapabilityId::FAKE_WAREHOUSE));
+        assert!(registry.has(CapabilityId::FAKE_AWS));
+        assert!(registry.has(CapabilityId::FAKE_CRM));
+        assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
+        assert_eq!(registry.len(), 13);
     }
 
     #[test]
