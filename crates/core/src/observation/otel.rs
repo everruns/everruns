@@ -279,8 +279,15 @@ impl OtelEventListener {
 #[async_trait]
 impl EventListener for OtelEventListener {
     async fn on_event(&self, event: &Event) {
+        tracing::debug!(
+            event_type = %event.event_type,
+            event_id = %event.id,
+            "OtelEventListener received event"
+        );
+
         match &event.data {
             EventData::LlmGeneration(data) => {
+                tracing::debug!("Creating OTel span for llm.generation event");
                 self.handle_llm_generation(event, data);
             }
             EventData::ToolCallStarted(data) => {
@@ -290,13 +297,21 @@ impl EventListener for OtelEventListener {
                 self.handle_tool_call_completed(event, data);
             }
             EventData::TurnStarted(data) => {
+                tracing::debug!("Creating OTel span for turn.started event");
                 self.handle_turn_started(event, data);
             }
             EventData::TurnCompleted(data) => {
+                tracing::debug!("Creating OTel span for turn.completed event");
                 self.handle_turn_completed(event, data);
             }
             // Other events don't generate spans
-            _ => {}
+            other => {
+                tracing::trace!(
+                    event_type = %event.event_type,
+                    "Event data variant not handled by OtelEventListener (type: {})",
+                    std::any::type_name_of_val(other)
+                );
+            }
         }
     }
 

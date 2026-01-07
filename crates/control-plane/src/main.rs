@@ -131,7 +131,17 @@ async fn main() -> Result<()> {
     // Create event listeners for observability
     // OtelEventListener generates gen-ai semantic convention spans from events
     let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
-    let events_state = api::events::AppState::with_listeners(db.clone(), vec![otel_listener]);
+
+    // Create EventService with listeners - shared between HTTP API and gRPC service
+    let event_service = Arc::new(services::EventService::with_listeners(
+        db.clone(),
+        vec![otel_listener],
+    ));
+
+    let events_state = api::events::AppState {
+        session_service: Arc::new(services::SessionService::new(db.clone())),
+        event_service: event_service.clone(),
+    };
     let llm_providers_state = api::llm_providers::AppState::new(db.clone(), encryption.clone());
     let llm_models_state = api::llm_models::AppState::new(db.clone());
     let capability_service = Arc::new(services::CapabilityService::new(db.clone()));
@@ -226,8 +236,14 @@ async fn main() -> Result<()> {
     let grpc_addr = std::env::var("GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9001".to_string());
     let grpc_db = db.clone();
     let grpc_encryption = encryption.clone();
+    let grpc_event_service = event_service.clone();
     tokio::spawn(async move {
-        let grpc_service = grpc_service::WorkerServiceImpl::new(grpc_db, grpc_encryption);
+        // Use the shared EventService with listeners (OTel, etc.)
+        let grpc_service = grpc_service::WorkerServiceImpl::new(
+            (*grpc_event_service).clone(),
+            grpc_db,
+            grpc_encryption,
+        );
         let addr = grpc_addr.parse().expect("Invalid GRPC_ADDR");
         tracing::info!("gRPC server listening on {}", addr);
         if let Err(e) = tonic::transport::Server::builder()
