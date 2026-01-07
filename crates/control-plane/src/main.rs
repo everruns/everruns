@@ -266,6 +266,45 @@ async fn main() -> Result<()> {
         }
     });
 
+    // Start background task for stale task reclamation (durable mode only)
+    if matches!(runner_config.mode, everruns_worker::RunnerMode::Durable) {
+        use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
+        use std::time::Duration;
+
+        let reclaim_db = db.clone();
+        let stale_threshold = Duration::from_secs(30); // Tasks without heartbeat for 30s are stale
+        let reclaim_interval = Duration::from_secs(10); // Check every 10 seconds
+
+        tokio::spawn(async move {
+            let store = PostgresWorkflowEventStore::new(reclaim_db.pool().clone());
+            let mut interval = tokio::time::interval(reclaim_interval);
+
+            tracing::info!(
+                stale_threshold_secs = stale_threshold.as_secs(),
+                reclaim_interval_secs = reclaim_interval.as_secs(),
+                "Started stale task reclamation background task"
+            );
+
+            loop {
+                interval.tick().await;
+                match store.reclaim_stale_tasks(stale_threshold).await {
+                    Ok(reclaimed) => {
+                        if !reclaimed.is_empty() {
+                            tracing::info!(
+                                count = reclaimed.len(),
+                                task_ids = ?reclaimed,
+                                "Reclaimed stale tasks"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to reclaim stale tasks: {}", e);
+                    }
+                }
+            }
+        });
+    }
+
     // Start HTTP server
     let addr = "0.0.0.0:9000";
     let listener = tokio::net::TcpListener::bind(addr)

@@ -227,6 +227,40 @@ impl DurableWorker {
         // Create a new gRPC client for this task execution
         let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
 
+        // Spawn heartbeat background task
+        let task_id = task.id;
+        let worker_id = self.config.worker_id.clone();
+        let heartbeat_interval = self.config.heartbeat_interval;
+        let store_for_heartbeat = self.store.clone();
+        let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let heartbeat_handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(heartbeat_interval);
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let mut store = store_for_heartbeat.lock().await;
+                        match store.heartbeat_task(task_id, &worker_id, None).await {
+                            Ok(response) => {
+                                if response.should_cancel {
+                                    warn!(task_id = %task_id, "Task cancellation requested via heartbeat");
+                                    break;
+                                }
+                                debug!(task_id = %task_id, "Heartbeat sent");
+                            }
+                            Err(e) => {
+                                warn!(task_id = %task_id, error = %e, "Failed to send heartbeat");
+                            }
+                        }
+                    }
+                    _ = &mut cancel_rx => {
+                        debug!(task_id = %task_id, "Heartbeat loop cancelled");
+                        break;
+                    }
+                }
+            }
+        });
+
         // Execute based on activity type
         let result = match task.activity_type.as_str() {
             "process_input" => self.execute_input_activity(grpc_client, &turn_input).await,
@@ -240,6 +274,10 @@ impl DurableWorker {
                 task.activity_type
             )),
         };
+
+        // Stop heartbeat loop
+        let _ = cancel_tx.send(());
+        let _ = heartbeat_handle.await;
 
         match result {
             Ok(output) => {
