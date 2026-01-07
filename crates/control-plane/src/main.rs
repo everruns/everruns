@@ -83,18 +83,29 @@ async fn main() -> Result<()> {
     // Load runner configuration from environment
     let runner_config = RunnerConfig::from_env();
 
-    // Create the agent runner (Temporal)
+    // Create the agent runner (Temporal or Durable based on RUNNER_MODE)
     // Note: Runner no longer needs db - session status is managed by control-plane
     let runner = create_runner(&runner_config)
         .await
         .context("Failed to create agent runner")?;
 
-    tracing::info!(
-        address = %runner_config.temporal_address(),
-        namespace = %runner_config.temporal_namespace(),
-        task_queue = %runner_config.temporal_task_queue(),
-        "Using Temporal agent runner"
-    );
+    match runner_config.mode {
+        everruns_worker::RunnerMode::Temporal => {
+            tracing::info!(
+                mode = %runner_config.mode,
+                address = %runner_config.temporal_address(),
+                namespace = %runner_config.temporal_namespace(),
+                task_queue = %runner_config.temporal_task_queue(),
+                "Using Temporal agent runner"
+            );
+        }
+        everruns_worker::RunnerMode::Durable => {
+            tracing::info!(
+                mode = %runner_config.mode,
+                "Using Durable execution engine runner (PostgreSQL-backed)"
+            );
+        }
+    }
 
     // Create app state
     let db = Arc::new(db);

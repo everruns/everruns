@@ -18,6 +18,9 @@ everruns-core = { path = "../core" }
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-internal-protocol = { path = "../internal-protocol" }
+everruns-durable = { path = "../durable" }
+
+sqlx.workspace = true
 
 chrono.workspace = true
 async-trait.workspace = true

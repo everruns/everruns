@@ -1,11 +1,11 @@
 // Agent runner for workflow execution
 // Decision: Use trait-based abstraction for workflow execution
-// Decision: Use true Temporal workflows for durable, distributed execution
+// Decision: Support both Temporal and custom Durable engine via RunnerMode
 // Decision: Workers communicate with control-plane via gRPC (no direct DB access)
 //
 // Architecture:
-// - API calls `start_run` which queues a TurnWorkflow to Temporal
-// - Worker polls Temporal task queues and executes activities
+// - API calls `start_run` which queues a workflow (Temporal or Durable)
+// - Worker polls task queues and executes activities
 // - Each activity (input, reason, act) is idempotent
 // - ReasonAtom handles agent loading, model resolution, and LLM calls
 // - Events are persisted via gRPC to control-plane
@@ -20,30 +20,77 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::client::TemporalClient;
+use crate::durable_runner::DurableRunner;
 use crate::turn_workflow::TurnWorkflowInput;
+
+// =============================================================================
+// Runner Mode
+// =============================================================================
+
+/// Mode for workflow execution
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RunnerMode {
+    /// Use Temporal for workflow orchestration (default)
+    #[default]
+    Temporal,
+    /// Use custom durable execution engine (PostgreSQL-backed)
+    Durable,
+}
+
+impl RunnerMode {
+    /// Parse from string (case-insensitive)
+    pub fn parse(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "durable" => Self::Durable,
+            _ => Self::Temporal,
+        }
+    }
+
+    /// Parse from environment variable RUNNER_MODE
+    pub fn from_env() -> Self {
+        std::env::var("RUNNER_MODE")
+            .map(|s| Self::parse(&s))
+            .unwrap_or_default()
+    }
+}
+
+impl std::fmt::Display for RunnerMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Temporal => write!(f, "temporal"),
+            Self::Durable => write!(f, "durable"),
+        }
+    }
+}
 
 // =============================================================================
 // Configuration
 // =============================================================================
 
-/// Configuration for the agent runner (Temporal)
+/// Configuration for the agent runner
 #[derive(Debug, Clone, Default)]
 pub struct RunnerConfig {
-    /// Temporal server address
+    /// Runner mode (temporal or durable)
+    pub mode: RunnerMode,
+    /// Temporal server address (for Temporal mode)
     pub temporal_address: Option<String>,
-    /// Temporal namespace
+    /// Temporal namespace (for Temporal mode)
     pub temporal_namespace: Option<String>,
-    /// Temporal task queue
+    /// Temporal task queue (for Temporal mode)
     pub temporal_task_queue: Option<String>,
+    /// Database URL (for Durable mode, falls back to DATABASE_URL env)
+    pub database_url: Option<String>,
 }
 
 impl RunnerConfig {
     /// Create configuration from environment variables
     pub fn from_env() -> Self {
         Self {
+            mode: RunnerMode::from_env(),
             temporal_address: std::env::var("TEMPORAL_ADDRESS").ok(),
             temporal_namespace: std::env::var("TEMPORAL_NAMESPACE").ok(),
             temporal_task_queue: std::env::var("TEMPORAL_TASK_QUEUE").ok(),
+            database_url: std::env::var("DATABASE_URL").ok(),
         }
     }
 
@@ -66,6 +113,13 @@ impl RunnerConfig {
         self.temporal_task_queue
             .clone()
             .unwrap_or_else(|| "everruns-agent-runs".to_string())
+    }
+
+    /// Get database URL (required for durable mode)
+    pub fn database_url(&self) -> Option<String> {
+        self.database_url
+            .clone()
+            .or_else(|| std::env::var("DATABASE_URL").ok())
     }
 }
 
@@ -208,19 +262,34 @@ impl AgentRunner for TemporalRunner {
 // Factory Functions
 // =============================================================================
 
-/// Create the Temporal agent runner
+/// Create an agent runner based on configuration
 ///
-/// This is used by the control-plane API to start workflows on Temporal.
-/// Note: The worker process uses TemporalWorker directly, not this function.
+/// This is used by the control-plane API to start workflows.
+/// The runner mode is determined by RUNNER_MODE environment variable:
+/// - "temporal" (default): Use Temporal for workflow orchestration
+/// - "durable": Use custom PostgreSQL-backed durable execution engine
 pub async fn create_runner(config: &RunnerConfig) -> Result<Arc<dyn AgentRunner>> {
-    tracing::info!(
-        address = %config.temporal_address(),
-        namespace = %config.temporal_namespace(),
-        task_queue = %config.temporal_task_queue(),
-        "Creating Temporal agent runner"
-    );
-    let runner = TemporalRunner::new(config.clone()).await?;
-    Ok(Arc::new(runner))
+    match config.mode {
+        RunnerMode::Temporal => {
+            tracing::info!(
+                mode = %config.mode,
+                address = %config.temporal_address(),
+                namespace = %config.temporal_namespace(),
+                task_queue = %config.temporal_task_queue(),
+                "Creating Temporal agent runner"
+            );
+            let runner = TemporalRunner::new(config.clone()).await?;
+            Ok(Arc::new(runner))
+        }
+        RunnerMode::Durable => {
+            tracing::info!(
+                mode = %config.mode,
+                "Creating Durable execution engine runner"
+            );
+            let runner = DurableRunner::from_env().await?;
+            Ok(Arc::new(runner))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -233,5 +302,20 @@ mod tests {
         let workflow_id = TemporalClient::workflow_id_for_session(session_id);
         assert!(workflow_id.starts_with("session-"));
         assert!(workflow_id.contains(&session_id.to_string()));
+    }
+
+    #[test]
+    fn test_runner_mode_parse() {
+        assert_eq!(RunnerMode::parse("temporal"), RunnerMode::Temporal);
+        assert_eq!(RunnerMode::parse("TEMPORAL"), RunnerMode::Temporal);
+        assert_eq!(RunnerMode::parse("durable"), RunnerMode::Durable);
+        assert_eq!(RunnerMode::parse("DURABLE"), RunnerMode::Durable);
+        assert_eq!(RunnerMode::parse("unknown"), RunnerMode::Temporal);
+    }
+
+    #[test]
+    fn test_runner_mode_display() {
+        assert_eq!(RunnerMode::Temporal.to_string(), "temporal");
+        assert_eq!(RunnerMode::Durable.to_string(), "durable");
     }
 }

@@ -53,6 +53,13 @@ pub enum WorkflowStatus {
     Cancelled,
 }
 
+impl WorkflowStatus {
+    /// Check if this status is terminal (workflow has ended)
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Cancelled)
+    }
+}
+
 impl std::fmt::Display for WorkflowStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -402,6 +409,15 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         _success_count: u32,
     ) -> Result<(), StoreError> {
         Ok(())
+    }
+
+    // =========================================================================
+    // Utility Operations (optional, default no-op)
+    // =========================================================================
+
+    /// Count active (non-terminal) workflows
+    async fn count_active_workflows(&self) -> Result<i64, StoreError> {
+        Ok(0)
     }
 }
 

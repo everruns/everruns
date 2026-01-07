@@ -1100,6 +1100,25 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         debug!(key, %state_str, failure_count, success_count, "updated circuit breaker");
         Ok(())
     }
+
+    #[instrument(skip(self))]
+    async fn count_active_workflows(&self) -> Result<i64, StoreError> {
+        let row = sqlx::query(
+            r#"
+            SELECT COUNT(*) as count
+            FROM durable_workflow_instances
+            WHERE status IN ('pending', 'running')
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to count active workflows: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        Ok(row.get("count"))
+    }
 }
 
 // Helper functions
