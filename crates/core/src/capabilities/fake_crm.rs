@@ -110,6 +110,7 @@ struct Ticket {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct Interaction {
     id: String,
     customer_id: String,
@@ -170,31 +171,32 @@ impl Tool for CrmListCustomersTool {
             .read_file(context.session_id, "/crm/customers.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_else(|_| {
-                // Initialize with sample data
-                vec![
-                    Customer {
-                        id: "CUST-001".to_string(),
-                        name: "Alice Johnson".to_string(),
-                        email: "alice@acmecorp.com".to_string(),
-                        company: "Acme Corp".to_string(),
-                        phone: "+1-555-0101".to_string(),
-                        tier: "enterprise".to_string(),
-                        created_at: "2024-01-15T10:00:00Z".to_string(),
-                        last_contact: "2025-01-05T14:30:00Z".to_string(),
-                    },
-                    Customer {
-                        id: "CUST-002".to_string(),
-                        name: "Bob Smith".to_string(),
-                        email: "bob@techstart.io".to_string(),
-                        company: "TechStart Inc".to_string(),
-                        phone: "+1-555-0102".to_string(),
-                        tier: "pro".to_string(),
-                        created_at: "2024-03-20T09:00:00Z".to_string(),
-                        last_contact: "2025-01-03T11:15:00Z".to_string(),
-                    },
-                ]
-            }),
+            Ok(Some(file)) => serde_json::from_str(file.content.as_deref().unwrap_or(""))
+                .unwrap_or_else(|_| {
+                    // Initialize with sample data
+                    vec![
+                        Customer {
+                            id: "CUST-001".to_string(),
+                            name: "Alice Johnson".to_string(),
+                            email: "alice@acmecorp.com".to_string(),
+                            company: "Acme Corp".to_string(),
+                            phone: "+1-555-0101".to_string(),
+                            tier: "enterprise".to_string(),
+                            created_at: "2024-01-15T10:00:00Z".to_string(),
+                            last_contact: "2025-01-05T14:30:00Z".to_string(),
+                        },
+                        Customer {
+                            id: "CUST-002".to_string(),
+                            name: "Bob Smith".to_string(),
+                            email: "bob@techstart.io".to_string(),
+                            company: "TechStart Inc".to_string(),
+                            phone: "+1-555-0102".to_string(),
+                            tier: "pro".to_string(),
+                            created_at: "2024-03-20T09:00:00Z".to_string(),
+                            last_contact: "2025-01-03T11:15:00Z".to_string(),
+                        },
+                    ]
+                }),
             _ => {
                 let initial = vec![Customer {
                     id: "CUST-001".to_string(),
@@ -290,7 +292,9 @@ impl Tool for CrmGetCustomerTool {
             .read_file(context.session_id, "/crm/customers.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -383,7 +387,9 @@ impl Tool for CrmCreateCustomerTool {
             .read_file(context.session_id, "/crm/customers.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -478,7 +484,9 @@ impl Tool for CrmListTicketsTool {
             .read_file(context.session_id, "/crm/tickets.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -579,7 +587,9 @@ impl Tool for CrmCreateTicketTool {
             .read_file(context.session_id, "/crm/tickets.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -677,7 +687,9 @@ impl Tool for CrmUpdateTicketTool {
             .read_file(context.session_id, "/crm/tickets.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -690,13 +702,14 @@ impl Tool for CrmUpdateTicketTool {
                 ticket.assigned_to = Some(agent.to_string());
             }
             ticket.updated_at = chrono::Utc::now().to_rfc3339();
+            let updated_status = ticket.status.clone();
 
             let content = serde_json::to_string_pretty(&tickets).unwrap();
             let _ = file_store
                 .write_file(context.session_id, "/crm/tickets.json", &content, "text")
                 .await;
 
-            ToolExecutionResult::success(json!({"ticket_id": ticket_id, "status": ticket.status}))
+            ToolExecutionResult::success(json!({"ticket_id": ticket_id, "status": updated_status}))
         } else {
             ToolExecutionResult::tool_error(format!("Ticket not found: {}", ticket_id))
         }
@@ -739,8 +752,8 @@ impl Tool for CrmAddInteractionTool {
 
     async fn execute_with_context(
         &self,
-        arguments: Value,
-        context: &ToolContext,
+        _arguments: Value,
+        _context: &ToolContext,
     ) -> ToolExecutionResult {
         let interaction_id = format!("INT-{:05}", chrono::Utc::now().timestamp() % 100000);
 
@@ -803,7 +816,9 @@ impl Tool for CrmSearchCustomersTool {
             .read_file(context.session_id, "/crm/customers.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 

@@ -212,43 +212,44 @@ impl Tool for AwsListEc2InstancesTool {
             .read_file(context.session_id, "/aws/ec2_instances.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_else(|_| {
-                // Initialize with sample data
-                vec![
-                    Ec2Instance {
-                        instance_id: "i-0123456789abcdef0".to_string(),
-                        instance_type: "t3.medium".to_string(),
-                        state: "running".to_string(),
-                        availability_zone: "us-east-1a".to_string(),
-                        private_ip: "10.0.1.100".to_string(),
-                        public_ip: Some("54.123.45.67".to_string()),
-                        launch_time: "2025-01-01T10:00:00Z".to_string(),
-                        tags: vec![
-                            Tag {
+            Ok(Some(file)) => serde_json::from_str(file.content.as_deref().unwrap_or(""))
+                .unwrap_or_else(|_| {
+                    // Initialize with sample data
+                    vec![
+                        Ec2Instance {
+                            instance_id: "i-0123456789abcdef0".to_string(),
+                            instance_type: "t3.medium".to_string(),
+                            state: "running".to_string(),
+                            availability_zone: "us-east-1a".to_string(),
+                            private_ip: "10.0.1.100".to_string(),
+                            public_ip: Some("54.123.45.67".to_string()),
+                            launch_time: "2025-01-01T10:00:00Z".to_string(),
+                            tags: vec![
+                                Tag {
+                                    key: "Name".to_string(),
+                                    value: "web-server-01".to_string(),
+                                },
+                                Tag {
+                                    key: "Environment".to_string(),
+                                    value: "production".to_string(),
+                                },
+                            ],
+                        },
+                        Ec2Instance {
+                            instance_id: "i-0987654321fedcba0".to_string(),
+                            instance_type: "t3.large".to_string(),
+                            state: "running".to_string(),
+                            availability_zone: "us-east-1b".to_string(),
+                            private_ip: "10.0.2.100".to_string(),
+                            public_ip: Some("54.123.45.68".to_string()),
+                            launch_time: "2025-01-01T11:00:00Z".to_string(),
+                            tags: vec![Tag {
                                 key: "Name".to_string(),
-                                value: "web-server-01".to_string(),
-                            },
-                            Tag {
-                                key: "Environment".to_string(),
-                                value: "production".to_string(),
-                            },
-                        ],
-                    },
-                    Ec2Instance {
-                        instance_id: "i-0987654321fedcba0".to_string(),
-                        instance_type: "t3.large".to_string(),
-                        state: "running".to_string(),
-                        availability_zone: "us-east-1b".to_string(),
-                        private_ip: "10.0.2.100".to_string(),
-                        public_ip: Some("54.123.45.68".to_string()),
-                        launch_time: "2025-01-01T11:00:00Z".to_string(),
-                        tags: vec![Tag {
-                            key: "Name".to_string(),
-                            value: "api-server-01".to_string(),
-                        }],
-                    },
-                ]
-            }),
+                                value: "api-server-01".to_string(),
+                            }],
+                        },
+                    ]
+                }),
             _ => {
                 // Create initial data
                 let initial = vec![Ec2Instance {
@@ -371,15 +372,14 @@ impl Tool for AwsCreateEc2InstanceTool {
             .read_file(context.session_id, "/aws/ec2_instances.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
         // Create new instance
-        let instance_id = format!(
-            "i-{:016x}",
-            (chrono::Utc::now().timestamp() as u64) & 0xFFFFFFFFFFFFFFFF
-        );
+        let instance_id = format!("i-{:016x}", chrono::Utc::now().timestamp() as u64);
         let private_ip = format!("10.0.{}.{}", (instances.len() % 254) + 1, 100);
         let public_ip = format!(
             "54.{}.{}.{}",
@@ -487,7 +487,9 @@ impl Tool for AwsStopEc2InstanceTool {
             .read_file(context.session_id, "/aws/ec2_instances.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -568,18 +570,19 @@ impl Tool for AwsListRdsDatabasesTool {
             .read_file(context.session_id, "/aws/rds_databases.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_else(|_| {
-                vec![RdsDatabase {
-                    db_instance_id: "prod-postgres-01".to_string(),
-                    engine: "postgres".to_string(),
-                    engine_version: "15.4".to_string(),
-                    instance_class: "db.t3.medium".to_string(),
-                    status: "available".to_string(),
-                    endpoint: "prod-postgres-01.abc123.us-east-1.rds.amazonaws.com".to_string(),
-                    port: 5432,
-                    storage_gb: 100,
-                }]
-            }),
+            Ok(Some(file)) => serde_json::from_str(file.content.as_deref().unwrap_or(""))
+                .unwrap_or_else(|_| {
+                    vec![RdsDatabase {
+                        db_instance_id: "prod-postgres-01".to_string(),
+                        engine: "postgres".to_string(),
+                        engine_version: "15.4".to_string(),
+                        instance_class: "db.t3.medium".to_string(),
+                        status: "available".to_string(),
+                        endpoint: "prod-postgres-01.abc123.us-east-1.rds.amazonaws.com".to_string(),
+                        port: 5432,
+                        storage_gb: 100,
+                    }]
+                }),
             _ => vec![],
         };
 

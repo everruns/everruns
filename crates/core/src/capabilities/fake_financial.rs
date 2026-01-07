@@ -166,29 +166,30 @@ impl Tool for FinanceListTransactionsTool {
             .read_file(context.session_id, "/finance/transactions.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_else(|_| {
-                // Initialize with sample data
-                vec![
-                    Transaction {
-                        id: "TXN-001".to_string(),
-                        date: "2025-01-05".to_string(),
-                        transaction_type: "income".to_string(),
-                        category: "sales".to_string(),
-                        amount: 15000.0,
-                        description: "Q1 Product Sales".to_string(),
-                        account: "operating".to_string(),
-                    },
-                    Transaction {
-                        id: "TXN-002".to_string(),
-                        date: "2025-01-06".to_string(),
-                        transaction_type: "expense".to_string(),
-                        category: "payroll".to_string(),
-                        amount: 8500.0,
-                        description: "January Payroll".to_string(),
-                        account: "operating".to_string(),
-                    },
-                ]
-            }),
+            Ok(Some(file)) => serde_json::from_str(file.content.as_deref().unwrap_or(""))
+                .unwrap_or_else(|_| {
+                    // Initialize with sample data
+                    vec![
+                        Transaction {
+                            id: "TXN-001".to_string(),
+                            date: "2025-01-05".to_string(),
+                            transaction_type: "income".to_string(),
+                            category: "sales".to_string(),
+                            amount: 15000.0,
+                            description: "Q1 Product Sales".to_string(),
+                            account: "operating".to_string(),
+                        },
+                        Transaction {
+                            id: "TXN-002".to_string(),
+                            date: "2025-01-06".to_string(),
+                            transaction_type: "expense".to_string(),
+                            category: "payroll".to_string(),
+                            amount: 8500.0,
+                            description: "January Payroll".to_string(),
+                            account: "operating".to_string(),
+                        },
+                    ]
+                }),
             _ => {
                 let initial = vec![Transaction {
                     id: "TXN-001".to_string(),
@@ -321,7 +322,9 @@ impl Tool for FinanceCreateTransactionTool {
             .read_file(context.session_id, "/finance/transactions.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 

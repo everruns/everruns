@@ -186,32 +186,33 @@ impl Tool for WarehouseGetInventoryTool {
             .read_file(context.session_id, "/warehouse/inventory.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_else(|_| {
-                // Initialize with sample data
-                vec![
-                    InventoryItem {
-                        sku: "WH-001".to_string(),
-                        name: "Industrial Widget".to_string(),
-                        quantity: 150,
-                        location: "A1".to_string(),
-                        reorder_point: 50,
-                    },
-                    InventoryItem {
-                        sku: "WH-002".to_string(),
-                        name: "Premium Gadget".to_string(),
-                        quantity: 30,
-                        location: "B2".to_string(),
-                        reorder_point: 40,
-                    },
-                    InventoryItem {
-                        sku: "WH-003".to_string(),
-                        name: "Standard Component".to_string(),
-                        quantity: 200,
-                        location: "C3".to_string(),
-                        reorder_point: 75,
-                    },
-                ]
-            }),
+            Ok(Some(file)) => serde_json::from_str(file.content.as_deref().unwrap_or(""))
+                .unwrap_or_else(|_| {
+                    // Initialize with sample data
+                    vec![
+                        InventoryItem {
+                            sku: "WH-001".to_string(),
+                            name: "Industrial Widget".to_string(),
+                            quantity: 150,
+                            location: "A1".to_string(),
+                            reorder_point: 50,
+                        },
+                        InventoryItem {
+                            sku: "WH-002".to_string(),
+                            name: "Premium Gadget".to_string(),
+                            quantity: 30,
+                            location: "B2".to_string(),
+                            reorder_point: 40,
+                        },
+                        InventoryItem {
+                            sku: "WH-003".to_string(),
+                            name: "Standard Component".to_string(),
+                            quantity: 200,
+                            location: "C3".to_string(),
+                            reorder_point: 75,
+                        },
+                    ]
+                }),
             _ => {
                 // Create initial inventory
                 let initial = vec![
@@ -352,7 +353,9 @@ impl Tool for WarehouseUpdateInventoryTool {
             .read_file(context.session_id, "/warehouse/inventory.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -370,6 +373,8 @@ impl Tool for WarehouseUpdateInventoryTool {
             return ToolExecutionResult::tool_error("Insufficient inventory");
         }
 
+        let new_quantity = item.quantity;
+        let reorder_point = item.reorder_point;
         // Save updated inventory
         let content = serde_json::to_string_pretty(&inventory).unwrap();
         match file_store
@@ -384,10 +389,10 @@ impl Tool for WarehouseUpdateInventoryTool {
             Ok(_) => ToolExecutionResult::success(json!({
                 "sku": sku,
                 "old_quantity": old_quantity,
-                "new_quantity": item.quantity,
+                "new_quantity": new_quantity,
                 "change": quantity_change,
                 "reason": reason,
-                "below_reorder_point": item.quantity < item.reorder_point
+                "below_reorder_point": new_quantity < reorder_point
             })),
             Err(e) => ToolExecutionResult::internal_error(e),
         }
@@ -474,7 +479,9 @@ impl Tool for WarehouseCreateShipmentTool {
             .read_file(context.session_id, "/warehouse/shipments.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -571,7 +578,9 @@ impl Tool for WarehouseListShipmentsTool {
             .read_file(context.session_id, "/warehouse/shipments.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -662,7 +671,9 @@ impl Tool for WarehouseUpdateShipmentStatusTool {
             .read_file(context.session_id, "/warehouse/shipments.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -679,6 +690,7 @@ impl Tool for WarehouseUpdateShipmentStatusTool {
 
         let old_status = shipment.status.clone();
         shipment.status = new_status.to_string();
+        let updated_at = shipment.updated_at.clone();
         shipment.updated_at = chrono::Utc::now().to_rfc3339();
 
         // Save updated shipments
@@ -696,7 +708,7 @@ impl Tool for WarehouseUpdateShipmentStatusTool {
                 "shipment_id": shipment_id,
                 "old_status": old_status,
                 "new_status": new_status,
-                "updated_at": shipment.updated_at
+                "updated_at": updated_at
             })),
             Err(e) => ToolExecutionResult::internal_error(e),
         }
@@ -770,7 +782,9 @@ impl Tool for WarehouseCreateOrderTool {
             .read_file(context.session_id, "/warehouse/orders.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -839,7 +853,9 @@ impl Tool for WarehouseListOrdersTool {
             .read_file(context.session_id, "/warehouse/orders.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
@@ -881,7 +897,7 @@ impl Tool for WarehouseCreateInvoiceTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        context: &ToolContext,
+        _context: &ToolContext,
     ) -> ToolExecutionResult {
         let order_id = arguments
             .get("order_id")
@@ -935,7 +951,7 @@ impl Tool for WarehouseProcessReturnTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        context: &ToolContext,
+        _context: &ToolContext,
     ) -> ToolExecutionResult {
         let return_id = format!("RET-{:05}", chrono::Utc::now().timestamp() % 100000);
         let sku = arguments
@@ -990,7 +1006,9 @@ impl Tool for WarehouseInventoryReportTool {
             .read_file(context.session_id, "/warehouse/inventory.json")
             .await
         {
-            Ok(Some(file)) => serde_json::from_str(&file.content).unwrap_or_default(),
+            Ok(Some(file)) => {
+                serde_json::from_str(file.content.as_deref().unwrap_or("")).unwrap_or_default()
+            }
             _ => vec![],
         };
 
