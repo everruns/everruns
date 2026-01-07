@@ -13,7 +13,9 @@ pub mod worker;
 pub mod workflow_registry;
 
 // Re-export main types
-pub use durable_runner::{DurableRunner, DurableTurnInput, DurableTurnOutput};
+pub use durable_runner::{
+    DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTurnInput, DurableTurnOutput,
+};
 pub use durable_worker::{DurableWorker, DurableWorkerConfig};
 pub use grpc_durable_store::{
     ClaimedTask as GrpcClaimedTask, GrpcDurableStore, HeartbeatResponse as GrpcHeartbeatResponse,

@@ -84,8 +84,12 @@ async fn main() -> Result<()> {
     let runner_config = RunnerConfig::from_env();
 
     // Create the agent runner (Temporal or Durable based on RUNNER_MODE)
-    // Note: Runner no longer needs db - session status is managed by control-plane
-    let runner = create_runner(&runner_config)
+    // For durable mode, pass the database pool for direct access (avoids circular gRPC dependency)
+    let db_pool = match runner_config.mode {
+        everruns_worker::RunnerMode::Durable => Some(db.pool().clone()),
+        everruns_worker::RunnerMode::Temporal => None,
+    };
+    let runner = create_runner(&runner_config, db_pool)
         .await
         .context("Failed to create agent runner")?;
 

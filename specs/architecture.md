@@ -90,11 +90,14 @@ graph TD
 ### Execution Layer
 
 1. **Runner Abstraction**: `AgentRunner` trait provides the execution backend interface
-2. **Temporal Execution**: All agent workflows run via Temporal for durability and reliability
-3. **Workflow Isolation**: Temporal concepts (workflow IDs, task queues) never exposed in public API
+2. **Dual Runner Modes** (controlled by `RUNNER_MODE` environment variable):
+   - `temporal` (default): Workflows run via Temporal for proven durability at scale
+   - `durable`: Workflows run via custom PostgreSQL-backed durable execution engine
+3. **Workflow Isolation**: Backend concepts (workflow IDs, task queues) never exposed in public API
 4. **Event Streaming**: SSE for real-time event delivery via database-backed events
 
-See [specs/temporal-integration.md](temporal-integration.md) for detailed Temporal architecture.
+See [specs/temporal-integration.md](temporal-integration.md) for Temporal architecture.
+See [specs/durable-execution-engine.md](durable-execution-engine.md) for the custom durable engine.
 
 ### Worker ↔ Control-Plane Communication
 

@@ -268,7 +268,12 @@ impl AgentRunner for TemporalRunner {
 /// The runner mode is determined by RUNNER_MODE environment variable:
 /// - "temporal" (default): Use Temporal for workflow orchestration
 /// - "durable": Use custom PostgreSQL-backed durable execution engine
-pub async fn create_runner(config: &RunnerConfig) -> Result<Arc<dyn AgentRunner>> {
+///
+/// For durable mode, pass a database pool for direct access (control-plane) or None for gRPC (workers).
+pub async fn create_runner(
+    config: &RunnerConfig,
+    db_pool: Option<sqlx::PgPool>,
+) -> Result<Arc<dyn AgentRunner>> {
     match config.mode {
         RunnerMode::Temporal => {
             tracing::info!(
@@ -282,12 +287,21 @@ pub async fn create_runner(config: &RunnerConfig) -> Result<Arc<dyn AgentRunner>
             Ok(Arc::new(runner))
         }
         RunnerMode::Durable => {
-            tracing::info!(
-                mode = %config.mode,
-                "Creating Durable execution engine runner"
-            );
-            let runner = DurableRunner::from_env().await?;
-            Ok(Arc::new(runner))
+            if let Some(pool) = db_pool {
+                tracing::info!(
+                    mode = %config.mode,
+                    "Creating Durable execution engine runner (direct DB mode)"
+                );
+                let runner = DurableRunner::new_with_pool(pool);
+                Ok(Arc::new(runner))
+            } else {
+                tracing::info!(
+                    mode = %config.mode,
+                    "Creating Durable execution engine runner (gRPC mode)"
+                );
+                let runner = DurableRunner::from_env().await?;
+                Ok(Arc::new(runner))
+            }
         }
     }
 }

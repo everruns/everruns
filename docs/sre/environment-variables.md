@@ -94,6 +94,33 @@ The UI makes all API requests to `/api/*` paths. These are handled differently i
   ```
 - No CORS needed (same-origin)
 
+## Runner Configuration
+
+### RUNNER_MODE
+
+Selects the workflow execution backend.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `temporal` |
+| **Options** | `temporal`, `durable` |
+
+**Example:**
+
+```bash
+# Use Temporal (default)
+RUNNER_MODE=temporal
+
+# Use PostgreSQL-backed durable execution engine
+RUNNER_MODE=durable
+```
+
+**Notes:**
+- `temporal`: Requires Temporal server running (see TEMPORAL_* variables)
+- `durable`: Uses PostgreSQL tables, no Temporal required
+- See [Durable Mode Setup](/sre/runbooks/durable-mode-setup) for durable mode details
+
 ## Worker Configuration
 
 ### GRPC_ADDRESS

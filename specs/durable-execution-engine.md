@@ -1584,13 +1584,16 @@ impl TimeoutManager {
 - [ ] Connection pool tuning
 - [ ] Performance regression tests
 
-### Phase 7: Integration with Everruns (TODO: Followup)
-> **Note:** This phase will be implemented as a followup to replace Temporal dependency.
+### Phase 7: Integration with Everruns ✅ (In Progress)
+> **Status:** Core integration complete. Workers communicate via gRPC only.
 
-- [ ] Migrate TurnWorkflow to new engine
-- [ ] Update worker crate to use durable engine
-- [ ] Remove Temporal dependencies
-- [ ] End-to-end smoke tests
+- [x] DurableRunner implements AgentRunner trait
+- [x] DurableWorker polls tasks via gRPC (no direct DB access)
+- [x] Worker heartbeat loop for crash recovery
+- [x] Stale task reclamation background task in control-plane
+- [x] gRPC durable operations: CreateWorkflow, ClaimTasks, CompleteTask, etc.
+- [ ] Remove Temporal dependencies (optional - both modes supported)
+- [ ] End-to-end smoke tests with real LLM
 
 ---
 

@@ -18,7 +18,10 @@ everruns-core = { path = "../core" }
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-internal-protocol = { path = "../internal-protocol" }
-# Note: Workers don't need everruns-durable or sqlx - all DB operations go through gRPC
+# Note: Workers don't need direct DB access - all DB operations go through gRPC
+# The durable module is used for control-plane direct DB mode (avoids circular gRPC dependency)
+everruns-durable = { path = "../durable" }
+sqlx.workspace = true
 
 chrono.workspace = true
 async-trait.workspace = true
