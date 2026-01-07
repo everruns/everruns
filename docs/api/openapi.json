@@ -3349,6 +3349,16 @@
             ],
             "description": "Error message if generation failed"
           },
+          "finish_reasons": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Finish reasons from the LLM (e.g., [\"stop\"], [\"tool_calls\"])\nRequired for gen-ai semantic conventions"
+          },
           "model": {
             "type": "string",
             "description": "Model identifier used for generation"
@@ -3359,6 +3369,13 @@
               "null"
             ],
             "description": "Provider type (openai, anthropic, etc.)"
+          },
+          "response_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Unique response identifier from the LLM provider\nRequired for gen-ai semantic conventions"
           },
           "success": {
             "type": "boolean",

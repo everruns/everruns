@@ -565,6 +565,16 @@ pub struct LlmGenerationMetadata {
     /// Error message if generation failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+
+    /// Finish reasons from the LLM (e.g., ["stop"], ["tool_calls"])
+    /// Required for gen-ai semantic conventions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reasons: Option<Vec<String>>,
+
+    /// Unique response identifier from the LLM provider
+    /// Required for gen-ai semantic conventions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
 }
 
 /// Data for llm.generation event
@@ -601,6 +611,13 @@ impl LlmGenerationData {
         usage: Option<TokenUsage>,
         duration_ms: Option<u64>,
     ) -> Self {
+        // Infer finish reasons from content
+        let finish_reasons = if !tool_calls.is_empty() {
+            Some(vec!["tool_calls".to_string()])
+        } else {
+            Some(vec!["stop".to_string()])
+        };
+
         Self {
             messages,
             tools,
@@ -612,6 +629,39 @@ impl LlmGenerationData {
                 duration_ms,
                 success: true,
                 error: None,
+                finish_reasons,
+                response_id: None,
+            },
+        }
+    }
+
+    /// Create a successful generation event with full metadata
+    #[allow(clippy::too_many_arguments)]
+    pub fn success_with_metadata(
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinitionSummary>,
+        text: Option<String>,
+        tool_calls: Vec<ToolCall>,
+        model: String,
+        provider: Option<String>,
+        usage: Option<TokenUsage>,
+        duration_ms: Option<u64>,
+        finish_reasons: Option<Vec<String>>,
+        response_id: Option<String>,
+    ) -> Self {
+        Self {
+            messages,
+            tools,
+            output: LlmGenerationOutput { text, tool_calls },
+            metadata: LlmGenerationMetadata {
+                model,
+                provider,
+                usage,
+                duration_ms,
+                success: true,
+                error: None,
+                finish_reasons,
+                response_id,
             },
         }
     }
@@ -639,6 +689,8 @@ impl LlmGenerationData {
                 duration_ms,
                 success: false,
                 error: Some(error),
+                finish_reasons: Some(vec!["error".to_string()]),
+                response_id: None,
             },
         }
     }
@@ -1195,6 +1247,38 @@ mod tests {
         assert_eq!(data.metadata.model, "gpt-4o");
         assert_eq!(data.metadata.provider, Some("openai".to_string()));
         assert!(data.metadata.error.is_none());
+        // New fields for gen-ai semantic conventions
+        assert_eq!(data.metadata.finish_reasons, Some(vec!["stop".to_string()]));
+        assert!(data.metadata.response_id.is_none());
+    }
+
+    #[test]
+    fn test_llm_generation_data_with_full_metadata() {
+        let messages = vec![Message::user("Hello")];
+        let data = LlmGenerationData::success_with_metadata(
+            messages,
+            vec![],
+            Some("Hi!".to_string()),
+            vec![],
+            "claude-3-opus".to_string(),
+            Some("anthropic".to_string()),
+            Some(TokenUsage {
+                input_tokens: 5,
+                output_tokens: 3,
+            }),
+            Some(50),
+            Some(vec!["end_turn".to_string()]),
+            Some("msg_12345".to_string()),
+        );
+
+        assert!(data.metadata.success);
+        assert_eq!(data.metadata.model, "claude-3-opus");
+        assert_eq!(data.metadata.provider, Some("anthropic".to_string()));
+        assert_eq!(
+            data.metadata.finish_reasons,
+            Some(vec!["end_turn".to_string()])
+        );
+        assert_eq!(data.metadata.response_id, Some("msg_12345".to_string()));
     }
 
     #[test]

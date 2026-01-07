@@ -9,6 +9,9 @@
 // - Each activity (input, reason, act) is idempotent
 // - ReasonAtom handles agent loading, model resolution, and LLM calls
 // - Events are persisted via gRPC to control-plane
+//
+// Note: OTel instrumentation is handled via the event-listener pattern.
+// turn.started/completed events trigger OtelEventListener to create invoke_agent spans.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -133,6 +136,9 @@ impl TemporalRunner {
 #[async_trait]
 impl AgentRunner for TemporalRunner {
     /// Start a turn workflow for the given session
+    ///
+    /// Note: OTel instrumentation is handled via event listeners.
+    /// turn.started/completed events trigger OtelEventListener to create invoke_agent spans.
     async fn start_run(
         &self,
         session_id: Uuid,

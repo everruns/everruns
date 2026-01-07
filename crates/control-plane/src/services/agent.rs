@@ -1,4 +1,8 @@
 // Agent service for business logic (M2)
+//
+// Note: OTel instrumentation is handled via the event-listener pattern.
+// Agent creation events are not yet implemented but would be handled
+// by event listeners rather than direct spans.
 
 use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
@@ -21,6 +25,8 @@ impl AgentService {
     }
 
     pub async fn create(&self, req: CreateAgentRequest) -> Result<Agent> {
+        // Note: OTel instrumentation is handled via event listeners.
+        // Agent creation events would be handled by listeners rather than direct spans.
         let input = CreateAgentRow {
             name: req.name,
             description: req.description,

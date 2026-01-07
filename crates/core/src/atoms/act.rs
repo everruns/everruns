@@ -10,6 +10,10 @@
 //! Tool results are emitted as `tool.call_completed` events and returned in ActResult.
 //! Messages are derived from events - no separate message storage is needed.
 //!
+//! Note: OTel instrumentation is handled via the event-listener pattern.
+//! tool.call_started/completed events are emitted by this atom, and OtelEventListener
+//! creates the appropriate gen-ai spans from those events.
+//!
 //! NOTES from Python spec:
 //! - Tools call runs in parallel
 //! - Error from tool call is not an error for the whole Act, error from tool is "normal" result
@@ -255,6 +259,10 @@ where
     E: EventEmitter + Send + Sync,
 {
     /// Execute a single tool call
+    ///
+    /// Note: OTel instrumentation is handled via event listeners.
+    /// tool.call_started/completed events are emitted, and OtelEventListener
+    /// creates gen-ai spans from those events.
     async fn execute_single_tool(
         &self,
         context: &AtomContext,

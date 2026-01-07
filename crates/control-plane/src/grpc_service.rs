@@ -43,8 +43,11 @@ pub struct WorkerServiceImpl {
 }
 
 impl WorkerServiceImpl {
-    pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
-        let event_service = EventService::new(db.clone());
+    pub fn new(
+        event_service: EventService,
+        db: Arc<Database>,
+        encryption: Option<Arc<EncryptionService>>,
+    ) -> Self {
         let agent_service = AgentService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let session_file_service = SessionFileService::new(db.clone());

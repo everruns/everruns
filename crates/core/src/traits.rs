@@ -425,3 +425,6 @@ impl EventEmitter for NoopEventEmitter {
         Ok(request.into_event(uuid::Uuid::now_v7(), 0))
     }
 }
+
+// Note: EventListener trait has been moved to event_listeners.rs module.
+// Use `everruns_core::EventListener` or `everruns_core::event_listeners::EventListener`.

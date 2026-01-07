@@ -21,6 +21,12 @@ pub mod tool_types;
 // Telemetry (OpenTelemetry with gen-ai semantic conventions)
 pub mod telemetry;
 
+// Event listeners (pluggable observability backends)
+pub mod event_listeners;
+
+// Observation backends (OTel, etc.)
+pub mod observation;
+
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
@@ -62,6 +68,9 @@ pub use traits::{
     EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
     NoopEventEmitter, SessionFileStore, SessionStore, ToolContext, ToolExecutor,
 };
+
+// Event listener re-exports
+pub use event_listeners::{CompositeEventListener, EventListener, NoopEventListener};
 
 // LLM driver types re-exports
 pub use llm_driver_registry::{
@@ -121,3 +130,6 @@ pub use llm_models::{
 };
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
+
+// OTel event listener (observation backend)
+pub use observation::OtelEventListener;
