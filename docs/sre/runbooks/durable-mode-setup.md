@@ -39,13 +39,15 @@ Using Durable execution engine runner (PostgreSQL-backed)
 In a separate terminal:
 
 ```bash
-export RUNNER_MODE=durable
-export DATABASE_URL="postgres://postgres:postgres@localhost/everruns"
+# Workers only need gRPC address - NO DATABASE_URL required!
 export GRPC_ADDRESS="127.0.0.1:9001"
 
 # Start the durable worker
 cargo run -p everruns-worker --bin durable-worker
 ```
+
+**Important:** Workers communicate with the control-plane via gRPC and do not
+require direct database access. This improves security and simplifies deployment.
 
 Or programmatically:
 
