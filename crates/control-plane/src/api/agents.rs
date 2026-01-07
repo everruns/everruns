@@ -12,7 +12,10 @@ use axum::{
 use chrono::Utc;
 use everruns_core::{Agent, AgentStatus, CapabilityId};
 
-use super::common::ListResponse;
+use super::common::{ErrorResponse, ListResponse};
+use super::validation::{
+    validate_create_agent_input, validate_import_file_size, validate_update_agent_input,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -128,17 +131,26 @@ pub fn routes(state: AppState) -> Router {
     request_body = CreateAgentRequest,
     responses(
         (status = 201, description = "Agent created successfully", body = Agent),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Input exceeds allowed limits", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "agents"
 )]
 pub async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
-) -> Result<(StatusCode, Json<Agent>), StatusCode> {
+) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+    // Validate input sizes (last-resort protection against abuse)
+    validate_create_agent_input(
+        &req.name,
+        req.description.as_deref(),
+        &req.system_prompt,
+        req.capabilities.len(),
+    )?;
+
     let agent = state.service.create(req).await.map_err(|e| {
         tracing::error!("Failed to create agent: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok((StatusCode::CREATED, Json(agent)))
@@ -206,8 +218,9 @@ pub async fn get_agent(
     request_body = UpdateAgentRequest,
     responses(
         (status = 200, description = "Agent updated successfully", body = Agent),
-        (status = 404, description = "Agent not found"),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Input exceeds allowed limits", body = ErrorResponse),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "agents"
 )]
@@ -215,16 +228,25 @@ pub async fn update_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<Uuid>,
     Json(req): Json<UpdateAgentRequest>,
-) -> Result<Json<Agent>, StatusCode> {
+) -> Result<Json<Agent>, (StatusCode, Json<ErrorResponse>)> {
+    // Validate input sizes (last-resort protection against abuse)
+    validate_update_agent_input(
+        req.name.as_deref(),
+        req.description.as_deref(),
+        req.system_prompt.as_deref(),
+        req.capabilities.as_ref().map(|c| c.len()),
+    )?;
+
     let agent = state
         .service
         .update(agent_id, req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to update agent: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ErrorResponse::new("Internal server error")
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| ErrorResponse::new("Not found").into_response(StatusCode::NOT_FOUND))?;
 
     Ok(Json(agent))
 }
@@ -314,17 +336,21 @@ pub async fn export_agent(
     request_body(content = String, content_type = "text/plain"),
     responses(
         (status = 201, description = "Agent imported successfully", body = Agent),
-        (status = 400, description = "Invalid format"),
-        (status = 500, description = "Internal server error")
+        (status = 400, description = "Invalid format or input exceeds limits", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "agents"
 )]
 pub async fn import_agent(
     State(state): State<AppState>,
     body: String,
-) -> Result<(StatusCode, Json<Agent>), (StatusCode, String)> {
-    let agent_file = parse_agent_content(&body)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid format: {}", e)))?;
+) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+    // Validate import file size (last-resort protection against abuse)
+    validate_import_file_size(body.len())?;
+
+    let agent_file = parse_agent_content(&body).map_err(|e| {
+        ErrorResponse::new(format!("Invalid format: {}", e)).into_response(StatusCode::BAD_REQUEST)
+    })?;
 
     // Generate date-based name if not provided
     let name = agent_file
@@ -334,11 +360,19 @@ pub async fn import_agent(
     // System prompt is required (either from body or front matter)
     let system_prompt = agent_file.system_prompt.unwrap_or_default();
     if system_prompt.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "System prompt is required (provide in front matter or as markdown body)".to_string(),
-        ));
+        return Err(ErrorResponse::new(
+            "System prompt is required (provide in front matter or as markdown body)",
+        )
+        .into_response(StatusCode::BAD_REQUEST));
     }
+
+    // Validate parsed content sizes (last-resort protection against abuse)
+    validate_create_agent_input(
+        &name,
+        agent_file.description.as_deref(),
+        &system_prompt,
+        agent_file.capabilities.len(),
+    )?;
 
     let request = CreateAgentRequest {
         name,
@@ -355,10 +389,7 @@ pub async fn import_agent(
 
     let agent = state.service.create(request).await.map_err(|e| {
         tracing::error!("Failed to import agent: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal server error".to_string(),
-        )
+        ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok((StatusCode::CREATED, Json(agent)))

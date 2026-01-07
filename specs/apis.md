@@ -43,6 +43,12 @@ See [authentication.md](authentication.md) for full authentication specification
 | GET | `/v1/agents/{id}` | Get agent by ID |
 | PATCH | `/v1/agents/{id}` | Update agent |
 | DELETE | `/v1/agents/{id}` | Archive agent (soft delete) |
+| POST | `/v1/agents/import` | Import agent from file content |
+| GET | `/v1/agents/{id}/export` | Export agent as Markdown |
+
+**Input Validation:**
+
+All agent create/update/import endpoints enforce input size limits as last-resort protection against abuse. See [models.md](models.md#agent) for limit details. Validation failures return `400 Bad Request` with generic message "Input exceeds allowed limits".
 
 ### Sessions
 

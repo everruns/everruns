@@ -2,8 +2,30 @@
 //
 // These types are shared across multiple API endpoints.
 
+use axum::http::StatusCode;
+use axum::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+/// Standard error response for API endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ErrorResponse {
+    /// Error message describing what went wrong.
+    pub error: String,
+}
+
+impl ErrorResponse {
+    pub fn new(error: impl Into<String>) -> Self {
+        Self {
+            error: error.into(),
+        }
+    }
+
+    /// Convert to axum response tuple
+    pub fn into_response(self, status: StatusCode) -> (StatusCode, Json<Self>) {
+        (status, Json(self))
+    }
+}
 
 /// Response wrapper for list endpoints.
 /// All list endpoints return responses wrapped in a `data` field.
