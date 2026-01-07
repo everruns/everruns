@@ -35,6 +35,11 @@ impl CapabilityId {
     pub const TEST_WEATHER: &'static str = "test_weather";
     pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
     pub const WEB_FETCH: &'static str = "web_fetch";
+    // Fake demo capability ID constants
+    pub const FAKE_WAREHOUSE: &'static str = "fake_warehouse";
+    pub const FAKE_AWS: &'static str = "fake_aws";
+    pub const FAKE_CRM: &'static str = "fake_crm";
+    pub const FAKE_FINANCIAL: &'static str = "fake_financial";
 
     /// Create the noop capability ID
     pub fn noop() -> Self {
@@ -79,6 +84,26 @@ impl CapabilityId {
     /// Create the web_fetch capability ID
     pub fn web_fetch() -> Self {
         Self::new(Self::WEB_FETCH)
+    }
+
+    /// Create the fake_warehouse capability ID
+    pub fn fake_warehouse() -> Self {
+        Self::new(Self::FAKE_WAREHOUSE)
+    }
+
+    /// Create the fake_aws capability ID
+    pub fn fake_aws() -> Self {
+        Self::new(Self::FAKE_AWS)
+    }
+
+    /// Create the fake_crm capability ID
+    pub fn fake_crm() -> Self {
+        Self::new(Self::FAKE_CRM)
+    }
+
+    /// Create the fake_financial capability ID
+    pub fn fake_financial() -> Self {
+        Self::new(Self::FAKE_FINANCIAL)
     }
 }
 
