@@ -220,7 +220,9 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
     let role = match proto_msg.role.to_lowercase().as_str() {
         "system" => everruns_core::MessageRole::System,
         "user" => everruns_core::MessageRole::User,
-        "assistant" => everruns_core::MessageRole::Assistant,
+        // Map both "assistant" and "agent" to Assistant role
+        // Events store messages with role "agent" from MessageAgentData
+        "assistant" | "agent" => everruns_core::MessageRole::Assistant,
         "tool_result" => everruns_core::MessageRole::ToolResult,
         _ => everruns_core::MessageRole::User,
     };
