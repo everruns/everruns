@@ -13,6 +13,9 @@ use chrono::Utc;
 use everruns_core::{Agent, AgentStatus, CapabilityId};
 
 use super::common::ListResponse;
+use super::validation::{
+    validate_create_agent_input, validate_import_file_size, validate_update_agent_input,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -136,6 +139,14 @@ pub async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), StatusCode> {
+    // Validate input sizes (last-resort protection against abuse)
+    validate_create_agent_input(
+        &req.name,
+        req.description.as_deref(),
+        &req.system_prompt,
+        req.capabilities.len(),
+    )?;
+
     let agent = state.service.create(req).await.map_err(|e| {
         tracing::error!("Failed to create agent: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -216,6 +227,14 @@ pub async fn update_agent(
     Path(agent_id): Path<Uuid>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> Result<Json<Agent>, StatusCode> {
+    // Validate input sizes (last-resort protection against abuse)
+    validate_update_agent_input(
+        req.name.as_deref(),
+        req.description.as_deref(),
+        req.system_prompt.as_deref(),
+        req.capabilities.as_ref().map(|c| c.len()),
+    )?;
+
     let agent = state
         .service
         .update(agent_id, req)
@@ -323,6 +342,9 @@ pub async fn import_agent(
     State(state): State<AppState>,
     body: String,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, String)> {
+    // Validate import file size (last-resort protection against abuse)
+    validate_import_file_size(body.len())?;
+
     let agent_file = parse_agent_content(&body)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid format: {}", e)))?;
 
@@ -339,6 +361,14 @@ pub async fn import_agent(
             "System prompt is required (provide in front matter or as markdown body)".to_string(),
         ));
     }
+
+    // Validate parsed content sizes (last-resort protection against abuse)
+    validate_create_agent_input(
+        &name,
+        agent_file.description.as_deref(),
+        &system_prompt,
+        agent_file.capabilities.len(),
+    )?;
 
     let request = CreateAgentRequest {
         name,

@@ -18,9 +18,22 @@ Configuration for an agentic loop. An agent can have many concurrent sessions.
 | `system_prompt` | string | System prompt for the LLM |
 | `default_model_id` | UUID? | Reference to llm_models table |
 | `tags` | string[] | Tags for organization/filtering |
+| `capabilities` | CapabilityId[] | Enabled capabilities |
 | `status` | enum | `active` or `archived` |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
+
+**Input Validation Limits:**
+
+Last-resort validation limits to guard against abuse. API returns generic `400 Bad Request` with message "Input exceeds allowed limits" when violated.
+
+| Field | Max Size | Notes |
+|-------|----------|-------|
+| `name` | 2 KB | Display name |
+| `description` | 10 KB | Optional description |
+| `system_prompt` | 1 MB | Allows large prompts with embedded context |
+| `capabilities` | 250 items | Maximum capabilities per agent |
+| Import file | 3 MB | Maximum size for `/v1/agents/import` body |
 
 ### Session
 

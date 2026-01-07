@@ -13,6 +13,7 @@ pub mod messages;
 pub mod session_files;
 pub mod sessions;
 pub mod users;
+pub mod validation;
 
 // Re-export common types
 pub use common::ListResponse;
