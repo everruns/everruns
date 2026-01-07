@@ -1,7 +1,7 @@
 "use client";
 
-import { use, useMemo } from "react";
-import { useAgent, useSessions, useCreateSession, useCapabilities, useLlmModels } from "@/hooks";
+import { use, useMemo, useCallback } from "react";
+import { useAgent, useSessions, useCreateSession, useCapabilities, useLlmModels, useExportAgent } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   Search,
   Box,
   Folder,
+  Download,
   LucideIcon,
 } from "lucide-react";
 import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
@@ -44,6 +45,7 @@ export default function AgentDetailPage({
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
+  const exportAgent = useExportAgent();
 
   // Create a map of model_id -> model for quick lookups
   const modelMap = useMemo(() => {
@@ -65,6 +67,25 @@ export default function AgentDetailPage({
       console.error("Failed to create session:", error);
     }
   };
+
+  const handleExport = useCallback(async () => {
+    if (!agent) return;
+    try {
+      const markdown = await exportAgent.mutateAsync(agentId);
+      // Create downloadable file
+      const blob = new Blob([markdown], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${agent.name.toLowerCase().replace(/\s+/g, "-")}.md`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to export agent:", error);
+    }
+  }, [agent, agentId, exportAgent]);
 
   const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
@@ -118,6 +139,14 @@ export default function AgentDetailPage({
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={exportAgent.isPending}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            {exportAgent.isPending ? "Exporting..." : "Export"}
+          </Button>
           <Link href={`/agents/${agentId}/edit`}>
             <Button variant="outline">
               <Pencil className="w-4 h-4 mr-2" />
