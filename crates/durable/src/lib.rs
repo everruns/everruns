@@ -91,8 +91,9 @@ pub mod prelude {
 pub use activity::{Activity, ActivityContext, ActivityError};
 pub use engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
 pub use persistence::{
-    ClaimedTask, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, StoreError,
-    TaskDefinition, TraceContext, WorkflowEventStore, WorkflowInfo, WorkflowStatus,
+    ClaimedTask, HeartbeatResponse, InMemoryWorkflowEventStore, PostgresWorkflowEventStore,
+    StoreError, TaskDefinition, TaskFailureOutcome, TraceContext, WorkflowEventStore, WorkflowInfo,
+    WorkflowStatus,
 };
 pub use reliability::{CircuitBreakerConfig, RetryPolicy};
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};

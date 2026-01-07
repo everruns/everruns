@@ -4,6 +4,7 @@ pub mod client;
 pub mod durable_runner;
 pub mod durable_worker;
 pub mod grpc_adapters;
+pub mod grpc_durable_store;
 pub mod runner;
 pub mod traits;
 pub mod turn_workflow;
@@ -14,6 +15,10 @@ pub mod workflow_registry;
 // Re-export main types
 pub use durable_runner::{DurableRunner, DurableTurnInput, DurableTurnOutput};
 pub use durable_worker::{DurableWorker, DurableWorkerConfig};
+pub use grpc_durable_store::{
+    ClaimedTask as GrpcClaimedTask, GrpcDurableStore, HeartbeatResponse as GrpcHeartbeatResponse,
+    WorkflowStatus as GrpcWorkflowStatus,
+};
 pub use runner::{create_runner, AgentRunner, RunnerConfig, RunnerMode, TemporalRunner};
 pub use traits::{Workflow, WorkflowInput};
 pub use turn_workflow::{TurnWorkflow, TurnWorkflowInput};

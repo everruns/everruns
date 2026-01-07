@@ -1,19 +1,17 @@
 // Durable execution engine runner
 // Decision: Use the custom durable engine as an alternative to Temporal
 // Decision: Same AgentRunner interface for seamless switching
+// Decision: Workers communicate with control-plane via gRPC (no direct DB access)
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_durable::{
-    ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition, WorkflowEventStore,
-    WorkflowSignal,
-};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::info;
 use uuid::Uuid;
 
+use crate::grpc_durable_store::{GrpcDurableStore, WorkflowStatus};
 use crate::runner::AgentRunner;
 
 // =============================================================================
@@ -44,36 +42,34 @@ pub struct DurableTurnOutput {
 ///
 /// This runner uses the custom durable engine backed by PostgreSQL
 /// instead of Temporal for workflow orchestration.
+/// Workers communicate with the control-plane via gRPC for all database operations.
 pub struct DurableRunner {
-    store: Arc<PostgresWorkflowEventStore>,
+    store: Arc<Mutex<GrpcDurableStore>>,
 }
 
 impl DurableRunner {
-    /// Create a new durable runner connected to PostgreSQL
-    pub async fn new(pool: PgPool) -> Result<Self> {
-        info!("Initializing Durable execution engine runner");
+    /// Create a new durable runner connected to control-plane gRPC
+    pub async fn new(grpc_address: &str) -> Result<Self> {
+        info!(
+            grpc_address = %grpc_address,
+            "Initializing Durable execution engine runner (gRPC mode)"
+        );
 
-        let store = PostgresWorkflowEventStore::new(pool);
+        let store = GrpcDurableStore::connect(grpc_address).await?;
 
         info!("Durable runner initialized");
 
         Ok(Self {
-            store: Arc::new(store),
+            store: Arc::new(Mutex::new(store)),
         })
     }
 
-    /// Create from DATABASE_URL environment variable
+    /// Create from GRPC_ADDRESS environment variable (defaults to 127.0.0.1:9001)
     pub async fn from_env() -> Result<Self> {
-        let database_url = std::env::var("DATABASE_URL")
-            .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable required"))?;
+        let grpc_address =
+            std::env::var("GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
 
-        let pool = PgPool::connect(&database_url).await?;
-        Self::new(pool).await
-    }
-
-    /// Get the workflow store for external access
-    pub fn store(&self) -> Arc<PostgresWorkflowEventStore> {
-        self.store.clone()
+        Self::new(&grpc_address).await
     }
 }
 
@@ -105,9 +101,11 @@ impl AgentRunner for DurableRunner {
         let workflow_id = session_id;
         let input_json = serde_json::to_value(&input)?;
 
+        let mut store = self.store.lock().await;
+
         // Check if workflow already exists (idempotency)
-        match self.store.get_workflow_status(workflow_id).await {
-            Ok(status) => {
+        match store.get_workflow_status(workflow_id).await {
+            Ok((status, _, _)) => {
                 if !status.is_terminal() {
                     info!(
                         session_id = %session_id,
@@ -118,31 +116,29 @@ impl AgentRunner for DurableRunner {
                     return Ok(());
                 }
             }
-            Err(StoreError::WorkflowNotFound(_)) => {
-                // Expected for new workflows
-            }
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to check workflow status: {}", e));
+                // Check if it's a not found error (expected for new workflows)
+                let err_str = e.to_string();
+                if !err_str.contains("not found") && !err_str.contains("NOT_FOUND") {
+                    return Err(anyhow::anyhow!("Failed to check workflow status: {}", e));
+                }
             }
         }
 
         // Create new workflow
-        self.store
-            .create_workflow(workflow_id, "turn_workflow", input_json.clone(), None)
+        store
+            .create_workflow(workflow_id, "turn_workflow", input_json.clone())
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create workflow: {}", e))?;
 
         // Enqueue the initial activity (input processing)
-        let task_def = TaskDefinition {
-            workflow_id,
-            activity_id: format!("input_{}", Uuid::now_v7()),
-            activity_type: "process_input".to_string(),
-            input: input_json,
-            options: ActivityOptions::default(),
-        };
-
-        self.store
-            .enqueue_task(task_def)
+        store
+            .enqueue_task(
+                workflow_id,
+                format!("input_{}", Uuid::now_v7()),
+                "process_input".to_string(),
+                input_json,
+            )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
 
@@ -159,20 +155,23 @@ impl AgentRunner for DurableRunner {
         info!(session_id = %session_id, "Cancelling durable workflow");
 
         let workflow_id = session_id;
+        let mut store = self.store.lock().await;
 
-        // Send cancel signal
-        self.store
-            .send_signal(
+        // Update workflow status to cancelled
+        store
+            .update_workflow_status(
                 workflow_id,
-                WorkflowSignal::cancel("User requested cancellation"),
+                WorkflowStatus::Cancelled,
+                None,
+                Some("User requested cancellation".to_string()),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to send cancel signal: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to cancel workflow: {}", e))?;
 
         info!(
             session_id = %session_id,
             workflow_id = %workflow_id,
-            "Workflow cancellation signal sent"
+            "Workflow cancelled"
         );
 
         Ok(())
@@ -180,19 +179,17 @@ impl AgentRunner for DurableRunner {
 
     async fn is_running(&self, session_id: Uuid) -> bool {
         let workflow_id = session_id;
+        let mut store = self.store.lock().await;
 
-        match self.store.get_workflow_status(workflow_id).await {
-            Ok(status) => !status.is_terminal(),
+        match store.get_workflow_status(workflow_id).await {
+            Ok((status, _, _)) => !status.is_terminal(),
             Err(_) => false,
         }
     }
 
     async fn active_count(&self) -> usize {
-        // Query count of running workflows
-        match self.store.count_active_workflows().await {
-            Ok(count) => count as usize,
-            Err(_) => 0,
-        }
+        let mut store = self.store.lock().await;
+        store.count_active_workflows().await.unwrap_or_default()
     }
 }
 

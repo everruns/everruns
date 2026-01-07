@@ -1,22 +1,19 @@
 // Durable execution engine worker
-// Decision: Polls PostgreSQL task queue instead of Temporal
+// Decision: Polls task queue via gRPC instead of direct database access
 // Decision: Uses same gRPC adapters as Temporal worker for control-plane communication
 
 use anyhow::Result;
 use everruns_core::atoms::AtomContext;
-use everruns_durable::{
-    ActivityOptions, PostgresWorkflowEventStore, TaskDefinition, WorkflowEventStore, WorkflowStatus,
-};
-use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::watch;
+use tokio::sync::{watch, Mutex};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::activities::{input_activity, reason_activity, InputAtomInput, ReasonInput};
 use crate::durable_runner::DurableTurnInput;
 use crate::grpc_adapters::GrpcClient;
+use crate::grpc_durable_store::{ClaimedTask, GrpcDurableStore, WorkflowStatus};
 
 // =============================================================================
 // Configuration
@@ -83,10 +80,10 @@ impl DurableWorkerConfig {
 // DurableWorker
 // =============================================================================
 
-/// Worker that polls and executes tasks from the durable task queue
+/// Worker that polls and executes tasks from the durable task queue via gRPC
 pub struct DurableWorker {
     config: DurableWorkerConfig,
-    store: Arc<PostgresWorkflowEventStore>,
+    store: Arc<Mutex<GrpcDurableStore>>,
     grpc_address: String,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
@@ -94,15 +91,15 @@ pub struct DurableWorker {
 
 impl DurableWorker {
     /// Create a new durable worker
-    pub async fn new(pool: PgPool, config: DurableWorkerConfig) -> Result<Self> {
+    pub async fn new(config: DurableWorkerConfig) -> Result<Self> {
         info!(
             worker_id = %config.worker_id,
             grpc_address = %config.grpc_address,
             max_concurrent = config.max_concurrent_tasks,
-            "Initializing durable worker"
+            "Initializing durable worker (gRPC mode)"
         );
 
-        let store = Arc::new(PostgresWorkflowEventStore::new(pool));
+        let store = GrpcDurableStore::connect(&config.grpc_address).await?;
         let grpc_address = config.grpc_address.clone();
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -111,7 +108,7 @@ impl DurableWorker {
 
         Ok(Self {
             config,
-            store,
+            store: Arc::new(Mutex::new(store)),
             grpc_address,
             shutdown_tx,
             shutdown_rx,
@@ -120,13 +117,8 @@ impl DurableWorker {
 
     /// Create from environment variables
     pub async fn from_env() -> Result<Self> {
-        let database_url = std::env::var("DATABASE_URL")
-            .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable required"))?;
-
-        let pool = PgPool::connect(&database_url).await?;
         let config = DurableWorkerConfig::from_env();
-
-        Self::new(pool, config).await
+        Self::new(config).await
     }
 
     /// Run the worker (blocking until shutdown)
@@ -177,15 +169,17 @@ impl DurableWorker {
     /// Poll for tasks and execute them
     async fn poll_and_execute(&self) -> Result<usize> {
         // Claim tasks
-        let tasks = self
-            .store
-            .claim_task(
-                &self.config.worker_id,
-                &self.config.activity_types,
-                self.config.max_concurrent_tasks,
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to claim tasks: {}", e))?;
+        let tasks = {
+            let mut store = self.store.lock().await;
+            store
+                .claim_tasks(
+                    &self.config.worker_id,
+                    &self.config.activity_types,
+                    self.config.max_concurrent_tasks,
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to claim tasks: {}", e))?
+        };
 
         if tasks.is_empty() {
             return Ok(0);
@@ -208,7 +202,8 @@ impl DurableWorker {
                 );
 
                 // Report failure to store
-                let _ = self.store.fail_task(task.id, &e.to_string()).await;
+                let mut store = self.store.lock().await;
+                let _ = store.fail_task(task.id, &e.to_string()).await;
             }
         }
 
@@ -216,7 +211,7 @@ impl DurableWorker {
     }
 
     /// Execute a single task
-    async fn execute_task(&self, task: &everruns_durable::ClaimedTask) -> Result<()> {
+    async fn execute_task(&self, task: &ClaimedTask) -> Result<()> {
         info!(
             task_id = %task.id,
             workflow_id = %task.workflow_id,
@@ -249,10 +244,13 @@ impl DurableWorker {
         match result {
             Ok(output) => {
                 // Complete the task
-                self.store
-                    .complete_task(task.id, output)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to complete task: {}", e))?;
+                {
+                    let mut store = self.store.lock().await;
+                    store
+                        .complete_task(task.id, output)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to complete task: {}", e))?;
+                }
 
                 info!(
                     task_id = %task.id,
@@ -337,20 +335,18 @@ impl DurableWorker {
         input: &DurableTurnInput,
     ) -> Result<()> {
         let input_json = serde_json::to_value(input)?;
+        let mut store = self.store.lock().await;
 
         match completed_activity {
             "process_input" => {
                 // After input processing, schedule reason activity
-                let task_def = TaskDefinition {
-                    workflow_id,
-                    activity_id: format!("reason_{}", Uuid::now_v7()),
-                    activity_type: "reason".to_string(),
-                    input: input_json,
-                    options: ActivityOptions::default(),
-                };
-
-                self.store
-                    .enqueue_task(task_def)
+                store
+                    .enqueue_task(
+                        workflow_id,
+                        format!("reason_{}", Uuid::now_v7()),
+                        "reason".to_string(),
+                        input_json,
+                    )
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
 
@@ -360,7 +356,7 @@ impl DurableWorker {
                 // After reasoning, check if there are tool calls
                 // If no tool calls, mark workflow as complete
                 // For now, mark as complete (simplified flow)
-                self.store
+                store
                     .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
@@ -369,16 +365,13 @@ impl DurableWorker {
             }
             "act" => {
                 // After action, schedule another reason activity (continue the loop)
-                let task_def = TaskDefinition {
-                    workflow_id,
-                    activity_id: format!("reason_{}", Uuid::now_v7()),
-                    activity_type: "reason".to_string(),
-                    input: input_json,
-                    options: ActivityOptions::default(),
-                };
-
-                self.store
-                    .enqueue_task(task_def)
+                store
+                    .enqueue_task(
+                        workflow_id,
+                        format!("reason_{}", Uuid::now_v7()),
+                        "reason".to_string(),
+                        input_json,
+                    )
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
             }

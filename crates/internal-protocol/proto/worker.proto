@@ -50,6 +50,37 @@ service WorkerService {
     rpc SessionStatFile(SessionStatFileRequest) returns (SessionStatFileResponse);
     rpc SessionGrepFiles(SessionGrepFilesRequest) returns (SessionGrepFilesResponse);
     rpc SessionCreateDirectory(SessionCreateDirectoryRequest) returns (SessionCreateDirectoryResponse);
+
+    // === Durable execution operations ===
+    // These operations allow workers to interact with the durable task queue
+    // without direct database access
+
+    // Create a new durable workflow instance
+    rpc CreateDurableWorkflow(CreateDurableWorkflowRequest) returns (CreateDurableWorkflowResponse);
+
+    // Get workflow status
+    rpc GetDurableWorkflowStatus(GetDurableWorkflowStatusRequest) returns (GetDurableWorkflowStatusResponse);
+
+    // Update workflow status
+    rpc UpdateDurableWorkflowStatus(UpdateDurableWorkflowStatusRequest) returns (UpdateDurableWorkflowStatusResponse);
+
+    // Enqueue a task to the durable task queue
+    rpc EnqueueDurableTask(EnqueueDurableTaskRequest) returns (EnqueueDurableTaskResponse);
+
+    // Claim tasks from the queue (for worker polling)
+    rpc ClaimDurableTasks(ClaimDurableTasksRequest) returns (ClaimDurableTasksResponse);
+
+    // Complete a task successfully
+    rpc CompleteDurableTask(CompleteDurableTaskRequest) returns (CompleteDurableTaskResponse);
+
+    // Fail a task
+    rpc FailDurableTask(FailDurableTaskRequest) returns (FailDurableTaskResponse);
+
+    // Send heartbeat for a claimed task
+    rpc HeartbeatDurableTask(HeartbeatDurableTaskRequest) returns (HeartbeatDurableTaskResponse);
+
+    // Count active (non-terminal) workflows
+    rpc CountActiveDurableWorkflows(CountActiveDurableWorkflowsRequest) returns (CountActiveDurableWorkflowsResponse);
 }
 
 // ============================================================================
@@ -363,4 +394,156 @@ message SessionCreateDirectoryRequest {
 
 message SessionCreateDirectoryResponse {
     FileInfo directory = 1;
+}
+
+// ============================================================================
+// Durable execution types
+// ============================================================================
+
+// Workflow status enum (mirrors everruns_durable::WorkflowStatus)
+enum DurableWorkflowStatus {
+    DURABLE_WORKFLOW_STATUS_UNSPECIFIED = 0;
+    DURABLE_WORKFLOW_STATUS_PENDING = 1;
+    DURABLE_WORKFLOW_STATUS_RUNNING = 2;
+    DURABLE_WORKFLOW_STATUS_COMPLETED = 3;
+    DURABLE_WORKFLOW_STATUS_FAILED = 4;
+    DURABLE_WORKFLOW_STATUS_CANCELLED = 5;
+}
+
+// Task status enum
+enum DurableTaskStatus {
+    DURABLE_TASK_STATUS_UNSPECIFIED = 0;
+    DURABLE_TASK_STATUS_PENDING = 1;
+    DURABLE_TASK_STATUS_CLAIMED = 2;
+    DURABLE_TASK_STATUS_COMPLETED = 3;
+    DURABLE_TASK_STATUS_FAILED = 4;
+}
+
+// Activity options for task scheduling
+message DurableActivityOptions {
+    optional int32 max_retries = 1;
+    optional int64 retry_delay_ms = 2;
+    optional int64 timeout_ms = 3;
+}
+
+// Task definition for enqueueing
+message DurableTaskDefinition {
+    Uuid workflow_id = 1;
+    string activity_id = 2;
+    string activity_type = 3;
+    google.protobuf.Struct input = 4;
+    optional DurableActivityOptions options = 5;
+}
+
+// Claimed task returned from claim operation
+message DurableClaimedTask {
+    Uuid id = 1;
+    Uuid workflow_id = 2;
+    string activity_id = 3;
+    string activity_type = 4;
+    google.protobuf.Struct input = 5;
+    int32 attempt = 6;
+}
+
+// === Create workflow ===
+
+message CreateDurableWorkflowRequest {
+    string workflow_type = 1;
+    google.protobuf.Struct input = 2;
+    optional Uuid workflow_id = 3;  // Optional, will generate if not provided
+}
+
+message CreateDurableWorkflowResponse {
+    Uuid workflow_id = 1;
+}
+
+// === Get workflow status ===
+
+message GetDurableWorkflowStatusRequest {
+    Uuid workflow_id = 1;
+}
+
+message GetDurableWorkflowStatusResponse {
+    DurableWorkflowStatus status = 1;
+    optional google.protobuf.Struct output = 2;
+    optional string error = 3;
+}
+
+// === Update workflow status ===
+
+message UpdateDurableWorkflowStatusRequest {
+    Uuid workflow_id = 1;
+    DurableWorkflowStatus status = 2;
+    optional google.protobuf.Struct output = 3;
+    optional string error = 4;
+}
+
+message UpdateDurableWorkflowStatusResponse {
+    bool updated = 1;
+}
+
+// === Enqueue task ===
+
+message EnqueueDurableTaskRequest {
+    DurableTaskDefinition task = 1;
+}
+
+message EnqueueDurableTaskResponse {
+    Uuid task_id = 1;
+}
+
+// === Claim tasks ===
+
+message ClaimDurableTasksRequest {
+    string worker_id = 1;
+    repeated string activity_types = 2;
+    int32 max_tasks = 3;
+}
+
+message ClaimDurableTasksResponse {
+    repeated DurableClaimedTask tasks = 1;
+}
+
+// === Complete task ===
+
+message CompleteDurableTaskRequest {
+    Uuid task_id = 1;
+    google.protobuf.Struct output = 2;
+}
+
+message CompleteDurableTaskResponse {
+    bool completed = 1;
+}
+
+// === Fail task ===
+
+message FailDurableTaskRequest {
+    Uuid task_id = 1;
+    string error = 2;
+}
+
+message FailDurableTaskResponse {
+    bool failed = 1;
+    bool will_retry = 2;
+}
+
+// === Heartbeat task ===
+
+message HeartbeatDurableTaskRequest {
+    Uuid task_id = 1;
+    string worker_id = 2;
+    optional google.protobuf.Struct details = 3;  // Optional progress/status details
+}
+
+message HeartbeatDurableTaskResponse {
+    bool acknowledged = 1;
+    bool should_cancel = 2;
+}
+
+// === Count active workflows ===
+
+message CountActiveDurableWorkflowsRequest {}
+
+message CountActiveDurableWorkflowsResponse {
+    int64 count = 1;
 }

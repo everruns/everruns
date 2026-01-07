@@ -10,18 +10,29 @@ use everruns_control_plane::services::{
     AgentService, EventService, LlmResolverService, SessionFileService, SessionService,
 };
 use everruns_control_plane::storage::{Database, EncryptionService};
+use everruns_durable::{
+    ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome,
+    WorkflowError, WorkflowEventStore, WorkflowStatus,
+};
 use everruns_internal_protocol::proto::{
-    self, AddMessageRequest, AddMessageResponse, CommitExecRequest, CommitExecResponse,
-    EmitEventRequest, EmitEventResponse, EmitEventStreamResponse, GetAgentRequest,
-    GetAgentResponse, GetDefaultModelRequest, GetDefaultModelResponse, GetModelWithProviderRequest,
-    GetModelWithProviderResponse, GetSessionRequest, GetSessionResponse, GetTurnContextRequest,
-    GetTurnContextResponse, LoadMessagesRequest, LoadMessagesResponse,
-    SessionCreateDirectoryRequest, SessionCreateDirectoryResponse, SessionDeleteFileRequest,
-    SessionDeleteFileResponse, SessionGrepFilesRequest, SessionGrepFilesResponse,
-    SessionListDirectoryRequest, SessionListDirectoryResponse, SessionReadFileRequest,
-    SessionReadFileResponse, SessionStatFileRequest, SessionStatFileResponse,
-    SessionWriteFileRequest, SessionWriteFileResponse, SetSessionStatusRequest,
-    SetSessionStatusResponse,
+    self, AddMessageRequest, AddMessageResponse, ClaimDurableTasksRequest,
+    ClaimDurableTasksResponse, CommitExecRequest, CommitExecResponse, CompleteDurableTaskRequest,
+    CompleteDurableTaskResponse, CountActiveDurableWorkflowsRequest,
+    CountActiveDurableWorkflowsResponse, CreateDurableWorkflowRequest,
+    CreateDurableWorkflowResponse, DurableWorkflowStatus, EmitEventRequest, EmitEventResponse,
+    EmitEventStreamResponse, EnqueueDurableTaskRequest, EnqueueDurableTaskResponse,
+    FailDurableTaskRequest, FailDurableTaskResponse, GetAgentRequest, GetAgentResponse,
+    GetDefaultModelRequest, GetDefaultModelResponse, GetDurableWorkflowStatusRequest,
+    GetDurableWorkflowStatusResponse, GetModelWithProviderRequest, GetModelWithProviderResponse,
+    GetSessionRequest, GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse,
+    HeartbeatDurableTaskRequest, HeartbeatDurableTaskResponse, LoadMessagesRequest,
+    LoadMessagesResponse, SessionCreateDirectoryRequest, SessionCreateDirectoryResponse,
+    SessionDeleteFileRequest, SessionDeleteFileResponse, SessionGrepFilesRequest,
+    SessionGrepFilesResponse, SessionListDirectoryRequest, SessionListDirectoryResponse,
+    SessionReadFileRequest, SessionReadFileResponse, SessionStatFileRequest,
+    SessionStatFileResponse, SessionWriteFileRequest, SessionWriteFileResponse,
+    SetSessionStatusRequest, SetSessionStatusResponse, UpdateDurableWorkflowStatusRequest,
+    UpdateDurableWorkflowStatusResponse,
 };
 use everruns_internal_protocol::{
     proto_event_request_to_schema, schema_agent_to_proto, schema_event_to_proto, WorkerService,
@@ -40,6 +51,7 @@ pub struct WorkerServiceImpl {
     session_service: SessionService,
     session_file_service: SessionFileService,
     llm_resolver_service: LlmResolverService,
+    durable_store: Option<Arc<PostgresWorkflowEventStore>>,
 }
 
 impl WorkerServiceImpl {
@@ -51,14 +63,27 @@ impl WorkerServiceImpl {
         let agent_service = AgentService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let session_file_service = SessionFileService::new(db.clone());
-        let llm_resolver_service = LlmResolverService::new(db, encryption);
+        let llm_resolver_service = LlmResolverService::new(db.clone(), encryption);
+
+        // Create durable store using the same pool
+        let durable_store = Some(Arc::new(PostgresWorkflowEventStore::new(db.pool().clone())));
+
         Self {
             event_service,
             agent_service,
             session_service,
             session_file_service,
             llm_resolver_service,
+            durable_store,
         }
+    }
+
+    /// Get durable store or return unavailable error
+    #[allow(clippy::result_large_err)] // tonic::Status is the standard gRPC error type
+    fn durable_store(&self) -> Result<&Arc<PostgresWorkflowEventStore>, Status> {
+        self.durable_store
+            .as_ref()
+            .ok_or_else(|| Status::unavailable("Durable execution not enabled"))
     }
 
     /// Create a tonic server for this service
@@ -939,5 +964,283 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(SessionCreateDirectoryResponse {
             directory: Some(proto_file_info),
         }))
+    }
+
+    // ========================================================================
+    // Durable execution operations
+    // ========================================================================
+
+    async fn create_durable_workflow(
+        &self,
+        request: Request<CreateDurableWorkflowRequest>,
+    ) -> Result<Response<CreateDurableWorkflowResponse>, Status> {
+        use everruns_internal_protocol::uuid_to_proto_uuid;
+
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        // Generate or use provided workflow ID
+        let workflow_id = if let Some(proto_id) = req.workflow_id {
+            parse_uuid(Some(&proto_id))?
+        } else {
+            uuid::Uuid::now_v7()
+        };
+
+        // Convert proto Struct to serde_json::Value
+        let input = req
+            .input
+            .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        // Create workflow instance
+        store
+            .create_workflow(workflow_id, &req.workflow_type, input, None)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to create durable workflow: {}", e);
+                Status::internal("Failed to create workflow")
+            })?;
+
+        Ok(Response::new(CreateDurableWorkflowResponse {
+            workflow_id: Some(uuid_to_proto_uuid(workflow_id)),
+        }))
+    }
+
+    async fn get_durable_workflow_status(
+        &self,
+        request: Request<GetDurableWorkflowStatusRequest>,
+    ) -> Result<Response<GetDurableWorkflowStatusResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+        let workflow_id = parse_uuid(req.workflow_id.as_ref())?;
+
+        let info = store.get_workflow_info(workflow_id).await.map_err(|e| {
+            if matches!(e, StoreError::WorkflowNotFound(_)) {
+                return Status::not_found("Workflow not found");
+            }
+            tracing::error!("Failed to get workflow status: {}", e);
+            Status::internal("Failed to get workflow status")
+        })?;
+
+        let status = workflow_status_to_proto(info.status);
+        let output = info
+            .result
+            .map(|o| everruns_internal_protocol::json_to_proto_struct(&o));
+        let error = info.error.map(|e| e.message);
+
+        Ok(Response::new(GetDurableWorkflowStatusResponse {
+            status: status.into(),
+            output,
+            error,
+        }))
+    }
+
+    async fn update_durable_workflow_status(
+        &self,
+        request: Request<UpdateDurableWorkflowStatusRequest>,
+    ) -> Result<Response<UpdateDurableWorkflowStatusResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+        let workflow_id = parse_uuid(req.workflow_id.as_ref())?;
+
+        let status = proto_to_workflow_status(req.status());
+        let output = req
+            .output
+            .map(|s| everruns_internal_protocol::proto_struct_to_json(&s));
+        let error = req.error.map(WorkflowError::new);
+
+        store
+            .update_workflow_status(workflow_id, status, output, error)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update workflow status: {}", e);
+                Status::internal("Failed to update workflow status")
+            })?;
+
+        Ok(Response::new(UpdateDurableWorkflowStatusResponse {
+            updated: true,
+        }))
+    }
+
+    async fn enqueue_durable_task(
+        &self,
+        request: Request<EnqueueDurableTaskRequest>,
+    ) -> Result<Response<EnqueueDurableTaskResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        let task_def = req
+            .task
+            .ok_or_else(|| Status::invalid_argument("Missing task definition"))?;
+        let workflow_id = parse_uuid(task_def.workflow_id.as_ref())?;
+
+        let input = task_def
+            .input
+            .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        // For now, use default activity options
+        // TODO: Map proto options to ActivityOptions when needed
+        let options = ActivityOptions::default();
+
+        let task = TaskDefinition {
+            workflow_id,
+            activity_id: task_def.activity_id,
+            activity_type: task_def.activity_type,
+            input,
+            options,
+        };
+
+        let task_id = store.enqueue_task(task).await.map_err(|e| {
+            tracing::error!("Failed to enqueue task: {}", e);
+            Status::internal("Failed to enqueue task")
+        })?;
+
+        use everruns_internal_protocol::uuid_to_proto_uuid;
+        Ok(Response::new(EnqueueDurableTaskResponse {
+            task_id: Some(uuid_to_proto_uuid(task_id)),
+        }))
+    }
+
+    async fn claim_durable_tasks(
+        &self,
+        request: Request<ClaimDurableTasksRequest>,
+    ) -> Result<Response<ClaimDurableTasksResponse>, Status> {
+        use everruns_internal_protocol::uuid_to_proto_uuid;
+
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        let tasks = store
+            .claim_task(&req.worker_id, &req.activity_types, req.max_tasks as usize)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to claim tasks: {}", e);
+                Status::internal("Failed to claim tasks")
+            })?;
+
+        let proto_tasks: Vec<proto::DurableClaimedTask> = tasks
+            .into_iter()
+            .map(|t| proto::DurableClaimedTask {
+                id: Some(uuid_to_proto_uuid(t.id)),
+                workflow_id: Some(uuid_to_proto_uuid(t.workflow_id)),
+                activity_id: t.activity_id,
+                activity_type: t.activity_type,
+                input: Some(everruns_internal_protocol::json_to_proto_struct(&t.input)),
+                attempt: t.attempt as i32,
+            })
+            .collect();
+
+        Ok(Response::new(ClaimDurableTasksResponse {
+            tasks: proto_tasks,
+        }))
+    }
+
+    async fn complete_durable_task(
+        &self,
+        request: Request<CompleteDurableTaskRequest>,
+    ) -> Result<Response<CompleteDurableTaskResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+        let task_id = parse_uuid(req.task_id.as_ref())?;
+
+        let output = req
+            .output
+            .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        store.complete_task(task_id, output).await.map_err(|e| {
+            tracing::error!("Failed to complete task: {}", e);
+            Status::internal("Failed to complete task")
+        })?;
+
+        Ok(Response::new(CompleteDurableTaskResponse {
+            completed: true,
+        }))
+    }
+
+    async fn fail_durable_task(
+        &self,
+        request: Request<FailDurableTaskRequest>,
+    ) -> Result<Response<FailDurableTaskResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+        let task_id = parse_uuid(req.task_id.as_ref())?;
+
+        let outcome = store.fail_task(task_id, &req.error).await.map_err(|e| {
+            tracing::error!("Failed to fail task: {}", e);
+            Status::internal("Failed to fail task")
+        })?;
+
+        // Check if task will be retried
+        let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
+
+        Ok(Response::new(FailDurableTaskResponse {
+            failed: true,
+            will_retry,
+        }))
+    }
+
+    async fn heartbeat_durable_task(
+        &self,
+        request: Request<HeartbeatDurableTaskRequest>,
+    ) -> Result<Response<HeartbeatDurableTaskResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+        let task_id = parse_uuid(req.task_id.as_ref())?;
+
+        let details = req
+            .details
+            .map(|s| everruns_internal_protocol::proto_struct_to_json(&s));
+
+        let response = store
+            .heartbeat_task(task_id, &req.worker_id, details)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to heartbeat task: {}", e);
+                Status::internal("Failed to heartbeat task")
+            })?;
+
+        Ok(Response::new(HeartbeatDurableTaskResponse {
+            acknowledged: response.accepted,
+            should_cancel: response.should_cancel,
+        }))
+    }
+
+    async fn count_active_durable_workflows(
+        &self,
+        _request: Request<CountActiveDurableWorkflowsRequest>,
+    ) -> Result<Response<CountActiveDurableWorkflowsResponse>, Status> {
+        let store = self.durable_store()?;
+
+        let count = store.count_active_workflows().await.map_err(|e| {
+            tracing::error!("Failed to count active workflows: {}", e);
+            Status::internal("Failed to count active workflows")
+        })?;
+
+        Ok(Response::new(CountActiveDurableWorkflowsResponse { count }))
+    }
+}
+
+// Helper functions for status conversion
+
+fn workflow_status_to_proto(status: WorkflowStatus) -> DurableWorkflowStatus {
+    match status {
+        WorkflowStatus::Pending => DurableWorkflowStatus::Pending,
+        WorkflowStatus::Running => DurableWorkflowStatus::Running,
+        WorkflowStatus::Completed => DurableWorkflowStatus::Completed,
+        WorkflowStatus::Failed => DurableWorkflowStatus::Failed,
+        WorkflowStatus::Cancelled => DurableWorkflowStatus::Cancelled,
+    }
+}
+
+fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
+    match status {
+        DurableWorkflowStatus::Pending => WorkflowStatus::Pending,
+        DurableWorkflowStatus::Running => WorkflowStatus::Running,
+        DurableWorkflowStatus::Completed => WorkflowStatus::Completed,
+        DurableWorkflowStatus::Failed => WorkflowStatus::Failed,
+        DurableWorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
+        DurableWorkflowStatus::Unspecified => WorkflowStatus::Pending,
     }
 }
