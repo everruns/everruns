@@ -24,6 +24,9 @@ use utoipa::OpenApi;
 /// OpenAPI documentation for the Everruns API
 #[derive(OpenApi)]
 #[openapi(
+    servers(
+        (url = "https://app.everruns.com/api", description = "Production API"),
+    ),
     paths(
         api::agents::create_agent,
         api::agents::list_agents,
