@@ -66,6 +66,44 @@
         }
       }
     },
+    "/v1/agents/import": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/import - Import agent from Markdown, YAML, or JSON",
+        "description": "Accepts agent definition in multiple formats:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as system prompt, name auto-generated)",
+        "operationId": "import_agent",
+        "requestBody": {
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Agent imported successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid format"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}": {
       "get": {
         "tags": [
@@ -171,6 +209,41 @@
                   "$ref": "#/components/schemas/Agent"
                 }
               }
+            }
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/export": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter",
+        "operationId": "export_agent",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent exported as Markdown",
+            "content": {
+              "text/markdown": {}
             }
           },
           "404": {

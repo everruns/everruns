@@ -30,6 +30,8 @@ use utoipa::OpenApi;
         api::agents::get_agent,
         api::agents::update_agent,
         api::agents::delete_agent,
+        api::agents::export_agent,
+        api::agents::import_agent,
         api::sessions::create_session,
         api::sessions::list_sessions,
         api::sessions::get_session,
