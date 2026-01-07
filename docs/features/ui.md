@@ -41,7 +41,11 @@ The dashboard provides an at-a-glance view of your system:
 
 ### Agent List
 
-The agents page displays all agents in a card grid layout. Each card shows:
+The agents page displays all agents in a card grid layout.
+
+![Agents page showing card grid layout](../images/features/ui.png)
+
+Each card shows:
 
 - Agent name and status badge (active/inactive)
 - Truncated ID
