@@ -659,6 +659,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetDefaultModelResponse>, Status> {
         // Check if encryption service is available
         if !self.llm_resolver_service.has_encryption() {
+            tracing::error!("gRPC get_default_model: encryption service not available");
             return Err(Status::unavailable(
                 "Encryption service not configured - cannot decrypt API keys",
             ));
@@ -673,6 +674,18 @@ impl WorkerService for WorkerServiceImpl {
                 tracing::error!("Failed to resolve default model: {}", e);
                 Status::internal("Failed to resolve default model")
             })?;
+
+        // Log model resolution result (omit api_key length for security)
+        if let Some(ref model) = resolved {
+            tracing::debug!(
+                model_id = %model.model_id,
+                provider_type = %model.provider_type,
+                has_api_key = model.api_key.is_some(),
+                "gRPC get_default_model: resolved model"
+            );
+        } else {
+            tracing::debug!("gRPC get_default_model: no default model configured");
+        }
 
         Ok(Response::new(GetDefaultModelResponse {
             model: resolved.map(Self::resolved_model_to_proto),
