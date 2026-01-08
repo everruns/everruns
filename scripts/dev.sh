@@ -215,7 +215,28 @@ case "$command" in
     ;;
 
   start-all)
-    echo "🚀 Starting complete Everruns development environment..."
+    # Parse arguments: --temporal for Temporal mode (default is Durable)
+    USE_TEMPORAL=false
+    shift  # Remove 'start-all' from args
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --temporal)
+          USE_TEMPORAL=true
+          shift
+          ;;
+        *)
+          echo "Unknown option: $1"
+          echo "Usage: $0 start-all [--temporal]"
+          exit 1
+          ;;
+      esac
+    done
+
+    if [ "$USE_TEMPORAL" = true ]; then
+      echo "🚀 Starting Everruns development environment (Temporal mode)..."
+    else
+      echo "🚀 Starting Everruns development environment (Durable mode)..."
+    fi
     echo ""
 
     # Required tool checks and helpers
@@ -280,15 +301,17 @@ PY
     }
 
     # Check for required tools early
-    require_command docker "Install Docker Desktop/Colima and ensure the daemon is running."
-    ensure_docker_daemon || exit 1
-    if ! resolve_docker_compose; then
-      echo "❌ Docker Compose plugin or docker-compose binary is required (try updating Docker Desktop or install docker-compose)."
-      exit 1
-    fi
-    if ! command -v nc &> /dev/null && ! command -v python3 &> /dev/null; then
-      echo "❌ Need either 'nc' or 'python3' available to check Temporal readiness."
-      exit 1
+    if [ "$USE_TEMPORAL" = true ]; then
+      require_command docker "Install Docker Desktop/Colima and ensure the daemon is running."
+      ensure_docker_daemon || exit 1
+      if ! resolve_docker_compose; then
+        echo "❌ Docker Compose plugin or docker-compose binary is required (try updating Docker Desktop or install docker-compose)."
+        exit 1
+      fi
+      if ! command -v nc &> /dev/null && ! command -v python3 &> /dev/null; then
+        echo "❌ Need either 'nc' or 'python3' available to check Temporal readiness."
+        exit 1
+      fi
     fi
     ensure_protoc || exit 1
     require_command cargo-watch "Run: ./scripts/dev.sh init"
@@ -312,41 +335,86 @@ PY
       pkill -f "everruns-control-plane" 2>/dev/null || true
       pkill -f "everruns-worker" 2>/dev/null || true
       pkill -f "next dev" 2>/dev/null || true
-      echo "✅ Services stopped (Docker still running)"
+      echo "✅ Services stopped (Docker still running if started)"
       exit 0
     }
 
     # Set up signal handler for Ctrl+C
     trap cleanup SIGINT SIGTERM
 
-    # Start Docker services
-    echo "1️⃣  Starting Docker services..."
-    cd "$PROJECT_ROOT/harness"
-    "${DOCKER_COMPOSE[@]}" up -d
-    echo "   ✅ Docker services started"
-    cd "$PROJECT_ROOT"
+    if [ "$USE_TEMPORAL" = true ]; then
+      # Start Docker services (Temporal mode needs Docker for Temporal + Postgres)
+      echo "1️⃣  Starting Docker services..."
+      cd "$PROJECT_ROOT/harness"
+      "${DOCKER_COMPOSE[@]}" up -d
+      echo "   ✅ Docker services started"
+      cd "$PROJECT_ROOT"
 
-    # Wait for Postgres to be ready
-    echo "2️⃣  Waiting for Postgres..."
-    sleep 3
-    until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
-      echo "   Waiting for Postgres to be ready..."
-      sleep 1
-    done
-    echo "   ✅ Postgres is ready"
+      # Wait for Postgres to be ready
+      echo "2️⃣  Waiting for Postgres..."
+      sleep 3
+      until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
+        echo "   Waiting for Postgres to be ready..."
+        sleep 1
+      done
+      echo "   ✅ Postgres is ready"
 
-    # Run migrations
-    echo "3️⃣  Running database migrations..."
-    export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-    sqlx migrate run --source crates/control-plane/migrations
-    echo "   ✅ Migrations complete"
+      # Run migrations
+      echo "3️⃣  Running database migrations..."
+      export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      sqlx migrate run --source crates/control-plane/migrations
+      echo "   ✅ Migrations complete"
 
-    # Wait for Temporal (needed before API/worker connect)
-    wait_for_temporal
+      # Wait for Temporal (needed before API/worker connect)
+      wait_for_temporal
+    else
+      # Durable mode: Just need Postgres (can be local or Docker)
+      echo "1️⃣  Checking PostgreSQL..."
 
-    # Start API in background with auto-reload (Temporal mode)
-    echo "5️⃣  Starting API server with auto-reload (Temporal mode)..."
-    export AGENT_RUNNER_MODE=temporal
+      # Try local postgres first, then Docker
+      if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+        echo "   ✅ Local PostgreSQL is ready"
+        export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
+      elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
+        echo "   ✅ Docker PostgreSQL is ready"
+        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      else
+        echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
+        if resolve_docker_compose; then
+          ensure_docker_daemon || exit 1
+          cd "$PROJECT_ROOT/harness"
+          "${DOCKER_COMPOSE[@]}" up -d postgres
+          cd "$PROJECT_ROOT"
+          sleep 3
+          until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
+            echo "   Waiting for Postgres to be ready..."
+            sleep 1
+          done
+          export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+          echo "   ✅ Docker PostgreSQL started"
+        else
+          echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
+          exit 1
+        fi
+      fi
+
+      # Run migrations
+      echo "2️⃣  Running database migrations..."
+      sqlx migrate run --source crates/control-plane/migrations
+      echo "   ✅ Migrations complete"
+    fi
+
+    # Set runner mode
+    if [ "$USE_TEMPORAL" = true ]; then
+      export RUNNER_MODE=temporal
+      MODE_NAME="Temporal"
+    else
+      export RUNNER_MODE=durable
+      MODE_NAME="Durable"
+    fi
+
+    # Start API in background with auto-reload
+    echo "3️⃣  Starting API server with auto-reload ($MODE_NAME mode)..."
     # Allow CORS from UI (localhost:9100) for SSE connections
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     cargo watch -w crates -x 'run -p everruns-control-plane' &
@@ -362,7 +430,7 @@ PY
     fi
 
     # Seed development agents (runs in background, waits for API)
-    echo "6️⃣  Seeding development agents..."
+    echo "4️⃣  Seeding development agents..."
     (
       # Wait for API to be healthy before seeding
       max_attempts=60
@@ -379,8 +447,8 @@ PY
     ) &
     SEED_PID=$!
 
-    # Start Worker in background with auto-reload (Temporal mode)
-    echo "7️⃣  Starting Temporal worker with auto-reload..."
+    # Start Worker in background with auto-reload
+    echo "5️⃣  Starting $MODE_NAME worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
@@ -388,7 +456,7 @@ PY
     echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
     # Start UI in background
-    echo "8️⃣  Starting UI server..."
+    echo "6️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
@@ -399,17 +467,22 @@ PY
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "✅ All services started with auto-reload!"
+    echo "✅ All services started with auto-reload ($MODE_NAME mode)!"
     echo ""
     echo "   🌐 API:         http://localhost:9000 (auto-reload)"
     echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-    echo "   ⚙️ Worker:      running (auto-reload)"
+    echo "   ⚙️ Worker:      running (auto-reload, $MODE_NAME)"
     echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
-    echo "   ⏱️ Temporal UI: http://localhost:8080"
+    if [ "$USE_TEMPORAL" = true ]; then
+      echo "   ⏱️ Temporal UI: http://localhost:8080"
+    fi
     echo "   🔍 Jaeger UI:   http://localhost:16686"
     echo ""
     echo "👀 Edit code in crates/ and services will auto-restart"
-    echo "💡 Press Ctrl+C to stop services (Docker will keep running)"
+    echo "💡 Press Ctrl+C to stop services"
+    if [ "$USE_TEMPORAL" = false ]; then
+      echo "💡 Use --temporal flag for Temporal mode: ./scripts/dev.sh start-all --temporal"
+    fi
     echo ""
 
     # Wait for processes
@@ -652,7 +725,8 @@ Commands:
   init        Install all development dependencies (Rust tools + UI + Docs)
   start       Start Docker services (Postgres, Temporal)
   stop        Stop Docker services
-  start-all   Start everything with auto-reload (Docker, API, Worker, UI, seed)
+  start-all   Start everything with auto-reload (Durable mode by default)
+              Use --temporal flag for Temporal mode
   stop-all    Stop all services (API, UI, Docker)
   reset       Stop and remove all Docker volumes
   migrate     Run database migrations
@@ -676,12 +750,13 @@ Commands:
   help        Show this help message
 
 Examples:
-  $0 init            # First-time setup (install all dependencies)
-  $0 start-all       # Start everything with auto-reload
-  $0 pre-pr          # Run all checks before creating a PR
-  $0 watch-api       # Just run API with auto-reload
-  $0 docs            # Start docs dev server
-  $0 stop-all        # Stop everything
+  $0 init                  # First-time setup (install all dependencies)
+  $0 start-all             # Start everything in Durable mode (default)
+  $0 start-all --temporal  # Start everything in Temporal mode
+  $0 pre-pr                # Run all checks before creating a PR
+  $0 watch-api             # Just run API with auto-reload
+  $0 docs                  # Start docs dev server
+  $0 stop-all              # Stop everything
 EOF
     ;;
 esac

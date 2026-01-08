@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
-use everruns_worker::{RunnerConfig, TemporalWorker};
+use everruns_worker::{DurableWorker, DurableWorkerConfig, RunnerConfig, RunnerMode, TemporalWorker};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,28 +29,61 @@ async fn main() -> Result<()> {
     // Get gRPC address for control-plane communication
     let grpc_address = std::env::var("GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".into());
 
-    tracing::info!(
-        task_queue = %config.temporal_task_queue(),
-        grpc_address = %grpc_address,
-        "Starting Temporal worker"
-    );
+    match config.mode {
+        RunnerMode::Temporal => {
+            tracing::info!(
+                task_queue = %config.temporal_task_queue(),
+                grpc_address = %grpc_address,
+                "Starting Temporal worker"
+            );
 
-    // Create and run the Temporal worker (connects to control-plane via gRPC)
-    let worker = TemporalWorker::new(config, &grpc_address)
-        .await
-        .context("Failed to create Temporal worker")?;
+            // Create and run the Temporal worker (connects to control-plane via gRPC)
+            let worker = TemporalWorker::new(config, &grpc_address)
+                .await
+                .context("Failed to create Temporal worker")?;
 
-    // Run the worker (blocks until shutdown)
-    tokio::select! {
-        result = worker.run() => {
-            if let Err(e) = result {
-                tracing::error!(error = %e, "Worker error");
-                return Err(e);
+            // Run the worker (blocks until shutdown)
+            tokio::select! {
+                result = worker.run() => {
+                    if let Err(e) = result {
+                        tracing::error!(error = %e, "Worker error");
+                        return Err(e);
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    tracing::info!("Received shutdown signal");
+                    worker.shutdown();
+                }
             }
         }
-        _ = tokio::signal::ctrl_c() => {
-            tracing::info!("Received shutdown signal");
-            worker.shutdown();
+        RunnerMode::Durable => {
+            // Create durable worker config (includes grpc_address)
+            let durable_config = DurableWorkerConfig::from_env();
+
+            tracing::info!(
+                grpc_address = %durable_config.grpc_address,
+                worker_id = %durable_config.worker_id,
+                "Starting Durable worker"
+            );
+
+            // Create and run the Durable worker (connects to control-plane via gRPC)
+            let mut worker = DurableWorker::new(durable_config)
+                .await
+                .context("Failed to create Durable worker")?;
+
+            // Run the worker (blocks until shutdown)
+            tokio::select! {
+                result = worker.run() => {
+                    if let Err(e) = result {
+                        tracing::error!(error = %e, "Worker error");
+                        return Err(e);
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    tracing::info!("Received shutdown signal");
+                    worker.shutdown();
+                }
+            }
         }
     }
 
