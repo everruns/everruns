@@ -1,3 +1,8 @@
+---
+title: Durable Execution Engine Setup
+description: How to run Everruns with the custom durable execution engine instead of Temporal
+---
+
 # Durable Execution Engine Setup Guide
 
 This guide explains how to run Everruns with the custom durable execution engine instead of Temporal.
