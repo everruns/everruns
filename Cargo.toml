@@ -86,9 +86,7 @@ eventsource-stream = "0.2"
 regex = "1.11"
 time = "0.3"
 
-# Temporal SDK (used when AGENT_RUNNER_MODE=temporal)
-temporal-sdk-core = "0.1.0-alpha.1"
-temporal-sdk-core-protos = "0.1.0-alpha.1"
+# Protocol Buffers (used by tonic/gRPC)
 prost = "0.13"
 prost-types = "0.13"
 

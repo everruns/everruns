@@ -19,7 +19,7 @@ This runs:
 
 ## Architecture Principles
 
-1. **No Temporal concepts in public API**: Never expose workflow IDs, task queues, etc.
+1. **No execution engine concepts in public API**: Never expose workflow IDs, task queues, etc.
 2. **Event sourcing**: All run events are persisted for replay via SSE
 3. **Restart-safe**: All state in Postgres, workflows are durable
 
@@ -108,8 +108,8 @@ We use `cargo-deny` to ensure permissive licenses only.
 ## Debugging
 
 ```bash
-# Temporal UI
-open http://localhost:8080
+# Jaeger UI (distributed tracing)
+open http://localhost:16686
 
 # Database access
 docker exec -it everruns-postgres psql -U everruns -d everruns

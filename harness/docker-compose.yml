@@ -16,35 +16,6 @@ services:
       timeout: 5s
       retries: 5
 
-  temporal:
-    image: temporalio/auto-setup:latest
-    container_name: everruns-temporal
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      - DB=postgres12
-      - DB_PORT=5432
-      - POSTGRES_USER=everruns
-      - POSTGRES_PWD=everruns
-      - POSTGRES_SEEDS=postgres
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-    ports:
-      - "7233:7233"
-    volumes:
-      - ./temporal-dynamicconfig:/etc/temporal/config/dynamicconfig
-
-  temporal-ui:
-    image: temporalio/ui:latest
-    container_name: everruns-temporal-ui
-    depends_on:
-      - temporal
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:9100
-    ports:
-      - "8080:8080"
-
   jaeger:
     image: jaegertracing/jaeger:2.4.0
     container_name: everruns-jaeger

@@ -1,23 +1,20 @@
 #!/bin/bash
 # Smoke Tests - No-Docker Mode
-# Sets up PostgreSQL + Temporal locally and runs smoke tests without Docker
+# Sets up PostgreSQL locally and runs smoke tests without Docker
 #
 # Usage: ./.claude/skills/smoke-tests/scripts/run-no-docker.sh
 #
 # This script:
 # 1. Detects or installs PostgreSQL (supports pre-installed versions)
-# 2. Installs Temporal CLI from GitHub releases
-# 3. Starts local PostgreSQL cluster and Temporal dev server
-# 4. Runs database migrations
-# 5. Starts API server and Temporal worker
-# 6. Ready for running the test checklist
+# 2. Runs database migrations
+# 3. Starts API server and durable worker
+# 4. Ready for running the test checklist
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_utils.sh"
 source "$SCRIPT_DIR/_setup-postgres.sh"
-source "$SCRIPT_DIR/_setup-temporal.sh"
 
 # Project root is 4 levels up from scripts folder
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -31,7 +28,6 @@ fi
 
 API_PID=""
 WORKER_PID=""
-TEMPORAL_PID=""
 
 cleanup() {
     log_info "Cleaning up..."
@@ -39,7 +35,7 @@ cleanup() {
     # Stop Worker
     if [ -n "$WORKER_PID" ]; then
         kill "$WORKER_PID" 2>/dev/null || true
-        log_info "Stopped Temporal worker"
+        log_info "Stopped worker"
     fi
 
     # Stop API server
@@ -47,9 +43,6 @@ cleanup() {
         kill "$API_PID" 2>/dev/null || true
         log_info "Stopped API server"
     fi
-
-    # Stop Temporal server
-    stop_temporal "$TEMPORAL_PID"
 
     # Stop PostgreSQL
     stop_postgres
@@ -80,7 +73,6 @@ start_api() {
 
     cd "$PROJECT_ROOT"
     export DATABASE_URL="$(get_database_url)"
-    export TEMPORAL_ADDRESS="localhost:7233"
     export AUTH_MODE="none"
 
     # Build API (control-plane)
@@ -105,12 +97,11 @@ start_api() {
     exit 1
 }
 
-# Build and start Temporal worker
+# Build and start durable worker
 start_worker() {
-    log_info "Building and starting Temporal worker..."
+    log_info "Building and starting durable worker..."
 
     cd "$PROJECT_ROOT"
-    export TEMPORAL_ADDRESS="localhost:7233"
     export GRPC_ADDRESS="127.0.0.1:9001"
 
     # Build worker
@@ -125,7 +116,7 @@ start_worker() {
 
     # Check if still running
     if kill -0 "$WORKER_PID" 2>/dev/null; then
-        check_pass "Worker startup - Temporal worker started (PID: $WORKER_PID)"
+        check_pass "Worker startup - durable worker started (PID: $WORKER_PID)"
         return 0
     fi
 
@@ -138,7 +129,7 @@ start_worker() {
 main() {
     echo "==============================================="
     echo "  Smoke Tests (No-Docker Mode)"
-    echo "  PostgreSQL + Temporal local setup"
+    echo "  PostgreSQL local setup"
     echo "==============================================="
     echo ""
 
@@ -161,11 +152,9 @@ main() {
 
     # Setup infrastructure
     check_postgres
-    install_temporal
     init_postgres
     start_postgres
     setup_database
-    TEMPORAL_PID=$(start_temporal)
 
     echo ""
     echo "--- Application Setup ---"
@@ -189,14 +178,12 @@ main() {
     else
         echo "  - PostgreSQL: $PGDATA (socket)"
     fi
-    echo "  - Temporal:   localhost:7233 (PID: $TEMPORAL_PID)"
     echo "  - API:        http://localhost:9000 (PID: $API_PID)"
-    echo "  - Worker:     PID $WORKER_PID"
+    echo "  - Worker:     PID $WORKER_PID (durable mode)"
     echo ""
     echo "Logs:"
     echo "  - API:        $API_LOG"
     echo "  - Worker:     $WORKER_LOG"
-    echo "  - Temporal:   $TEMPORAL_LOG"
     if [ -f "$PG_LOGFILE" ]; then
         echo "  - PostgreSQL: $PG_LOGFILE"
     fi

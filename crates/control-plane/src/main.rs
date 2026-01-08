@@ -16,7 +16,7 @@ use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
 use everruns_core::{EventListener, OtelEventListener};
-use everruns_worker::{create_runner, RunnerConfig};
+use everruns_worker::create_runner;
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -80,36 +80,13 @@ async fn main() -> Result<()> {
         .context("Failed to connect to database")?;
     tracing::info!("Connected to database");
 
-    // Load runner configuration from environment
-    let runner_config = RunnerConfig::from_env();
-
-    // Create the agent runner (Temporal or Durable based on RUNNER_MODE)
-    // For durable mode, pass the database pool for direct access (avoids circular gRPC dependency)
-    let db_pool = match runner_config.mode {
-        everruns_worker::RunnerMode::Durable => Some(db.pool().clone()),
-        everruns_worker::RunnerMode::Temporal => None,
-    };
-    let runner = create_runner(&runner_config, db_pool)
+    // Create the durable agent runner (uses PostgreSQL-backed execution)
+    // Pass the database pool for direct access (avoids circular gRPC dependency)
+    let runner = create_runner(Some(db.pool().clone()))
         .await
         .context("Failed to create agent runner")?;
 
-    match runner_config.mode {
-        everruns_worker::RunnerMode::Temporal => {
-            tracing::info!(
-                mode = %runner_config.mode,
-                address = %runner_config.temporal_address(),
-                namespace = %runner_config.temporal_namespace(),
-                task_queue = %runner_config.temporal_task_queue(),
-                "Using Temporal agent runner"
-            );
-        }
-        everruns_worker::RunnerMode::Durable => {
-            tracing::info!(
-                mode = %runner_config.mode,
-                "Using Durable execution engine runner (PostgreSQL-backed)"
-            );
-        }
-    }
+    tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
 
     // Create app state
     let db = Arc::new(db);
@@ -270,8 +247,8 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Start background task for stale task reclamation (durable mode only)
-    if matches!(runner_config.mode, everruns_worker::RunnerMode::Durable) {
+    // Start background task for stale task reclamation
+    {
         use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
         use std::time::Duration;
 

@@ -78,8 +78,6 @@ case "$command" in
     "${DOCKER_COMPOSE[@]}" up -d
     echo "✅ Services started!"
     echo "   - Postgres: localhost:5432"
-    echo "   - Temporal: localhost:7233"
-    echo "   - Temporal UI: http://localhost:8080"
     echo "   - Jaeger UI: http://localhost:16686"
     echo "   - OTLP gRPC: localhost:4317"
     ;;
@@ -159,7 +157,6 @@ case "$command" in
       echo "❌ cargo-watch not installed. Run: cargo install cargo-watch"
       exit 1
     fi
-    export AGENT_RUNNER_MODE=${AGENT_RUNNER_MODE:-temporal}
     # Allow CORS from UI (localhost:9100) for SSE connections
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     cargo watch -w crates -x 'run -p everruns-control-plane'
@@ -215,28 +212,7 @@ case "$command" in
     ;;
 
   start-all)
-    # Parse arguments: --temporal for Temporal mode (default is Durable)
-    USE_TEMPORAL=false
-    shift  # Remove 'start-all' from args
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --temporal)
-          USE_TEMPORAL=true
-          shift
-          ;;
-        *)
-          echo "Unknown option: $1"
-          echo "Usage: $0 start-all [--temporal]"
-          exit 1
-          ;;
-      esac
-    done
-
-    if [ "$USE_TEMPORAL" = true ]; then
-      echo "🚀 Starting Everruns development environment (Temporal mode)..."
-    else
-      echo "🚀 Starting Everruns development environment (Durable mode)..."
-    fi
+    echo "🚀 Starting Everruns development environment..."
     echo ""
 
     # Required tool checks and helpers
@@ -250,69 +226,6 @@ case "$command" in
       fi
     }
 
-    check_port() {
-      local host="$1"
-      local port="$2"
-
-      if command -v nc &> /dev/null; then
-        nc -z "$host" "$port" &> /dev/null
-        return $?
-      fi
-
-      if command -v python3 &> /dev/null; then
-        python3 - <<PY > /dev/null 2>&1
-import socket, sys
-s = socket.socket()
-s.settimeout(1)
-try:
-    s.connect(("$host", $port))
-    sys.exit(0)
-except OSError:
-    sys.exit(1)
-finally:
-    s.close()
-PY
-        return $?
-      fi
-
-      return 1
-    }
-
-    wait_for_temporal() {
-      local max_attempts=60
-      local attempt=0
-
-      echo "4️⃣  Waiting for Temporal..."
-      while [[ $attempt -lt $max_attempts ]]; do
-        if check_port "localhost" "7233"; then
-          echo "   ✅ Temporal is ready"
-          return 0
-        fi
-        attempt=$((attempt + 1))
-        if (( attempt % 5 == 0 )); then
-          echo "   Waiting for Temporal to be ready..."
-        fi
-        sleep 1
-      done
-
-      echo "   ❌ Temporal did not become ready. Check docker logs and retry."
-      cleanup
-      exit 1
-    }
-
-    # Check for required tools early
-    if [ "$USE_TEMPORAL" = true ]; then
-      require_command docker "Install Docker Desktop/Colima and ensure the daemon is running."
-      ensure_docker_daemon || exit 1
-      if ! resolve_docker_compose; then
-        echo "❌ Docker Compose plugin or docker-compose binary is required (try updating Docker Desktop or install docker-compose)."
-        exit 1
-      fi
-      if ! command -v nc &> /dev/null && ! command -v python3 &> /dev/null; then
-        echo "❌ Need either 'nc' or 'python3' available to check Temporal readiness."
-        exit 1
-      fi
-    fi
     ensure_protoc || exit 1
     require_command cargo-watch "Run: ./scripts/dev.sh init"
     require_command sqlx "Run: ./scripts/dev.sh init"
@@ -342,79 +255,43 @@ PY
     # Set up signal handler for Ctrl+C
     trap cleanup SIGINT SIGTERM
 
-    if [ "$USE_TEMPORAL" = true ]; then
-      # Start Docker services (Temporal mode needs Docker for Temporal + Postgres)
-      echo "1️⃣  Starting Docker services..."
-      cd "$PROJECT_ROOT/harness"
-      "${DOCKER_COMPOSE[@]}" up -d
-      echo "   ✅ Docker services started"
-      cd "$PROJECT_ROOT"
+    # Check PostgreSQL (can be local or Docker)
+    echo "1️⃣  Checking PostgreSQL..."
 
-      # Wait for Postgres to be ready
-      echo "2️⃣  Waiting for Postgres..."
-      sleep 3
-      until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
-        echo "   Waiting for Postgres to be ready..."
-        sleep 1
-      done
-      echo "   ✅ Postgres is ready"
-
-      # Run migrations
-      echo "3️⃣  Running database migrations..."
+    # Try local postgres first, then Docker
+    if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+      echo "   ✅ Local PostgreSQL is ready"
+      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
+    elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
+      echo "   ✅ Docker PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-      sqlx migrate run --source crates/control-plane/migrations
-      echo "   ✅ Migrations complete"
-
-      # Wait for Temporal (needed before API/worker connect)
-      wait_for_temporal
     else
-      # Durable mode: Just need Postgres (can be local or Docker)
-      echo "1️⃣  Checking PostgreSQL..."
-
-      # Try local postgres first, then Docker
-      if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
-        echo "   ✅ Local PostgreSQL is ready"
-        export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
-      elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
-        echo "   ✅ Docker PostgreSQL is ready"
+      echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
+      if resolve_docker_compose; then
+        ensure_docker_daemon || exit 1
+        cd "$PROJECT_ROOT/harness"
+        "${DOCKER_COMPOSE[@]}" up -d postgres
+        cd "$PROJECT_ROOT"
+        sleep 3
+        until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
+          echo "   Waiting for Postgres to be ready..."
+          sleep 1
+        done
         export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+        echo "   ✅ Docker PostgreSQL started"
       else
-        echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
-        if resolve_docker_compose; then
-          ensure_docker_daemon || exit 1
-          cd "$PROJECT_ROOT/harness"
-          "${DOCKER_COMPOSE[@]}" up -d postgres
-          cd "$PROJECT_ROOT"
-          sleep 3
-          until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
-            echo "   Waiting for Postgres to be ready..."
-            sleep 1
-          done
-          export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-          echo "   ✅ Docker PostgreSQL started"
-        else
-          echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
-          exit 1
-        fi
+        echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
+        exit 1
       fi
-
-      # Run migrations
-      echo "2️⃣  Running database migrations..."
-      sqlx migrate run --source crates/control-plane/migrations
-      echo "   ✅ Migrations complete"
     fi
 
-    # Set runner mode
-    if [ "$USE_TEMPORAL" = true ]; then
-      export RUNNER_MODE=temporal
-      MODE_NAME="Temporal"
-    else
-      export RUNNER_MODE=durable
-      MODE_NAME="Durable"
-    fi
+    # Run migrations
+    echo "2️⃣  Running database migrations..."
+    sqlx migrate run --source crates/control-plane/migrations
+    echo "   ✅ Migrations complete"
 
     # Start API in background with auto-reload
-    echo "3️⃣  Starting API server with auto-reload ($MODE_NAME mode)..."
+    echo "3️⃣  Starting API server with auto-reload..."
     # Allow CORS from UI (localhost:9100) for SSE connections
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     cargo watch -w crates -x 'run -p everruns-control-plane' &
@@ -448,7 +325,7 @@ PY
     SEED_PID=$!
 
     # Start Worker in background with auto-reload
-    echo "5️⃣  Starting $MODE_NAME worker with auto-reload..."
+    echo "5️⃣  Starting worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
@@ -467,22 +344,16 @@ PY
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "✅ All services started with auto-reload ($MODE_NAME mode)!"
+    echo "✅ All services started with auto-reload!"
     echo ""
     echo "   🌐 API:         http://localhost:9000 (auto-reload)"
     echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-    echo "   ⚙️ Worker:      running (auto-reload, $MODE_NAME)"
+    echo "   ⚙️ Worker:      running (auto-reload)"
     echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
-    if [ "$USE_TEMPORAL" = true ]; then
-      echo "   ⏱️ Temporal UI: http://localhost:8080"
-    fi
     echo "   🔍 Jaeger UI:   http://localhost:16686"
     echo ""
     echo "👀 Edit code in crates/ and services will auto-restart"
     echo "💡 Press Ctrl+C to stop services"
-    if [ "$USE_TEMPORAL" = false ]; then
-      echo "💡 Use --temporal flag for Temporal mode: ./scripts/dev.sh start-all --temporal"
-    fi
     echo ""
 
     # Wait for processes
@@ -522,7 +393,7 @@ PY
     echo "🔧 Installing all development dependencies..."
     echo ""
 
-    # Preflight checks (align with start-all expectations)
+    # Preflight checks
     require_command() {
       local cmd="$1"
       local hint="$2"
@@ -534,25 +405,6 @@ PY
     }
 
     echo "🧪 Preflight checks..."
-    require_command docker "Install Docker Desktop/Colima and ensure the daemon is running."
-    ensure_docker_daemon || exit 1
-    if ! resolve_docker_compose; then
-      echo "❌ Docker Compose plugin or docker-compose binary is required (try updating Docker Desktop or install docker-compose)."
-      exit 1
-    fi
-    if ! command -v nc &> /dev/null && ! command -v python3 &> /dev/null; then
-      echo "ℹ️  Neither 'nc' nor 'python3' found. Attempting to install 'nc'..."
-      if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &> /dev/null; then
-        brew install netcat || true
-      elif command -v apt-get &> /dev/null; then
-        sudo apt-get update && sudo apt-get install -y netcat-openbsd || true
-      fi
-      if ! command -v nc &> /dev/null && ! command -v python3 &> /dev/null; then
-        echo "❌ Need either 'nc' or 'python3' available to check Temporal readiness."
-        echo "   Please install netcat (nc) or Python 3 and rerun."
-        exit 1
-      fi
-    fi
     ensure_protoc || exit 1
 
     # Rust tools
@@ -723,10 +575,9 @@ Usage: $0 <command>
 
 Commands:
   init        Install all development dependencies (Rust tools + UI + Docs)
-  start       Start Docker services (Postgres, Temporal)
+  start       Start Docker services (Postgres, Jaeger)
   stop        Stop Docker services
-  start-all   Start everything with auto-reload (Durable mode by default)
-              Use --temporal flag for Temporal mode
+  start-all   Start everything with auto-reload
   stop-all    Stop all services (API, UI, Docker)
   reset       Stop and remove all Docker volumes
   migrate     Run database migrations
@@ -751,8 +602,7 @@ Commands:
 
 Examples:
   $0 init                  # First-time setup (install all dependencies)
-  $0 start-all             # Start everything in Durable mode (default)
-  $0 start-all --temporal  # Start everything in Temporal mode
+  $0 start-all             # Start everything with auto-reload
   $0 pre-pr                # Run all checks before creating a PR
   $0 watch-api             # Just run API with auto-reload
   $0 docs                  # Start docs dev server

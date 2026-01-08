@@ -14,7 +14,6 @@ Fix root cause (not band-aid). Unsure: read more code; if still stuck, ask w/ sh
 
 - Keep decisions as comments on top of the file. Only important decisions that could not be inferred from code.
 - Code should be easily testable, smoke testable, runnable in local dev env.
-- Treat Temporal as an internal implementation detail behind a small adapter boundary.
 - Prefer small, incremental PR-sized changes with a runnable state at each step.
 - Avoid adding dependencies with non-permissive licenses. If a dependency is non-permissive or unclear, stop and ask the repo owner.
 
@@ -100,8 +99,8 @@ When making changes that affect user-facing behavior or operations, update the r
 
 ### Local dev expectations
 
-- A `harness/docker-compose.yml` brings up Temporal + Postgres + required dependencies
-- `protoc` (Protocol Buffers compiler) is required for building Temporal SDK dependencies
+- A `harness/docker-compose.yml` brings up Postgres + Jaeger
+- `protoc` (Protocol Buffers compiler) is required for building gRPC dependencies
   - Debian/Ubuntu: `apt-get install protobuf-compiler`
   - macOS: `brew install protobuf`
   - Or download from https://github.com/protocolbuffers/protobuf/releases
@@ -115,14 +114,9 @@ Before running smoke tests, ensure these tools are installed:
    - macOS: `brew install postgresql`
    - Verify: `psql --version`
 
-2. **Temporal CLI** - Workflow orchestration server
-   - Install: `curl -sSf https://temporal.download/cli.sh | sh`
-   - Add to PATH: `export PATH="$PATH:$HOME/.temporalio/bin"`
-   - Verify: `temporal --version`
+2. **protoc** - Protocol Buffers compiler (see above)
 
-3. **protoc** - Protocol Buffers compiler (see above)
-
-4. **jq** - JSON processor for test scripts
+3. **jq** - JSON processor for test scripts
    - Debian/Ubuntu: `apt-get install jq`
    - macOS: `brew install jq`
 
@@ -287,7 +281,7 @@ PRs should include appropriate tests for the changes being made:
   # Unit tests (no external dependencies)
   cargo test
 
-  # Integration tests (requires API + Worker + Temporal running)
+  # Integration tests (requires API + Worker running)
   cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
   ```
 
@@ -371,7 +365,7 @@ The best way to verify the system is working is to run the **smoke test script**
 ./scripts/dev.sh start      # Start Docker services
 ./scripts/dev.sh migrate    # Run migrations
 ./scripts/dev.sh api        # Start API (in one terminal)
-./scripts/dev.sh worker     # Start Temporal worker (in another terminal)
+./scripts/dev.sh worker     # Start worker (in another terminal)
 ./scripts/dev.sh ui         # Start UI (in another terminal)
 
 # Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
@@ -387,7 +381,7 @@ Expected output:
 
 ### Alternative testing methods
 
-**Integration tests** (requires API + Worker + Temporal running):
+**Integration tests** (requires API + Worker running):
 ```bash
 cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
 ```
@@ -412,7 +406,7 @@ everruns/
 │   └── docs/             # Astro Starlight Documentation Site
 ├── crates/
 │   ├── control-plane/    # HTTP API + gRPC server + database layer (everruns-control-plane)
-│   ├── worker/           # Temporal worker with gRPC client (everruns-worker)
+│   ├── worker/           # Durable worker with gRPC client (everruns-worker)
 │   ├── core/             # Core abstractions, domain entities, tools (everruns-core)
 │   ├── internal-protocol/ # gRPC protocol definitions (everruns-internal-protocol)
 │   ├── openai/           # OpenAI provider (everruns-openai)

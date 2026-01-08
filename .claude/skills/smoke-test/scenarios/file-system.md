@@ -9,7 +9,7 @@ This scenario covers two testing approaches:
 ## Prerequisites
 
 - API server running at `http://localhost:9000`
-- Temporal worker running (for capability tests)
+- Worker running (for capability tests)
 - An existing agent and session (from main smoke tests)
 
 ```bash

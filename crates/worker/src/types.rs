@@ -1,8 +1,8 @@
-// Temporal workflow and activity type definitions
+// Workflow and activity type definitions
 //
 // These types define the inputs/outputs for workflows in the
-// Temporal execution model. All types must be serializable for Temporal's
-// persistence layer.
+// durable execution model. All types must be serializable for
+// persistence.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -43,9 +43,6 @@ pub struct SessionWorkflowOutput {
 pub mod workflow_names {
     pub const TURN_WORKFLOW: &str = "turn_workflow";
 }
-
-/// Task queue name for agent runs
-pub const TASK_QUEUE: &str = "everruns-agent-runs";
 
 /// Maximum number of tool calling iterations
 pub const MAX_TOOL_ITERATIONS: u32 = 10;
