@@ -25,7 +25,8 @@ CREATE TABLE durable_workflow_instances (
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
 
-    -- Partition key for future sharding
+    -- FUTURE: Partition key for horizontal sharding
+    -- Currently unused - reserved for multi-node deployment scaling
     partition_key INT NOT NULL DEFAULT 0,
 
     -- Tracing context
@@ -145,9 +146,11 @@ CREATE INDEX idx_durable_dlq_activity_type ON durable_dead_letter_queue(activity
 CREATE INDEX idx_durable_dlq_dead_at ON durable_dead_letter_queue(dead_at);
 
 -- ============================================
--- V005: Circuit Breaker State (shared)
+-- V005: Circuit Breaker State (shared) - FUTURE FEATURE
 -- ============================================
 -- Distributed circuit breaker state for external service protection.
+-- FUTURE: Not yet integrated. See everruns-durable/reliability/distributed_circuit_breaker.rs
+-- TODO: Integrate with LLM provider calls and external tool executions.
 
 CREATE TABLE durable_circuit_breaker_state (
     key TEXT PRIMARY KEY,  -- e.g., "activity:llm_call" or "external:openai"
@@ -194,9 +197,10 @@ CREATE INDEX idx_durable_workers_heartbeat ON durable_workers(last_heartbeat_at)
 CREATE INDEX idx_durable_workers_group ON durable_workers(worker_group);
 
 -- ============================================
--- V007: Signals Queue
+-- V007: Signals Queue - INTERNAL USE
 -- ============================================
--- External signals sent to running workflows.
+-- Signals for workflow communication (used internally by WorkflowExecutor).
+-- Currently not exposed via gRPC - used for internal workflow state transitions.
 
 CREATE TABLE durable_signals (
     id UUID PRIMARY KEY DEFAULT uuidv7(),

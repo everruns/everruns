@@ -380,8 +380,12 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     ) -> Result<Vec<DlqEntry>, StoreError>;
 
     // =========================================================================
-    // Circuit Breaker Operations (optional, default no-op)
+    // Circuit Breaker Operations (FUTURE FEATURE - optional, default no-op)
     // =========================================================================
+    // These operations are implemented in PostgresWorkflowEventStore but not yet
+    // used in production. The DistributedCircuitBreaker struct in reliability/
+    // is ready for integration when needed.
+    // TODO: Integrate with LLM calls and external tool executions.
 
     /// Create a circuit breaker
     async fn create_circuit_breaker(
