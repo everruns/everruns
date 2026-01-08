@@ -1,6 +1,7 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
+import starlightClientMermaid from "@pasqal-io/starlight-client-mermaid";
 
 // https://astro.build/config
 export default defineConfig({
@@ -24,11 +25,15 @@ export default defineConfig({
             schema: "../../docs/api/openapi.json",
           },
         ]),
+        starlightClientMermaid(),
       ],
       sidebar: [
         {
           label: "Getting Started",
-          items: [{ label: "Introduction", slug: "getting-started/introduction" }],
+          items: [
+            { label: "Introduction", slug: "getting-started/introduction" },
+            { label: "Architecture", slug: "getting-started/architecture" },
+          ],
         },
         {
           label: "Features",
