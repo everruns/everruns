@@ -283,6 +283,7 @@ mod tests {
 
         let input = ActInput {
             context: context.clone(),
+            agent_id: Uuid::now_v7(),
             tool_calls: vec![ToolCall {
                 id: "call_1".to_string(),
                 name: "get_weather".to_string(),

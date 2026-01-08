@@ -10,7 +10,10 @@ use tokio::sync::{watch, Mutex};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::activities::{input_activity, reason_activity, InputAtomInput, ReasonInput};
+use crate::activities::{
+    act_activity, input_activity, reason_activity, ActInput, InputAtomInput, ReasonInput,
+    ReasonResult,
+};
 use crate::durable_runner::DurableTurnInput;
 use crate::grpc_adapters::GrpcClient;
 use crate::grpc_durable_store::{ClaimedTask, GrpcDurableStore, WorkflowStatus};
@@ -220,10 +223,6 @@ impl DurableWorker {
             "Executing task"
         );
 
-        // Parse workflow input from task input
-        let turn_input: DurableTurnInput = serde_json::from_value(task.input.clone())
-            .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
-
         // Create a new gRPC client for this task execution
         let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
 
@@ -261,18 +260,39 @@ impl DurableWorker {
             }
         });
 
-        // Execute based on activity type
-        let result = match task.activity_type.as_str() {
-            "process_input" => self.execute_input_activity(grpc_client, &turn_input).await,
-            "reason" => self.execute_reason_activity(grpc_client, &turn_input).await,
-            "act" => {
-                // Act activity is handled internally by reason activity for now
-                Ok(serde_json::json!({"completed": true}))
+        // Execute based on activity type - different activities have different input formats
+        let (result, turn_input_opt) = match task.activity_type.as_str() {
+            "process_input" | "reason" => {
+                // These activities use DurableTurnInput
+                let turn_input: DurableTurnInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
+                let res = match task.activity_type.as_str() {
+                    "process_input" => self.execute_input_activity(grpc_client, &turn_input).await,
+                    "reason" => self.execute_reason_activity(grpc_client, &turn_input).await,
+                    _ => unreachable!(),
+                };
+                (res, Some(turn_input))
             }
-            _ => Err(anyhow::anyhow!(
-                "Unknown activity type: {}",
-                task.activity_type
-            )),
+            "act" => {
+                // Act activity uses ActInput directly - parse it to extract session context
+                let act_input: ActInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
+                // Create DurableTurnInput from ActInput context for scheduling next activity
+                let turn_input = DurableTurnInput {
+                    session_id: act_input.context.session_id,
+                    agent_id: act_input.agent_id, // Pass through agent_id for follow-up reason
+                    input_message_id: act_input.context.input_message_id,
+                };
+                let res = self.execute_act_activity(grpc_client, &task.input).await;
+                (res, Some(turn_input))
+            }
+            _ => (
+                Err(anyhow::anyhow!(
+                    "Unknown activity type: {}",
+                    task.activity_type
+                )),
+                None,
+            ),
         };
 
         // Stop heartbeat loop
@@ -285,7 +305,7 @@ impl DurableWorker {
                 {
                     let mut store = self.store.lock().await;
                     store
-                        .complete_task(task.id, output)
+                        .complete_task(task.id, output.clone())
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to complete task: {}", e))?;
                 }
@@ -297,8 +317,15 @@ impl DurableWorker {
                 );
 
                 // Check if workflow is complete and schedule next activity
-                self.schedule_next_activity(task.workflow_id, &task.activity_type, &turn_input)
+                if let Some(turn_input) = turn_input_opt {
+                    self.schedule_next_activity(
+                        task.workflow_id,
+                        &task.activity_type,
+                        &turn_input,
+                        &output,
+                    )
                     .await?;
+                }
             }
             Err(e) => {
                 return Err(e);
@@ -365,12 +392,35 @@ impl DurableWorker {
         Ok(serde_json::to_value(&result)?)
     }
 
+    /// Execute act activity (tool execution)
+    async fn execute_act_activity(
+        &self,
+        grpc_client: GrpcClient,
+        task_input: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        // Parse ActInput from task input
+        let act_input: ActInput = serde_json::from_value(task_input.clone())
+            .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
+
+        debug!(
+            session_id = %act_input.context.session_id,
+            tool_count = act_input.tool_calls.len(),
+            "Executing act activity"
+        );
+
+        // Use the existing act_activity function with gRPC adapters
+        let result = act_activity(grpc_client, act_input).await?;
+
+        Ok(serde_json::to_value(&result)?)
+    }
+
     /// Schedule the next activity based on current activity completion
     async fn schedule_next_activity(
         &self,
         workflow_id: Uuid,
         completed_activity: &str,
         input: &DurableTurnInput,
+        output: &serde_json::Value,
     ) -> Result<()> {
         let input_json = serde_json::to_value(input)?;
         let mut store = self.store.lock().await;
@@ -392,14 +442,49 @@ impl DurableWorker {
             }
             "reason" => {
                 // After reasoning, check if there are tool calls
-                // If no tool calls, mark workflow as complete
-                // For now, mark as complete (simplified flow)
-                store
-                    .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+                let reason_result: ReasonResult = serde_json::from_value(output.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse ReasonResult: {}", e))?;
 
-                info!(workflow_id = %workflow_id, "Workflow completed");
+                if reason_result.has_tool_calls && reason_result.success {
+                    // Schedule act activity to execute the tool calls
+                    let tool_count = reason_result.tool_calls.len();
+                    let act_input = ActInput {
+                        context: AtomContext {
+                            session_id: input.session_id,
+                            turn_id: Uuid::now_v7(),
+                            input_message_id: input.input_message_id,
+                            exec_id: Uuid::now_v7(),
+                        },
+                        agent_id: input.agent_id, // Pass through for follow-up reason activity
+                        tool_calls: reason_result.tool_calls,
+                        tool_definitions: reason_result.tool_definitions,
+                    };
+                    let act_input_json = serde_json::to_value(&act_input)?;
+
+                    store
+                        .enqueue_task(
+                            workflow_id,
+                            format!("act_{}", Uuid::now_v7()),
+                            "act".to_string(),
+                            act_input_json,
+                        )
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
+
+                    debug!(
+                        workflow_id = %workflow_id,
+                        tool_count = tool_count,
+                        "Scheduled act activity for tool execution"
+                    );
+                } else {
+                    // No tool calls or failure - workflow complete
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+
+                    info!(workflow_id = %workflow_id, "Workflow completed");
+                }
             }
             "act" => {
                 // After action, schedule another reason activity (continue the loop)
@@ -412,6 +497,8 @@ impl DurableWorker {
                     )
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
+
+                debug!(workflow_id = %workflow_id, "Scheduled reason activity after act");
             }
             _ => {
                 warn!(
