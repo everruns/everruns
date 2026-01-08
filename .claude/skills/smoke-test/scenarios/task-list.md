@@ -5,7 +5,7 @@ Tests for the StatelessTodoList capability that enables agents to create and man
 ## Prerequisites
 
 - API running at `http://localhost:9000`
-- Temporal worker running
+- Worker running
 - StatelessTodoList capability available: `stateless_todo_list`
 
 ## Test Capability

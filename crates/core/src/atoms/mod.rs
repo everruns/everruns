@@ -8,7 +8,7 @@
 // - AtomContext: Contains session_id, turn_id, input_message_id, exec_id
 // - Each Atom handles: load messages → execute → store results
 // - Stateless: No internal state, all state passed in/out
-// - Composable: Atoms can be orchestrated by external systems (Temporal, custom loops)
+// - Composable: Atoms can be orchestrated by external systems (durable execution, custom loops)
 // - Event emission: Atoms emit events for observability
 
 use async_trait::async_trait;
@@ -99,7 +99,7 @@ impl AtomContext {
 /// This trait enables:
 /// - Uniform execution interface for all operations
 /// - Easy composition and orchestration
-/// - Temporal activity integration
+/// - Durable activity integration
 /// - Testing and mocking
 #[async_trait]
 pub trait Atom: Send + Sync {

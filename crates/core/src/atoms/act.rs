@@ -46,6 +46,8 @@ use crate::traits::{EventEmitter, SessionFileStore, ToolContext, ToolExecutor};
 pub struct ActInput {
     /// Atom execution context
     pub context: AtomContext,
+    /// Agent ID (needed for scheduling follow-up reason activity)
+    pub agent_id: uuid::Uuid,
     /// Tool calls to execute
     pub tool_calls: Vec<ToolCall>,
     /// Available tool definitions for resolution
@@ -150,6 +152,7 @@ where
             context,
             tool_calls,
             tool_definitions,
+            .. // agent_id not needed here, just passed through workflow
         } = input;
 
         if tool_calls.is_empty() {
@@ -480,6 +483,7 @@ mod tests {
         let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
         let input = ActInput {
             context,
+            agent_id: Uuid::now_v7(),
             tool_calls: vec![],
             tool_definitions: vec![],
         };
@@ -501,6 +505,7 @@ mod tests {
         let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
         let input = ActInput {
             context,
+            agent_id: Uuid::now_v7(),
             tool_calls: vec![ToolCall {
                 id: "call_1".to_string(),
                 name: "nonexistent_tool".to_string(),

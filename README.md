@@ -8,11 +8,11 @@ Headless durable AI agent execution platform. Run long-running LLM agents reliab
 
 ## Overview
 
-Everruns is a service that runs AI agents in the most reliable way possible. Each step and tool call in an agent run is persisted. For now built on Temporal for durable execution.
+Everruns is a service that runs AI agents in the most reliable way possible. Each step and tool call in an agent run is persisted using a PostgreSQL-backed durable execution engine.
 
 ### Key Features
 
-- **Durable execution**: Agent sessions survive restarts via Temporal workflows
+- **Durable execution**: Agent sessions survive restarts via PostgreSQL-backed workflows
 - **Management UI**: Optional dashboard for agents, sessions, and chat
 - **Indefinite sessions**: Sessions can receive messages continuously without terminating (not yet)
 
@@ -27,16 +27,15 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 ### Architecture
 
 - **API Service**: HTTP API with SSE streaming
-- **Worker Service**: Temporal workflows and activities
+- **Worker Service**: Durable worker with gRPC client
 - **Management UI**: Next.js dashboard
-- **PostgreSQL**: Metadata and event storage
-- **Temporal**: Durable workflow orchestration
+- **PostgreSQL**: Metadata, events, and durable execution state
 
 ## Quick Start Locally
 
 ### Prerequisites
 
-- Docker & Docker Compose
+- Docker & Docker Compose (optional, for Postgres)
 - Rust stable toolchain
 - Node.js 18+ (for UI)
 - OpenAI API key (for LLM calls)
@@ -63,7 +62,6 @@ Services available at:
 - **UI**: http://localhost:9100
 - **API**: http://localhost:9000
 - **API Docs**: http://localhost:9000/swagger-ui/
-- **Temporal UI**: http://localhost:8080
 
 
 ### Stop Services

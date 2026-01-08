@@ -262,6 +262,7 @@ async fn main() -> anyhow::Result<()> {
         let act_result = act_atom
             .execute(ActInput {
                 context: act_context,
+                agent_id,
                 tool_calls: reason_result.tool_calls.clone(),
                 tool_definitions: reason_result.tool_definitions.clone(),
             })

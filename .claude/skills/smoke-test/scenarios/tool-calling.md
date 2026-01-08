@@ -5,7 +5,7 @@ Tests for agent tool calling functionality via the API.
 ## Prerequisites
 
 - API running at `http://localhost:9000`
-- Temporal worker running
+- Worker running
 - Test capabilities available: `test_math`, `test_weather`
 
 ## Available Test Capabilities

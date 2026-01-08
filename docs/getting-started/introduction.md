@@ -3,7 +3,7 @@ title: Introduction
 description: Get started with Everruns - A durable AI agent execution platform
 ---
 
-Everruns is a durable AI agent execution platform built on Rust and Temporal. It provides APIs for managing agents, sessions, and runs with streaming event output via SSE.
+Everruns is a durable AI agent execution platform built on Rust with a PostgreSQL-backed durable execution engine. It provides APIs for managing agents, sessions, and runs with streaming event output via SSE.
 
 ## Overview
 
@@ -65,7 +65,7 @@ Everruns uses a layered architecture:
 
 - **API Layer**: HTTP endpoints (axum), SSE streaming, Swagger UI
 - **Core Layer**: Agent abstractions, capabilities, tools
-- **Worker Layer**: Temporal workflows for durable execution
-- **Storage Layer**: PostgreSQL with encrypted secrets
+- **Worker Layer**: Durable workflows for reliable execution
+- **Storage Layer**: PostgreSQL with encrypted secrets and durable execution state
 
 For detailed architecture information, see the [GitHub repository](https://github.com/everruns/everruns).

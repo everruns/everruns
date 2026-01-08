@@ -16,7 +16,7 @@ use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
 use everruns_core::{EventListener, OtelEventListener};
-use everruns_worker::{create_runner, RunnerConfig};
+use everruns_worker::create_runner;
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -80,21 +80,13 @@ async fn main() -> Result<()> {
         .context("Failed to connect to database")?;
     tracing::info!("Connected to database");
 
-    // Load runner configuration from environment
-    let runner_config = RunnerConfig::from_env();
-
-    // Create the agent runner (Temporal)
-    // Note: Runner no longer needs db - session status is managed by control-plane
-    let runner = create_runner(&runner_config)
+    // Create the durable agent runner (uses PostgreSQL-backed execution)
+    // Pass the database pool for direct access (avoids circular gRPC dependency)
+    let runner = create_runner(Some(db.pool().clone()))
         .await
         .context("Failed to create agent runner")?;
 
-    tracing::info!(
-        address = %runner_config.temporal_address(),
-        namespace = %runner_config.temporal_namespace(),
-        task_queue = %runner_config.temporal_task_queue(),
-        "Using Temporal agent runner"
-    );
+    tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
 
     // Create app state
     let db = Arc::new(db);
@@ -254,6 +246,45 @@ async fn main() -> Result<()> {
             tracing::error!("gRPC server error: {}", e);
         }
     });
+
+    // Start background task for stale task reclamation
+    {
+        use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
+        use std::time::Duration;
+
+        let reclaim_db = db.clone();
+        let stale_threshold = Duration::from_secs(30); // Tasks without heartbeat for 30s are stale
+        let reclaim_interval = Duration::from_secs(10); // Check every 10 seconds
+
+        tokio::spawn(async move {
+            let store = PostgresWorkflowEventStore::new(reclaim_db.pool().clone());
+            let mut interval = tokio::time::interval(reclaim_interval);
+
+            tracing::info!(
+                stale_threshold_secs = stale_threshold.as_secs(),
+                reclaim_interval_secs = reclaim_interval.as_secs(),
+                "Started stale task reclamation background task"
+            );
+
+            loop {
+                interval.tick().await;
+                match store.reclaim_stale_tasks(stale_threshold).await {
+                    Ok(reclaimed) => {
+                        if !reclaimed.is_empty() {
+                            tracing::info!(
+                                count = reclaimed.len(),
+                                task_ids = ?reclaimed,
+                                "Reclaimed stale tasks"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to reclaim stale tasks: {}", e);
+                    }
+                }
+            }
+        });
+    }
 
     // Start HTTP server
     let addr = "0.0.0.0:9000";

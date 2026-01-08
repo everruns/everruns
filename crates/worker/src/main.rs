@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
-use everruns_worker::{RunnerConfig, TemporalWorker};
+use everruns_worker::{DurableWorker, DurableWorkerConfig};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -23,22 +23,20 @@ async fn main() -> Result<()> {
 
     tracing::info!("everrun-worker starting...");
 
-    // Load runner configuration
-    let config = RunnerConfig::from_env();
-
-    // Get gRPC address for control-plane communication
-    let grpc_address = std::env::var("GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".into());
+    // Create durable worker config (includes grpc_address)
+    let config = DurableWorkerConfig::from_env();
 
     tracing::info!(
-        task_queue = %config.temporal_task_queue(),
-        grpc_address = %grpc_address,
-        "Starting Temporal worker"
+        grpc_address = %config.grpc_address,
+        worker_id = %config.worker_id,
+        max_concurrent = config.max_concurrent_tasks,
+        "Starting Durable worker"
     );
 
-    // Create and run the Temporal worker (connects to control-plane via gRPC)
-    let worker = TemporalWorker::new(config, &grpc_address)
+    // Create and run the Durable worker (connects to control-plane via gRPC)
+    let mut worker = DurableWorker::new(config)
         .await
-        .context("Failed to create Temporal worker")?;
+        .context("Failed to create Durable worker")?;
 
     // Run the worker (blocks until shutdown)
     tokio::select! {

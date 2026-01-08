@@ -116,39 +116,6 @@ GRPC_ADDRESS=127.0.0.1:9001
 - The control-plane exposes both HTTP (port 9000) and gRPC (port 9001) interfaces
 - Workers are stateless and do not connect directly to the database
 
-### TEMPORAL_ADDRESS
-
-Address of the Temporal server.
-
-| Property | Value |
-|----------|-------|
-| **Required** | No |
-| **Default** | `localhost:7233` |
-
-**Example:**
-
-```bash
-TEMPORAL_ADDRESS=localhost:7233
-```
-
-### TEMPORAL_NAMESPACE
-
-Temporal namespace for workflows.
-
-| Property | Value |
-|----------|-------|
-| **Required** | No |
-| **Default** | `default` |
-
-### TEMPORAL_TASK_QUEUE
-
-Temporal task queue name for agent run workflows.
-
-| Property | Value |
-|----------|-------|
-| **Required** | No |
-| **Default** | `everruns-agent-runs` |
-
 ## OpenTelemetry Configuration
 
 Everruns supports distributed tracing via OpenTelemetry with OTLP export. Traces follow the [Gen-AI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for LLM operations.

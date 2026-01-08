@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Everruns is a durable AI agent execution platform built on Rust and Temporal. It provides APIs for managing agents, threads, and runs with streaming event output via SSE. The architecture prioritizes durability, observability, and developer experience.
+Everruns is a durable AI agent execution platform built on Rust with a PostgreSQL-backed durable execution engine. It provides APIs for managing agents, threads, and runs with streaming event output via SSE. The architecture prioritizes durability, observability, and developer experience.
 
 ## System Architecture
 
@@ -21,13 +21,9 @@ graph TB
     end
 
     subgraph Workers
-        Worker[Temporal Worker]
+        Worker[Durable Worker]
         Atoms[Atoms<br/>Input/Reason/Act]
         LLM[LLM Providers]
-    end
-
-    subgraph Infrastructure
-        Temporal[Temporal Server]
     end
 
     UI --> REST
@@ -37,8 +33,8 @@ graph TB
     GRPC --> Services
 
     Worker -->|gRPC| GRPC
-    Worker -->|Poll Tasks| Temporal
-    REST -->|Start Workflow| Temporal
+    Worker -->|Poll Tasks| Storage
+    REST -->|Queue Task| Storage
     Worker --> Atoms
     Atoms --> LLM
 ```
@@ -50,9 +46,10 @@ graph TB
 1. **Monorepo Structure**: Single repository with Cargo workspace containing multiple crates
 2. **Crate Separation** (folder → package name):
    - `control-plane/` → `everruns-control-plane` - HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
-   - `worker/` → `everruns-worker` - Temporal worker, workflows, activities, gRPC client adapters
+   - `worker/` → `everruns-worker` - Durable worker, turn workflow, activities, gRPC client adapters
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, shared types)
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ control-plane
+   - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
@@ -90,11 +87,11 @@ graph TD
 ### Execution Layer
 
 1. **Runner Abstraction**: `AgentRunner` trait provides the execution backend interface
-2. **Temporal Execution**: All agent workflows run via Temporal for durability and reliability
-3. **Workflow Isolation**: Temporal concepts (workflow IDs, task queues) never exposed in public API
+2. **Durable Execution**: Workflows run via PostgreSQL-backed durable execution engine
+3. **Workflow Isolation**: Backend concepts (workflow IDs, task queues) never exposed in public API
 4. **Event Streaming**: SSE for real-time event delivery via database-backed events
 
-See [specs/temporal-integration.md](temporal-integration.md) for detailed Temporal architecture.
+See [specs/durable-execution-engine.md](durable-execution-engine.md) for the durable engine architecture.
 
 ### Worker ↔ Control-Plane Communication
 
@@ -125,11 +122,12 @@ Workers communicate with the control-plane via gRPC instead of direct database a
 sequenceDiagram
     participant W as Worker
     participant CP as Control Plane (gRPC)
-    participant T as Temporal
+    participant DB as PostgreSQL
     participant LLM as LLM Provider
 
-    W->>T: Poll for tasks
-    T-->>W: TurnWorkflow task
+    W->>CP: PollTasks
+    CP->>DB: Claim pending task
+    CP-->>W: TurnWorkflow task
     W->>CP: GetTurnContext(session_id)
     CP-->>W: Agent + Session + Messages + Model
     W->>CP: EmitEvent(turn.started)
@@ -146,7 +144,8 @@ sequenceDiagram
     end
 
     W->>CP: EmitEvent(turn.completed)
-    W->>T: Complete workflow
+    W->>CP: CompleteTask
+    CP->>DB: Mark task completed
 ```
 
 ### Core Abstractions (`everruns-core`)
@@ -228,7 +227,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 ### Infrastructure
 
-1. **Local Development**: Docker Compose in `harness/` for Postgres, Temporal, Temporal UI, Jaeger
+1. **Local Development**: Docker Compose in `harness/` for Postgres, Jaeger
 2. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
 3. **License Compliance**: cargo-deny for dependency license checking
 

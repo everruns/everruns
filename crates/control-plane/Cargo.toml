@@ -51,8 +51,9 @@ aes-gcm.workspace = true
 argon2.workspace = true
 
 everruns-core = { path = "../core", features = ["openapi"] }
-everruns-worker = { path = "../worker" }  # For Temporal runner (AgentRunner trait)
+everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-internal-protocol = { path = "../internal-protocol" }
+everruns-durable = { path = "../durable" }  # For durable execution gRPC service
 
 # gRPC
 tonic = "0.12"

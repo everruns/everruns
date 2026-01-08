@@ -6,8 +6,6 @@ export PGDATA="/tmp/pgdata"
 export PG_LOGFILE="$PGDATA/pg.log"
 export PG_VERSION="17"
 export PG_BIN="/usr/lib/postgresql/$PG_VERSION/bin"
-export TEMPORAL_BIN="/usr/local/bin/temporal"
-export TEMPORAL_LOG="/tmp/temporal.log"
 export API_LOG="/tmp/api.log"
 export WORKER_LOG="/tmp/worker.log"
 
@@ -78,7 +76,7 @@ check_encryption_key() {
     fi
 }
 
-# Check and install protoc (required for building Temporal SDK)
+# Check and install protoc (required for building gRPC)
 check_protoc() {
     if command -v protoc &> /dev/null; then
         check_pass "protoc install - $(protoc --version)"
