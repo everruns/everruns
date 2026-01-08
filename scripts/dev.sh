@@ -116,6 +116,50 @@ case "$command" in
     "$SCRIPT_DIR/seed-agents.sh"
     ;;
 
+  upload-agents)
+    echo "📤 Uploading seed agents from examples/agents..."
+    API_URL="${API_URL:-http://localhost:9000}"
+    EXAMPLES_DIR="$PROJECT_ROOT/examples/agents"
+
+    # Check API is healthy
+    if ! curl -s "$API_URL/health" > /dev/null 2>&1; then
+      echo "❌ API not reachable at $API_URL"
+      echo "   Start the API first: ./scripts/dev.sh api"
+      exit 1
+    fi
+
+    # Build CLI if needed
+    if [[ -f "$PROJECT_ROOT/target/release/everruns" ]]; then
+      CLI_PATH="$PROJECT_ROOT/target/release/everruns"
+    elif [[ -f "$PROJECT_ROOT/target/debug/everruns" ]]; then
+      CLI_PATH="$PROJECT_ROOT/target/debug/everruns"
+    else
+      echo "📦 Building everruns CLI..."
+      cargo build -p everruns-cli --release
+      CLI_PATH="$PROJECT_ROOT/target/release/everruns"
+    fi
+
+    # Upload each agent file
+    uploaded=0
+    skipped=0
+    for agent_file in "$EXAMPLES_DIR"/*.md; do
+      if [[ -f "$agent_file" ]]; then
+        name=$(basename "$agent_file" .md)
+        echo "   🌱 Uploading $name..."
+        if $CLI_PATH --api-url "$API_URL" agents create --file "$agent_file" --quiet 2>/dev/null; then
+          echo "      ✅ Created"
+          uploaded=$((uploaded + 1))
+        else
+          echo "      ⏭️  Skipped (may already exist)"
+          skipped=$((skipped + 1))
+        fi
+      fi
+    done
+
+    echo ""
+    echo "📊 Upload complete: $uploaded created, $skipped skipped"
+    ;;
+
   build)
     echo "🔨 Building Everrun..."
     cargo build
@@ -582,6 +626,7 @@ Commands:
   reset       Stop and remove all Docker volumes
   migrate     Run database migrations
   seed        Seed development agents from harness/seed-agents.yaml
+  upload-agents Upload seed agents from examples/agents/ using CLI
   build       Build all crates
   test        Run tests
   check       Run format, lint, and test checks
