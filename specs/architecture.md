@@ -32,12 +32,16 @@ graph TB
     Services --> Storage
     GRPC --> Services
 
-    Worker -->|gRPC| GRPC
-    Worker -->|Poll Tasks| Storage
-    REST -->|Queue Task| Storage
+    Worker -->|gRPC only| GRPC
+    REST -->|Queue Task| Services
     Worker --> Atoms
     Atoms --> LLM
 ```
+
+**Key Design Decision**: Workers communicate with the control-plane **exclusively via gRPC** (port 9001). Workers have no direct database access - all storage operations go through the gRPC service layer. This provides:
+- Clear separation between control-plane (owns state) and workers (stateless executors)
+- Workers don't need database credentials or encryption keys
+- Simplified worker deployment and scaling
 
 ## Requirements
 
@@ -110,8 +114,15 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - `GrpcLlmProviderStore` - Implements `LlmProviderStore` trait via gRPC
    - `GrpcSessionFileStore` - Implements `SessionFileStore` trait via gRPC
    - `GrpcEventEmitter` - Implements `EventEmitter` trait via gRPC
+   - `GrpcDurableStore` - Implements durable workflow operations via gRPC
 
-3. **Benefits**:
+3. **Durable Execution gRPC Operations**:
+   - `ClaimDurableTasks` - Workers poll for pending tasks
+   - `CompleteDurableTask` / `FailDurableTask` - Report task outcome
+   - `HeartbeatDurableTask` - Liveness signal for long-running tasks
+   - `CreateDurableWorkflow` / `GetDurableWorkflowStatus` - Workflow lifecycle
+
+4. **Benefits**:
    - Workers don't need database credentials or encryption keys
    - Clear boundary between control-plane (owns state) and workers (stateless executors)
    - Batched operations reduce round trips (4 DB calls → 1 gRPC call)
@@ -125,28 +136,37 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant LLM as LLM Provider
 
-    W->>CP: PollTasks
-    CP->>DB: Claim pending task
-    CP-->>W: TurnWorkflow task
+    W->>CP: ClaimDurableTasks
+    CP->>DB: Claim pending task (SKIP LOCKED)
+    CP-->>W: Task with workflow_id
     W->>CP: GetTurnContext(session_id)
     CP-->>W: Agent + Session + Messages + Model
     W->>CP: EmitEvent(turn.started)
 
-    loop Reason-Act Loop
-        W->>LLM: Generate completion
-        LLM-->>W: Response + Tool calls
-        W->>CP: EmitEvent(llm.generation)
+    par Background Heartbeat
+        loop Every 10s while task runs
+            W->>CP: HeartbeatDurableTask
+            CP-->>W: OK / Cancel signal
+        end
+    and Task Execution
+        loop Reason-Act Loop
+            W->>LLM: Generate completion
+            LLM-->>W: Response + Tool calls
+            W->>CP: EmitEvent(llm.generation)
 
-        opt Tool Execution
-            W->>W: Execute tools locally
-            W->>CP: EmitEvent(tool.completed)
+            opt Tool Execution
+                W->>W: Execute tools locally
+                W->>CP: EmitEvent(tool.completed)
+            end
         end
     end
 
     W->>CP: EmitEvent(turn.completed)
-    W->>CP: CompleteTask
+    W->>CP: CompleteDurableTask
     CP->>DB: Mark task completed
 ```
+
+**Note**: Workers send periodic heartbeats while executing tasks. If heartbeats stop (worker crash), the control-plane reclaims stale tasks after 30 seconds and re-queues them for another worker.
 
 ### Core Abstractions (`everruns-core`)
 
