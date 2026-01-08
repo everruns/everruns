@@ -98,9 +98,9 @@ let agent_loop = AgentLoop::new(config, emitter, store, llm, registry);
 4. Call LLM again with results
 5. Repeat until LLM returns final response (max 10 iterations)
 
-### Step-Based Execution (Temporal Mode)
+### Step-Based Execution (Durable Mode)
 
-In Temporal mode, each LLM call and each tool call is a **separate Temporal activity (node)**:
+In durable mode, each LLM call and each tool call is a **separate durable activity (task)**:
 
 ```
 ┌─────────────┐
@@ -126,7 +126,7 @@ In Temporal mode, each LLM call and each tool call is a **separate Temporal acti
 
 Benefits:
 - **Individual retries**: Failed tool can retry without re-running LLM
-- **Maximum observability**: Each step visible in Temporal UI
+- **Maximum observability**: Each step visible in workflow event log
 - **Better debugging**: Isolate failures to specific steps
 
 ### Security

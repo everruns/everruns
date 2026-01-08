@@ -1,6 +1,6 @@
 // Durable execution engine worker
 // Decision: Polls task queue via gRPC instead of direct database access
-// Decision: Uses same gRPC adapters as Temporal worker for control-plane communication
+// Decision: Uses gRPC adapters for control-plane communication
 
 use anyhow::Result;
 use everruns_core::atoms::AtomContext;

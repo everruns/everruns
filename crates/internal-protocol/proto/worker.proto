@@ -1,5 +1,5 @@
 // Internal protocol for worker <-> control plane communication
-// Decision: gRPC for worker communication (industry standard, already in stack via Temporal)
+// Decision: gRPC for worker communication (industry standard)
 // Decision: Rust types in schemas crate are source of truth, proto mirrors them
 // Decision: Batched RPCs for latency optimization (GetTurnContext, EmitEventStream)
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings

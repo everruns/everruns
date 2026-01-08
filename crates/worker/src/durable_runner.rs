@@ -1,6 +1,6 @@
 // Durable execution engine runner
-// Decision: Use the custom durable engine as an alternative to Temporal
-// Decision: Same AgentRunner interface for seamless switching
+// Decision: Use custom PostgreSQL-backed durable engine for workflow orchestration
+// Decision: AgentRunner interface for clean abstraction
 // Decision: Workers communicate with control-plane via gRPC (no direct DB access)
 // Decision: Control-plane uses direct database access (PostgresWorkflowEventStore)
 
@@ -20,7 +20,7 @@ use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 // TurnWorkflow Input/Output
 // =============================================================================
 
-/// Input for the turn workflow (same as Temporal version)
+/// Input for the turn workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DurableTurnInput {
     pub session_id: Uuid,
@@ -233,7 +233,7 @@ fn local_to_durable_status(s: WorkflowStatus) -> everruns_durable::WorkflowStatu
 /// Durable execution engine based runner
 ///
 /// This runner uses the custom durable engine backed by PostgreSQL
-/// instead of Temporal for workflow orchestration.
+/// for workflow orchestration.
 /// - Workers communicate with the control-plane via gRPC
 /// - Control-plane uses direct database access
 pub struct DurableRunner {
@@ -304,7 +304,7 @@ impl AgentRunner for DurableRunner {
         };
 
         // Create workflow instance
-        // Use session_id as workflow_id for consistency with Temporal approach
+        // Use session_id as workflow_id for consistency
         let workflow_id = session_id;
         let input_json = serde_json::to_value(&input)?;
 

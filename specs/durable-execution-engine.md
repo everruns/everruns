@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This specification describes a custom durable execution engine to replace Temporal. The engine provides workflow orchestration with persistence, automatic retries, circuit breakers, and distributed task execution - all backed by PostgreSQL.
+This specification describes the custom durable execution engine. The engine provides workflow orchestration with persistence, automatic retries, circuit breakers, and distributed task execution - all backed by PostgreSQL.
 
 ## Goals
 
@@ -1592,7 +1592,7 @@ impl TimeoutManager {
 - [x] Worker heartbeat loop for crash recovery
 - [x] Stale task reclamation background task in control-plane
 - [x] gRPC durable operations: CreateWorkflow, ClaimTasks, CompleteTask, etc.
-- [ ] Remove Temporal dependencies (optional - both modes supported)
+- [x] Temporal removed from codebase (durable-only mode)
 - [ ] End-to-end smoke tests with real LLM
 
 ---

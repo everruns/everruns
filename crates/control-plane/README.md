@@ -16,7 +16,7 @@ REST API server for managing AI agents, threads, and runs.
 ### 1. Start Services
 
 ```bash
-./scripts/dev.sh start    # Start PostgreSQL and Temporal
+./scripts/dev.sh start    # Start PostgreSQL
 ./scripts/dev.sh migrate  # Run database migrations
 ```
 
@@ -79,7 +79,7 @@ This will:
 ### Run Tests
 
 ```bash
-# Run all integration tests (requires API + Worker + Temporal running)
+# Run all integration tests (requires API + Worker running)
 cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
 
 # Run a specific test
@@ -219,5 +219,5 @@ lsof -i :9000
 - [ ] Add authentication middleware
 - [ ] Implement rate limiting
 - [ ] Add request validation
-- [ ] Implement run execution with Temporal
+- [ ] Add workflow execution monitoring
 - [ ] Add WebSocket support for real-time updates

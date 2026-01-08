@@ -1,11 +1,11 @@
 ---
 title: Durable Execution Engine Setup
-description: How to run Everruns with the custom durable execution engine instead of Temporal
+description: How to run Everruns with the PostgreSQL-backed durable execution engine
 ---
 
 # Durable Execution Engine Setup Guide
 
-This guide explains how to run Everruns with the custom durable execution engine instead of Temporal.
+This guide explains how to run Everruns with the custom PostgreSQL-backed durable execution engine.
 
 ## Overview
 
@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RUNNER_MODE` | Runner mode: `temporal` or `durable` | `temporal` |
+| `RUNNER_MODE` | Runner mode (durable only) | `durable` |
 | `DATABASE_URL` | PostgreSQL connection URL | Required |
 | `GRPC_ADDRESS` | Control-plane gRPC address | `127.0.0.1:9001` |
 | `WORKER_ID` | Unique worker identifier | Auto-generated |
@@ -116,31 +116,6 @@ DATABASE_URL="postgres://postgres:postgres@localhost/everruns_test" \
 ```
 
 Expected: 17 tests passing
-
-## Switching Between Modes
-
-### Temporal Mode (Default)
-
-```bash
-export RUNNER_MODE=temporal
-# Or simply don't set RUNNER_MODE
-```
-
-Requires:
-- Temporal server running
-- `TEMPORAL_ADDRESS` (default: `localhost:7233`)
-- `TEMPORAL_NAMESPACE` (default: `default`)
-- `TEMPORAL_TASK_QUEUE` (default: `everruns-agent-runs`)
-
-### Durable Mode
-
-```bash
-export RUNNER_MODE=durable
-```
-
-Requires:
-- PostgreSQL with migrations applied
-- `DATABASE_URL` set
 
 ## Workflow Lifecycle
 
@@ -242,17 +217,6 @@ SELECT * FROM durable_dead_letter_queue ORDER BY dead_at DESC;
 UPDATE durable_dead_letter_queue SET requeued_at = NOW() WHERE id = '<dlq_id>';
 ```
 
-## Architecture Comparison
-
-| Feature | Temporal | Durable |
-|---------|----------|---------|
-| Infrastructure | Temporal Server + DB | PostgreSQL only |
-| Task Queue | Temporal queues | PostgreSQL table |
-| Event Sourcing | Temporal history | `durable_workflow_events` |
-| Circuit Breakers | Client-side | PostgreSQL-backed |
-| Worker Registry | Temporal server | `durable_workers` table |
-| Scalability | Proven at scale | Designed for 1000+ workers |
-
 ## Implementation Status
 
 | Phase | Status | Description |
@@ -263,4 +227,3 @@ UPDATE durable_dead_letter_queue SET requeued_at = NOW() WHERE id = '<dlq_id>';
 | Phase 7 | ✅ Core Complete | gRPC-based worker integration, crash recovery |
 
 The durable execution engine is production-ready for single-instance deployments.
-Both Temporal and Durable modes are supported concurrently.

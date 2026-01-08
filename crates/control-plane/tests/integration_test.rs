@@ -1,6 +1,6 @@
 // Integration tests for Everruns API
 // Run with: cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
-// Requires: API + Worker + Temporal running (uses LlmSim for workflow tests, no real API keys needed)
+// Requires: API + Worker running (uses LlmSim for workflow tests, no real API keys needed)
 
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{Agent, LlmModel, Session, SessionFile};
@@ -839,7 +839,7 @@ async fn test_session_filesystem() {
 /// 1. Message creation returns within 5 seconds (not blocking on workflow)
 /// 2. After waiting, an assistant response appears (workflow executed)
 ///
-/// Requirements: API + Worker + Temporal (uses LlmSim provider, no real API keys needed).
+/// Requirements: API + Worker (uses LlmSim provider, no real API keys needed).
 #[tokio::test]
 async fn test_message_triggers_agent_workflow() {
     use std::time::{Duration, Instant};

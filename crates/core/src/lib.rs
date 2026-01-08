@@ -5,7 +5,7 @@
 //
 // Key design decisions:
 // - Uses traits (MessageStore, ToolExecutor) for pluggable backends
-// - Can be decomposed into steps for Temporal activity execution
+// - Can be decomposed into steps for durable activity execution
 // - Configuration via RuntimeAgent (can be built from Agent entity or created directly)
 // - Tools are defined via a Tool trait for flexibility (function-style tools)
 // - ToolRegistry implements ToolExecutor for easy tool management
