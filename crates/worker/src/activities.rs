@@ -1,7 +1,7 @@
-// Activity implementations for workflow execution
+// Workflow step implementations
 //
-// Activities are the units of work scheduled by the workflow.
-// Each activity runs outside the workflow and returns a result.
+// Steps are the units of work scheduled by the durable workflow orchestrator.
+// Each step runs as a task and returns a result.
 // Decision: Workers communicate with control-plane via gRPC for all operations.
 //
 // These implementations use Atoms from everruns-core for the actual work:
@@ -15,28 +15,14 @@
 use anyhow::{Context, Result};
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::ToolRegistry;
 use std::sync::Arc;
 
+use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageStore,
     GrpcSessionFileStore, GrpcSessionStore,
 };
-
-/// Create and configure the driver registry with all supported LLM providers
-///
-/// This registers drivers for:
-/// - OpenAI (and Azure OpenAI)
-/// - Anthropic Claude
-/// - LlmSim (for testing)
-fn create_driver_registry() -> DriverRegistry {
-    let mut registry = DriverRegistry::new();
-    everruns_openai::register_driver(&mut registry);
-    everruns_anthropic::register_driver(&mut registry);
-    everruns_core::llmsim_driver::register_driver(&mut registry);
-    registry
-}
 
 // Re-export atom types for activity callers
 pub use everruns_core::atoms::{

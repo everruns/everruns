@@ -5,7 +5,6 @@ pub mod durable_worker;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
 pub mod runner;
-pub mod types;
 
 // Re-export main types
 pub use durable_runner::{
