@@ -177,7 +177,7 @@ curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages
 ```
 Expected: At least 1 message
 
-#### 9.5. Verify Workflow Execution (Temporal)
+#### 9.5. Verify Workflow Execution
 After sending a user message, verify the agent workflow executed correctly:
 ```bash
 # Wait for workflow to complete (5-10 seconds)
@@ -360,24 +360,23 @@ This script automatically handles:
    - System install with `pg_ctlcluster` (Debian/Ubuntu standard)
    - Direct binaries (containers without pg_ctlcluster)
    - Fresh install from PGDG repository (if nothing found)
-3. **Temporal CLI** - Downloads from GitHub releases if not installed
-4. **Database setup** - Initializes cluster, creates user/database, runs migrations
-5. **Application** - Builds and starts API server and Temporal worker
-6. **Cleanup** - Stops all services on Ctrl+C
+3. **Database setup** - Initializes cluster, creates user/database, runs migrations
+4. **Application** - Builds and starts API server and durable worker
+5. **Cleanup** - Stops all services on Ctrl+C
 
 **Requirements**:
 - Root access (for PostgreSQL initialization)
 - Either `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` environment variable
 - Internet access (for downloading dependencies)
 
-**Important**: The Temporal worker is required for workflow execution. Without it, sending messages won't trigger LLM responses.
+**Important**: The durable worker is required for workflow execution. Without it, sending messages won't trigger LLM responses.
 
 ### Cloud Environment Compatibility
 
 The no-Docker mode is specifically designed for cloud agent environments like Claude Code on the web:
 
 - **Auto-detects PostgreSQL** even without `pg_ctlcluster` command
-- **Installs protoc automatically** (required for Temporal SDK)
+- **Installs protoc automatically** (required for gRPC)
 - **Works in containers** by using direct `pg_ctl` instead of systemd
 - **Supports both API keys** (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`)
 
@@ -387,7 +386,6 @@ The no-Docker mode is specifically designed for cloud agent environments like Cl
 |--------|-------------|
 | `run-no-docker.sh` | Entry point for no-Docker environments |
 | `_setup-postgres.sh` | PostgreSQL cluster setup - auto-detects system install (internal) |
-| `_setup-temporal.sh` | Temporal CLI install from GitHub releases (internal) |
 | `_utils.sh` | Shared utilities and configuration (internal) |
 | `tool-calling-tests.sh` | Automated tool calling scenario tests |
 
@@ -404,7 +402,6 @@ The no-Docker mode is specifically designed for cloud agent environments like Cl
 |-----|----------|
 | API | `/tmp/api.log` |
 | Worker | `/tmp/worker.log` |
-| Temporal | `/tmp/temporal.log` |
 | PostgreSQL | `/tmp/pgdata/pg.log` |
 
 ## Troubleshooting
@@ -454,7 +451,7 @@ apt-get update && apt-get install -y protobuf-compiler
 protoc --version
 ```
 
-**Messages sent but no assistant response**: Ensure the Temporal worker is running:
+**Messages sent but no assistant response**: Ensure the durable worker is running:
 ```bash
 # Check if worker is running
 ps aux | grep everruns-worker
@@ -464,18 +461,8 @@ tail -50 /tmp/worker.log
 
 # Manually start worker if needed
 export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
-export TEMPORAL_ADDRESS="localhost:7233"
+export GRPC_ADDRESS="127.0.0.1:9001"
 cargo run -p everruns-worker
-```
-
-**Network/curl issues in restricted environments**: The Temporal CLI download uses `--insecure` flag. If you still have issues, manually download:
-```bash
-# Direct download from GitHub
-curl -L --insecure https://github.com/temporalio/cli/releases/download/v1.1.2/temporal_cli_1.1.2_linux_amd64.tar.gz -o /tmp/temporal.tar.gz
-mkdir -p /tmp/temporal_extract
-tar -xzf /tmp/temporal.tar.gz -C /tmp/temporal_extract
-mv /tmp/temporal_extract/temporal /usr/local/bin/temporal
-chmod +x /usr/local/bin/temporal
 ```
 
 **PostgreSQL already running**: The script auto-detects system PostgreSQL. If port 5432 is in use:
@@ -527,32 +514,29 @@ If the `run-no-docker.sh` script fails, start services manually:
 
 ```bash
 # 1. Ensure PostgreSQL is running
-export PATH="$PATH:/usr/lib/postgresql/16/bin"
+export PATH="$PATH:/usr/lib/postgresql/17/bin"
 pg_ctl -D /tmp/pgdata -l /tmp/pgdata/pg.log start
 
-# 2. Start Temporal dev server
-temporal server start-dev --db-filename /tmp/temporal.db &> /tmp/temporal.log &
-
-# 3. Set environment variables
+# 2. Set environment variables
 export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
-export TEMPORAL_ADDRESS="localhost:7233"
+export GRPC_ADDRESS="127.0.0.1:9001"
 export SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32)
 
-# 4. Run migrations
+# 3. Run migrations
 cd /home/user/everruns
 sqlx database create --database-url "$DATABASE_URL" 2>/dev/null || true
 sqlx migrate run --source crates/control-plane/migrations --database-url "$DATABASE_URL"
 
-# 5. Start API server
+# 4. Start API server
 cargo run -p everruns-control-plane &> /tmp/api.log &
 
-# 6. Start worker
+# 5. Start worker
 cargo run -p everruns-worker &> /tmp/worker.log &
 
-# 7. Wait for services
+# 6. Wait for services
 sleep 10
 
-# 8. Run health check
+# 7. Run health check
 curl -s http://localhost:9000/health | jq
 ```
 
