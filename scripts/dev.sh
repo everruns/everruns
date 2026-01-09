@@ -180,6 +180,11 @@ case "$command" in
     echo "📊 Upload complete: $uploaded created, $skipped skipped"
     ;;
 
+  seed)
+    # Run seed-providers.sh script (providers and models only)
+    exec "$PROJECT_ROOT/scripts/seed-providers.sh" "$@"
+    ;;
+
   build)
     echo "🔨 Building Everrun..."
     cargo build
@@ -370,8 +375,34 @@ case "$command" in
       echo "   ⚠️  API compiling (will auto-reload on changes)..."
     fi
 
+    # Wait for API to be ready, then upload seed agents
+    echo "4️⃣  Waiting for API to be ready..."
+    for i in {1..30}; do
+      if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+        echo "   ✅ API is ready"
+        break
+      fi
+      sleep 2
+    done
+
+    # Seed LLM providers and models from YAML
+    echo "5️⃣  Seeding LLM providers and models..."
+    if "$PROJECT_ROOT/scripts/seed-providers.sh" 2>/dev/null; then
+      echo "   ✅ Providers and models seeded"
+    else
+      echo "   ⚠️  Seeding failed (yq may not be installed - run: brew install yq)"
+    fi
+
+    # Upload seed agents from markdown files
+    echo "6️⃣  Uploading seed agents..."
+    if "$0" upload-agents 2>/dev/null; then
+      echo "   ✅ Seed agents uploaded"
+    else
+      echo "   ⚠️  Agent upload failed"
+    fi
+
     # Start Worker in background with auto-reload (Temporal mode)
-    echo "6️⃣  Starting Temporal worker with auto-reload..."
+    echo "7️⃣  Starting Temporal worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
@@ -379,7 +410,7 @@ case "$command" in
     echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
     # Start UI in background
-    echo "7️⃣  Starting UI server..."
+    echo "8️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
