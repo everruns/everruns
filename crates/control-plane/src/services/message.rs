@@ -7,7 +7,7 @@
 
 use super::EventService;
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::events::{EventContext, EventRequest, MessageUserData};
@@ -17,13 +17,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct MessageService {
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
     event_service: EventService,
     runner: Arc<dyn AgentRunner>,
 }
 
 impl MessageService {
-    pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>) -> Self {
         let event_service = EventService::new(db.clone());
         Self {
             db,

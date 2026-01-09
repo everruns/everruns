@@ -2,7 +2,7 @@
 
 use crate::storage::{
     models::{CreateLlmProviderRow, LlmProviderRow, UpdateLlmProvider},
-    Database, EncryptionService,
+    EncryptionService, StorageBackend,
 };
 use anyhow::{anyhow, Result};
 use everruns_core::llm_models::LlmProvider;
@@ -13,12 +13,12 @@ use uuid::Uuid;
 use crate::api::llm_providers::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
 
 pub struct LlmProviderService {
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
 }
 
 impl LlmProviderService {
-    pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
         Self { db, encryption }
     }
 

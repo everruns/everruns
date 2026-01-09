@@ -52,6 +52,20 @@ pub trait AgentRunner: Send + Sync {
 }
 
 // =============================================================================
+// Runner Backend Configuration
+// =============================================================================
+
+/// Configuration for creating an agent runner
+pub enum RunnerBackend {
+    /// Use PostgreSQL for workflow persistence (production)
+    Postgres(sqlx::PgPool),
+    /// Use in-memory storage (dev mode, no database required)
+    InMemory,
+    /// Use gRPC to connect to control-plane (for workers)
+    Grpc,
+}
+
+// =============================================================================
 // Factory Functions
 // =============================================================================
 
@@ -68,6 +82,29 @@ pub async fn create_runner(db_pool: Option<sqlx::PgPool>) -> Result<Arc<dyn Agen
         tracing::info!("Creating Durable execution engine runner (gRPC mode)");
         let runner = DurableRunner::from_env().await?;
         Ok(Arc::new(runner))
+    }
+}
+
+/// Create an agent runner with explicit backend configuration
+///
+/// This allows choosing between PostgreSQL, in-memory, or gRPC backends.
+pub async fn create_runner_with_backend(backend: RunnerBackend) -> Result<Arc<dyn AgentRunner>> {
+    match backend {
+        RunnerBackend::Postgres(pool) => {
+            tracing::info!("Creating Durable execution engine runner (PostgreSQL mode)");
+            let runner = DurableRunner::new_with_pool(pool);
+            Ok(Arc::new(runner))
+        }
+        RunnerBackend::InMemory => {
+            tracing::info!("Creating Durable execution engine runner (in-memory dev mode)");
+            let runner = DurableRunner::new_in_memory();
+            Ok(Arc::new(runner))
+        }
+        RunnerBackend::Grpc => {
+            tracing::info!("Creating Durable execution engine runner (gRPC mode)");
+            let runner = DurableRunner::from_env().await?;
+            Ok(Arc::new(runner))
+        }
     }
 }
 

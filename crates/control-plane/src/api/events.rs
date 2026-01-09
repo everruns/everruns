@@ -1,7 +1,7 @@
 // Event streaming HTTP routes (SSE)
 // Events are notifications streamed to clients, NOT primary data storage
 
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -45,7 +45,7 @@ pub struct AppState {
 impl AppState {
     /// Create app state with default event service (no listeners)
     #[allow(dead_code)]
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::new(db)),
@@ -53,7 +53,7 @@ impl AppState {
     }
 
     /// Create app state with event listeners for observability
-    pub fn with_listeners(db: Arc<Database>, listeners: Vec<Arc<dyn EventListener>>) -> Self {
+    pub fn with_listeners(db: Arc<StorageBackend>, listeners: Vec<Arc<dyn EventListener>>) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::with_listeners(db, listeners)),

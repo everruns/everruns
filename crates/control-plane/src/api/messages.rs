@@ -7,7 +7,7 @@
 // ContentPart and InputContentPart are defined in everruns-core.
 // We re-export them here with ToSchema for OpenAPI documentation.
 
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -148,7 +148,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>, runner: Arc<dyn AgentRunner>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(db, runner)),
