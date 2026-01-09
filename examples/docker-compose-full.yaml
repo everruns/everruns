@@ -24,6 +24,7 @@
 #
 # Ports:
 #   - 8080: Web UI (Caddy)
+#   - 9000: API (direct access for SSE streaming)
 #   - 16686: Jaeger UI (optional)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
@@ -67,6 +68,8 @@ services:
   api:
     image: ghcr.io/everruns/everruns-control-plane:latest
     container_name: everruns-api
+    ports:
+      - "9000:9000"  # Exposed for SSE (UI connects directly for real-time events)
     environment:
       DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
