@@ -1,0 +1,174 @@
+# Everruns Full Stack Docker Compose
+#
+# This configuration deploys the complete Everruns platform:
+# - PostgreSQL database
+# - Control-plane API (HTTP + gRPC)
+# - 3 Worker instances for parallel processing
+# - UI (Next.js dashboard)
+# - Nginx reverse proxy (unified entry point)
+# - Jaeger for distributed tracing (optional)
+#
+# Quick Start:
+#   1. Generate encryption key:
+#      python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())"
+#
+#   2. Create .env file with:
+#      SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
+#
+#   3. Start everything:
+#      docker compose -f docker-compose-full.yaml up -d
+#
+#   4. Open UI at: http://localhost:8080
+#
+#   5. Configure LLM provider in Settings > Providers
+#
+# Ports:
+#   - 8080: Web UI (nginx)
+#   - 16686: Jaeger UI (optional)
+#
+# Note: Images are from ghcr.io/everruns - ensure you have access or build locally
+
+services:
+  # ==========================================================================
+  # Database
+  # ==========================================================================
+  postgres:
+    image: postgres:17-alpine
+    container_name: everruns-postgres
+    environment:
+      POSTGRES_USER: everruns
+      POSTGRES_PASSWORD: everruns
+      POSTGRES_DB: everruns
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U everruns"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ==========================================================================
+  # Database Migrations (runs once on startup)
+  # ==========================================================================
+  migrate:
+    image: ghcr.io/everruns/everruns-admin:latest
+    container_name: everruns-migrate
+    command: migrate
+    environment:
+      DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ==========================================================================
+  # Control Plane (API + gRPC server)
+  # ==========================================================================
+  api:
+    image: ghcr.io/everruns/everruns-control-plane:latest
+    container_name: everruns-api
+    environment:
+      DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      HOST: 0.0.0.0
+      PORT: "9000"
+      RUST_LOG: info
+      # Optional: Enable tracing
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/app/everruns-control-plane", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================================================
+  # Workers (3 instances for parallel execution)
+  # ==========================================================================
+  worker-1:
+    image: ghcr.io/everruns/everruns-worker:latest
+    container_name: everruns-worker-1
+    environment:
+      GRPC_ADDRESS: api:9001
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      RUST_LOG: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  worker-2:
+    image: ghcr.io/everruns/everruns-worker:latest
+    container_name: everruns-worker-2
+    environment:
+      GRPC_ADDRESS: api:9001
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      RUST_LOG: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  worker-3:
+    image: ghcr.io/everruns/everruns-worker:latest
+    container_name: everruns-worker-3
+    environment:
+      GRPC_ADDRESS: api:9001
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      RUST_LOG: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  # ==========================================================================
+  # UI (Next.js dashboard)
+  # ==========================================================================
+  ui:
+    image: ghcr.io/everruns/everruns-ui:latest
+    container_name: everruns-ui
+    environment:
+      PORT: "9100"
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      api:
+        condition: service_started
+
+  # ==========================================================================
+  # Nginx Reverse Proxy (unified entry point)
+  # ==========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: everruns-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - ui
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Jaeger (distributed tracing - optional)
+  # ==========================================================================
+  jaeger:
+    image: jaegertracing/jaeger:2.4.0
+    container_name: everruns-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+    # OTLP ports exposed only to internal network
+    expose:
+      - "4317"  # OTLP gRPC
+      - "4318"  # OTLP HTTP
+
+volumes:
+  postgres_data:
