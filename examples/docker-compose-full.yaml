@@ -150,8 +150,9 @@ services:
     container_name: everruns-caddy
     ports:
       - "8080:8080"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
     depends_on:
       - api
       - ui
@@ -169,6 +170,36 @@ services:
     expose:
       - "4317"  # OTLP gRPC
       - "4318"  # OTLP HTTP
+
+# ==========================================================================
+# Configs (inline configuration files)
+# ==========================================================================
+configs:
+  caddyfile:
+    content: |
+      # Reverse proxy routes:
+      #   /api/*        -> API (strips prefix)
+      #   /swagger-ui/* -> API
+      #   /api-doc/*    -> API
+      #   /health       -> API
+      #   /*            -> UI
+      :8080 {
+        handle_path /api/* {
+          reverse_proxy api:9000
+        }
+        handle /swagger-ui/* {
+          reverse_proxy api:9000
+        }
+        handle /api-doc/* {
+          reverse_proxy api:9000
+        }
+        handle /health {
+          reverse_proxy api:9000
+        }
+        handle {
+          reverse_proxy ui:9100
+        }
+      }
 
 volumes:
   postgres_data:

@@ -13,15 +13,12 @@ Deploy the complete Everruns platform using Docker Compose. This guide sets up t
 
 ## Quick Start
 
-### 1. Download Configuration Files
+### 1. Download Docker Compose File
 
 ```bash
-# Create directory and download files
+# Create directory and download docker-compose file
 mkdir everruns && cd everruns
-
-# Download docker-compose and Caddy config
 curl -O https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
-curl -O https://raw.githubusercontent.com/everruns/everruns/main/examples/Caddyfile
 ```
 
 ### 2. Generate Encryption Key
