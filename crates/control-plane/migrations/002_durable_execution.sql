@@ -1,4 +1,4 @@
--- Durable Execution Engine Tables
+-- Durable Execution Engine Tables (v0.3.0)
 --
 -- PostgreSQL schema for the durable execution engine providing:
 -- - Workflow instances with event sourcing
