@@ -360,8 +360,24 @@ case "$command" in
     sqlx migrate run --source crates/control-plane/migrations
     echo "   ✅ Migrations complete"
 
+    # Set default LLM API keys from environment (for development convenience)
+    # These are used as fallback when providers don't have keys in the database
+    echo "3️⃣  Configuring LLM API keys from environment..."
+    if [ -n "${OPENAI_API_KEY:-}" ]; then
+      export DEFAULT_OPENAI_API_KEY="$OPENAI_API_KEY"
+      echo "   ✅ OpenAI API key configured"
+    else
+      echo "   ⚠️  OPENAI_API_KEY not set (OpenAI models may not work)"
+    fi
+    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+      export DEFAULT_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+      echo "   ✅ Anthropic API key configured"
+    else
+      echo "   ⚠️  ANTHROPIC_API_KEY not set (Anthropic models may not work)"
+    fi
+
     # Start API in background with auto-reload
-    echo "3️⃣  Starting API server with auto-reload..."
+    echo "4️⃣  Starting API server with auto-reload..."
     # Allow CORS from UI (localhost:9100) for SSE connections
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     cargo watch -w crates -x 'run -p everruns-control-plane' &
@@ -377,7 +393,7 @@ case "$command" in
     fi
 
     # Wait for API to be ready, then upload seed agents
-    echo "4️⃣  Waiting for API to be ready..."
+    echo "5️⃣  Waiting for API to be ready..."
     for i in {1..30}; do
       if curl -s http://localhost:9000/health > /dev/null 2>&1; then
         echo "   ✅ API is ready"
@@ -385,15 +401,6 @@ case "$command" in
       fi
       sleep 2
     done
-
-    # Patch API keys for providers from environment variables
-    # Note: Providers and models are now loaded from config/providers.toml
-    echo "5️⃣  Patching LLM provider API keys..."
-    if "$PROJECT_ROOT/scripts/patch-provider-keys.sh" 2>/dev/null; then
-      echo "   ✅ Provider API keys patched"
-    else
-      echo "   ⚠️  Patching failed (check that jq is installed)"
-    fi
 
     # Upload seed agents from markdown files
     echo "6️⃣  Uploading seed agents..."

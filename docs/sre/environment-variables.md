@@ -52,7 +52,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 
 ## LLM Provider API Keys
 
-LLM provider API keys (OpenAI, Anthropic, Azure OpenAI) are **not** configured via environment variables. Instead, they are stored encrypted in the database and managed via the Settings > Providers UI.
+LLM provider API keys (OpenAI, Anthropic, Azure OpenAI) are primarily stored encrypted in the database and managed via the Settings > Providers UI.
 
 | Property | Value |
 |----------|-------|
@@ -72,7 +72,27 @@ python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)
 SECRETS_ENCRYPTION_KEY=kek-v1:your-generated-key-here
 ```
 
-**Note:** Environment variables like `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` are NOT used by the system. All API keys must be configured through the database.
+### Default API Keys (Development Convenience)
+
+For development, you can set default API keys via environment variables. These are used as fallbacks when providers don't have keys configured in the database.
+
+| Variable | Description |
+|----------|-------------|
+| `DEFAULT_OPENAI_API_KEY` | Fallback API key for OpenAI providers |
+| `DEFAULT_ANTHROPIC_API_KEY` | Fallback API key for Anthropic providers |
+
+**Example:**
+
+```bash
+# Set in .env or environment
+DEFAULT_OPENAI_API_KEY=sk-...
+DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Notes:**
+- Database-stored keys always take priority over environment variables
+- These are intended for development convenience, not production use
+- The `./scripts/dev.sh start-all` command automatically sets these from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` if present
 
 ## UI API Proxy Architecture
 
