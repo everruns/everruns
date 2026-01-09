@@ -1,5 +1,5 @@
--- Everruns Schema (v1.0.0)
--- Squashed migration - represents the final state of all previous migrations
+-- Everruns Base Schema (v0.3.0)
+-- Squashed migration - represents the final state of all base migrations
 --
 -- Key design decisions:
 -- - UUID v7 for time-ordered, sortable IDs (better for DB performance)
@@ -7,6 +7,7 @@
 -- - API keys encrypted with AES-256-GCM, key from SECRETS_ENCRYPTION_KEY env var
 -- - PostgreSQL 17 with custom uuidv7() function (native support requires PostgreSQL 18+)
 -- - Capabilities validated at application layer via CapabilityRegistry (no DB constraint)
+-- - Session status: started/active/idle lifecycle
 
 -- ============================================
 -- UUID v7 Function (conditional for PG < 18)
@@ -140,7 +141,7 @@ CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 CREATE TABLE llm_providers (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT NOT NULL,
-    provider_type TEXT NOT NULL CHECK (provider_type IN ('openai', 'anthropic', 'azure_openai')),
+    provider_type TEXT NOT NULL CHECK (provider_type IN ('openai', 'anthropic', 'azure_openai', 'llmsim')),
     base_url TEXT,
     -- Encrypted API key (AES-256-GCM): 12-byte nonce || ciphertext || 16-byte tag
     api_key_encrypted BYTEA,
@@ -237,7 +238,7 @@ CREATE TABLE sessions (
     title VARCHAR(255),
     tags TEXT[] NOT NULL DEFAULT '{}',
     model_id UUID REFERENCES llm_models(id),
-    status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    status VARCHAR(50) NOT NULL DEFAULT 'started' CHECK (status IN ('started', 'active', 'idle')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ
@@ -260,6 +261,10 @@ CREATE TABLE events (
     sequence INTEGER NOT NULL,
     event_type VARCHAR(100) NOT NULL,
     data JSONB NOT NULL DEFAULT '{}',
+    ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    context JSONB NOT NULL DEFAULT '{}',
+    metadata JSONB,
+    tags TEXT[],
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(session_id, sequence)
 );
@@ -267,12 +272,30 @@ CREATE TABLE events (
 CREATE INDEX idx_events_session_id ON events(session_id);
 CREATE INDEX idx_events_session_sequence ON events(session_id, sequence);
 CREATE INDEX idx_events_event_type ON events(event_type);
+CREATE INDEX idx_events_tags ON events USING GIN(tags);
 
--- Partial index for querying message events efficiently
+-- Partial index for message events (user and agent messages only)
 CREATE INDEX idx_events_messages ON events(session_id, sequence)
-WHERE event_type IN ('message.user', 'message.agent', 'message.tool_call', 'message.tool_result');
+WHERE event_type IN ('message.user', 'message.agent');
 
-COMMENT ON INDEX idx_events_messages IS 'Partial index for querying message events efficiently';
+COMMENT ON INDEX idx_events_messages IS 'Partial index for message events (message.user, message.agent)';
+
+-- Partial index for turn lifecycle events
+CREATE INDEX idx_events_turns ON events(session_id, sequence)
+WHERE event_type IN ('turn.started', 'turn.completed', 'turn.failed');
+
+COMMENT ON INDEX idx_events_turns IS 'Partial index for turn lifecycle events';
+
+-- Partial index for tool execution events (includes results)
+CREATE INDEX idx_events_tool_calls ON events(session_id, sequence)
+WHERE event_type IN ('tool.call_started', 'tool.call_completed');
+
+COMMENT ON INDEX idx_events_tool_calls IS 'Partial index for tool execution events with results';
+
+COMMENT ON COLUMN events.ts IS 'Event timestamp (when the event occurred)';
+COMMENT ON COLUMN events.context IS 'Event correlation context (turn_id, input_message_id, exec_id)';
+COMMENT ON COLUMN events.metadata IS 'Arbitrary metadata for the event';
+COMMENT ON COLUMN events.tags IS 'Tags for filtering and categorization';
 
 -- ============================================
 -- Session Files (virtual filesystem)

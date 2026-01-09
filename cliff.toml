@@ -1,0 +1,59 @@
+# git-cliff configuration for changelog generation
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+# Template for the changelog body
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\n") | first | trim }}\
+{% if commit.github.pr_number %} (#{{ commit.github.pr_number }})\
+{% endif %}
+{% endfor %}
+{% endfor %}\n
+"""
+# Remove leading/trailing whitespace
+trim = true
+
+[git]
+# Parse conventional commits
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+
+# Sort commits by newest first
+sort_commits = "newest"
+
+# Commit message parsers for grouping
+commit_parsers = [
+    { message = "^feat", group = "Added" },
+    { message = "^fix", group = "Fixed" },
+    { message = "^refactor", group = "Changed" },
+    { message = "^perf", group = "Performance" },
+    { message = "^docs", group = "Documentation" },
+    # Skip noise
+    { message = "^chore\\(deps\\)", skip = true },
+    { message = "^chore\\(release\\)", skip = true },
+    { message = "^ci", skip = true },
+    { message = "^style", skip = true },
+    { message = "^test", skip = true },
+    { message = "^chore", skip = true },
+]
+
+# Protect breaking changes
+protect_breaking_commits = false
+
+# Link parsers for GitHub integration
+link_parsers = [
+    { pattern = "#(\\d+)", href = "https://github.com/everruns/everruns/pull/$1" },
+    { pattern = "\\(#(\\d+)\\)", text = "(#$1)" },
+]
+
+# Tag pattern for versions
+tag_pattern = "v[0-9].*"
