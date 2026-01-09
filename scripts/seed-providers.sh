@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Seed agents from YAML configuration into the local development database
-# Usage: ./scripts/seed-agents.sh [--api-url URL]
+# Seed LLM providers and models from YAML configuration
+# Usage: ./scripts/seed-providers.sh [--api-url URL]
 #
 # Requires mikefarah/yq (Go version): https://github.com/mikefarah/yq
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-SEED_FILE="$PROJECT_ROOT/harness/seed-agents.yaml"
+SEED_FILE="$PROJECT_ROOT/harness/seed-providers.yaml"
 
 # Load .env file if it exists (for API keys, etc.)
 if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -150,32 +150,6 @@ create_model() {
   echo "$response"
 }
 
-# Get existing agents and return their names
-get_existing_agent_names() {
-  curl -s "$API_URL/v1/agents" | jq -r '.data[].name'
-}
-
-# Check if agent with name already exists
-agent_exists() {
-  local name="$1"
-  local existing_names
-  existing_names=$(get_existing_agent_names)
-
-  echo "$existing_names" | grep -Fxq "$name"
-}
-
-# Create an agent from JSON payload
-create_agent() {
-  local payload="$1"
-  local response
-
-  response=$(curl -s -X POST "$API_URL/v1/agents" \
-    -H "Content-Type: application/json" \
-    -d "$payload")
-
-  echo "$response"
-}
-
 # Seed providers from YAML file
 seed_providers() {
   if [[ ! -f "$SEED_FILE" ]]; then
@@ -183,7 +157,7 @@ seed_providers() {
     exit 1
   fi
 
-  echo "📖 Reading seed providers from $SEED_FILE"
+  echo "📖 Reading providers from $SEED_FILE"
 
   # Get number of providers in YAML
   local provider_count
@@ -349,96 +323,9 @@ seed_models_for_provider() {
   done
 }
 
-# Seed agents from YAML file
-seed_agents() {
-  if [[ ! -f "$SEED_FILE" ]]; then
-    echo "❌ Seed file not found: $SEED_FILE"
-    exit 1
-  fi
-
-  echo "📖 Reading seed agents from $SEED_FILE"
-
-  # Get number of agents in YAML (mikefarah/yq syntax)
-  local agent_count
-  agent_count=$(yq '.agents | length' "$SEED_FILE")
-
-  if [[ "$agent_count" -eq 0 ]]; then
-    echo "   No agents defined in seed file"
-    return 0
-  fi
-
-  echo "   Found $agent_count agent(s) to seed"
-
-  local created=0
-  local skipped=0
-
-  # Process each agent
-  for i in $(seq 0 $((agent_count - 1))); do
-    local name
-    local description
-    local system_prompt
-    local tags
-    local capabilities
-
-    # Extract agent fields using mikefarah/yq syntax
-    name=$(yq ".agents[$i].name" "$SEED_FILE")
-    description=$(yq ".agents[$i].description // \"\"" "$SEED_FILE")
-    system_prompt=$(yq ".agents[$i].system_prompt" "$SEED_FILE")
-    tags=$(yq -o=json -I=0 ".agents[$i].tags // []" "$SEED_FILE")
-    capabilities=$(yq -o=json -I=0 ".agents[$i].capabilities // []" "$SEED_FILE")
-
-    # Check if agent already exists (idempotent seeding)
-    if agent_exists "$name"; then
-      echo "   ⏭️  Skipping '$name' (already exists)"
-      skipped=$((skipped + 1))
-      continue
-    fi
-
-    # Build create payload with capabilities
-    local payload
-    payload=$(jq -n \
-      --arg name "$name" \
-      --arg description "$description" \
-      --arg system_prompt "$system_prompt" \
-      --argjson tags "$tags" \
-      --argjson capabilities "$capabilities" \
-      '{
-        name: $name,
-        system_prompt: $system_prompt,
-        tags: $tags,
-        capabilities: $capabilities
-      } + (if $description != "" then {description: $description} else {} end)'
-    )
-
-    # Create the agent
-    echo "   🌱 Creating agent '$name'..."
-    local response
-    response=$(create_agent "$payload")
-
-    local agent_id
-    agent_id=$(echo "$response" | jq -r '.id // empty')
-
-    if [[ -z "$agent_id" ]]; then
-      echo "      ❌ Failed to create agent: $response"
-      continue
-    fi
-
-    if [[ "$capabilities" != "[]" && "$capabilities" != "null" ]]; then
-      echo "      ✅ Created with capabilities: $capabilities"
-    else
-      echo "      ✅ Created (no capabilities)"
-    fi
-
-    created=$((created + 1))
-  done
-
-  echo ""
-  echo "📊 Seeding complete: $created created, $skipped skipped"
-}
-
 # Main execution
 main() {
-  echo "🌱 Seeding development database..."
+  echo "🌱 Seeding LLM providers and models..."
   echo ""
 
   check_tools
@@ -446,9 +333,6 @@ main() {
 
   echo ""
   seed_providers
-
-  echo ""
-  seed_agents
 
   echo ""
   echo "✅ Done!"

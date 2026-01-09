@@ -181,8 +181,8 @@ case "$command" in
     ;;
 
   seed)
-    # Run the full seed-agents.sh script (providers, models, agents)
-    exec "$PROJECT_ROOT/scripts/seed-agents.sh" "$@"
+    # Run seed-providers.sh script (providers and models only)
+    exec "$PROJECT_ROOT/scripts/seed-providers.sh" "$@"
     ;;
 
   build)
@@ -385,10 +385,10 @@ case "$command" in
       sleep 2
     done
 
-    # Seed LLM providers, models, and agents from YAML
-    echo "5️⃣  Seeding database (providers, models, agents)..."
-    if "$PROJECT_ROOT/scripts/seed-agents.sh" 2>/dev/null; then
-      echo "   ✅ Database seeded"
+    # Seed LLM providers and models from YAML
+    echo "5️⃣  Seeding LLM providers and models..."
+    if "$PROJECT_ROOT/scripts/seed-providers.sh" 2>/dev/null; then
+      echo "   ✅ Providers and models seeded"
     else
       echo "   ⚠️  Seeding failed (yq may not be installed - run: brew install yq)"
     fi

@@ -1,0 +1,64 @@
+# LLM Providers and Models Seed Configuration
+# Providers defined here will be seeded into the local development database.
+# Seeding is idempotent - items with matching names will be skipped.
+#
+# Provider Schema:
+#   name: string (required) - Provider display name
+#   provider_type: string (required) - openai, anthropic, azure_openai
+#   api_key_env: string (optional) - Environment variable name for API key
+#   is_default: boolean (optional) - Set as default provider
+#   models: array (optional) - Models to create under this provider
+#     - model_id: string (required) - Model identifier (e.g., "gpt-4o")
+#       display_name: string (required) - Display name
+#       is_default: boolean (optional) - Set as default model
+
+providers:
+  - name: "OpenAI"
+    provider_type: "openai"
+    api_key_env: "OPENAI_API_KEY"
+    is_default: true
+    models:
+      # GPT-5.2 models (latest, supports xhigh reasoning)
+      - model_id: "gpt-5.2"
+        display_name: "GPT-5.2"
+        is_default: true
+      - model_id: "gpt-5.2-pro"
+        display_name: "GPT-5.2 Pro"
+      - model_id: "gpt-5.2-codex"
+        display_name: "GPT-5.2 Codex"
+      # GPT-5.1 models (default none reasoning, supports none/low/medium/high)
+      - model_id: "gpt-5.1"
+        display_name: "GPT-5.1"
+      - model_id: "gpt-5.1-codex"
+        display_name: "GPT-5.1 Codex"
+      - model_id: "gpt-5.1-codex-mini"
+        display_name: "GPT-5.1 Codex mini"
+      - model_id: "gpt-5.1-codex-max"
+        display_name: "GPT-5.1 Codex max"
+      # GPT-5 models (default medium reasoning, supports low/medium/high)
+      - model_id: "gpt-5"
+        display_name: "GPT-5"
+      - model_id: "gpt-5-mini"
+        display_name: "GPT-5 mini"
+      - model_id: "gpt-5-nano"
+        display_name: "GPT-5 nano"
+      - model_id: "gpt-5-pro"
+        display_name: "GPT-5 Pro"
+      - model_id: "gpt-5-codex"
+        display_name: "GPT-5 Codex"
+      # GPT-4 and reasoning models
+      - model_id: "gpt-4o"
+        display_name: "GPT-4o"
+      - model_id: "gpt-4o-mini"
+        display_name: "GPT-4o Mini"
+
+  - name: "Anthropic"
+    provider_type: "anthropic"
+    api_key_env: "ANTHROPIC_API_KEY"
+    is_default: false
+    models:
+      - model_id: "claude-sonnet-4-20250514"
+        display_name: "Claude Sonnet 4"
+        is_default: true
+      - model_id: "claude-3-5-haiku-20241022"
+        display_name: "Claude 3.5 Haiku"
