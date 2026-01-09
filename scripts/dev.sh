@@ -393,8 +393,16 @@ case "$command" in
       echo "   ⚠️  Seeding failed (yq may not be installed - run: brew install yq)"
     fi
 
+    # Upload seed agents from markdown files
+    echo "6️⃣  Uploading seed agents..."
+    if "$0" upload-agents 2>/dev/null; then
+      echo "   ✅ Seed agents uploaded"
+    else
+      echo "   ⚠️  Agent upload failed"
+    fi
+
     # Start Worker in background with auto-reload (Temporal mode)
-    echo "6️⃣  Starting Temporal worker with auto-reload..."
+    echo "7️⃣  Starting Temporal worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
@@ -402,7 +410,7 @@ case "$command" in
     echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
     # Start UI in background
-    echo "7️⃣  Starting UI server..."
+    echo "8️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
