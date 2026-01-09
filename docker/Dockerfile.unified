@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.4
 #
 # Unified multi-target Dockerfile for everruns services
-# Builds both api and worker in a single build with shared dependency cache
+# Builds both control-plane and worker in a single build with shared dependency cache
+# Supports cross-compilation for ARM64 builds
 #
 # Usage:
 #   docker build --target control-plane -f docker/Dockerfile.unified -t everruns-control-plane .
@@ -9,17 +10,31 @@
 
 # ============================================================================
 # Stage 1: Chef - Prepare cargo-chef for dependency caching
+# Uses BUILDPLATFORM to run on host architecture for cross-compilation
 # ============================================================================
-FROM rust:1.92-slim-bookworm AS chef
+FROM --platform=$BUILDPLATFORM rust:1.92-slim-bookworm AS chef
+
+# Install xx for cross-compilation support
+COPY --from=tonistiigi/xx / /
+
+ARG TARGETPLATFORM
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
-    libssl-dev \
+    clang \
+    lld \
     curl \
     protobuf-compiler \
+    && xx-apt-get install -y \
+    gcc \
+    libc6-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rustup component add rustfmt
+
+# Add target for cross-compilation
+RUN xx-cargo --setup-target-triple
 
 RUN cargo install cargo-chef --locked
 
@@ -40,29 +55,37 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ============================================================================
 FROM chef AS deps
 
+ARG TARGETPLATFORM
+
 # Copy recipe and build dependencies first (this layer is cached!)
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN xx-cargo chef cook --release --recipe-path recipe.json
 
 # ============================================================================
-# Stage 4a: Build API binary
+# Stage 4a: Build Control-Plane binary
 # ============================================================================
-FROM deps AS builder-api
+FROM deps AS builder-control-plane
+
+ARG TARGETPLATFORM
 
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-RUN cargo build --release -p everruns-control-plane
+RUN xx-cargo build --release -p everruns-control-plane && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-control-plane /app/everruns-control-plane
 
 # ============================================================================
 # Stage 4b: Build Worker binary
 # ============================================================================
 FROM deps AS builder-worker
 
+ARG TARGETPLATFORM
+
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-RUN cargo build --release -p everruns-worker
+RUN xx-cargo build --release -p everruns-worker && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker
 
 # ============================================================================
 # Stage 5a: Control-Plane Runtime image (distroless for minimal size and security)
@@ -71,7 +94,7 @@ FROM gcr.io/distroless/cc-debian12 AS control-plane
 
 WORKDIR /app
 
-COPY --from=builder-api /app/target/release/everruns-control-plane /app/everruns-control-plane
+COPY --from=builder-control-plane /app/everruns-control-plane /app/everruns-control-plane
 
 EXPOSE 9000
 EXPOSE 9001
@@ -89,7 +112,7 @@ FROM gcr.io/distroless/cc-debian12 AS worker
 
 WORKDIR /app
 
-COPY --from=builder-worker /app/target/release/everruns-worker /app/everruns-worker
+COPY --from=builder-worker /app/everruns-worker /app/everruns-worker
 
 ENV RUST_LOG=info
 
@@ -100,11 +123,14 @@ CMD ["/app/everruns-worker"]
 # ============================================================================
 FROM deps AS builder-admin
 
+ARG TARGETPLATFORM
+
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
 # Build the reencrypt-secrets binary and install sqlx-cli with TLS support (rustls)
-RUN cargo build --release --bin reencrypt-secrets && \
+RUN xx-cargo build --release --bin reencrypt-secrets && \
+    cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
     cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
 # ============================================================================
@@ -133,11 +159,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy sqlx-cli from builder
+# Copy sqlx-cli from builder (host architecture, runs via script)
 COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 
 # Copy the reencrypt-secrets binary
-COPY --from=builder-admin /app/target/release/reencrypt-secrets /app/reencrypt-secrets
+COPY --from=builder-admin /app/reencrypt-secrets /app/reencrypt-secrets
 
 # Copy migrations
 COPY crates/control-plane/migrations /app/migrations
