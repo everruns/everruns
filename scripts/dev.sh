@@ -281,6 +281,108 @@ case "$command" in
     echo "✅ Docs dependencies installed!"
     ;;
 
+  start-dev)
+    echo "🚀 Starting Everruns in DEV MODE (in-memory storage, no database required)..."
+    echo ""
+
+    # Required tool checks
+    require_command() {
+      local cmd="$1"
+      local hint="$2"
+
+      if ! command -v "$cmd" &> /dev/null; then
+        echo "❌ $cmd not installed. $hint"
+        exit 1
+      fi
+    }
+
+    ensure_protoc || exit 1
+    require_command cargo-watch "Run: ./scripts/dev.sh init"
+    require_command npm "Install Node.js/npm to start the UI (see README.md)."
+
+    # Track child PIDs for cleanup
+    CHILD_PIDS=()
+
+    # Cleanup function to kill child processes on exit
+    cleanup() {
+      echo ""
+      echo "🛑 Stopping services..."
+      for pid in "${CHILD_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+          kill "$pid" 2>/dev/null || true
+        fi
+      done
+      pkill -f "cargo-watch" 2>/dev/null || true
+      pkill -f "everruns-control-plane" 2>/dev/null || true
+      pkill -f "next dev" 2>/dev/null || true
+      echo "✅ Services stopped"
+      exit 0
+    }
+
+    trap cleanup SIGINT SIGTERM
+
+    # Enable dev mode
+    export DEV_MODE=true
+    export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
+
+    # Start API in background with auto-reload (dev mode)
+    echo "1️⃣  Starting API server (DEV MODE) with auto-reload..."
+    cargo watch -w crates -x 'run -p everruns-control-plane' &
+    API_PID=$!
+    CHILD_PIDS+=("$API_PID")
+    sleep 3
+
+    # Check if API is running
+    if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+      echo "   ✅ API is running (PID: $API_PID)"
+    else
+      echo "   ⚠️  API compiling (will auto-reload on changes)..."
+    fi
+
+    # Wait for API to be ready
+    echo "2️⃣  Waiting for API to be ready..."
+    for i in {1..30}; do
+      if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+        echo "   ✅ API is ready"
+        break
+      fi
+      sleep 2
+    done
+
+    # Note: Worker is NOT started in dev mode (execution happens in-process)
+    echo "3️⃣  Worker: Not needed in DEV MODE (execution happens in-process)"
+
+    # Start UI in background
+    echo "4️⃣  Starting UI server..."
+    cd apps/ui
+    npm run dev &
+    UI_PID=$!
+    CHILD_PIDS+=("$UI_PID")
+    cd "$PROJECT_ROOT"
+    sleep 5
+    echo "   ✅ UI is starting (PID: $UI_PID)"
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "✅ DEV MODE started (in-memory storage)!"
+    echo ""
+    echo "   🌐 API:         http://localhost:9000 (auto-reload)"
+    echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
+    echo "   🖥️  UI:          http://localhost:9100 (hot reload)"
+    echo ""
+    echo "⚠️  DEV MODE limitations:"
+    echo "   - Data is stored in memory (lost on restart)"
+    echo "   - No PostgreSQL or Docker required"
+    echo "   - No separate worker process"
+    echo ""
+    echo "👀 Edit code in crates/ and services will auto-restart"
+    echo "💡 Press Ctrl+C to stop services"
+    echo ""
+
+    # Wait for processes
+    wait
+    ;;
+
   start-all)
     echo "🚀 Starting Everruns development environment..."
     echo ""
@@ -663,6 +765,7 @@ Commands:
   init        Install all development dependencies (Rust tools + UI + Docs)
   start       Start Docker services (Postgres, Jaeger)
   stop        Stop Docker services
+  start-dev   Start in DEV MODE (in-memory storage, no Docker/PostgreSQL required)
   start-all   Start everything with auto-reload (Docker, API, Worker, UI)
   stop-all    Stop all services (API, UI, Docker)
   reset       Stop and remove all Docker volumes
@@ -688,7 +791,8 @@ Commands:
 
 Examples:
   $0 init                  # First-time setup (install all dependencies)
-  $0 start-all             # Start everything with auto-reload
+  $0 start-dev             # Start DEV MODE (no Docker/PostgreSQL needed)
+  $0 start-all             # Start everything with auto-reload (requires PostgreSQL)
   $0 pre-pr                # Run all checks before creating a PR
   $0 watch-api             # Just run API with auto-reload
   $0 docs                  # Start docs dev server
