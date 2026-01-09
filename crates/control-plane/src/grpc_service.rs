@@ -9,7 +9,7 @@ use everruns_control_plane::services::{
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
     AgentService, EventService, LlmResolverService, SessionFileService, SessionService,
 };
-use everruns_control_plane::storage::{Database, EncryptionService};
+use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_durable::{
     ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome,
     WorkflowError, WorkflowEventStore, WorkflowStatus,
@@ -57,7 +57,7 @@ pub struct WorkerServiceImpl {
 impl WorkerServiceImpl {
     pub fn new(
         event_service: EventService,
-        db: Arc<Database>,
+        db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
     ) -> Self {
         let agent_service = AgentService::new(db.clone());
@@ -65,8 +65,11 @@ impl WorkerServiceImpl {
         let session_file_service = SessionFileService::new(db.clone());
         let llm_resolver_service = LlmResolverService::new(db.clone(), encryption);
 
-        // Create durable store using the same pool
-        let durable_store = Some(Arc::new(PostgresWorkflowEventStore::new(db.pool().clone())));
+        // Create durable store using the pool if available (PostgreSQL mode only)
+        // In dev mode (in-memory), durable execution is handled differently
+        let durable_store = db
+            .pool()
+            .map(|pool| Arc::new(PostgresWorkflowEventStore::new(pool.clone())));
 
         Self {
             event_service,

@@ -5,19 +5,19 @@
 //
 // Note: Agent-specific capability management is handled by AgentService.
 
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::{CapabilityId, CapabilityInfo};
 use std::sync::Arc;
 
 pub struct CapabilityService {
     #[allow(dead_code)]
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
     registry: CapabilityRegistry,
 }
 
 impl CapabilityService {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             db,
             registry: CapabilityRegistry::with_builtins(),

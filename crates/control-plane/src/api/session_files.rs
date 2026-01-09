@@ -13,7 +13,7 @@
 // Note: Paths starting with "_" are reserved for actions and cannot be
 // used for file creation or updates.
 
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -136,7 +136,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             file_service: Arc::new(SessionFileService::new(db)),
         }

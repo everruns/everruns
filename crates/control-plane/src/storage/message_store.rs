@@ -17,7 +17,7 @@ use everruns_core::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::repositories::Database;
+use super::StorageBackend;
 use crate::EventService;
 
 // ============================================================================
@@ -30,13 +30,13 @@ use crate::EventService;
 /// Used by activities to load/store messages during workflow execution.
 #[derive(Clone)]
 pub struct DbMessageStore {
-    db: Database,
+    db: Arc<StorageBackend>,
     event_service: EventService,
 }
 
 impl DbMessageStore {
-    pub fn new(db: Database) -> Self {
-        let event_service = EventService::new(Arc::new(db.clone()));
+    pub fn new(db: Arc<StorageBackend>) -> Self {
+        let event_service = EventService::new(db.clone());
         Self { db, event_service }
     }
 }
@@ -209,7 +209,7 @@ fn tool_call_to_message(data: ToolCallCompletedData) -> Message {
 // ============================================================================
 
 /// Create a database-backed message store
-pub fn create_db_message_store(db: Database) -> DbMessageStore {
+pub fn create_db_message_store(db: Arc<StorageBackend>) -> DbMessageStore {
     DbMessageStore::new(db)
 }
 

@@ -2,7 +2,7 @@
 
 use crate::storage::{
     models::{CreateSessionRow, UpdateSession},
-    Database,
+    StorageBackend,
 };
 use anyhow::Result;
 use everruns_core::{Session, SessionStatus};
@@ -12,11 +12,11 @@ use uuid::Uuid;
 use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
 
 pub struct SessionService {
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
 }
 
 impl SessionService {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
     }
 

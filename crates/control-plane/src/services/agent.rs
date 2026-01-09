@@ -6,7 +6,7 @@
 
 use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
-    AgentRow, Database,
+    AgentRow, StorageBackend,
 };
 use anyhow::Result;
 use everruns_core::{Agent, AgentStatus, CapabilityId};
@@ -16,11 +16,11 @@ use uuid::Uuid;
 use crate::api::agents::{CreateAgentRequest, UpdateAgentRequest};
 
 pub struct AgentService {
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
 }
 
 impl AgentService {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
     }
 

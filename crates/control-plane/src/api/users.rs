@@ -1,7 +1,7 @@
 // Users API routes
 // Decision: Expose user listing for admin settings page (member management)
 
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -20,7 +20,7 @@ use crate::auth::middleware::{AuthState, AuthUser, FromRef};
 /// App state for users routes
 #[derive(Clone)]
 pub struct UsersState {
-    pub db: Arc<Database>,
+    pub db: Arc<StorageBackend>,
     pub auth: AuthState,
 }
 

@@ -1,6 +1,6 @@
 // LLM Provider API endpoints
 
-use crate::storage::{Database, EncryptionService};
+use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -23,7 +23,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
         Self {
             service: Arc::new(LlmProviderService::new(db, encryption)),
         }

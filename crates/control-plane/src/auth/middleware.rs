@@ -18,7 +18,7 @@ use super::{
     config::{AuthConfig, AuthMode},
     jwt::JwtService,
 };
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 
 /// Authentication error
 #[derive(Debug, Clone, Serialize)]
@@ -107,11 +107,11 @@ pub enum AuthMethod {
 pub struct AuthState {
     pub config: AuthConfig,
     pub jwt_service: Arc<JwtService>,
-    pub db: Arc<Database>,
+    pub db: Arc<StorageBackend>,
 }
 
 impl AuthState {
-    pub fn new(config: AuthConfig, db: Arc<Database>) -> Self {
+    pub fn new(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone()));
         Self {
             config,

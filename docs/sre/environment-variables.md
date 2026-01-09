@@ -3,6 +3,39 @@ title: Environment Variables
 description: Configuration environment variables for Everruns
 ---
 
+## DEV_MODE
+
+Enable development mode with in-memory storage. No PostgreSQL required.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `false` |
+
+**Example:**
+
+```bash
+# Start in dev mode (no database required)
+DEV_MODE=true ./target/debug/everruns-api
+
+# Or with 1
+DEV_MODE=1 ./target/debug/everruns-api
+```
+
+**Notes:**
+- When enabled, uses in-memory storage instead of PostgreSQL
+- All data is lost when the server stops
+- gRPC server and worker communication are disabled
+- Stale task reclamation is disabled
+- Useful for quick local development and testing
+- Not suitable for production or multi-instance deployments
+
+**Limitations in dev mode:**
+- No persistence (data is lost on restart)
+- No worker support (all execution happens in-process)
+- No distributed tracing of worker activities
+- Single-instance only
+
 ## API_PREFIX
 
 Optional prefix for all API routes.

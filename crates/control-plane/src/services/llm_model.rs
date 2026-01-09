@@ -2,7 +2,7 @@
 
 use crate::storage::{
     models::{CreateLlmModelRow, LlmModelRow, LlmModelWithProviderRow, UpdateLlmModel},
-    Database,
+    StorageBackend,
 };
 use anyhow::Result;
 use everruns_core::{
@@ -14,11 +14,11 @@ use uuid::Uuid;
 use crate::api::llm_models::{CreateLlmModelRequest, UpdateLlmModelRequest};
 
 pub struct LlmModelService {
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
 }
 
 impl LlmModelService {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
     }
 

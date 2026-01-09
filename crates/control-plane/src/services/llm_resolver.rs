@@ -3,7 +3,7 @@
 // This service handles the resolution of LLM models with their provider credentials,
 // including API key decryption. Used by gRPC service for worker communication.
 
-use crate::storage::{Database, EncryptionService};
+use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::{anyhow, Result};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -25,12 +25,12 @@ pub struct ResolvedModel {
 }
 
 pub struct LlmResolverService {
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
 }
 
 impl LlmResolverService {
-    pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
         Self { db, encryption }
     }
 

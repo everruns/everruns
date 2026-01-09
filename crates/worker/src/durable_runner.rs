@@ -14,7 +14,9 @@ use uuid::Uuid;
 
 use crate::grpc_durable_store::{GrpcDurableStore, WorkflowStatus};
 use crate::runner::AgentRunner;
-use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
+use everruns_durable::{
+    InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
+};
 
 // =============================================================================
 // TurnWorkflow Input/Output
@@ -206,6 +208,98 @@ impl DurableStoreBackend for DirectDurableStore {
     }
 }
 
+// =============================================================================
+// InMemoryDurableStore - wraps InMemoryWorkflowEventStore for dev mode
+// =============================================================================
+
+/// In-memory store for dev mode (no PostgreSQL required)
+pub struct InMemoryDurableStore {
+    store: Arc<InMemoryWorkflowEventStore>,
+}
+
+impl InMemoryDurableStore {
+    pub fn new() -> Self {
+        Self {
+            store: Arc::new(InMemoryWorkflowEventStore::new()),
+        }
+    }
+
+    /// Get a reference to the underlying store (for sharing between components)
+    pub fn store(&self) -> Arc<InMemoryWorkflowEventStore> {
+        Arc::clone(&self.store)
+    }
+}
+
+impl Default for InMemoryDurableStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl DurableStoreBackend for InMemoryDurableStore {
+    async fn get_workflow_status(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
+        let info = self.store.get_workflow_info(workflow_id).await?;
+        Ok((
+            durable_to_local_status(info.status),
+            info.result,
+            info.error.map(|e| format!("{:?}", e)),
+        ))
+    }
+
+    async fn create_workflow(
+        &mut self,
+        workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+    ) -> Result<Uuid> {
+        self.store
+            .create_workflow(workflow_id, workflow_type, input, None)
+            .await?;
+        Ok(workflow_id)
+    }
+
+    async fn update_workflow_status(
+        &mut self,
+        workflow_id: Uuid,
+        status: WorkflowStatus,
+        output: Option<serde_json::Value>,
+        error: Option<String>,
+    ) -> Result<()> {
+        let durable_status = local_to_durable_status(status);
+        let durable_error = error.map(everruns_durable::WorkflowError::new);
+        self.store
+            .update_workflow_status(workflow_id, durable_status, output, durable_error)
+            .await?;
+        Ok(())
+    }
+
+    async fn enqueue_task(
+        &mut self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+    ) -> Result<Uuid> {
+        let task = everruns_durable::TaskDefinition {
+            workflow_id,
+            activity_id,
+            activity_type,
+            input,
+            options: everruns_durable::ActivityOptions::default(),
+        };
+        self.store.enqueue_task(task).await.map_err(Into::into)
+    }
+
+    async fn count_active_workflows(&mut self) -> Result<usize> {
+        // In-memory store doesn't have count_active_workflows, return workflow count
+        Ok(self.store.workflow_count())
+    }
+}
+
 fn durable_to_local_status(s: everruns_durable::WorkflowStatus) -> WorkflowStatus {
     match s {
         everruns_durable::WorkflowStatus::Pending => WorkflowStatus::Pending,
@@ -264,6 +358,18 @@ impl DurableRunner {
         info!("Initializing Durable execution engine runner (direct DB mode)");
 
         let store = DirectDurableStore::new(pool);
+
+        Self {
+            store: Arc::new(Mutex::new(store)),
+        }
+    }
+
+    /// Create a new durable runner with in-memory storage
+    /// Used by the control-plane in dev mode (no PostgreSQL required)
+    pub fn new_in_memory() -> Self {
+        info!("Initializing Durable execution engine runner (in-memory dev mode)");
+
+        let store = InMemoryDurableStore::new();
 
         Self {
             store: Arc::new(Mutex::new(store)),
