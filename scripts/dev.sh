@@ -116,13 +116,20 @@ case "$command" in
     API_URL="${API_URL:-http://localhost:9000}"
     EXAMPLES_DIR="$PROJECT_ROOT/examples/agents"
 
-    # Agents to upload (subset of available agents)
+    # Agents to upload (core demo agents)
     SEED_AGENTS=("dad-jokes-agent" "research-agent")
 
     # Check API is healthy
     if ! curl -s "$API_URL/health" > /dev/null 2>&1; then
       echo "❌ API not reachable at $API_URL"
       echo "   Start the API first: ./scripts/dev.sh api"
+      exit 1
+    fi
+
+    # Check for jq (needed to parse agent names)
+    if ! command -v jq &> /dev/null; then
+      echo "❌ jq is required but not installed"
+      echo "   Install with: apt-get install jq (or brew install jq)"
       exit 1
     fi
 
@@ -137,22 +144,35 @@ case "$command" in
       CLI_PATH="$PROJECT_ROOT/target/release/everruns"
     fi
 
-    # Upload specified agents
+    # Get existing agent names to prevent duplicates
+    existing_agents=$(curl -s "$API_URL/v1/agents" | jq -r '.data[].name' 2>/dev/null || echo "")
+
+    # Upload specified agents (skip if already exists by name)
     uploaded=0
     skipped=0
     for agent_name in "${SEED_AGENTS[@]}"; do
       agent_file="$EXAMPLES_DIR/${agent_name}.md"
-      if [[ -f "$agent_file" ]]; then
-        echo "   🌱 Uploading $agent_name..."
-        if $CLI_PATH --api-url "$API_URL" agents create --file "$agent_file" --quiet 2>/dev/null; then
-          echo "      ✅ Created"
-          uploaded=$((uploaded + 1))
-        else
-          echo "      ⏭️  Skipped (may already exist)"
-          skipped=$((skipped + 1))
-        fi
-      else
+      if [[ ! -f "$agent_file" ]]; then
         echo "   ⚠️  Agent file not found: $agent_file"
+        continue
+      fi
+
+      # Extract display name from markdown front matter
+      display_name=$(grep -A1 "^---" "$agent_file" | grep "^name:" | sed 's/name:[[:space:]]*"\?\([^"]*\)"\?/\1/' | tr -d '"')
+
+      # Check if agent with this name already exists
+      if echo "$existing_agents" | grep -Fxq "$display_name"; then
+        echo "   ⏭️  Skipping '$display_name' (already exists)"
+        skipped=$((skipped + 1))
+        continue
+      fi
+
+      echo "   🌱 Creating '$display_name'..."
+      if $CLI_PATH --api-url "$API_URL" agents create --file "$agent_file" --quiet 2>/dev/null; then
+        echo "      ✅ Created"
+        uploaded=$((uploaded + 1))
+      else
+        echo "      ❌ Failed to create"
       fi
     done
 
