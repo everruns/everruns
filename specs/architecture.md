@@ -87,6 +87,9 @@ graph TD
    - Decision: Using PostgreSQL 17 because PostgreSQL 18 is not yet available on managed services like AWS Aurora RDS. This is temporary; we will migrate to PostgreSQL 18 with native uuidv7() when it becomes widely available.
 2. **UUID Strategy**: All IDs use UUID v7 (time-ordered, better indexing, naturally sortable)
 3. **Migrations**: Managed via sqlx-cli in `crates/control-plane/migrations/`
+   - `001_base_schema.sql` - Core tables (agents, sessions, events, etc.)
+   - `002_durable_execution.sql` - Durable execution engine tables
+   - `003_default_providers.sql` - Default LLM providers (OpenAI, Anthropic) and models
 
 ### Execution Layer
 

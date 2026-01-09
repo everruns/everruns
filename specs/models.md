@@ -333,6 +333,17 @@ Configuration for LLM API providers. Stores encrypted API keys and provider-spec
 
 **Note:** Ollama and Custom provider types are no longer supported. All LLM provider API keys must be configured in the database (via Settings > Providers UI) - they are not read from environment variables.
 
+**Default Providers:**
+
+Default providers (OpenAI, Anthropic) and their models are created via database migration (`003_default_providers.sql`) on first startup. These providers have well-known UUIDs:
+
+- OpenAI: `01933b5a-0000-7000-8000-000000000001`
+- Anthropic: `01933b5a-0000-7000-8000-000000000002`
+
+API keys can be set via:
+1. The Settings > Providers UI
+2. The `scripts/patch-provider-keys.sh` script (reads from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` env vars)
+
 ### LLM Model
 
 Configuration for a specific model within a provider.

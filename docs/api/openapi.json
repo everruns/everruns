@@ -1,5 +1,3 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.50s
-     Running `/home/user/everruns/target/debug/export-openapi`
 {
   "openapi": "3.1.0",
   "info": {
@@ -1463,9 +1461,6 @@
           "204": {
             "description": "Model deleted"
           },
-          "403": {
-            "description": "Cannot delete read-only model"
-          },
           "404": {
             "description": "Model not found"
           }
@@ -1509,9 +1504,6 @@
                 }
               }
             }
-          },
-          "403": {
-            "description": "Cannot modify read-only model"
           },
           "404": {
             "description": "Model not found"
@@ -1632,9 +1624,6 @@
           "204": {
             "description": "Provider deleted"
           },
-          "403": {
-            "description": "Cannot delete read-only provider"
-          },
           "404": {
             "description": "Provider not found"
           }
@@ -1678,9 +1667,6 @@
                 }
               }
             }
-          },
-          "403": {
-            "description": "Cannot modify read-only provider"
           },
           "404": {
             "description": "Provider not found"
@@ -1764,9 +1750,6 @@
           },
           "400": {
             "description": "Invalid request"
-          },
-          "403": {
-            "description": "Cannot add models to read-only provider"
           },
           "500": {
             "description": "Internal error"
@@ -3210,10 +3193,6 @@
                 "provider_type": {
                   "$ref": "#/components/schemas/LlmProviderType"
                 },
-                "readonly": {
-                  "type": "boolean",
-                  "description": "Whether this provider is read-only (from config file, cannot be modified via API)"
-                },
                 "status": {
                   "$ref": "#/components/schemas/LlmProviderStatus"
                 },
@@ -3618,10 +3597,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "readonly": {
-            "type": "boolean",
-            "description": "Whether this model is read-only (from config file, cannot be modified via API)"
-          },
           "status": {
             "$ref": "#/components/schemas/LlmModelStatus"
           },
@@ -3885,10 +3860,6 @@
           "provider_type": {
             "$ref": "#/components/schemas/LlmProviderType"
           },
-          "readonly": {
-            "type": "boolean",
-            "description": "Whether this model is read-only (from config file, cannot be modified via API)"
-          },
           "status": {
             "$ref": "#/components/schemas/LlmModelStatus"
           },
@@ -3934,10 +3905,6 @@
           },
           "provider_type": {
             "$ref": "#/components/schemas/LlmProviderType"
-          },
-          "readonly": {
-            "type": "boolean",
-            "description": "Whether this provider is read-only (from config file, cannot be modified via API)"
           },
           "status": {
             "$ref": "#/components/schemas/LlmProviderStatus"

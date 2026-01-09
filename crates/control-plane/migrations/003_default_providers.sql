@@ -27,6 +27,6 @@ ON CONFLICT DO NOTHING;
 
 -- Anthropic Models
 INSERT INTO llm_models (provider_id, model_id, display_name, is_default, status) VALUES
-    ('01933b5a-0000-7000-8000-000000000002', 'claude-sonnet-4-20250514', 'Claude Sonnet 4', TRUE, 'active'),
+    ('01933b5a-0000-7000-8000-000000000002', 'claude-sonnet-4-20250514', 'Claude Sonnet 4', FALSE, 'active'),
     ('01933b5a-0000-7000-8000-000000000002', 'claude-3-5-haiku-20241022', 'Claude 3.5 Haiku', FALSE, 'active')
 ON CONFLICT DO NOTHING;
