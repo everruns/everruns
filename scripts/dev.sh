@@ -111,9 +111,73 @@ case "$command" in
     echo "✅ Migrations complete!"
     ;;
 
-  seed)
-    echo "🌱 Seeding development database..."
-    "$SCRIPT_DIR/seed-agents.sh"
+  upload-agents)
+    echo "📤 Uploading seed agents..."
+    API_URL="${API_URL:-http://localhost:9000}"
+    EXAMPLES_DIR="$PROJECT_ROOT/examples/agents"
+
+    # Agents to upload (core demo agents)
+    SEED_AGENTS=("dad-jokes-agent" "research-agent")
+
+    # Check API is healthy
+    if ! curl -s "$API_URL/health" > /dev/null 2>&1; then
+      echo "❌ API not reachable at $API_URL"
+      echo "   Start the API first: ./scripts/dev.sh api"
+      exit 1
+    fi
+
+    # Check for jq (needed to parse agent names)
+    if ! command -v jq &> /dev/null; then
+      echo "❌ jq is required but not installed"
+      echo "   Install with: apt-get install jq (or brew install jq)"
+      exit 1
+    fi
+
+    # Build CLI if needed
+    if [[ -f "$PROJECT_ROOT/target/release/everruns" ]]; then
+      CLI_PATH="$PROJECT_ROOT/target/release/everruns"
+    elif [[ -f "$PROJECT_ROOT/target/debug/everruns" ]]; then
+      CLI_PATH="$PROJECT_ROOT/target/debug/everruns"
+    else
+      echo "📦 Building everruns CLI..."
+      cargo build -p everruns-cli --release
+      CLI_PATH="$PROJECT_ROOT/target/release/everruns"
+    fi
+
+    # Get existing agent names to prevent duplicates
+    existing_agents=$(curl -s "$API_URL/v1/agents" | jq -r '.data[].name' 2>/dev/null || echo "")
+
+    # Upload specified agents (skip if already exists by name)
+    uploaded=0
+    skipped=0
+    for agent_name in "${SEED_AGENTS[@]}"; do
+      agent_file="$EXAMPLES_DIR/${agent_name}.md"
+      if [[ ! -f "$agent_file" ]]; then
+        echo "   ⚠️  Agent file not found: $agent_file"
+        continue
+      fi
+
+      # Extract display name from markdown front matter
+      display_name=$(grep -A1 "^---" "$agent_file" | grep "^name:" | sed 's/name:[[:space:]]*"\?\([^"]*\)"\?/\1/' | tr -d '"')
+
+      # Check if agent with this name already exists
+      if echo "$existing_agents" | grep -Fxq "$display_name"; then
+        echo "   ⏭️  Skipping '$display_name' (already exists)"
+        skipped=$((skipped + 1))
+        continue
+      fi
+
+      echo "   🌱 Creating '$display_name'..."
+      if $CLI_PATH --api-url "$API_URL" agents create --file "$agent_file" --quiet 2>/dev/null; then
+        echo "      ✅ Created"
+        uploaded=$((uploaded + 1))
+      else
+        echo "      ❌ Failed to create"
+      fi
+    done
+
+    echo ""
+    echo "📊 Upload complete: $uploaded created, $skipped skipped"
     ;;
 
   build)
@@ -306,26 +370,8 @@ case "$command" in
       echo "   ⚠️  API compiling (will auto-reload on changes)..."
     fi
 
-    # Seed development agents (runs in background, waits for API)
-    echo "4️⃣  Seeding development agents..."
-    (
-      # Wait for API to be healthy before seeding
-      max_attempts=60
-      attempt=0
-      while [[ $attempt -lt $max_attempts ]]; do
-        if curl -s http://localhost:9000/health > /dev/null 2>&1; then
-          break
-        fi
-        attempt=$((attempt + 1))
-        sleep 1
-      done
-
-      "$SCRIPT_DIR/seed-agents.sh" 2>&1 | sed 's/^/   /'
-    ) &
-    SEED_PID=$!
-
-    # Start Worker in background with auto-reload
-    echo "5️⃣  Starting worker with auto-reload..."
+    # Start Worker in background with auto-reload (Temporal mode)
+    echo "6️⃣  Starting Temporal worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
@@ -333,7 +379,7 @@ case "$command" in
     echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
     # Start UI in background
-    echo "6️⃣  Starting UI server..."
+    echo "7️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
@@ -577,11 +623,11 @@ Commands:
   init        Install all development dependencies (Rust tools + UI + Docs)
   start       Start Docker services (Postgres, Jaeger)
   stop        Stop Docker services
-  start-all   Start everything with auto-reload
+  start-all   Start everything with auto-reload (Docker, API, Worker, UI)
   stop-all    Stop all services (API, UI, Docker)
   reset       Stop and remove all Docker volumes
   migrate     Run database migrations
-  seed        Seed development agents from harness/seed-agents.yaml
+  upload-agents Upload seed agents (dad-jokes, research) using CLI
   build       Build all crates
   test        Run tests
   check       Run format, lint, and test checks
