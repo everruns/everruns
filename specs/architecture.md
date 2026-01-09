@@ -248,8 +248,39 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 ### Infrastructure
 
 1. **Local Development**: Docker Compose in `harness/` for Postgres, Jaeger
-2. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
-3. **License Compliance**: cargo-deny for dependency license checking
+2. **Dev Mode**: In-memory storage mode for quick local development without PostgreSQL
+3. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
+4. **License Compliance**: cargo-deny for dependency license checking
+
+### Development Mode (DEV_MODE)
+
+For rapid local development without infrastructure dependencies:
+
+```bash
+# Start in dev mode (no Docker/PostgreSQL required)
+DEV_MODE=true cargo run -p everruns-control-plane
+
+# Or use the convenience script
+./scripts/dev.sh start-dev
+```
+
+**DEV_MODE behavior:**
+- Uses in-memory storage (data lost on restart)
+- Execution happens in-process (no separate worker)
+- gRPC server disabled (not needed without workers)
+- No migrations required
+
+**Use cases:**
+- Quick UI development and testing
+- API endpoint development
+- Debugging without infrastructure setup
+
+**Limitations:**
+- No persistence
+- No worker/gRPC functionality
+- Single-instance only
+
+See [docs/sre/environment-variables.md](../docs/sre/environment-variables.md) for configuration details.
 
 ### Observability
 

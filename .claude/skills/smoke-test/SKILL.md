@@ -345,6 +345,28 @@ curl -s -o /dev/null -w "%{http_code}" "http://localhost:9100/agents/$AGENT_ID/s
 ```
 Expected: 200
 
+## DEV_MODE (UI-Only Changes)
+
+For changes that only impact the UI (no backend/API changes), DEV_MODE provides a faster testing workflow:
+
+```bash
+# Start in DEV_MODE - no Docker/PostgreSQL required
+./scripts/dev.sh start-dev
+```
+
+**When to use DEV_MODE:**
+- UI component changes (styling, layout, interactions)
+- Frontend-only bug fixes
+- UI development and iteration
+- Quick visual testing
+
+**Limitations:**
+- Data is not persisted (lost on restart)
+- No worker (LLM execution happens in-process)
+- Not suitable for testing backend changes or full integration
+
+For full end-to-end testing including backend changes, use the standard smoke tests below.
+
 ## No-Docker Mode
 
 For environments without Docker (Cloud Agent, CI, containers):
