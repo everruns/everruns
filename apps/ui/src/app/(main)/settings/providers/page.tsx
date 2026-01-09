@@ -97,9 +97,7 @@ function ProviderCard({
         <div className="flex items-center gap-3">
           <ProviderIcon providerType={provider.provider_type} size="md" />
           <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              {provider.name}
-            </CardTitle>
+            <CardTitle className="text-lg">{provider.name}</CardTitle>
             <CardDescription className="text-sm">
               {getProviderLabel(provider.provider_type)}
             </CardDescription>

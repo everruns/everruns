@@ -80,6 +80,12 @@ impl LlmModelService {
         self.db.delete_llm_model(id).await
     }
 
+    /// Get the default model
+    pub async fn get_default(&self) -> Result<Option<LlmModelWithProvider>> {
+        let row = self.db.get_default_llm_model().await?;
+        Ok(row.as_ref().map(Self::row_to_model_with_provider))
+    }
+
     fn row_to_model(row: &LlmModelRow) -> LlmModel {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();

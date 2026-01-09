@@ -181,8 +181,9 @@ case "$command" in
     ;;
 
   seed)
-    # Run seed-providers.sh script (providers and models only)
-    exec "$PROJECT_ROOT/scripts/seed-providers.sh" "$@"
+    # Patch API keys for providers from environment variables
+    # Note: Providers and models are now loaded from config/providers.toml
+    exec "$PROJECT_ROOT/scripts/patch-provider-keys.sh" "$@"
     ;;
 
   build)
@@ -385,12 +386,13 @@ case "$command" in
       sleep 2
     done
 
-    # Seed LLM providers and models from YAML
-    echo "5️⃣  Seeding LLM providers and models..."
-    if "$PROJECT_ROOT/scripts/seed-providers.sh" 2>/dev/null; then
-      echo "   ✅ Providers and models seeded"
+    # Patch API keys for providers from environment variables
+    # Note: Providers and models are now loaded from config/providers.toml
+    echo "5️⃣  Patching LLM provider API keys..."
+    if "$PROJECT_ROOT/scripts/patch-provider-keys.sh" 2>/dev/null; then
+      echo "   ✅ Provider API keys patched"
     else
-      echo "   ⚠️  Seeding failed (yq may not be installed - run: brew install yq)"
+      echo "   ⚠️  Patching failed (check that jq is installed)"
     fi
 
     # Upload seed agents from markdown files
