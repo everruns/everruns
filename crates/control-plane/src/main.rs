@@ -7,6 +7,7 @@ mod grpc_service;
 // Use modules from library
 use everruns_control_plane::api;
 use everruns_control_plane::auth;
+use everruns_control_plane::config;
 use everruns_control_plane::openapi::ApiDoc;
 use everruns_control_plane::services;
 use everruns_control_plane::storage::{Database, EncryptionService};
@@ -103,6 +104,12 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Load providers configuration (built-in defaults or from config file)
+    // Config providers are read-only and merged with database providers
+    let providers_config = Arc::new(
+        config::load_providers_config(None).context("Failed to load providers configuration")?,
+    );
+
     // Load authentication configuration
     let auth_config = auth::AuthConfig::from_env();
     tracing::info!(
@@ -134,8 +141,9 @@ async fn main() -> Result<()> {
         session_service: Arc::new(services::SessionService::new(db.clone())),
         event_service: event_service.clone(),
     };
-    let llm_providers_state = api::llm_providers::AppState::new(db.clone(), encryption.clone());
-    let llm_models_state = api::llm_models::AppState::new(db.clone());
+    let llm_providers_state =
+        api::llm_providers::AppState::new(db.clone(), encryption.clone(), providers_config.clone());
+    let llm_models_state = api::llm_models::AppState::new(db.clone(), providers_config.clone());
     let capability_service = Arc::new(services::CapabilityService::new(db.clone()));
     let capabilities_state = api::capabilities::AppState::new(capability_service);
     let session_files_state = api::session_files::AppState::new(db.clone());

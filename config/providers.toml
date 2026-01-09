@@ -1,0 +1,97 @@
+# Default LLM Providers Configuration
+#
+# This file defines the built-in LLM providers and models that are always
+# available in the system. These providers are read-only and cannot be
+# modified or deleted via the API.
+#
+# API keys are NOT stored in this file. They are set via environment variables
+# or through the API after startup.
+#
+# Provider Schema:
+#   name: string (required) - Provider display name
+#   provider_type: string (required) - openai, anthropic, azure_openai
+#   is_default: boolean (optional) - Set as default provider
+#   base_url: string (optional) - Custom API base URL
+#
+# Model Schema:
+#   model_id: string (required) - Model identifier (e.g., "gpt-4o")
+#   display_name: string (required) - Display name
+#   is_default: boolean (optional) - Set as system default model
+#   capabilities: array (optional) - Model capabilities
+
+[[providers]]
+name = "OpenAI"
+provider_type = "openai"
+is_default = true
+
+[[providers.models]]
+model_id = "gpt-5.2"
+display_name = "GPT-5.2"
+is_default = true
+
+[[providers.models]]
+model_id = "gpt-5.2-pro"
+display_name = "GPT-5.2 Pro"
+
+[[providers.models]]
+model_id = "gpt-5.2-codex"
+display_name = "GPT-5.2 Codex"
+
+[[providers.models]]
+model_id = "gpt-5.1"
+display_name = "GPT-5.1"
+
+[[providers.models]]
+model_id = "gpt-5.1-codex"
+display_name = "GPT-5.1 Codex"
+
+[[providers.models]]
+model_id = "gpt-5.1-codex-mini"
+display_name = "GPT-5.1 Codex mini"
+
+[[providers.models]]
+model_id = "gpt-5.1-codex-max"
+display_name = "GPT-5.1 Codex max"
+
+[[providers.models]]
+model_id = "gpt-5"
+display_name = "GPT-5"
+
+[[providers.models]]
+model_id = "gpt-5-mini"
+display_name = "GPT-5 mini"
+
+[[providers.models]]
+model_id = "gpt-5-nano"
+display_name = "GPT-5 nano"
+
+[[providers.models]]
+model_id = "gpt-5-pro"
+display_name = "GPT-5 Pro"
+
+[[providers.models]]
+model_id = "gpt-5-codex"
+display_name = "GPT-5 Codex"
+
+[[providers.models]]
+model_id = "gpt-4o"
+display_name = "GPT-4o"
+
+[[providers.models]]
+model_id = "gpt-4o-mini"
+display_name = "GPT-4o Mini"
+
+
+[[providers]]
+name = "Anthropic"
+provider_type = "anthropic"
+is_default = false
+
+[[providers.models]]
+model_id = "claude-sonnet-4-20250514"
+display_name = "Claude Sonnet 4"
+is_default = true  # Default for this provider
+
+[[providers.models]]
+model_id = "claude-3-5-haiku-20241022"
+display_name = "Claude 3.5 Haiku"

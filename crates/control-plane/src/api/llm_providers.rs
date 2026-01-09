@@ -1,5 +1,6 @@
 // LLM Provider API endpoints
 
+use crate::config::ProvidersConfig;
 use crate::storage::{Database, EncryptionService};
 use axum::{
     extract::{Path, State},
@@ -23,9 +24,13 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
+    pub fn new(
+        db: Arc<Database>,
+        encryption: Option<Arc<EncryptionService>>,
+        config: Arc<ProvidersConfig>,
+    ) -> Self {
         Self {
-            service: Arc::new(LlmProviderService::new(db, encryption)),
+            service: Arc::new(LlmProviderService::new(db, encryption, config)),
         }
     }
 }
@@ -191,6 +196,7 @@ pub async fn get_provider(
     request_body = UpdateLlmProviderRequest,
     responses(
         (status = 200, description = "Provider updated", body = LlmProvider),
+        (status = 403, description = "Cannot modify read-only provider"),
         (status = 404, description = "Provider not found")
     ),
     tag = "llm-providers"
@@ -209,6 +215,11 @@ pub async fn update_provider(
             if error_msg.contains("Encryption not configured") {
                 (
                     StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: error_msg }),
+                )
+            } else if error_msg.contains("read-only") {
+                (
+                    StatusCode::FORBIDDEN,
                     Json(ErrorResponse { error: error_msg }),
                 )
             } else {
@@ -242,6 +253,7 @@ pub async fn update_provider(
     ),
     responses(
         (status = 204, description = "Provider deleted"),
+        (status = 403, description = "Cannot delete read-only provider"),
         (status = 404, description = "Provider not found")
     ),
     tag = "llm-providers"
@@ -251,13 +263,21 @@ pub async fn delete_provider(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let deleted = state.service.delete(id).await.map_err(|e| {
-        tracing::error!("Failed to delete LLM provider: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        let error_msg = e.to_string();
+        if error_msg.contains("read-only") {
+            (
+                StatusCode::FORBIDDEN,
+                Json(ErrorResponse { error: error_msg }),
+            )
+        } else {
+            tracing::error!("Failed to delete LLM provider: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        }
     })?;
 
     if deleted {

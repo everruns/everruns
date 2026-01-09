@@ -1,5 +1,9 @@
 // LLM Provider service for business logic
+//
+// Merges config-based providers (readonly) with database providers.
+// Database providers take priority over config providers with the same name.
 
+use crate::config::ProvidersConfig;
 use crate::storage::{
     models::{CreateLlmProviderRow, LlmProviderRow, UpdateLlmProvider},
     Database, EncryptionService,
@@ -7,6 +11,7 @@ use crate::storage::{
 use anyhow::{anyhow, Result};
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{LlmProviderStatus, LlmProviderType};
+use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -15,11 +20,20 @@ use crate::api::llm_providers::{CreateLlmProviderRequest, UpdateLlmProviderReque
 pub struct LlmProviderService {
     db: Arc<Database>,
     encryption: Option<Arc<EncryptionService>>,
+    config: Arc<ProvidersConfig>,
 }
 
 impl LlmProviderService {
-    pub fn new(db: Arc<Database>, encryption: Option<Arc<EncryptionService>>) -> Self {
-        Self { db, encryption }
+    pub fn new(
+        db: Arc<Database>,
+        encryption: Option<Arc<EncryptionService>>,
+        config: Arc<ProvidersConfig>,
+    ) -> Self {
+        Self {
+            db,
+            encryption,
+            config,
+        }
     }
 
     pub async fn create(&self, req: CreateLlmProviderRequest) -> Result<LlmProvider> {
@@ -47,13 +61,37 @@ impl LlmProviderService {
     }
 
     pub async fn get(&self, id: Uuid) -> Result<Option<LlmProvider>> {
-        let row = self.db.get_llm_provider(id).await?;
-        Ok(row.as_ref().map(Self::row_to_provider))
+        // First check database
+        if let Some(row) = self.db.get_llm_provider(id).await? {
+            return Ok(Some(Self::row_to_provider(&row)));
+        }
+
+        // Then check config
+        Ok(self.config.get_provider(id).cloned())
     }
 
     pub async fn list(&self) -> Result<Vec<LlmProvider>> {
-        let rows = self.db.list_llm_providers().await?;
-        Ok(rows.iter().map(Self::row_to_provider).collect())
+        // Get database providers
+        let db_rows = self.db.list_llm_providers().await?;
+        let db_providers: Vec<LlmProvider> = db_rows.iter().map(Self::row_to_provider).collect();
+
+        // Collect names of DB providers (they take priority) - use owned Strings to avoid borrow issues
+        let db_names: HashSet<String> = db_providers.iter().map(|p| p.name.clone()).collect();
+
+        // Add config providers that don't conflict with DB providers
+        let mut result = db_providers;
+        for config_provider in self.config.providers() {
+            if !db_names.contains(&config_provider.name) {
+                result.push(config_provider.clone());
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Check if a provider is readonly (from config)
+    pub fn is_readonly(&self, id: Uuid) -> bool {
+        self.config.get_provider(id).is_some()
     }
 
     pub async fn update(
@@ -61,6 +99,13 @@ impl LlmProviderService {
         id: Uuid,
         req: UpdateLlmProviderRequest,
     ) -> Result<Option<LlmProvider>> {
+        // Check if this is a config provider (readonly)
+        if self.config.get_provider(id).is_some() {
+            return Err(anyhow!(
+                "Cannot modify read-only provider from configuration"
+            ));
+        }
+
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
@@ -89,6 +134,13 @@ impl LlmProviderService {
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
+        // Check if this is a config provider (readonly)
+        if self.config.get_provider(id).is_some() {
+            return Err(anyhow!(
+                "Cannot delete read-only provider from configuration"
+            ));
+        }
+
         self.db.delete_llm_provider(id).await
     }
 
@@ -105,6 +157,7 @@ impl LlmProviderService {
             },
             created_at: row.created_at,
             updated_at: row.updated_at,
+            readonly: false, // Database providers are not readonly
         }
     }
 }

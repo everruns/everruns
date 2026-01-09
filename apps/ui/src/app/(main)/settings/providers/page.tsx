@@ -91,6 +91,8 @@ function ProviderCard({
   onDelete: (id: string) => void;
   onSetApiKey: (provider: LlmProvider) => void;
 }) {
+  const isReadonly = provider.readonly === true;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -99,6 +101,11 @@ function ProviderCard({
           <div>
             <CardTitle className="text-lg flex items-center gap-2">
               {provider.name}
+              {isReadonly && (
+                <Badge variant="secondary" className="text-xs">
+                  Built-in
+                </Badge>
+              )}
             </CardTitle>
             <CardDescription className="text-sm">
               {getProviderLabel(provider.provider_type)}
@@ -131,18 +138,26 @@ function ProviderCard({
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
-          <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
-            <Key className="h-4 w-4 mr-1" />
-            {provider.api_key_set ? "Update Key" : "Set Key"}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            onClick={() => onDelete(provider.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {isReadonly ? (
+            <span className="text-xs text-muted-foreground">
+              Create a custom provider to set API key
+            </span>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
+                <Key className="h-4 w-4 mr-1" />
+                {provider.api_key_set ? "Update Key" : "Set Key"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive"
+                onClick={() => onDelete(provider.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -178,6 +193,7 @@ function ModelRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const profile = model.profile;
+  const isReadonly = model.readonly === true;
 
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -194,6 +210,11 @@ function ModelRow({
               {model.display_name}
               {model.is_default && (
                 <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+              )}
+              {isReadonly && (
+                <Badge variant="secondary" className="text-xs">
+                  Built-in
+                </Badge>
               )}
               {profile && (
                 <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
@@ -269,14 +290,16 @@ function ModelRow({
               )}
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            onClick={() => onDelete(model.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {!isReadonly && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive"
+              onClick={() => onDelete(model.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -541,6 +564,9 @@ function AddModelDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // Filter out readonly providers since we can't add models to them
+  const writableProviders = providers.filter(p => !p.readonly);
+
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -570,6 +596,11 @@ function AddModelDialog({
           <DialogTitle>Add Model</DialogTitle>
           <DialogDescription>
             Add a new model to an existing provider.
+            {writableProviders.length === 0 && providers.length > 0 && (
+              <span className="block mt-2 text-amber-600">
+                Note: Built-in providers cannot have models added. Create a custom provider first.
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -579,12 +610,12 @@ function AddModelDialog({
               <SelectTrigger className="w-full">
                 <span className={!providerId ? "text-muted-foreground" : ""}>
                   {providerId
-                    ? providers.find((p) => p.id === providerId)?.name
+                    ? writableProviders.find((p) => p.id === providerId)?.name
                     : "Select provider"}
                 </span>
               </SelectTrigger>
               <SelectContent>
-                {providers.map((p) => (
+                {writableProviders.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.name}
                   </SelectItem>

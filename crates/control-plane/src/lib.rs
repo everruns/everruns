@@ -7,6 +7,9 @@ pub mod api;
 // Authentication module
 pub mod auth;
 
+// Configuration loading
+pub mod config;
+
 // Services layer
 pub mod services;
 pub use services::CapabilityService;
