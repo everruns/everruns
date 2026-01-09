@@ -19,9 +19,9 @@ Deploy the complete Everruns platform using Docker Compose. This guide sets up t
 # Create directory and download files
 mkdir everruns && cd everruns
 
-# Download docker-compose and nginx config
+# Download docker-compose and Caddy config
 curl -O https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
-curl -O https://raw.githubusercontent.com/everruns/everruns/main/examples/nginx.conf
+curl -O https://raw.githubusercontent.com/everruns/everruns/main/examples/Caddyfile
 ```
 
 ### 2. Generate Encryption Key
@@ -52,7 +52,7 @@ This starts:
 - Control plane API
 - 3 worker instances
 - Next.js UI
-- Nginx reverse proxy
+- Caddy reverse proxy
 - Jaeger tracing (optional)
 
 ### 5. Access the Platform

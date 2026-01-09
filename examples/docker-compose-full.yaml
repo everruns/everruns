@@ -5,7 +5,7 @@
 # - Control-plane API (HTTP + gRPC)
 # - 3 Worker instances for parallel processing
 # - UI (Next.js dashboard)
-# - Nginx reverse proxy (unified entry point)
+# - Caddy reverse proxy (unified entry point)
 # - Jaeger for distributed tracing (optional)
 #
 # Quick Start:
@@ -23,7 +23,7 @@
 #   5. Configure LLM provider in Settings > Providers
 #
 # Ports:
-#   - 8080: Web UI (nginx)
+#   - 8080: Web UI (Caddy)
 #   - 16686: Jaeger UI (optional)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
@@ -143,15 +143,15 @@ services:
         condition: service_started
 
   # ==========================================================================
-  # Nginx Reverse Proxy (unified entry point)
+  # Caddy Reverse Proxy (unified entry point)
   # ==========================================================================
-  nginx:
-    image: nginx:alpine
-    container_name: everruns-nginx
+  caddy:
+    image: caddy:2-alpine
+    container_name: everruns-caddy
     ports:
-      - "8080:80"
+      - "8080:8080"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - api
       - ui
