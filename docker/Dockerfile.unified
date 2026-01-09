@@ -4,7 +4,7 @@
 # Builds both api and worker in a single build with shared dependency cache
 #
 # Usage:
-#   docker build --target api -f docker/Dockerfile.unified -t everruns-control-plane .
+#   docker build --target control-plane -f docker/Dockerfile.unified -t everruns-control-plane .
 #   docker build --target worker -f docker/Dockerfile.unified -t everruns-worker .
 
 # ============================================================================
@@ -65,9 +65,9 @@ COPY crates crates
 RUN cargo build --release -p everruns-worker
 
 # ============================================================================
-# Stage 5a: API Runtime image (distroless for minimal size and security)
+# Stage 5a: Control-Plane Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12 AS api
+FROM gcr.io/distroless/cc-debian12 AS control-plane
 
 WORKDIR /app
 

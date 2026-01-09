@@ -370,7 +370,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: api
+          - target: control-plane
             dockerfile: docker/Dockerfile.unified
             image: everruns-control-plane
           - target: worker
@@ -391,6 +391,6 @@ jobs:
           target: ${{ matrix.target }}
           push: false
           tags: ${{ matrix.image }}:ci
-          # Use shared cache scope for better layer reuse between api and worker
+          # Use shared cache scope for better layer reuse between control-plane and worker
           cache-from: type=gha,scope=docker-${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.target }}
