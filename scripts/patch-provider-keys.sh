@@ -4,8 +4,8 @@ set -euo pipefail
 # Patch API keys for LLM providers from environment variables
 # Usage: ./scripts/patch-provider-keys.sh [--api-url URL]
 #
-# This script creates database providers with API keys for config-based providers.
-# Database providers take priority over config providers with the same name.
+# Providers are created by database migration (003_default_providers.sql).
+# This script just updates their API keys.
 #
 # Environment Variables:
 #   OPENAI_API_KEY    - API key for OpenAI provider
@@ -14,6 +14,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Well-known provider UUIDs from migration 003_default_providers.sql
+OPENAI_PROVIDER_ID="01933b5a-0000-7000-8000-000000000001"
+ANTHROPIC_PROVIDER_ID="01933b5a-0000-7000-8000-000000000002"
 
 # Load .env file if it exists
 if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -71,70 +75,18 @@ wait_for_api() {
   exit 1
 }
 
-# Get provider by name
-get_provider_by_name() {
-  local name="$1"
-  curl -s "$API_URL/v1/llm-providers" | jq -r ".data[] | select(.name == \"$name\")"
-}
-
-# Check if provider exists and is not readonly (i.e., is a database provider)
-provider_is_db() {
-  local name="$1"
-  local provider
-  provider=$(get_provider_by_name "$name")
-
-  if [[ -z "$provider" || "$provider" == "null" ]]; then
-    return 1
-  fi
-
-  local readonly
-  readonly=$(echo "$provider" | jq -r '.readonly // false')
-
-  [[ "$readonly" == "false" ]]
-}
-
-# Get provider ID by name
-get_provider_id_by_name() {
-  local name="$1"
-  curl -s "$API_URL/v1/llm-providers" | jq -r ".data[] | select(.name == \"$name\") | .id"
-}
-
-# Get provider details by name
-get_provider_details() {
-  local name="$1"
-  curl -s "$API_URL/v1/llm-providers" | jq -r ".data[] | select(.name == \"$name\")"
-}
-
-# Create a database provider with the same name as a config provider, but with API key
-create_provider_with_key() {
-  local name="$1"
-  local provider_type="$2"
-  local api_key="$3"
-
-  local payload
-  payload=$(jq -n \
-    --arg name "$name" \
-    --arg provider_type "$provider_type" \
-    --arg api_key "$api_key" \
-    '{
-      name: $name,
-      provider_type: $provider_type,
-      api_key: $api_key
-    }'
-  )
-
-  local response
-  response=$(curl -s -X POST "$API_URL/v1/llm-providers" \
-    -H "Content-Type: application/json" \
-    -d "$payload")
-
-  echo "$response"
-}
-
-# Update an existing database provider's API key
+# Update a provider's API key
 update_provider_key() {
   local provider_id="$1"
-  local api_key="$2"
+  local provider_name="$2"
+  local api_key="$3"
+
+  if [[ -z "$api_key" ]]; then
+    echo "   Skipping $provider_name (no API key set)"
+    return 0
+  fi
+
+  echo "   Updating API key for $provider_name..."
 
   local payload
   payload=$(jq -n \
@@ -143,56 +95,20 @@ update_provider_key() {
   )
 
   local response
-  response=$(curl -s -X PATCH "$API_URL/v1/llm-providers/$provider_id" \
+  local http_code
+  response=$(curl -s -w "\n%{http_code}" -X PATCH "$API_URL/v1/llm-providers/$provider_id" \
     -H "Content-Type: application/json" \
     -d "$payload")
 
-  echo "$response"
-}
+  http_code=$(echo "$response" | tail -n1)
+  response=$(echo "$response" | sed '$d')
 
-# Patch a provider's API key - creates DB provider if needed
-patch_provider_key() {
-  local name="$1"
-  local provider_type="$2"
-  local api_key="$3"
-
-  if [[ -z "$api_key" ]]; then
-    echo "   Skipping $name (no API key set)"
-    return 0
-  fi
-
-  # Check if a database provider already exists
-  if provider_is_db "$name"; then
-    # Update existing database provider
-    local provider_id
-    provider_id=$(get_provider_id_by_name "$name")
-    echo "   Updating API key for $name..."
-    local response
-    response=$(update_provider_key "$provider_id" "$api_key")
-
-    local updated_id
-    updated_id=$(echo "$response" | jq -r '.id // empty')
-
-    if [[ -n "$updated_id" ]]; then
-      echo "      Updated API key"
-    else
-      echo "      Failed to update: $response"
-    fi
+  if [[ "$http_code" == "200" ]]; then
+    echo "      Updated API key"
+  elif [[ "$http_code" == "404" ]]; then
+    echo "      Provider not found (run migrations first)"
   else
-    # Create a new database provider with the API key
-    # This will take priority over the readonly config provider
-    echo "   Creating database provider for $name with API key..."
-    local response
-    response=$(create_provider_with_key "$name" "$provider_type" "$api_key")
-
-    local created_id
-    created_id=$(echo "$response" | jq -r '.id // empty')
-
-    if [[ -n "$created_id" ]]; then
-      echo "      Created provider with API key (overrides config)"
-    else
-      echo "      Failed to create: $response"
-    fi
+    echo "      Failed to update (HTTP $http_code): $response"
   fi
 }
 
@@ -207,11 +123,11 @@ main() {
   echo ""
   echo "Patching providers:"
 
-  # Patch OpenAI provider
-  patch_provider_key "OpenAI" "openai" "${OPENAI_API_KEY:-}"
+  # Update OpenAI provider
+  update_provider_key "$OPENAI_PROVIDER_ID" "OpenAI" "${OPENAI_API_KEY:-}"
 
-  # Patch Anthropic provider
-  patch_provider_key "Anthropic" "anthropic" "${ANTHROPIC_API_KEY:-}"
+  # Update Anthropic provider
+  update_provider_key "$ANTHROPIC_PROVIDER_ID" "Anthropic" "${ANTHROPIC_API_KEY:-}"
 
   echo ""
   echo "Done!"

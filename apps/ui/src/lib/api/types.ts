@@ -523,8 +523,6 @@ export interface LlmProvider {
   status: LlmProviderStatus;
   created_at: string;
   updated_at: string;
-  /** Whether this provider is read-only (from config file, cannot be modified via API) */
-  readonly?: boolean;
 }
 
 export interface LlmModel {
@@ -537,8 +535,6 @@ export interface LlmModel {
   status: LlmModelStatus;
   created_at: string;
   updated_at: string;
-  /** Whether this model is read-only (from config file, cannot be modified via API) */
-  readonly?: boolean;
 }
 
 export interface LlmModelWithProvider extends LlmModel {

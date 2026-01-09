@@ -1,6 +1,5 @@
 // LLM Model API endpoints
 
-use crate::config::ProvidersConfig;
 use crate::storage::Database;
 use axum::{
     extract::{Path, State},
@@ -22,9 +21,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>, config: Arc<ProvidersConfig>) -> Self {
+    pub fn new(db: Arc<Database>) -> Self {
         Self {
-            service: Arc::new(LlmModelService::new(db, config)),
+            service: Arc::new(LlmModelService::new(db)),
         }
     }
 }
@@ -89,7 +88,6 @@ pub struct ErrorResponse {
     responses(
         (status = 201, description = "Model created", body = LlmModel),
         (status = 400, description = "Invalid request"),
-        (status = 403, description = "Cannot add models to read-only provider"),
         (status = 500, description = "Internal error")
     ),
     tag = "llm-models"
@@ -100,21 +98,13 @@ pub async fn create_model(
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<LlmModel>), (StatusCode, Json<ErrorResponse>)> {
     let model = state.service.create(provider_id, req).await.map_err(|e| {
-        let error_msg = e.to_string();
-        if error_msg.contains("read-only") {
-            (
-                StatusCode::FORBIDDEN,
-                Json(ErrorResponse { error: error_msg }),
-            )
-        } else {
-            tracing::error!("Failed to create LLM model: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        }
+        tracing::error!("Failed to create LLM model: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
     })?;
 
     Ok((StatusCode::CREATED, Json(model)))
@@ -230,7 +220,6 @@ pub async fn get_model(
     request_body = UpdateLlmModelRequest,
     responses(
         (status = 200, description = "Model updated", body = LlmModel),
-        (status = 403, description = "Cannot modify read-only model"),
         (status = 404, description = "Model not found")
     ),
     tag = "llm-models"
@@ -245,21 +234,13 @@ pub async fn update_model(
         .update(id, req)
         .await
         .map_err(|e| {
-            let error_msg = e.to_string();
-            if error_msg.contains("read-only") {
-                (
-                    StatusCode::FORBIDDEN,
-                    Json(ErrorResponse { error: error_msg }),
-                )
-            } else {
-                tracing::error!("Failed to update LLM model: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
-            }
+            tracing::error!("Failed to update LLM model: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
         })?
         .ok_or_else(|| {
             (
@@ -282,7 +263,6 @@ pub async fn update_model(
     ),
     responses(
         (status = 204, description = "Model deleted"),
-        (status = 403, description = "Cannot delete read-only model"),
         (status = 404, description = "Model not found")
     ),
     tag = "llm-models"
@@ -292,21 +272,13 @@ pub async fn delete_model(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let deleted = state.service.delete(id).await.map_err(|e| {
-        let error_msg = e.to_string();
-        if error_msg.contains("read-only") {
-            (
-                StatusCode::FORBIDDEN,
-                Json(ErrorResponse { error: error_msg }),
-            )
-        } else {
-            tracing::error!("Failed to delete LLM model: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        }
+        tracing::error!("Failed to delete LLM model: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
     })?;
 
     if deleted {

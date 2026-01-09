@@ -82,9 +82,6 @@ pub struct LlmProvider {
     pub status: LlmProviderStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    /// Whether this provider is read-only (from config file, cannot be modified via API)
-    #[serde(default)]
-    pub readonly: bool,
 }
 
 /// LLM Model entity
@@ -100,9 +97,6 @@ pub struct LlmModel {
     pub status: LlmModelStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    /// Whether this model is read-only (from config file, cannot be modified via API)
-    #[serde(default)]
-    pub readonly: bool,
 }
 
 /// LLM Model with provider info
@@ -123,9 +117,6 @@ pub struct LlmModelWithProvider {
     /// Readonly profile with model capabilities (not persisted to database)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<LlmModelProfile>,
-    /// Whether this model is read-only (from config file, cannot be modified via API)
-    #[serde(default)]
-    pub readonly: bool,
 }
 
 // ============================================

@@ -42,7 +42,7 @@ serde_json = "1.0"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "migrate", "uuid", "chrono"] }
 
 # UUID and time
-uuid = { version = "1.11", features = ["v5", "v7", "serde"] }
+uuid = { version = "1.11", features = ["v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # Error handling
@@ -82,7 +82,6 @@ hex = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
-toml = "0.8"
 eventsource-stream = "0.2"
 regex = "1.11"
 time = "0.3"
