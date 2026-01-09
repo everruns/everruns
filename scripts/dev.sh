@@ -370,6 +370,24 @@ case "$command" in
       echo "   ⚠️  API compiling (will auto-reload on changes)..."
     fi
 
+    # Wait for API to be ready, then upload seed agents
+    echo "4️⃣  Waiting for API to be ready..."
+    for i in {1..30}; do
+      if curl -s http://localhost:9000/health > /dev/null 2>&1; then
+        echo "   ✅ API is ready"
+        break
+      fi
+      sleep 2
+    done
+
+    # Upload seed agents (non-blocking, best effort)
+    echo "5️⃣  Uploading seed agents..."
+    if "$0" upload-agents 2>/dev/null; then
+      echo "   ✅ Seed agents ready"
+    else
+      echo "   ⚠️  Seed agents upload failed (API may still be starting)"
+    fi
+
     # Start Worker in background with auto-reload (Temporal mode)
     echo "6️⃣  Starting Temporal worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
