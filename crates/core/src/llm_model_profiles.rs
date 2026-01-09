@@ -795,6 +795,176 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             reasoning_effort: Some(reasoning_effort_gpt52()),
         }),
 
+        // GPT-5 chat-latest models (point to latest chat-optimized versions)
+        "gpt-5-chat-latest" => Some(LlmModelProfile {
+            name: "GPT-5 Chat".into(),
+            family: "gpt-5".into(),
+            release_date: Some("2025-08-07".into()),
+            last_updated: Some("2025-08-07".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2024-10-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 1.25,
+                output: 10.00,
+                cache_read: Some(0.125),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 128_000,
+                output: 128_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
+        }),
+
+        "gpt-5.1-chat-latest" => Some(LlmModelProfile {
+            name: "GPT-5.1 Chat".into(),
+            family: "gpt-5.1".into(),
+            release_date: Some("2025-11-13".into()),
+            last_updated: Some("2025-11-13".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2024-09-30".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 1.50,
+                output: 12.00,
+                cache_read: Some(0.15),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 128_000,
+                output: 128_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt51()),
+        }),
+
+        "gpt-5.2-chat-latest" => Some(LlmModelProfile {
+            name: "GPT-5.2 Chat".into(),
+            family: "gpt-5.2".into(),
+            release_date: Some("2025-12-11".into()),
+            last_updated: Some("2025-12-11".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2025-08-31".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 1.75,
+                output: 14.00,
+                cache_read: Some(0.175),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 128_000,
+                output: 64_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt52()),
+        }),
+
+        // Deep research models
+        "o3-deep-research" => Some(LlmModelProfile {
+            name: "o3 Deep Research".into(),
+            family: "o3".into(),
+            release_date: Some("2025-04-16".into()),
+            last_updated: Some("2025-04-16".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2024-06-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 2.00,
+                output: 8.00,
+                cache_read: Some(1.00),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 200_000,
+                output: 100_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_standard()),
+        }),
+
+        "o4-mini-deep-research" => Some(LlmModelProfile {
+            name: "o4 mini Deep Research".into(),
+            family: "o4-mini".into(),
+            release_date: Some("2025-04-16".into()),
+            last_updated: Some("2025-04-16".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2024-06-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 1.10,
+                output: 4.40,
+                cache_read: Some(0.55),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 200_000,
+                output: 100_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_standard()),
+        }),
+
+        "o1-preview" => Some(LlmModelProfile {
+            name: "o1 Preview".into(),
+            family: "o1".into(),
+            release_date: Some("2024-09-12".into()),
+            last_updated: Some("2024-09-12".into()),
+            attachment: false,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2023-10-01".into()),
+            tool_call: false,
+            structured_output: false,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 15.00,
+                output: 60.00,
+                cache_read: Some(7.50),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 128_000,
+                output: 32_768,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_standard()),
+        }),
+
         _ => None,
     }
 }
@@ -1126,15 +1296,18 @@ fn normalize_model_id(model_id: &str) -> &str {
     // Known base model patterns (order matters - more specific first)
     let patterns = [
         // GPT-5.2 models
+        "gpt-5.2-chat-latest",
         "gpt-5.2-codex",
         "gpt-5.2-pro",
         "gpt-5.2",
         // GPT-5.1 models
+        "gpt-5.1-chat-latest",
         "gpt-5.1-codex-max",
         "gpt-5.1-codex-mini",
         "gpt-5.1-codex",
         "gpt-5.1",
         // GPT-5 models
+        "gpt-5-chat-latest",
         "gpt-5-codex",
         "gpt-5-nano",
         "gpt-5-mini",
@@ -1148,10 +1321,13 @@ fn normalize_model_id(model_id: &str) -> &str {
         "gpt-4o-mini",
         "gpt-4o",
         // Reasoning models (o-series)
+        "o4-mini-deep-research",
         "o4-mini",
+        "o3-deep-research",
         "o3-pro",
         "o3-mini",
         "o3",
+        "o1-preview",
         "o1-mini",
         "o1-pro",
         "o1",
