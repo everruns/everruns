@@ -16,10 +16,10 @@ Enable development mode with in-memory storage. No PostgreSQL required.
 
 ```bash
 # Start in dev mode (no database required)
-DEV_MODE=true ./target/debug/everruns-api
+DEV_MODE=true ./target/debug/everruns-control-plane
 
 # Or with 1
-DEV_MODE=1 ./target/debug/everruns-api
+DEV_MODE=1 ./target/debug/everruns-control-plane
 ```
 
 **Notes:**
