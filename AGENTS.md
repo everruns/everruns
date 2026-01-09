@@ -100,7 +100,18 @@ When making changes that affect user-facing behavior or operations, update the r
 
 ### Local dev expectations
 
+**Full mode (with PostgreSQL):**
 - A `harness/docker-compose.yml` brings up Postgres + Jaeger
+
+**DEV_MODE (no database required):**
+```bash
+# Quick start - no Docker/PostgreSQL needed
+./scripts/dev.sh start-dev
+```
+- Uses in-memory storage (data lost on restart)
+- Execution happens in-process (no separate worker)
+- Ideal for UI development and quick API testing
+- See `docs/sre/environment-variables.md` for details
 
 ### Smoke test prerequisites
 
