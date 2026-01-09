@@ -117,8 +117,10 @@ pub async fn stream_sse(
     let initial_since_id = query.since_id;
 
     // Backoff configuration
+    // Keep max backoff low (500ms) to ensure responsive event delivery
+    // The backoff resets to MIN when new events arrive
     const MIN_BACKOFF_MS: u64 = 100;
-    const MAX_BACKOFF_MS: u64 = 10_000;
+    const MAX_BACKOFF_MS: u64 = 500;
 
     // State for stream: (last_id, backoff_ms, sent_connected)
     #[derive(Clone)]
