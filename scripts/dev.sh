@@ -180,6 +180,11 @@ case "$command" in
     echo "📊 Upload complete: $uploaded created, $skipped skipped"
     ;;
 
+  seed)
+    # Run the full seed-agents.sh script (providers, models, agents)
+    exec "$PROJECT_ROOT/scripts/seed-agents.sh" "$@"
+    ;;
+
   build)
     echo "🔨 Building Everrun..."
     cargo build
@@ -380,12 +385,12 @@ case "$command" in
       sleep 2
     done
 
-    # Upload seed agents (non-blocking, best effort)
-    echo "5️⃣  Uploading seed agents..."
-    if "$0" upload-agents 2>/dev/null; then
-      echo "   ✅ Seed agents ready"
+    # Seed LLM providers, models, and agents from YAML
+    echo "5️⃣  Seeding database (providers, models, agents)..."
+    if "$PROJECT_ROOT/scripts/seed-agents.sh" 2>/dev/null; then
+      echo "   ✅ Database seeded"
     else
-      echo "   ⚠️  Seed agents upload failed (API may still be starting)"
+      echo "   ⚠️  Seeding failed (yq may not be installed - run: brew install yq)"
     fi
 
     # Start Worker in background with auto-reload (Temporal mode)
