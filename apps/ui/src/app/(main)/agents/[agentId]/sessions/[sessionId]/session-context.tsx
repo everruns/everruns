@@ -51,7 +51,7 @@ interface SessionContextValue {
     Message,
     Error,
     { agentId: string; sessionId: string; content: string; controls?: Controls },
-    { optimisticId: string }
+    { optimisticId: string; content: string }
   >;
   // Utility functions
   getMessageText: (data: MessageUserData | MessageAgentData) => string;
@@ -124,18 +124,11 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         },
       };
       setOptimisticEvents((prev) => [...prev, optimisticEvent]);
-      return { optimisticId };
+      return { optimisticId, content };
     },
-    onSuccess: (_data, _variables, context) => {
-      // Remove optimistic event - SSE will bring the real one
-      if (context?.optimisticId) {
-        setOptimisticEvents((prev) =>
-          prev.filter((e) => e.id !== context.optimisticId)
-        );
-      }
-    },
+    // Don't remove optimistic event on success - wait for SSE to deliver real event
     onError: (_error, _variables, context) => {
-      // Remove optimistic event on error
+      // Only remove optimistic event on error
       if (context?.optimisticId) {
         setOptimisticEvents((prev) =>
           prev.filter((e) => e.id !== context.optimisticId)
@@ -188,6 +181,32 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
 
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">("");
 
+  // Clean up optimistic events when real events arrive from SSE
+  useEffect(() => {
+    if (!events || events.length === 0 || optimisticEvents.length === 0) return;
+
+    // Get text content from real user messages
+    const realUserMessages = events
+      .filter((e) => e.type === "message.user")
+      .map((e) => {
+        const data = e.data as MessageUserData;
+        return getTextFromContent(data.message?.content || []);
+      });
+
+    // Remove optimistic events that have matching real events
+    const optimisticToRemove = optimisticEvents.filter((optEvent) => {
+      const data = optEvent.data as MessageUserData;
+      const optText = getTextFromContent(data.message?.content || []);
+      return realUserMessages.includes(optText);
+    });
+
+    if (optimisticToRemove.length > 0) {
+      setOptimisticEvents((prev) =>
+        prev.filter((e) => !optimisticToRemove.some((r) => r.id === e.id))
+      );
+    }
+  }, [events, optimisticEvents]);
+
   // Filter chat-relevant events and merge with optimistic events
   const chatEvents = useMemo(() => {
     const realChatEvents = events
@@ -197,13 +216,25 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         )
       : [];
 
-    // Merge optimistic events with real events
-    // Optimistic events go at the end (they're the newest)
-    const optimisticChatEvents = optimisticEvents.filter(
-      (e) => e.type === "message.user" || e.type === "message.agent"
+    // Get text content from real user messages for deduplication
+    const realUserTexts = new Set(
+      realChatEvents
+        .filter((e) => e.type === "message.user")
+        .map((e) => {
+          const data = e.data as MessageUserData;
+          return getTextFromContent(data.message?.content || []);
+        })
     );
 
-    return [...realChatEvents, ...optimisticChatEvents];
+    // Filter out optimistic events that already have a real counterpart
+    const pendingOptimisticEvents = optimisticEvents.filter((optEvent) => {
+      if (optEvent.type !== "message.user") return true;
+      const data = optEvent.data as MessageUserData;
+      const optText = getTextFromContent(data.message?.content || []);
+      return !realUserTexts.has(optText);
+    });
+
+    return [...realChatEvents, ...pendingOptimisticEvents];
   }, [events, optimisticEvents]);
 
   // Build tool result lookup by tool_call_id
