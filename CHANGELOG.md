@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **⚠️ Important:** There is no automatic migration between versions. Each major/minor release requires a fresh database. Back up any data you need before upgrading.
 
+## [Unreleased]
+
+<!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
+
 ## [0.3.0] - 2025-01-09
 
 ### Added
