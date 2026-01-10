@@ -1,77 +1,104 @@
 # syntax=docker/dockerfile:1.4
 #
 # Unified multi-target Dockerfile for everruns services
-# Builds both api and worker in a single build with shared dependency cache
+# Builds both control-plane and worker in a single build with shared dependency cache
+# Supports cross-compilation for ARM64 builds using xx toolchain
 #
 # Usage:
-#   docker build --target api -f docker/Dockerfile.unified -t everruns-control-plane .
+#   docker build --target control-plane -f docker/Dockerfile.unified -t everruns-control-plane .
 #   docker build --target worker -f docker/Dockerfile.unified -t everruns-worker .
 
 # ============================================================================
-# Stage 1: Chef - Prepare cargo-chef for dependency caching
+# Stage 1: Builder base - Set up cross-compilation environment
+# Uses BUILDPLATFORM to run on host architecture for cross-compilation
 # ============================================================================
-FROM rust:1.92-slim-bookworm AS chef
+FROM --platform=$BUILDPLATFORM rust:1.92-slim-bookworm AS builder-base
+
+# Install xx for cross-compilation support
+COPY --from=tonistiigi/xx / /
+
+ARG TARGETPLATFORM
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
-    libssl-dev \
+    clang \
+    lld \
     curl \
     protobuf-compiler \
+    libssl-dev \
+    && xx-apt-get install -y \
+    gcc \
+    libc6-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Configure pkg-config for cross-compilation
+ENV PKG_CONFIG_ALLOW_CROSS=1
 
 RUN rustup component add rustfmt
 
-RUN cargo install cargo-chef --locked
+# Add target for cross-compilation - explicitly install aarch64 target
+RUN rustup target add aarch64-unknown-linux-gnu
+
+# Configure cargo for cross-compilation with xx
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+ENV CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
 
 WORKDIR /app
 
-# ============================================================================
-# Stage 2: Planner - Analyze dependencies (shared between all targets)
-# ============================================================================
-FROM chef AS planner
-
+# Copy source
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 
-RUN cargo chef prepare --recipe-path recipe.json
+# ============================================================================
+# Stage 2a: Build Control-Plane binary
+# ============================================================================
+FROM builder-base AS builder-control-plane
+
+ARG TARGETPLATFORM
+
+# Use cache mount for cargo registry and target directory
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
+    xx-cargo build --release -p everruns-control-plane && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-control-plane /app/everruns-control-plane
 
 # ============================================================================
-# Stage 3: Dependencies - Build all dependencies (highly cacheable)
+# Stage 2b: Build Worker binary
 # ============================================================================
-FROM chef AS deps
+FROM builder-base AS builder-worker
 
-# Copy recipe and build dependencies first (this layer is cached!)
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
+ARG TARGETPLATFORM
 
-# ============================================================================
-# Stage 4a: Build API binary
-# ============================================================================
-FROM deps AS builder-api
-
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
-COPY crates crates
-
-RUN cargo build --release -p everruns-control-plane
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
+    xx-cargo build --release -p everruns-worker && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker
 
 # ============================================================================
-# Stage 4b: Build Worker binary
+# Stage 2c: Build Admin tools (reencrypt-secrets + sqlx-cli)
 # ============================================================================
-FROM deps AS builder-worker
+FROM builder-base AS builder-admin
 
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
-COPY crates crates
+ARG TARGETPLATFORM
 
-RUN cargo build --release -p everruns-worker
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
+    xx-cargo build --release --bin reencrypt-secrets && \
+    cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
+    cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
 # ============================================================================
-# Stage 5a: API Runtime image (distroless for minimal size and security)
+# Stage 3a: Control-Plane Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12 AS api
+FROM gcr.io/distroless/cc-debian12 AS control-plane
 
 WORKDIR /app
 
-COPY --from=builder-api /app/target/release/everruns-control-plane /app/everruns-control-plane
+COPY --from=builder-control-plane /app/everruns-control-plane /app/everruns-control-plane
 
 EXPOSE 9000
 EXPOSE 9001
@@ -83,32 +110,20 @@ ENV PORT=9000
 CMD ["/app/everruns-control-plane"]
 
 # ============================================================================
-# Stage 5b: Worker Runtime image (distroless for minimal size and security)
+# Stage 3b: Worker Runtime image (distroless for minimal size and security)
 # ============================================================================
 FROM gcr.io/distroless/cc-debian12 AS worker
 
 WORKDIR /app
 
-COPY --from=builder-worker /app/target/release/everruns-worker /app/everruns-worker
+COPY --from=builder-worker /app/everruns-worker /app/everruns-worker
 
 ENV RUST_LOG=info
 
 CMD ["/app/everruns-worker"]
 
 # ============================================================================
-# Stage 4c: Build Admin tools (reencrypt-secrets + sqlx-cli)
-# ============================================================================
-FROM deps AS builder-admin
-
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
-COPY crates crates
-
-# Build the reencrypt-secrets binary and install sqlx-cli with TLS support (rustls)
-RUN cargo build --release --bin reencrypt-secrets && \
-    cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
-
-# ============================================================================
-# Stage 5c: Admin Runtime image
+# Stage 3c: Admin Runtime image
 # ============================================================================
 # Admin container for running migrations, key rotation, and other admin tasks
 # in production environments. Uses debian-slim instead of distroless because
@@ -133,11 +148,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy sqlx-cli from builder
+# Copy sqlx-cli from builder (host architecture, runs via script)
 COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 
 # Copy the reencrypt-secrets binary
-COPY --from=builder-admin /app/target/release/reencrypt-secrets /app/reencrypt-secrets
+COPY --from=builder-admin /app/reencrypt-secrets /app/reencrypt-secrets
 
 # Copy migrations
 COPY crates/control-plane/migrations /app/migrations
