@@ -37,8 +37,8 @@ ENV PKG_CONFIG_ALLOW_CROSS=1
 
 RUN rustup component add rustfmt
 
-# Add target for cross-compilation
-RUN xx-cargo --setup-target-triple
+# Add target for cross-compilation - explicitly install aarch64 target
+RUN rustup target add aarch64-unknown-linux-gnu
 
 # Configure cargo for cross-compilation with xx
 ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
