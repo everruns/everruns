@@ -7,7 +7,7 @@ Everruns is a **headless AI agent execution platform** built for reliability and
 
 ## Platform Overview
 
-![Everruns Platform Architecture](/images/architecture/overview.png)
+![Everruns Platform Architecture](../images/architecture/overview.png)
 
 Your application connects to the Everruns platform via REST API and SSE. The Control Plane orchestrates Workers, which communicate with LLM providers (OpenAI, Anthropic, etc.). An optional Management UI provides admin access.
 
@@ -35,7 +35,7 @@ Central coordinator that exposes the REST API and manages all state in PostgreSQ
 
 Stateless executors that run the agentic loop:
 
-![Agentic Loop](/images/architecture/agentic-loop.png)
+![Agentic Loop](../images/architecture/agentic-loop.png)
 
 Workers are:
 - **Scalable** - Add more to handle concurrent sessions
