@@ -331,7 +331,7 @@ Configuration for LLM API providers. Stores encrypted API keys and provider-spec
 - `anthropic` - Anthropic API (Claude models)
 - `azure_openai` - Azure OpenAI Service
 
-**Note:** Ollama and Custom provider types are no longer supported. All LLM provider API keys must be configured in the database (via Settings > Providers UI) - they are not read from environment variables.
+**Note:** Ollama and Custom provider types are no longer supported. LLM provider API keys are primarily configured in the database (via Settings > Providers UI), but environment variables can be used as fallbacks for development convenience.
 
 **Default Providers:**
 
@@ -340,9 +340,14 @@ Default providers (OpenAI, Anthropic) and their models are created via database 
 - OpenAI: `01933b5a-0000-7000-8000-000000000001`
 - Anthropic: `01933b5a-0000-7000-8000-000000000002`
 
-API keys can be set via:
-1. The Settings > Providers UI
-2. The `scripts/patch-provider-keys.sh` script (reads from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` env vars)
+**API Key Resolution Order:**
+1. **Database** (priority): Encrypted API key stored in `llm_providers.api_key_encrypted`
+2. **Environment Variable** (fallback): `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY`
+
+API keys can be configured via:
+1. The Settings > Providers UI (stores in database)
+2. The `scripts/patch-provider-keys.sh` script (patches database from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+3. Environment variables for development: `DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY` (used only when database key is not set)
 
 ### LLM Model
 
