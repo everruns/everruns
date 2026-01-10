@@ -25,10 +25,15 @@ RUN apt-get update && apt-get install -y \
     lld \
     curl \
     protobuf-compiler \
+    libssl-dev \
     && xx-apt-get install -y \
     gcc \
     libc6-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Configure pkg-config for cross-compilation
+ENV PKG_CONFIG_ALLOW_CROSS=1
 
 RUN rustup component add rustfmt
 
