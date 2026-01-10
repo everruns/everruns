@@ -1991,7 +1991,8 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 [[package]]
 name = "llmsim"
 version = "0.1.0"
-source = "git+https://github.com/chaliy/llmsim.git#77f7f8f73f813bc9d47b822cdd4817cbfafbd5df"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6173c113fb5480af8c3d0b2d53597cdd51a3f73d8c257d773c4bdc44909c06f"
 dependencies = [
  "async-stream",
  "axum",
