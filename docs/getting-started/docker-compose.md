@@ -31,11 +31,15 @@ python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)
 
 ### 3. Create Environment File
 
-Create a `.env` file with your encryption key:
+Create a `.env` file with your encryption key and optional LLM API keys:
 
 ```bash
 # .env
 SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
+
+# Optional: Add API keys here to skip UI configuration
+DEFAULT_OPENAI_API_KEY=sk-...
+DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### 4. Start Services
@@ -64,6 +68,8 @@ This starts:
 ## Configuration
 
 ### Configure LLM Provider
+
+If you didn't set `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY` in your `.env` file, configure via UI:
 
 1. Open http://localhost:8080
 2. Navigate to **Settings** > **Providers**
