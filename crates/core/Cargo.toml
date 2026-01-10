@@ -60,7 +60,7 @@ reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
 eventsource-stream = "0.2"
 
 # LLM simulation for testing
-llmsim = { git = "https://github.com/chaliy/llmsim.git" }
+llmsim = "0.1.0"
 
 [features]
 default = []
