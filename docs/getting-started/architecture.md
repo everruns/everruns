@@ -7,7 +7,7 @@ Everruns is a **headless AI agent execution platform** built for reliability and
 
 ## Platform Overview
 
-![Everruns Architecture Overview](/images/architecture-overview.png)
+![Everruns Architecture Overview](../images/architecture-overview.png)
 
 ```mermaid
 %%{init: {'look': 'handDrawn'}}%%
