@@ -238,6 +238,34 @@ case "$command" in
     echo "✅ UI dependencies installed!"
     ;;
 
+  e2e)
+    echo "🎭 Running UI e2e tests..."
+    cd apps/ui
+
+    # Set chromium path for restricted environments
+    CHROMIUM_PATH="/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome"
+    if [ -f "$CHROMIUM_PATH" ]; then
+      export PLAYWRIGHT_CHROMIUM_PATH="$CHROMIUM_PATH"
+    fi
+
+    npm run e2e
+    echo "✅ E2E tests complete!"
+    ;;
+
+  e2e-screenshots)
+    echo "📸 Taking UI screenshots..."
+    cd apps/ui
+
+    # Set chromium path for restricted environments
+    CHROMIUM_PATH="/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome"
+    if [ -f "$CHROMIUM_PATH" ]; then
+      export PLAYWRIGHT_CHROMIUM_PATH="$CHROMIUM_PATH"
+    fi
+
+    npm run e2e:screenshots
+    echo "✅ Screenshots saved to apps/ui/e2e/screenshots/"
+    ;;
+
   docs)
     echo "📚 Starting docs development server..."
     cd apps/docs
@@ -502,6 +530,8 @@ case "$command" in
     echo "  📦 Installing UI dependencies..."
     cd apps/ui
     npm install
+    echo "  🎭 Installing Playwright browsers..."
+    npx playwright install chromium || echo "  ⚠️  Playwright browser install failed (may work in CI)"
     cd "$PROJECT_ROOT"
 
     # Docs dependencies
@@ -654,6 +684,8 @@ Commands:
   ui          Start the UI development server
   ui-build    Build the UI for production
   ui-install  Install UI dependencies
+  e2e         Run UI e2e tests (Playwright)
+  e2e-screenshots  Take UI screenshots for visual verification
   docs        Start the docs development server
   docs-build  Build the docs for production
   docs-install Install docs dependencies
