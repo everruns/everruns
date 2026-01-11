@@ -60,6 +60,7 @@ parking_lot = "0.12"
 # Benchmark support
 sysinfo = "0.32"
 minijinja = "2"
+indicatif = "0.17"
 
 [dev-dependencies]
 tokio-test = "0.4"

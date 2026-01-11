@@ -46,7 +46,7 @@ impl BenchmarkReport {
         fs::create_dir_all(output_dir)?;
 
         let filename = format!(
-            "{}_{}.html",
+            "benchmark_{}_{}.html",
             metrics.name.replace(' ', "_").to_lowercase(),
             chrono::Utc::now().format("%Y%m%d_%H%M%S")
         );
@@ -268,6 +268,12 @@ const REPORT_TEMPLATE: &str = r##"
             margin-bottom: 10px;
         }
 
+        h2 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: var(--text-primary);
+        }
+
         .subtitle {
             color: var(--text-secondary);
             font-size: 1.1rem;
@@ -287,6 +293,11 @@ const REPORT_TEMPLATE: &str = r##"
             text-align: center;
         }
 
+        .stat-card a {
+            text-decoration: none;
+            color: inherit;
+        }
+
         .stat-value {
             font-size: 2rem;
             font-weight: bold;
@@ -297,6 +308,13 @@ const REPORT_TEMPLATE: &str = r##"
             color: var(--text-secondary);
             font-size: 0.9rem;
             margin-top: 5px;
+        }
+
+        .stat-desc {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            margin-top: 3px;
+            font-style: italic;
         }
 
         .chart-container {
@@ -354,39 +372,142 @@ const REPORT_TEMPLATE: &str = r##"
         canvas {
             max-height: 300px;
         }
+
+        .interpretation-box {
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid var(--blue);
+        }
+
+        .interpretation-box h3 {
+            color: var(--blue);
+            margin-bottom: 10px;
+        }
+
+        .interpretation-box p {
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .interpretation-box ul {
+            margin-left: 20px;
+            color: var(--text-secondary);
+        }
+
+        .interpretation-box li {
+            margin-bottom: 5px;
+        }
+
+        .glossary {
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .glossary-item {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--accent);
+        }
+
+        .glossary-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .glossary-term {
+            color: var(--success);
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .glossary-desc {
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        .glossary-guidance {
+            color: var(--text-primary);
+            margin-top: 8px;
+            padding: 10px;
+            background: var(--bg-secondary);
+            border-radius: 5px;
+        }
+
+        a.metric-link {
+            color: var(--blue);
+            text-decoration: none;
+        }
+
+        a.metric-link:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>{{ title }}</h1>
-            <div class="subtitle">{{ benchmark_name }} • Duration: {{ "%.2f"|format(duration_secs) }}s</div>
+            <div class="subtitle">{{ benchmark_name }} | Duration: {{ "%.2f"|format(duration_secs) }}s</div>
         </header>
+
+        <div class="interpretation-box">
+            <h3>How to Read This Report</h3>
+            <p>This benchmark measures the durable execution engine's task scheduling performance.</p>
+            <ul>
+                <li><strong>Throughput</strong>: Higher is better. Shows how many tasks the system can process per second.</li>
+                <li><strong>Schedule-to-Start (S2S)</strong>: Lower is better. Time from task enqueue to worker pickup. Target: &lt;10ms P99.</li>
+                <li><strong>End-to-End</strong>: Total time including execution. Compare against execution time to find overhead.</li>
+                <li><strong>P50/P95/P99</strong>: 50th/95th/99th percentile. P99 shows worst-case experience for 1% of requests.</li>
+            </ul>
+        </div>
 
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-value">{{ total_tasks }}</div>
-                <div class="stat-label">Total Tasks</div>
+                <a href="#glossary-total-tasks">
+                    <div class="stat-value">{{ total_tasks }}</div>
+                    <div class="stat-label">Total Tasks</div>
+                    <div class="stat-desc">Tasks completed in benchmark</div>
+                </a>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{{ "%.1f"|format(throughput) }}</div>
-                <div class="stat-label">Tasks/sec</div>
+                <a href="#glossary-throughput">
+                    <div class="stat-value">{{ "%.1f"|format(throughput) }}</div>
+                    <div class="stat-label">Tasks/sec</div>
+                    <div class="stat-desc">Sustained processing rate</div>
+                </a>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{{ "%.1f"|format(end_to_end.p50_ms) }}ms</div>
-                <div class="stat-label">P50 Latency</div>
+                <a href="#glossary-p50">
+                    <div class="stat-value">{{ "%.1f"|format(end_to_end.p50_ms) }}ms</div>
+                    <div class="stat-label">P50 E2E Latency</div>
+                    <div class="stat-desc">Median end-to-end time</div>
+                </a>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{{ "%.1f"|format(end_to_end.p99_ms) }}ms</div>
-                <div class="stat-label">P99 Latency</div>
+                <a href="#glossary-p99">
+                    <div class="stat-value">{{ "%.1f"|format(end_to_end.p99_ms) }}ms</div>
+                    <div class="stat-label">P99 E2E Latency</div>
+                    <div class="stat-desc">Worst-case (1% of tasks)</div>
+                </a>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{{ "%.1f"|format(peak_memory_mb) }}MB</div>
-                <div class="stat-label">Peak Memory</div>
+                <a href="#glossary-memory">
+                    <div class="stat-value">{{ "%.1f"|format(peak_memory_mb) }}MB</div>
+                    <div class="stat-label">Peak Memory</div>
+                    <div class="stat-desc">Max RSS during benchmark</div>
+                </a>
             </div>
             <div class="stat-card">
-                <div class="stat-value">{{ "%.1f"|format(avg_cpu_percent) }}%</div>
-                <div class="stat-label">Avg CPU</div>
+                <a href="#glossary-cpu">
+                    <div class="stat-value">{{ "%.1f"|format(avg_cpu_percent) }}%</div>
+                    <div class="stat-label">Avg CPU</div>
+                    <div class="stat-desc">Process CPU utilization</div>
+                </a>
             </div>
         </div>
 
@@ -396,7 +517,7 @@ const REPORT_TEMPLATE: &str = r##"
                 <canvas id="throughputChart"></canvas>
             </div>
             <div class="chart-container">
-                <div class="chart-title">Latency Distribution</div>
+                <div class="chart-title">Latency Distribution (End-to-End)</div>
                 <canvas id="latencyHistogram"></canvas>
             </div>
         </div>
@@ -421,15 +542,15 @@ const REPORT_TEMPLATE: &str = r##"
                         <th>Count</th>
                         <th>Mean</th>
                         <th>Min</th>
-                        <th>P50</th>
-                        <th>P95</th>
-                        <th>P99</th>
+                        <th><a href="#glossary-p50" class="metric-link">P50</a></th>
+                        <th><a href="#glossary-p95" class="metric-link">P95</a></th>
+                        <th><a href="#glossary-p99" class="metric-link">P99</a></th>
                         <th>Max</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>Schedule → Start</td>
+                        <td><a href="#glossary-s2s" class="metric-link">Schedule → Start</a></td>
                         <td>{{ schedule_to_start.count }}</td>
                         <td>{{ "%.2f"|format(schedule_to_start.mean_ms) }}</td>
                         <td>{{ "%.2f"|format(schedule_to_start.min_ms) }}</td>
@@ -439,7 +560,7 @@ const REPORT_TEMPLATE: &str = r##"
                         <td>{{ "%.2f"|format(schedule_to_start.max_ms) }}</td>
                     </tr>
                     <tr>
-                        <td>Execution</td>
+                        <td><a href="#glossary-execution" class="metric-link">Execution</a></td>
                         <td>{{ execution.count }}</td>
                         <td>{{ "%.2f"|format(execution.mean_ms) }}</td>
                         <td>{{ "%.2f"|format(execution.min_ms) }}</td>
@@ -449,7 +570,7 @@ const REPORT_TEMPLATE: &str = r##"
                         <td>{{ "%.2f"|format(execution.max_ms) }}</td>
                     </tr>
                     <tr>
-                        <td>End-to-End</td>
+                        <td><a href="#glossary-e2e" class="metric-link">End-to-End</a></td>
                         <td>{{ end_to_end.count }}</td>
                         <td>{{ "%.2f"|format(end_to_end.mean_ms) }}</td>
                         <td>{{ "%.2f"|format(end_to_end.min_ms) }}</td>
@@ -460,6 +581,101 @@ const REPORT_TEMPLATE: &str = r##"
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <div class="glossary">
+            <h2>Metrics Glossary</h2>
+
+            <div class="glossary-item" id="glossary-total-tasks">
+                <div class="glossary-term">Total Tasks</div>
+                <div class="glossary-desc">Number of tasks successfully completed during the benchmark run.</div>
+            </div>
+
+            <div class="glossary-item" id="glossary-throughput">
+                <div class="glossary-term">Throughput (Tasks/sec)</div>
+                <div class="glossary-desc">Average number of tasks processed per second over the benchmark duration.</div>
+                <div class="glossary-guidance">
+                    <strong>Interpretation:</strong> Higher is better. With InMemory store and no execution simulation,
+                    expect 5,000-20,000 tasks/sec. With PostgreSQL, expect 1,000-5,000 tasks/sec depending on connection pool
+                    size and query latency. Sustained throughput should be stable; high variance indicates contention.
+                </div>
+            </div>
+
+            <div class="glossary-item" id="glossary-s2s">
+                <div class="glossary-term">Schedule-to-Start (S2S) Latency</div>
+                <div class="glossary-desc">Time from when a task is enqueued until a worker claims it. This is the
+                    "queue wait time" - how long tasks sit before being picked up.</div>
+                <div class="glossary-guidance">
+                    <strong>Interpretation:</strong> Lower is better. Target &lt;10ms P99 for real-time workflows.
+                    High S2S indicates insufficient workers or queue contention. If S2S is high but throughput is good,
+                    consider adding more workers or increasing batch claim size.
+                </div>
+            </div>
+
+            <div class="glossary-item" id="glossary-execution">
+                <div class="glossary-term">Execution Time</div>
+                <div class="glossary-desc">Time spent executing the task logic (simulated I/O in benchmarks).
+                    This represents actual work time, not scheduling overhead.</div>
+                <div class="glossary-guidance">
+                    <strong>Interpretation:</strong> In benchmarks without execution simulation, this should be near-zero
+                    (&lt;1ms). With simulation, this reflects the configured activity duration distribution.
+                    Compare execution vs end-to-end to measure scheduling overhead.
+                </div>
+            </div>
+
+            <div class="glossary-item" id="glossary-e2e">
+                <div class="glossary-term">End-to-End (E2E) Latency</div>
+                <div class="glossary-desc">Total time from task enqueue to completion. Includes queue wait time (S2S),
+                    execution time, and completion recording.</div>
+                <div class="glossary-guidance">
+                    <strong>Interpretation:</strong> E2E = S2S + Execution + overhead. The difference between
+                    E2E and (S2S + Execution) represents system overhead. Target: overhead &lt;5ms for most tasks.
+                    High P99 with low P50 indicates occasional slow operations (GC, lock contention, etc.).
+                </div>
+            </div>
+
+            <div class="glossary-item" id="glossary-p50">
+                <div class="glossary-term">P50 (50th Percentile / Median)</div>
+                <div class="glossary-desc">Half of all requests complete faster than this value. Represents
+                    the typical user experience.</div>
+            </div>
+
+            <div class="glossary-item" id="glossary-p95">
+                <div class="glossary-term">P95 (95th Percentile)</div>
+                <div class="glossary-desc">95% of requests complete faster than this value. Captures most
+                    outliers while excluding extreme edge cases.</div>
+            </div>
+
+            <div class="glossary-item" id="glossary-p99">
+                <div class="glossary-term">P99 (99th Percentile)</div>
+                <div class="glossary-desc">99% of requests complete faster than this value. The "tail latency"
+                    that affects 1 in 100 requests.</div>
+                <div class="glossary-guidance">
+                    <strong>Interpretation:</strong> P99 is critical for user experience at scale. If P99 is 10x higher
+                    than P50, there's high variance - investigate lock contention, GC pauses, or I/O bottlenecks.
+                    Target: P99 &lt; 3x P50 for consistent performance.
+                </div>
+            </div>
+
+            <div class="glossary-item" id="glossary-memory">
+                <div class="glossary-term">Peak Memory (RSS)</div>
+                <div class="glossary-desc">Maximum Resident Set Size (physical memory) used during the benchmark.</div>
+                <div class="glossary-guidance">
+                    <strong>Interpretation:</strong> Memory should scale linearly with concurrent tasks/workflows.
+                    Sharp spikes indicate memory leaks or unbounded buffers. For InMemory store, expect higher
+                    usage as all events are kept in memory. For PostgreSQL, most state is on disk.
+                </div>
+            </div>
+
+            <div class="glossary-item" id="glossary-cpu">
+                <div class="glossary-term">Average CPU (%)</div>
+                <div class="glossary-desc">Mean CPU utilization of the benchmark process.</div>
+                <div class="glossary-guidance">
+                    <strong>Interpretation:</strong> CPU near 100% per core indicates compute-bound workload.
+                    Low CPU with low throughput suggests I/O bottleneck (database, network).
+                    Very high CPU (multi-core) with InMemory store is expected - it's fully compute-bound.
+                </div>
+            </div>
         </div>
     </div>
 

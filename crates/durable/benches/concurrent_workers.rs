@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use indicatif::{ProgressBar, ProgressStyle};
 use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 
@@ -69,7 +70,7 @@ impl TestScenario {
         }
     }
 
-    async fn run_workers(&self, metrics: &BenchmarkMetrics) {
+    async fn run_workers(&self, metrics: &BenchmarkMetrics, pb: &ProgressBar) {
         let semaphore = Arc::new(Semaphore::new(self.worker_count));
         let mut handles = Vec::new();
 
@@ -84,6 +85,7 @@ impl TestScenario {
             let end_to_end = metrics.end_to_end.clone();
             let tasks_completed = metrics.tasks_completed.clone();
             let semaphore = semaphore.clone();
+            let pb = pb.clone();
 
             handles.push(tokio::spawn(async move {
                 let worker_name = format!("worker-{}", worker_id);
@@ -145,7 +147,8 @@ impl TestScenario {
                         }
 
                         tasks_completed.increment();
-                        completed.fetch_add(1, Ordering::Relaxed);
+                        let current = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                        pb.set_position(current);
                     }
                 }
             }));
@@ -187,6 +190,15 @@ async fn run_scenario(
         task_count as f64 / enqueue_time.as_secs_f64()
     );
 
+    // Create progress bar
+    let pb = ProgressBar::new(task_count);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("   {spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({per_sec})")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+
     // Start metrics sampling
     let metrics_clone = metrics.clone();
     let sampling_handle = tokio::spawn(async move {
@@ -198,31 +210,53 @@ async fn run_scenario(
 
     // Run workers
     let run_start = Instant::now();
-    scenario.run_workers(&metrics).await;
+    scenario.run_workers(&metrics, &pb).await;
     let run_time = run_start.elapsed();
 
     sampling_handle.abort();
     metrics.sample(); // Final sample
+    pb.finish_and_clear();
 
     // Print summary
     let e2e = metrics.end_to_end.summary();
     let s2s = metrics.schedule_to_start.summary();
+    let exec = metrics.execution.summary();
 
     println!("✅ Completed in {:.2}s", run_time.as_secs_f64());
     println!(
-        "   Throughput: {:.1} tasks/sec",
+        "   Throughput:      {:.1} tasks/sec    (sustained processing rate)",
         task_count as f64 / run_time.as_secs_f64()
     );
     println!(
-        "   Schedule-to-Start: P50={:.2}ms P99={:.2}ms",
+        "   Schedule-to-Start: P50={:.2}ms P99={:.2}ms    (queue wait time)",
         s2s.p50.as_secs_f64() * 1000.0,
         s2s.p99.as_secs_f64() * 1000.0
     );
     println!(
-        "   End-to-End: P50={:.2}ms P99={:.2}ms",
+        "   End-to-End:        P50={:.2}ms P99={:.2}ms    (total latency)",
         e2e.p50.as_secs_f64() * 1000.0,
         e2e.p99.as_secs_f64() * 1000.0
     );
+
+    // Interpretation
+    let s2s_p99_ms = s2s.p99.as_secs_f64() * 1000.0;
+    if s2s_p99_ms < 10.0 {
+        println!("   💡 S2S P99 < 10ms: Excellent job pickup latency");
+    } else if s2s_p99_ms < 50.0 {
+        println!(
+            "   💡 S2S P99 {:.1}ms: Consider adding more workers",
+            s2s_p99_ms
+        );
+    }
+
+    let overhead_ms =
+        (e2e.p50.as_secs_f64() - s2s.p50.as_secs_f64() - exec.p50.as_secs_f64()) * 1000.0;
+    if overhead_ms > 5.0 {
+        println!(
+            "   💡 Scheduling overhead {:.1}ms: May indicate contention",
+            overhead_ms.max(0.0)
+        );
+    }
 
     metrics
 }
@@ -253,6 +287,10 @@ fn main() {
     println!("\n═══════════════════════════════════════════════════════════");
     println!("                    Summary");
     println!("═══════════════════════════════════════════════════════════");
+    println!("\nMetric definitions:");
+    println!("  Throughput: Tasks processed per second (higher is better)");
+    println!("  P50 S2S:    Median schedule-to-start latency (lower is better)");
+    println!("  P99 S2S:    99th percentile S2S - tail latency (target: <10ms)");
 
     // Print comparison table
     println!(

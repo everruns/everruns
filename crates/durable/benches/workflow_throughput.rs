@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use indicatif::{ProgressBar, ProgressStyle};
 use tokio::runtime::Runtime;
 
 use everruns_durable::bench::{BenchmarkMetrics, BenchmarkReport, ReportConfig};
@@ -100,7 +101,12 @@ impl WorkflowScenario {
     }
 
     /// Run workers that process tasks and advance workflows
-    async fn run(&self, metrics: &BenchmarkMetrics, simulate_execution: bool) -> (u64, Duration) {
+    async fn run(
+        &self,
+        metrics: &BenchmarkMetrics,
+        simulate_execution: bool,
+        pb: &ProgressBar,
+    ) -> (u64, Duration) {
         let start = Instant::now();
         let completed_workflows = Arc::new(AtomicU64::new(0));
         let total_tasks_completed = Arc::new(AtomicU64::new(0));
@@ -119,6 +125,7 @@ impl WorkflowScenario {
             let execution = metrics.execution.clone();
             let end_to_end = metrics.end_to_end.clone();
             let tasks_completed_counter = metrics.tasks_completed.clone();
+            let pb = pb.clone();
 
             handles.push(tokio::spawn(async move {
                 let worker_name = format!("worker-{}", worker_id);
@@ -173,7 +180,8 @@ impl WorkflowScenario {
                         }
 
                         tasks_completed_counter.increment();
-                        total_tasks_completed.fetch_add(1, Ordering::Relaxed);
+                        let current = total_tasks_completed.fetch_add(1, Ordering::Relaxed) + 1;
+                        pb.set_position(current);
 
                         // Find the workflow and advance it
                         if let Some(workflow) = workflows.iter().find(|w| w.id == task.workflow_id)
@@ -227,21 +235,28 @@ async fn run_workflow_test(
     simulate_execution: bool,
 ) -> Arc<BenchmarkMetrics> {
     let metrics = Arc::new(BenchmarkMetrics::new(name));
+    let total_tasks = workflow_count as u64 * steps_per_workflow;
 
     println!("\n🚀 Running: {}", name);
     println!(
         "   Workflows: {}, Steps/workflow: {}, Workers: {}",
         workflow_count, steps_per_workflow, worker_count
     );
-    println!(
-        "   Total tasks: {}",
-        workflow_count as u64 * steps_per_workflow
-    );
+    println!("   Total tasks: {}", total_tasks);
 
     let mut scenario = WorkflowScenario::new(workflow_count, steps_per_workflow, worker_count);
 
     // Setup
     scenario.setup().await;
+
+    // Create progress bar
+    let pb = ProgressBar::new(total_tasks);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("   {spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({per_sec})")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
 
     // Start metrics sampling
     let metrics_clone = metrics.clone();
@@ -256,14 +271,16 @@ async fn run_workflow_test(
     scenario.start_workflows().await;
 
     // Run until all workflows complete
-    let (total_tasks, elapsed) = scenario.run(&metrics, simulate_execution).await;
+    let (completed_tasks, elapsed) = scenario.run(&metrics, simulate_execution, &pb).await;
 
     sampling_handle.abort();
     metrics.sample();
+    pb.finish_and_clear();
 
     // Summary
     let e2e = metrics.end_to_end.summary();
     let s2s = metrics.schedule_to_start.summary();
+    let exec = metrics.execution.summary();
 
     println!(
         "✅ Completed {} workflows in {:.2}s",
@@ -271,23 +288,48 @@ async fn run_workflow_test(
         elapsed.as_secs_f64()
     );
     println!(
-        "   Task throughput: {:.1} tasks/sec",
-        total_tasks as f64 / elapsed.as_secs_f64()
+        "   Task throughput:     {:.1} tasks/sec    (sustained task processing)",
+        completed_tasks as f64 / elapsed.as_secs_f64()
     );
     println!(
-        "   Workflow throughput: {:.1} workflows/sec",
+        "   Workflow throughput: {:.1} workflows/sec    (end-to-end workflow completion)",
         workflow_count as f64 / elapsed.as_secs_f64()
     );
     println!(
-        "   Schedule-to-Start: P50={:.2}ms P99={:.2}ms",
+        "   Schedule-to-Start:   P50={:.2}ms P99={:.2}ms    (queue wait time)",
         s2s.p50.as_secs_f64() * 1000.0,
         s2s.p99.as_secs_f64() * 1000.0
     );
     println!(
-        "   End-to-End (per task): P50={:.2}ms P99={:.2}ms",
+        "   End-to-End (task):   P50={:.2}ms P99={:.2}ms    (per-task latency)",
         e2e.p50.as_secs_f64() * 1000.0,
         e2e.p99.as_secs_f64() * 1000.0
     );
+
+    // Interpretation
+    let s2s_p99_ms = s2s.p99.as_secs_f64() * 1000.0;
+    if s2s_p99_ms < 10.0 {
+        println!("   💡 S2S P99 < 10ms: Excellent - tasks picked up instantly");
+    } else if s2s_p99_ms < 50.0 {
+        println!(
+            "   💡 S2S P99 {:.1}ms: Good, but could add more workers",
+            s2s_p99_ms
+        );
+    } else {
+        println!(
+            "   💡 S2S P99 {:.1}ms: High queue wait - workers are backlogged",
+            s2s_p99_ms
+        );
+    }
+
+    let overhead_ms =
+        (e2e.p50.as_secs_f64() - s2s.p50.as_secs_f64() - exec.p50.as_secs_f64()) * 1000.0;
+    if overhead_ms > 5.0 {
+        println!(
+            "   💡 Scheduling overhead {:.1}ms: Check for contention",
+            overhead_ms.max(0.0)
+        );
+    }
 
     metrics
 }
@@ -360,6 +402,11 @@ fn main() {
     println!("\n═══════════════════════════════════════════════════════════");
     println!("                    Summary");
     println!("═══════════════════════════════════════════════════════════");
+    println!("\nMetric definitions:");
+    println!("  Tasks/sec: Total task throughput (higher is better)");
+    println!("  WF/sec:    Workflow completion rate (end-to-end)");
+    println!("  P50 S2S:   Median schedule-to-start latency (lower is better)");
+    println!("  P99 S2S:   99th percentile S2S - tail latency (target: <10ms)");
 
     println!(
         "\n{:<30} {:>12} {:>12} {:>12} {:>12}",

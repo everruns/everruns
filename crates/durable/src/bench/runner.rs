@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use indicatif::{ProgressBar, ProgressStyle};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -148,10 +149,35 @@ impl BenchmarkRunner {
             .target_rate
             .map(|_rate| Arc::new(tokio::sync::Mutex::new(Instant::now())));
 
+        // Create progress bar
+        let pb = ProgressBar::new(total);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({per_sec}) {msg}")
+                .unwrap()
+                .progress_chars("=>-"),
+        );
+
+        let pb_clone = pb.clone();
+        let completed = self.completed.clone();
+
+        // Spawn a task to update progress bar periodically
+        let progress_updater = tokio::spawn(async move {
+            loop {
+                let current = completed.load(Ordering::Relaxed);
+                pb_clone.set_position(current);
+                if current >= total {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        });
+
         for task_id in 0..total {
             // Check deadline
             if let Some(deadline) = deadline {
                 if Instant::now() >= deadline {
+                    pb.set_message("deadline reached");
                     break;
                 }
             }
@@ -187,16 +213,6 @@ impl BenchmarkRunner {
 
                 drop(permit);
             });
-
-            // Progress reporting
-            if task_id > 0 && task_id % 1000 == 0 {
-                let completed = self.completed.load(Ordering::Relaxed);
-                let rate = completed as f64 / self.metrics.elapsed().as_secs_f64();
-                println!(
-                    "   Progress: {}/{} tasks ({:.1} tasks/sec)",
-                    completed, total, rate
-                );
-            }
         }
 
         // Wait for all tasks to complete
@@ -205,15 +221,19 @@ impl BenchmarkRunner {
                 eprintln!("Task error: {:?}", e);
             }
         }
+
+        progress_updater.abort();
+        pb.finish_with_message("done");
     }
 
     fn print_summary(&self) {
         let e2e = self.metrics.end_to_end.summary();
         let s2s = self.metrics.schedule_to_start.summary();
+        let exec = self.metrics.execution.summary();
 
         println!("\n📊 Results:");
         println!(
-            "   Total tasks:     {}",
+            "   Total tasks:     {}    (tasks completed during benchmark)",
             self.metrics.tasks_completed.total()
         );
         println!(
@@ -221,29 +241,86 @@ impl BenchmarkRunner {
             self.metrics.elapsed().as_secs_f64()
         );
         println!(
-            "   Throughput:      {:.1} tasks/sec",
+            "   Throughput:      {:.1} tasks/sec    (sustained processing rate)",
             self.metrics.tasks_completed.throughput()
         );
         println!();
-        println!("   End-to-End Latency:");
-        println!("     P50:  {:.2}ms", e2e.p50.as_secs_f64() * 1000.0);
-        println!("     P95:  {:.2}ms", e2e.p95.as_secs_f64() * 1000.0);
-        println!("     P99:  {:.2}ms", e2e.p99.as_secs_f64() * 1000.0);
-        println!("     Max:  {:.2}ms", e2e.max.as_secs_f64() * 1000.0);
+        println!("   Schedule-to-Start (S2S):    (time from enqueue to worker pickup)");
+        println!(
+            "     P50:  {:>8.2}ms    (median queue wait)",
+            s2s.p50.as_secs_f64() * 1000.0
+        );
+        println!(
+            "     P99:  {:>8.2}ms    (worst-case for 1% of tasks)",
+            s2s.p99.as_secs_f64() * 1000.0
+        );
         println!();
-        println!("   Schedule-to-Start Latency:");
-        println!("     P50:  {:.2}ms", s2s.p50.as_secs_f64() * 1000.0);
-        println!("     P95:  {:.2}ms", s2s.p95.as_secs_f64() * 1000.0);
-        println!("     P99:  {:.2}ms", s2s.p99.as_secs_f64() * 1000.0);
+        println!("   Execution:    (time spent in task logic)");
+        println!("     P50:  {:>8.2}ms", exec.p50.as_secs_f64() * 1000.0);
+        println!("     P99:  {:>8.2}ms", exec.p99.as_secs_f64() * 1000.0);
+        println!();
+        println!("   End-to-End (E2E):    (total time from enqueue to completion)");
+        println!(
+            "     P50:  {:>8.2}ms    (median latency)",
+            e2e.p50.as_secs_f64() * 1000.0
+        );
+        println!("     P95:  {:>8.2}ms", e2e.p95.as_secs_f64() * 1000.0);
+        println!(
+            "     P99:  {:>8.2}ms    (tail latency)",
+            e2e.p99.as_secs_f64() * 1000.0
+        );
+        println!("     Max:  {:>8.2}ms", e2e.max.as_secs_f64() * 1000.0);
         println!();
         println!(
-            "   Peak Memory:     {:.1} MB",
+            "   Peak Memory:     {:.1} MB    (max RSS during benchmark)",
             self.metrics.resources.peak_memory_mb()
         );
         println!(
-            "   Avg CPU:         {:.1}%",
+            "   Avg CPU:         {:.1}%    (process CPU utilization)",
             self.metrics.resources.avg_cpu_percent()
         );
+
+        // Add interpretation
+        println!();
+        println!("   💡 Interpretation:");
+        let s2s_p99_ms = s2s.p99.as_secs_f64() * 1000.0;
+        if s2s_p99_ms < 10.0 {
+            println!("      ✅ S2S P99 < 10ms: Excellent job pickup latency");
+        } else if s2s_p99_ms < 50.0 {
+            println!(
+                "      ⚠️  S2S P99 {:.1}ms: Consider adding more workers",
+                s2s_p99_ms
+            );
+        } else {
+            println!(
+                "      ❌ S2S P99 {:.1}ms: High queue wait - add workers or check contention",
+                s2s_p99_ms
+            );
+        }
+
+        let overhead_ms =
+            (e2e.p50.as_secs_f64() - s2s.p50.as_secs_f64() - exec.p50.as_secs_f64()) * 1000.0;
+        if overhead_ms < 5.0 {
+            println!("      ✅ Scheduling overhead < 5ms: Low system overhead");
+        } else {
+            println!(
+                "      ⚠️  Scheduling overhead {:.1}ms: Check for lock contention",
+                overhead_ms.max(0.0)
+            );
+        }
+
+        let p99_p50_ratio = e2e.p99.as_secs_f64() / e2e.p50.as_secs_f64().max(0.001);
+        if p99_p50_ratio < 3.0 {
+            println!(
+                "      ✅ P99/P50 ratio {:.1}x: Consistent performance",
+                p99_p50_ratio
+            );
+        } else {
+            println!(
+                "      ⚠️  P99/P50 ratio {:.1}x: High variance in latency",
+                p99_p50_ratio
+            );
+        }
     }
 
     /// Generate HTML report
