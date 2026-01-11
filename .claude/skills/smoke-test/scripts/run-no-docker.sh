@@ -143,7 +143,6 @@ main() {
     echo ""
 
     # Check and install required tools
-    check_protoc
     check_jq
 
     echo ""

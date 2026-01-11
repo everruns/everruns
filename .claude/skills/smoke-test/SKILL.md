@@ -355,7 +355,7 @@ For environments without Docker (Cloud Agent, CI, containers):
 ```
 
 This script automatically handles:
-1. **Dependencies** - Installs protoc (required for building) and jq if not present
+1. **Dependencies** - Installs jq if not present
 2. **PostgreSQL detection** - Supports three modes:
    - System install with `pg_ctlcluster` (Debian/Ubuntu standard)
    - Direct binaries (containers without pg_ctlcluster)
@@ -376,7 +376,6 @@ This script automatically handles:
 The no-Docker mode is specifically designed for cloud agent environments like Claude Code on the web:
 
 - **Auto-detects PostgreSQL** even without `pg_ctlcluster` command
-- **Installs protoc automatically** (required for gRPC)
 - **Works in containers** by using direct `pg_ctl` instead of systemd
 - **Supports both API keys** (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`)
 
@@ -440,15 +439,6 @@ export ANTHROPIC_API_KEY=your-key
 **"must be run as root"**: The PostgreSQL setup requires root access:
 ```bash
 sudo .claude/skills/smoke-test/scripts/run-no-docker.sh
-```
-
-**"protoc not found" during build**: The script auto-installs protoc, but if it fails:
-```bash
-# Debian/Ubuntu
-apt-get update && apt-get install -y protobuf-compiler
-
-# Verify
-protoc --version
 ```
 
 **Messages sent but no assistant response**: Ensure the durable worker is running:

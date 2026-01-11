@@ -35,29 +35,6 @@ ensure_docker_daemon() {
   return 1
 }
 
-ensure_protoc() {
-  if command -v protoc &> /dev/null; then
-    return 0
-  fi
-
-  echo "ℹ️  protoc not found. Attempting installation..."
-  if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &> /dev/null; then
-    brew install protobuf || true
-  elif command -v apt-get &> /dev/null; then
-    sudo apt-get update && sudo apt-get install -y protobuf-compiler || true
-  fi
-
-  if command -v protoc &> /dev/null; then
-    echo "   ✅ protoc installed: $(protoc --version)"
-    return 0
-  fi
-
-  echo "❌ protoc is required (Protocol Buffers compiler). Install manually, e.g.:"
-  echo "   macOS:   brew install protobuf"
-  echo "   Debian:  sudo apt-get install -y protobuf-compiler"
-  return 1
-}
-
 # Load .env file if it exists
 if [ -f .env ]; then
   set -a
@@ -296,7 +273,6 @@ case "$command" in
       fi
     }
 
-    ensure_protoc || exit 1
     require_command cargo-watch "Run: ./scripts/dev.sh init"
     require_command sqlx "Run: ./scripts/dev.sh init"
     require_command npm "Install Node.js/npm to start the UI (see README.md)."
@@ -491,7 +467,6 @@ case "$command" in
     }
 
     echo "🧪 Preflight checks..."
-    ensure_protoc || exit 1
 
     # Rust tools
     echo "📦 Rust tools:"
