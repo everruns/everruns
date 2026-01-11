@@ -143,9 +143,10 @@ impl BenchmarkRunner {
         let mut tasks = JoinSet::new();
 
         // Rate limiter for target rate
-        let rate_limiter = self.config.target_rate.map(|_rate| {
-            Arc::new(tokio::sync::Mutex::new(Instant::now()))
-        });
+        let rate_limiter = self
+            .config
+            .target_rate
+            .map(|_rate| Arc::new(tokio::sync::Mutex::new(Instant::now())));
 
         for task_id in 0..total {
             // Check deadline
@@ -191,7 +192,10 @@ impl BenchmarkRunner {
             if task_id > 0 && task_id % 1000 == 0 {
                 let completed = self.completed.load(Ordering::Relaxed);
                 let rate = completed as f64 / self.metrics.elapsed().as_secs_f64();
-                println!("   Progress: {}/{} tasks ({:.1} tasks/sec)", completed, total, rate);
+                println!(
+                    "   Progress: {}/{} tasks ({:.1} tasks/sec)",
+                    completed, total, rate
+                );
             }
         }
 
@@ -208,7 +212,10 @@ impl BenchmarkRunner {
         let s2s = self.metrics.schedule_to_start.summary();
 
         println!("\n📊 Results:");
-        println!("   Total tasks:     {}", self.metrics.tasks_completed.total());
+        println!(
+            "   Total tasks:     {}",
+            self.metrics.tasks_completed.total()
+        );
         println!(
             "   Duration:        {:.2}s",
             self.metrics.elapsed().as_secs_f64()

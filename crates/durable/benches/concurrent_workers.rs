@@ -10,9 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 
-use everruns_durable::bench::{
-    ActivityDuration, BenchmarkMetrics, BenchmarkReport, ReportConfig,
-};
+use everruns_durable::bench::{ActivityDuration, BenchmarkMetrics, BenchmarkReport, ReportConfig};
 use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
 };
@@ -257,7 +255,10 @@ fn main() {
     println!("═══════════════════════════════════════════════════════════");
 
     // Print comparison table
-    println!("\n{:<30} {:>12} {:>12} {:>12}", "Scenario", "Throughput", "P50 S2S", "P99 S2S");
+    println!(
+        "\n{:<30} {:>12} {:>12} {:>12}",
+        "Scenario", "Throughput", "P50 S2S", "P99 S2S"
+    );
     println!("{:-<30} {:->12} {:->12} {:->12}", "", "", "", "");
 
     for (name, m) in [

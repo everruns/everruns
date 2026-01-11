@@ -100,11 +100,7 @@ impl WorkflowScenario {
     }
 
     /// Run workers that process tasks and advance workflows
-    async fn run(
-        &self,
-        metrics: &BenchmarkMetrics,
-        simulate_execution: bool,
-    ) -> (u64, Duration) {
+    async fn run(&self, metrics: &BenchmarkMetrics, simulate_execution: bool) -> (u64, Duration) {
         let start = Instant::now();
         let completed_workflows = Arc::new(AtomicU64::new(0));
         let total_tasks_completed = Arc::new(AtomicU64::new(0));
@@ -159,7 +155,8 @@ impl WorkflowScenario {
                         let exec_start = Instant::now();
                         if simulate_execution {
                             // Use faster durations for benchmark (1-10ms instead of 100ms+)
-                            let duration = Duration::from_micros(1000 + rand::random::<u64>() % 9000);
+                            let duration =
+                                Duration::from_micros(1000 + rand::random::<u64>() % 9000);
                             tokio::time::sleep(duration).await;
                         }
                         execution.record(exec_start.elapsed());
@@ -179,9 +176,7 @@ impl WorkflowScenario {
                         total_tasks_completed.fetch_add(1, Ordering::Relaxed);
 
                         // Find the workflow and advance it
-                        if let Some(workflow) = workflows
-                            .iter()
-                            .find(|w| w.id == task.workflow_id)
+                        if let Some(workflow) = workflows.iter().find(|w| w.id == task.workflow_id)
                         {
                             let current = workflow.current_step.fetch_add(1, Ordering::SeqCst);
                             let next_step = current + 1;
@@ -270,7 +265,11 @@ async fn run_workflow_test(
     let e2e = metrics.end_to_end.summary();
     let s2s = metrics.schedule_to_start.summary();
 
-    println!("✅ Completed {} workflows in {:.2}s", workflow_count, elapsed.as_secs_f64());
+    println!(
+        "✅ Completed {} workflows in {:.2}s",
+        workflow_count,
+        elapsed.as_secs_f64()
+    );
     println!(
         "   Task throughput: {:.1} tasks/sec",
         total_tasks as f64 / elapsed.as_secs_f64()
@@ -307,18 +306,18 @@ fn main() {
     // Scenario 1: Small scale (baseline)
     let small = rt.block_on(run_workflow_test(
         "small_10wf_10steps",
-        10,   // workflows
-        10,   // steps per workflow (100 total tasks)
-        10,   // workers
+        10,    // workflows
+        10,    // steps per workflow (100 total tasks)
+        10,    // workers
         false, // no execution simulation
     ));
 
     // Scenario 2: Medium scale
     let medium = rt.block_on(run_workflow_test(
         "medium_100wf_50steps",
-        100,  // workflows
-        50,   // steps per workflow (5,000 total tasks)
-        50,   // workers
+        100, // workflows
+        50,  // steps per workflow (5,000 total tasks)
+        50,  // workers
         false,
     ));
 
@@ -352,9 +351,9 @@ fn main() {
     // Scenario 6: Deep workflows (fewer workflows, many steps)
     let deep = rt.block_on(run_workflow_test(
         "deep_100wf_500steps",
-        100,  // workflows
-        500,  // steps per workflow (50,000 total tasks)
-        50,   // workers
+        100, // workflows
+        500, // steps per workflow (50,000 total tasks)
+        50,  // workers
         false,
     ));
 
@@ -362,9 +361,14 @@ fn main() {
     println!("                    Summary");
     println!("═══════════════════════════════════════════════════════════");
 
-    println!("\n{:<30} {:>12} {:>12} {:>12} {:>12}",
-        "Scenario", "Tasks/sec", "WF/sec", "P50 S2S", "P99 S2S");
-    println!("{:-<30} {:->12} {:->12} {:->12} {:->12}", "", "", "", "", "");
+    println!(
+        "\n{:<30} {:>12} {:>12} {:>12} {:>12}",
+        "Scenario", "Tasks/sec", "WF/sec", "P50 S2S", "P99 S2S"
+    );
+    println!(
+        "{:-<30} {:->12} {:->12} {:->12} {:->12}",
+        "", "", "", "", ""
+    );
 
     for (name, m, wf_count) in [
         ("small_10wf_10steps", &small, 10),

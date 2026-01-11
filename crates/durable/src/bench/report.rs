@@ -56,9 +56,7 @@ impl BenchmarkReport {
         fs::write(&output_path, &html)?;
 
         // Return absolute path for clickable terminal links
-        let absolute_path = output_path
-            .canonicalize()
-            .unwrap_or(output_path);
+        let absolute_path = output_path.canonicalize().unwrap_or(output_path);
 
         Ok(absolute_path.to_string_lossy().to_string())
     }
@@ -144,7 +142,8 @@ fn calculate_throughput_series(data: &[(u64, u64)]) -> Vec<(f64, f64)> {
         let window = 5;
         let mut smoothed = Vec::new();
         for i in window..result.len() {
-            let avg: f64 = result[i - window..i].iter().map(|(_, v)| v).sum::<f64>() / window as f64;
+            let avg: f64 =
+                result[i - window..i].iter().map(|(_, v)| v).sum::<f64>() / window as f64;
             smoothed.push((result[i].0, avg));
         }
         return smoothed;

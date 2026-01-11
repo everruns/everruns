@@ -284,8 +284,10 @@ fn bench_schedule_to_start(c: &mut Criterion) {
                                         times.iter().find(|(id, _)| *id == task.id)
                                     {
                                         let latency = claim_time.duration_since(*enqueue_time);
-                                        total_latency
-                                            .fetch_add(latency.as_micros() as u64, Ordering::Relaxed);
+                                        total_latency.fetch_add(
+                                            latency.as_micros() as u64,
+                                            Ordering::Relaxed,
+                                        );
                                     }
                                 }
 
