@@ -38,7 +38,8 @@ Specification format: Abstract and Requirements sections.
 `.claude/skills/` contains development skills following the [Agent Skills Specification](https://github.com/anthropics/skills/blob/main/spec/agent-skills-spec.md).
 
 Available skills:
-- `smoke-tests/` - API and UI smoke testing with support for Docker and no-Docker environments
+- `smoke-test/` - API and UI smoke testing with support for Docker and no-Docker environments
+- `ui-screenshots/` - Take UI screenshots using Playwright and attach them as PR comments
 
 ### Test Cases
 
@@ -248,6 +249,12 @@ CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` 
 - After adding dependencies, ensure `package-lock.json` is updated via `npm install`
 - Run `npm run lint` to check for oxlint issues
 - Run `npm run build` to verify TypeScript types and build before pushing
+
+**E2E Testing (Playwright):**
+- Tests located in `apps/ui/e2e/`
+- Run with `./scripts/dev.sh e2e` or `npm run e2e` in apps/ui
+- Screenshot tests: `./scripts/dev.sh e2e-screenshots`
+- Dev pages (`/dev/*`) provide component showcases for visual testing
 
 ### Testing conventions
 
