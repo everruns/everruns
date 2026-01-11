@@ -55,7 +55,12 @@ impl BenchmarkReport {
         let html = self.render_html(metrics);
         fs::write(&output_path, &html)?;
 
-        Ok(output_path.to_string_lossy().to_string())
+        // Return absolute path for clickable terminal links
+        let absolute_path = output_path
+            .canonicalize()
+            .unwrap_or(output_path);
+
+        Ok(absolute_path.to_string_lossy().to_string())
     }
 
     fn render_html(&self, metrics: &BenchmarkMetrics) -> String {
