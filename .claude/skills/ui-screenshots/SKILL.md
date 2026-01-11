@@ -22,9 +22,15 @@ Capture UI screenshots and attach them to pull requests for visual verification.
    In restricted environments (cloud agents), older pre-installed chromium at
    `/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome` may work better.
 
-3. **GitHub Token**: `GITHUB_TOKEN` environment variable for PR comments.
+3. **Cloudinary Account** (free tier available):
+   - Create account at [cloudinary.com](https://cloudinary.com)
+   - Get your `cloud_name` from the dashboard
+   - Create an unsigned upload preset: Settings > Upload > Upload presets > Add
+   - Set environment variables:
+     - `CLOUDINARY_CLOUD_NAME` - Your cloud name
+     - `CLOUDINARY_UPLOAD_PRESET` - Name of unsigned preset
 
-   Screenshots are uploaded to freeimage.host and embedded directly in PR comments.
+4. **GitHub Token**: `GITHUB_TOKEN` environment variable for PR comments.
 
 ## Usage
 
@@ -66,7 +72,7 @@ PLAYWRIGHT_CHROMIUM_PATH=/root/.cache/ms-playwright/chromium-1194/chrome-linux/c
 
 ### Attaching Screenshots to PR
 
-Screenshots are NOT committed to the repo. They are uploaded to freeimage.host and embedded in PR comments:
+Screenshots are NOT committed to the repo. They are uploaded to Cloudinary and embedded in PR comments:
 
 ```bash
 # Use the helper script
@@ -108,9 +114,11 @@ Or run tests with webServer config (in playwright.config.ts).
 
 In sandboxed environments, shared memory may fail. Use `--disable-dev-shm-usage` flag.
 
-### Image upload fails
+### Cloudinary upload fails
 
-The script uses freeimage.host for image hosting. If uploads fail, check network connectivity.
+Verify your environment variables are set correctly:
+- `CLOUDINARY_CLOUD_NAME` - Your cloud name from dashboard
+- `CLOUDINARY_UPLOAD_PRESET` - Must be an **unsigned** preset
 
 ## Available Screenshots
 
@@ -141,7 +149,7 @@ Example:
 
 ### upload-screenshot.sh
 
-Upload screenshot to freeimage.host and add PR comment:
+Upload screenshot to Cloudinary and add PR comment:
 
 ```bash
 .claude/skills/ui-screenshots/scripts/upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]

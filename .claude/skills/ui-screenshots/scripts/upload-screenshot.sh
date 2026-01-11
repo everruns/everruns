@@ -3,12 +3,20 @@ set -euo pipefail
 
 # Upload a screenshot and add a PR comment with the embedded image
 #
-# Uses freeimage.host for image hosting (provides direct image URLs)
+# Uses Cloudinary for image hosting (reliable paid service with free tier)
 #
 # Usage: upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]
 #
 # Environment variables:
-#   GITHUB_TOKEN - Required for PR comments
+#   GITHUB_TOKEN          - Required for PR comments
+#   CLOUDINARY_CLOUD_NAME - Your Cloudinary cloud name
+#   CLOUDINARY_UPLOAD_PRESET - Unsigned upload preset name
+#
+# Setup:
+#   1. Create free account at cloudinary.com
+#   2. Go to Settings > Upload > Upload presets
+#   3. Create unsigned preset (e.g., "pr-screenshots")
+#   4. Set environment variables
 #
 # Example:
 #   ./upload-screenshot.sh screenshot.png 195 "Dev components page"
@@ -32,16 +40,30 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
   exit 1
 fi
 
+if [ -z "${CLOUDINARY_CLOUD_NAME:-}" ]; then
+  echo "❌ CLOUDINARY_CLOUD_NAME environment variable not set"
+  echo "   Create a free account at cloudinary.com and set your cloud name"
+  exit 1
+fi
+
+if [ -z "${CLOUDINARY_UPLOAD_PRESET:-}" ]; then
+  echo "❌ CLOUDINARY_UPLOAD_PRESET environment variable not set"
+  echo "   Create an unsigned upload preset in Cloudinary Settings > Upload"
+  exit 1
+fi
+
 FILENAME=$(basename "$SCREENSHOT_PATH")
 echo "📤 Uploading screenshot: $FILENAME"
 
-# Upload to freeimage.host
-echo "   Uploading to freeimage.host..."
-UPLOAD_RESPONSE=$(curl -s -X POST "https://freeimage.host/api/1/upload" \
-  -F "source=@$SCREENSHOT_PATH" \
-  -F "key=6d207e02198a847aa98d0a2a901485a5" 2>/dev/null || echo '{"status_code":0}')
+# Upload to Cloudinary (unsigned upload)
+echo "   Uploading to Cloudinary..."
+UPLOAD_RESPONSE=$(curl -s -X POST \
+  "https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload" \
+  -F "file=@$SCREENSHOT_PATH" \
+  -F "upload_preset=${CLOUDINARY_UPLOAD_PRESET}" \
+  2>/dev/null || echo '{"error":{"message":"request failed"}}')
 
-IMAGE_URL=$(echo "$UPLOAD_RESPONSE" | jq -r '.image.url // empty')
+IMAGE_URL=$(echo "$UPLOAD_RESPONSE" | jq -r '.secure_url // empty')
 
 if [ -z "$IMAGE_URL" ]; then
   echo "❌ Upload failed"
