@@ -40,9 +40,6 @@ SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
 # Optional: Add API keys here to skip UI configuration
 DEFAULT_OPENAI_API_KEY=sk-...
 DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: Enable distributed tracing to Jaeger
-OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
 ```
 
 ### 4. Start Services
@@ -58,7 +55,7 @@ This starts:
 - 3 worker instances
 - Next.js UI
 - Caddy reverse proxy
-- Jaeger tracing (enabled when `OTEL_EXPORTER_OTLP_ENDPOINT` is set)
+- Jaeger tracing
 
 ### 5. Access the Platform
 
