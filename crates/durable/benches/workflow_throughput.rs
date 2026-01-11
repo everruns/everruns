@@ -10,7 +10,9 @@ use std::time::{Duration, Instant};
 use indicatif::{ProgressBar, ProgressStyle};
 use tokio::runtime::Runtime;
 
-use everruns_durable::bench::{BenchmarkMetrics, BenchmarkReport, ReportConfig};
+use everruns_durable::bench::{
+    clear_terminal_progress, set_terminal_progress, BenchmarkMetrics, BenchmarkReport, ReportConfig,
+};
 use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
 };
@@ -183,6 +185,12 @@ impl WorkflowScenario {
                         let current = total_tasks_completed.fetch_add(1, Ordering::Relaxed) + 1;
                         pb.set_position(current);
 
+                        // Update terminal progress (Ghostty, iTerm2, etc.)
+                        if let Some(total) = pb.length() {
+                            let percent = ((current as f64 / total as f64) * 100.0) as u8;
+                            set_terminal_progress(percent);
+                        }
+
                         // Find the workflow and advance it
                         if let Some(workflow) = workflows.iter().find(|w| w.id == task.workflow_id)
                         {
@@ -276,6 +284,7 @@ async fn run_workflow_test(
     sampling_handle.abort();
     metrics.sample();
     pb.finish_and_clear();
+    clear_terminal_progress();
 
     // Summary
     let e2e = metrics.end_to_end.summary();

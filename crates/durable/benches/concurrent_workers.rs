@@ -11,7 +11,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 
-use everruns_durable::bench::{ActivityDuration, BenchmarkMetrics, BenchmarkReport, ReportConfig};
+use everruns_durable::bench::{
+    clear_terminal_progress, set_terminal_progress, ActivityDuration, BenchmarkMetrics,
+    BenchmarkReport, ReportConfig,
+};
 use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
 };
@@ -149,6 +152,10 @@ impl TestScenario {
                         tasks_completed.increment();
                         let current = completed.fetch_add(1, Ordering::Relaxed) + 1;
                         pb.set_position(current);
+
+                        // Update terminal progress (Ghostty, iTerm2, etc.)
+                        let percent = ((current as f64 / task_count as f64) * 100.0) as u8;
+                        set_terminal_progress(percent);
                     }
                 }
             }));
@@ -216,6 +223,7 @@ async fn run_scenario(
     sampling_handle.abort();
     metrics.sample(); // Final sample
     pb.finish_and_clear();
+    clear_terminal_progress();
 
     // Print summary
     let e2e = metrics.end_to_end.summary();

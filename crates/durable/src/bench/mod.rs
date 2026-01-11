@@ -9,4 +9,7 @@ mod runner;
 
 pub use metrics::{BenchmarkMetrics, LatencyHistogram, ThroughputCounter};
 pub use report::{BenchmarkReport, ReportConfig};
-pub use runner::{ActivityDuration, BenchmarkRunner, BenchmarkScenario, ScenarioConfig};
+pub use runner::{
+    clear_terminal_progress, set_terminal_progress, ActivityDuration, BenchmarkRunner,
+    BenchmarkScenario, ScenarioConfig,
+};

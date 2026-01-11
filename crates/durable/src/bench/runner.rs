@@ -3,6 +3,7 @@
 //! Provides infrastructure for running load tests with multiple workers.
 
 use std::future::Future;
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -13,6 +14,19 @@ use tokio::task::JoinSet;
 
 use super::metrics::BenchmarkMetrics;
 use super::report::{BenchmarkReport, ReportConfig};
+
+/// Set terminal progress indicator (Ghostty, iTerm2, Windows Terminal, etc.)
+/// Uses OSC 9;4 escape sequence: \x1b]9;4;1;{progress}\x07
+pub fn set_terminal_progress(percent: u8) {
+    let _ = write!(std::io::stdout(), "\x1b]9;4;1;{}\x07", percent.min(100));
+    let _ = std::io::stdout().flush();
+}
+
+/// Clear terminal progress indicator
+pub fn clear_terminal_progress() {
+    let _ = write!(std::io::stdout(), "\x1b]9;4;0\x07");
+    let _ = std::io::stdout().flush();
+}
 
 /// Configuration for a benchmark scenario
 #[derive(Debug, Clone)]
@@ -166,6 +180,11 @@ impl BenchmarkRunner {
             loop {
                 let current = completed.load(Ordering::Relaxed);
                 pb_clone.set_position(current);
+
+                // Update terminal progress indicator (Ghostty, iTerm2, etc.)
+                let percent = ((current as f64 / total as f64) * 100.0) as u8;
+                set_terminal_progress(percent);
+
                 if current >= total {
                     break;
                 }
@@ -224,6 +243,7 @@ impl BenchmarkRunner {
 
         progress_updater.abort();
         pb.finish_with_message("done");
+        clear_terminal_progress();
     }
 
     fn print_summary(&self) {
