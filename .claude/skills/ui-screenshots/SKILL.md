@@ -24,11 +24,11 @@ Capture UI screenshots and attach them to pull requests for visual verification.
 
 3. **GitHub Tokens**:
    - `GITHUB_TOKEN` - Required for PR comments (can be org-scoped fine-grained PAT)
-   - `GITHUB_GIST_TOKEN` - Optional, for gist uploads. Use a **classic token** with `gist` scope.
-     If not set, falls back to `GITHUB_TOKEN`.
+   - `GITHUB_GIST_TOKEN` - Required for screenshot uploads. Use a **classic token** with `gist` scope.
 
    **Why two tokens?** Organization fine-grained PATs cannot create gists (gists are user-level
-   resources). To upload screenshots, create a classic personal access token with `gist` scope.
+   resources). The script uploads screenshots as HTML files to gists, which render the embedded
+   image when opened. Create a classic personal access token with `gist` scope.
 
 ## Usage
 
