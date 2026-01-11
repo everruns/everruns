@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Upload a screenshot and add a PR comment with the embedded image
+# Upload a screenshot and add a PR comment with the image
 #
-# Uses GitHub Release assets for hosting (provides direct image URLs)
+# Uses GitHub Gist with HTML preview (renders image when opened)
 #
 # Usage: upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]
 #
 # Environment variables:
-#   GITHUB_TOKEN - Required for PR comments and release uploads
+#   GITHUB_TOKEN      - Required for PR comments
+#   GITHUB_GIST_TOKEN - Required for gist uploads (classic token with 'gist' scope)
 #
 # Example:
 #   ./upload-screenshot.sh screenshot.png 195 "Dev components page"
@@ -32,81 +33,73 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
   exit 1
 fi
 
-REPO="everruns/everruns"
-RELEASE_TAG="screenshots"
+GIST_TOKEN="${GITHUB_GIST_TOKEN:-$GITHUB_TOKEN}"
 
-# Generate unique filename with timestamp
-ORIGINAL_FILENAME=$(basename "$SCREENSHOT_PATH")
-EXTENSION="${ORIGINAL_FILENAME##*.}"
-BASENAME="${ORIGINAL_FILENAME%.*}"
-FILENAME="${BASENAME}-$(date +%Y%m%d-%H%M%S).${EXTENSION}"
-
+FILENAME=$(basename "$SCREENSHOT_PATH")
 echo "📤 Uploading screenshot: $FILENAME"
 
-# Ensure screenshots release exists
-echo "   Checking screenshots release..."
-RELEASE_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/$REPO/releases/tags/$RELEASE_TAG")
+# Create HTML with embedded image
+echo "   Creating gist with HTML preview..."
+SCREENSHOT_B64=$(base64 -w0 "$SCREENSHOT_PATH" 2>/dev/null || base64 "$SCREENSHOT_PATH")
 
-if [ "$RELEASE_EXISTS" != "200" ]; then
-  echo "   Creating screenshots release..."
-  curl -s -X POST \
-    -H "Authorization: Bearer $GITHUB_TOKEN" \
-    -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/$REPO/releases" \
-    -d "{
-      \"tag_name\": \"$RELEASE_TAG\",
-      \"name\": \"Screenshots\",
-      \"body\": \"Storage for UI screenshots attached to PRs\",
-      \"draft\": false,
-      \"prerelease\": true
-    }" > /dev/null
+MIME_TYPE="image/png"
+if [[ "$FILENAME" == *.jpg ]] || [[ "$FILENAME" == *.jpeg ]]; then
+  MIME_TYPE="image/jpeg"
 fi
 
-# Get release upload URL
-RELEASE_INFO=$(curl -s \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+HTML_CONTENT="<!DOCTYPE html>
+<html>
+<head><title>$DESCRIPTION</title></head>
+<body style=\"margin:0;padding:20px;background:#1a1a1a;\">
+<h2 style=\"color:#fff;font-family:system-ui;\">$DESCRIPTION</h2>
+<img src=\"data:$MIME_TYPE;base64,$SCREENSHOT_B64\" style=\"max-width:100%;border:1px solid #333;\">
+</body>
+</html>"
+
+GIST_PAYLOAD=$(jq -n \
+  --arg desc "$DESCRIPTION" \
+  --arg filename "screenshot.html" \
+  --arg content "$HTML_CONTENT" \
+  '{description: $desc, public: false, files: {($filename): {content: $content}}}')
+
+GIST_RESPONSE=$(curl -s -X POST \
+  -H "Authorization: Bearer $GIST_TOKEN" \
   -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/$REPO/releases/tags/$RELEASE_TAG")
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  https://api.github.com/gists \
+  -d "$GIST_PAYLOAD" 2>/dev/null || echo '{"message":"failed"}')
 
-UPLOAD_URL=$(echo "$RELEASE_INFO" | jq -r '.upload_url' | sed 's/{.*}//')
+GIST_ID=$(echo "$GIST_RESPONSE" | jq -r '.id // empty')
+GIST_OWNER=$(echo "$GIST_RESPONSE" | jq -r '.owner.login // empty')
 
-# Upload the asset
-echo "   Uploading to release..."
-UPLOAD_RESPONSE=$(curl -s -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  -H "Content-Type: application/octet-stream" \
-  "${UPLOAD_URL}?name=${FILENAME}" \
-  --data-binary "@$SCREENSHOT_PATH")
-
-IMAGE_URL=$(echo "$UPLOAD_RESPONSE" | jq -r '.browser_download_url // empty')
-
-if [ -z "$IMAGE_URL" ]; then
-  echo "❌ Upload failed"
-  echo "$UPLOAD_RESPONSE" | jq .
+if [ -z "$GIST_ID" ] || [ -z "$GIST_OWNER" ]; then
+  echo "❌ Gist upload failed"
+  echo "$GIST_RESPONSE" | jq .
   exit 1
 fi
 
-echo "   ✅ Uploaded: $IMAGE_URL"
+echo "   ✅ Gist created: https://gist.github.com/$GIST_ID"
 
-# Build comment body with embedded image
+# Raw URL renders the HTML with embedded image
+RAW_URL="https://gist.githubusercontent.com/$GIST_OWNER/$GIST_ID/raw/screenshot.html"
+
+# Build comment body
 echo "💬 Adding comment to PR #$PR_NUMBER..."
 
 COMMENT_BODY="## 📸 UI Screenshot
 
 **$DESCRIPTION**
 
-![$DESCRIPTION]($IMAGE_URL)"
+🔗 **[View Screenshot]($RAW_URL)** (click to open)
+
+<sub>Gist: https://gist.github.com/$GIST_ID</sub>"
 
 # Post comment
 COMMENT_RESPONSE=$(curl -s -X POST \
   -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
-  "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" \
+  "https://api.github.com/repos/everruns/everruns/issues/$PR_NUMBER/comments" \
   -d "{\"body\": $(echo "$COMMENT_BODY" | jq -Rs .)}")
 
 COMMENT_URL=$(echo "$COMMENT_RESPONSE" | jq -r '.html_url // empty')
