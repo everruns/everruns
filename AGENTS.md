@@ -100,10 +100,6 @@ When making changes that affect user-facing behavior or operations, update the r
 ### Local dev expectations
 
 - A `harness/docker-compose.yml` brings up Postgres + Jaeger
-- `protoc` (Protocol Buffers compiler) is required for building gRPC dependencies
-  - Debian/Ubuntu: `apt-get install protobuf-compiler`
-  - macOS: `brew install protobuf`
-  - Or download from https://github.com/protocolbuffers/protobuf/releases
 
 ### Smoke test prerequisites
 
@@ -114,9 +110,7 @@ Before running smoke tests, ensure these tools are installed:
    - macOS: `brew install postgresql`
    - Verify: `psql --version`
 
-2. **protoc** - Protocol Buffers compiler (see above)
-
-3. **jq** - JSON processor for test scripts
+2. **jq** - JSON processor for test scripts
    - Debian/Ubuntu: `apt-get install jq`
    - macOS: `brew install jq`
 
@@ -169,7 +163,7 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
 
 4. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
    - gRPC protocol definitions (proto files) for worker ↔ control-plane
-   - Generated Rust types via tonic-build
+   - Generated Rust types via tonic-build + protox (pure Rust, no external protoc binary)
    - Batched operations: `GetTurnContext`, `EmitEventStream`
 
 #### Naming conventions
