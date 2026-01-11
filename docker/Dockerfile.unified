@@ -58,8 +58,9 @@ FROM builder-base AS builder-control-plane
 ARG TARGETPLATFORM
 
 # Use cache mount for cargo registry and target directory
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# Each cache has platform-specific ID to avoid conflicts during multi-platform builds
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
     xx-cargo build --release -p everruns-control-plane && \
     cp target/$(xx-cargo --print-target-triple)/release/everruns-control-plane /app/everruns-control-plane
@@ -71,8 +72,9 @@ FROM builder-base AS builder-worker
 
 ARG TARGETPLATFORM
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# Each cache has platform-specific ID to avoid conflicts during multi-platform builds
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
     xx-cargo build --release -p everruns-worker && \
     cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker
@@ -84,8 +86,9 @@ FROM builder-base AS builder-admin
 
 ARG TARGETPLATFORM
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# Each cache has platform-specific ID to avoid conflicts during multi-platform builds
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
     xx-cargo build --release --bin reencrypt-secrets && \
     cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
@@ -140,13 +143,16 @@ CMD ["/app/everruns-worker"]
 # Run key re-encryption:
 #   docker run --rm everruns-admin reencrypt --dry-run
 #
+# CA certificates stage - runs on build platform to avoid QEMU
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS ca-certs
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
 FROM debian:bookworm-slim AS admin
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Copy CA certificates from build platform stage (no QEMU needed)
+COPY --from=ca-certs /etc/ssl/certs /etc/ssl/certs
 
 # Copy sqlx-cli from builder (cross-compiled for target architecture)
 COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
@@ -157,9 +163,8 @@ COPY --from=builder-admin /app/reencrypt-secrets /app/reencrypt-secrets
 # Copy migrations
 COPY crates/control-plane/migrations /app/migrations
 
-# Copy entrypoint script
-COPY docker/admin-entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Copy entrypoint script (--chmod avoids RUN on target platform)
+COPY --chmod=755 docker/admin-entrypoint.sh /app/entrypoint.sh
 
 ENV RUST_LOG=info
 
