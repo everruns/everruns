@@ -113,7 +113,9 @@ pub async fn input_activity(
 ///
 /// Note: API key decryption is handled by the control-plane gRPC service.
 pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Result<ReasonResult> {
-    use everruns_core::events::{EventContext, EventRequest, SessionIdledData, TurnCompletedData};
+    use everruns_core::events::{
+        EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
+    };
     use everruns_core::traits::EventEmitter;
 
     tracing::info!(
@@ -159,19 +161,37 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
             tracing::warn!(error = %e, "Failed to set session status to idle");
         }
 
-        // Emit turn.completed event
         let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
-        let turn_completed_event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, input_message_id),
-            TurnCompletedData {
-                turn_id,
-                iterations: 1, // TODO: Track actual iterations when workflow supports it
-                duration_ms: None,
-            },
-        );
-        if let Err(e) = event_emitter.emit(turn_completed_event).await {
-            tracing::warn!(error = %e, "Failed to emit turn.completed event");
+
+        // Emit turn.failed or turn.completed based on success
+        if !result.success {
+            // Emit turn.failed event with sanitized error message
+            let turn_failed_event = EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, input_message_id),
+                TurnFailedData {
+                    turn_id,
+                    error: "An error occurred while processing your request.".to_string(),
+                    error_code: Some("llm_error".to_string()),
+                },
+            );
+            if let Err(e) = event_emitter.emit(turn_failed_event).await {
+                tracing::warn!(error = %e, "Failed to emit turn.failed event");
+            }
+        } else {
+            // Emit turn.completed event
+            let turn_completed_event = EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, input_message_id),
+                TurnCompletedData {
+                    turn_id,
+                    iterations: 1, // TODO: Track actual iterations when workflow supports it
+                    duration_ms: None,
+                },
+            );
+            if let Err(e) = event_emitter.emit(turn_completed_event).await {
+                tracing::warn!(error = %e, "Failed to emit turn.completed event");
+            }
         }
 
         // Emit session.idled event

@@ -26,8 +26,8 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmGenerationData, ReasonCompletedData, ReasonStartedData,
-    ToolDefinitionSummary,
+    EventContext, EventRequest, LlmGenerationData, MessageAgentData, ReasonCompletedData,
+    ReasonStartedData, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
@@ -273,6 +273,42 @@ where
 
                 let error_msg = e.to_string();
 
+                // User-facing error message (don't expose internal details)
+                let user_error_text =
+                    "I encountered an error while processing your request. Please try again later."
+                        .to_string();
+
+                // Store an assistant message with the error for the user to see
+                let error_message = Message::assistant(&user_error_text);
+                if let Err(store_err) = self
+                    .message_store
+                    .store(context.session_id, error_message.clone())
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        error = %store_err,
+                        "ReasonAtom: failed to store error message"
+                    );
+                }
+
+                // Emit message.agent event for the error message
+                if let Err(emit_err) = self
+                    .event_emitter
+                    .emit(EventRequest::new(
+                        context.session_id,
+                        event_context.clone(),
+                        MessageAgentData::new(error_message),
+                    ))
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        error = %emit_err,
+                        "ReasonAtom: failed to emit message.agent event for error"
+                    );
+                }
+
                 // Emit reason.completed event for failure
                 if let Err(emit_err) = self
                     .event_emitter
@@ -292,10 +328,7 @@ where
 
                 ReasonResult {
                     success: false,
-                    text: format!(
-                        "I encountered an error while processing your request: {}",
-                        e
-                    ),
+                    text: user_error_text,
                     tool_calls: vec![],
                     has_tool_calls: false,
                     tool_definitions: vec![],
