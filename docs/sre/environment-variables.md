@@ -62,19 +62,19 @@ LLM provider API keys (OpenAI, Anthropic, Azure OpenAI) are primarily stored enc
 
 **Required for encryption:**
 
-The `SECRETS_ENCRYPTION_KEY` environment variable must be set for the API and Worker to encrypt/decrypt API keys:
+The `SECRETS_ENCRYPTION_KEY` environment variable must be set for the control-plane API to encrypt/decrypt API keys. Workers receive decrypted API keys via gRPC and do not need this variable.
 
 ```bash
 # Generate a new key
 python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())"
 
-# Set in environment
+# Set in environment (control-plane only)
 SECRETS_ENCRYPTION_KEY=kek-v1:your-generated-key-here
 ```
 
 ### Default API Keys (Development Convenience)
 
-For development, you can set default API keys via environment variables. These are used as fallbacks when providers don't have keys configured in the database.
+For development, you can set default API keys via environment variables on the **control-plane only**. These are used as fallbacks when providers don't have keys configured in the database.
 
 | Variable | Description |
 |----------|-------------|
@@ -84,12 +84,14 @@ For development, you can set default API keys via environment variables. These a
 **Example:**
 
 ```bash
-# Set in .env or environment
+# Set in .env or environment (control-plane only)
 DEFAULT_OPENAI_API_KEY=sk-...
 DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 **Notes:**
+- These variables are only used by the control-plane, not workers
+- Workers receive API keys via gRPC from the control-plane
 - Database-stored keys always take priority over environment variables
 - These are intended for development convenience, not production use
 - The `./scripts/dev.sh start-all` command automatically sets these from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` if present
