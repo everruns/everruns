@@ -16,6 +16,7 @@
 #      SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
 #      DEFAULT_OPENAI_API_KEY=sk-...        # Optional: OpenAI API key
 #      DEFAULT_ANTHROPIC_API_KEY=sk-ant-... # Optional: Anthropic API key
+#      OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317  # Optional: Enable tracing
 #
 #   3. Start everything:
 #      docker compose -f docker-compose-full.yaml up -d
@@ -73,7 +74,7 @@ services:
       HOST: 0.0.0.0
       PORT: "9000"
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,7 +99,7 @@ services:
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       api:
         condition: service_started
@@ -113,7 +114,7 @@ services:
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       api:
         condition: service_started
@@ -128,7 +129,7 @@ services:
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       RUST_LOG: info
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       api:
         condition: service_started
@@ -165,6 +166,7 @@ services:
 
   # ==========================================================================
   # Jaeger (distributed tracing - optional)
+  # Set OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317 in .env to enable
   # ==========================================================================
   jaeger:
     image: jaegertracing/jaeger:2.4.0
