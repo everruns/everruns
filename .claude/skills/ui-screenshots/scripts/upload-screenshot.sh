@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Upload a screenshot to GitHub Gist and add a PR comment
+# Upload a screenshot and add a PR comment with the image
+#
+# Upload methods (in order of preference):
+# 1. GitHub Gist (if GITHUB_TOKEN has gist scope)
+# 2. Imgur (anonymous upload, no API key needed)
 #
 # Usage: upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]
 #
-# Requires: GITHUB_TOKEN environment variable
+# Requires: GITHUB_TOKEN environment variable for PR comments
 #
 # Example:
 #   ./upload-screenshot.sh screenshot.png 195 "Dev components page"
@@ -32,10 +36,12 @@ fi
 FILENAME=$(basename "$SCREENSHOT_PATH")
 echo "📤 Uploading screenshot: $FILENAME"
 
-# Base64 encode the image
+IMAGE_URL=""
+
+# Method 1: Try GitHub Gist
+echo "   Trying GitHub Gist..."
 SCREENSHOT_B64=$(base64 -w0 "$SCREENSHOT_PATH" 2>/dev/null || base64 "$SCREENSHOT_PATH")
 
-# Create a gist with the base64 image
 GIST_RESPONSE=$(curl -s -X POST \
   -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Accept: application/vnd.github+json" \
@@ -47,40 +53,76 @@ GIST_RESPONSE=$(curl -s -X POST \
     \"files\": {
       \"$FILENAME.b64\": {
         \"content\": \"$SCREENSHOT_B64\"
-      },
-      \"README.md\": {
-        \"content\": \"# $DESCRIPTION\\n\\nThis gist contains a base64-encoded screenshot.\\n\\nTo view: decode the .b64 file or use the PR comment link.\"
       }
     }
-  }")
+  }" 2>/dev/null || echo '{"message":"failed"}')
 
 GIST_ID=$(echo "$GIST_RESPONSE" | jq -r '.id // empty')
-GIST_URL=$(echo "$GIST_RESPONSE" | jq -r '.html_url // empty')
 
-if [ -z "$GIST_ID" ]; then
-  echo "❌ Failed to create gist"
-  echo "$GIST_RESPONSE" | jq .
-  exit 1
+if [ -n "$GIST_ID" ]; then
+  echo "   ✅ Gist created: https://gist.github.com/$GIST_ID"
+  IMAGE_URL="gist:$GIST_ID"
 fi
 
-echo "✅ Gist created: $GIST_URL"
+# Method 2: Try Imgur (anonymous upload)
+if [ -z "$IMAGE_URL" ]; then
+  echo "   Gist failed, trying Imgur..."
 
-# Add comment to PR
+  IMGUR_RESPONSE=$(curl -s -X POST \
+    -H "Authorization: Client-ID 546c25a59c58ad7" \
+    -F "image=@$SCREENSHOT_PATH" \
+    https://api.imgur.com/3/image 2>/dev/null || echo '{"success":false}')
+
+  IMGUR_URL=$(echo "$IMGUR_RESPONSE" | jq -r '.data.link // empty')
+
+  if [ -n "$IMGUR_URL" ]; then
+    echo "   ✅ Imgur upload successful"
+    IMAGE_URL="$IMGUR_URL"
+  fi
+fi
+
+# Build comment body
 echo "💬 Adding comment to PR #$PR_NUMBER..."
 
-COMMENT_BODY="## 📸 UI Screenshot
+if [[ "$IMAGE_URL" == gist:* ]]; then
+  GIST_ID="${IMAGE_URL#gist:}"
+  COMMENT_BODY="## 📸 UI Screenshot
 
 **$DESCRIPTION**
 
-Screenshot captured and uploaded to gist.
+🔗 **[View Screenshot (base64 encoded)](https://gist.github.com/$GIST_ID)**
 
-🔗 **[View Screenshot (base64)]($GIST_URL)**
+<details>
+<summary>Decode instructions</summary>
 
-To decode locally:
 \`\`\`bash
-curl -s $GIST_URL/raw/$FILENAME.b64 | base64 -d > $FILENAME
-\`\`\`"
+curl -sL https://gist.github.com/$GIST_ID/raw/$FILENAME.b64 | base64 -d > $FILENAME
+\`\`\`
+</details>"
 
+elif [ -n "$IMAGE_URL" ]; then
+  COMMENT_BODY="## 📸 UI Screenshot
+
+**$DESCRIPTION**
+
+![$DESCRIPTION]($IMAGE_URL)"
+
+else
+  echo "❌ All upload methods failed"
+  COMMENT_BODY="## 📸 UI Screenshot
+
+**$DESCRIPTION**
+
+⚠️ Image upload failed. Screenshot available locally at:
+\`$SCREENSHOT_PATH\`
+
+To reproduce:
+\`\`\`bash
+./scripts/dev.sh e2e-screenshots
+\`\`\`"
+fi
+
+# Post comment
 COMMENT_RESPONSE=$(curl -s -X POST \
   -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Accept: application/vnd.github+json" \
@@ -90,12 +132,10 @@ COMMENT_RESPONSE=$(curl -s -X POST \
 
 COMMENT_URL=$(echo "$COMMENT_RESPONSE" | jq -r '.html_url // empty')
 
-if [ -z "$COMMENT_URL" ]; then
+if [ -n "$COMMENT_URL" ]; then
+  echo "✅ Comment added: $COMMENT_URL"
+else
   echo "❌ Failed to add PR comment"
   echo "$COMMENT_RESPONSE" | jq .
   exit 1
 fi
-
-echo "✅ Comment added: $COMMENT_URL"
-echo ""
-echo "Done! Screenshot uploaded to gist and linked in PR comment."
