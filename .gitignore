@@ -30,6 +30,7 @@ node_modules/
 .next/
 dist/
 build/
+test-results/
 
 # AI
 .claude/*.local.json
