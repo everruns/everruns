@@ -29,24 +29,14 @@ else
   fi
 fi
 
-# Check Playwright chromium
-CHROMIUM_PATHS=(
-  "/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome"
-  "/root/.cache/ms-playwright/chromium_headless_shell-1155/chrome-linux/headless_shell"
-)
-
-CHROMIUM_FOUND=""
-for path in "${CHROMIUM_PATHS[@]}"; do
-  if [ -f "$path" ]; then
-    CHROMIUM_FOUND="$path"
-    break
-  fi
-done
-
-if [ -n "$CHROMIUM_FOUND" ]; then
-  echo "✅ Chromium - found at $CHROMIUM_FOUND"
+# Check agent-browser
+if command -v agent-browser &> /dev/null; then
+  AGENT_BROWSER_VERSION=$(agent-browser --version 2>/dev/null || echo "unknown")
+  echo "✅ agent-browser - installed ($AGENT_BROWSER_VERSION)"
 else
-  echo "⚠️  Chromium - not found (run: npx playwright install chromium)"
+  MISSING+=("agent-browser")
+  echo "❌ agent-browser - not installed"
+  echo "   Install with: npm install -g agent-browser && agent-browser install"
 fi
 
 echo ""
