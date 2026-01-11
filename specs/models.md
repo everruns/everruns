@@ -319,7 +319,7 @@ Configuration for LLM API providers. Stores encrypted API keys and provider-spec
 | `provider_type` | enum | `openai`, `anthropic`, `azure_openai` |
 | `base_url` | string? | Custom API endpoint (for Azure or proxies) |
 | `api_key_encrypted` | bytes? | AES-256-GCM encrypted API key |
-| `api_key_set` | boolean | Whether API key is configured |
+| `api_key_set` | boolean | Whether API key is configured (database or DEFAULT_ env var) |
 | `is_default` | boolean | Default provider for new agents |
 | `status` | enum | `active` or `disabled` |
 | `settings` | JSON | Provider-specific settings (e.g., Azure deployment_name) |
