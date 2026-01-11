@@ -70,6 +70,8 @@ services:
     environment:
       DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
+      DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
+      DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       HOST: 0.0.0.0
       PORT: "9000"
       RUST_LOG: info
@@ -94,9 +96,6 @@ services:
     container_name: everruns-worker-1
     environment:
       GRPC_ADDRESS: api:9001
-      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
-      DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
-      DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
@@ -109,9 +108,6 @@ services:
     container_name: everruns-worker-2
     environment:
       GRPC_ADDRESS: api:9001
-      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
-      DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
-      DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
@@ -124,9 +120,6 @@ services:
     container_name: everruns-worker-3
     environment:
       GRPC_ADDRESS: api:9001
-      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
-      DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
-      DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
