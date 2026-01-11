@@ -37,8 +37,11 @@ echo "📸 Taking screenshot of $URL"
 echo "   Using chromium: $CHROMIUM_PATH"
 echo "   Output: $OUTPUT_PATH"
 
-# Create temporary script
-TEMP_SCRIPT=$(mktemp /tmp/screenshot-XXXXXX.mjs)
+# Run the script from apps/ui directory where playwright is installed
+cd "$PROJECT_ROOT/apps/ui"
+
+# Create temporary script in current directory (where node_modules exists)
+TEMP_SCRIPT=$(mktemp ./screenshot-XXXXXX.mjs)
 cat > "$TEMP_SCRIPT" << EOF
 import { chromium } from 'playwright';
 
@@ -69,7 +72,6 @@ try {
 }
 EOF
 
-# Run the script
-cd "$PROJECT_ROOT/apps/ui"
+# Run the script (already in apps/ui directory)
 node "$TEMP_SCRIPT"
 rm -f "$TEMP_SCRIPT"
