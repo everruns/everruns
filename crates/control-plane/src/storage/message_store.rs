@@ -85,24 +85,10 @@ impl MessageStore for DbMessageStore {
         Ok(messages.into_iter().find(|m| m.id == message_id))
     }
 
-    async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
-        // Only store assistant messages (user messages go through add())
-        // Tool results are stored as tool.call_completed events by ActAtom
-        if message.role != MessageRole::Assistant {
-            return Ok(());
-        }
-
-        let event_request = EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            MessageAgentData::new(message),
-        );
-
-        self.event_service
-            .emit(event_request)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
-
+    async fn store(&self, _session_id: Uuid, _message: Message) -> Result<()> {
+        // No-op: message.agent events are emitted by ReasonAtom with proper turn context.
+        // This method exists for trait compatibility with InMemoryMessageStore (used in tests).
+        // The actual storage happens via EventEmitter when ReasonAtom emits the message.agent event.
         Ok(())
     }
 

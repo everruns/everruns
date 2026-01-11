@@ -278,8 +278,10 @@ where
                     "I encountered an error while processing your request. Please try again later."
                         .to_string();
 
-                // Store an assistant message with the error for the user to see
+                // Create error message for the user to see
                 let error_message = Message::assistant(&user_error_text);
+
+                // Store message (no-op in production, but needed for InMemoryMessageStore in tests)
                 if let Err(store_err) = self
                     .message_store
                     .store(context.session_id, error_message.clone())
@@ -292,7 +294,7 @@ where
                     );
                 }
 
-                // Emit message.agent event for the error message
+                // Emit message.agent event (stores message as event with proper turn context)
                 if let Err(emit_err) = self
                     .event_emitter
                     .emit(EventRequest::new(
@@ -537,7 +539,7 @@ where
             );
         }
 
-        // 14. Store assistant message with metadata
+        // 14. Store and emit message.agent event with metadata
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -546,8 +548,19 @@ where
         };
         assistant_message.metadata = Some(metadata);
 
+        // Store message (no-op in production via DbMessageStore, but needed for InMemoryMessageStore in tests)
         self.message_store
             .store(session_id, assistant_message.clone())
+            .await?;
+
+        // Emit message.agent event (this stores the message as an event with proper turn context)
+        let message_event_context = EventContext::from_atom_context(context);
+        self.event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                message_event_context,
+                MessageAgentData::new(assistant_message),
+            ))
             .await?;
 
         tracing::info!(

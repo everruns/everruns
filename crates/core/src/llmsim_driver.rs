@@ -109,6 +109,14 @@ impl LlmSimConfig {
         self.model_name = model.into();
         self
     }
+
+    /// Create a new config that returns an error (for testing error handling)
+    pub fn error(message: impl Into<String>) -> Self {
+        Self {
+            response: ResponseConfig::Error(message.into()),
+            ..Default::default()
+        }
+    }
 }
 
 /// Response generation configuration
@@ -124,6 +132,8 @@ pub enum ResponseConfig {
     Sequence(Vec<String>),
     /// Empty response (useful for tool-only responses)
     Empty,
+    /// Simulate an error (useful for testing error handling)
+    Error(String),
 }
 
 /// Tool call configuration
@@ -245,6 +255,11 @@ impl LlmSimDriver {
             }
 
             ResponseConfig::Empty => String::new(),
+
+            // Error case should never be reached because it's checked in chat_completion_stream
+            ResponseConfig::Error(_) => {
+                unreachable!("Error config handled in chat_completion_stream")
+            }
         }
     }
 
@@ -364,6 +379,11 @@ impl LlmDriver for LlmSimDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        // Check for error config first
+        if let ResponseConfig::Error(error_msg) = &self.config.response {
+            return Err(anyhow::anyhow!("LLM error: {}", error_msg).into());
+        }
+
         let response_text = self.generate_response(&messages);
         let tool_calls = self.get_tool_calls(&messages);
         let latency_profile = self.get_latency_profile();
