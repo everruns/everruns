@@ -58,8 +58,9 @@ FROM builder-base AS builder-control-plane
 ARG TARGETPLATFORM
 
 # Use cache mount for cargo registry and target directory
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# Each cache has platform-specific ID to avoid conflicts during multi-platform builds
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
     xx-cargo build --release -p everruns-control-plane && \
     cp target/$(xx-cargo --print-target-triple)/release/everruns-control-plane /app/everruns-control-plane
@@ -71,8 +72,9 @@ FROM builder-base AS builder-worker
 
 ARG TARGETPLATFORM
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# Each cache has platform-specific ID to avoid conflicts during multi-platform builds
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
     xx-cargo build --release -p everruns-worker && \
     cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker
@@ -84,8 +86,9 @@ FROM builder-base AS builder-admin
 
 ARG TARGETPLATFORM
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# Each cache has platform-specific ID to avoid conflicts during multi-platform builds
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETPLATFORM} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETPLATFORM} \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
     xx-cargo build --release --bin reencrypt-secrets && \
     cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
