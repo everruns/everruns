@@ -44,7 +44,7 @@ jobs:
       # QEMU needed for ARM builds (main branch, tags, and test branch)
       # TODO: Remove temporary branch override after testing
       - name: Set up QEMU
-        if: github.event_name == 'push' || github.head_ref == 'claude/add-arm-image-building-LijHE'
+        if: github.event_name == 'push' || github.head_ref == 'claude/fix-build-compilation-Affda'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -74,7 +74,7 @@ jobs:
       - name: Determine platforms
         id: platforms
         run: |
-          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.head_ref }}" = "claude/add-arm-image-building-LijHE" ]; then
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.head_ref }}" = "claude/fix-build-compilation-Affda" ]; then
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
           else
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
