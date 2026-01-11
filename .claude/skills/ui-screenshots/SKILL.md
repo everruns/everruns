@@ -159,3 +159,13 @@ Example:
   195 \
   "Dev components page showing message and tool call rendering"
 ```
+
+### check-config.sh
+
+Check if cloud agent environment is configured:
+
+```bash
+.claude/skills/ui-screenshots/scripts/check-config.sh
+```
+
+Verifies: `GITHUB_TOKEN`, `CLOUDINARY_URL`, and Chromium availability.
