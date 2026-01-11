@@ -140,7 +140,7 @@ impl WorkflowScenario {
 
                     // Claim a task
                     let claimed = store
-                        .claim_task(&worker_name, &[activity_type.clone()], 1)
+                        .claim_task(&worker_name, std::slice::from_ref(&activity_type), 1)
                         .await
                         .unwrap();
 
