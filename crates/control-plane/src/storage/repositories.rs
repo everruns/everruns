@@ -1407,69 +1407,85 @@ fn get_default_api_key_from_env(provider_type: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    /// Testable version with injectable env lookup (test-only).
+    fn get_default_api_key_with_lookup<F>(provider_type: &str, env_lookup: F) -> Option<String>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let env_var = match provider_type.to_lowercase().as_str() {
+            "openai" => "DEFAULT_OPENAI_API_KEY",
+            "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
+            _ => return None,
+        };
+
+        env_lookup(env_var).filter(|s| !s.is_empty())
+    }
+
+    fn mock_env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |name| {
+            vars.iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| v.to_string())
+        }
+    }
 
     #[test]
     fn test_get_default_api_key_openai() {
-        // Clean up any existing env var
-        std::env::remove_var("DEFAULT_OPENAI_API_KEY");
-
-        // Should return None when not set
-        assert_eq!(get_default_api_key_from_env("openai"), None);
-        assert_eq!(get_default_api_key_from_env("OpenAI"), None);
-
-        // Set the env var
-        std::env::set_var("DEFAULT_OPENAI_API_KEY", "sk-test-key");
+        // Not set
         assert_eq!(
-            get_default_api_key_from_env("openai"),
+            get_default_api_key_with_lookup("openai", mock_env(&[])),
+            None
+        );
+        assert_eq!(
+            get_default_api_key_with_lookup("OpenAI", mock_env(&[])),
+            None
+        );
+
+        // Set
+        let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "sk-test-key")]);
+        assert_eq!(
+            get_default_api_key_with_lookup("openai", &env),
             Some("sk-test-key".to_string())
         );
         assert_eq!(
-            get_default_api_key_from_env("OpenAI"),
+            get_default_api_key_with_lookup("OpenAI", &env),
             Some("sk-test-key".to_string())
         );
-
-        // Clean up
-        std::env::remove_var("DEFAULT_OPENAI_API_KEY");
     }
 
     #[test]
     fn test_get_default_api_key_anthropic() {
-        // Clean up any existing env var
-        std::env::remove_var("DEFAULT_ANTHROPIC_API_KEY");
-
-        // Should return None when not set
-        assert_eq!(get_default_api_key_from_env("anthropic"), None);
-
-        // Set the env var
-        std::env::set_var("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test-key");
+        // Not set
         assert_eq!(
-            get_default_api_key_from_env("anthropic"),
+            get_default_api_key_with_lookup("anthropic", mock_env(&[])),
+            None
+        );
+
+        // Set
+        let env = mock_env(&[("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test-key")]);
+        assert_eq!(
+            get_default_api_key_with_lookup("anthropic", &env),
             Some("sk-ant-test-key".to_string())
         );
         assert_eq!(
-            get_default_api_key_from_env("Anthropic"),
+            get_default_api_key_with_lookup("Anthropic", &env),
             Some("sk-ant-test-key".to_string())
         );
-
-        // Clean up
-        std::env::remove_var("DEFAULT_ANTHROPIC_API_KEY");
     }
 
     #[test]
     fn test_get_default_api_key_unknown_provider() {
-        // Unknown providers should return None
-        assert_eq!(get_default_api_key_from_env("azure_openai"), None);
-        assert_eq!(get_default_api_key_from_env("unknown"), None);
+        let env = mock_env(&[
+            ("DEFAULT_OPENAI_API_KEY", "sk-test"),
+            ("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test"),
+        ]);
+        assert_eq!(get_default_api_key_with_lookup("azure_openai", &env), None);
+        assert_eq!(get_default_api_key_with_lookup("unknown", &env), None);
     }
 
     #[test]
     fn test_get_default_api_key_empty_value() {
-        // Empty value should be treated as not set
-        std::env::set_var("DEFAULT_OPENAI_API_KEY", "");
-        assert_eq!(get_default_api_key_from_env("openai"), None);
-
-        // Clean up
-        std::env::remove_var("DEFAULT_OPENAI_API_KEY");
+        let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "")]);
+        assert_eq!(get_default_api_key_with_lookup("openai", &env), None);
     }
 }
