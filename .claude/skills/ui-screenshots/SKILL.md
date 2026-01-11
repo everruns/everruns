@@ -66,7 +66,7 @@ PLAYWRIGHT_CHROMIUM_PATH=/root/.cache/ms-playwright/chromium-1194/chrome-linux/c
 
 ### Attaching Screenshots to PR
 
-Screenshots are NOT committed to the repo. Instead, upload to a GitHub Gist and reference in PR comment:
+Screenshots are NOT committed to the repo. They are uploaded to freeimage.host and embedded in PR comments:
 
 ```bash
 # Use the helper script
@@ -75,46 +75,12 @@ Screenshots are NOT committed to the repo. Instead, upload to a GitHub Gist and 
   195  # PR number
 ```
 
-Or manually:
-
-```bash
-# 1. Create a gist with the image (base64 encoded)
-SCREENSHOT_PATH="apps/ui/e2e/screenshots/dev-components-full.png"
-SCREENSHOT_B64=$(base64 -w0 "$SCREENSHOT_PATH")
-
-GIST_RESPONSE=$(curl -s -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  https://api.github.com/gists \
-  -d "{
-    \"description\": \"UI Screenshot\",
-    \"public\": false,
-    \"files\": {
-      \"screenshot.png.b64\": {
-        \"content\": \"$SCREENSHOT_B64\"
-      }
-    }
-  }")
-
-GIST_ID=$(echo "$GIST_RESPONSE" | jq -r '.id')
-
-# 2. Add PR comment with embedded image description
-PR_NUMBER=195
-curl -s -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/everruns/everruns/issues/$PR_NUMBER/comments" \
-  -d "{
-    \"body\": \"## UI Screenshot\\n\\nScreenshot captured from dev components page.\\n\\n> View full image: https://gist.github.com/$GIST_ID\\n\\n**Components shown:**\\n- Message rendering (user/assistant)\\n- Tool call cards\\n- Todo list renderer\"
-  }"
-```
-
 ## Integration with Smoke Tests
 
 The smoke test skill can call this skill to capture UI state:
 
 1. Run e2e screenshot tests as part of smoke testing
-2. If a PR branch is detected, upload screenshots to gist and add PR comment
+2. If a PR branch is detected, upload screenshots and add PR comment
 3. Screenshots help reviewers verify visual changes
 
 ## Troubleshooting
@@ -175,7 +141,7 @@ Example:
 
 ### upload-screenshot.sh
 
-Upload screenshot to gist and add PR comment:
+Upload screenshot to freeimage.host and add PR comment:
 
 ```bash
 .claude/skills/ui-screenshots/scripts/upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]
