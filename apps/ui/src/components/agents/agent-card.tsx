@@ -67,8 +67,8 @@ export function AgentCard({
         </Badge>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-          {agent.description || "No description"}
+        <p className={`text-sm text-muted-foreground mb-3 line-clamp-2 ${!agent.description ? "italic" : ""}`}>
+          {agent.description || "No description provided"}
         </p>
 
         {/* Capabilities display */}
