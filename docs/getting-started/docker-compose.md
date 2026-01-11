@@ -18,7 +18,7 @@ Deploy the complete Everruns platform using Docker Compose. This guide sets up t
 ```bash
 # Create directory and download docker-compose file
 mkdir everruns && cd everruns
-curl -O https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
+curl -o docker-compose.yaml https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
 ```
 
 ### 2. Generate Encryption Key
@@ -45,7 +45,7 @@ DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 ### 4. Start Services
 
 ```bash
-docker compose -f docker-compose-full.yaml up -d
+docker compose up -d
 ```
 
 This starts:
@@ -103,10 +103,10 @@ Add more workers by scaling the worker services:
 
 ```bash
 # Scale to 5 workers
-docker compose -f docker-compose-full.yaml up -d --scale worker-1=1 --scale worker-2=1 --scale worker-3=3
+docker compose up -d --scale worker-1=1 --scale worker-2=1 --scale worker-3=3
 ```
 
-Or modify `docker-compose-full.yaml` to add more worker services.
+Or modify `docker-compose.yaml` to add more worker services.
 
 ## Monitoring
 
@@ -114,11 +114,11 @@ Or modify `docker-compose-full.yaml` to add more worker services.
 
 ```bash
 # All services
-docker compose -f docker-compose-full.yaml logs -f
+docker compose logs -f
 
 # Specific service
-docker compose -f docker-compose-full.yaml logs -f api
-docker compose -f docker-compose-full.yaml logs -f worker-1
+docker compose logs -f api
+docker compose logs -f worker-1
 ```
 
 ### Distributed Tracing
@@ -129,10 +129,10 @@ Jaeger UI is available at http://localhost:16686 for viewing request traces acro
 
 ```bash
 # Stop all services
-docker compose -f docker-compose-full.yaml down
+docker compose down
 
 # Stop and remove volumes (deletes data)
-docker compose -f docker-compose-full.yaml down -v
+docker compose down -v
 ```
 
 ## Troubleshooting
@@ -143,10 +143,10 @@ If services fail to connect to PostgreSQL:
 
 ```bash
 # Check postgres health
-docker compose -f docker-compose-full.yaml ps postgres
+docker compose ps postgres
 
 # View postgres logs
-docker compose -f docker-compose-full.yaml logs postgres
+docker compose logs postgres
 ```
 
 ### Migration Failures
@@ -155,10 +155,10 @@ The `migrate` service runs once on startup. If it fails:
 
 ```bash
 # Check migration logs
-docker compose -f docker-compose-full.yaml logs migrate
+docker compose logs migrate
 
 # Retry migrations
-docker compose -f docker-compose-full.yaml up migrate
+docker compose up migrate
 ```
 
 ### Worker Not Processing
@@ -167,10 +167,10 @@ Verify workers can reach the control plane:
 
 ```bash
 # Check worker logs
-docker compose -f docker-compose-full.yaml logs worker-1
+docker compose logs worker-1
 
 # Verify gRPC connection
-docker compose -f docker-compose-full.yaml exec worker-1 /bin/sh -c "echo" || echo "Cannot exec (distroless image)"
+docker compose exec worker-1 /bin/sh -c "echo" || echo "Cannot exec (distroless image)"
 ```
 
 ## Next Steps
