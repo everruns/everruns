@@ -42,9 +42,8 @@ jobs:
       - uses: actions/checkout@v4
 
       # QEMU needed for UI ARM builds (runs npm on target platform)
-      # TODO: Remove temporary branch override after testing
       - name: Set up QEMU
-        if: github.event_name == 'push' || github.head_ref == 'claude/fix-build-compilation-Affda'
+        if: github.event_name == 'push'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -70,11 +69,10 @@ jobs:
 
       # Build ARM64 only on main push and version tags (cross-compiled)
       # PRs only build amd64 for faster CI
-      # TODO: Remove temporary branch override after testing
       - name: Determine platforms
         id: platforms
         run: |
-          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.head_ref }}" = "claude/fix-build-compilation-Affda" ]; then
+          if [ "${{ github.event_name }}" = "push" ]; then
             echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
           else
             echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
