@@ -4,12 +4,15 @@ set -euo pipefail
 # Upload a screenshot and add a PR comment with the image
 #
 # Upload methods (in order of preference):
-# 1. GitHub Gist (if GITHUB_TOKEN has gist scope)
+# 1. GitHub Gist (using GITHUB_GIST_TOKEN or GITHUB_TOKEN)
 # 2. Imgur (anonymous upload, no API key needed)
 #
 # Usage: upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]
 #
-# Requires: GITHUB_TOKEN environment variable for PR comments
+# Environment variables:
+#   GITHUB_TOKEN      - Required for PR comments (can be org-scoped fine-grained PAT)
+#   GITHUB_GIST_TOKEN - Optional, for gist uploads (classic token with 'gist' scope)
+#                       If not set, falls back to GITHUB_TOKEN
 #
 # Example:
 #   ./upload-screenshot.sh screenshot.png 195 "Dev components page"
@@ -38,12 +41,15 @@ echo "📤 Uploading screenshot: $FILENAME"
 
 IMAGE_URL=""
 
+# Use GITHUB_GIST_TOKEN if available, otherwise fall back to GITHUB_TOKEN
+GIST_TOKEN="${GITHUB_GIST_TOKEN:-$GITHUB_TOKEN}"
+
 # Method 1: Try GitHub Gist
 echo "   Trying GitHub Gist..."
 SCREENSHOT_B64=$(base64 -w0 "$SCREENSHOT_PATH" 2>/dev/null || base64 "$SCREENSHOT_PATH")
 
 GIST_RESPONSE=$(curl -s -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Authorization: Bearer $GIST_TOKEN" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   https://api.github.com/gists \
