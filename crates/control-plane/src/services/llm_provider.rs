@@ -93,12 +93,18 @@ impl LlmProviderService {
     }
 
     fn row_to_provider(row: &LlmProviderRow) -> LlmProvider {
+        let provider_type = row.provider_type.parse().unwrap_or(LlmProviderType::Openai);
+        // api_key_set is true if either:
+        // 1. The API key is set in the database, OR
+        // 2. A DEFAULT_ environment variable is available for this provider type
+        let api_key_set = row.api_key_set || has_default_api_key_from_env(&row.provider_type);
+
         LlmProvider {
             id: row.id,
             name: row.name.clone(),
-            provider_type: row.provider_type.parse().unwrap_or(LlmProviderType::Openai),
+            provider_type,
             base_url: row.base_url.clone(),
-            api_key_set: row.api_key_set,
+            api_key_set,
             status: match row.status.as_str() {
                 "active" => LlmProviderStatus::Active,
                 _ => LlmProviderStatus::Disabled,
@@ -106,5 +112,80 @@ impl LlmProviderService {
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
+    }
+}
+
+/// Check if a default API key is available from environment variable.
+///
+/// Environment variables (for development convenience):
+/// - DEFAULT_OPENAI_API_KEY: Fallback API key for OpenAI providers
+/// - DEFAULT_ANTHROPIC_API_KEY: Fallback API key for Anthropic providers
+fn has_default_api_key_from_env(provider_type: &str) -> bool {
+    let env_var = match provider_type.to_lowercase().as_str() {
+        "openai" => "DEFAULT_OPENAI_API_KEY",
+        "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
+        _ => return false,
+    };
+
+    std::env::var(env_var)
+        .ok()
+        .filter(|s| !s.is_empty())
+        .is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_default_api_key_openai() {
+        // Clean up any existing env var
+        std::env::remove_var("DEFAULT_OPENAI_API_KEY");
+
+        // Should return false when not set
+        assert!(!has_default_api_key_from_env("openai"));
+        assert!(!has_default_api_key_from_env("OpenAI"));
+
+        // Set the env var
+        std::env::set_var("DEFAULT_OPENAI_API_KEY", "sk-test-key");
+        assert!(has_default_api_key_from_env("openai"));
+        assert!(has_default_api_key_from_env("OpenAI"));
+
+        // Clean up
+        std::env::remove_var("DEFAULT_OPENAI_API_KEY");
+    }
+
+    #[test]
+    fn test_has_default_api_key_anthropic() {
+        // Clean up any existing env var
+        std::env::remove_var("DEFAULT_ANTHROPIC_API_KEY");
+
+        // Should return false when not set
+        assert!(!has_default_api_key_from_env("anthropic"));
+
+        // Set the env var
+        std::env::set_var("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test-key");
+        assert!(has_default_api_key_from_env("anthropic"));
+        assert!(has_default_api_key_from_env("Anthropic"));
+
+        // Clean up
+        std::env::remove_var("DEFAULT_ANTHROPIC_API_KEY");
+    }
+
+    #[test]
+    fn test_has_default_api_key_unknown_provider() {
+        // Unknown providers should return false
+        assert!(!has_default_api_key_from_env("azure_openai"));
+        assert!(!has_default_api_key_from_env("unknown"));
+    }
+
+    #[test]
+    fn test_has_default_api_key_empty_value() {
+        // Empty value should be treated as not set
+        std::env::set_var("DEFAULT_OPENAI_API_KEY", "");
+        assert!(!has_default_api_key_from_env("openai"));
+
+        // Clean up
+        std::env::remove_var("DEFAULT_OPENAI_API_KEY");
     }
 }
