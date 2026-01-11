@@ -89,7 +89,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target,id=target-${TARGETPLATFORM} \
     xx-cargo build --release --bin reencrypt-secrets && \
     cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
-    cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
+    xx-cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
 # ============================================================================
 # Stage 3a: Control-Plane Runtime image (distroless for minimal size and security)
@@ -148,7 +148,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy sqlx-cli from builder (host architecture, runs via script)
+# Copy sqlx-cli from builder (cross-compiled for target architecture)
 COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 
 # Copy the reencrypt-secrets binary
