@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # QEMU needed for ARM builds (main branch and tags only)
+      # QEMU needed for UI ARM builds (runs npm on target platform)
       - name: Set up QEMU
         if: github.event_name == 'push'
         uses: docker/setup-qemu-action@v3

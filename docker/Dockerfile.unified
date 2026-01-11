@@ -143,13 +143,16 @@ CMD ["/app/everruns-worker"]
 # Run key re-encryption:
 #   docker run --rm everruns-admin reencrypt --dry-run
 #
+# CA certificates stage - runs on build platform to avoid QEMU
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS ca-certs
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
 FROM debian:bookworm-slim AS admin
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Copy CA certificates from build platform stage (no QEMU needed)
+COPY --from=ca-certs /etc/ssl/certs /etc/ssl/certs
 
 # Copy sqlx-cli from builder (cross-compiled for target architecture)
 COPY --from=builder-admin /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
@@ -160,9 +163,8 @@ COPY --from=builder-admin /app/reencrypt-secrets /app/reencrypt-secrets
 # Copy migrations
 COPY crates/control-plane/migrations /app/migrations
 
-# Copy entrypoint script
-COPY docker/admin-entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Copy entrypoint script (--chmod avoids RUN on target platform)
+COPY --chmod=755 docker/admin-entrypoint.sh /app/entrypoint.sh
 
 ENV RUST_LOG=info
 
