@@ -123,9 +123,9 @@ The e2e tests capture these screenshots (stored locally, not in repo):
 
 | Screenshot | Description |
 |------------|-------------|
-| `dev-components-full.png` | Full page of dev components showcase |
-| `dev-components-messages.png` | Message rendering section |
-| `dev-components-toolcalls.png` | Tool call cards section |
+| `message-components-full.png` | Full page of message components showcase |
+| `message-components-messages.png` | Message rendering section |
+| `message-components-toolcalls.png` | Tool call cards section |
 
 ## Script Reference
 

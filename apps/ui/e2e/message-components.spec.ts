@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * E2E tests for the Dev Components page.
+ * E2E tests for Message Components via Dev Pages.
  *
- * These tests verify that the UI component showcase renders correctly.
- * The dev pages are only available in development mode.
+ * Tests verify message rendering, tool calls, and todo list components.
+ * Uses /dev/components page which is only available in development mode.
  */
 
-test.describe('Dev Components Page', () => {
+test.describe('Message Components', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/dev/components');
   });
@@ -51,7 +51,7 @@ test.describe('Dev Components Page', () => {
 
     // Take screenshot for visual regression testing
     await page.screenshot({
-      path: 'e2e/screenshots/dev-components-full.png',
+      path: 'e2e/screenshots/message-components-full.png',
       fullPage: true,
     });
   });
@@ -63,7 +63,7 @@ test.describe('Dev Components Page', () => {
     const messageSection = page.getByRole('heading', { name: 'Message Rendering' }).locator('..');
     if (await messageSection.isVisible()) {
       await messageSection.screenshot({
-        path: 'e2e/screenshots/dev-components-messages.png',
+        path: 'e2e/screenshots/message-components-messages.png',
       });
     }
 
@@ -71,7 +71,7 @@ test.describe('Dev Components Page', () => {
     const toolSection = page.getByRole('heading', { name: 'ToolCallCard Component' }).locator('..');
     if (await toolSection.isVisible()) {
       await toolSection.screenshot({
-        path: 'e2e/screenshots/dev-components-toolcalls.png',
+        path: 'e2e/screenshots/message-components-toolcalls.png',
       });
     }
   });
