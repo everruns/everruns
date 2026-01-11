@@ -80,6 +80,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      jaeger:
+        condition: service_started
     healthcheck:
       test: ["CMD", "/app/everruns-control-plane", "--version"]
       interval: 10s
