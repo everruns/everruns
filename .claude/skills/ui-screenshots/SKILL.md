@@ -24,11 +24,8 @@ Capture UI screenshots and attach them to pull requests for visual verification.
 
 3. **Cloudinary Account** (free tier available):
    - Create account at [cloudinary.com](https://cloudinary.com)
-   - Get your `cloud_name` from the dashboard
-   - Create an unsigned upload preset: Settings > Upload > Upload presets > Add
-   - Set environment variables:
-     - `CLOUDINARY_CLOUD_NAME` - Your cloud name
-     - `CLOUDINARY_UPLOAD_PRESET` - Name of unsigned preset
+   - Get your `CLOUDINARY_URL` from the dashboard (format: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`)
+   - Set environment variable: `CLOUDINARY_URL`
 
 4. **GitHub Token**: `GITHUB_TOKEN` environment variable for PR comments.
 
@@ -116,9 +113,9 @@ In sandboxed environments, shared memory may fail. Use `--disable-dev-shm-usage`
 
 ### Cloudinary upload fails
 
-Verify your environment variables are set correctly:
-- `CLOUDINARY_CLOUD_NAME` - Your cloud name from dashboard
-- `CLOUDINARY_UPLOAD_PRESET` - Must be an **unsigned** preset
+Verify `CLOUDINARY_URL` is set correctly:
+- Format: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`
+- Get from Cloudinary dashboard
 
 ## Available Screenshots
 

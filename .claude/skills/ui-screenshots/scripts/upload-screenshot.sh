@@ -3,20 +3,13 @@ set -euo pipefail
 
 # Upload a screenshot and add a PR comment with the embedded image
 #
-# Uses Cloudinary for image hosting (reliable paid service with free tier)
+# Uses Cloudinary for image hosting (signed upload)
 #
 # Usage: upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]
 #
 # Environment variables:
-#   GITHUB_TOKEN          - Required for PR comments
-#   CLOUDINARY_CLOUD_NAME - Your Cloudinary cloud name
-#   CLOUDINARY_UPLOAD_PRESET - Unsigned upload preset name
-#
-# Setup:
-#   1. Create free account at cloudinary.com
-#   2. Go to Settings > Upload > Upload presets
-#   3. Create unsigned preset (e.g., "pr-screenshots")
-#   4. Set environment variables
+#   GITHUB_TOKEN   - Required for PR comments
+#   CLOUDINARY_URL - Cloudinary URL: cloudinary://API_KEY:API_SECRET@CLOUD_NAME
 #
 # Example:
 #   ./upload-screenshot.sh screenshot.png 195 "Dev components page"
@@ -40,28 +33,44 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
   exit 1
 fi
 
-if [ -z "${CLOUDINARY_CLOUD_NAME:-}" ]; then
-  echo "❌ CLOUDINARY_CLOUD_NAME environment variable not set"
-  echo "   Create a free account at cloudinary.com and set your cloud name"
+if [ -z "${CLOUDINARY_URL:-}" ]; then
+  echo "❌ CLOUDINARY_URL environment variable not set"
+  echo "   Format: cloudinary://API_KEY:API_SECRET@CLOUD_NAME"
   exit 1
 fi
 
-if [ -z "${CLOUDINARY_UPLOAD_PRESET:-}" ]; then
-  echo "❌ CLOUDINARY_UPLOAD_PRESET environment variable not set"
-  echo "   Create an unsigned upload preset in Cloudinary Settings > Upload"
+# Parse CLOUDINARY_URL: cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+CLOUDINARY_URL_PARSED="${CLOUDINARY_URL#cloudinary://}"
+API_KEY="${CLOUDINARY_URL_PARSED%%:*}"
+REMAINDER="${CLOUDINARY_URL_PARSED#*:}"
+API_SECRET="${REMAINDER%%@*}"
+CLOUD_NAME="${REMAINDER#*@}"
+
+if [ -z "$API_KEY" ] || [ -z "$API_SECRET" ] || [ -z "$CLOUD_NAME" ]; then
+  echo "❌ Invalid CLOUDINARY_URL format"
+  echo "   Expected: cloudinary://API_KEY:API_SECRET@CLOUD_NAME"
   exit 1
 fi
 
 FILENAME=$(basename "$SCREENSHOT_PATH")
+TIMESTAMP=$(date +%s)
+
 echo "📤 Uploading screenshot: $FILENAME"
 
-# Upload to Cloudinary (unsigned upload)
+# Generate signature for signed upload
+# Parameters must be sorted alphabetically
+PARAMS_TO_SIGN="folder=pr-screenshots&timestamp=${TIMESTAMP}"
+SIGNATURE=$(echo -n "${PARAMS_TO_SIGN}${API_SECRET}" | sha1sum | cut -d' ' -f1)
+
+# Upload to Cloudinary (signed upload)
 echo "   Uploading to Cloudinary..."
 UPLOAD_RESPONSE=$(curl -s -X POST \
-  "https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload" \
+  "https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload" \
   -F "file=@$SCREENSHOT_PATH" \
-  -F "upload_preset=${CLOUDINARY_UPLOAD_PRESET}" \
-  2>/dev/null || echo '{"error":{"message":"request failed"}}')
+  -F "api_key=${API_KEY}" \
+  -F "timestamp=${TIMESTAMP}" \
+  -F "signature=${SIGNATURE}" \
+  -F "folder=pr-screenshots")
 
 IMAGE_URL=$(echo "$UPLOAD_RESPONSE" | jq -r '.secure_url // empty')
 
