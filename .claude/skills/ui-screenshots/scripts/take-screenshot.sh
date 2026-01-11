@@ -20,8 +20,6 @@ if ! command -v agent-browser &> /dev/null; then
   echo "❌ agent-browser not found. Install with:"
   echo "   npm install -g agent-browser"
   echo "   agent-browser install"
-  echo ""
-  echo "   Or run: $SCRIPT_DIR/install-browser.sh"
   exit 1
 fi
 

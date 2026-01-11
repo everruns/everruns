@@ -17,11 +17,6 @@ Uses [agent-browser](https://github.com/vercel-labs/agent-browser) for screensho
    agent-browser install  # Download Chromium
    ```
 
-   Or use the install script:
-   ```bash
-   .claude/skills/ui-screenshots/scripts/install-browser.sh
-   ```
-
    For Linux with missing dependencies:
    ```bash
    agent-browser install --with-deps
@@ -149,14 +144,6 @@ The e2e tests capture these screenshots (stored locally, not in repo):
 | `message-components-toolcalls.png` | Tool call cards section |
 
 ## Script Reference
-
-### install-browser.sh
-
-Install agent-browser and its dependencies:
-
-```bash
-.claude/skills/ui-screenshots/scripts/install-browser.sh
-```
 
 ### take-screenshot.sh
 
