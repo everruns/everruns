@@ -45,6 +45,7 @@ DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 ### 4. Start Services
 
 ```bash
+docker compose pull  # Fetch latest images
 docker compose up -d
 ```
 
