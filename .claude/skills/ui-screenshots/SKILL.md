@@ -22,13 +22,12 @@ Capture UI screenshots and attach them to pull requests for visual verification.
    In restricted environments (cloud agents), older pre-installed chromium at
    `/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome` may work better.
 
-3. **GitHub Tokens**:
-   - `GITHUB_TOKEN` - Required for PR comments (can be org-scoped fine-grained PAT)
-   - `GITHUB_GIST_TOKEN` - Required for screenshot uploads. Use a **classic token** with `gist` scope.
+3. **GitHub Token**: `GITHUB_TOKEN` environment variable with permissions for:
+   - `contents: write` (to upload release assets)
+   - `pull_requests: write` (to post comments)
 
-   **Why two tokens?** Organization fine-grained PATs cannot create gists (gists are user-level
-   resources). The script uploads screenshots as HTML files to gists, which render the embedded
-   image when opened. Create a classic personal access token with `gist` scope.
+   Screenshots are uploaded as GitHub Release assets to a `screenshots` release tag,
+   providing direct image URLs that render inline in PR comments.
 
 ## Usage
 
@@ -146,13 +145,9 @@ Or run tests with webServer config (in playwright.config.ts).
 
 In sandboxed environments, shared memory may fail. Use `--disable-dev-shm-usage` flag.
 
-### Gist upload fails with 403/404
+### Release upload fails
 
-Organization fine-grained PATs cannot create gists. Set `GITHUB_GIST_TOKEN` to a classic token:
-
-1. Go to GitHub Settings → Developer settings → Personal access tokens → **Tokens (classic)**
-2. Generate new token with `gist` scope
-3. Set in environment: `export GITHUB_GIST_TOKEN=ghp_xxxxx`
+Ensure your `GITHUB_TOKEN` has `contents: write` permission to upload release assets.
 
 ## Available Screenshots
 
