@@ -55,7 +55,7 @@ This starts:
 - 3 worker instances
 - Next.js UI
 - Caddy reverse proxy
-- Jaeger tracing (optional)
+- Jaeger tracing
 
 ### 5. Access the Platform
 
