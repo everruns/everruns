@@ -161,7 +161,12 @@ Turn execution completed successfully.
 
 #### `turn.failed`
 
-Turn execution failed.
+Turn execution failed. This event is emitted when:
+- The LLM call fails (e.g., API key not configured, rate limit exceeded)
+- Max iterations exceeded
+- Other unrecoverable errors during turn execution
+
+When a turn fails, a `message.agent` event with a user-friendly error message is also emitted so users see feedback in the chat.
 
 ```json
 {
@@ -172,11 +177,17 @@ Turn execution failed.
   },
   "data": {
     "turn_id": "...",
-    "error": "Max iterations exceeded",
-    "error_code": "MAX_ITERATIONS"
+    "error": "An error occurred while processing your request.",
+    "error_code": "llm_error"
   }
 }
 ```
+
+**Error Codes:**
+| Code | Description |
+|------|-------------|
+| `llm_error` | LLM call failed (API key missing, rate limit, network error) |
+| `max_iterations` | Maximum iterations exceeded |
 
 ### Atom Lifecycle Events
 
@@ -231,6 +242,23 @@ ReasonAtom lifecycle - LLM inference.
     "text_preview": "First 200 chars...",
     "has_tool_calls": true,
     "tool_call_count": 2
+  }
+}
+```
+
+For failed reasoning (LLM call error):
+
+```json
+{
+  "type": "reason.completed",
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
+  "data": {
+    "success": false,
+    "text_preview": null,
+    "has_tool_calls": false,
+    "tool_call_count": 0,
+    "error": "LLM error: API key is required"
   }
 }
 ```

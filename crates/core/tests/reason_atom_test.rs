@@ -450,6 +450,95 @@ async fn test_reason_atom_with_lorem_response() {
 }
 
 #[tokio::test]
+async fn test_reason_atom_handles_llm_error() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+        setup_test_environment().await;
+
+    // Add a user message
+    message_store
+        .seed(session_id, vec![Message::user("Hello!")])
+        .await;
+
+    // Create a driver that returns an error (simulating API key missing, rate limit, etc.)
+    let driver_registry = create_custom_driver_registry(LlmSimConfig::error("API key is required"));
+
+    // Use an in-memory event emitter to capture events
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        agent_store,
+        session_store,
+        message_store.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput { context, agent_id };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should handle error gracefully");
+
+    // Verify the result indicates failure
+    assert!(!result.success, "Result should indicate failure");
+    assert!(
+        result.error.is_some(),
+        "Result should contain error message"
+    );
+    assert!(
+        result.error.as_ref().unwrap().contains("API key"),
+        "Error should mention API key"
+    );
+
+    // Verify user-friendly error message is returned (not internal details)
+    assert!(
+        result.text.contains("error"),
+        "User-facing text should mention error"
+    );
+    assert!(
+        result.text.contains("Please try again"),
+        "User-facing text should be friendly"
+    );
+
+    // Verify no tool calls
+    assert!(!result.has_tool_calls);
+    assert!(result.tool_calls.is_empty());
+
+    // Verify an error message was stored for the user
+    let messages = message_store.load(session_id).await.unwrap();
+    assert_eq!(messages.len(), 2, "Should have user + error message");
+    assert_eq!(messages[1].role, everruns_core::MessageRole::Assistant);
+    assert!(
+        messages[1].text().unwrap().contains("error"),
+        "Stored message should be an error message"
+    );
+
+    // Verify events were emitted
+    let events = event_emitter.events().await;
+    assert!(!events.is_empty(), "Events should have been emitted");
+
+    // Check for message.agent event (error message for user)
+    let has_message_agent = events.iter().any(|e| e.event_type == "message.agent");
+    assert!(
+        has_message_agent,
+        "Should emit message.agent event for error"
+    );
+
+    // Check for reason.completed event with success=false
+    let reason_completed = events.iter().find(|e| e.event_type == "reason.completed");
+    assert!(
+        reason_completed.is_some(),
+        "Should emit reason.completed event"
+    );
+}
+
+#[tokio::test]
 async fn test_driver_registry_integration() {
     // Verify that register_driver works with the standard DriverRegistry flow
     let mut registry = DriverRegistry::new();

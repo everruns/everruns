@@ -26,8 +26,8 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmGenerationData, ReasonCompletedData, ReasonStartedData,
-    ToolDefinitionSummary,
+    EventContext, EventRequest, LlmGenerationData, MessageAgentData, ReasonCompletedData,
+    ReasonStartedData, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
@@ -273,6 +273,44 @@ where
 
                 let error_msg = e.to_string();
 
+                // User-facing error message (don't expose internal details)
+                let user_error_text =
+                    "I encountered an error while processing your request. Please try again later."
+                        .to_string();
+
+                // Create error message for the user to see
+                let error_message = Message::assistant(&user_error_text);
+
+                // Store message (no-op in production, but needed for InMemoryMessageStore in tests)
+                if let Err(store_err) = self
+                    .message_store
+                    .store(context.session_id, error_message.clone())
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        error = %store_err,
+                        "ReasonAtom: failed to store error message"
+                    );
+                }
+
+                // Emit message.agent event (stores message as event with proper turn context)
+                if let Err(emit_err) = self
+                    .event_emitter
+                    .emit(EventRequest::new(
+                        context.session_id,
+                        event_context.clone(),
+                        MessageAgentData::new(error_message),
+                    ))
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        error = %emit_err,
+                        "ReasonAtom: failed to emit message.agent event for error"
+                    );
+                }
+
                 // Emit reason.completed event for failure
                 if let Err(emit_err) = self
                     .event_emitter
@@ -292,10 +330,7 @@ where
 
                 ReasonResult {
                     success: false,
-                    text: format!(
-                        "I encountered an error while processing your request: {}",
-                        e
-                    ),
+                    text: user_error_text,
                     tool_calls: vec![],
                     has_tool_calls: false,
                     tool_definitions: vec![],
@@ -504,7 +539,7 @@ where
             );
         }
 
-        // 14. Store assistant message with metadata
+        // 14. Store and emit message.agent event with metadata
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -513,8 +548,19 @@ where
         };
         assistant_message.metadata = Some(metadata);
 
+        // Store message (no-op in production via DbMessageStore, but needed for InMemoryMessageStore in tests)
         self.message_store
             .store(session_id, assistant_message.clone())
+            .await?;
+
+        // Emit message.agent event (this stores the message as an event with proper turn context)
+        let message_event_context = EventContext::from_atom_context(context);
+        self.event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                message_event_context,
+                MessageAgentData::new(assistant_message),
+            ))
             .await?;
 
         tracing::info!(

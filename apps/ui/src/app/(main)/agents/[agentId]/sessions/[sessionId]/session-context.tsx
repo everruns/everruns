@@ -212,7 +212,9 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     const realChatEvents = events
       ? events.filter(
           (e) =>
-            e.type === "message.user" || e.type === "message.agent" || e.type === "tool.call_completed"
+            e.type === "message.user" ||
+            e.type === "message.agent" ||
+            e.type === "tool.call_completed"
         )
       : [];
 
