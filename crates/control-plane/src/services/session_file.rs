@@ -2,7 +2,7 @@
 
 use crate::storage::{
     models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
-    Database,
+    StorageBackend,
 };
 use anyhow::{anyhow, Result};
 use everruns_core::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
@@ -49,11 +49,11 @@ pub struct GrepInput {
 }
 
 pub struct SessionFileService {
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
 }
 
 impl SessionFileService {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
     }
 

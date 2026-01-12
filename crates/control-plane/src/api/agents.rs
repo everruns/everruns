@@ -1,6 +1,6 @@
 // Agent CRUD HTTP routes (M2)
 
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 use axum::{
     body::Body,
     extract::{Path, State},
@@ -104,7 +104,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             service: Arc::new(AgentService::new(db)),
         }

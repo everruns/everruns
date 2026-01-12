@@ -1,5 +1,6 @@
 // Everruns API server
 // Decision: Flexible auth with support for no-auth, admin-only, and full auth modes
+// Decision: DEV_MODE=true uses in-memory storage, no PostgreSQL required
 // M2: Agent/Session/Messages model with Events as SSE notifications
 
 mod grpc_service;
@@ -9,14 +10,14 @@ use everruns_control_plane::api;
 use everruns_control_plane::auth;
 use everruns_control_plane::openapi::ApiDoc;
 use everruns_control_plane::services;
-use everruns_control_plane::storage::{Database, EncryptionService};
+use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 
 use anyhow::{Context, Result};
 use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
 use everruns_core::{EventListener, OtelEventListener};
-use everruns_worker::create_runner;
+use everruns_worker::{create_runner_with_backend, RunnerBackend};
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -27,7 +28,7 @@ use utoipa_swagger_ui::SwaggerUi;
 /// App state shared across routes
 #[derive(Clone)]
 pub struct AppState {
-    pub db: Arc<Database>,
+    pub db: Arc<StorageBackend>,
 }
 
 #[derive(Serialize)]
@@ -72,24 +73,46 @@ async fn main() -> Result<()> {
 
     tracing::info!("everrun-api starting...");
 
-    // Initialize database
-    let database_url =
-        std::env::var("DATABASE_URL").context("DATABASE_URL environment variable required")?;
-    let db = Database::from_url(&database_url)
-        .await
-        .context("Failed to connect to database")?;
-    tracing::info!("Connected to database");
+    // Check for dev mode (no PostgreSQL required)
+    let dev_mode = std::env::var("DEV_MODE")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
 
-    // Create the durable agent runner (uses PostgreSQL-backed execution)
-    // Pass the database pool for direct access (avoids circular gRPC dependency)
-    let runner = create_runner(Some(db.pool().clone()))
-        .await
-        .context("Failed to create agent runner")?;
+    // Initialize storage backend and runner based on mode
+    let (db, runner) = if dev_mode {
+        tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
 
-    tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
+        // Create in-memory storage
+        let db = Arc::new(StorageBackend::in_memory());
 
-    // Create app state
-    let db = Arc::new(db);
+        // Create in-memory runner
+        let runner = create_runner_with_backend(RunnerBackend::InMemory)
+            .await
+            .context("Failed to create in-memory agent runner")?;
+
+        tracing::info!("Using in-memory storage and durable execution engine");
+        (db, runner)
+    } else {
+        // Production mode: require PostgreSQL
+        let database_url =
+            std::env::var("DATABASE_URL").context("DATABASE_URL environment variable required")?;
+        let backend = StorageBackend::postgres(&database_url)
+            .await
+            .context("Failed to connect to database")?;
+        tracing::info!("Connected to PostgreSQL database");
+
+        // Create PostgreSQL-backed runner
+        let pool = backend
+            .pool()
+            .expect("PostgreSQL backend should have pool")
+            .clone();
+        let runner = create_runner_with_backend(RunnerBackend::Postgres(pool))
+            .await
+            .context("Failed to create agent runner")?;
+
+        tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
+        (Arc::new(backend), runner)
+    };
 
     // Initialize encryption service for API keys (optional - gracefully degrade if not configured)
     let encryption = match EncryptionService::from_env() {
@@ -224,66 +247,73 @@ async fn main() -> Result<()> {
     // Add tracing
     let app = app.layer(TraceLayer::new_for_http());
 
-    // Start gRPC server for worker communication
-    let grpc_addr = std::env::var("GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9001".to_string());
-    let grpc_db = db.clone();
-    let grpc_encryption = encryption.clone();
-    let grpc_event_service = event_service.clone();
-    tokio::spawn(async move {
-        // Use the shared EventService with listeners (OTel, etc.)
-        let grpc_service = grpc_service::WorkerServiceImpl::new(
-            (*grpc_event_service).clone(),
-            grpc_db,
-            grpc_encryption,
-        );
-        let addr = grpc_addr.parse().expect("Invalid GRPC_ADDR");
-        tracing::info!("gRPC server listening on {}", addr);
-        if let Err(e) = tonic::transport::Server::builder()
-            .add_service(grpc_service.into_server())
-            .serve(addr)
-            .await
-        {
-            tracing::error!("gRPC server error: {}", e);
-        }
-    });
-
-    // Start background task for stale task reclamation
-    {
-        use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
-        use std::time::Duration;
-
-        let reclaim_db = db.clone();
-        let stale_threshold = Duration::from_secs(30); // Tasks without heartbeat for 30s are stale
-        let reclaim_interval = Duration::from_secs(10); // Check every 10 seconds
-
+    // Start gRPC server for worker communication (only in production mode)
+    // In dev mode, workers are not supported - everything runs in-process
+    if !dev_mode {
+        let grpc_addr = std::env::var("GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9001".to_string());
+        let grpc_db = db.clone();
+        let grpc_encryption = encryption.clone();
+        let grpc_event_service = event_service.clone();
         tokio::spawn(async move {
-            let store = PostgresWorkflowEventStore::new(reclaim_db.pool().clone());
-            let mut interval = tokio::time::interval(reclaim_interval);
-
-            tracing::info!(
-                stale_threshold_secs = stale_threshold.as_secs(),
-                reclaim_interval_secs = reclaim_interval.as_secs(),
-                "Started stale task reclamation background task"
+            // Use the shared EventService with listeners (OTel, etc.)
+            let grpc_service = grpc_service::WorkerServiceImpl::new(
+                (*grpc_event_service).clone(),
+                grpc_db,
+                grpc_encryption,
             );
-
-            loop {
-                interval.tick().await;
-                match store.reclaim_stale_tasks(stale_threshold).await {
-                    Ok(reclaimed) => {
-                        if !reclaimed.is_empty() {
-                            tracing::info!(
-                                count = reclaimed.len(),
-                                task_ids = ?reclaimed,
-                                "Reclaimed stale tasks"
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to reclaim stale tasks: {}", e);
-                    }
-                }
+            let addr = grpc_addr.parse().expect("Invalid GRPC_ADDR");
+            tracing::info!("gRPC server listening on {}", addr);
+            if let Err(e) = tonic::transport::Server::builder()
+                .add_service(grpc_service.into_server())
+                .serve(addr)
+                .await
+            {
+                tracing::error!("gRPC server error: {}", e);
             }
         });
+
+        // Start background task for stale task reclamation (only with PostgreSQL)
+        {
+            use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
+            use std::time::Duration;
+
+            if let Some(pool) = db.pool() {
+                let pool = pool.clone();
+                let stale_threshold = Duration::from_secs(30); // Tasks without heartbeat for 30s are stale
+                let reclaim_interval = Duration::from_secs(10); // Check every 10 seconds
+
+                tokio::spawn(async move {
+                    let store = PostgresWorkflowEventStore::new(pool);
+                    let mut interval = tokio::time::interval(reclaim_interval);
+
+                    tracing::info!(
+                        stale_threshold_secs = stale_threshold.as_secs(),
+                        reclaim_interval_secs = reclaim_interval.as_secs(),
+                        "Started stale task reclamation background task"
+                    );
+
+                    loop {
+                        interval.tick().await;
+                        match store.reclaim_stale_tasks(stale_threshold).await {
+                            Ok(reclaimed) => {
+                                if !reclaimed.is_empty() {
+                                    tracing::info!(
+                                        count = reclaimed.len(),
+                                        task_ids = ?reclaimed,
+                                        "Reclaimed stale tasks"
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to reclaim stale tasks: {}", e);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    } else {
+        tracing::info!("DEV MODE: gRPC server and stale task reclamation disabled");
     }
 
     // Start HTTP server

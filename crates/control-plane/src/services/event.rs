@@ -13,7 +13,7 @@
 // observability integrations (OTel spans, metrics, etc.). Listeners are
 // called synchronously but should be non-blocking.
 
-use crate::storage::{models::CreateEventRow, Database, EventRow};
+use crate::storage::{models::CreateEventRow, EventRow, StorageBackend};
 use anyhow::Result;
 use everruns_core::{Event, EventData, EventListener, EventRequest};
 use std::sync::Arc;
@@ -21,13 +21,13 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct EventService {
-    db: Arc<Database>,
+    db: Arc<StorageBackend>,
     /// Registered event listeners for observability
     listeners: Arc<Vec<Arc<dyn EventListener>>>,
 }
 
 impl EventService {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             db,
             listeners: Arc::new(Vec::new()),
@@ -35,7 +35,7 @@ impl EventService {
     }
 
     /// Create an EventService with registered listeners
-    pub fn with_listeners(db: Arc<Database>, listeners: Vec<Arc<dyn EventListener>>) -> Self {
+    pub fn with_listeners(db: Arc<StorageBackend>, listeners: Vec<Arc<dyn EventListener>>) -> Self {
         Self {
             db,
             listeners: Arc::new(listeners),

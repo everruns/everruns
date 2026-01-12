@@ -1,6 +1,6 @@
 // LLM Model API endpoints
 
-use crate::storage::Database;
+use crate::storage::StorageBackend;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -21,7 +21,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<Database>) -> Self {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             service: Arc::new(LlmModelService::new(db)),
         }
