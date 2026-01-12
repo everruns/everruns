@@ -766,23 +766,17 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
     #[instrument(skip(self))]
     async fn list_workers(&self, filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError> {
-        let mut query = String::from(
-            r#"
+        // Only show workers with recent heartbeat (within 60 seconds)
+        let query = r#"
             SELECT id, worker_group, activity_types, max_concurrency, current_load,
                    status, started_at, last_heartbeat_at, accepting_tasks
             FROM durable_workers
-            WHERE 1=1
-            "#,
-        );
+            WHERE last_heartbeat_at > NOW() - INTERVAL '60 seconds'
+              AND ($1::text IS NULL OR status = $1)
+              AND ($2::text IS NULL OR worker_group = $2)
+            "#;
 
-        if filter.status.is_some() {
-            query.push_str(" AND status = $1");
-        }
-        if filter.worker_group.is_some() {
-            query.push_str(" AND worker_group = $2");
-        }
-
-        let rows = sqlx::query(&query)
+        let rows = sqlx::query(query)
             .bind(&filter.status)
             .bind(&filter.worker_group)
             .fetch_all(&self.pool)
