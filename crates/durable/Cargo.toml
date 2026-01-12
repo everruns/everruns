@@ -64,12 +64,7 @@ indicatif = "0.17"
 
 [dev-dependencies]
 tokio-test = "0.4"
-criterion = { version = "0.5", features = ["async_tokio"] }
 test-log = { version = "0.2", features = ["trace"] }
-
-[[bench]]
-name = "task_claiming"
-harness = false
 
 [[bench]]
 name = "concurrent_workers"

@@ -50,12 +50,7 @@ Tests multi-step workflow execution with sequential activities:
 
 Supports `--save` and `--moniker` flags for checkpointing.
 
-### task_claiming (Criterion)
-
-Micro-benchmarks for core operations using Criterion:
-```bash
-cargo bench -p everruns-durable --bench task_claiming
-```
+Both benchmarks measure **Schedule-to-Start (S2S) latency** which tracks how fast tasks are claimed under load. This provides realistic task claiming performance metrics including P50, P95, and P99 percentiles.
 
 ## Output
 
