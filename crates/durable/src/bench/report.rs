@@ -25,7 +25,7 @@ pub struct ReportConfig {
 impl Default for ReportConfig {
     fn default() -> Self {
         Self {
-            output_dir: "crates/durable/benches/reports".to_string(),
+            output_dir: "target/benchmark-reports".to_string(),
             title: "Benchmark Report".to_string(),
             include_raw_data: false,
             filename_prefix: None,

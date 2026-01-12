@@ -59,11 +59,9 @@ Both benchmarks measure **Schedule-to-Start (S2S) latency** which tracks how fas
 
 ## Output
 
-All output is stored under source control in `crates/durable/benches/`:
-
 ### HTML Reports
 
-Generated in `crates/durable/benches/reports/`:
+Generated in `target/benchmark-reports/` (gitignored):
 - Prefixed with benchmark type: `concurrent_workers_*.html`, `workflow_throughput_*.html`
 - Interactive charts (throughput, latency distribution, resource usage)
 - Percentile statistics table
@@ -71,7 +69,7 @@ Generated in `crates/durable/benches/reports/`:
 
 ### Checkpoints
 
-Saved to `crates/durable/benches/checkpoints/` when using `--save`:
+Saved to `crates/durable/benches/checkpoints/` when using `--save` (under source control):
 - Prefixed with benchmark type: `concurrent_workers_*.json`, `workflow_throughput_*.json`
 - JSON files with full metrics snapshot
 - Environment info (OS, CPU, memory, moniker)
