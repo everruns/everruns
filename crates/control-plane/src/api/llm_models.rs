@@ -1,5 +1,6 @@
 // LLM Model API endpoints
 
+use crate::api::common::ListResponse;
 use crate::storage::StorageBackend;
 use axum::{
     extract::{Path, State},
@@ -118,14 +119,14 @@ pub async fn create_model(
         ("provider_id" = Uuid, Path, description = "Provider ID")
     ),
     responses(
-        (status = 200, description = "List of models", body = Vec<LlmModel>)
+        (status = 200, description = "List of models", body = ListResponse<LlmModel>)
     ),
     tag = "llm-models"
 )]
 pub async fn list_provider_models(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
-) -> Result<Json<Vec<LlmModel>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ListResponse<LlmModel>>, (StatusCode, Json<ErrorResponse>)> {
     let models = state
         .service
         .list_for_provider(provider_id)
@@ -140,7 +141,7 @@ pub async fn list_provider_models(
             )
         })?;
 
-    Ok(Json(models))
+    Ok(Json(ListResponse::new(models)))
 }
 
 /// List all models across all providers
@@ -148,13 +149,13 @@ pub async fn list_provider_models(
     get,
     path = "/v1/llm-models",
     responses(
-        (status = 200, description = "List of all models", body = Vec<LlmModelWithProvider>)
+        (status = 200, description = "List of all models", body = ListResponse<LlmModelWithProvider>)
     ),
     tag = "llm-models"
 )]
 pub async fn list_all_models(
     State(state): State<AppState>,
-) -> Result<Json<Vec<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ListResponse<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
     let models = state.service.list_all().await.map_err(|e| {
         tracing::error!("Failed to list all LLM models: {}", e);
         (
@@ -165,7 +166,7 @@ pub async fn list_all_models(
         )
     })?;
 
-    Ok(Json(models))
+    Ok(Json(ListResponse::new(models)))
 }
 
 /// Get a specific model with provider info and profile

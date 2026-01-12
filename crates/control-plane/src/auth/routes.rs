@@ -23,6 +23,7 @@ use super::{
     middleware::{AuthError, AuthState, AuthUser},
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
+use crate::api::common::ListResponse;
 use crate::storage::{
     models::{CreateApiKeyRow, CreateRefreshTokenRow, CreateUserRow},
     password::{hash_password, verify_password},
@@ -530,7 +531,7 @@ pub async fn oauth_callback(
 pub async fn list_api_keys(
     State(state): State<AuthState>,
     user: AuthUser,
-) -> Result<Json<Vec<ApiKeyListItem>>, AuthError> {
+) -> Result<Json<ListResponse<ApiKeyListItem>>, AuthError> {
     let keys = state
         .db
         .list_api_keys_for_user(user.id)
@@ -556,7 +557,7 @@ pub async fn list_api_keys(
         })
         .collect();
 
-    Ok(Json(items))
+    Ok(Json(ListResponse::new(items)))
 }
 
 /// POST /v1/auth/api-keys - Create a new API key

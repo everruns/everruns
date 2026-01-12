@@ -1393,10 +1393,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/LlmModelWithProvider"
-                  }
+                  "$ref": "#/components/schemas/ListResponse_LlmModelWithProvider"
                 }
               }
             }
@@ -1699,10 +1696,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/LlmModel"
-                  }
+                  "$ref": "#/components/schemas/ListResponse_LlmModel"
                 }
               }
             }
@@ -3140,6 +3134,153 @@
                 },
                 "path": {
                   "type": "string"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_LlmModel": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "LLM Model entity",
+              "required": [
+                "id",
+                "provider_id",
+                "model_id",
+                "display_name",
+                "capabilities",
+                "is_default",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "is_default": {
+                  "type": "boolean"
+                },
+                "model_id": {
+                  "type": "string"
+                },
+                "provider_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/LlmModelStatus"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_LlmModelWithProvider": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "LLM Model with provider info",
+              "required": [
+                "id",
+                "provider_id",
+                "model_id",
+                "display_name",
+                "capabilities",
+                "is_default",
+                "status",
+                "created_at",
+                "updated_at",
+                "provider_name",
+                "provider_type"
+              ],
+              "properties": {
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "is_default": {
+                  "type": "boolean"
+                },
+                "model_id": {
+                  "type": "string"
+                },
+                "profile": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LlmModelProfile",
+                      "description": "Readonly profile with model capabilities (not persisted to database)"
+                    }
+                  ]
+                },
+                "provider_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "provider_name": {
+                  "type": "string"
+                },
+                "provider_type": {
+                  "$ref": "#/components/schemas/LlmProviderType"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/LlmModelStatus"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
                 }
               }
             },
