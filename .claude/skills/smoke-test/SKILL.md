@@ -42,7 +42,7 @@ For environments without Docker (cloud agents, CI systems), use the dedicated sk
 
 ```bash
 # See .claude/skills/no-docker-setup/SKILL.md
-sudo -E .claude/skills/no-docker-setup/scripts/run.sh
+sudo -E .claude/skills/no-docker-setup/scripts/start.sh
 ```
 
 ## Prerequisites

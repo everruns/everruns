@@ -32,7 +32,7 @@ Before running, ensure these are installed:
 export OPENAI_API_KEY="your-key"  # or ANTHROPIC_API_KEY
 
 # Run with root access
-sudo -E .claude/skills/no-docker-setup/scripts/run.sh
+sudo -E .claude/skills/no-docker-setup/scripts/start.sh
 ```
 
 ## What This Does
@@ -138,6 +138,6 @@ cat /tmp/worker.log
 
 | Script | Description |
 |--------|-------------|
-| `run.sh` | Main entry point - sets up everything |
+| `start.sh` | Main entry point - sets up everything |
 | `_postgres.sh` | PostgreSQL cluster management |
 | `_utils.sh` | Shared utilities and configuration |
