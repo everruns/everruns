@@ -163,7 +163,7 @@ impl From<WorkerInfo> for WorkerResponse {
 /// Workers list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkersListResponse {
-    pub workers: Vec<WorkerResponse>,
+    pub data: Vec<WorkerResponse>,
     pub total: usize,
 }
 
@@ -473,9 +473,9 @@ pub async fn list_workers(
     })?;
 
     let total = workers.len();
-    let workers: Vec<WorkerResponse> = workers.into_iter().map(WorkerResponse::from).collect();
+    let data: Vec<WorkerResponse> = workers.into_iter().map(WorkerResponse::from).collect();
 
-    Ok(Json(WorkersListResponse { workers, total }))
+    Ok(Json(WorkersListResponse { data, total }))
 }
 
 /// POST /v1/durable/workers/:worker_id/drain - Drain a worker
