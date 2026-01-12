@@ -42,7 +42,9 @@ impl AppState {
     }
 
     /// Get the store, returning an error response if not available (dev mode)
-    fn get_store(&self) -> Result<&Arc<PostgresWorkflowEventStore>, (StatusCode, Json<ErrorResponse>)> {
+    fn get_store(
+        &self,
+    ) -> Result<&Arc<PostgresWorkflowEventStore>, (StatusCode, Json<ErrorResponse>)> {
         self.store.as_ref().ok_or_else(|| {
             (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -650,18 +652,15 @@ pub async fn get_workflow_events(
     Path(workflow_id): Path<Uuid>,
 ) -> Result<Json<Vec<WorkflowEventResponse>>, (StatusCode, Json<ErrorResponse>)> {
     let store = state.get_store()?;
-    let events = store
-        .get_workflow_events(workflow_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get workflow events: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+    let events = store.get_workflow_events(workflow_id).await.map_err(|e| {
+        tracing::error!("Failed to get workflow events: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
+    })?;
 
     let events: Vec<WorkflowEventResponse> = events
         .into_iter()
@@ -741,18 +740,15 @@ pub async fn send_signal(
         sent_at: Utc::now(),
     };
 
-    store
-        .send_signal(workflow_id, signal)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to send signal: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+    store.send_signal(workflow_id, signal).await.map_err(|e| {
+        tracing::error!("Failed to send signal: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
+    })?;
 
     Ok(StatusCode::OK)
 }
@@ -800,18 +796,15 @@ pub async fn list_tasks(
         limit: query.limit.unwrap_or(100),
     };
 
-    let tasks = store
-        .list_tasks(filter, pagination)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list tasks: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+    let tasks = store.list_tasks(filter, pagination).await.map_err(|e| {
+        tracing::error!("Failed to list tasks: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
+    })?;
 
     let total = tasks.len();
     let data: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
@@ -850,18 +843,15 @@ pub async fn list_dlq(
         limit: query.limit.unwrap_or(100),
     };
 
-    let entries = store
-        .list_dlq(filter, pagination)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list DLQ: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+    let entries = store.list_dlq(filter, pagination).await.map_err(|e| {
+        tracing::error!("Failed to list DLQ: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
+    })?;
 
     let total = entries.len();
     let data: Vec<DlqEntryResponse> = entries.into_iter().map(DlqEntryResponse::from).collect();
@@ -888,26 +878,23 @@ pub async fn retry_dlq(
     Path(dlq_id): Path<Uuid>,
 ) -> Result<Json<Uuid>, (StatusCode, Json<ErrorResponse>)> {
     let store = state.get_store()?;
-    let task_id = store
-        .requeue_from_dlq(dlq_id)
-        .await
-        .map_err(|e| match e {
-            everruns_durable::StoreError::TaskNotFound(_) => (
-                StatusCode::NOT_FOUND,
+    let task_id = store.requeue_from_dlq(dlq_id).await.map_err(|e| match e {
+        everruns_durable::StoreError::TaskNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "DLQ entry not found".to_string(),
+            }),
+        ),
+        _ => {
+            tracing::error!("Failed to retry DLQ entry: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: "DLQ entry not found".to_string(),
+                    error: "Internal server error".to_string(),
                 }),
-            ),
-            _ => {
-                tracing::error!("Failed to retry DLQ entry: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
-            }
-        })?;
+            )
+        }
+    })?;
 
     Ok(Json(task_id))
 }
