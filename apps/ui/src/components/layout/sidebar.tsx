@@ -42,7 +42,7 @@ const navigation = [
 ];
 
 const durableNavigation = [
-  { name: "Overview", href: "/durable", icon: Cog },
+  { name: "Overview", href: "/durable", icon: Cog, exact: true },
   { name: "Workers", href: "/durable/workers", icon: Server },
   { name: "Workflows", href: "/durable/workflows", icon: Workflow },
 ];
@@ -107,8 +107,9 @@ export function Sidebar() {
         <div className="my-3 border-t" />
         <p className="px-3 py-1 text-xs font-medium text-muted-foreground">Durable Execution</p>
         {durableNavigation.map((item) => {
-          const isActive =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = item.exact
+            ? pathname === item.href
+            : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.name}
