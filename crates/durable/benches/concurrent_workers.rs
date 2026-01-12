@@ -12,8 +12,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 
 use everruns_durable::bench::{
-    clear_terminal_progress, set_terminal_progress, ActivityDuration, BenchmarkMetrics,
-    BenchmarkReport, ReportConfig,
+    clear_terminal_progress, set_terminal_progress, ActivityDuration, BenchmarkCheckpoint,
+    BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo, ReportConfig,
 };
 use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
@@ -347,6 +347,53 @@ fn main() {
         match report.generate(m) {
             Ok(path) => println!("   ✅ {}: {}", name, path),
             Err(e) => println!("   ❌ {}: {}", name, e),
+        }
+    }
+
+    // Save checkpoints for historical comparison
+    println!("\n💾 Saving checkpoints...");
+
+    let env = EnvironmentInfo::detect();
+    let store = CheckpointStore::default_location();
+
+    for (name, m) in [
+        ("baseline_1_worker", &baseline),
+        ("scale_100_workers", &scale_100),
+        ("realistic_100_workers", &realistic_100),
+        ("burst_50k_tasks", &burst),
+    ] {
+        let checkpoint = BenchmarkCheckpoint::new(name, env.clone(), m.snapshot());
+        match store.save(&checkpoint) {
+            Ok(path) => println!("   ✅ {}: {}", name, path.display()),
+            Err(e) => println!("   ❌ {}: {}", name, e),
+        }
+    }
+
+    // Show comparison with previous runs if available
+    println!("\n📊 Historical comparison (vs last run):");
+    for name in ["baseline_1_worker", "burst_50k_tasks"] {
+        match store.get_comparison(name, Some(&env.moniker), 2) {
+            Ok(checkpoints) if checkpoints.len() >= 2 => {
+                let comparison = everruns_durable::bench::CheckpointComparison::compare(
+                    &checkpoints[0],
+                    &checkpoints[1],
+                );
+                println!("\n   {}", name);
+                println!(
+                    "      Throughput: {:.1} → {:.1} ({:+.1}%)",
+                    comparison.baseline.throughput,
+                    comparison.current.throughput,
+                    comparison.changes.throughput_pct
+                );
+                println!(
+                    "      E2E P99:    {:.2}ms → {:.2}ms ({:+.1}%)",
+                    comparison.baseline.e2e_p99_ms,
+                    comparison.current.e2e_p99_ms,
+                    comparison.changes.e2e_p99_pct
+                );
+            }
+            Ok(_) => println!("   {} - first run, no baseline yet", name),
+            Err(e) => println!("   {} - {}", name, e),
         }
     }
 
