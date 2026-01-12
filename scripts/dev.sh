@@ -667,7 +667,8 @@ case "$command" in
     echo "Running workflow_throughput..."
     cargo bench -p everruns-durable --bench workflow_throughput
     echo ""
-    echo "✅ Benchmarks complete! Reports in target/benchmark-reports/"
+    echo "✅ Benchmarks complete!"
+    echo "   Reports: crates/durable/benches/reports/"
     ;;
 
   durable-bench-save)
@@ -685,8 +686,8 @@ case "$command" in
     cargo bench -p everruns-durable --bench workflow_throughput -- --save $MONIKER_ARG
     echo ""
     echo "✅ Benchmarks complete with checkpoints saved!"
-    echo "   Reports: target/benchmark-reports/"
-    echo "   Checkpoints: target/benchmark-checkpoints/"
+    echo "   Reports:     crates/durable/benches/reports/"
+    echo "   Checkpoints: crates/durable/benches/checkpoints/"
     ;;
 
   help|*)

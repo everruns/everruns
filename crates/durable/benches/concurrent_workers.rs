@@ -370,9 +370,9 @@ fn main() {
     println!("\n📊 Generating HTML reports...");
 
     let report_config = ReportConfig {
-        output_dir: "target/benchmark-reports".to_string(),
         title: "Durable Execution Benchmark".to_string(),
-        include_raw_data: false,
+        filename_prefix: Some("concurrent_workers".to_string()),
+        ..Default::default()
     };
 
     for (name, m) in [
@@ -399,10 +399,10 @@ fn main() {
         let store = CheckpointStore::default_location();
 
         for (name, m) in [
-            ("baseline_1_worker", &baseline),
-            ("scale_100_workers", &scale_100),
-            ("realistic_100_workers", &realistic_100),
-            ("burst_50k_tasks", &burst),
+            ("concurrent_workers_baseline_1_worker", &baseline),
+            ("concurrent_workers_scale_100_workers", &scale_100),
+            ("concurrent_workers_realistic_100_workers", &realistic_100),
+            ("concurrent_workers_burst_50k_tasks", &burst),
         ] {
             let checkpoint = BenchmarkCheckpoint::new(name, env.clone(), m.snapshot());
             match store.save(&checkpoint) {
@@ -413,7 +413,10 @@ fn main() {
 
         // Show comparison with previous runs if available
         println!("\n📊 Historical comparison (vs last run):");
-        for name in ["baseline_1_worker", "burst_50k_tasks"] {
+        for name in [
+            "concurrent_workers_baseline_1_worker",
+            "concurrent_workers_burst_50k_tasks",
+        ] {
             match store.get_comparison(name, Some(&env.moniker), 2) {
                 Ok(checkpoints) if checkpoints.len() >= 2 => {
                     let comparison = everruns_durable::bench::CheckpointComparison::compare(

@@ -490,9 +490,9 @@ fn main() {
     println!("\n📊 Generating HTML reports...");
 
     let report_config = ReportConfig {
-        output_dir: "target/benchmark-reports".to_string(),
         title: "Workflow Throughput Benchmark".to_string(),
-        include_raw_data: false,
+        filename_prefix: Some("workflow_throughput".to_string()),
+        ..Default::default()
     };
 
     for (name, m) in [
@@ -518,10 +518,10 @@ fn main() {
         let store = CheckpointStore::default_location();
 
         for (name, m) in [
-            ("wf_target_1000x100", &target),
-            ("wf_target_1000x100_exec", &target_exec),
-            ("wf_parallel_5000x20", &high_parallel),
-            ("wf_deep_100x500", &deep),
+            ("workflow_throughput_target_1000x100", &target),
+            ("workflow_throughput_target_1000x100_exec", &target_exec),
+            ("workflow_throughput_parallel_5000x20", &high_parallel),
+            ("workflow_throughput_deep_100x500", &deep),
         ] {
             let checkpoint = BenchmarkCheckpoint::new(name, env.clone(), m.snapshot());
             match store.save(&checkpoint) {
@@ -532,7 +532,10 @@ fn main() {
 
         // Show comparison with previous runs if available
         println!("\n📊 Historical comparison (vs last run):");
-        for name in ["wf_target_1000x100", "wf_parallel_5000x20"] {
+        for name in [
+            "workflow_throughput_target_1000x100",
+            "workflow_throughput_parallel_5000x20",
+        ] {
             match store.get_comparison(name, Some(&env.moniker), 2) {
                 Ok(checkpoints) if checkpoints.len() >= 2 => {
                     let comparison = everruns_durable::bench::CheckpointComparison::compare(

@@ -195,9 +195,9 @@ impl CheckpointStore {
         }
     }
 
-    /// Default store location (target/benchmark-checkpoints)
+    /// Default store location (crates/durable/benches/checkpoints - under source control)
     pub fn default_location() -> Self {
-        Self::new("target/benchmark-checkpoints")
+        Self::new("crates/durable/benches/checkpoints")
     }
 
     /// Ensure the directory exists
