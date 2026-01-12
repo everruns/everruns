@@ -396,7 +396,8 @@ fn main() {
             Some(m) => EnvironmentInfo::detect_with_moniker(m),
             None => EnvironmentInfo::detect(),
         };
-        let store = CheckpointStore::default_location();
+        let store =
+            CheckpointStore::new(format!("{}/benches/checkpoints", env!("CARGO_MANIFEST_DIR")));
 
         for (name, m) in [
             ("concurrent_workers_baseline_1_worker", &baseline),
