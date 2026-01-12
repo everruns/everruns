@@ -124,12 +124,18 @@ crates/durable/
 │   │   ├── metrics.rs         # Prometheus/OTel metrics
 │   │   └── semantic.rs        # Semantic conventions for durable execution
 │   │
-│   └── admin/                 # Admin API and monitoring
+│   ├── admin/                 # Admin API and monitoring
+│   │   ├── mod.rs
+│   │   ├── api.rs             # REST API for admin operations
+│   │   ├── workers.rs         # Worker monitoring
+│   │   ├── workflows.rs       # Workflow inspection
+│   │   └── dlq.rs             # DLQ management
+│   │
+│   └── bench/                 # Benchmark utilities (pub, used by benches/)
 │       ├── mod.rs
-│       ├── api.rs             # REST API for admin operations
-│       ├── workers.rs         # Worker monitoring
-│       ├── workflows.rs       # Workflow inspection
-│       └── dlq.rs             # DLQ management
+│       ├── metrics.rs         # LatencyHistogram, ThroughputCounter, ResourceMonitor
+│       ├── report.rs          # Gatling-style HTML report generation
+│       └── runner.rs          # BenchmarkRunner, terminal progress indicators
 │
 ├── tests/
 │   ├── integration/           # Integration tests
@@ -147,10 +153,9 @@ crates/durable/
 │       └── test_activities.rs
 │
 ├── benches/                   # Performance benchmarks
-│   ├── workflow_throughput.rs
-│   ├── activity_latency.rs
-│   ├── concurrent_workers.rs
-│   └── task_claiming.rs       # Critical path benchmark
+│   ├── task_claiming.rs       # Criterion micro-benchmarks for claim latency
+│   ├── concurrent_workers.rs  # Load test with worker scaling (1→100)
+│   └── workflow_throughput.rs # Target scenario: 1000 wf × 100 steps
 │
 └── examples/
     ├── simple_workflow.rs
@@ -1576,13 +1581,30 @@ impl TimeoutManager {
 - [ ] Admin API endpoints
 - [ ] Trace context propagation
 
-### Phase 6: Scale Testing (TODO: Followup)
-> **Note:** This phase will be implemented as a followup to validate performance at scale.
+### Phase 6: Scale Testing ✅ (Benchmark Infrastructure Complete)
+> **Status:** Benchmark infrastructure implemented with InMemory store. PostgreSQL and RDS Aurora benchmarks pending.
 
-- [ ] 1000-worker scale test
-- [ ] Task claiming benchmark
+**Implemented:**
+- [x] Benchmark framework with Gatling-style HTML reports (`src/bench/`)
+- [x] Task claiming micro-benchmarks (Criterion) - `benches/task_claiming.rs`
+- [x] Concurrent workers load test - `benches/concurrent_workers.rs`
+- [x] Workflow throughput test (1000 wf × 100 steps) - `benches/workflow_throughput.rs`
+- [x] Metrics: latency histograms (P50/P95/P99), throughput, CPU/memory via sysinfo
+- [x] Progress bars with Ghostty/iTerm2 terminal indicator support (OSC 9;4)
+- [x] Interpretation guidance in console and HTML reports
+
+**Benchmarks:**
+```bash
+cargo bench --bench task_claiming -p everruns-durable      # Criterion micro-benchmarks
+cargo bench --bench concurrent_workers -p everruns-durable # Worker scaling (1→100)
+cargo bench --bench workflow_throughput -p everruns-durable # Target scenario
+```
+
+**Pending:**
+- [ ] PostgreSQL benchmarks (docker-compose)
+- [ ] RDS Aurora benchmarks
 - [ ] Connection pool tuning
-- [ ] Performance regression tests
+- [ ] CI integration for performance regression tests
 
 ### Phase 7: Integration with Everruns ✅ (In Progress)
 > **Status:** Core integration complete. Workers communicate via gRPC only.

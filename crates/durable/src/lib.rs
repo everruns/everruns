@@ -72,6 +72,13 @@ pub mod workflow;
 // pub mod observability; // Phase 5
 // pub mod admin;       // Phase 5
 
+/// Benchmark support utilities
+///
+/// This module provides metrics collection and HTML report generation
+/// for load testing the durable execution engine.
+#[doc(hidden)]
+pub mod bench;
+
 /// Prelude for common imports
 pub mod prelude {
     pub use crate::activity::{Activity, ActivityContext, ActivityError};
