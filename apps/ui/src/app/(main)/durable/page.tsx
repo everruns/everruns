@@ -150,7 +150,7 @@ export default function DurableDashboardPage() {
         </div>
 
         {/* Alert for issues */}
-        {health && (health.dlq_size > 0 || health.open_circuit_breakers.length > 0) && (
+        {health && (health.dlq_size > 0 || (health.open_circuit_breakers && health.open_circuit_breakers.length > 0)) && (
           <Card className="border-yellow-500/50 bg-yellow-500/5">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
@@ -170,7 +170,7 @@ export default function DurableDashboardPage() {
                   </Link>
                 </div>
               )}
-              {health.open_circuit_breakers.length > 0 && (
+              {health.open_circuit_breakers && health.open_circuit_breakers.length > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm">
                     <Zap className="h-4 w-4 inline mr-2" />
@@ -199,24 +199,33 @@ export default function DurableDashboardPage() {
               {workersData && workersData.workers.length > 0 ? (
                 <div className="space-y-4">
                   {/* Capacity bar */}
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-muted-foreground">Capacity Usage</span>
-                      <span className="font-medium">
-                        {workersData.summary.total_load} / {workersData.summary.total_capacity}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary transition-all"
-                        style={{
-                          width: `${workersData.summary.total_capacity > 0
-                            ? (workersData.summary.total_load / workersData.summary.total_capacity) * 100
-                            : 0}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
+                  {(() => {
+                    // Compute summary from workers if not provided
+                    const totalLoad = workersData.summary?.total_load ??
+                      workersData.workers.reduce((sum, w) => sum + w.current_load, 0);
+                    const totalCapacity = workersData.summary?.total_capacity ??
+                      workersData.workers.reduce((sum, w) => sum + w.max_concurrency, 0);
+                    return (
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-muted-foreground">Capacity Usage</span>
+                          <span className="font-medium">
+                            {totalLoad} / {totalCapacity}
+                          </span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary transition-all"
+                            style={{
+                              width: `${totalCapacity > 0
+                                ? (totalLoad / totalCapacity) * 100
+                                : 0}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Worker list */}
                   <div className="space-y-2">
@@ -233,7 +242,7 @@ export default function DurableDashboardPage() {
                             }`}
                           />
                           <span className="text-sm font-medium truncate max-w-[150px]">
-                            {worker.hostname || worker.id.slice(0, 12)}
+                            {worker.id.slice(0, 12)}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -303,7 +312,7 @@ export default function DurableDashboardPage() {
         </div>
 
         {/* Task Queue by Type */}
-        {health && Object.keys(health.queue_depth_by_type).length > 0 && (
+        {health && health.queue_depth_by_type && Object.keys(health.queue_depth_by_type).length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle>Task Queue by Type</CardTitle>

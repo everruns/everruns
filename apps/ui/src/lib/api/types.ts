@@ -845,7 +845,7 @@ export interface WorkersSummary {
 export interface WorkersResponse {
   workers: DurableWorker[];
   total: number;
-  summary: WorkersSummary;
+  summary?: WorkersSummary;
 }
 
 /** Workflow instance */
@@ -954,14 +954,14 @@ export interface DurableSystemHealth {
   // Task queue
   pending_tasks: number;
   claimed_tasks: number;
-  queue_depth_by_type: Record<string, number>;
+  queue_depth_by_type?: Record<string, number>;
   // Workflows
   running_workflows: number;
   pending_workflows: number;
   // DLQ
   dlq_size: number;
-  // Circuit breakers
-  open_circuit_breakers: string[];
+  // Circuit breakers (optional - computed from circuit-breakers endpoint if needed)
+  open_circuit_breakers?: string[];
 }
 
 /** Workflows list response */
