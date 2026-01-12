@@ -7,12 +7,15 @@ Load tests for the durable execution engine with HTML reports and checkpoint-bas
 ```bash
 # Run benchmarks (no checkpointing)
 cargo bench -p everruns-durable --bench concurrent_workers
+cargo bench -p everruns-durable --bench workflow_throughput
 
 # Run and save checkpoints for historical comparison
 cargo bench -p everruns-durable --bench concurrent_workers -- --save
+cargo bench -p everruns-durable --bench workflow_throughput -- --save
 
 # Run with custom environment moniker (e.g., for CI)
 cargo bench -p everruns-durable --bench concurrent_workers -- --save --moniker ci-4cpu-8gb
+cargo bench -p everruns-durable --bench workflow_throughput -- --save --moniker ci-4cpu-8gb
 ```
 
 ## Available Benchmarks
@@ -34,9 +37,18 @@ Tests task scheduling performance with varying worker counts:
 
 ### workflow_throughput
 
-Tests multi-step workflow execution:
-- Parallel workflows (5000 workflows × 20 steps)
-- Deep workflows (100 workflows × 500 steps)
+Tests multi-step workflow execution with sequential activities:
+
+| Scenario | Workflows | Steps | Workers | Total Tasks |
+|----------|-----------|-------|---------|-------------|
+| small_10wf_10steps | 10 | 10 | 10 | 100 |
+| medium_100wf_50steps | 100 | 50 | 50 | 5,000 |
+| target_1000wf_100steps | 1,000 | 100 | 100 | 100,000 |
+| target_1000wf_100steps_exec | 1,000 | 100 | 100 | 100,000 |
+| parallel_5000wf_20steps | 5,000 | 20 | 200 | 100,000 |
+| deep_100wf_500steps | 100 | 500 | 50 | 50,000 |
+
+Supports `--save` and `--moniker` flags for checkpointing.
 
 ### task_claiming (Criterion)
 
