@@ -11,9 +11,9 @@ Deterministic environment setup for systems without Docker. Uses fixed PostgreSQ
 
 Before running, ensure these are installed:
 
-1. **PostgreSQL 17** - Database server
+1. **PostgreSQL** - Database server (version auto-detected, 16+ recommended)
    ```bash
-   apt-get install postgresql-17
+   apt-get install postgresql-16  # or postgresql-17
    ```
 
 2. **jq** - JSON processor for tests
@@ -44,7 +44,7 @@ The script performs these steps in order:
    - Checks API key is set
    - Sets encryption key (fixed value for consistency)
    - Verifies jq is installed
-   - Verifies PostgreSQL 17 binaries exist
+   - Verifies PostgreSQL binaries exist (auto-detects version)
 
 2. **Infrastructure Setup**
    - Kills any existing PostgreSQL on port 5432
@@ -65,8 +65,8 @@ The script performs these steps in order:
 
 | Setting | Value |
 |---------|-------|
-| PostgreSQL Version | 17 |
-| PostgreSQL Binaries | `/usr/lib/postgresql/17/bin` |
+| PostgreSQL Version | Auto-detected (highest available) |
+| PostgreSQL Binaries | `/usr/lib/postgresql/$VERSION/bin` |
 | Data Directory | `/tmp/pgdata` |
 | Database Port | 5432 |
 | Database URL | `postgres://everruns:everruns@localhost:5432/everruns` |

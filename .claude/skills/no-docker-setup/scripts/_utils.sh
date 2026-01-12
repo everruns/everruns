@@ -5,11 +5,24 @@
 # Fixed configuration - deterministic paths
 export PGDATA="/tmp/pgdata"
 export PG_LOGFILE="$PGDATA/pg.log"
-export PG_VERSION="17"
-export PG_BIN="/usr/lib/postgresql/$PG_VERSION/bin"
 export API_LOG="/tmp/api.log"
 export WORKER_LOG="/tmp/worker.log"
 export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
+
+# Detect PostgreSQL version (use highest available)
+detect_pg_version() {
+    if [ -d "/usr/lib/postgresql" ]; then
+        local version=$(ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1)
+        if [ -n "$version" ]; then
+            echo "$version"
+            return 0
+        fi
+    fi
+    echo "17"  # fallback
+}
+
+export PG_VERSION="${PG_VERSION:-$(detect_pg_version)}"
+export PG_BIN="/usr/lib/postgresql/$PG_VERSION/bin"
 
 # Colors
 RED='\033[0;31m'
