@@ -204,7 +204,7 @@ impl From<WorkflowInfoExtended> for WorkflowResponse {
 /// Workflows list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowsListResponse {
-    pub workflows: Vec<WorkflowResponse>,
+    pub data: Vec<WorkflowResponse>,
     pub total: usize,
 }
 
@@ -279,7 +279,7 @@ impl From<TaskInfo> for TaskResponse {
 /// Tasks list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TasksListResponse {
-    pub tasks: Vec<TaskResponse>,
+    pub data: Vec<TaskResponse>,
     pub total: usize,
 }
 
@@ -318,7 +318,7 @@ impl From<DlqEntry> for DlqEntryResponse {
 /// DLQ list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DlqListResponse {
-    pub entries: Vec<DlqEntryResponse>,
+    pub data: Vec<DlqEntryResponse>,
     pub total: usize,
 }
 
@@ -562,10 +562,10 @@ pub async fn list_workflows(
         })?;
 
     let total = workflows.len();
-    let workflows: Vec<WorkflowResponse> =
+    let data: Vec<WorkflowResponse> =
         workflows.into_iter().map(WorkflowResponse::from).collect();
 
-    Ok(Json(WorkflowsListResponse { workflows, total }))
+    Ok(Json(WorkflowsListResponse { data, total }))
 }
 
 /// GET /v1/durable/workflows/:workflow_id - Get workflow details
@@ -798,9 +798,9 @@ pub async fn list_tasks(
         })?;
 
     let total = tasks.len();
-    let tasks: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
+    let data: Vec<TaskResponse> = tasks.into_iter().map(TaskResponse::from).collect();
 
-    Ok(Json(TasksListResponse { tasks, total }))
+    Ok(Json(TasksListResponse { data, total }))
 }
 
 /// GET /v1/durable/dlq - List dead letter queue entries
@@ -848,9 +848,9 @@ pub async fn list_dlq(
         })?;
 
     let total = entries.len();
-    let entries: Vec<DlqEntryResponse> = entries.into_iter().map(DlqEntryResponse::from).collect();
+    let data: Vec<DlqEntryResponse> = entries.into_iter().map(DlqEntryResponse::from).collect();
 
-    Ok(Json(DlqListResponse { entries, total }))
+    Ok(Json(DlqListResponse { data, total }))
 }
 
 /// POST /v1/durable/dlq/:dlq_id/retry - Retry a DLQ entry
