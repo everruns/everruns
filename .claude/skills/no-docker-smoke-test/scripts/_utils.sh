@@ -1,31 +1,28 @@
 #!/bin/bash
-# Common utilities for smoke tests (no-Docker mode)
+# Utilities for no-docker smoke tests
+# Deterministic configuration - no auto-detection
 
-# Configuration
+# Fixed configuration - deterministic paths
 export PGDATA="/tmp/pgdata"
 export PG_LOGFILE="$PGDATA/pg.log"
 export PG_VERSION="17"
 export PG_BIN="/usr/lib/postgresql/$PG_VERSION/bin"
 export API_LOG="/tmp/api.log"
 export WORKER_LOG="/tmp/worker.log"
+export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Checkbox output format
 check_pass() {
     echo -e "${GREEN}[x]${NC} $1"
 }
 
 check_fail() {
     echo -e "${RED}[!]${NC} $1 - FAILED: $2"
-}
-
-check_pending() {
-    echo -e "[ ] $1"
 }
 
 log_info() {
@@ -40,64 +37,61 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if running as root
+# Check root access
 check_root() {
     if [ "$(id -u)" -ne 0 ]; then
-        log_error "This script must be run as root to initialize PostgreSQL"
+        log_error "This script must be run as root"
         exit 1
     fi
 }
 
-# Check for required environment variables
-check_openai_key() {
-    # Check for OPENAI_API_KEY or ANTHROPIC_API_KEY
+# Check for LLM API key
+check_api_key() {
     if [ -n "$OPENAI_API_KEY" ]; then
         log_info "OPENAI_API_KEY is set"
         return 0
     fi
     if [ -n "$ANTHROPIC_API_KEY" ]; then
-        log_info "ANTHROPIC_API_KEY is set (will use Claude models)"
+        log_info "ANTHROPIC_API_KEY is set"
         return 0
     fi
-    log_error "Neither OPENAI_API_KEY nor ANTHROPIC_API_KEY environment variable is set"
+    log_error "Neither OPENAI_API_KEY nor ANTHROPIC_API_KEY is set"
     log_error "Export one before running: export OPENAI_API_KEY=your-key"
     exit 1
 }
 
-# Check/generate SECRETS_ENCRYPTION_KEY
-check_encryption_key() {
+# Set encryption key (deterministic for smoke tests)
+set_encryption_key() {
     if [ -z "$SECRETS_ENCRYPTION_KEY" ]; then
-        # Use the standard encryption key from .env.example for smoke testing
-        # This ensures consistency between API and worker
         export SECRETS_ENCRYPTION_KEY="kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY="
-        log_info "Using standard SECRETS_ENCRYPTION_KEY from .env.example"
+        log_info "Using standard SECRETS_ENCRYPTION_KEY"
     else
         log_info "SECRETS_ENCRYPTION_KEY is set"
     fi
 }
 
-# Check and install jq (required for tests)
+# Check jq is installed
 check_jq() {
     if command -v jq &> /dev/null; then
+        check_pass "jq - found"
         return 0
     fi
-
-    log_info "jq not found, installing..."
-    if command -v apt-get &> /dev/null; then
-        apt-get update -qq > /dev/null 2>&1
-        apt-get install -y -qq jq > /dev/null 2>&1
-    fi
-
-    if command -v jq &> /dev/null; then
-        check_pass "jq install - installed"
-        return 0
-    fi
-
-    check_fail "jq install" "could not install jq"
+    log_error "jq is not installed. Install with: apt-get install jq"
     exit 1
 }
 
-# Get project root (relative to skill scripts folder)
+# Check PostgreSQL binaries exist
+check_postgres_binaries() {
+    if [ -f "$PG_BIN/initdb" ] && [ -f "$PG_BIN/pg_ctl" ]; then
+        check_pass "PostgreSQL binaries - found at $PG_BIN"
+        return 0
+    fi
+    log_error "PostgreSQL $PG_VERSION binaries not found at $PG_BIN"
+    log_error "Install PostgreSQL: apt-get install postgresql-$PG_VERSION"
+    exit 1
+}
+
+# Get project root
 get_project_root() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
     echo "$(cd "$script_dir/../../../.." && pwd)"

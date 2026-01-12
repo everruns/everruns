@@ -38,7 +38,8 @@ Specification format: Abstract and Requirements sections.
 `.claude/skills/` contains development skills following the [Agent Skills Specification](https://github.com/anthropics/skills/blob/main/spec/agent-skills-spec.md).
 
 Available skills:
-- `smoke-test/` - API and UI smoke testing with support for Docker and no-Docker environments
+- `smoke-test/` - API and UI smoke testing with Docker-based environment
+- `no-docker-smoke-test/` - Smoke testing with deterministic PostgreSQL setup (for cloud agents, CI)
 - `ui-screenshots/` - Take UI screenshots using Playwright and attach them as PR comments
 
 ### Test Cases
@@ -117,16 +118,18 @@ When making changes that affect user-facing behavior or operations, update the r
 
 Before running smoke tests, ensure these tools are installed:
 
-1. **PostgreSQL** - Database for storing agents, sessions, messages
-   - Debian/Ubuntu: `apt-get install postgresql postgresql-contrib`
-   - macOS: `brew install postgresql`
+1. **PostgreSQL 17** - Database for storing agents, sessions, messages
+   - Debian/Ubuntu: `apt-get install postgresql-17`
+   - macOS: `brew install postgresql@17`
    - Verify: `psql --version`
 
 2. **jq** - JSON processor for test scripts
    - Debian/Ubuntu: `apt-get install jq`
    - macOS: `brew install jq`
 
-The no-Docker smoke test scripts (`.claude/skills/smoke-test/scripts/`) can auto-install some of these, but having them pre-installed speeds up testing.
+**For Docker environments:** Use `.claude/skills/smoke-test/` (Docker handles PostgreSQL)
+
+**For no-Docker environments:** Use `.claude/skills/no-docker-smoke-test/` (deterministic PostgreSQL setup)
 
 ### Cloud Agent environments
 
