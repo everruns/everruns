@@ -31,14 +31,26 @@ use super::common::ErrorResponse;
 /// App state for durable routes
 #[derive(Clone)]
 pub struct AppState {
-    store: Arc<PostgresWorkflowEventStore>,
+    store: Option<Arc<PostgresWorkflowEventStore>>,
 }
 
 impl AppState {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: Option<PgPool>) -> Self {
         Self {
-            store: Arc::new(PostgresWorkflowEventStore::new(pool)),
+            store: pool.map(|p| Arc::new(PostgresWorkflowEventStore::new(p))),
         }
+    }
+
+    /// Get the store, returning an error response if not available (dev mode)
+    fn get_store(&self) -> Result<&Arc<PostgresWorkflowEventStore>, (StatusCode, Json<ErrorResponse>)> {
+        self.store.as_ref().ok_or_else(|| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "Durable execution not available in dev mode".to_string(),
+                }),
+            )
+        })
     }
 }
 
@@ -426,7 +438,8 @@ pub struct SendSignalRequest {
 pub async fn get_health(
     State(state): State<AppState>,
 ) -> Result<Json<HealthResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let health = state.store.get_system_health().await.map_err(|e| {
+    let store = state.get_store()?;
+    let health = store.get_system_health().await.map_err(|e| {
         tracing::error!("Failed to get system health: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -457,12 +470,13 @@ pub async fn list_workers(
     State(state): State<AppState>,
     Query(query): Query<ListWorkersQuery>,
 ) -> Result<Json<WorkersListResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
     let filter = WorkerFilter {
         status: query.status,
         worker_group: query.worker_group,
     };
 
-    let workers = state.store.list_workers(filter).await.map_err(|e| {
+    let workers = store.list_workers(filter).await.map_err(|e| {
         tracing::error!("Failed to list workers: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -495,7 +509,8 @@ pub async fn drain_worker(
     State(state): State<AppState>,
     Path(worker_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state.store.drain_worker(&worker_id).await.map_err(|e| {
+    let store = state.get_store()?;
+    store.drain_worker(&worker_id).await.map_err(|e| {
         tracing::error!("Failed to drain worker: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -528,6 +543,7 @@ pub async fn list_workflows(
     State(state): State<AppState>,
     Query(query): Query<ListWorkflowsQuery>,
 ) -> Result<Json<WorkflowsListResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
     let status = query.status.and_then(|s| match s.as_str() {
         "pending" => Some(WorkflowStatus::Pending),
         "running" => Some(WorkflowStatus::Running),
@@ -547,8 +563,7 @@ pub async fn list_workflows(
         limit: query.limit.unwrap_or(100),
     };
 
-    let workflows = state
-        .store
+    let workflows = store
         .list_workflows(filter, pagination)
         .await
         .map_err(|e| {
@@ -585,6 +600,7 @@ pub async fn get_workflow(
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<Json<WorkflowResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
     // Use list_workflows with a filter to get the extended info
     let filter = WorkflowFilter::default();
     let pagination = Pagination {
@@ -592,8 +608,7 @@ pub async fn get_workflow(
         limit: 1000,
     };
 
-    let workflows = state
-        .store
+    let workflows = store
         .list_workflows(filter, pagination)
         .await
         .map_err(|e| {
@@ -634,8 +649,8 @@ pub async fn get_workflow_events(
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<Json<Vec<WorkflowEventResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    let events = state
-        .store
+    let store = state.get_store()?;
+    let events = store
         .get_workflow_events(workflow_id)
         .await
         .map_err(|e| {
@@ -674,8 +689,8 @@ pub async fn cancel_workflow(
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .store
+    let store = state.get_store()?;
+    store
         .cancel_workflow(workflow_id)
         .await
         .map_err(|e| match e {
@@ -719,14 +734,14 @@ pub async fn send_signal(
     Path(workflow_id): Path<Uuid>,
     Json(req): Json<SendSignalRequest>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
     let signal = WorkflowSignal {
         signal_type: req.signal_type,
         payload: req.payload,
         sent_at: Utc::now(),
     };
 
-    state
-        .store
+    store
         .send_signal(workflow_id, signal)
         .await
         .map_err(|e| {
@@ -763,6 +778,7 @@ pub async fn list_tasks(
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> Result<Json<TasksListResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
     let status = query.status.and_then(|s| match s.as_str() {
         "pending" => Some(TaskStatus::Pending),
         "claimed" => Some(TaskStatus::Claimed),
@@ -784,8 +800,7 @@ pub async fn list_tasks(
         limit: query.limit.unwrap_or(100),
     };
 
-    let tasks = state
-        .store
+    let tasks = store
         .list_tasks(filter, pagination)
         .await
         .map_err(|e| {
@@ -824,6 +839,7 @@ pub async fn list_dlq(
     State(state): State<AppState>,
     Query(query): Query<ListDlqQuery>,
 ) -> Result<Json<DlqListResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
     let filter = DlqFilter {
         workflow_id: query.workflow_id,
         activity_type: query.activity_type,
@@ -834,8 +850,7 @@ pub async fn list_dlq(
         limit: query.limit.unwrap_or(100),
     };
 
-    let entries = state
-        .store
+    let entries = store
         .list_dlq(filter, pagination)
         .await
         .map_err(|e| {
@@ -872,8 +887,8 @@ pub async fn retry_dlq(
     State(state): State<AppState>,
     Path(dlq_id): Path<Uuid>,
 ) -> Result<Json<Uuid>, (StatusCode, Json<ErrorResponse>)> {
-    let task_id = state
-        .store
+    let store = state.get_store()?;
+    let task_id = store
         .requeue_from_dlq(dlq_id)
         .await
         .map_err(|e| match e {
@@ -910,7 +925,8 @@ pub async fn retry_dlq(
 pub async fn list_circuit_breakers(
     State(state): State<AppState>,
 ) -> Result<Json<CircuitBreakersListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let circuit_breakers = state.store.list_circuit_breakers().await.map_err(|e| {
+    let store = state.get_store()?;
+    let circuit_breakers = store.list_circuit_breakers().await.map_err(|e| {
         tracing::error!("Failed to list circuit breakers: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,

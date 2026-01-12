@@ -166,7 +166,7 @@ async fn main() -> Result<()> {
         db: db.clone(),
         auth: auth_state.clone(),
     };
-    let durable_state = api::durable::AppState::new(db.pool().clone());
+    let durable_state = api::durable::AppState::new(db.pool().cloned());
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),
     };
