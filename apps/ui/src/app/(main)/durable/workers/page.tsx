@@ -247,7 +247,7 @@ export default function WorkersPage() {
   }
 
   const summary = data?.summary;
-  const workers = data?.workers || [];
+  const workers = data?.data || [];
 
   const summaryStats = [
     {

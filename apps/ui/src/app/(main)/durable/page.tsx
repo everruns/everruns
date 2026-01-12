@@ -196,15 +196,15 @@ export default function DurableDashboardPage() {
               </Link>
             </CardHeader>
             <CardContent>
-              {workersData && workersData.workers.length > 0 ? (
+              {workersData && workersData.data.length > 0 ? (
                 <div className="space-y-4">
                   {/* Capacity bar */}
                   {(() => {
                     // Compute summary from workers if not provided
                     const totalLoad = workersData.summary?.total_load ??
-                      workersData.workers.reduce((sum, w) => sum + w.current_load, 0);
+                      workersData.data.reduce((sum, w) => sum + w.current_load, 0);
                     const totalCapacity = workersData.summary?.total_capacity ??
-                      workersData.workers.reduce((sum, w) => sum + w.max_concurrency, 0);
+                      workersData.data.reduce((sum, w) => sum + w.max_concurrency, 0);
                     return (
                       <div>
                         <div className="flex justify-between text-sm mb-1">
@@ -229,7 +229,7 @@ export default function DurableDashboardPage() {
 
                   {/* Worker list */}
                   <div className="space-y-2">
-                    {workersData.workers.slice(0, 5).map((worker) => (
+                    {workersData.data.slice(0, 5).map((worker) => (
                       <div
                         key={worker.id}
                         className="flex items-center justify-between p-2 rounded-lg bg-muted/50"

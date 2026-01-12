@@ -843,7 +843,7 @@ export interface WorkersSummary {
 
 /** Workers list response */
 export interface WorkersResponse {
-  workers: DurableWorker[];
+  data: DurableWorker[];
   total: number;
   summary?: WorkersSummary;
 }
