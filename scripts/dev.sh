@@ -301,7 +301,6 @@ case "$command" in
       fi
     }
 
-    ensure_protoc || exit 1
     require_command cargo-watch "Run: ./scripts/dev.sh init"
     require_command npm "Install Node.js/npm to start the UI (see README.md)."
 
