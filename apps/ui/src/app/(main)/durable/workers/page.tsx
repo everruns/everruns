@@ -166,14 +166,14 @@ function WorkerRow({ worker, onDrain }: { worker: DurableWorker; onDrain: (id: s
       </TableCell>
       <TableCell>
         <div className="text-sm">
-          <p className="text-green-600">{worker.tasks_completed.toLocaleString()}</p>
-          {worker.tasks_failed > 0 && (
+          <p className="text-green-600">{(worker.tasks_completed ?? 0).toLocaleString()}</p>
+          {(worker.tasks_failed ?? 0) > 0 && (
             <p className="text-xs text-red-600">{worker.tasks_failed} failed</p>
           )}
         </div>
       </TableCell>
       <TableCell>
-        <span className="text-sm">{formatDuration(worker.avg_task_duration_ms)}</span>
+        <span className="text-sm">{formatDuration(worker.avg_task_duration_ms ?? 0)}</span>
       </TableCell>
       <TableCell>
         <TooltipProvider>

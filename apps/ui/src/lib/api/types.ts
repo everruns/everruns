@@ -826,10 +826,10 @@ export interface DurableWorker {
   hostname?: string;
   version?: string;
   metadata?: Record<string, unknown>;
-  // Live stats
-  tasks_completed: number;
-  tasks_failed: number;
-  avg_task_duration_ms: number;
+  // Live stats (optional - may not be tracked)
+  tasks_completed?: number;
+  tasks_failed?: number;
+  avg_task_duration_ms?: number;
 }
 
 /** Workers list summary */
