@@ -27,17 +27,23 @@ Comprehensive smoke testing for API, UI, database, and system integration.
 
 5. **Don't mark tasks complete without testing.** A PR or code change is not complete until smoke tests have been run and results reported.
 
-### Quick Start for No-Docker Environments
+## Quick Start
+
+### Docker Mode (Recommended)
 
 ```bash
-# Ensure API keys are available (required for LLM calls)
-export OPENAI_API_KEY="your-key"  # or ANTHROPIC_API_KEY
-
-# Run with sudo to allow PostgreSQL setup
-sudo -E .claude/skills/smoke-test/scripts/run-no-docker.sh
+# From repo root
+./scripts/dev.sh start-all
 ```
 
-If the script fails, manually start services and run the Test Checklist below.
+### No-Docker Mode
+
+For environments without Docker (cloud agents, CI systems), use the dedicated skill:
+
+```bash
+# See .claude/skills/no-docker-setup/SKILL.md
+sudo -E .claude/skills/no-docker-setup/scripts/start.sh
+```
 
 ## Prerequisites
 
@@ -54,7 +60,7 @@ Start the development environment before running tests:
 
 **Note on paths:** This document references two types of scripts:
 - **Repo root scripts** (e.g., `./scripts/dev.sh`) - Run from the repository root directory
-- **Skill scripts** (e.g., `run-no-docker.sh`) - Located in `.claude/skills/smoke-test/scripts/`
+- **Skill scripts** (e.g., `tool-calling-tests.sh`) - Located in `.claude/skills/smoke-test/scripts/`
 
 ## Test Checklist
 
@@ -302,7 +308,7 @@ Expected: No warnings or errors
 # One-liner to run all durable tests
 cargo test -p everruns-durable --lib && \
 cargo clippy -p everruns-durable -- -D warnings && \
-echo "✅ Durable unit tests and clippy passed"
+echo "Durable unit tests and clippy passed"
 ```
 
 ### UI Tests
@@ -367,63 +373,18 @@ For changes that only impact the UI (no backend/API changes), DEV_MODE provides 
 
 For full end-to-end testing including backend changes, use the standard smoke tests below.
 
-## No-Docker Mode
-
-For environments without Docker (Cloud Agent, CI, containers):
-
-```bash
-# Run from repo root
-.claude/skills/smoke-test/scripts/run-no-docker.sh
-```
-
-This script automatically handles:
-1. **Dependencies** - Installs jq if not present
-2. **PostgreSQL detection** - Supports three modes:
-   - System install with `pg_ctlcluster` (Debian/Ubuntu standard)
-   - Direct binaries (containers without pg_ctlcluster)
-   - Fresh install from PGDG repository (if nothing found)
-3. **Database setup** - Initializes cluster, creates user/database, runs migrations
-4. **Application** - Builds and starts API server and durable worker
-5. **Cleanup** - Stops all services on Ctrl+C
-
-**Requirements**:
-- Root access (for PostgreSQL initialization)
-- Either `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` environment variable
-- Internet access (for downloading dependencies)
-
-**Important**: The durable worker is required for workflow execution. Without it, sending messages won't trigger LLM responses.
-
-### Cloud Environment Compatibility
-
-The no-Docker mode is specifically designed for cloud agent environments like Claude Code on the web:
-
-- **Auto-detects PostgreSQL** even without `pg_ctlcluster` command
-- **Works in containers** by using direct `pg_ctl` instead of systemd
-- **Supports both API keys** (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`)
-
-### Skill Scripts (relative to `.claude/skills/smoke-test/scripts/`)
+## Skill Scripts
 
 | Script | Description |
 |--------|-------------|
-| `run-no-docker.sh` | Entry point for no-Docker environments |
-| `_setup-postgres.sh` | PostgreSQL cluster setup - auto-detects system install (internal) |
-| `_utils.sh` | Shared utilities and configuration (internal) |
-| `tool-calling-tests.sh` | Automated tool calling scenario tests |
+| `scripts/tool-calling-tests.sh` | Automated tool calling scenario tests |
 
-### Repo Root Scripts (relative to repository root)
+## Repo Root Scripts
 
 | Script | Description |
 |--------|-------------|
 | `./scripts/dev.sh` | Development environment manager (Docker-based) |
 | `./scripts/seed-agents.sh` | Seed database with sample agents |
-
-### Log Files
-
-| Log | Location |
-|-----|----------|
-| API | `/tmp/api.log` |
-| Worker | `/tmp/worker.log` |
-| PostgreSQL | `/tmp/pgdata/pg.log` |
 
 ## Troubleshooting
 
@@ -447,48 +408,6 @@ docker exec everruns-postgres psql -U everruns -d everruns -c "SELECT 1;"
 ./scripts/dev.sh clean
 ./scripts/dev.sh start
 ./scripts/dev.sh migrate
-```
-
-### No-Docker Issues
-
-**"OPENAI_API_KEY not set"**: Export either key before running:
-```bash
-export OPENAI_API_KEY=your-key
-# OR
-export ANTHROPIC_API_KEY=your-key
-```
-
-**"must be run as root"**: The PostgreSQL setup requires root access:
-```bash
-sudo .claude/skills/smoke-test/scripts/run-no-docker.sh
-```
-
-**Messages sent but no assistant response**: Ensure the durable worker is running:
-```bash
-# Check if worker is running
-ps aux | grep everruns-worker
-
-# Check worker logs for errors
-tail -50 /tmp/worker.log
-
-# Manually start worker if needed
-export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
-export GRPC_ADDRESS="127.0.0.1:9001"
-cargo run -p everruns-worker
-```
-
-**PostgreSQL already running**: The script auto-detects system PostgreSQL. If port 5432 is in use:
-```bash
-# Check what's using port 5432
-lsof -i :5432
-
-# Kill existing postgres if needed
-pkill -9 postgres
-```
-
-**PostgreSQL fails to start in containers**: The script supports containers without pg_ctlcluster by using direct pg_ctl. Check logs:
-```bash
-cat /tmp/pgdata/pg.log
 ```
 
 ### Workflow Verification
@@ -519,38 +438,6 @@ curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages
 ```
 
 Expected: An assistant message with LLM-generated text
-
-## Manual Service Startup (Fallback)
-
-If the `run-no-docker.sh` script fails, start services manually:
-
-```bash
-# 1. Ensure PostgreSQL is running
-export PATH="$PATH:/usr/lib/postgresql/17/bin"
-pg_ctl -D /tmp/pgdata -l /tmp/pgdata/pg.log start
-
-# 2. Set environment variables
-export DATABASE_URL="postgres://everruns:everruns@localhost:5432/everruns"
-export GRPC_ADDRESS="127.0.0.1:9001"
-export SECRETS_ENCRYPTION_KEY=$(openssl rand -base64 32)
-
-# 3. Run migrations
-cd /home/user/everruns
-sqlx database create --database-url "$DATABASE_URL" 2>/dev/null || true
-sqlx migrate run --source crates/control-plane/migrations --database-url "$DATABASE_URL"
-
-# 4. Start API server
-cargo run -p everruns-control-plane &> /tmp/api.log &
-
-# 5. Start worker
-cargo run -p everruns-worker &> /tmp/worker.log &
-
-# 6. Wait for services
-sleep 10
-
-# 7. Run health check
-curl -s http://localhost:9000/health | jq
-```
 
 ## Smoke Test Results Template
 
