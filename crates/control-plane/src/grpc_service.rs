@@ -19,19 +19,18 @@ use everruns_internal_protocol::proto::{
     ClaimDurableTasksResponse, CommitExecRequest, CommitExecResponse, CompleteDurableTaskRequest,
     CompleteDurableTaskResponse, CountActiveDurableWorkflowsRequest,
     CountActiveDurableWorkflowsResponse, CreateDurableWorkflowRequest,
-    CreateDurableWorkflowResponse, DurableWorkflowStatus, EmitEventRequest, EmitEventResponse,
-    EmitEventStreamResponse, EnqueueDurableTaskRequest, EnqueueDurableTaskResponse,
-    FailDurableTaskRequest, FailDurableTaskResponse, GetAgentRequest, GetAgentResponse,
-    GetDefaultModelRequest, GetDefaultModelResponse, GetDurableWorkflowStatusRequest,
-    GetDurableWorkflowStatusResponse, GetModelWithProviderRequest, GetModelWithProviderResponse,
-    GetSessionRequest, GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse,
-    HeartbeatDurableTaskRequest, HeartbeatDurableTaskResponse, LoadMessagesRequest,
-    LoadMessagesResponse, SessionCreateDirectoryRequest, SessionCreateDirectoryResponse,
+    CreateDurableWorkflowResponse, DeregisterDurableWorkerRequest, DeregisterDurableWorkerResponse,
+    DurableWorkflowStatus, EmitEventRequest, EmitEventResponse, EmitEventStreamResponse,
+    EnqueueDurableTaskRequest, EnqueueDurableTaskResponse, FailDurableTaskRequest,
+    FailDurableTaskResponse, GetAgentRequest, GetAgentResponse, GetDefaultModelRequest,
+    GetDefaultModelResponse, GetDurableWorkflowStatusRequest, GetDurableWorkflowStatusResponse,
+    GetModelWithProviderRequest, GetModelWithProviderResponse, GetSessionRequest,
+    GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse, HeartbeatDurableTaskRequest,
+    HeartbeatDurableTaskResponse, HeartbeatDurableWorkerRequest, HeartbeatDurableWorkerResponse,
+    LoadMessagesRequest, LoadMessagesResponse, RegisterDurableWorkerRequest,
+    RegisterDurableWorkerResponse, SessionCreateDirectoryRequest, SessionCreateDirectoryResponse,
     SessionDeleteFileRequest, SessionDeleteFileResponse, SessionGrepFilesRequest,
     SessionGrepFilesResponse, SessionListDirectoryRequest, SessionListDirectoryResponse,
-    DeregisterDurableWorkerRequest, DeregisterDurableWorkerResponse,
-    HeartbeatDurableWorkerRequest, HeartbeatDurableWorkerResponse,
-    RegisterDurableWorkerRequest, RegisterDurableWorkerResponse,
     SessionReadFileRequest, SessionReadFileResponse, SessionStatFileRequest,
     SessionStatFileResponse, SessionWriteFileRequest, SessionWriteFileResponse,
     SetSessionStatusRequest, SetSessionStatusResponse, UpdateDurableWorkflowStatusRequest,
@@ -1277,7 +1276,11 @@ impl WorkerService for WorkerServiceImpl {
         let store = self.durable_store()?;
 
         store
-            .worker_heartbeat(&req.worker_id, req.current_load as usize, req.accepting_tasks)
+            .worker_heartbeat(
+                &req.worker_id,
+                req.current_load as usize,
+                req.accepting_tasks,
+            )
             .await
             .map_err(|e| {
                 tracing::error!("Failed to heartbeat worker: {}", e);

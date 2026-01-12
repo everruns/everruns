@@ -13,7 +13,7 @@ pub use memory::InMemoryWorkflowEventStore;
 pub use postgres::PostgresWorkflowEventStore;
 pub use store::{
     event_type_name, CircuitBreakerState, ClaimedTask, DlqEntry, DlqFilter, HeartbeatResponse,
-    Pagination, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter,
-    TaskInfo, TaskStatus, TraceContext, WorkerFilter, WorkerInfo, WorkflowEventInfo,
-    WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    Pagination, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo,
+    TaskStatus, TraceContext, WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore,
+    WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
 };

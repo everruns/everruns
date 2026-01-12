@@ -144,7 +144,9 @@ impl DurableWorker {
                 .await
             {
                 Ok(()) => info!(worker_id = %self.config.worker_id, "Worker registered"),
-                Err(e) => warn!(worker_id = %self.config.worker_id, error = %e, "Failed to register worker (will continue anyway)"),
+                Err(e) => {
+                    warn!(worker_id = %self.config.worker_id, error = %e, "Failed to register worker (will continue anyway)")
+                }
             }
         }
 

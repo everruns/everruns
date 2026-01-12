@@ -698,7 +698,7 @@ async fn test_worker_registration() {
     store
         .register_worker(WorkerInfo {
             id: worker_id.clone(),
-            worker_group: "default".to_string(),
+            worker_group: Some("default".to_string()),
             activity_types: vec!["task_a".to_string(), "task_b".to_string()],
             max_concurrency: 10,
             current_load: 0,

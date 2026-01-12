@@ -562,8 +562,7 @@ pub async fn list_workflows(
         })?;
 
     let total = workflows.len();
-    let data: Vec<WorkflowResponse> =
-        workflows.into_iter().map(WorkflowResponse::from).collect();
+    let data: Vec<WorkflowResponse> = workflows.into_iter().map(WorkflowResponse::from).collect();
 
     Ok(Json(WorkflowsListResponse { data, total }))
 }
@@ -649,8 +648,10 @@ pub async fn get_workflow_events(
             )
         })?;
 
-    let events: Vec<WorkflowEventResponse> =
-        events.into_iter().map(WorkflowEventResponse::from).collect();
+    let events: Vec<WorkflowEventResponse> = events
+        .into_iter()
+        .map(WorkflowEventResponse::from)
+        .collect();
 
     Ok(Json(events))
 }
