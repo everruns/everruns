@@ -42,15 +42,15 @@ export async function deleteLlmProvider(providerId: string): Promise<void> {
 
 // Model CRUD
 export async function getLlmModels(): Promise<LlmModelWithProvider[]> {
-  const response = await api.get<LlmModelWithProvider[]>("/v1/llm-models");
-  return response.data;
+  const response = await api.get<ListResponse<LlmModelWithProvider>>("/v1/llm-models");
+  return response.data.data;
 }
 
 export async function getLlmProviderModels(
   providerId: string
 ): Promise<LlmModel[]> {
-  const response = await api.get<LlmModel[]>(`/v1/llm-providers/${providerId}/models`);
-  return response.data;
+  const response = await api.get<ListResponse<LlmModel>>(`/v1/llm-providers/${providerId}/models`);
+  return response.data.data;
 }
 
 export async function getLlmModel(modelId: string): Promise<LlmModelWithProvider> {
