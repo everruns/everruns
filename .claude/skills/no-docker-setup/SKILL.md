@@ -1,11 +1,11 @@
 ---
-name: no-docker-smoke-test
+name: no-docker-setup
 description: Run smoke tests without Docker using deterministic PostgreSQL setup. Use this skill in cloud agent environments (Claude Code on web) or CI systems without Docker. Provides predictable environment setup with fixed paths and configurations.
 ---
 
-# No-Docker Smoke Tests
+# No-Docker Setup
 
-Deterministic smoke testing environment for systems without Docker. Uses fixed PostgreSQL paths and always creates a fresh database cluster.
+Deterministic environment setup for systems without Docker. Uses fixed PostgreSQL paths and always creates a fresh database cluster.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ Before running, ensure these are installed:
 export OPENAI_API_KEY="your-key"  # or ANTHROPIC_API_KEY
 
 # Run with root access
-sudo -E .claude/skills/no-docker-smoke-test/scripts/run.sh
+sudo -E .claude/skills/no-docker-setup/scripts/run.sh
 ```
 
 ## What This Does

@@ -39,7 +39,7 @@ Specification format: Abstract and Requirements sections.
 
 Available skills:
 - `smoke-test/` - API and UI smoke testing with Docker-based environment
-- `no-docker-smoke-test/` - Smoke testing with deterministic PostgreSQL setup (for cloud agents, CI)
+- `no-docker-setup/` - Deterministic PostgreSQL setup for cloud agents and CI systems
 - `ui-screenshots/` - Take UI screenshots using Playwright and attach them as PR comments
 
 ### Test Cases
@@ -129,7 +129,7 @@ Before running smoke tests, ensure these tools are installed:
 
 **For Docker environments:** Use `.claude/skills/smoke-test/` (Docker handles PostgreSQL)
 
-**For no-Docker environments:** Use `.claude/skills/no-docker-smoke-test/` (deterministic PostgreSQL setup)
+**For no-Docker environments:** Use `.claude/skills/no-docker-setup/` (deterministic PostgreSQL setup)
 
 ### Cloud Agent environments
 

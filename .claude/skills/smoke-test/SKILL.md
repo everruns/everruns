@@ -41,8 +41,8 @@ Comprehensive smoke testing for API, UI, database, and system integration.
 For environments without Docker (cloud agents, CI systems), use the dedicated skill:
 
 ```bash
-# See .claude/skills/no-docker-smoke-test/SKILL.md
-sudo -E .claude/skills/no-docker-smoke-test/scripts/run.sh
+# See .claude/skills/no-docker-setup/SKILL.md
+sudo -E .claude/skills/no-docker-setup/scripts/run.sh
 ```
 
 ## Prerequisites
