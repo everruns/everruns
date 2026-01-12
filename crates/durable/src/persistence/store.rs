@@ -146,6 +146,99 @@ impl WorkerFilter {
     }
 }
 
+/// Filter for listing workflows
+#[derive(Debug, Clone, Default)]
+pub struct WorkflowFilter {
+    pub status: Option<WorkflowStatus>,
+    pub workflow_type: Option<String>,
+}
+
+/// Filter for listing tasks
+#[derive(Debug, Clone, Default)]
+pub struct TaskFilter {
+    pub status: Option<TaskStatus>,
+    pub activity_type: Option<String>,
+    pub workflow_id: Option<Uuid>,
+}
+
+/// Task information for listing
+#[derive(Debug, Clone)]
+pub struct TaskInfo {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub activity_id: String,
+    pub activity_type: String,
+    pub status: TaskStatus,
+    pub priority: i32,
+    pub attempt: u32,
+    pub max_attempts: u32,
+    pub claimed_by: Option<String>,
+    pub last_error: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub claimed_at: Option<DateTime<Utc>>,
+}
+
+/// Extended workflow information with timestamps
+#[derive(Debug, Clone)]
+pub struct WorkflowInfoExtended {
+    pub id: Uuid,
+    pub workflow_type: String,
+    pub status: WorkflowStatus,
+    pub input: serde_json::Value,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<crate::workflow::WorkflowError>,
+    pub created_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// System health summary
+#[derive(Debug, Clone)]
+pub struct SystemHealth {
+    pub total_workers: usize,
+    pub active_workers: usize,
+    pub workers_accepting: usize,
+    pub total_capacity: usize,
+    pub current_load: usize,
+    pub pending_tasks: usize,
+    pub claimed_tasks: usize,
+    pub running_workflows: usize,
+    pub pending_workflows: usize,
+    pub dlq_size: usize,
+}
+
+/// Workflow event info for API responses
+#[derive(Debug, Clone)]
+pub struct WorkflowEventInfo {
+    pub sequence_num: i32,
+    pub event_type: String,
+    pub event_data: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Helper to get event type name
+pub fn event_type_name(event: &WorkflowEvent) -> &'static str {
+    match event {
+        WorkflowEvent::WorkflowStarted { .. } => "workflow_started",
+        WorkflowEvent::WorkflowCompleted { .. } => "workflow_completed",
+        WorkflowEvent::WorkflowFailed { .. } => "workflow_failed",
+        WorkflowEvent::WorkflowCancelled { .. } => "workflow_cancelled",
+        WorkflowEvent::ActivityScheduled { .. } => "activity_scheduled",
+        WorkflowEvent::ActivityStarted { .. } => "activity_started",
+        WorkflowEvent::ActivityCompleted { .. } => "activity_completed",
+        WorkflowEvent::ActivityFailed { .. } => "activity_failed",
+        WorkflowEvent::ActivityTimedOut { .. } => "activity_timed_out",
+        WorkflowEvent::ActivityCancelled { .. } => "activity_cancelled",
+        WorkflowEvent::TimerStarted { .. } => "timer_started",
+        WorkflowEvent::TimerFired { .. } => "timer_fired",
+        WorkflowEvent::TimerCancelled { .. } => "timer_cancelled",
+        WorkflowEvent::SignalReceived { .. } => "signal_received",
+        WorkflowEvent::ChildWorkflowStarted { .. } => "child_workflow_started",
+        WorkflowEvent::ChildWorkflowCompleted { .. } => "child_workflow_completed",
+        WorkflowEvent::ChildWorkflowFailed { .. } => "child_workflow_failed",
+    }
+}
+
 /// Worker information
 #[derive(Debug, Clone)]
 pub struct WorkerInfo {
@@ -422,6 +515,73 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// Count active (non-terminal) workflows
     async fn count_active_workflows(&self) -> Result<i64, StoreError> {
         Ok(0)
+    }
+
+    /// List workflows with filtering and pagination
+    async fn list_workflows(
+        &self,
+        _filter: WorkflowFilter,
+        _pagination: Pagination,
+    ) -> Result<Vec<WorkflowInfoExtended>, StoreError> {
+        Ok(vec![])
+    }
+
+    /// List tasks with filtering and pagination
+    async fn list_tasks(
+        &self,
+        _filter: TaskFilter,
+        _pagination: Pagination,
+    ) -> Result<Vec<TaskInfo>, StoreError> {
+        Ok(vec![])
+    }
+
+    /// List all circuit breakers
+    async fn list_circuit_breakers(&self) -> Result<Vec<CircuitBreakerState>, StoreError> {
+        Ok(vec![])
+    }
+
+    /// Drain a worker (set status to draining, stop accepting new tasks)
+    async fn drain_worker(&self, _worker_id: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Get system health summary
+    async fn get_system_health(&self) -> Result<SystemHealth, StoreError> {
+        Ok(SystemHealth {
+            total_workers: 0,
+            active_workers: 0,
+            workers_accepting: 0,
+            total_capacity: 0,
+            current_load: 0,
+            pending_tasks: 0,
+            claimed_tasks: 0,
+            running_workflows: 0,
+            pending_workflows: 0,
+            dlq_size: 0,
+        })
+    }
+
+    /// Cancel a workflow
+    async fn cancel_workflow(&self, _workflow_id: Uuid) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Get workflow events
+    async fn get_workflow_events(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<WorkflowEventInfo>, StoreError> {
+        // Default implementation uses load_events
+        let events = self.load_events(workflow_id).await?;
+        Ok(events
+            .into_iter()
+            .map(|(seq, event)| WorkflowEventInfo {
+                sequence_num: seq,
+                event_type: event_type_name(&event).to_string(),
+                event_data: serde_json::to_value(&event).unwrap_or_default(),
+                created_at: Utc::now(), // Not available in base events
+            })
+            .collect())
     }
 }
 
