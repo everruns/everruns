@@ -133,7 +133,8 @@ impl From<SystemHealth> for HealthResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkerResponse {
     pub id: String,
-    pub worker_group: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worker_group: Option<String>,
     pub activity_types: Vec<String>,
     pub max_concurrency: u32,
     pub current_load: u32,

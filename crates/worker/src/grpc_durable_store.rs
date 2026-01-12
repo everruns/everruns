@@ -5,9 +5,10 @@
 use anyhow::Result;
 use everruns_internal_protocol::proto::{
     self, ClaimDurableTasksRequest, CompleteDurableTaskRequest, CountActiveDurableWorkflowsRequest,
-    CreateDurableWorkflowRequest, DurableActivityOptions, DurableTaskDefinition,
-    EnqueueDurableTaskRequest, FailDurableTaskRequest, GetDurableWorkflowStatusRequest,
-    HeartbeatDurableTaskRequest, UpdateDurableWorkflowStatusRequest,
+    CreateDurableWorkflowRequest, DeregisterDurableWorkerRequest, DurableActivityOptions,
+    DurableTaskDefinition, EnqueueDurableTaskRequest, FailDurableTaskRequest,
+    GetDurableWorkflowStatusRequest, HeartbeatDurableTaskRequest, HeartbeatDurableWorkerRequest,
+    RegisterDurableWorkerRequest, UpdateDurableWorkflowStatusRequest,
 };
 use everruns_internal_protocol::{json_to_proto_struct, uuid_to_proto_uuid, WorkerServiceClient};
 use tonic::transport::Channel;
@@ -217,6 +218,52 @@ impl GrpcDurableStore {
         let request = CountActiveDurableWorkflowsRequest {};
         let response = self.client.count_active_durable_workflows(request).await?;
         Ok(response.into_inner().count as usize)
+    }
+
+    /// Register this worker with the control-plane
+    pub async fn register_worker(
+        &mut self,
+        worker_id: &str,
+        worker_group: Option<String>,
+        activity_types: Vec<String>,
+        max_concurrency: u32,
+    ) -> Result<()> {
+        let request = RegisterDurableWorkerRequest {
+            worker_id: worker_id.to_string(),
+            worker_group,
+            activity_types,
+            max_concurrency: max_concurrency as i32,
+        };
+
+        self.client.register_durable_worker(request).await?;
+        Ok(())
+    }
+
+    /// Send worker heartbeat
+    pub async fn heartbeat_worker(
+        &mut self,
+        worker_id: &str,
+        current_load: u32,
+        accepting_tasks: bool,
+    ) -> Result<()> {
+        let request = HeartbeatDurableWorkerRequest {
+            worker_id: worker_id.to_string(),
+            current_load: current_load as i32,
+            accepting_tasks,
+        };
+
+        self.client.heartbeat_durable_worker(request).await?;
+        Ok(())
+    }
+
+    /// Deregister this worker
+    pub async fn deregister_worker(&mut self, worker_id: &str) -> Result<()> {
+        let request = DeregisterDurableWorkerRequest {
+            worker_id: worker_id.to_string(),
+        };
+
+        self.client.deregister_durable_worker(request).await?;
+        Ok(())
     }
 }
 

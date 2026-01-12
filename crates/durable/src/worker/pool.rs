@@ -359,7 +359,7 @@ impl WorkerPool {
     async fn register_worker(&self) -> Result<(), WorkerPoolError> {
         let worker_info = WorkerInfo {
             id: self.config.worker_id.clone(),
-            worker_group: self.config.worker_group.clone(),
+            worker_group: Some(self.config.worker_group.clone()),
             activity_types: self.config.activity_types.clone(),
             max_concurrency: self.config.max_concurrency as u32,
             current_load: 0,

@@ -131,12 +131,46 @@ impl DurableWorker {
             "Starting durable worker"
         );
 
+        // Register with control-plane
+        {
+            let mut store = self.store.lock().await;
+            match store
+                .register_worker(
+                    &self.config.worker_id,
+                    None, // worker_group
+                    self.config.activity_types.clone(),
+                    self.config.max_concurrent_tasks as u32,
+                )
+                .await
+            {
+                Ok(()) => info!(worker_id = %self.config.worker_id, "Worker registered"),
+                Err(e) => warn!(worker_id = %self.config.worker_id, error = %e, "Failed to register worker (will continue anyway)"),
+            }
+        }
+
+        // Track time since last heartbeat
+        let mut last_heartbeat = std::time::Instant::now();
+        let heartbeat_interval = self.config.heartbeat_interval;
+
         // Main poll loop
         loop {
             // Check for shutdown
             if *self.shutdown_rx.borrow() {
                 info!("Shutdown signal received, stopping worker");
                 break;
+            }
+
+            // Send heartbeat if interval has passed
+            if last_heartbeat.elapsed() >= heartbeat_interval {
+                let mut store = self.store.lock().await;
+                // TODO: track actual current_load
+                if let Err(e) = store
+                    .heartbeat_worker(&self.config.worker_id, 0, true)
+                    .await
+                {
+                    debug!("Failed to send worker heartbeat: {}", e);
+                }
+                last_heartbeat = std::time::Instant::now();
             }
 
             // Poll for tasks
@@ -157,6 +191,16 @@ impl DurableWorker {
                     error!("Error polling tasks: {}", e);
                     tokio::time::sleep(Duration::from_secs(5)).await;
                 }
+            }
+        }
+
+        // Deregister on shutdown
+        {
+            let mut store = self.store.lock().await;
+            if let Err(e) = store.deregister_worker(&self.config.worker_id).await {
+                warn!(worker_id = %self.config.worker_id, error = %e, "Failed to deregister worker");
+            } else {
+                info!(worker_id = %self.config.worker_id, "Worker deregistered");
             }
         }
 

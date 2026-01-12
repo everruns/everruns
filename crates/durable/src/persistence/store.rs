@@ -243,7 +243,7 @@ pub fn event_type_name(event: &WorkflowEvent) -> &'static str {
 #[derive(Debug, Clone)]
 pub struct WorkerInfo {
     pub id: String,
-    pub worker_group: String,
+    pub worker_group: Option<String>,
     pub activity_types: Vec<String>,
     pub max_concurrency: u32,
     pub current_load: u32,

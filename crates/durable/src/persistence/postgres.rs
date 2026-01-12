@@ -693,6 +693,9 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
     #[instrument(skip(self, worker))]
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
+        // Default worker_group to "default" if not specified
+        let worker_group = worker.worker_group.as_deref().unwrap_or("default");
+
         sqlx::query(
             r#"
             INSERT INTO durable_workers (
@@ -711,7 +714,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             "#,
         )
         .bind(&worker.id)
-        .bind(&worker.worker_group)
+        .bind(worker_group)
         .bind(&worker.activity_types)
         .bind(worker.max_concurrency as i32)
         .bind(worker.current_load as i32)
