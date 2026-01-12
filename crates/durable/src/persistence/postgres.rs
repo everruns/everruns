@@ -1209,7 +1209,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             LIMIT $5
             "#,
         )
-        .bind(&status_str)
+        .bind(status_str)
         .bind(&filter.activity_type)
         .bind(filter.workflow_id)
         .bind(pagination.offset as i64)
