@@ -5,15 +5,20 @@ Load tests for the durable execution engine with HTML reports and checkpoint-bas
 ## Quick Start
 
 ```bash
-# Run benchmarks (no checkpointing)
+# Using convenience scripts (recommended)
+./scripts/dev.sh durable-bench         # Run all benchmarks
+./scripts/dev.sh durable-bench-save    # Run and save checkpoints
+./scripts/dev.sh durable-bench-save ci-4cpu-8gb  # With custom moniker
+
+# Or run individual benchmarks directly
 cargo bench -p everruns-durable --bench concurrent_workers
 cargo bench -p everruns-durable --bench workflow_throughput
 
-# Run and save checkpoints for historical comparison
+# With checkpoint saving
 cargo bench -p everruns-durable --bench concurrent_workers -- --save
 cargo bench -p everruns-durable --bench workflow_throughput -- --save
 
-# Run with custom environment moniker (e.g., for CI)
+# With custom environment moniker (e.g., for CI)
 cargo bench -p everruns-durable --bench concurrent_workers -- --save --moniker ci-4cpu-8gb
 cargo bench -p everruns-durable --bench workflow_throughput -- --save --moniker ci-4cpu-8gb
 ```
