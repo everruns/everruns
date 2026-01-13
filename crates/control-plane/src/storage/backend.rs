@@ -294,6 +294,30 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Event Snapshots
+    // ============================================
+
+    pub async fn create_event_snapshot(
+        &self,
+        input: CreateEventSnapshotRow,
+    ) -> Result<EventSnapshotRow> {
+        match self {
+            Self::Postgres(db) => db.create_event_snapshot(input).await,
+            Self::InMemory(db) => db.create_event_snapshot(input).await,
+        }
+    }
+
+    pub async fn get_latest_event_snapshot(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Option<EventSnapshotRow>> {
+        match self {
+            Self::Postgres(db) => db.get_latest_event_snapshot(session_id).await,
+            Self::InMemory(db) => db.get_latest_event_snapshot(session_id).await,
+        }
+    }
+
+    // ============================================
     // LLM Providers
     // ============================================
 

@@ -27,6 +27,7 @@ pub struct InMemoryDatabase {
     llm_models: RwLock<HashMap<Uuid, LlmModelRow>>,
     agent_capabilities: RwLock<HashMap<(Uuid, String), AgentCapabilityRow>>,
     session_files: RwLock<HashMap<Uuid, SessionFileRow>>,
+    event_snapshots: RwLock<HashMap<Uuid, EventSnapshotRow>>,
     // Event sequence counter per session
     event_sequences: RwLock<HashMap<Uuid, i32>>,
 }
@@ -507,6 +508,49 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by_key(|e| e.sequence);
+        Ok(result)
+    }
+
+    // ============================================
+    // Event Snapshots
+    // ============================================
+
+    /// Create a new event snapshot for a session at a specific sequence
+    pub async fn create_event_snapshot(
+        &self,
+        input: CreateEventSnapshotRow,
+    ) -> Result<EventSnapshotRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+
+        let row = EventSnapshotRow {
+            id,
+            session_id: input.session_id,
+            sequence: input.sequence,
+            schema_version: input.schema_version,
+            state: input.state,
+            created_at: now,
+        };
+
+        // Upsert: replace existing snapshot at same session_id/sequence
+        let mut snapshots = self.event_snapshots.write();
+        // Remove any existing snapshot at this session_id/sequence
+        snapshots.retain(|_, s| !(s.session_id == input.session_id && s.sequence == row.sequence));
+        snapshots.insert(id, row.clone());
+        Ok(row)
+    }
+
+    /// Get the latest snapshot for a session (highest sequence number)
+    pub async fn get_latest_event_snapshot(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Option<EventSnapshotRow>> {
+        let snapshots = self.event_snapshots.read();
+        let result = snapshots
+            .values()
+            .filter(|s| s.session_id == session_id)
+            .max_by_key(|s| s.sequence)
+            .cloned();
         Ok(result)
     }
 

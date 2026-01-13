@@ -115,11 +115,12 @@ pub use agent::{Agent, AgentStatus};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
     ActCompletedData, ActStartedData, Event, EventBuilder, EventContext, EventData, EventRequest,
-    InputReceivedData, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
-    MessageAgentData, MessageUserData, ModelMetadata, ReasonCompletedData, ReasonStartedData,
-    SessionStartedData, TokenUsage, ToolCallCompletedData, ToolCallStartedData, ToolCallSummary,
-    TurnCompletedData, TurnFailedData, TurnStartedData, ACT_COMPLETED, ACT_STARTED, INPUT_RECEIVED,
-    LLM_GENERATION, MESSAGE_AGENT, MESSAGE_USER, REASON_COMPLETED, REASON_STARTED, SESSION_STARTED,
+    EventSnapshot, EventSnapshotRequest, InputReceivedData, LlmGenerationData,
+    LlmGenerationMetadata, LlmGenerationOutput, MessageAgentData, MessageUserData, ModelMetadata,
+    ReasonCompletedData, ReasonStartedData, SessionStartedData, TokenUsage, ToolCallCompletedData,
+    ToolCallStartedData, ToolCallSummary, TurnCompletedData, TurnFailedData, TurnStartedData,
+    ACT_COMPLETED, ACT_STARTED, INPUT_RECEIVED, LLM_GENERATION, MESSAGE_AGENT, MESSAGE_USER,
+    REASON_COMPLETED, REASON_STARTED, SESSION_STARTED, SNAPSHOT_SCHEMA_VERSION,
     TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, UNKNOWN,
 };
 pub use llm_model_profiles::get_model_profile;
