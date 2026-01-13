@@ -394,15 +394,24 @@ impl DurableWorker {
                         }
                     }
                     Err(e) => {
-                        // Task was reclaimed by another worker or already completed
-                        // This is expected during heartbeat timeout recovery
-                        // Do NOT schedule next activity - the other worker will do it
-                        warn!(
-                            task_id = %task.id,
-                            activity_type = %task.activity_type,
-                            error = %e,
-                            "Task completion rejected (reclaimed or already completed) - skipping next activity scheduling"
-                        );
+                        // Check if this is a "task not owned" error (expected during reclaim)
+                        // vs other errors (network, database) that should be propagated
+                        let error_str = e.to_string();
+                        if error_str.contains("not owned") || error_str.contains("reclaimed") {
+                            // Task was reclaimed by another worker or already completed
+                            // This is expected during heartbeat timeout recovery
+                            // Do NOT schedule next activity - the other worker will do it
+                            warn!(
+                                task_id = %task.id,
+                                activity_type = %task.activity_type,
+                                error = %e,
+                                "Task completion rejected (reclaimed or already completed) - skipping next activity scheduling"
+                            );
+                        } else {
+                            // Other errors (network, database) should be propagated
+                            // so the failure handler can run and retry the task
+                            return Err(e);
+                        }
                     }
                 }
             }
