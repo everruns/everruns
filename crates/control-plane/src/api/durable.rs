@@ -225,6 +225,8 @@ pub struct WorkflowsListResponse {
 /// Workflow event response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowEventResponse {
+    pub id: i64,
+    pub workflow_id: Uuid,
     pub sequence_num: i32,
     pub event_type: String,
     pub event_data: serde_json::Value,
@@ -234,6 +236,8 @@ pub struct WorkflowEventResponse {
 impl From<WorkflowEventInfo> for WorkflowEventResponse {
     fn from(e: WorkflowEventInfo) -> Self {
         Self {
+            id: e.id,
+            workflow_id: e.workflow_id,
             sequence_num: e.sequence_num,
             event_type: e.event_type,
             event_data: e.event_data,
