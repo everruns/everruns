@@ -303,12 +303,21 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     async fn complete_task(
         &self,
         task_id: Uuid,
+        worker_id: &str,
         _result: serde_json::Value,
     ) -> Result<(), StoreError> {
         let mut tasks = self.tasks.write();
         let task = tasks
             .get_mut(&task_id)
             .ok_or(StoreError::TaskNotFound(task_id))?;
+
+        // Verify the task is still claimed by this worker
+        if task.status != TaskStatus::Claimed {
+            return Err(StoreError::TaskNotOwned(task_id));
+        }
+        if task.claimed_by.as_deref() != Some(worker_id) {
+            return Err(StoreError::TaskNotOwned(task_id));
+        }
 
         task.status = TaskStatus::Completed;
         Ok(())
@@ -855,9 +864,9 @@ mod tests {
         assert_eq!(claimed.len(), 1);
         assert_eq!(claimed[0].id, task_id);
 
-        // Complete task
+        // Complete task (pass worker_id that claimed it)
         store
-            .complete_task(task_id, serde_json::json!({"result": "ok"}))
+            .complete_task(task_id, "worker-1", serde_json::json!({"result": "ok"}))
             .await
             .unwrap();
 

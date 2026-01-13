@@ -453,6 +453,7 @@ impl WorkerPool {
                             // Spawn task execution
                             let store = Arc::clone(&store);
                             let bp = Arc::clone(&backpressure);
+                            let worker_id = config.worker_id.clone();
 
                             tokio::spawn(async move {
                                 let task_id = task.id;
@@ -461,7 +462,10 @@ impl WorkerPool {
                                 // Report result
                                 match result {
                                     Ok(output) => {
-                                        if let Err(e) = store.complete_task(task_id, output).await {
+                                        // Pass worker_id to verify ownership (prevents duplicate scheduling)
+                                        if let Err(e) =
+                                            store.complete_task(task_id, &worker_id, output).await
+                                        {
                                             error!(%task_id, "Failed to complete task: {}", e);
                                         }
                                     }

@@ -364,30 +364,46 @@ impl DurableWorker {
 
         match result {
             Ok(output) => {
-                // Complete the task
-                {
+                // Complete the task - this verifies we still own it
+                // If task was reclaimed while we were executing, we must NOT schedule next activity
+                let complete_result = {
                     let mut store = self.store.lock().await;
                     store
-                        .complete_task(task.id, output.clone())
+                        .complete_task(task.id, &self.config.worker_id, output.clone())
                         .await
-                        .map_err(|e| anyhow::anyhow!("Failed to complete task: {}", e))?;
-                }
+                };
 
-                info!(
-                    task_id = %task.id,
-                    activity_type = %task.activity_type,
-                    "Task completed successfully"
-                );
+                match complete_result {
+                    Ok(()) => {
+                        info!(
+                            task_id = %task.id,
+                            activity_type = %task.activity_type,
+                            "Task completed successfully"
+                        );
 
-                // Check if workflow is complete and schedule next activity
-                if let Some(turn_input) = turn_input_opt {
-                    self.schedule_next_activity(
-                        task.workflow_id,
-                        &task.activity_type,
-                        &turn_input,
-                        &output,
-                    )
-                    .await?;
+                        // Only schedule next activity if we successfully completed the task
+                        // This prevents duplicate scheduling when task was reclaimed
+                        if let Some(turn_input) = turn_input_opt {
+                            self.schedule_next_activity(
+                                task.workflow_id,
+                                &task.activity_type,
+                                &turn_input,
+                                &output,
+                            )
+                            .await?;
+                        }
+                    }
+                    Err(e) => {
+                        // Task was reclaimed by another worker or already completed
+                        // This is expected during heartbeat timeout recovery
+                        // Do NOT schedule next activity - the other worker will do it
+                        warn!(
+                            task_id = %task.id,
+                            activity_type = %task.activity_type,
+                            error = %e,
+                            "Task completion rejected (reclaimed or already completed) - skipping next activity scheduling"
+                        );
+                    }
                 }
             }
             Err(e) => {

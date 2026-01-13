@@ -1161,20 +1161,32 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let store = self.durable_store()?;
         let task_id = parse_uuid(req.task_id.as_ref())?;
+        let worker_id = &req.worker_id;
 
         let output = req
             .output
             .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
             .unwrap_or_else(|| serde_json::json!({}));
 
-        store.complete_task(task_id, output).await.map_err(|e| {
-            tracing::error!("Failed to complete task: {}", e);
-            Status::internal("Failed to complete task")
-        })?;
-
-        Ok(Response::new(CompleteDurableTaskResponse {
-            completed: true,
-        }))
+        // complete_task now verifies worker ownership to prevent duplicate scheduling
+        match store.complete_task(task_id, worker_id, output).await {
+            Ok(()) => Ok(Response::new(CompleteDurableTaskResponse { success: true })),
+            Err(StoreError::TaskNotOwned(_)) => {
+                // Task was reclaimed by another worker - not an error, just return false
+                tracing::info!(
+                    %task_id,
+                    %worker_id,
+                    "Task completion rejected: task was reclaimed or already completed"
+                );
+                Ok(Response::new(CompleteDurableTaskResponse {
+                    success: false,
+                }))
+            }
+            Err(e) => {
+                tracing::error!("Failed to complete task: {}", e);
+                Err(Status::internal("Failed to complete task"))
+            }
+        }
     }
 
     async fn fail_durable_task(

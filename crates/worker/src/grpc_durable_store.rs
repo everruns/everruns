@@ -170,13 +170,27 @@ impl GrpcDurableStore {
     }
 
     /// Complete a task
-    pub async fn complete_task(&mut self, task_id: Uuid, output: serde_json::Value) -> Result<()> {
+    ///
+    /// The worker_id must match the worker that claimed the task.
+    /// Returns an error if the task was reclaimed by another worker.
+    pub async fn complete_task(
+        &mut self,
+        task_id: Uuid,
+        worker_id: &str,
+        output: serde_json::Value,
+    ) -> Result<()> {
         let request = CompleteDurableTaskRequest {
             task_id: Some(uuid_to_proto_uuid(task_id)),
+            worker_id: worker_id.to_string(),
             output: Some(json_to_proto_struct(&output)),
         };
 
-        self.client.complete_durable_task(request).await?;
+        let response = self.client.complete_durable_task(request).await?;
+        let inner = response.into_inner();
+
+        if !inner.success {
+            anyhow::bail!("Task not owned by worker (was reclaimed or already completed)")
+        }
         Ok(())
     }
 

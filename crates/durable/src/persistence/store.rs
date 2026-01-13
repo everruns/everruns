@@ -20,6 +20,10 @@ pub enum StoreError {
     #[error("task not found: {0}")]
     TaskNotFound(Uuid),
 
+    /// Task not owned by the worker (was reclaimed)
+    #[error("task {0} not owned by worker (was reclaimed or already completed)")]
+    TaskNotOwned(Uuid),
+
     /// Concurrency conflict (optimistic locking failed)
     #[error("concurrency conflict: expected sequence {expected}, got {actual}")]
     ConcurrencyConflict { expected: i32, actual: i32 },
@@ -386,9 +390,15 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     ) -> Result<HeartbeatResponse, StoreError>;
 
     /// Complete a task successfully
+    ///
+    /// The worker_id must match the worker that claimed the task.
+    /// Returns `StoreError::TaskNotOwned` if the task was reclaimed by another worker.
+    /// This prevents duplicate next activity scheduling when a task is reclaimed
+    /// due to heartbeat timeout while the original worker is still completing it.
     async fn complete_task(
         &self,
         task_id: Uuid,
+        worker_id: &str,
         result: serde_json::Value,
     ) -> Result<(), StoreError>;
 

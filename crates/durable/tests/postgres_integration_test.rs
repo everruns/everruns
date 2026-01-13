@@ -403,9 +403,9 @@ async fn test_task_complete() {
         .await
         .unwrap();
 
-    // Complete the task
+    // Complete the task (must pass worker_id that claimed it)
     store
-        .complete_task(task_id, json!({"status": "done"}))
+        .complete_task(task_id, "worker", json!({"status": "done"}))
         .await
         .unwrap();
 
@@ -880,6 +880,274 @@ async fn test_concurrent_task_claiming() {
     all_ids.sort();
     all_ids.dedup();
     assert_eq!(all_ids.len(), 10);
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+// ============================================
+// Task Completion Ownership Tests (Duplicate Prevention)
+// ============================================
+
+/// Test that task completion fails when task was reclaimed by another worker
+///
+/// This test verifies the fix for the duplicate act atoms bug:
+/// When a task's heartbeat times out and is reclaimed by another worker,
+/// the original worker must NOT be able to complete the task.
+#[tokio::test]
+async fn test_task_completion_rejected_when_reclaimed() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    store
+        .create_workflow(workflow_id, "reclaim_test", json!({}), None)
+        .await
+        .unwrap();
+
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "step".to_string(),
+            activity_type: "process".to_string(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+
+    // Worker 1 claims the task
+    store
+        .claim_task("worker-1", &["process".to_string()], 1)
+        .await
+        .unwrap();
+
+    // Simulate heartbeat timeout: manually set heartbeat_at to the past
+    sqlx::query(
+        r#"
+        UPDATE durable_task_queue
+        SET heartbeat_at = NOW() - INTERVAL '1 hour'
+        WHERE id = $1
+        "#,
+    )
+    .bind(task_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    // Reclaim stale tasks
+    let reclaimed = store
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+    assert_eq!(reclaimed.len(), 1);
+
+    // Worker 2 claims the reclaimed task
+    let claimed = store
+        .claim_task("worker-2", &["process".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].id, task_id);
+
+    // Worker 1 tries to complete the task (should fail - task was reclaimed)
+    let result = store
+        .complete_task(task_id, "worker-1", json!({"status": "done"}))
+        .await;
+    assert!(
+        matches!(result, Err(StoreError::TaskNotOwned(_))),
+        "Expected TaskNotOwned error, got {:?}",
+        result
+    );
+
+    // Worker 2 should be able to complete the task
+    store
+        .complete_task(task_id, "worker-2", json!({"status": "done"}))
+        .await
+        .expect("Worker 2 should be able to complete the task it claimed");
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+/// Test that task completion fails when wrong worker tries to complete
+#[tokio::test]
+async fn test_task_completion_rejected_wrong_worker() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    store
+        .create_workflow(workflow_id, "wrong_worker_test", json!({}), None)
+        .await
+        .unwrap();
+
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "step".to_string(),
+            activity_type: "process".to_string(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+
+    // Worker 1 claims the task
+    store
+        .claim_task("worker-1", &["process".to_string()], 1)
+        .await
+        .unwrap();
+
+    // Wrong worker (worker-2) tries to complete the task
+    let result = store
+        .complete_task(task_id, "worker-2", json!({"status": "done"}))
+        .await;
+    assert!(
+        matches!(result, Err(StoreError::TaskNotOwned(_))),
+        "Expected TaskNotOwned error when wrong worker tries to complete"
+    );
+
+    // Correct worker (worker-1) should be able to complete
+    store
+        .complete_task(task_id, "worker-1", json!({"status": "done"}))
+        .await
+        .expect("Correct worker should be able to complete");
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+/// Test that task completion fails when task is already completed
+#[tokio::test]
+async fn test_task_completion_rejected_already_completed() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    store
+        .create_workflow(workflow_id, "double_complete_test", json!({}), None)
+        .await
+        .unwrap();
+
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "step".to_string(),
+            activity_type: "process".to_string(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+
+    // Worker claims and completes the task
+    store
+        .claim_task("worker-1", &["process".to_string()], 1)
+        .await
+        .unwrap();
+
+    store
+        .complete_task(task_id, "worker-1", json!({"status": "done"}))
+        .await
+        .unwrap();
+
+    // Same worker tries to complete again (should fail - already completed)
+    let result = store
+        .complete_task(task_id, "worker-1", json!({"status": "done again"}))
+        .await;
+    assert!(
+        matches!(result, Err(StoreError::TaskNotOwned(_))),
+        "Expected TaskNotOwned error when task already completed"
+    );
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+/// Test the full race condition scenario that causes duplicate act atoms
+///
+/// Scenario:
+/// 1. Worker A claims task
+/// 2. Worker A executes task (slow)
+/// 3. Heartbeat times out, task reclaimed
+/// 4. Worker B claims and executes same task
+/// 5. Worker B completes task (succeeds)
+/// 6. Worker A finishes execution, tries to complete (must fail)
+///
+/// Without the fix, both workers would complete and schedule next activity,
+/// causing duplicate atoms.
+#[tokio::test]
+async fn test_duplicate_scheduling_prevention() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    store
+        .create_workflow(workflow_id, "duplicate_prevention_test", json!({}), None)
+        .await
+        .unwrap();
+
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id,
+            activity_id: "reason_1".to_string(),
+            activity_type: "reason".to_string(),
+            input: json!({"test": true}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+
+    // Step 1: Worker A claims the task
+    store
+        .claim_task("worker-A", &["reason".to_string()], 1)
+        .await
+        .unwrap();
+
+    // Step 2-3: Simulate heartbeat timeout (worker A is slow)
+    sqlx::query(
+        r#"
+        UPDATE durable_task_queue
+        SET heartbeat_at = NOW() - INTERVAL '1 hour'
+        WHERE id = $1
+        "#,
+    )
+    .bind(task_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    store
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+
+    // Step 4: Worker B claims the reclaimed task
+    let claimed = store
+        .claim_task("worker-B", &["reason".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+
+    // Step 5: Worker B completes the task first
+    store
+        .complete_task(task_id, "worker-B", json!({"has_tool_calls": true}))
+        .await
+        .expect("Worker B should complete successfully");
+
+    // Step 6: Worker A finishes and tries to complete (must fail!)
+    let result = store
+        .complete_task(task_id, "worker-A", json!({"has_tool_calls": true}))
+        .await;
+
+    assert!(
+        matches!(result, Err(StoreError::TaskNotOwned(_))),
+        "Worker A must NOT be able to complete the reclaimed task. Got: {:?}",
+        result
+    );
+
+    // Verify task is completed (not duplicated in queue)
+    let pending_tasks = store
+        .claim_task("worker-C", &["reason".to_string()], 10)
+        .await
+        .unwrap();
+    assert!(
+        pending_tasks.is_empty(),
+        "No duplicate pending tasks should exist"
+    );
 
     cleanup_workflow(&store, workflow_id).await;
 }

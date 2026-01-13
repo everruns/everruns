@@ -464,25 +464,41 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     async fn complete_task(
         &self,
         task_id: Uuid,
+        worker_id: &str,
         _result: serde_json::Value,
     ) -> Result<(), StoreError> {
-        sqlx::query(
+        // Only complete if:
+        // 1. Task is still claimed by this worker, OR
+        // 2. Task is still claimed (status = 'claimed') by this worker
+        // This prevents duplicate scheduling when a task is reclaimed due to heartbeat timeout
+        let result = sqlx::query(
             r#"
             UPDATE durable_task_queue
             SET status = 'completed'
-            WHERE id = $1
+            WHERE id = $1 AND claimed_by = $2 AND status = 'claimed'
+            RETURNING id
             "#,
         )
         .bind(task_id)
-        .execute(&self.pool)
+        .bind(worker_id)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
             error!("Failed to complete task: {}", e);
             StoreError::Database(e.to_string())
         })?;
 
-        debug!(%task_id, "completed task");
-        Ok(())
+        match result {
+            Some(_) => {
+                debug!(%task_id, %worker_id, "completed task");
+                Ok(())
+            }
+            None => {
+                // Task was reclaimed by another worker or already completed
+                debug!(%task_id, %worker_id, "task not owned - was reclaimed or already completed");
+                Err(StoreError::TaskNotOwned(task_id))
+            }
+        }
     }
 
     #[instrument(skip(self))]
