@@ -517,11 +517,14 @@ message ClaimDurableTasksResponse {
 
 message CompleteDurableTaskRequest {
     Uuid task_id = 1;
-    google.protobuf.Struct output = 2;
+    string worker_id = 2;  // Required: prevents duplicate completion when task is reclaimed
+    google.protobuf.Struct output = 3;
 }
 
 message CompleteDurableTaskResponse {
-    bool completed = 1;
+    // Whether the task was successfully completed
+    // False if task was reclaimed by another worker or already completed
+    bool success = 1;
 }
 
 // === Fail task ===

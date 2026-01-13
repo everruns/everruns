@@ -177,9 +177,9 @@ impl WorkflowScenario {
                         }
                         execution.record(exec_start.elapsed());
 
-                        // Complete task
+                        // Complete task (pass worker_name to verify ownership)
                         store
-                            .complete_task(task.id, serde_json::json!({"ok": true}))
+                            .complete_task(task.id, &worker_name, serde_json::json!({"ok": true}))
                             .await
                             .unwrap();
 
