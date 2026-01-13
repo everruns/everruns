@@ -196,13 +196,30 @@ impl DurableWorker {
             }
         }
 
-        // Deregister on shutdown
+        // Deregister on shutdown - this also reclaims any tasks we had claimed
+        // allowing them to be immediately picked up by other workers
         {
             let mut store = self.store.lock().await;
-            if let Err(e) = store.deregister_worker(&self.config.worker_id).await {
-                warn!(worker_id = %self.config.worker_id, error = %e, "Failed to deregister worker");
-            } else {
-                info!(worker_id = %self.config.worker_id, "Worker deregistered");
+            match store.deregister_worker(&self.config.worker_id).await {
+                Ok(tasks_reclaimed) => {
+                    if tasks_reclaimed > 0 {
+                        info!(
+                            worker_id = %self.config.worker_id,
+                            tasks_reclaimed,
+                            "Worker deregistered and tasks reclaimed"
+                        );
+                    } else {
+                        info!(worker_id = %self.config.worker_id, "Worker deregistered");
+                    }
+                }
+                Err(e) => {
+                    // Log but don't fail - the stale task reclamation will handle cleanup
+                    warn!(
+                        worker_id = %self.config.worker_id,
+                        error = %e,
+                        "Failed to deregister worker (tasks will be reclaimed after heartbeat timeout)"
+                    );
+                }
             }
         }
 

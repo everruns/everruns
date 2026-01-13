@@ -448,9 +448,10 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(vec![])
     }
 
-    /// Deregister a worker
-    async fn deregister_worker(&self, _worker_id: &str) -> Result<(), StoreError> {
-        Ok(())
+    /// Deregister a worker and reclaim all tasks claimed by it
+    /// Returns the number of tasks that were reclaimed
+    async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {
+        Ok(0)
     }
 
     // =========================================================================
