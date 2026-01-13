@@ -17,6 +17,9 @@ use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
 use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
 use everruns_core::{EventListener, OtelEventListener};
+use everruns_durable::{
+    InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
+};
 use everruns_worker::{create_runner_with_backend, RunnerBackend};
 use serde::Serialize;
 use std::sync::Arc;
@@ -166,7 +169,17 @@ async fn main() -> Result<()> {
         db: db.clone(),
         auth: auth_state.clone(),
     };
-    let durable_state = api::durable::AppState::new(db.pool().cloned());
+    // Create durable execution store based on mode
+    let durable_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>> = if dev_mode {
+        tracing::info!("Using in-memory workflow event store for DEV MODE");
+        Some(Arc::new(InMemoryWorkflowEventStore::new()))
+    } else {
+        db.pool().cloned().map(|p| {
+            Arc::new(PostgresWorkflowEventStore::new(p))
+                as Arc<dyn WorkflowEventStore + Send + Sync>
+        })
+    };
+    let durable_state = api::durable::AppState::new(durable_store);
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),
     };
@@ -276,7 +289,6 @@ async fn main() -> Result<()> {
 
         // Start background task for stale task reclamation (only with PostgreSQL)
         {
-            use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
             use std::time::Duration;
 
             if let Some(pool) = db.pool() {
