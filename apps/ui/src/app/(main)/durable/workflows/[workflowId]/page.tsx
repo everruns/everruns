@@ -272,12 +272,6 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                     {new Date(workflow.created_at).toLocaleString()}
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Updated</p>
-                  <p className="font-medium">
-                    {new Date(workflow.updated_at).toLocaleString()}
-                  </p>
-                </div>
                 {workflow.started_at && (
                   <div>
                     <p className="text-sm text-muted-foreground">Started</p>

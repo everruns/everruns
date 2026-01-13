@@ -857,7 +857,7 @@ export interface DurableWorkflow {
   result?: Record<string, unknown>;
   error?: Record<string, unknown>;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
   started_at?: string;
   completed_at?: string;
   // Optional linked session
