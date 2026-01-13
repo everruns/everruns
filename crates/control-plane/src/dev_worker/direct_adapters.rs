@@ -200,19 +200,12 @@ impl MessageStore for DirectMessageStore {
             tags: Some(input.tags),
         };
 
-        let event = self.event_service.emit(request).await.map_err(|e| {
+        self.event_service.emit(request).await.map_err(|e| {
             tracing::error!("Failed to emit message event: {}", e);
             store_error("Failed to store message")
         })?;
 
-        Ok(Message {
-            id: event.id,
-            role: input.role,
-            content: input.content,
-            controls: input.controls,
-            metadata: input.metadata,
-            created_at: event.ts,
-        })
+        Ok(message)
     }
 
     async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {

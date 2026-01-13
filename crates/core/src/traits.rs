@@ -68,12 +68,24 @@ impl InputMessage {
 /// - Store messages in a database
 /// - Keep messages in memory for testing
 /// - Store messages in a file
+///
+/// # Invariant
+///
+/// The `add()` method must return a message whose ID can be used with `get()` and
+/// `load()` to retrieve the same message. This means the returned message's ID must
+/// match the ID stored internally.
 #[async_trait]
 pub trait MessageStore: Send + Sync {
     /// Add a new message to the store and return the stored message with generated ID
     ///
     /// This is the primary method for creating messages. The store generates
     /// the message ID and timestamp.
+    ///
+    /// # Invariant
+    ///
+    /// The returned message's `id` field must be usable with `get()` and appear in
+    /// `load()` results. Implementations must ensure ID consistency between the
+    /// returned message and the internally stored data.
     async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message>;
 
     /// Get a specific message by ID
