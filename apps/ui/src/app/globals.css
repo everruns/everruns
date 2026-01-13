@@ -83,3 +83,23 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Branded dot grid background
+   - Subtle dots using brand navy (light) / gold (dark)
+   - Applied to body element
+*/
+.bg-brand-dots {
+  background-image: radial-gradient(
+    circle at center,
+    hsl(220 62% 13% / 0.08) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+}
+.dark .bg-brand-dots {
+  background-image: radial-gradient(
+    circle at center,
+    hsl(43 60% 53% / 0.1) 1px,
+    transparent 1px
+  );
+}

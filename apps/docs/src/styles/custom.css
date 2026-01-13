@@ -155,3 +155,25 @@ h6 {
 .sl-markdown-content {
   line-height: 1.6;
 }
+
+/* Branded dot grid background */
+:root,
+:root[data-theme="light"] {
+  background-image: radial-gradient(
+    circle at center,
+    hsl(220 62% 13% / 0.08) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  background-attachment: fixed;
+}
+
+:root[data-theme="dark"] {
+  background-image: radial-gradient(
+    circle at center,
+    hsl(43 60% 53% / 0.1) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  background-attachment: fixed;
+}

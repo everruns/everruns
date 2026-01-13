@@ -80,6 +80,35 @@ Three interlocking rings (Borromean rings pattern) representing **Durability × 
 4. **Mobile-first** — responsive, works on all devices
 5. **Fast** — minimal JavaScript, optimized images
 
+### Branded Background
+
+Subtle dot grid pattern applied to all surfaces (app, docs). Provides texture without distraction.
+
+```css
+/* Light mode - Navy dots */
+background-image: radial-gradient(
+  circle at center,
+  hsl(220 62% 13% / 0.08) 1px,
+  transparent 1px
+);
+background-size: 24px 24px;
+
+/* Dark mode - Gold dots */
+background-image: radial-gradient(
+  circle at center,
+  hsl(43 60% 53% / 0.1) 1px,
+  transparent 1px
+);
+background-size: 24px 24px;
+```
+
+| Property | Light | Dark |
+|----------|-------|------|
+| Color | Navy | Gold |
+| Opacity | 8% | 10% |
+| Dot size | 1px | 1px |
+| Grid spacing | 24px | 24px |
+
 ### Application Guidelines
 
 #### Landing Page (everruns.com)
