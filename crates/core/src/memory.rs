@@ -699,6 +699,48 @@ mod tests {
         assert!(missing.is_none());
     }
 
+    /// Regression test: MessageStore::add must return message with ID usable for get()
+    ///
+    /// This test documents a critical invariant: the ID in the message returned by
+    /// add() must match the ID stored internally, so that get(returned_id) succeeds.
+    ///
+    /// Bug fixed: DirectMessageStore::add was returning event.id instead of message.id,
+    /// causing get() to fail because load() reconstructs messages from event payloads
+    /// which contain the original message.id.
+    #[tokio::test]
+    async fn test_message_store_add_returns_consistent_id() {
+        let store = InMemoryMessageStore::new();
+        let session_id = Uuid::now_v7();
+
+        // Add a message
+        let added = store
+            .add(session_id, InputMessage::user("Test consistency"))
+            .await
+            .unwrap();
+
+        // The returned message ID must be retrievable
+        let retrieved = store.get(session_id, added.id).await.unwrap();
+        assert!(
+            retrieved.is_some(),
+            "Message must be retrievable by the ID returned from add()"
+        );
+
+        // The retrieved message must have the same ID
+        let retrieved = retrieved.unwrap();
+        assert_eq!(
+            retrieved.id, added.id,
+            "Retrieved message ID must match the ID returned from add()"
+        );
+
+        // The message must also appear in load() with the same ID
+        let all_messages = store.load(session_id).await.unwrap();
+        let found = all_messages.iter().find(|m| m.id == added.id);
+        assert!(
+            found.is_some(),
+            "Message with returned ID must appear in load() results"
+        );
+    }
+
     #[tokio::test]
     async fn test_mock_tool_executor() {
         let executor = MockToolExecutor::new();
