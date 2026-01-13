@@ -352,10 +352,16 @@ Configuration for LLM API providers. Stores encrypted API keys and provider-spec
 
 **Default Providers:**
 
-Default providers (OpenAI, Anthropic) and their models are created via database migration (`003_default_providers.sql`) on first startup. These providers have well-known UUIDs:
+Default providers (OpenAI, Anthropic) and their models are seeded on startup via the service seeding system (`control-plane/src/seed.rs`). Seeding is idempotent (uses `ON CONFLICT DO NOTHING`) and runs in a background task. These providers have well-known UUIDs:
 
 - OpenAI: `01933b5a-0000-7000-8000-000000000001`
 - Anthropic: `01933b5a-0000-7000-8000-000000000002`
+
+Model UUIDs follow a range allocation scheme:
+- `0x001-0x0FF`: LLM Providers
+- `0x100-0x1FF`: Agents (seed agents like Dad Jokes Agent, Research Agent)
+- `0x200-0x2FF`: OpenAI Models
+- `0x300-0x3FF`: Anthropic Models
 
 **API Key Resolution Order:**
 1. **Database** (priority): Encrypted API key stored in `llm_providers.api_key_encrypted`
