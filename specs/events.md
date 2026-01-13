@@ -483,6 +483,8 @@ CREATE TABLE events (
     session_id UUID NOT NULL REFERENCES sessions(id),
     sequence INTEGER NOT NULL,
     event_type VARCHAR(100) NOT NULL,
+    ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    context JSONB NOT NULL DEFAULT '{}',
     data JSONB NOT NULL DEFAULT '{}',
     metadata JSONB,
     tags TEXT[],
@@ -491,7 +493,98 @@ CREATE TABLE events (
 );
 ```
 
-The `data` column contains the full event JSON (type, context, data fields). The `event_type` column is denormalized for efficient filtering. The `metadata` and `tags` columns provide additional filtering and categorization capabilities.
+The `data` column contains the event-specific payload. The `event_type` column is denormalized for efficient filtering. The `context` column holds correlation data (turn_id, input_message_id, exec_id). The `metadata` and `tags` columns provide additional filtering and categorization capabilities.
+
+## Storage Guarantees
+
+The event store provides three key guarantees:
+
+### 1. Append-Only Immutability
+
+Events are **immutable** once written. The database enforces this via triggers:
+
+```sql
+CREATE TRIGGER events_append_only_update
+    BEFORE UPDATE ON events
+    FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
+
+CREATE TRIGGER events_append_only_delete
+    BEFORE DELETE ON events
+    FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
+```
+
+**Behavior:**
+- `UPDATE` on `events` → Error: "events are append-only: UPDATE operations are not allowed"
+- `DELETE` on `events` → Error: "events are append-only: DELETE operations are not allowed"
+- `INSERT` → Allowed (append-only)
+
+**Rationale:** Event sourcing requires immutable history. Allowing mutations would break replay, audit trails, and data integrity guarantees.
+
+### 2. Atomic Per-Session Sequence Allocation
+
+Each event within a session is assigned a monotonically increasing sequence number. Sequences are allocated atomically to prevent race conditions under concurrent writes.
+
+**Implementation:**
+
+A dedicated `event_sequences` table tracks the next sequence per session:
+
+```sql
+CREATE TABLE event_sequences (
+    session_id UUID PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    next_sequence INTEGER NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+The `allocate_event_sequence(session_id)` function atomically allocates the next sequence:
+
+```sql
+INSERT INTO event_sequences (session_id, next_sequence, updated_at)
+VALUES (p_session_id, 2, NOW())
+ON CONFLICT (session_id) DO UPDATE
+SET next_sequence = event_sequences.next_sequence + 1,
+    updated_at = NOW()
+RETURNING next_sequence - 1;
+```
+
+**Guarantees:**
+- No sequence gaps within a session (barring transaction rollbacks)
+- No duplicate sequences within a session
+- Race-free under concurrent inserts (uses PostgreSQL's atomic upsert)
+- Sequences start at 1 for each session
+
+**Previous Approach (Deprecated):**
+The old `MAX(sequence)+1` approach had race conditions when multiple writers inserted events concurrently for the same session.
+
+### 3. Event Type Consistency Validation
+
+The `event_type` field must match the type indicated by the event's `data` payload. This is validated at the service layer before storage.
+
+**Validation Rule:**
+```
+request.event_type == request.data.event_type()
+```
+
+**Exemption:** Raw/legacy events (where `data.event_type() == "unknown"`) are exempt from this check to support backward compatibility.
+
+**Error on Mismatch:**
+```
+"event type mismatch: declared 'message.user' but data indicates 'message.agent'"
+```
+
+**Rationale:** Prevents drift between the declared event type and the actual payload, which would cause incorrect filtering, routing, and processing.
+
+## Message Reconstruction
+
+Messages are reconstructed from events for the conversation view. The following event types contribute to message reconstruction:
+
+| Event Type | Role | Content Source |
+|------------|------|----------------|
+| `message.user` | `user` | `data.message.content` |
+| `message.agent` | `assistant` | `data.message.content` (may include tool calls) |
+| `tool.call_completed` | `tool` | `data.result` (tool execution results) |
+
+**Note:** Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. Tool results come from `tool.call_completed` events, not a separate `message.tool_result` type.
 
 ## SSE Streaming
 
