@@ -569,6 +569,35 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    /// Create a provider with a specific ID (for seeding)
+    /// Returns None if provider already exists (idempotent)
+    pub async fn create_llm_provider_with_id(
+        &self,
+        id: Uuid,
+        input: CreateLlmProviderRow,
+    ) -> Result<Option<LlmProviderRow>> {
+        let mut providers = self.llm_providers.write();
+        if providers.contains_key(&id) {
+            return Ok(None); // Already exists
+        }
+        let now = Self::now();
+        let api_key_set = input.api_key_encrypted.is_some();
+        let row = LlmProviderRow {
+            id,
+            name: input.name,
+            provider_type: input.provider_type,
+            base_url: input.base_url,
+            api_key_encrypted: input.api_key_encrypted,
+            api_key_set,
+            status: "active".to_string(),
+            settings: input.settings.unwrap_or(serde_json::json!({})),
+            created_at: now,
+            updated_at: now,
+        };
+        providers.insert(id, row.clone());
+        Ok(Some(row))
+    }
+
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
         Ok(self.llm_providers.read().get(&id).cloned())
     }
@@ -704,6 +733,33 @@ impl InMemoryDatabase {
         };
         self.llm_models.write().insert(id, row.clone());
         Ok(row)
+    }
+
+    /// Create a model with a specific ID (for seeding)
+    /// Returns None if model already exists (idempotent)
+    pub async fn create_llm_model_with_id(
+        &self,
+        id: Uuid,
+        input: CreateLlmModelRow,
+    ) -> Result<Option<LlmModelRow>> {
+        let mut models = self.llm_models.write();
+        if models.contains_key(&id) {
+            return Ok(None); // Already exists
+        }
+        let now = Self::now();
+        let row = LlmModelRow {
+            id,
+            provider_id: input.provider_id,
+            model_id: input.model_id,
+            display_name: input.display_name,
+            capabilities: serde_json::to_value(&input.capabilities)?,
+            is_default: input.is_default,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        models.insert(id, row.clone());
+        Ok(Some(row))
     }
 
     pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {

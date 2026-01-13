@@ -322,6 +322,19 @@ impl StorageBackend {
         }
     }
 
+    /// Create a provider with a specific ID (for seeding)
+    /// Returns None if provider already exists (idempotent)
+    pub async fn create_llm_provider_with_id(
+        &self,
+        id: Uuid,
+        input: CreateLlmProviderRow,
+    ) -> Result<Option<LlmProviderRow>> {
+        match self {
+            Self::Postgres(db) => db.create_llm_provider_with_id(id, input).await,
+            Self::InMemory(db) => db.create_llm_provider_with_id(id, input).await,
+        }
+    }
+
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
         match self {
             Self::Postgres(db) => db.get_llm_provider(id).await,
@@ -388,6 +401,19 @@ impl StorageBackend {
         match self {
             Self::Postgres(db) => db.create_llm_model(input).await,
             Self::InMemory(db) => db.create_llm_model(input).await,
+        }
+    }
+
+    /// Create a model with a specific ID (for seeding)
+    /// Returns None if model already exists (idempotent)
+    pub async fn create_llm_model_with_id(
+        &self,
+        id: Uuid,
+        input: CreateLlmModelRow,
+    ) -> Result<Option<LlmModelRow>> {
+        match self {
+            Self::Postgres(db) => db.create_llm_model_with_id(id, input).await,
+            Self::InMemory(db) => db.create_llm_model_with_id(id, input).await,
         }
     }
 
