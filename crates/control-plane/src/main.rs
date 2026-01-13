@@ -1,7 +1,7 @@
 // Everruns API server
 // Decision: Flexible auth with support for no-auth, admin-only, and full auth modes
 // Decision: DEV_MODE=true uses in-memory storage, no PostgreSQL required
-// Decision: --seed flag enables database seeding on startup
+// Decision: Always seed default data on startup (agents, etc.)
 // M2: Agent/Session/Messages model with Events as SSE notifications
 
 mod grpc_service;
@@ -17,7 +17,6 @@ use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use anyhow::{Context, Result};
 use axum::http::{header, HeaderValue, Method};
 use axum::{extract::State, routing::get, Json, Router};
-use clap::Parser;
 use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
 use everruns_core::{EventListener, OtelEventListener};
 use everruns_durable::{
@@ -30,16 +29,6 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-
-/// CLI arguments
-#[derive(Parser, Debug)]
-#[command(name = "everruns-control-plane")]
-#[command(about = "Everruns Control Plane API Server")]
-struct Args {
-    /// Seed the database with default agents on startup
-    #[arg(long, env = "SEED")]
-    seed: bool,
-}
 
 /// App state shared across routes
 #[derive(Clone)]
@@ -70,9 +59,6 @@ struct HealthState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Parse CLI arguments
-    let args = Args::parse();
-
     // Initialize telemetry with OpenTelemetry support
     // Configure via environment variables:
     // - OTEL_SERVICE_NAME: Service name (default: "everruns-control-plane")
@@ -133,10 +119,8 @@ async fn main() -> Result<()> {
         (Arc::new(backend), runner)
     };
 
-    // Run seeding if --seed flag is passed
-    if args.seed {
-        seed::run_seed(db.clone()).await?;
-    }
+    // Run seeding (creates default agents if they don't exist)
+    seed::run_seed(db.clone()).await?;
 
     // Initialize encryption service for API keys (optional - gracefully degrade if not configured)
     let encryption = match EncryptionService::from_env() {

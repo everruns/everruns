@@ -50,7 +50,6 @@ async-trait.workspace = true
 aes-gcm.workspace = true
 argon2.workspace = true
 parking_lot.workspace = true
-clap.workspace = true
 
 everruns-core = { path = "../core", features = ["openapi"] }
 everruns-worker = { path = "../worker" }  # For AgentRunner trait

@@ -75,7 +75,6 @@ services:
       HOST: 0.0.0.0
       PORT: "9000"
       RUST_LOG: info
-      SEED: "true"  # Seed default agents on startup
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
       postgres:

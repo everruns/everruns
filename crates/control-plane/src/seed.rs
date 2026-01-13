@@ -1,4 +1,5 @@
 // Service seeding module for control-plane
+// Decision: Always seed on startup (no flag needed)
 // Decision: Embed seed data directly to avoid file dependencies
 // Decision: Check by name before insert to prevent duplicates
 // Decision: Retry on database connection failure
