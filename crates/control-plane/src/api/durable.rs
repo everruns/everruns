@@ -16,12 +16,11 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use everruns_durable::{
-    CircuitBreakerState, CircuitState, DlqEntry, DlqFilter, Pagination, PostgresWorkflowEventStore,
-    SystemHealth, TaskFilter, TaskInfo, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventInfo,
-    WorkflowEventStore, WorkflowFilter, WorkflowInfoExtended, WorkflowSignal, WorkflowStatus,
+    CircuitBreakerState, CircuitState, DlqEntry, DlqFilter, Pagination, SystemHealth, TaskFilter,
+    TaskInfo, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore,
+    WorkflowFilter, WorkflowInfoExtended, WorkflowSignal, WorkflowStatus,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -31,25 +30,24 @@ use super::common::ErrorResponse;
 /// App state for durable routes
 #[derive(Clone)]
 pub struct AppState {
-    store: Option<Arc<PostgresWorkflowEventStore>>,
+    store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
 }
 
 impl AppState {
-    pub fn new(pool: Option<PgPool>) -> Self {
-        Self {
-            store: pool.map(|p| Arc::new(PostgresWorkflowEventStore::new(p))),
-        }
+    /// Create new state with an optional workflow event store
+    pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>) -> Self {
+        Self { store }
     }
 
-    /// Get the store, returning an error response if not available (dev mode)
+    /// Get the store, returning an error response if not available
     fn get_store(
         &self,
-    ) -> Result<&Arc<PostgresWorkflowEventStore>, (StatusCode, Json<ErrorResponse>)> {
+    ) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>, (StatusCode, Json<ErrorResponse>)> {
         self.store.as_ref().ok_or_else(|| {
             (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(ErrorResponse {
-                    error: "Durable execution not available in dev mode".to_string(),
+                    error: "Durable execution store not available".to_string(),
                 }),
             )
         })
