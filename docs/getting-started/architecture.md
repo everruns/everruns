@@ -7,31 +7,7 @@ Everruns is a **headless AI agent execution platform** built for reliability and
 
 ## Platform Overview
 
-```mermaid
-%%{init: {'look': 'handDrawn'}}%%
-graph LR
-    subgraph Your["🖥️ Your Application"]
-        App[Your App]
-    end
-
-    subgraph Platform["⚡ Everruns Platform"]
-        CP[Control Plane]
-        Workers[Workers]
-    end
-
-    subgraph LLM["🤖 LLM Providers"]
-        Providers[OpenAI / Anthropic / ...]
-    end
-
-    subgraph Admin["🔧 Optional"]
-        UI[Management UI]
-    end
-
-    App -->|REST API / SSE| CP
-    CP <--> Workers
-    Workers --> Providers
-    UI -.->|Admin| CP
-```
+![Platform Overview](../images/architecture/platform-overview.png)
 
 ## Key Design Principles
 
@@ -55,18 +31,7 @@ Central coordinator that exposes the REST API and manages all state in PostgreSQ
 
 ### Workers
 
-Stateless executors that run the agentic loop:
-
-```mermaid
-%%{init: {'look': 'handDrawn'}}%%
-graph LR
-    Input[📥 Get Input] --> Reason[🧠 Reason]
-    Reason --> Act[🔧 Act]
-    Act --> Reason
-    Act --> Done[✅ Complete]
-```
-
-Workers are:
+Stateless executors that run agentic loops composed from atoms (Input → Reason → Act). Workers are:
 - **Scalable** - Add more to handle concurrent sessions
 - **Fault-tolerant** - Failed tasks automatically recovered
 - **Stateless** - All state lives in PostgreSQL
