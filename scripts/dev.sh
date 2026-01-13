@@ -515,8 +515,8 @@ case "$command" in
       echo "   ⚠️  Agent upload failed"
     fi
 
-    # Start Worker in background with auto-reload (Temporal mode)
-    echo "7️⃣  Starting Temporal worker with auto-reload..."
+    # Start Worker in background with auto-reload
+    echo "7️⃣  Starting worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
