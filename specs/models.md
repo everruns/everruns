@@ -194,10 +194,22 @@ The primary data store for conversation messages and SSE notifications.
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
 | `session_id` | UUID v7 | Parent session reference |
-| `sequence` | integer | Order within session |
+| `sequence` | integer | Order within session (atomically allocated) |
 | `event_type` | string | Type of notification (see below) |
 | `data` | JSON | Event-specific payload |
-| `created_at` | timestamp | Event time |
+| `context` | JSON | Correlation context (turn_id, input_message_id, exec_id) |
+| `metadata` | JSON | Arbitrary metadata |
+| `tags` | string[] | Tags for filtering |
+| `ts` | timestamp | Event timestamp |
+| `created_at` | timestamp | Storage time |
+
+**Storage Guarantees:**
+
+1. **Append-Only** - Events are immutable. UPDATE and DELETE operations are blocked at the database level via triggers. Any attempt to modify existing events will fail with error "events are append-only".
+
+2. **Atomic Per-Session Sequence** - Sequence numbers are allocated atomically per session using a dedicated `event_sequences` table. This prevents race conditions during concurrent writes that could occur with `MAX(sequence)+1` approach.
+
+3. **Event Type Consistency** - The `event_type` field must match the type indicated by the `data` payload. This is validated at the service layer before storage. Raw/legacy events are exempt from this check.
 
 **Event Type Naming Convention:**
 
@@ -212,7 +224,6 @@ This convention ensures consistent, predictable event type names across the syst
 1. **Message Events** - Primary conversation data (stored in `data` field)
    - `message.user` - User message
    - `message.agent` - Agent response (from LLM, may contain tool calls in content)
-   - `message.tool_result` - Tool execution result
 
 2. **Turn Events** - Turn lifecycle notifications
    - `turn.started` - Turn execution started
@@ -228,13 +239,19 @@ This convention ensures consistent, predictable event type names across the syst
 
 4. **Tool Events** - Individual tool execution
    - `tool.call_started` - Tool execution began
-   - `tool.call_completed` - Tool execution finished (includes result)
+   - `tool.call_completed` - Tool execution finished (includes result, used for message reconstruction)
 
 5. **LLM Events** - LLM API visibility
    - `llm.generation` - Full LLM API call with messages and response
 
 6. **Session Events** - Session lifecycle
    - `session.started` - Session began processing
+   - `session.activated` - Session activated for processing
+   - `session.idled` - Session returned to idle state
+
+**Message Reconstruction:**
+
+Messages are reconstructed from events with types: `message.user`, `message.agent`, `tool.call_completed`. Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. Tool results come from `tool.call_completed` events.
 
 ## Flow Example
 
