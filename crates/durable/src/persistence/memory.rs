@@ -937,4 +937,249 @@ mod tests {
         let signals = store.get_pending_signals(workflow_id).await.unwrap();
         assert_eq!(signals.len(), 0);
     }
+
+    // ========================================================================
+    // Task ownership verification tests (duplicate scheduling prevention)
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_complete_task_wrong_worker_rejected() {
+        // Scenario: Worker A claims task, Worker B tries to complete it
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "step-1".to_string(),
+                activity_type: "test_activity".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Worker A claims the task
+        let claimed = store
+            .claim_task("worker-A", &["test_activity".to_string()], 1)
+            .await
+            .unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].id, task_id);
+
+        // Worker B tries to complete the task (should fail)
+        let result = store
+            .complete_task(task_id, "worker-B", serde_json::json!({"result": "ok"}))
+            .await;
+
+        assert!(
+            matches!(result, Err(StoreError::TaskNotOwned(_))),
+            "Expected TaskNotOwned error, got: {:?}",
+            result
+        );
+
+        // Worker A can still complete it
+        store
+            .complete_task(task_id, "worker-A", serde_json::json!({"result": "ok"}))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_already_completed_rejected() {
+        // Scenario: Worker A completes task, then tries to complete again
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "step-1".to_string(),
+                activity_type: "test_activity".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Claim and complete
+        store
+            .claim_task("worker-A", &["test_activity".to_string()], 1)
+            .await
+            .unwrap();
+
+        store
+            .complete_task(task_id, "worker-A", serde_json::json!({"result": "ok"}))
+            .await
+            .unwrap();
+
+        // Try to complete again (should fail)
+        let result = store
+            .complete_task(task_id, "worker-A", serde_json::json!({"result": "ok2"}))
+            .await;
+
+        assert!(
+            matches!(result, Err(StoreError::TaskNotOwned(_))),
+            "Expected TaskNotOwned error for already completed task, got: {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_two_workers_race_condition_prevented() {
+        // Scenario: Simulates the race condition that causes duplicate atoms
+        // 1. Worker A claims task
+        // 2. Task heartbeat times out, task is reclaimed (simulated by failing)
+        // 3. Worker B claims the same task
+        // 4. Worker B completes the task
+        // 5. Worker A tries to complete (should be rejected)
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "act-1".to_string(),
+                activity_type: "act".to_string(),
+                input: serde_json::json!({"step": 1}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Step 1: Worker A claims the task
+        let claimed_a = store
+            .claim_task("worker-A", &["act".to_string()], 1)
+            .await
+            .unwrap();
+        assert_eq!(claimed_a.len(), 1);
+
+        // Step 2: Simulate heartbeat timeout - task goes back to pending
+        // (In real scenario, reclaim_stale_tasks would do this)
+        {
+            let mut tasks = store.tasks.write();
+            let task = tasks.get_mut(&task_id).unwrap();
+            task.status = TaskStatus::Pending;
+            task.claimed_by = None;
+        }
+
+        // Step 3: Worker B claims the same task
+        let claimed_b = store
+            .claim_task("worker-B", &["act".to_string()], 1)
+            .await
+            .unwrap();
+        assert_eq!(claimed_b.len(), 1);
+        assert_eq!(claimed_b[0].id, task_id);
+
+        // Step 4: Worker B completes the task successfully
+        store
+            .complete_task(task_id, "worker-B", serde_json::json!({"result": "from B"}))
+            .await
+            .unwrap();
+
+        // Step 5: Worker A (late) tries to complete - should be REJECTED
+        let result_a = store
+            .complete_task(task_id, "worker-A", serde_json::json!({"result": "from A"}))
+            .await;
+
+        assert!(
+            matches!(result_a, Err(StoreError::TaskNotOwned(_))),
+            "Worker A should be rejected since task was reclaimed and completed by Worker B. Got: {:?}",
+            result_a
+        );
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_scheduling_prevention_workflow() {
+        // End-to-end scenario testing the fix prevents duplicate atom scheduling
+        // This simulates the full workflow that was causing duplicate atoms
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(
+                workflow_id,
+                "message_processing",
+                serde_json::json!({}),
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Enqueue an "act" task (triggered by user message)
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "act-0".to_string(),
+                activity_type: "act".to_string(),
+                input: serde_json::json!({"message": "hello"}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Worker A claims and starts processing
+        let _ = store
+            .claim_task("worker-A", &["act".to_string()], 1)
+            .await
+            .unwrap();
+
+        // Simulate: Worker A takes too long, task reclaimed
+        {
+            let mut tasks = store.tasks.write();
+            let task = tasks.get_mut(&task_id).unwrap();
+            task.status = TaskStatus::Pending;
+            task.claimed_by = None;
+        }
+
+        // Worker B claims and completes
+        let _ = store
+            .claim_task("worker-B", &["act".to_string()], 1)
+            .await
+            .unwrap();
+
+        // Worker B completes successfully
+        let result_b = store
+            .complete_task(
+                task_id,
+                "worker-B",
+                serde_json::json!({"turn_complete": true}),
+            )
+            .await;
+        assert!(result_b.is_ok(), "Worker B should complete successfully");
+
+        // Now we simulate what WOULD happen in the old buggy code:
+        // Worker A finishes processing and tries to complete
+        let result_a = store
+            .complete_task(
+                task_id,
+                "worker-A",
+                serde_json::json!({"turn_complete": true}),
+            )
+            .await;
+
+        // The fix ensures Worker A is REJECTED
+        assert!(
+            matches!(result_a, Err(StoreError::TaskNotOwned(_))),
+            "Worker A must be rejected to prevent duplicate atom scheduling"
+        );
+
+        // In the real workflow, after complete_task fails, the worker
+        // should NOT call schedule_next_activity, preventing duplicate atoms
+    }
 }
