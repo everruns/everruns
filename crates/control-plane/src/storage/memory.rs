@@ -493,11 +493,7 @@ impl InMemoryDatabase {
 
     pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
         // Match PostgreSQL's filter: message.user, message.agent, tool.call_completed
-        let message_types = [
-            "message.user",
-            "message.agent",
-            "tool.call_completed",
-        ];
+        let message_types = ["message.user", "message.agent", "tool.call_completed"];
         let events = self.events.read();
         let mut result: Vec<_> = events
             .values()

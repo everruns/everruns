@@ -1203,7 +1203,10 @@ async fn test_no_duplicate_events_on_tool_execution() {
 
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
-    println!("Created agent: {} with capabilities: {:?}", agent.id, agent.capabilities);
+    println!(
+        "Created agent: {} with capabilities: {:?}",
+        agent.id, agent.capabilities
+    );
 
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
@@ -1306,7 +1309,10 @@ async fn test_no_duplicate_events_on_tool_execution() {
     let mut events_by_type: HashMap<String, Vec<&Value>> = HashMap::new();
     for event in events {
         let event_type = event["type"].as_str().unwrap_or("unknown");
-        events_by_type.entry(event_type.to_string()).or_default().push(event);
+        events_by_type
+            .entry(event_type.to_string())
+            .or_default()
+            .push(event);
     }
 
     // Print event summary
@@ -1318,7 +1324,10 @@ async fn test_no_duplicate_events_on_tool_execution() {
     // Check for duplicate message.agent events
     let empty_vec: Vec<&Value> = vec![];
     let agent_messages = events_by_type.get("message.agent").unwrap_or(&empty_vec);
-    println!("\nChecking {} message.agent events for duplicates...", agent_messages.len());
+    println!(
+        "\nChecking {} message.agent events for duplicates...",
+        agent_messages.len()
+    );
 
     // Build a map of message content to count occurrences
     let mut message_content_counts: HashMap<String, Vec<String>> = HashMap::new();
@@ -1348,7 +1357,9 @@ async fn test_no_duplicate_events_on_tool_execution() {
     }
 
     // Check for duplicate tool.call_completed events
-    let tool_completed_events = events_by_type.get("tool.call_completed").unwrap_or(&empty_vec);
+    let tool_completed_events = events_by_type
+        .get("tool.call_completed")
+        .unwrap_or(&empty_vec);
     println!(
         "\nChecking {} tool.call_completed events for duplicates...",
         tool_completed_events.len()

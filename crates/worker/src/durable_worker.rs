@@ -315,10 +315,12 @@ impl DurableWorker {
                     .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
                 let res = match task.activity_type.as_str() {
                     "process_input" => {
-                        self.execute_input_activity(grpc_client, &turn_input, task.id).await
+                        self.execute_input_activity(grpc_client, &turn_input, task.id)
+                            .await
                     }
                     "reason" => {
-                        self.execute_reason_activity(grpc_client, &turn_input, task.id).await
+                        self.execute_reason_activity(grpc_client, &turn_input, task.id)
+                            .await
                     }
                     _ => unreachable!(),
                 };
@@ -337,7 +339,9 @@ impl DurableWorker {
                     turn_id: act_input.context.turn_id, // Preserve turn_id for follow-up activities
                 };
                 // Pass task.id as exec_id for deterministic execution context
-                let res = self.execute_act_activity(grpc_client, &task.input, task.id).await;
+                let res = self
+                    .execute_act_activity(grpc_client, &task.input, task.id)
+                    .await;
                 (res, Some(turn_input))
             }
             _ => (
@@ -547,12 +551,7 @@ impl DurableWorker {
                     let act_input_json = serde_json::to_value(&act_input)?;
 
                     store
-                        .enqueue_task(
-                            workflow_id,
-                            activity_id,
-                            "act".to_string(),
-                            act_input_json,
-                        )
+                        .enqueue_task(workflow_id, activity_id, "act".to_string(), act_input_json)
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
 
