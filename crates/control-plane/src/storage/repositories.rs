@@ -335,6 +335,33 @@ impl Database {
         Ok(row)
     }
 
+    /// Create agent with a specific ID, idempotent (ON CONFLICT DO NOTHING)
+    /// Returns None if agent already exists with this ID
+    pub async fn create_agent_with_id(
+        &self,
+        id: Uuid,
+        input: CreateAgentRow,
+    ) -> Result<Option<AgentRow>> {
+        let row = sqlx::query_as::<_, AgentRow>(
+            r#"
+            INSERT INTO agents (id, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'active')
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.system_prompt)
+        .bind(input.default_model_id)
+        .bind(&input.tags)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"

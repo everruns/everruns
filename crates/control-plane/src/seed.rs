@@ -2,15 +2,25 @@
 // Decision: Always seed on startup (no flag needed)
 // Decision: Run in background task (non-blocking)
 // Decision: Failures are non-fatal (log warning, continue)
-// Decision: Check by name before insert to prevent duplicates
-// Decision: Retry on transient database errors
+// Decision: Use fixed UUIDs for idempotency (ON CONFLICT DO NOTHING)
 
 use everruns_control_plane::storage::{models::CreateAgentRow, StorageBackend};
 use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
+
+/// Well-known UUIDs for seed agents (following the pattern from providers)
+/// Format: 01933b5a-0000-7000-8000-0000000001xx
+mod seed_ids {
+    use uuid::Uuid;
+
+    pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
+    pub const RESEARCH_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000102);
+}
 
 /// Seed agent definition
 struct SeedAgent {
+    id: Uuid,
     name: &'static str,
     description: &'static str,
     system_prompt: &'static str,
@@ -21,6 +31,7 @@ struct SeedAgent {
 /// Built-in seed agents
 const SEED_AGENTS: &[SeedAgent] = &[
     SeedAgent {
+        id: seed_ids::DAD_JOKES_AGENT,
         name: "Dad Jokes Agent",
         description: "A friendly agent that tells dad jokes and knows what time it is.",
         system_prompt: r#"You are a friendly Dad Jokes Agent. Your purpose is to make people smile with
@@ -41,6 +52,7 @@ Example jokes you might tell:
         capabilities: &["current_time"],
     },
     SeedAgent {
+        id: seed_ids::RESEARCH_AGENT,
         name: "Research Agent",
         description: "An agent specialized in conducting thorough technical research with organized note-taking",
         system_prompt: r#"You are an expert research analyst. Your role is to conduct thorough research on
@@ -152,7 +164,10 @@ async fn run_seed_with_retry(db: &StorageBackend) -> Result<(usize, usize), Stri
 
                 retry_count += 1;
                 if retry_count > MAX_RETRIES {
-                    return Err(format!("Failed after {} retries: {}", MAX_RETRIES, error_str));
+                    return Err(format!(
+                        "Failed after {} retries: {}",
+                        MAX_RETRIES, error_str
+                    ));
                 }
 
                 tracing::debug!(
@@ -171,33 +186,25 @@ async fn run_seed_with_retry(db: &StorageBackend) -> Result<(usize, usize), Stri
     }
 }
 
-/// Seed agents into the database, skipping existing ones
+/// Seed agents into the database using fixed UUIDs (idempotent)
+/// Uses ON CONFLICT DO NOTHING for atomic idempotency
 async fn seed_agents(db: &StorageBackend) -> anyhow::Result<(usize, usize)> {
     let mut created = 0;
     let mut skipped = 0;
 
     for seed in SEED_AGENTS {
-        // Check if agent with this name already exists
-        // Note: This is not atomic, so two instances could race.
-        // Worst case: duplicate agents (rare, user can clean up)
-        match db.get_agent_by_name(seed.name).await? {
-            Some(_) => {
-                tracing::debug!(name = seed.name, "Agent already exists, skipping");
-                skipped += 1;
-            }
-            None => {
-                // Create the agent
-                let input = CreateAgentRow {
-                    name: seed.name.to_string(),
-                    description: Some(seed.description.to_string()),
-                    system_prompt: seed.system_prompt.to_string(),
-                    default_model_id: None,
-                    tags: seed.tags.iter().map(|s| s.to_string()).collect(),
-                };
+        let input = CreateAgentRow {
+            name: seed.name.to_string(),
+            description: Some(seed.description.to_string()),
+            system_prompt: seed.system_prompt.to_string(),
+            default_model_id: None,
+            tags: seed.tags.iter().map(|s| s.to_string()).collect(),
+        };
 
-                let row = db.create_agent(input).await?;
-                let agent_id = row.id;
-
+        // Use create_agent_with_id which does ON CONFLICT DO NOTHING
+        // Returns None if agent already exists
+        match db.create_agent_with_id(seed.id, input).await? {
+            Some(row) => {
                 // Set capabilities if any
                 if !seed.capabilities.is_empty() {
                     let cap_tuples: Vec<(String, i32)> = seed
@@ -206,11 +213,15 @@ async fn seed_agents(db: &StorageBackend) -> anyhow::Result<(usize, usize)> {
                         .enumerate()
                         .map(|(idx, cap)| (cap.to_string(), idx as i32))
                         .collect();
-                    db.set_agent_capabilities(agent_id, cap_tuples).await?;
+                    db.set_agent_capabilities(row.id, cap_tuples).await?;
                 }
 
-                tracing::info!(name = seed.name, id = %agent_id, "Created seed agent");
+                tracing::info!(name = seed.name, id = %seed.id, "Created seed agent");
                 created += 1;
+            }
+            None => {
+                tracing::debug!(name = seed.name, id = %seed.id, "Agent already exists, skipping");
+                skipped += 1;
             }
         }
     }
