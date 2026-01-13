@@ -3,20 +3,98 @@
 // Decision: Run in background task (non-blocking)
 // Decision: Failures are non-fatal (log warning, continue)
 // Decision: Use fixed UUIDs for idempotency (ON CONFLICT DO NOTHING)
+// Decision: Modular design allows easy addition of new seeders
 
-use everruns_control_plane::storage::{models::CreateAgentRow, StorageBackend};
+use everruns_control_plane::storage::{
+    models::{CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow},
+    StorageBackend,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// Well-known UUIDs for seed agents (following the pattern from providers)
+/// Well-known UUIDs for seed data
 /// Format: 01933b5a-0000-7000-8000-0000000001xx
+/// Range allocation:
+///   - 0x001-0x0FF: LLM Providers
+///   - 0x100-0x1FF: Agents
+///   - 0x200-0x2FF: OpenAI Models
+///   - 0x300-0x3FF: Anthropic Models
 mod seed_ids {
     use uuid::Uuid;
 
+    // LLM Providers (0x001-0x0FF)
+    pub const OPENAI_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000001);
+    pub const ANTHROPIC_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000002);
+
+    // Agents (0x100-0x1FF)
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
     pub const RESEARCH_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000102);
+
+    // OpenAI Models (0x200-0x2FF)
+    pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
+    pub const GPT_5_2_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000202);
+    pub const GPT_5_2_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000203);
+    pub const GPT_5_2_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000204);
+    pub const GPT_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000205);
+    pub const GPT_5_1_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000206);
+    pub const GPT_5_1_CODEX_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000207);
+    pub const GPT_5_1_CODEX_MAX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000208);
+    pub const GPT_5_1_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000209);
+    pub const GPT_5_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020a);
+    pub const GPT_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020b);
+    pub const GPT_5_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020c);
+    pub const GPT_5_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020d);
+    pub const GPT_5_CODEX: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020e);
+    pub const GPT_5_CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000020f);
+    pub const GPT_4_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000210);
+    pub const GPT_4_1_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000211);
+    pub const GPT_4_1_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000212);
+    pub const GPT_4O: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000213);
+    pub const GPT_4O_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000214);
+    pub const O4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000215);
+    pub const O4_MINI_DEEP_RESEARCH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000216);
+    pub const O3: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000217);
+    pub const O3_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000218);
+    pub const O3_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000219);
+    pub const O3_DEEP_RESEARCH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021a);
+    pub const O1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021b);
+    pub const O1_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021c);
+    pub const O1_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021d);
+    pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
+
+    // Anthropic Models (0x300-0x3FF)
+    pub const CLAUDE_OPUS_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000301);
+    pub const CLAUDE_SONNET_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000302);
+    pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
+    pub const CLAUDE_OPUS_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000304);
+    pub const CLAUDE_SONNET_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000305);
+    pub const CLAUDE_3_7_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000306);
+    pub const CLAUDE_3_5_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000307);
+    pub const CLAUDE_3_5_HAIKU: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000308);
 }
+
+// ============================================
+// Seeder Result
+// ============================================
+
+/// Result of running a seeder
+#[derive(Debug, Default)]
+struct SeedResult {
+    created: usize,
+    skipped: usize,
+}
+
+impl SeedResult {
+    fn merge(&mut self, other: SeedResult) {
+        self.created += other.created;
+        self.skipped += other.skipped;
+    }
+}
+
+// ============================================
+// Agent Seeder
+// ============================================
 
 /// Seed agent definition
 struct SeedAgent {
@@ -102,6 +180,430 @@ Use this structure for organizing research:
     },
 ];
 
+/// Seed agents into the database
+async fn seed_agents(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    for seed in SEED_AGENTS {
+        let input = CreateAgentRow {
+            name: seed.name.to_string(),
+            description: Some(seed.description.to_string()),
+            system_prompt: seed.system_prompt.to_string(),
+            default_model_id: None,
+            tags: seed.tags.iter().map(|s| s.to_string()).collect(),
+        };
+
+        match db.create_agent_with_id(seed.id, input).await? {
+            Some(row) => {
+                // Set capabilities if any
+                if !seed.capabilities.is_empty() {
+                    let cap_tuples: Vec<(String, i32)> = seed
+                        .capabilities
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, cap)| (cap.to_string(), idx as i32))
+                        .collect();
+                    db.set_agent_capabilities(row.id, cap_tuples).await?;
+                }
+                tracing::info!(name = seed.name, id = %seed.id, "Created seed agent");
+                result.created += 1;
+            }
+            None => {
+                tracing::debug!(name = seed.name, id = %seed.id, "Agent already exists, skipping");
+                result.skipped += 1;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+// ============================================
+// LLM Provider Seeder
+// ============================================
+
+/// Seed LLM provider definition
+struct SeedProvider {
+    id: Uuid,
+    name: &'static str,
+    provider_type: &'static str,
+}
+
+/// Built-in seed providers (matching SQL migration 003_default_providers.sql)
+const SEED_PROVIDERS: &[SeedProvider] = &[
+    SeedProvider {
+        id: seed_ids::OPENAI_PROVIDER,
+        name: "OpenAI",
+        provider_type: "openai",
+    },
+    SeedProvider {
+        id: seed_ids::ANTHROPIC_PROVIDER,
+        name: "Anthropic",
+        provider_type: "anthropic",
+    },
+];
+
+/// Seed LLM providers into the database
+async fn seed_providers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    for seed in SEED_PROVIDERS {
+        let input = CreateLlmProviderRow {
+            name: seed.name.to_string(),
+            provider_type: seed.provider_type.to_string(),
+            base_url: None,
+            api_key_encrypted: None, // No secret in seed data
+            settings: None,
+        };
+
+        match db.create_llm_provider_with_id(seed.id, input).await? {
+            Some(_) => {
+                tracing::info!(name = seed.name, id = %seed.id, "Created seed provider");
+                result.created += 1;
+            }
+            None => {
+                tracing::debug!(name = seed.name, id = %seed.id, "Provider already exists, skipping");
+                result.skipped += 1;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+// ============================================
+// LLM Model Seeder
+// ============================================
+
+/// Seed LLM model definition
+struct SeedModel {
+    id: Uuid,
+    provider_id: Uuid,
+    model_id: &'static str,
+    display_name: &'static str,
+    is_default: bool,
+}
+
+/// Built-in seed models (matching SQL migration 003_default_providers.sql)
+const SEED_MODELS: &[SeedModel] = &[
+    // OpenAI GPT-5.2 series
+    SeedModel {
+        id: seed_ids::GPT_5_2,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.2",
+        display_name: "GPT-5.2",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_2_PRO,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.2-pro",
+        display_name: "GPT-5.2 Pro",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_2_CODEX,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.2-codex",
+        display_name: "GPT-5.2 Codex",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_2_CHAT,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.2-chat-latest",
+        display_name: "GPT-5.2 Chat",
+        is_default: false,
+    },
+    // OpenAI GPT-5.1 series
+    SeedModel {
+        id: seed_ids::GPT_5_1,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.1",
+        display_name: "GPT-5.1",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_1_CODEX,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.1-codex",
+        display_name: "GPT-5.1 Codex",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_1_CODEX_MINI,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.1-codex-mini",
+        display_name: "GPT-5.1 Codex mini",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_1_CODEX_MAX,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.1-codex-max",
+        display_name: "GPT-5.1 Codex max",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_1_CHAT,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.1-chat-latest",
+        display_name: "GPT-5.1 Chat",
+        is_default: false,
+    },
+    // OpenAI GPT-5 series
+    SeedModel {
+        id: seed_ids::GPT_5_MINI,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5-mini",
+        display_name: "GPT-5 mini",
+        is_default: true, // Default model
+    },
+    SeedModel {
+        id: seed_ids::GPT_5,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5",
+        display_name: "GPT-5",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_NANO,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5-nano",
+        display_name: "GPT-5 nano",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_PRO,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5-pro",
+        display_name: "GPT-5 Pro",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_CODEX,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5-codex",
+        display_name: "GPT-5 Codex",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_CHAT,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5-chat-latest",
+        display_name: "GPT-5 Chat",
+        is_default: false,
+    },
+    // OpenAI GPT-4.1 series
+    SeedModel {
+        id: seed_ids::GPT_4_1,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-4.1",
+        display_name: "GPT-4.1",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_4_1_MINI,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-4.1-mini",
+        display_name: "GPT-4.1 mini",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_4_1_NANO,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-4.1-nano",
+        display_name: "GPT-4.1 nano",
+        is_default: false,
+    },
+    // OpenAI GPT-4 series
+    SeedModel {
+        id: seed_ids::GPT_4O,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-4o",
+        display_name: "GPT-4o",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::GPT_4O_MINI,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-4o-mini",
+        display_name: "GPT-4o mini",
+        is_default: false,
+    },
+    // OpenAI Reasoning models (o-series)
+    SeedModel {
+        id: seed_ids::O4_MINI,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o4-mini",
+        display_name: "o4 mini",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O4_MINI_DEEP_RESEARCH,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o4-mini-deep-research",
+        display_name: "o4 mini Deep Research",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O3,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o3",
+        display_name: "o3",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O3_MINI,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o3-mini",
+        display_name: "o3 mini",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O3_PRO,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o3-pro",
+        display_name: "o3 Pro",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O3_DEEP_RESEARCH,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o3-deep-research",
+        display_name: "o3 Deep Research",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O1,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o1",
+        display_name: "o1",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O1_MINI,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o1-mini",
+        display_name: "o1 mini",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O1_PRO,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o1-pro",
+        display_name: "o1 Pro",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::O1_PREVIEW,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "o1-preview",
+        display_name: "o1 Preview",
+        is_default: false,
+    },
+    // Anthropic Claude 4.5 series
+    SeedModel {
+        id: seed_ids::CLAUDE_OPUS_4_5,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-opus-4-5-20251101",
+        display_name: "Claude Opus 4.5",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::CLAUDE_SONNET_4_5,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-sonnet-4-5-20250929",
+        display_name: "Claude Sonnet 4.5",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::CLAUDE_HAIKU_4_5,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-haiku-4-5-20251001",
+        display_name: "Claude Haiku 4.5",
+        is_default: false,
+    },
+    // Anthropic Claude 4 series
+    SeedModel {
+        id: seed_ids::CLAUDE_OPUS_4,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-opus-4-20250514",
+        display_name: "Claude Opus 4",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::CLAUDE_SONNET_4,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-sonnet-4-20250514",
+        display_name: "Claude Sonnet 4",
+        is_default: false,
+    },
+    // Anthropic Claude 3.7
+    SeedModel {
+        id: seed_ids::CLAUDE_3_7_SONNET,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-3-7-sonnet-20250219",
+        display_name: "Claude 3.7 Sonnet",
+        is_default: false,
+    },
+    // Anthropic Claude 3.5
+    SeedModel {
+        id: seed_ids::CLAUDE_3_5_SONNET,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-3-5-sonnet-20241022",
+        display_name: "Claude 3.5 Sonnet",
+        is_default: false,
+    },
+    SeedModel {
+        id: seed_ids::CLAUDE_3_5_HAIKU,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-3-5-haiku-20241022",
+        display_name: "Claude 3.5 Haiku",
+        is_default: false,
+    },
+];
+
+/// Seed LLM models into the database
+async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    for seed in SEED_MODELS {
+        let input = CreateLlmModelRow {
+            provider_id: seed.provider_id,
+            model_id: seed.model_id.to_string(),
+            display_name: seed.display_name.to_string(),
+            capabilities: vec![], // Empty capabilities for now
+            is_default: seed.is_default,
+        };
+
+        match db.create_llm_model_with_id(seed.id, input).await? {
+            Some(_) => {
+                tracing::info!(
+                    model_id = seed.model_id,
+                    id = %seed.id,
+                    "Created seed model"
+                );
+                result.created += 1;
+            }
+            None => {
+                tracing::debug!(
+                    model_id = seed.model_id,
+                    id = %seed.id,
+                    "Model already exists, skipping"
+                );
+                result.skipped += 1;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+// ============================================
+// Seeding Orchestration
+// ============================================
+
 /// Maximum number of retries for transient errors
 const MAX_RETRIES: u32 = 5;
 
@@ -117,22 +619,24 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>) {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         match run_seed_with_retry(&db).await {
-            Ok((created, skipped)) => {
-                if created > 0 {
-                    tracing::info!(created = created, skipped = skipped, "Seeding complete");
+            Ok(result) => {
+                if result.created > 0 {
+                    tracing::info!(
+                        created = result.created,
+                        skipped = result.skipped,
+                        "Seeding complete"
+                    );
                 } else {
-                    tracing::debug!(skipped = skipped, "Seeding complete (all agents exist)");
+                    tracing::debug!(
+                        skipped = result.skipped,
+                        "Seeding complete (all items exist)"
+                    );
                 }
             }
             Err(e) => {
-                // Non-fatal: log warning and continue
-                // This can happen if:
-                // - Migrations haven't been applied yet
-                // - Database is temporarily unavailable
-                // - Schema doesn't exist
                 tracing::warn!(
                     error = %e,
-                    "Seeding failed (non-fatal). Seed agents may not be available."
+                    "Seeding failed (non-fatal). Seed data may not be available."
                 );
             }
         }
@@ -140,12 +644,12 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>) {
 }
 
 /// Run seeding with retry logic for transient errors
-async fn run_seed_with_retry(db: &StorageBackend) -> Result<(usize, usize), String> {
+async fn run_seed_with_retry(db: &StorageBackend) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
 
     loop {
-        match seed_agents(db).await {
+        match seed_all(db).await {
             Ok(result) => return Ok(result),
             Err(e) => {
                 let error_str = e.to_string();
@@ -186,45 +690,37 @@ async fn run_seed_with_retry(db: &StorageBackend) -> Result<(usize, usize), Stri
     }
 }
 
-/// Seed agents into the database using fixed UUIDs (idempotent)
-/// Uses ON CONFLICT DO NOTHING for atomic idempotency
-async fn seed_agents(db: &StorageBackend) -> anyhow::Result<(usize, usize)> {
-    let mut created = 0;
-    let mut skipped = 0;
+/// Run all seeders in order
+/// Providers must be seeded before models (foreign key dependency)
+async fn seed_all(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
 
-    for seed in SEED_AGENTS {
-        let input = CreateAgentRow {
-            name: seed.name.to_string(),
-            description: Some(seed.description.to_string()),
-            system_prompt: seed.system_prompt.to_string(),
-            default_model_id: None,
-            tags: seed.tags.iter().map(|s| s.to_string()).collect(),
-        };
+    // Seed providers first (models depend on providers)
+    let provider_result = seed_providers(db).await?;
+    tracing::debug!(
+        created = provider_result.created,
+        skipped = provider_result.skipped,
+        "Providers seeded"
+    );
+    result.merge(provider_result);
 
-        // Use create_agent_with_id which does ON CONFLICT DO NOTHING
-        // Returns None if agent already exists
-        match db.create_agent_with_id(seed.id, input).await? {
-            Some(row) => {
-                // Set capabilities if any
-                if !seed.capabilities.is_empty() {
-                    let cap_tuples: Vec<(String, i32)> = seed
-                        .capabilities
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, cap)| (cap.to_string(), idx as i32))
-                        .collect();
-                    db.set_agent_capabilities(row.id, cap_tuples).await?;
-                }
+    // Seed models (after providers)
+    let model_result = seed_models(db).await?;
+    tracing::debug!(
+        created = model_result.created,
+        skipped = model_result.skipped,
+        "Models seeded"
+    );
+    result.merge(model_result);
 
-                tracing::info!(name = seed.name, id = %seed.id, "Created seed agent");
-                created += 1;
-            }
-            None => {
-                tracing::debug!(name = seed.name, id = %seed.id, "Agent already exists, skipping");
-                skipped += 1;
-            }
-        }
-    }
+    // Seed agents
+    let agent_result = seed_agents(db).await?;
+    tracing::debug!(
+        created = agent_result.created,
+        skipped = agent_result.skipped,
+        "Agents seeded"
+    );
+    result.merge(agent_result);
 
-    Ok((created, skipped))
+    Ok(result)
 }

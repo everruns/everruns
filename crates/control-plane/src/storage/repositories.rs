@@ -680,6 +680,38 @@ impl Database {
         Ok(row)
     }
 
+    /// Create a provider with a specific ID (for seeding)
+    /// Uses ON CONFLICT DO NOTHING for idempotency
+    /// Returns None if provider already exists
+    pub async fn create_llm_provider_with_id(
+        &self,
+        id: Uuid,
+        input: CreateLlmProviderRow,
+    ) -> Result<Option<LlmProviderRow>> {
+        let api_key_set = input.api_key_encrypted.is_some();
+        let settings = input.settings.unwrap_or(serde_json::json!({}));
+
+        let row = sqlx::query_as::<_, LlmProviderRow>(
+            r#"
+            INSERT INTO llm_providers (id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(&input.name)
+        .bind(&input.provider_type)
+        .bind(&input.base_url)
+        .bind(&input.api_key_encrypted)
+        .bind(api_key_set)
+        .bind(&settings)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
@@ -839,6 +871,36 @@ impl Database {
         .bind(&capabilities_json)
         .bind(input.is_default)
         .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Create a model with a specific ID (for seeding)
+    /// Uses ON CONFLICT DO NOTHING for idempotency
+    /// Returns None if model already exists
+    pub async fn create_llm_model_with_id(
+        &self,
+        id: Uuid,
+        input: CreateLlmModelRow,
+    ) -> Result<Option<LlmModelRow>> {
+        let capabilities_json = serde_json::to_value(&input.capabilities)?;
+
+        let row = sqlx::query_as::<_, LlmModelRow>(
+            r#"
+            INSERT INTO llm_models (id, provider_id, model_id, display_name, capabilities, is_default)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, status, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(input.provider_id)
+        .bind(&input.model_id)
+        .bind(&input.display_name)
+        .bind(&capabilities_json)
+        .bind(input.is_default)
+        .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
