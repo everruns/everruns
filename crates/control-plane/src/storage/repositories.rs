@@ -612,56 +612,6 @@ impl Database {
     }
 
     // ============================================
-    // Event Snapshots
-    // ============================================
-
-    /// Create a new event snapshot for a session at a specific sequence
-    pub async fn create_event_snapshot(
-        &self,
-        input: CreateEventSnapshotRow,
-    ) -> Result<EventSnapshotRow> {
-        let row = sqlx::query_as::<_, EventSnapshotRow>(
-            r#"
-            INSERT INTO event_snapshots (session_id, sequence, schema_version, state)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (session_id, sequence) DO UPDATE
-            SET schema_version = EXCLUDED.schema_version,
-                state = EXCLUDED.state
-            RETURNING id, session_id, sequence, schema_version, state, created_at
-            "#,
-        )
-        .bind(input.session_id)
-        .bind(input.sequence)
-        .bind(input.schema_version)
-        .bind(&input.state)
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
-    /// Get the latest snapshot for a session (highest sequence number)
-    pub async fn get_latest_event_snapshot(
-        &self,
-        session_id: Uuid,
-    ) -> Result<Option<EventSnapshotRow>> {
-        let row = sqlx::query_as::<_, EventSnapshotRow>(
-            r#"
-            SELECT id, session_id, sequence, schema_version, state, created_at
-            FROM event_snapshots
-            WHERE session_id = $1
-            ORDER BY sequence DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(session_id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-
-    // ============================================
     // LLM Providers
     // ============================================
 

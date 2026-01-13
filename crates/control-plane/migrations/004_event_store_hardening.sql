@@ -1,9 +1,8 @@
--- Event Store Hardening: Append-Only + Atomic Sequences + Snapshots
+-- Event Store Hardening: Append-Only + Atomic Sequences
 --
 -- This migration adds:
 -- 1. Trigger to enforce append-only semantics on events table
 -- 2. event_sequences table for atomic per-session sequence allocation
--- 3. event_snapshots table for replay optimization
 
 -- ============================================
 -- 1. Append-Only Events Trigger
@@ -68,28 +67,3 @@ GROUP BY session_id
 ON CONFLICT (session_id) DO UPDATE
 SET next_sequence = EXCLUDED.next_sequence,
     updated_at = NOW();
-
--- ============================================
--- 3. Event Snapshots Table
--- ============================================
--- Stores session state snapshots to speed up replay
-
-CREATE TABLE event_snapshots (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    sequence INTEGER NOT NULL,
-    schema_version INTEGER NOT NULL DEFAULT 1,
-    state JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    -- Unique constraint: one snapshot per session/sequence combination
-    UNIQUE(session_id, sequence)
-);
-
-CREATE INDEX idx_event_snapshots_session_id ON event_snapshots(session_id);
-CREATE INDEX idx_event_snapshots_session_sequence ON event_snapshots(session_id, sequence DESC);
-
-COMMENT ON TABLE event_snapshots IS 'Session state snapshots for replay optimization';
-COMMENT ON COLUMN event_snapshots.sequence IS 'Event sequence number up to which this snapshot represents';
-COMMENT ON COLUMN event_snapshots.schema_version IS 'Schema version for forward compatibility';
-COMMENT ON COLUMN event_snapshots.state IS 'Serialized session state at this sequence';

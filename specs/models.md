@@ -286,34 +286,6 @@ User sends: "How much is 2+2?"
 User can send another message to continue the conversation.
 ```
 
-### EventSnapshot
-
-Stores session state snapshots for replay optimization. Instead of replaying all events from the beginning, replay can start from the most recent snapshot.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `session_id` | UUID v7 | Parent session reference |
-| `sequence` | integer | Event sequence up to which this snapshot represents |
-| `schema_version` | integer | Schema version for forward compatibility (default: 1) |
-| `state` | JSON | Serialized session state at this sequence |
-| `created_at` | timestamp | Creation time |
-
-**Constraints:**
-- One snapshot per session/sequence combination (`UNIQUE(session_id, sequence)`)
-- Snapshots at the same sequence are replaced (upsert semantics)
-
-**Usage:**
-1. Create snapshots periodically during session execution
-2. On replay, find the latest snapshot for the session
-3. Load state from snapshot, then replay events after `snapshot.sequence`
-
-**Schema Versioning:**
-The `schema_version` field enables forward compatibility. When the state format changes:
-1. Increment the schema version constant
-2. Add migration logic to handle older versions during replay
-3. Old snapshots remain valid until explicitly migrated
-
 ### Capability
 
 Modular functionality that can be enabled on Agents. Capabilities contribute to system prompts, provide tools, and modify agent behavior.

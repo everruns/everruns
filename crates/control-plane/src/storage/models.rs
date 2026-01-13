@@ -212,28 +212,6 @@ pub struct CreateEventRow {
 }
 
 // ============================================
-// Event Snapshot models (for replay optimization)
-// ============================================
-
-#[derive(Debug, Clone, FromRow)]
-pub struct EventSnapshotRow {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub sequence: i32,
-    pub schema_version: i32,
-    pub state: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateEventSnapshotRow {
-    pub session_id: Uuid,
-    pub sequence: i32,
-    pub schema_version: i32,
-    pub state: serde_json::Value,
-}
-
-// ============================================
 // LLM Provider types
 // ============================================
 
