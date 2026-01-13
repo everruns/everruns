@@ -31,11 +31,7 @@ Central coordinator that exposes the REST API and manages all state in PostgreSQ
 
 ### Workers
 
-Stateless executors that run the agentic loop:
-
-![Agentic Loop](../images/architecture/agentic-loop.png)
-
-Workers are:
+Stateless executors that run agentic loops composed from atoms (Input → Reason → Act). Workers are:
 - **Scalable** - Add more to handle concurrent sessions
 - **Fault-tolerant** - Failed tasks automatically recovered
 - **Stateless** - All state lives in PostgreSQL
