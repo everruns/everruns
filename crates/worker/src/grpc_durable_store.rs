@@ -256,14 +256,15 @@ impl GrpcDurableStore {
         Ok(())
     }
 
-    /// Deregister this worker
-    pub async fn deregister_worker(&mut self, worker_id: &str) -> Result<()> {
+    /// Deregister this worker and reclaim all its tasks
+    /// Returns the number of tasks that were reclaimed (set back to pending)
+    pub async fn deregister_worker(&mut self, worker_id: &str) -> Result<usize> {
         let request = DeregisterDurableWorkerRequest {
             worker_id: worker_id.to_string(),
         };
 
-        self.client.deregister_durable_worker(request).await?;
-        Ok(())
+        let response = self.client.deregister_durable_worker(request).await?;
+        Ok(response.into_inner().tasks_reclaimed as usize)
     }
 }
 

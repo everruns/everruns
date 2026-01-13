@@ -1299,13 +1299,22 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let store = self.durable_store()?;
 
-        store.deregister_worker(&req.worker_id).await.map_err(|e| {
+        let tasks_reclaimed = store.deregister_worker(&req.worker_id).await.map_err(|e| {
             tracing::error!("Failed to deregister worker: {}", e);
             Status::internal("Failed to deregister worker")
         })?;
 
+        if tasks_reclaimed > 0 {
+            tracing::info!(
+                worker_id = %req.worker_id,
+                tasks_reclaimed,
+                "Worker deregistered with task reclamation"
+            );
+        }
+
         Ok(Response::new(DeregisterDurableWorkerResponse {
             deregistered: true,
+            tasks_reclaimed: tasks_reclaimed as i32,
         }))
     }
 }

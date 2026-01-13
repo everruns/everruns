@@ -10,7 +10,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
-use tracing::{debug, error, instrument};
+use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
 use super::store::{
@@ -805,7 +805,29 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
-    async fn deregister_worker(&self, worker_id: &str) -> Result<(), StoreError> {
+    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
+        // Reclaim all tasks claimed by this worker (set back to pending)
+        // This allows immediate task reassignment instead of waiting for heartbeat timeout
+        let reclaimed = sqlx::query(
+            r#"
+            UPDATE durable_task_queue
+            SET status = 'pending',
+                claimed_by = NULL,
+                claimed_at = NULL
+            WHERE status = 'claimed'
+              AND claimed_by = $1
+            "#,
+        )
+        .bind(worker_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to reclaim worker tasks: {}", e);
+            StoreError::Database(e.to_string())
+        })?
+        .rows_affected() as usize;
+
+        // Mark worker as stopped
         sqlx::query(
             r#"
             UPDATE durable_workers
@@ -821,8 +843,16 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        debug!(worker_id, "deregistered worker");
-        Ok(())
+        if reclaimed > 0 {
+            info!(
+                worker_id,
+                reclaimed, "deregistered worker and reclaimed tasks"
+            );
+        } else {
+            debug!(worker_id, "deregistered worker (no tasks to reclaim)");
+        }
+
+        Ok(reclaimed)
     }
 
     #[instrument(skip(self, error_history))]

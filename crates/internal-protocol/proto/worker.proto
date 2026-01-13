@@ -590,4 +590,6 @@ message DeregisterDurableWorkerRequest {
 
 message DeregisterDurableWorkerResponse {
     bool deregistered = 1;
+    // Number of tasks that were reclaimed (set back to pending) during deregistration
+    int32 tasks_reclaimed = 2;
 }
