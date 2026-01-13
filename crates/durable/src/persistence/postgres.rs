@@ -1396,7 +1396,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     ) -> Result<Vec<WorkflowEventInfo>, StoreError> {
         let rows = sqlx::query(
             r#"
-            SELECT sequence_num, event_type, event_data, created_at
+            SELECT id, workflow_id, sequence_num, event_type, event_data, created_at
             FROM durable_workflow_events
             WHERE workflow_id = $1
             ORDER BY sequence_num
@@ -1413,6 +1413,8 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let events = rows
             .into_iter()
             .map(|row| WorkflowEventInfo {
+                id: row.get("id"),
+                workflow_id: row.get("workflow_id"),
                 sequence_num: row.get("sequence_num"),
                 event_type: row.get("event_type"),
                 event_data: row.get("event_data"),

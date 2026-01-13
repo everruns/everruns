@@ -210,6 +210,8 @@ pub struct SystemHealth {
 /// Workflow event info for API responses
 #[derive(Debug, Clone)]
 pub struct WorkflowEventInfo {
+    pub id: i64,
+    pub workflow_id: Uuid,
     pub sequence_num: i32,
     pub event_type: String,
     pub event_data: serde_json::Value,
@@ -576,6 +578,8 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(events
             .into_iter()
             .map(|(seq, event)| WorkflowEventInfo {
+                id: seq as i64, // Use sequence as id fallback
+                workflow_id,
                 sequence_num: seq,
                 event_type: event_type_name(&event).to_string(),
                 event_data: serde_json::to_value(&event).unwrap_or_default(),
