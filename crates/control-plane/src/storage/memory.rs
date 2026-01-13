@@ -492,11 +492,11 @@ impl InMemoryDatabase {
     }
 
     pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
+        // Match PostgreSQL's filter: message.user, message.agent, tool.call_completed
         let message_types = [
             "message.user",
-            "message.assistant",
-            "message.tool_call",
-            "message.tool_result",
+            "message.agent",
+            "tool.call_completed",
         ];
         let events = self.events.read();
         let mut result: Vec<_> = events
@@ -508,6 +508,29 @@ impl InMemoryDatabase {
             .collect();
         result.sort_by_key(|e| e.sequence);
         Ok(result)
+    }
+
+    /// Find an event by session_id, exec_id (from context), and event_type
+    /// Used for idempotency checking to prevent duplicate events on activity retries.
+    pub async fn find_event_by_exec_id(
+        &self,
+        session_id: Uuid,
+        exec_id: Uuid,
+        event_type: &str,
+    ) -> Result<Option<EventRow>> {
+        let events = self.events.read();
+        let result = events.values().find(|e| {
+            if e.session_id != session_id || e.event_type != event_type {
+                return false;
+            }
+            // Extract exec_id from context JSON
+            if let Some(context_exec_id) = e.context.get("exec_id").and_then(|v| v.as_str()) {
+                context_exec_id == exec_id.to_string()
+            } else {
+                false
+            }
+        });
+        Ok(result.cloned())
     }
 
     // ============================================

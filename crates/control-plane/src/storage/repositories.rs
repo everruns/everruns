@@ -611,6 +611,35 @@ impl Database {
         Ok(rows)
     }
 
+    /// Find an event by session_id, exec_id (from context), and event_type
+    /// Used for idempotency checking to prevent duplicate events on activity retries.
+    ///
+    /// Queries the context JSONB column for the exec_id value.
+    pub async fn find_event_by_exec_id(
+        &self,
+        session_id: Uuid,
+        exec_id: Uuid,
+        event_type: &str,
+    ) -> Result<Option<EventRow>> {
+        let row = sqlx::query_as::<_, EventRow>(
+            r#"
+            SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+            FROM events
+            WHERE session_id = $1
+              AND event_type = $2
+              AND context->>'exec_id' = $3
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .bind(event_type)
+        .bind(exec_id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     // ============================================
     // LLM Providers
     // ============================================

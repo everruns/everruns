@@ -293,6 +293,20 @@ impl StorageBackend {
         }
     }
 
+    /// Find an event by session_id, exec_id, and event_type
+    /// Used for idempotency checking to prevent duplicate events
+    pub async fn find_event_by_exec_id(
+        &self,
+        session_id: Uuid,
+        exec_id: Uuid,
+        event_type: &str,
+    ) -> Result<Option<EventRow>> {
+        match self {
+            Self::Postgres(db) => db.find_event_by_exec_id(session_id, exec_id, event_type).await,
+            Self::InMemory(db) => db.find_event_by_exec_id(session_id, exec_id, event_type).await,
+        }
+    }
+
     // ============================================
     // LLM Providers
     // ============================================

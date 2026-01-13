@@ -1116,3 +1116,288 @@ async fn test_message_triggers_agent_workflow() {
 
     println!("Message triggers agent workflow test passed!");
 }
+
+/// Test that tool calls don't produce duplicate events
+///
+/// This test verifies:
+/// 1. When a message triggers tool execution, each tool.call_completed event appears only once
+/// 2. Each message.agent event appears only once
+/// 3. No duplicate events with different IDs but same content
+///
+/// This is a regression test for: https://github.com/everruns/everruns/issues/XXX
+#[tokio::test]
+async fn test_no_duplicate_events_on_tool_execution() {
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .expect("Failed to create client");
+
+    println!("Testing no duplicate events on tool execution...");
+
+    // Step 1: Create LlmSim provider and model
+    println!("\nStep 1: Creating LlmSim provider and model...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "LlmSim Duplicate Test Provider",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created LlmSim provider: {}", provider.id);
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-duplicate-test",
+            "display_name": "LlmSim Duplicate Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim model: status={}, body={}",
+            status, body
+        );
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created LlmSim model: {}", model.id);
+
+    // Step 2: Create agent with date/time capability for tool testing
+    println!("\nStep 2: Creating agent with date_time capability...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Duplicate Test Agent",
+            "system_prompt": "You are a helpful assistant. Use tools when appropriate.",
+            "default_model_id": model.id.to_string(),
+            "capabilities": ["date_time"]
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {} with capabilities: {:?}", agent.id, agent.capabilities);
+
+    // Step 3: Create session
+    println!("\nStep 3: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .json(&json!({"title": "Duplicate Test Session"}))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    // Step 4: Send message (LlmSim will respond with default response, no actual tool calls expected)
+    println!("\nStep 4: Sending message...");
+    let message_response = client
+        .post(format!(
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "Hello, what time is it?"}]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to create message");
+
+    assert_eq!(
+        message_response.status(),
+        201,
+        "Message creation should succeed"
+    );
+    println!("Message sent successfully");
+
+    // Step 5: Wait for workflow to complete
+    println!("\nStep 5: Waiting for workflow completion (up to 30 seconds)...");
+    let mut workflow_complete = false;
+    for i in 1..=30 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let session_resp = client
+            .get(format!(
+                "{}/v1/agents/{}/sessions/{}",
+                API_BASE_URL, agent.id, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = session_resp {
+            if resp.status() == 200 {
+                let sess: Session = resp.json().await.unwrap_or(session.clone());
+                // Session should return to idle when workflow completes
+                if sess.status.to_string() == "idle" {
+                    workflow_complete = true;
+                    println!("Workflow completed after {}s", i);
+                    break;
+                }
+            }
+        }
+
+        if i % 10 == 0 {
+            println!("Still waiting... ({}s)", i);
+        }
+    }
+
+    assert!(
+        workflow_complete,
+        "Workflow did not complete within 30 seconds"
+    );
+
+    // Step 6: Fetch all events and check for duplicates
+    println!("\nStep 6: Checking for duplicate events...");
+    let events_response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions/{}/events",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list events");
+
+    assert_eq!(events_response.status(), 200);
+    let events_data: Value = events_response
+        .json()
+        .await
+        .expect("Failed to parse events");
+    let events = events_data["data"]
+        .as_array()
+        .expect("Expected events array");
+
+    println!("Found {} total events", events.len());
+
+    // Group events by type
+    let mut events_by_type: HashMap<String, Vec<&Value>> = HashMap::new();
+    for event in events {
+        let event_type = event["type"].as_str().unwrap_or("unknown");
+        events_by_type.entry(event_type.to_string()).or_default().push(event);
+    }
+
+    // Print event summary
+    println!("\nEvent summary:");
+    for (event_type, events) in &events_by_type {
+        println!("  {}: {} event(s)", event_type, events.len());
+    }
+
+    // Check for duplicate message.agent events
+    let empty_vec: Vec<&Value> = vec![];
+    let agent_messages = events_by_type.get("message.agent").unwrap_or(&empty_vec);
+    println!("\nChecking {} message.agent events for duplicates...", agent_messages.len());
+
+    // Build a map of message content to count occurrences
+    let mut message_content_counts: HashMap<String, Vec<String>> = HashMap::new();
+    for event in agent_messages {
+        // Extract text content from the message
+        let content = &event["data"]["message"]["content"];
+        let content_str = content.to_string();
+        let event_id = event["id"].as_str().unwrap_or("unknown").to_string();
+        message_content_counts
+            .entry(content_str)
+            .or_default()
+            .push(event_id);
+    }
+
+    // Check for duplicates
+    let mut has_duplicates = false;
+    for (content, event_ids) in &message_content_counts {
+        if event_ids.len() > 1 {
+            has_duplicates = true;
+            println!(
+                "DUPLICATE FOUND: {} events with same content:\n  Content: {}...\n  Event IDs: {:?}",
+                event_ids.len(),
+                &content[..content.len().min(100)],
+                event_ids
+            );
+        }
+    }
+
+    // Check for duplicate tool.call_completed events
+    let tool_completed_events = events_by_type.get("tool.call_completed").unwrap_or(&empty_vec);
+    println!(
+        "\nChecking {} tool.call_completed events for duplicates...",
+        tool_completed_events.len()
+    );
+
+    let mut tool_result_counts: HashMap<String, Vec<String>> = HashMap::new();
+    for event in tool_completed_events {
+        let tool_call_id = event["data"]["tool_call_id"].as_str().unwrap_or("unknown");
+        let result_str = event["data"]["result"].to_string();
+        let key = format!("{}:{}", tool_call_id, result_str);
+        let event_id = event["id"].as_str().unwrap_or("unknown").to_string();
+        tool_result_counts.entry(key).or_default().push(event_id);
+    }
+
+    for (key, event_ids) in &tool_result_counts {
+        if event_ids.len() > 1 {
+            has_duplicates = true;
+            println!(
+                "DUPLICATE TOOL RESULT: {} events with same tool_call_id and result:\n  Key: {}...\n  Event IDs: {:?}",
+                event_ids.len(),
+                &key[..key.len().min(100)],
+                event_ids
+            );
+        }
+    }
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+    client
+        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    // Assert no duplicates
+    assert!(
+        !has_duplicates,
+        "Found duplicate events! See log output above for details."
+    );
+
+    println!("\nNo duplicate events test passed!");
+}

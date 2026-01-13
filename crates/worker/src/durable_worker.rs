@@ -307,14 +307,19 @@ impl DurableWorker {
         });
 
         // Execute based on activity type - different activities have different input formats
+        // Use task.id as exec_id to ensure deterministic IDs across retries
         let (result, turn_input_opt) = match task.activity_type.as_str() {
             "process_input" | "reason" => {
                 // These activities use DurableTurnInput
                 let turn_input: DurableTurnInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
                 let res = match task.activity_type.as_str() {
-                    "process_input" => self.execute_input_activity(grpc_client, &turn_input).await,
-                    "reason" => self.execute_reason_activity(grpc_client, &turn_input).await,
+                    "process_input" => {
+                        self.execute_input_activity(grpc_client, &turn_input, task.id).await
+                    }
+                    "reason" => {
+                        self.execute_reason_activity(grpc_client, &turn_input, task.id).await
+                    }
                     _ => unreachable!(),
                 };
                 (res, Some(turn_input))
@@ -324,12 +329,15 @@ impl DurableWorker {
                 let act_input: ActInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
                 // Create DurableTurnInput from ActInput context for scheduling next activity
+                // Preserve turn_id from the act input context
                 let turn_input = DurableTurnInput {
                     session_id: act_input.context.session_id,
                     agent_id: act_input.agent_id, // Pass through agent_id for follow-up reason
                     input_message_id: act_input.context.input_message_id,
+                    turn_id: act_input.context.turn_id, // Preserve turn_id for follow-up activities
                 };
-                let res = self.execute_act_activity(grpc_client, &task.input).await;
+                // Pass task.id as exec_id for deterministic execution context
+                let res = self.execute_act_activity(grpc_client, &task.input, task.id).await;
                 (res, Some(turn_input))
             }
             _ => (
@@ -382,22 +390,30 @@ impl DurableWorker {
     }
 
     /// Execute input processing activity
+    ///
+    /// Uses turn_id from workflow input (consistent across all activities in a turn)
+    /// Uses task_id as exec_id (deterministic across retries of the same task)
     async fn execute_input_activity(
         &self,
         grpc_client: GrpcClient,
         input: &DurableTurnInput,
+        task_id: Uuid,
     ) -> Result<serde_json::Value> {
         debug!(
             session_id = %input.session_id,
+            turn_id = %input.turn_id,
+            exec_id = %task_id,
             "Executing input activity"
         );
 
         // Create AtomContext for this execution
+        // - turn_id: from workflow input (shared across all activities in this turn)
+        // - exec_id: from task_id (deterministic, won't change on retry)
         let context = AtomContext {
             session_id: input.session_id,
-            turn_id: Uuid::now_v7(),
+            turn_id: input.turn_id,
             input_message_id: input.input_message_id,
-            exec_id: Uuid::now_v7(),
+            exec_id: task_id,
         };
 
         let atom_input = InputAtomInput { context };
@@ -409,22 +425,30 @@ impl DurableWorker {
     }
 
     /// Execute reasoning activity (LLM call)
+    ///
+    /// Uses turn_id from workflow input (consistent across all activities in a turn)
+    /// Uses task_id as exec_id (deterministic across retries of the same task)
     async fn execute_reason_activity(
         &self,
         grpc_client: GrpcClient,
         input: &DurableTurnInput,
+        task_id: Uuid,
     ) -> Result<serde_json::Value> {
         debug!(
             session_id = %input.session_id,
+            turn_id = %input.turn_id,
+            exec_id = %task_id,
             "Executing reason activity"
         );
 
         // Create AtomContext for this execution
+        // - turn_id: from workflow input (shared across all activities in this turn)
+        // - exec_id: from task_id (deterministic, won't change on retry)
         let context = AtomContext {
             session_id: input.session_id,
-            turn_id: Uuid::now_v7(),
+            turn_id: input.turn_id,
             input_message_id: input.input_message_id,
-            exec_id: Uuid::now_v7(),
+            exec_id: task_id,
         };
 
         let reason_input = ReasonInput {
@@ -439,17 +463,26 @@ impl DurableWorker {
     }
 
     /// Execute act activity (tool execution)
+    ///
+    /// Uses turn_id from input context (preserved from workflow)
+    /// Uses task_id as exec_id (deterministic across retries)
     async fn execute_act_activity(
         &self,
         grpc_client: GrpcClient,
         task_input: &serde_json::Value,
+        task_id: Uuid,
     ) -> Result<serde_json::Value> {
         // Parse ActInput from task input
-        let act_input: ActInput = serde_json::from_value(task_input.clone())
+        let mut act_input: ActInput = serde_json::from_value(task_input.clone())
             .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
+
+        // Override exec_id with task_id for deterministic execution context
+        act_input.context.exec_id = task_id;
 
         debug!(
             session_id = %act_input.context.session_id,
+            turn_id = %act_input.context.turn_id,
+            exec_id = %act_input.context.exec_id,
             tool_count = act_input.tool_calls.len(),
             "Executing act activity"
         );
@@ -493,13 +526,19 @@ impl DurableWorker {
 
                 if reason_result.has_tool_calls && reason_result.success {
                     // Schedule act activity to execute the tool calls
+                    // Use deterministic activity_id to create deterministic exec_id
                     let tool_count = reason_result.tool_calls.len();
+                    let activity_id = format!("act_{}", Uuid::now_v7());
+
+                    // Create act input with turn_id from workflow input
+                    // exec_id will be derived from activity_id (deterministic for this activity)
                     let act_input = ActInput {
                         context: AtomContext {
                             session_id: input.session_id,
-                            turn_id: Uuid::now_v7(),
+                            turn_id: input.turn_id, // Use turn_id from workflow input
                             input_message_id: input.input_message_id,
-                            exec_id: Uuid::now_v7(),
+                            // Use a placeholder exec_id - will be overridden when task executes
+                            exec_id: Uuid::nil(),
                         },
                         agent_id: input.agent_id, // Pass through for follow-up reason activity
                         tool_calls: reason_result.tool_calls,
@@ -510,7 +549,7 @@ impl DurableWorker {
                     store
                         .enqueue_task(
                             workflow_id,
-                            format!("act_{}", Uuid::now_v7()),
+                            activity_id,
                             "act".to_string(),
                             act_input_json,
                         )
