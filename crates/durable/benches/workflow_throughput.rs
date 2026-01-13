@@ -515,8 +515,10 @@ fn main() {
             Some(m) => EnvironmentInfo::detect_with_moniker(m),
             None => EnvironmentInfo::detect(),
         };
-        let store =
-            CheckpointStore::new(format!("{}/benches/checkpoints", env!("CARGO_MANIFEST_DIR")));
+        let store = CheckpointStore::new(format!(
+            "{}/benches/checkpoints",
+            env!("CARGO_MANIFEST_DIR")
+        ));
 
         for (name, m) in [
             ("workflow_throughput_target_1000x100", &target),
