@@ -9,6 +9,7 @@ import type {
   ApiKeyListItem,
   ApiKeyResponse,
   CreateApiKeyRequest,
+  ListResponse,
 } from "./types";
 
 /**
@@ -75,8 +76,8 @@ export function getOAuthUrl(provider: string): string {
  * List API keys for current user
  */
 export async function listApiKeys(): Promise<ApiKeyListItem[]> {
-  const { data } = await api.get<ApiKeyListItem[]>("/v1/auth/api-keys");
-  return data;
+  const { data } = await api.get<ListResponse<ApiKeyListItem>>("/v1/auth/api-keys");
+  return data.data;
 }
 
 /**

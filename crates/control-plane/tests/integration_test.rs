@@ -368,10 +368,13 @@ async fn test_llm_model_profile() {
         .expect("Failed to list models");
 
     assert_eq!(list_models_response.status(), 200);
-    let models: Vec<Value> = list_models_response
+    let list_response: Value = list_models_response
         .json()
         .await
         .expect("Failed to parse models response");
+    let models = list_response["data"]
+        .as_array()
+        .expect("Response should have data array");
 
     let gpt4o_model = models
         .iter()
