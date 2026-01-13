@@ -678,9 +678,20 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     ) -> Result<HeartbeatResponse, StoreError>;
 
     /// Complete a task
+    ///
+    /// Verifies that the worker still owns the task (claimed_by matches worker_id
+    /// and status is still 'claimed'). Returns TaskNotOwned error if the task was
+    /// reclaimed by another worker due to heartbeat timeout.
+    ///
+    /// This ownership check prevents duplicate activity scheduling when:
+    /// 1. Worker A claims task and starts execution
+    /// 2. Worker A's heartbeat times out, task is reclaimed
+    /// 3. Worker B claims and completes the task
+    /// 4. Worker A finishes late - complete_task rejects with TaskNotOwned
     async fn complete_task(
         &self,
         task_id: Uuid,
+        worker_id: &str,
         result: serde_json::Value,
     ) -> Result<(), StoreError>;
 

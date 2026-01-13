@@ -270,27 +270,40 @@ impl InProcessWorker {
 
         match result {
             Ok(output) => {
-                // Complete the task
-                self.durable_store
-                    .complete_task(task.id, output.clone())
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to complete task: {}", e))?;
+                // Complete the task - verify we still own it
+                let complete_result = self
+                    .durable_store
+                    .complete_task(task.id, &self.config.worker_id, output.clone())
+                    .await;
 
-                info!(
-                    task_id = %task.id,
-                    activity_type = %task.activity_type,
-                    "Task completed successfully"
-                );
+                match complete_result {
+                    Ok(()) => {
+                        info!(
+                            task_id = %task.id,
+                            activity_type = %task.activity_type,
+                            "Task completed successfully"
+                        );
 
-                // Schedule next activity if needed
-                if let Some(turn_input) = turn_input_opt {
-                    self.schedule_next_activity(
-                        task.workflow_id,
-                        &task.activity_type,
-                        &turn_input,
-                        &output,
-                    )
-                    .await?;
+                        // Schedule next activity if needed
+                        if let Some(turn_input) = turn_input_opt {
+                            self.schedule_next_activity(
+                                task.workflow_id,
+                                &task.activity_type,
+                                &turn_input,
+                                &output,
+                            )
+                            .await?;
+                        }
+                    }
+                    Err(e) => {
+                        // Task was reclaimed - don't schedule next activity
+                        warn!(
+                            task_id = %task.id,
+                            activity_type = %task.activity_type,
+                            error = %e,
+                            "Task completion rejected - skipping next activity"
+                        );
+                    }
                 }
             }
             Err(e) => {
