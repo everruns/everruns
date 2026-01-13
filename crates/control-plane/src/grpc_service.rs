@@ -12,21 +12,23 @@ use everruns_control_plane::services::{
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_durable::{
     ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome,
-    WorkflowError, WorkflowEventStore, WorkflowStatus,
+    WorkerInfo, WorkflowError, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, ClaimDurableTasksRequest,
     ClaimDurableTasksResponse, CommitExecRequest, CommitExecResponse, CompleteDurableTaskRequest,
     CompleteDurableTaskResponse, CountActiveDurableWorkflowsRequest,
     CountActiveDurableWorkflowsResponse, CreateDurableWorkflowRequest,
-    CreateDurableWorkflowResponse, DurableWorkflowStatus, EmitEventRequest, EmitEventResponse,
-    EmitEventStreamResponse, EnqueueDurableTaskRequest, EnqueueDurableTaskResponse,
-    FailDurableTaskRequest, FailDurableTaskResponse, GetAgentRequest, GetAgentResponse,
-    GetDefaultModelRequest, GetDefaultModelResponse, GetDurableWorkflowStatusRequest,
-    GetDurableWorkflowStatusResponse, GetModelWithProviderRequest, GetModelWithProviderResponse,
-    GetSessionRequest, GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse,
-    HeartbeatDurableTaskRequest, HeartbeatDurableTaskResponse, LoadMessagesRequest,
-    LoadMessagesResponse, SessionCreateDirectoryRequest, SessionCreateDirectoryResponse,
+    CreateDurableWorkflowResponse, DeregisterDurableWorkerRequest, DeregisterDurableWorkerResponse,
+    DurableWorkflowStatus, EmitEventRequest, EmitEventResponse, EmitEventStreamResponse,
+    EnqueueDurableTaskRequest, EnqueueDurableTaskResponse, FailDurableTaskRequest,
+    FailDurableTaskResponse, GetAgentRequest, GetAgentResponse, GetDefaultModelRequest,
+    GetDefaultModelResponse, GetDurableWorkflowStatusRequest, GetDurableWorkflowStatusResponse,
+    GetModelWithProviderRequest, GetModelWithProviderResponse, GetSessionRequest,
+    GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse, HeartbeatDurableTaskRequest,
+    HeartbeatDurableTaskResponse, HeartbeatDurableWorkerRequest, HeartbeatDurableWorkerResponse,
+    LoadMessagesRequest, LoadMessagesResponse, RegisterDurableWorkerRequest,
+    RegisterDurableWorkerResponse, SessionCreateDirectoryRequest, SessionCreateDirectoryResponse,
     SessionDeleteFileRequest, SessionDeleteFileResponse, SessionGrepFilesRequest,
     SessionGrepFilesResponse, SessionListDirectoryRequest, SessionListDirectoryResponse,
     SessionReadFileRequest, SessionReadFileResponse, SessionStatFileRequest,
@@ -1235,6 +1237,76 @@ impl WorkerService for WorkerServiceImpl {
         })?;
 
         Ok(Response::new(CountActiveDurableWorkflowsResponse { count }))
+    }
+
+    async fn register_durable_worker(
+        &self,
+        request: Request<RegisterDurableWorkerRequest>,
+    ) -> Result<Response<RegisterDurableWorkerResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        let worker_info = WorkerInfo {
+            id: req.worker_id,
+            worker_group: req.worker_group,
+            activity_types: req.activity_types,
+            max_concurrency: req.max_concurrency as u32,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            started_at: chrono::Utc::now(),
+            last_heartbeat_at: chrono::Utc::now(),
+        };
+
+        store.register_worker(worker_info).await.map_err(|e| {
+            tracing::error!("Failed to register worker: {}", e);
+            Status::internal("Failed to register worker")
+        })?;
+
+        Ok(Response::new(RegisterDurableWorkerResponse {
+            registered: true,
+        }))
+    }
+
+    async fn heartbeat_durable_worker(
+        &self,
+        request: Request<HeartbeatDurableWorkerRequest>,
+    ) -> Result<Response<HeartbeatDurableWorkerResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        store
+            .worker_heartbeat(
+                &req.worker_id,
+                req.current_load as usize,
+                req.accepting_tasks,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to heartbeat worker: {}", e);
+                Status::internal("Failed to heartbeat worker")
+            })?;
+
+        Ok(Response::new(HeartbeatDurableWorkerResponse {
+            acknowledged: true,
+        }))
+    }
+
+    async fn deregister_durable_worker(
+        &self,
+        request: Request<DeregisterDurableWorkerRequest>,
+    ) -> Result<Response<DeregisterDurableWorkerResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        store.deregister_worker(&req.worker_id).await.map_err(|e| {
+            tracing::error!("Failed to deregister worker: {}", e);
+            Status::internal("Failed to deregister worker")
+        })?;
+
+        Ok(Response::new(DeregisterDurableWorkerResponse {
+            deregistered: true,
+        }))
     }
 }
 

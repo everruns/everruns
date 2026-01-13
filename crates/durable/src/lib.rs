@@ -98,11 +98,13 @@ pub mod prelude {
 pub use activity::{Activity, ActivityContext, ActivityError};
 pub use engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
 pub use persistence::{
-    ClaimedTask, HeartbeatResponse, InMemoryWorkflowEventStore, PostgresWorkflowEventStore,
-    StoreError, TaskDefinition, TaskFailureOutcome, TraceContext, WorkflowEventStore, WorkflowInfo,
-    WorkflowStatus,
+    CircuitBreakerState, ClaimedTask, DlqEntry, DlqFilter, HeartbeatResponse,
+    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, StoreError, SystemHealth,
+    TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext,
+    WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo,
+    WorkflowInfoExtended, WorkflowStatus,
 };
-pub use reliability::{CircuitBreakerConfig, RetryPolicy};
+pub use reliability::{CircuitBreakerConfig, CircuitState, RetryPolicy};
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{
     ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,

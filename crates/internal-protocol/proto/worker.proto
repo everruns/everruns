@@ -81,6 +81,15 @@ service WorkerService {
 
     // Count active (non-terminal) workflows
     rpc CountActiveDurableWorkflows(CountActiveDurableWorkflowsRequest) returns (CountActiveDurableWorkflowsResponse);
+
+    // Register a durable worker
+    rpc RegisterDurableWorker(RegisterDurableWorkerRequest) returns (RegisterDurableWorkerResponse);
+
+    // Heartbeat for a durable worker (keeps worker alive)
+    rpc HeartbeatDurableWorker(HeartbeatDurableWorkerRequest) returns (HeartbeatDurableWorkerResponse);
+
+    // Deregister a durable worker
+    rpc DeregisterDurableWorker(DeregisterDurableWorkerRequest) returns (DeregisterDurableWorkerResponse);
 }
 
 // ============================================================================
@@ -546,4 +555,39 @@ message CountActiveDurableWorkflowsRequest {}
 
 message CountActiveDurableWorkflowsResponse {
     int64 count = 1;
+}
+
+// === Register worker ===
+
+message RegisterDurableWorkerRequest {
+    string worker_id = 1;
+    optional string worker_group = 2;
+    repeated string activity_types = 3;
+    int32 max_concurrency = 4;
+}
+
+message RegisterDurableWorkerResponse {
+    bool registered = 1;
+}
+
+// === Heartbeat worker ===
+
+message HeartbeatDurableWorkerRequest {
+    string worker_id = 1;
+    int32 current_load = 2;
+    bool accepting_tasks = 3;
+}
+
+message HeartbeatDurableWorkerResponse {
+    bool acknowledged = 1;
+}
+
+// === Deregister worker ===
+
+message DeregisterDurableWorkerRequest {
+    string worker_id = 1;
+}
+
+message DeregisterDurableWorkerResponse {
+    bool deregistered = 1;
 }
