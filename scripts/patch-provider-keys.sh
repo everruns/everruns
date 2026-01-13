@@ -4,7 +4,7 @@ set -euo pipefail
 # Patch API keys for LLM providers from environment variables
 # Usage: ./scripts/patch-provider-keys.sh [--api-url URL]
 #
-# Providers are created by database migration (003_default_providers.sql).
+# Providers are created by seeding on startup (see seed.rs).
 # This script just updates their API keys.
 #
 # Environment Variables:
@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# Well-known provider UUIDs from migration 003_default_providers.sql
+# Well-known provider UUIDs from seed.rs
 OPENAI_PROVIDER_ID="01933b5a-0000-7000-8000-000000000001"
 ANTHROPIC_PROVIDER_ID="01933b5a-0000-7000-8000-000000000002"
 

@@ -229,7 +229,7 @@ struct SeedProvider {
     provider_type: &'static str,
 }
 
-/// Built-in seed providers (matching SQL migration 003_default_providers.sql)
+/// Built-in seed providers
 const SEED_PROVIDERS: &[SeedProvider] = &[
     SeedProvider {
         id: seed_ids::OPENAI_PROVIDER,
@@ -284,7 +284,7 @@ struct SeedModel {
     is_default: bool,
 }
 
-/// Built-in seed models (matching SQL migration 003_default_providers.sql)
+/// Built-in seed models
 const SEED_MODELS: &[SeedModel] = &[
     // OpenAI GPT-5.2 series
     SeedModel {
