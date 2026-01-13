@@ -96,7 +96,7 @@ case "$command" in
     # Check API is healthy
     if ! curl -s "$API_URL/health" > /dev/null 2>&1; then
       echo "❌ API not reachable at $API_URL"
-      echo "   Start the API first: ./scripts/dev.sh api"
+      echo "   Start the control-plane first: ./scripts/dev.sh control-plane"
       exit 1
     fi
 
@@ -181,8 +181,8 @@ case "$command" in
     echo "✅ All checks passed!"
     ;;
 
-  api)
-    echo "🌐 Starting API server..."
+  control-plane)
+    echo "🌐 Starting control-plane server..."
     # Allow CORS from UI (localhost:9100) for SSE connections
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     cargo run -p everruns-control-plane
@@ -193,8 +193,8 @@ case "$command" in
     cargo run -p everruns-worker
     ;;
 
-  watch-api)
-    echo "👀 Starting API server with auto-reload..."
+  watch-control-plane)
+    echo "👀 Starting control-plane server with auto-reload..."
     if ! command -v cargo-watch &> /dev/null; then
       echo "❌ cargo-watch not installed. Run: cargo install cargo-watch"
       exit 1
@@ -324,32 +324,32 @@ case "$command" in
     export DEV_MODE=true
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
 
-    # Start API in background with auto-reload (dev mode)
-    echo "1️⃣  Starting API server (DEV MODE) with auto-reload..."
+    # Start control-plane in background with auto-reload (dev mode)
+    echo "1️⃣  Starting control-plane (DEV MODE) with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-control-plane' &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
 
-    # Check if API is running
+    # Check if control-plane is running
     if curl -s http://localhost:9000/health > /dev/null 2>&1; then
-      echo "   ✅ API is running (PID: $API_PID)"
+      echo "   ✅ Control-plane is running (PID: $API_PID)"
     else
-      echo "   ⚠️  API compiling (will auto-reload on changes)..."
+      echo "   ⚠️  Control-plane compiling (will auto-reload on changes)..."
     fi
 
-    # Wait for API to be ready
-    echo "2️⃣  Waiting for API to be ready..."
+    # Wait for control-plane to be ready
+    echo "2️⃣  Waiting for control-plane to be ready..."
     for i in {1..30}; do
       if curl -s http://localhost:9000/health > /dev/null 2>&1; then
-        echo "   ✅ API is ready"
+        echo "   ✅ Control-plane is ready"
         break
       fi
       sleep 2
     done
 
-    # Note: Worker is NOT started in dev mode (execution happens in-process)
-    echo "3️⃣  Worker: Not needed in DEV MODE (execution happens in-process)"
+    # Note: Worker runs in-process with control-plane in DEV_MODE
+    echo "3️⃣  Worker: Running in-process with control-plane (no separate worker needed)"
 
     # Start UI in background
     echo "4️⃣  Starting UI server..."
@@ -363,16 +363,18 @@ case "$command" in
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "✅ DEV MODE started (in-memory storage)!"
+    echo "✅ DEV MODE started (fully functional, in-memory storage)!"
     echo ""
-    echo "   🌐 API:         http://localhost:9000 (auto-reload)"
-    echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-    echo "   🖥️  UI:          http://localhost:9100 (hot reload)"
+    echo "   🌐 Control-plane: http://localhost:9000 (auto-reload)"
+    echo "   📖 API Docs:      http://localhost:9000/swagger-ui/"
+    echo "   ⚙️  Worker:        Running in-process (no separate process)"
+    echo "   🖥️  UI:            http://localhost:9100 (hot reload)"
     echo ""
-    echo "⚠️  DEV MODE limitations:"
+    echo "⚠️  DEV MODE notes:"
     echo "   - Data is stored in memory (lost on restart)"
     echo "   - No PostgreSQL or Docker required"
-    echo "   - No separate worker process"
+    echo "   - Worker runs in-process with control-plane"
+    echo "   - Full workflow execution supported"
     echo ""
     echo "👀 Edit code in crates/ and services will auto-restart"
     echo "💡 Press Ctrl+C to stop services"
@@ -798,9 +800,9 @@ Commands:
   test        Run tests
   check       Run format, lint, and test checks
   pre-pr      Run all pre-PR checks (fmt, clippy, tests, UI, OpenAPI, docs)
-  api         Start the API server
-  worker      Start the worker
-  watch-api   Start API with auto-reload on code changes
+  control-plane Start the control-plane server (API + in-process worker in DEV_MODE)
+  worker      Start the worker (not needed in DEV_MODE)
+  watch-control-plane Start control-plane with auto-reload on code changes
   watch-worker Start worker with auto-reload on code changes
   ui          Start the UI development server
   ui-build    Build the UI for production
@@ -821,7 +823,8 @@ Examples:
   $0 start-dev             # Start DEV MODE (no Docker/PostgreSQL needed)
   $0 start-all             # Start everything with auto-reload (requires PostgreSQL)
   $0 pre-pr                # Run all checks before creating a PR
-  $0 watch-api             # Just run API with auto-reload
+  $0 watch-control-plane   # Just run control-plane with auto-reload
+  $0 control-plane         # Run control-plane (use DEV_MODE=true for in-process worker)
   $0 docs                  # Start docs dev server
   $0 durable-bench         # Run benchmarks
   $0 durable-bench-save    # Run benchmarks with checkpointing

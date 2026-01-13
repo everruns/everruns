@@ -15,6 +15,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use everruns_durable::InMemoryWorkflowEventStore;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -61,6 +62,8 @@ pub enum RunnerBackend {
     Postgres(sqlx::PgPool),
     /// Use in-memory storage (dev mode, no database required)
     InMemory,
+    /// Use shared in-memory storage (dev mode with in-process worker)
+    SharedInMemory(Arc<InMemoryWorkflowEventStore>),
     /// Use gRPC to connect to control-plane (for workers)
     Grpc,
 }
@@ -98,6 +101,11 @@ pub async fn create_runner_with_backend(backend: RunnerBackend) -> Result<Arc<dy
         RunnerBackend::InMemory => {
             tracing::info!("Creating Durable execution engine runner (in-memory dev mode)");
             let runner = DurableRunner::new_in_memory();
+            Ok(Arc::new(runner))
+        }
+        RunnerBackend::SharedInMemory(store) => {
+            tracing::info!("Creating Durable execution engine runner (shared in-memory dev mode)");
+            let runner = DurableRunner::new_with_shared_store(store);
             Ok(Arc::new(runner))
         }
         RunnerBackend::Grpc => {

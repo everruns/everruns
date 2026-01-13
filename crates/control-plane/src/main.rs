@@ -10,6 +10,7 @@ mod seed;
 // Use modules from library
 use everruns_control_plane::api;
 use everruns_control_plane::auth;
+use everruns_control_plane::dev_worker::{InProcessWorker, InProcessWorkerConfig};
 use everruns_control_plane::openapi::ApiDoc;
 use everruns_control_plane::services;
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
@@ -84,19 +85,26 @@ async fn main() -> Result<()> {
         .unwrap_or(false);
 
     // Initialize storage backend and runner based on mode
-    let (db, runner) = if dev_mode {
+    // In DEV_MODE, we create a shared InMemoryWorkflowEventStore for both runner and in-process worker
+    let (db, runner, shared_durable_store) = if dev_mode {
         tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
 
         // Create in-memory storage
         let db = Arc::new(StorageBackend::in_memory());
 
-        // Create in-memory runner
-        let runner = create_runner_with_backend(RunnerBackend::InMemory)
-            .await
-            .context("Failed to create in-memory agent runner")?;
+        // Create shared in-memory durable store
+        let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
 
-        tracing::info!("Using in-memory storage and durable execution engine");
-        (db, runner)
+        // Create in-memory runner with shared store
+        let runner =
+            create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store.clone()))
+                .await
+                .context("Failed to create in-memory agent runner")?;
+
+        tracing::info!(
+            "Using in-memory storage and durable execution engine with in-process worker"
+        );
+        (db, runner, Some(shared_store))
     } else {
         // Production mode: require PostgreSQL
         let database_url =
@@ -116,7 +124,7 @@ async fn main() -> Result<()> {
             .context("Failed to create agent runner")?;
 
         tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
-        (Arc::new(backend), runner)
+        (Arc::new(backend), runner, None)
     };
 
     // Spawn seeding in background (non-blocking, non-fatal)
@@ -176,15 +184,17 @@ async fn main() -> Result<()> {
         auth: auth_state.clone(),
     };
     // Create durable execution store based on mode
-    let durable_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>> = if dev_mode {
-        tracing::info!("Using in-memory workflow event store for DEV MODE");
-        Some(Arc::new(InMemoryWorkflowEventStore::new()))
-    } else {
-        db.pool().cloned().map(|p| {
-            Arc::new(PostgresWorkflowEventStore::new(p))
-                as Arc<dyn WorkflowEventStore + Send + Sync>
-        })
-    };
+    // In DEV_MODE, use the shared store; in production, use PostgreSQL
+    let durable_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>> =
+        if let Some(ref shared_store) = shared_durable_store {
+            tracing::info!("Using shared in-memory workflow event store for DEV MODE");
+            Some(shared_store.clone() as Arc<dyn WorkflowEventStore + Send + Sync>)
+        } else {
+            db.pool().cloned().map(|p| {
+                Arc::new(PostgresWorkflowEventStore::new(p))
+                    as Arc<dyn WorkflowEventStore + Send + Sync>
+            })
+        };
     let durable_state = api::durable::AppState::new(durable_store);
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),
@@ -333,7 +343,42 @@ async fn main() -> Result<()> {
             }
         }
     } else {
-        tracing::info!("DEV MODE: gRPC server and stale task reclamation disabled");
+        // DEV MODE: Start in-process worker instead of gRPC server
+        if let Some(shared_store) = shared_durable_store {
+            tracing::info!("DEV MODE: Starting in-process worker for task execution");
+
+            // Create LLM resolver service for the in-process worker
+            let llm_resolver = Arc::new(services::LlmResolverService::new(
+                db.clone(),
+                encryption.clone(),
+            ));
+
+            // Create in-process worker configuration
+            let worker_config = InProcessWorkerConfig::default();
+
+            // Create and spawn the in-process worker
+            let worker_db = db.clone();
+            let worker_event_service = event_service.clone();
+            tokio::spawn(async move {
+                let mut worker = InProcessWorker::new(
+                    worker_config,
+                    shared_store,
+                    worker_db,
+                    worker_event_service,
+                    llm_resolver,
+                );
+
+                if let Err(e) = worker.run().await {
+                    tracing::error!("In-process worker error: {}", e);
+                }
+            });
+
+            tracing::info!(
+                "DEV MODE: In-process worker started - control-plane is fully functional"
+            );
+        } else {
+            tracing::info!("DEV MODE: gRPC server disabled, no in-process worker available");
+        }
     }
 
     // Start HTTP server

@@ -22,6 +22,9 @@ struct WorkflowState {
     error: Option<WorkflowError>,
     events: Vec<WorkflowEvent>,
     signals: Vec<WorkflowSignal>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    started_at: Option<chrono::DateTime<chrono::Utc>>,
+    completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Internal task state
@@ -32,6 +35,8 @@ struct TaskState {
     claimed_by: Option<String>,
     last_error: Option<String>,
     error_history: Vec<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    claimed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Circuit breaker state in memory
@@ -59,6 +64,7 @@ pub struct InMemoryWorkflowEventStore {
     tasks: RwLock<HashMap<Uuid, TaskState>>,
     dlq: RwLock<HashMap<Uuid, DlqEntry>>,
     circuit_breakers: RwLock<HashMap<String, CircuitBreakerMemState>>,
+    workers: RwLock<HashMap<String, WorkerInfo>>,
     #[allow(dead_code)] // Reserved for future global sequence counter
     sequence_counter: AtomicI32,
 }
@@ -71,6 +77,7 @@ impl InMemoryWorkflowEventStore {
             tasks: RwLock::new(HashMap::new()),
             dlq: RwLock::new(HashMap::new()),
             circuit_breakers: RwLock::new(HashMap::new()),
+            workers: RwLock::new(HashMap::new()),
             sequence_counter: AtomicI32::new(0),
         }
     }
@@ -98,6 +105,7 @@ impl InMemoryWorkflowEventStore {
     pub fn clear(&self) {
         self.workflows.write().clear();
         self.tasks.write().clear();
+        self.workers.write().clear();
         self.dlq.write().clear();
     }
 }
@@ -128,6 +136,9 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 error: None,
                 events: vec![],
                 signals: vec![],
+                created_at: Utc::now(),
+                started_at: None,
+                completed_at: None,
             },
         );
         Ok(())
@@ -227,6 +238,8 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 claimed_by: None,
                 last_error: None,
                 error_history: vec![],
+                created_at: Utc::now(),
+                claimed_at: None,
             },
         );
         Ok(task_id)
@@ -251,6 +264,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             {
                 task.status = TaskStatus::Claimed;
                 task.claimed_by = Some(worker_id.to_string());
+                task.claimed_at = Some(Utc::now());
                 task.attempt += 1;
 
                 claimed.push(ClaimedTask {
@@ -444,6 +458,8 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 claimed_by: None,
                 last_error: None,
                 error_history: vec![],
+                created_at: Utc::now(),
+                claimed_at: None,
             },
         );
 
@@ -562,6 +578,153 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             }
         }
         Ok(())
+    }
+
+    // Worker management methods
+    async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
+        let mut workers = self.workers.write();
+        workers.insert(worker.id.clone(), worker);
+        Ok(())
+    }
+
+    async fn worker_heartbeat(
+        &self,
+        worker_id: &str,
+        current_load: usize,
+        accepting_tasks: bool,
+    ) -> Result<(), StoreError> {
+        let mut workers = self.workers.write();
+        if let Some(worker) = workers.get_mut(worker_id) {
+            worker.current_load = current_load as u32;
+            worker.accepting_tasks = accepting_tasks;
+            worker.last_heartbeat_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
+        let mut workers = self.workers.write();
+        workers.remove(worker_id);
+        // In DEV_MODE, we don't reclaim tasks since there's only one worker
+        Ok(0)
+    }
+
+    async fn list_workers(&self, filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError> {
+        let workers = self.workers.read();
+        let mut result: Vec<_> = workers
+            .values()
+            .filter(|w| {
+                // Apply status filter
+                if let Some(ref status) = filter.status {
+                    if &w.status != status {
+                        return false;
+                    }
+                }
+                // Apply worker_group filter
+                if let Some(ref group) = filter.worker_group {
+                    if w.worker_group.as_ref() != Some(group) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        Ok(result)
+    }
+
+    async fn list_workflows(
+        &self,
+        filter: WorkflowFilter,
+        pagination: Pagination,
+    ) -> Result<Vec<WorkflowInfoExtended>, StoreError> {
+        let workflows = self.workflows.read();
+        let mut result: Vec<_> = workflows
+            .iter()
+            .filter(|(_, w)| {
+                // Apply status filter
+                if let Some(ref status) = filter.status {
+                    if &w.status != status {
+                        return false;
+                    }
+                }
+                // Apply workflow_type filter
+                if let Some(ref wf_type) = filter.workflow_type {
+                    if &w.workflow_type != wf_type {
+                        return false;
+                    }
+                }
+                true
+            })
+            .map(|(id, w)| WorkflowInfoExtended {
+                id: *id,
+                workflow_type: w.workflow_type.clone(),
+                status: w.status,
+                input: w.input.clone(),
+                result: w.result.clone(),
+                error: w.error.clone(),
+                created_at: w.created_at,
+                started_at: w.started_at,
+                completed_at: w.completed_at,
+            })
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        let start = pagination.offset as usize;
+        let end = (pagination.offset + pagination.limit) as usize;
+        Ok(result.into_iter().skip(start).take(end - start).collect())
+    }
+
+    async fn list_tasks(
+        &self,
+        filter: TaskFilter,
+        pagination: Pagination,
+    ) -> Result<Vec<TaskInfo>, StoreError> {
+        let tasks = self.tasks.read();
+        let mut result: Vec<_> = tasks
+            .iter()
+            .filter(|(_, t)| {
+                // Apply status filter
+                if let Some(ref status) = filter.status {
+                    if &t.status != status {
+                        return false;
+                    }
+                }
+                // Apply activity_type filter
+                if let Some(ref activity_type) = filter.activity_type {
+                    if &t.definition.activity_type != activity_type {
+                        return false;
+                    }
+                }
+                // Apply workflow_id filter
+                if let Some(ref wf_id) = filter.workflow_id {
+                    if &t.definition.workflow_id != wf_id {
+                        return false;
+                    }
+                }
+                true
+            })
+            .map(|(id, t)| TaskInfo {
+                id: *id,
+                workflow_id: t.definition.workflow_id,
+                activity_id: t.definition.activity_id.clone(),
+                activity_type: t.definition.activity_type.clone(),
+                status: t.status,
+                priority: t.definition.options.priority,
+                attempt: t.attempt,
+                max_attempts: t.definition.options.retry_policy.max_attempts,
+                claimed_by: t.claimed_by.clone(),
+                last_error: t.last_error.clone(),
+                created_at: t.created_at,
+                claimed_at: t.claimed_at,
+            })
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        let start = pagination.offset as usize;
+        let end = (pagination.offset + pagination.limit) as usize;
+        Ok(result.into_iter().skip(start).take(end - start).collect())
     }
 }
 

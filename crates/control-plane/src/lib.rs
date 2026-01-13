@@ -17,3 +17,6 @@ pub mod storage;
 
 // OpenAPI spec generation
 pub mod openapi;
+
+// DEV_MODE in-process worker
+pub mod dev_worker;

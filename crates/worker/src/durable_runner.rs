@@ -224,6 +224,12 @@ impl InMemoryDurableStore {
         }
     }
 
+    /// Create from an existing shared store
+    /// Used for DEV_MODE where the store is shared between runner and in-process worker
+    pub fn from_shared(store: Arc<InMemoryWorkflowEventStore>) -> Self {
+        Self { store }
+    }
+
     /// Get a reference to the underlying store (for sharing between components)
     pub fn store(&self) -> Arc<InMemoryWorkflowEventStore> {
         Arc::clone(&self.store)
@@ -370,6 +376,19 @@ impl DurableRunner {
         info!("Initializing Durable execution engine runner (in-memory dev mode)");
 
         let store = InMemoryDurableStore::new();
+
+        Self {
+            store: Arc::new(Mutex::new(store)),
+        }
+    }
+
+    /// Create a new durable runner with a shared in-memory store
+    /// Used by the control-plane in DEV_MODE where the store is shared
+    /// between the runner and in-process worker
+    pub fn new_with_shared_store(shared_store: Arc<InMemoryWorkflowEventStore>) -> Self {
+        info!("Initializing Durable execution engine runner (shared in-memory dev mode)");
+
+        let store = InMemoryDurableStore::from_shared(shared_store);
 
         Self {
             store: Arc::new(Mutex::new(store)),
