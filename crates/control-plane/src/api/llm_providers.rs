@@ -9,12 +9,12 @@ use axum::{
 };
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{LlmProviderStatus, LlmProviderType};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::common::ListResponse;
+use super::common::{ErrorResponse, ListResponse};
 use crate::services::LlmProviderService;
 
 #[derive(Clone)]
@@ -70,11 +70,6 @@ pub struct UpdateLlmProviderRequest {
     /// The status of the provider. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LlmProviderStatus>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    error: String,
 }
 
 /// Create a new LLM provider
@@ -293,9 +288,7 @@ mod tests {
 
     #[test]
     fn test_error_response_serialization() {
-        let error = ErrorResponse {
-            error: "Internal server error".to_string(),
-        };
+        let error = ErrorResponse::new("Internal server error");
         let json = serde_json::to_string(&error).expect("Failed to serialize");
         assert_eq!(json, r#"{"error":"Internal server error"}"#);
     }
@@ -303,18 +296,14 @@ mod tests {
     #[test]
     fn test_error_response_internal_error_format() {
         // Verify that internal error responses use the generic message
-        let error = ErrorResponse {
-            error: "Internal server error".to_string(),
-        };
+        let error = ErrorResponse::new("Internal server error");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
         assert_eq!(parsed["error"], "Internal server error");
     }
 
     #[test]
     fn test_error_response_not_found_format() {
-        let error = ErrorResponse {
-            error: "Provider not found".to_string(),
-        };
+        let error = ErrorResponse::new("Provider not found");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
         assert_eq!(parsed["error"], "Provider not found");
     }
@@ -322,9 +311,7 @@ mod tests {
     #[test]
     fn test_error_response_encryption_not_configured() {
         // This error is safe to expose - it's a configuration issue, not internal details
-        let error = ErrorResponse {
-            error: "Encryption not configured. Cannot store API key.".to_string(),
-        };
+        let error = ErrorResponse::new("Encryption not configured. Cannot store API key.");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
         assert_eq!(
             parsed["error"],
