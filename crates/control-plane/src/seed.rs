@@ -1,10 +1,10 @@
 // Service seeding module for control-plane
 // Decision: Always seed on startup (no flag needed)
-// Decision: Embed seed data directly to avoid file dependencies
+// Decision: Run in background task (non-blocking)
+// Decision: Failures are non-fatal (log warning, continue)
 // Decision: Check by name before insert to prevent duplicates
-// Decision: Retry on database connection failure
+// Decision: Retry on transient database errors
 
-use anyhow::Result;
 use everruns_control_plane::storage::{models::CreateAgentRow, StorageBackend};
 use std::sync::Arc;
 use std::time::Duration;
@@ -90,38 +90,77 @@ Use this structure for organizing research:
     },
 ];
 
-/// Maximum number of retries when database is not ready
-const MAX_RETRIES: u32 = 10;
+/// Maximum number of retries for transient errors
+const MAX_RETRIES: u32 = 5;
 
 /// Initial retry delay (increases exponentially)
-const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(1);
+const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(2);
 
-/// Run seeding with retry logic for database readiness
-pub async fn run_seed(db: Arc<StorageBackend>) -> Result<()> {
-    tracing::info!("Starting service seeding...");
+/// Spawn seeding as a background task (non-blocking)
+/// This allows the HTTP server to start immediately while seeding runs in background.
+/// Seeding failures are non-fatal - logged as warnings but don't crash the server.
+pub fn spawn_seed_task(db: Arc<StorageBackend>) {
+    tokio::spawn(async move {
+        // Small delay to let the server start first
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
+        match run_seed_with_retry(&db).await {
+            Ok((created, skipped)) => {
+                if created > 0 {
+                    tracing::info!(created = created, skipped = skipped, "Seeding complete");
+                } else {
+                    tracing::debug!(skipped = skipped, "Seeding complete (all agents exist)");
+                }
+            }
+            Err(e) => {
+                // Non-fatal: log warning and continue
+                // This can happen if:
+                // - Migrations haven't been applied yet
+                // - Database is temporarily unavailable
+                // - Schema doesn't exist
+                tracing::warn!(
+                    error = %e,
+                    "Seeding failed (non-fatal). Seed agents may not be available."
+                );
+            }
+        }
+    });
+}
+
+/// Run seeding with retry logic for transient errors
+async fn run_seed_with_retry(db: &StorageBackend) -> Result<(usize, usize), String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
 
     loop {
-        match seed_agents(&db).await {
-            Ok((created, skipped)) => {
-                tracing::info!(created = created, skipped = skipped, "Seeding complete");
-                return Ok(());
-            }
+        match seed_agents(db).await {
+            Ok(result) => return Ok(result),
             Err(e) => {
-                retry_count += 1;
-                if retry_count > MAX_RETRIES {
-                    tracing::error!("Seeding failed after {} retries: {}", MAX_RETRIES, e);
-                    return Err(e);
+                let error_str = e.to_string();
+
+                // Check if this is a schema error (table doesn't exist)
+                // In this case, don't retry - migrations need to run first
+                if error_str.contains("does not exist")
+                    || error_str.contains("relation")
+                    || error_str.contains("no such table")
+                {
+                    return Err(format!(
+                        "Schema not ready (run migrations first): {}",
+                        error_str
+                    ));
                 }
 
-                tracing::warn!(
+                retry_count += 1;
+                if retry_count > MAX_RETRIES {
+                    return Err(format!("Failed after {} retries: {}", MAX_RETRIES, error_str));
+                }
+
+                tracing::debug!(
                     attempt = retry_count,
                     max_retries = MAX_RETRIES,
                     delay_secs = delay.as_secs(),
-                    error = %e,
-                    "Database not ready, retrying..."
+                    error = %error_str,
+                    "Seeding retry..."
                 );
 
                 tokio::time::sleep(delay).await;
@@ -133,12 +172,14 @@ pub async fn run_seed(db: Arc<StorageBackend>) -> Result<()> {
 }
 
 /// Seed agents into the database, skipping existing ones
-async fn seed_agents(db: &StorageBackend) -> Result<(usize, usize)> {
+async fn seed_agents(db: &StorageBackend) -> anyhow::Result<(usize, usize)> {
     let mut created = 0;
     let mut skipped = 0;
 
     for seed in SEED_AGENTS {
         // Check if agent with this name already exists
+        // Note: This is not atomic, so two instances could race.
+        // Worst case: duplicate agents (rare, user can clean up)
         match db.get_agent_by_name(seed.name).await? {
             Some(_) => {
                 tracing::debug!(name = seed.name, "Agent already exists, skipping");

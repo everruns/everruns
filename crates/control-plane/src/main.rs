@@ -119,8 +119,9 @@ async fn main() -> Result<()> {
         (Arc::new(backend), runner)
     };
 
-    // Run seeding (creates default agents if they don't exist)
-    seed::run_seed(db.clone()).await?;
+    // Spawn seeding in background (non-blocking, non-fatal)
+    // This creates default agents if they don't exist
+    seed::spawn_seed_task(db.clone());
 
     // Initialize encryption service for API keys (optional - gracefully degrade if not configured)
     let encryption = match EncryptionService::from_env() {
