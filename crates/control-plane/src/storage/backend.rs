@@ -192,6 +192,17 @@ impl StorageBackend {
         }
     }
 
+    pub async fn create_agent_with_id(
+        &self,
+        id: Uuid,
+        input: CreateAgentRow,
+    ) -> Result<Option<AgentRow>> {
+        match self {
+            Self::Postgres(db) => db.create_agent_with_id(id, input).await,
+            Self::InMemory(db) => db.create_agent_with_id(id, input).await,
+        }
+    }
+
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         match self {
             Self::Postgres(db) => db.get_agent(id).await,
@@ -203,6 +214,13 @@ impl StorageBackend {
         match self {
             Self::Postgres(db) => db.list_agents().await,
             Self::InMemory(db) => db.list_agents().await,
+        }
+    }
+
+    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
+        match self {
+            Self::Postgres(db) => db.get_agent_by_name(name).await,
+            Self::InMemory(db) => db.get_agent_by_name(name).await,
         }
     }
 

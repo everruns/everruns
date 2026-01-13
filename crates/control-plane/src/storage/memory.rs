@@ -285,6 +285,32 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    /// Create agent with a specific ID, idempotent (returns None if exists)
+    pub async fn create_agent_with_id(
+        &self,
+        id: Uuid,
+        input: CreateAgentRow,
+    ) -> Result<Option<AgentRow>> {
+        let mut agents = self.agents.write();
+        if agents.contains_key(&id) {
+            return Ok(None); // Already exists
+        }
+        let now = Self::now();
+        let row = AgentRow {
+            id,
+            name: input.name,
+            description: input.description,
+            system_prompt: input.system_prompt,
+            default_model_id: input.default_model_id,
+            tags: input.tags,
+            status: "active".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        agents.insert(id, row.clone());
+        Ok(Some(row))
+    }
+
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         Ok(self.agents.read().get(&id).cloned())
     }
@@ -294,6 +320,15 @@ impl InMemoryDatabase {
         let mut result: Vec<_> = agents.values().cloned().collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(result)
+    }
+
+    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
+        Ok(self
+            .agents
+            .read()
+            .values()
+            .find(|a| a.name == name && a.status == "active")
+            .cloned())
     }
 
     pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {

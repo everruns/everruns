@@ -89,12 +89,9 @@ case "$command" in
     ;;
 
   upload-agents)
-    echo "📤 Uploading seed agents..."
+    echo "📤 Uploading example agents..."
     API_URL="${API_URL:-http://localhost:9000}"
     EXAMPLES_DIR="$PROJECT_ROOT/examples/agents"
-
-    # Agents to upload (core demo agents)
-    SEED_AGENTS=("dad-jokes-agent" "research-agent")
 
     # Check API is healthy
     if ! curl -s "$API_URL/health" > /dev/null 2>&1; then
@@ -124,13 +121,11 @@ case "$command" in
     # Get existing agent names to prevent duplicates
     existing_agents=$(curl -s "$API_URL/v1/agents" | jq -r '.data[].name' 2>/dev/null || echo "")
 
-    # Upload specified agents (skip if already exists by name)
+    # Upload all example agents (skip if already exists by name)
     uploaded=0
     skipped=0
-    for agent_name in "${SEED_AGENTS[@]}"; do
-      agent_file="$EXAMPLES_DIR/${agent_name}.md"
+    for agent_file in "$EXAMPLES_DIR"/*.md; do
       if [[ ! -f "$agent_file" ]]; then
-        echo "   ⚠️  Agent file not found: $agent_file"
         continue
       fi
 
@@ -497,7 +492,7 @@ case "$command" in
       echo "   ⚠️  API compiling (will auto-reload on changes)..."
     fi
 
-    # Wait for API to be ready, then upload seed agents
+    # Wait for API to be ready
     echo "5️⃣  Waiting for API to be ready..."
     for i in {1..30}; do
       if curl -s http://localhost:9000/health > /dev/null 2>&1; then
@@ -507,16 +502,8 @@ case "$command" in
       sleep 2
     done
 
-    # Upload seed agents from markdown files
-    echo "6️⃣  Uploading seed agents..."
-    if "$0" upload-agents 2>/dev/null; then
-      echo "   ✅ Seed agents uploaded"
-    else
-      echo "   ⚠️  Agent upload failed"
-    fi
-
-    # Start Worker in background with auto-reload
-    echo "7️⃣  Starting worker with auto-reload..."
+    # Start Worker in background with auto-reload (Temporal mode)
+    echo "6️⃣  Starting Temporal worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
@@ -524,7 +511,7 @@ case "$command" in
     echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
     # Start UI in background
-    echo "8️⃣  Starting UI server..."
+    echo "7️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
@@ -806,7 +793,7 @@ Commands:
   stop-all    Stop all services (API, UI, Docker)
   reset       Stop and remove all Docker volumes
   migrate     Run database migrations
-  upload-agents Upload seed agents (dad-jokes, research) using CLI
+  upload-agents Upload example agents from examples/agents/ (manual, requires running API)
   build       Build all crates
   test        Run tests
   check       Run format, lint, and test checks

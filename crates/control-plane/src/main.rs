@@ -1,9 +1,11 @@
 // Everruns API server
 // Decision: Flexible auth with support for no-auth, admin-only, and full auth modes
 // Decision: DEV_MODE=true uses in-memory storage, no PostgreSQL required
+// Decision: Always seed default data on startup (agents, etc.)
 // M2: Agent/Session/Messages model with Events as SSE notifications
 
 mod grpc_service;
+mod seed;
 
 // Use modules from library
 use everruns_control_plane::api;
@@ -116,6 +118,10 @@ async fn main() -> Result<()> {
         tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
         (Arc::new(backend), runner)
     };
+
+    // Spawn seeding in background (non-blocking, non-fatal)
+    // This creates default agents if they don't exist
+    seed::spawn_seed_task(db.clone());
 
     // Initialize encryption service for API keys (optional - gracefully degrade if not configured)
     let encryption = match EncryptionService::from_env() {

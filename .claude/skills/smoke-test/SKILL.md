@@ -384,7 +384,8 @@ For full end-to-end testing including backend changes, use the standard smoke te
 | Script | Description |
 |--------|-------------|
 | `./scripts/dev.sh` | Development environment manager (Docker-based) |
-| `./scripts/seed-agents.sh` | Seed database with sample agents |
+
+**Note:** Seed agents (Dad Jokes Agent, Research Agent) are seeded automatically on API startup.
 
 ## Troubleshooting
 
