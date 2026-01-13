@@ -104,16 +104,22 @@ export function getBackendUrl(): string {
 /**
  * Get the direct backend URL for SSE connections.
  *
- * In production: Uses origin + /api (reverse proxies like Caddy don't buffer SSE)
- * In development: Set NEXT_PUBLIC_API_URL=http://localhost:9000 to bypass
- *                 Next.js proxy which may buffer SSE responses
+ * In development: Connect directly to backend at localhost:9000
+ *                 (Next.js rewrites don't handle SSE streaming properly)
+ * In production: Uses origin + /api (reverse proxies like Caddy stream SSE correctly)
+ *
+ * Override with NEXT_PUBLIC_API_URL if needed.
  */
 export function getDirectBackendUrl(): string {
-  // Use NEXT_PUBLIC_API_URL if explicitly set (e.g., for local dev to bypass Next.js proxy)
+  // Use NEXT_PUBLIC_API_URL if explicitly set
   if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
-  // Default to origin + /api for production (works with any reverse proxy)
+  // In development, connect directly to backend (Next.js rewrites buffer SSE)
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:9000';
+  }
+  // In production, use origin + /api (reverse proxy handles SSE correctly)
   if (typeof window !== 'undefined') {
     return window.location.origin + '/api';
   }
