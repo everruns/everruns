@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,7 @@ import { Send, Bot, Loader2, Brain } from "lucide-react";
 import type { Controls, MessageUserData, MessageAgentData } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { useSessionContext } from "../session-context";
+import { useLlmModels } from "@/hooks";
 
 export default function ChatPage() {
   const {
@@ -24,21 +25,67 @@ export default function ChatPage() {
     chatEvents,
     toolResultsMap,
     eventsLoading,
-    supportsReasoning,
     reasoningEffort,
     setReasoningEffort,
-    getReasoningEffortName,
-    defaultEffortName,
     setIsWaitingForResponse,
     sendMessage,
     getMessageText,
     getToolCalls,
   } = useSessionContext();
 
-  const [inputValue, setInputValue] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { data: llmModels = [] } = useLlmModels();
 
-  const reasoningEffortConfig = llmModel?.profile?.reasoning_effort;
+  const [inputValue, setInputValue] = useState("");
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasUserSelectedModel = useRef(false);
+  const modelSelectionStorageKey = useMemo(
+    () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
+    [agentId, sessionId]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedSelection = window.localStorage.getItem(modelSelectionStorageKey);
+    if (storedSelection !== null && !hasUserSelectedModel.current) {
+      setSelectedModelId(storedSelection);
+    }
+  }, [modelSelectionStorageKey]);
+
+  const selectedModel = useMemo(
+    () => llmModels.find((model) => model.id === selectedModelId),
+    [llmModels, selectedModelId]
+  );
+
+  const activeModel = selectedModel ?? llmModel;
+  const reasoningEffortConfig = activeModel?.profile?.reasoning_effort;
+  const supportsReasoning = !!(
+    activeModel?.profile?.reasoning && activeModel?.profile?.reasoning_effort
+  );
+
+  const getReasoningEffortName = (value: string): string => {
+    const effort = reasoningEffortConfig?.values.find((item) => item.value === value);
+    return effort?.name ?? value;
+  };
+
+  const defaultEffortName = reasoningEffortConfig?.default
+    ? getReasoningEffortName(reasoningEffortConfig.default)
+    : "Medium";
+
+  useEffect(() => {
+    if (!supportsReasoning) {
+      setReasoningEffort("");
+      return;
+    }
+
+    if (
+      reasoningEffortConfig &&
+      reasoningEffort &&
+      !reasoningEffortConfig.values.some((effort) => effort.value === reasoningEffort)
+    ) {
+      setReasoningEffort("");
+    }
+  }, [supportsReasoning, reasoningEffortConfig, reasoningEffort, setReasoningEffort]);
 
   // Auto-scroll to bottom when new events arrive
   useEffect(() => {
@@ -50,9 +97,15 @@ export default function ChatPage() {
     if (!inputValue.trim() || sendMessage.isPending) return;
 
     // Build controls with reasoning effort if selected
-    const controls: Controls | undefined = reasoningEffort
-      ? { reasoning: { effort: reasoningEffort } }
-      : undefined;
+    const controls: Controls | undefined =
+      selectedModelId || reasoningEffort
+        ? {
+            ...(selectedModelId && { model_id: selectedModelId }),
+            ...(reasoningEffort && supportsReasoning && {
+              reasoning: { effort: reasoningEffort },
+            }),
+          }
+        : undefined;
 
     try {
       await sendMessage.mutateAsync({
@@ -61,6 +114,9 @@ export default function ChatPage() {
         content: inputValue.trim(),
         controls,
       });
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(modelSelectionStorageKey, selectedModelId);
+      }
       setInputValue("");
       // Start polling for the response
       setIsWaitingForResponse(true);
@@ -168,33 +224,66 @@ export default function ChatPage() {
             )}
           </Button>
         </form>
-        {/* Reasoning effort selector - only shown when model supports it */}
-        {supportsReasoning && reasoningEffortConfig && (
-          <div className="flex items-center gap-2 mt-2">
-            <Brain className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Reasoning:</span>
+        <div className="flex flex-wrap items-center gap-4 mt-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Model:</span>
             <Select
-              value={reasoningEffort}
-              onValueChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
+              value={selectedModelId}
+              onValueChange={(value) => {
+                hasUserSelectedModel.current = true;
+                setSelectedModelId(value);
+              }}
             >
-              <SelectTrigger size="sm" className="w-[180px]">
+              <SelectTrigger size="sm" className="w-[220px]">
                 <SelectValue>
-                  {reasoningEffort
-                    ? getReasoningEffortName(reasoningEffort)
-                    : `Default (${defaultEffortName})`}
+                  {selectedModelId
+                    ? selectedModel?.display_name ?? "Select model"
+                    : llmModel?.display_name
+                      ? `Session default (${llmModel.display_name})`
+                      : "Session default"}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
-                {reasoningEffortConfig.values.map((effort) => (
-                  <SelectItem key={effort.value} value={effort.value}>
-                    {effort.name}
+                <SelectItem value="">
+                  {llmModel?.display_name
+                    ? `Session default (${llmModel.display_name})`
+                    : "Session default"}
+                </SelectItem>
+                {llmModels.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.display_name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-        )}
+          {supportsReasoning && reasoningEffortConfig && (
+            <div className="flex items-center gap-2">
+              <Brain className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Reasoning:</span>
+              <Select
+                value={reasoningEffort}
+                onValueChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
+              >
+                <SelectTrigger size="sm" className="w-[180px]">
+                  <SelectValue>
+                    {reasoningEffort
+                      ? getReasoningEffortName(reasoningEffort)
+                      : `Default (${defaultEffortName})`}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
+                  {reasoningEffortConfig.values.map((effort) => (
+                    <SelectItem key={effort.value} value={effort.value}>
+                      {effort.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

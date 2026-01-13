@@ -319,8 +319,15 @@ function FileItem({ file, isSelected, isExpanded, onClick, onDelete }: FileItemP
       className={`group flex items-center gap-2 p-2 text-sm rounded-md cursor-pointer transition-colors ${
         isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted"
       }`}
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       {file.is_directory ? (
         <>
