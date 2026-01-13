@@ -89,72 +89,11 @@ case "$command" in
     ;;
 
   upload-agents)
-    echo "📤 Uploading seed agents..."
-    API_URL="${API_URL:-http://localhost:9000}"
-    EXAMPLES_DIR="$PROJECT_ROOT/examples/agents"
-
-    # Agents to upload (core demo agents)
-    SEED_AGENTS=("dad-jokes-agent" "research-agent")
-
-    # Check API is healthy
-    if ! curl -s "$API_URL/health" > /dev/null 2>&1; then
-      echo "❌ API not reachable at $API_URL"
-      echo "   Start the API first: ./scripts/dev.sh api"
-      exit 1
-    fi
-
-    # Check for jq (needed to parse agent names)
-    if ! command -v jq &> /dev/null; then
-      echo "❌ jq is required but not installed"
-      echo "   Install with: apt-get install jq (or brew install jq)"
-      exit 1
-    fi
-
-    # Build CLI if needed
-    if [[ -f "$PROJECT_ROOT/target/release/everruns" ]]; then
-      CLI_PATH="$PROJECT_ROOT/target/release/everruns"
-    elif [[ -f "$PROJECT_ROOT/target/debug/everruns" ]]; then
-      CLI_PATH="$PROJECT_ROOT/target/debug/everruns"
-    else
-      echo "📦 Building everruns CLI..."
-      cargo build -p everruns-cli --release
-      CLI_PATH="$PROJECT_ROOT/target/release/everruns"
-    fi
-
-    # Get existing agent names to prevent duplicates
-    existing_agents=$(curl -s "$API_URL/v1/agents" | jq -r '.data[].name' 2>/dev/null || echo "")
-
-    # Upload specified agents (skip if already exists by name)
-    uploaded=0
-    skipped=0
-    for agent_name in "${SEED_AGENTS[@]}"; do
-      agent_file="$EXAMPLES_DIR/${agent_name}.md"
-      if [[ ! -f "$agent_file" ]]; then
-        echo "   ⚠️  Agent file not found: $agent_file"
-        continue
-      fi
-
-      # Extract display name from markdown front matter
-      display_name=$(grep -A1 "^---" "$agent_file" | grep "^name:" | sed 's/name:[[:space:]]*"\?\([^"]*\)"\?/\1/' | tr -d '"')
-
-      # Check if agent with this name already exists
-      if echo "$existing_agents" | grep -Fxq "$display_name"; then
-        echo "   ⏭️  Skipping '$display_name' (already exists)"
-        skipped=$((skipped + 1))
-        continue
-      fi
-
-      echo "   🌱 Creating '$display_name'..."
-      if $CLI_PATH --api-url "$API_URL" agents create --file "$agent_file" --quiet 2>/dev/null; then
-        echo "      ✅ Created"
-        uploaded=$((uploaded + 1))
-      else
-        echo "      ❌ Failed to create"
-      fi
-    done
-
+    # DEPRECATED: Use --seed flag on control-plane instead
+    echo "⚠️  upload-agents is deprecated. Use --seed flag on control-plane instead."
+    echo "   Example: cargo run -p everruns-control-plane -- --seed"
     echo ""
-    echo "📊 Upload complete: $uploaded created, $skipped skipped"
+    echo "   The --seed flag is automatically used by start-dev and start-all."
     ;;
 
   seed)
@@ -325,13 +264,14 @@ case "$command" in
 
     trap cleanup SIGINT SIGTERM
 
-    # Enable dev mode
+    # Enable dev mode and seeding
     export DEV_MODE=true
+    export SEED=true
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
 
-    # Start API in background with auto-reload (dev mode)
-    echo "1️⃣  Starting API server (DEV MODE) with auto-reload..."
-    cargo watch -w crates -x 'run -p everruns-control-plane' &
+    # Start API in background with auto-reload (dev mode with seeding)
+    echo "1️⃣  Starting API server (DEV MODE) with auto-reload and seeding..."
+    cargo watch -w crates -x 'run -p everruns-control-plane -- --seed' &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
@@ -481,11 +421,12 @@ case "$command" in
       echo "   ⚠️  ANTHROPIC_API_KEY not set (Anthropic models may not work)"
     fi
 
-    # Start API in background with auto-reload
-    echo "4️⃣  Starting API server with auto-reload..."
+    # Start API in background with auto-reload (with seeding enabled)
+    echo "4️⃣  Starting API server with auto-reload and seeding..."
     # Allow CORS from UI (localhost:9100) for SSE connections
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
-    cargo watch -w crates -x 'run -p everruns-control-plane' &
+    export SEED=true
+    cargo watch -w crates -x 'run -p everruns-control-plane -- --seed' &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
@@ -497,26 +438,18 @@ case "$command" in
       echo "   ⚠️  API compiling (will auto-reload on changes)..."
     fi
 
-    # Wait for API to be ready, then upload seed agents
+    # Wait for API to be ready
     echo "5️⃣  Waiting for API to be ready..."
     for i in {1..30}; do
       if curl -s http://localhost:9000/health > /dev/null 2>&1; then
-        echo "   ✅ API is ready"
+        echo "   ✅ API is ready (seeding runs automatically on startup)"
         break
       fi
       sleep 2
     done
 
-    # Upload seed agents from markdown files
-    echo "6️⃣  Uploading seed agents..."
-    if "$0" upload-agents 2>/dev/null; then
-      echo "   ✅ Seed agents uploaded"
-    else
-      echo "   ⚠️  Agent upload failed"
-    fi
-
-    # Start Worker in background with auto-reload
-    echo "7️⃣  Starting worker with auto-reload..."
+    # Start Worker in background with auto-reload (Temporal mode)
+    echo "6️⃣  Starting Temporal worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
@@ -524,7 +457,7 @@ case "$command" in
     echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
     # Start UI in background
-    echo "8️⃣  Starting UI server..."
+    echo "7️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
@@ -806,7 +739,6 @@ Commands:
   stop-all    Stop all services (API, UI, Docker)
   reset       Stop and remove all Docker volumes
   migrate     Run database migrations
-  upload-agents Upload seed agents (dad-jokes, research) using CLI
   build       Build all crates
   test        Run tests
   check       Run format, lint, and test checks

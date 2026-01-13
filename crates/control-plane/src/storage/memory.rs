@@ -296,6 +296,15 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
+        Ok(self
+            .agents
+            .read()
+            .values()
+            .find(|a| a.name == name && a.status == "active")
+            .cloned())
+    }
+
     pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
         let mut agents = self.agents.write();
         if let Some(agent) = agents.get_mut(&id) {

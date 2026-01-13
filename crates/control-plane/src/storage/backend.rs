@@ -206,6 +206,13 @@ impl StorageBackend {
         }
     }
 
+    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
+        match self {
+            Self::Postgres(db) => db.get_agent_by_name(name).await,
+            Self::InMemory(db) => db.get_agent_by_name(name).await,
+        }
+    }
+
     pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
         match self {
             Self::Postgres(db) => db.update_agent(id, input).await,

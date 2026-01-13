@@ -365,6 +365,21 @@ impl Database {
         Ok(rows)
     }
 
+    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
+        let row = sqlx::query_as::<_, AgentRow>(
+            r#"
+            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            FROM agents
+            WHERE name = $1 AND status = 'active'
+            "#,
+        )
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
