@@ -12,7 +12,7 @@ use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::ToolRegistry;
 use everruns_core::{ActInput, InputAtomInput, ReasonInput, ReasonResult};
 use everruns_durable::{
-    ClaimedTask, InMemoryWorkflowEventStore, WorkflowEventStore, WorkflowStatus,
+    ClaimedTask, InMemoryWorkflowEventStore, WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_worker::{create_driver_registry, DurableTurnInput};
 use std::sync::Arc;
@@ -103,6 +103,43 @@ impl InProcessWorker {
             worker_id = %self.config.worker_id,
             "Starting in-process worker"
         );
+
+        // Register worker so it appears in the UI
+        let worker_info = WorkerInfo {
+            id: self.config.worker_id.clone(),
+            worker_group: Some("dev".to_string()),
+            activity_types: self.config.activity_types.clone(),
+            max_concurrency: self.config.max_concurrent_tasks as u32,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            started_at: chrono::Utc::now(),
+            last_heartbeat_at: chrono::Utc::now(),
+        };
+        if let Err(e) = self.durable_store.register_worker(worker_info).await {
+            warn!(error = %e, "Failed to register in-process worker (will continue anyway)");
+        } else {
+            info!(worker_id = %self.config.worker_id, "In-process worker registered");
+        }
+
+        // Spawn heartbeat task
+        let heartbeat_store = self.durable_store.clone();
+        let heartbeat_worker_id = self.config.worker_id.clone();
+        let mut heartbeat_shutdown_rx = self.shutdown_rx.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                        if let Err(e) = heartbeat_store.worker_heartbeat(&heartbeat_worker_id, 0, true).await {
+                            warn!(error = %e, "Failed to send heartbeat");
+                        }
+                    }
+                    _ = heartbeat_shutdown_rx.changed() => {
+                        break;
+                    }
+                }
+            }
+        });
 
         loop {
             // Check for shutdown
