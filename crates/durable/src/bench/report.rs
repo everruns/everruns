@@ -18,6 +18,8 @@ pub struct ReportConfig {
     pub title: String,
     /// Include raw data in report
     pub include_raw_data: bool,
+    /// Filename prefix (e.g., "concurrent_workers" or "workflow_throughput")
+    pub filename_prefix: Option<String>,
 }
 
 impl Default for ReportConfig {
@@ -26,6 +28,7 @@ impl Default for ReportConfig {
             output_dir: "target/benchmark-reports".to_string(),
             title: "Benchmark Report".to_string(),
             include_raw_data: false,
+            filename_prefix: None,
         }
     }
 }
@@ -45,8 +48,14 @@ impl BenchmarkReport {
         let output_dir = Path::new(&self.config.output_dir);
         fs::create_dir_all(output_dir)?;
 
+        let prefix = self
+            .config
+            .filename_prefix
+            .as_deref()
+            .unwrap_or("benchmark");
         let filename = format!(
-            "benchmark_{}_{}.html",
+            "{}_{}_{}.html",
+            prefix,
             metrics.name.replace(' ', "_").to_lowercase(),
             chrono::Utc::now().format("%Y%m%d_%H%M%S")
         );

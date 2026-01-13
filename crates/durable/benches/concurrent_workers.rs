@@ -2,7 +2,13 @@
 //!
 //! Tests the durable execution engine under realistic load with multiple workers.
 //! Generates HTML reports similar to Gatling.
+//!
+//! Usage:
+//!   cargo bench -p everruns-durable --bench concurrent_workers
+//!   cargo bench -p everruns-durable --bench concurrent_workers -- --save
+//!   cargo bench -p everruns-durable --bench concurrent_workers -- --save --moniker ci-4cpu-8gb
 
+use std::env;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -12,8 +18,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 
 use everruns_durable::bench::{
-    clear_terminal_progress, set_terminal_progress, ActivityDuration, BenchmarkMetrics,
-    BenchmarkReport, ReportConfig,
+    clear_terminal_progress, set_terminal_progress, ActivityDuration, BenchmarkCheckpoint,
+    BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo, ReportConfig,
 };
 use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
@@ -269,7 +275,39 @@ async fn run_scenario(
     metrics
 }
 
+/// CLI options parsed from arguments
+struct CliOptions {
+    save_checkpoint: bool,
+    moniker: Option<String>,
+}
+
+fn parse_args() -> CliOptions {
+    let args: Vec<String> = env::args().collect();
+    let mut opts = CliOptions {
+        save_checkpoint: false,
+        moniker: None,
+    };
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--save" => opts.save_checkpoint = true,
+            "--moniker" => {
+                if i + 1 < args.len() {
+                    opts.moniker = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    opts
+}
+
 fn main() {
+    let opts = parse_args();
     let rt = Runtime::new().unwrap();
 
     println!("═══════════════════════════════════════════════════════════");
@@ -332,9 +370,9 @@ fn main() {
     println!("\n📊 Generating HTML reports...");
 
     let report_config = ReportConfig {
-        output_dir: "target/benchmark-reports".to_string(),
         title: "Durable Execution Benchmark".to_string(),
-        include_raw_data: false,
+        filename_prefix: Some("concurrent_workers".to_string()),
+        ..Default::default()
     };
 
     for (name, m) in [
@@ -348,6 +386,66 @@ fn main() {
             Ok(path) => println!("   ✅ {}: {}", name, path),
             Err(e) => println!("   ❌ {}: {}", name, e),
         }
+    }
+
+    // Save checkpoints for historical comparison (only with --save flag)
+    if opts.save_checkpoint {
+        println!("\n💾 Saving checkpoints...");
+
+        let env = match &opts.moniker {
+            Some(m) => EnvironmentInfo::detect_with_moniker(m),
+            None => EnvironmentInfo::detect(),
+        };
+        let store = CheckpointStore::new(format!(
+            "{}/benches/checkpoints",
+            env!("CARGO_MANIFEST_DIR")
+        ));
+
+        for (name, m) in [
+            ("concurrent_workers_baseline_1_worker", &baseline),
+            ("concurrent_workers_scale_100_workers", &scale_100),
+            ("concurrent_workers_realistic_100_workers", &realistic_100),
+            ("concurrent_workers_burst_50k_tasks", &burst),
+        ] {
+            let checkpoint = BenchmarkCheckpoint::new(name, env.clone(), m.snapshot());
+            match store.save(&checkpoint) {
+                Ok(path) => println!("   ✅ {}: {}", name, path.display()),
+                Err(e) => println!("   ❌ {}: {}", name, e),
+            }
+        }
+
+        // Show comparison with previous runs if available
+        println!("\n📊 Historical comparison (vs last run):");
+        for name in [
+            "concurrent_workers_baseline_1_worker",
+            "concurrent_workers_burst_50k_tasks",
+        ] {
+            match store.get_comparison(name, Some(&env.moniker), 2) {
+                Ok(checkpoints) if checkpoints.len() >= 2 => {
+                    let comparison = everruns_durable::bench::CheckpointComparison::compare(
+                        &checkpoints[0],
+                        &checkpoints[1],
+                    );
+                    println!("\n   {}", name);
+                    println!(
+                        "      Throughput: {:.1} → {:.1} ({:+.1}%)",
+                        comparison.baseline.throughput,
+                        comparison.current.throughput,
+                        comparison.changes.throughput_pct
+                    );
+                    println!(
+                        "      E2E P99:    {:.2}ms → {:.2}ms ({:+.1}%)",
+                        comparison.baseline.e2e_p99_ms,
+                        comparison.current.e2e_p99_ms,
+                        comparison.changes.e2e_p99_pct
+                    );
+                }
+                Ok(_) => println!("   {} - first run, no baseline yet", name),
+                Err(e) => println!("   {} - {}", name, e),
+            }
+        }
+    } else {
+        println!("\n💡 Tip: Use --save to save checkpoints for historical comparison");
     }
 
     println!("\n═══════════════════════════════════════════════════════════");

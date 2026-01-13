@@ -1,0 +1,2 @@
+# This directory stores benchmark checkpoints for historical comparison.
+# Checkpoints are committed to track performance over time.

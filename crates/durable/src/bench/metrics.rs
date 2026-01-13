@@ -137,18 +137,106 @@ impl LatencyHistogram {
     pub fn samples(&self) -> Vec<Duration> {
         self.samples.lock().clone()
     }
+
+    /// Create a serializable snapshot of the histogram
+    pub fn snapshot(&self) -> LatencyHistogramSnapshot {
+        LatencyHistogramSnapshot {
+            samples_micros: self
+                .samples
+                .lock()
+                .iter()
+                .map(|d| d.as_micros() as u64)
+                .collect(),
+            sum_micros: self.sum_micros.load(Ordering::Relaxed),
+            count: self.count.load(Ordering::Relaxed),
+            min_micros: self.min_micros.load(Ordering::Relaxed),
+            max_micros: self.max_micros.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Serializable snapshot of a latency histogram
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LatencyHistogramSnapshot {
+    pub samples_micros: Vec<u64>,
+    pub sum_micros: u64,
+    pub count: u64,
+    pub min_micros: u64,
+    pub max_micros: u64,
+}
+
+impl LatencyHistogramSnapshot {
+    /// Get summary statistics from snapshot
+    pub fn summary(&self) -> LatencySummary {
+        let mut sorted = self.samples_micros.clone();
+        sorted.sort();
+
+        let percentile = |p: f64| -> Duration {
+            if sorted.is_empty() {
+                Duration::ZERO
+            } else {
+                let idx = ((sorted.len() as f64 * p) as usize).min(sorted.len() - 1);
+                Duration::from_micros(sorted[idx])
+            }
+        };
+
+        LatencySummary {
+            count: self.count,
+            mean: if self.count == 0 {
+                Duration::ZERO
+            } else {
+                Duration::from_micros(self.sum_micros / self.count)
+            },
+            min: if self.min_micros == u64::MAX {
+                Duration::ZERO
+            } else {
+                Duration::from_micros(self.min_micros)
+            },
+            max: Duration::from_micros(self.max_micros),
+            p50: percentile(0.50),
+            p95: percentile(0.95),
+            p99: percentile(0.99),
+        }
+    }
 }
 
 /// Summary statistics for latency
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LatencySummary {
     pub count: u64,
+    #[serde(with = "duration_micros")]
     pub mean: Duration,
+    #[serde(with = "duration_micros")]
     pub min: Duration,
+    #[serde(with = "duration_micros")]
     pub max: Duration,
+    #[serde(with = "duration_micros")]
     pub p50: Duration,
+    #[serde(with = "duration_micros")]
     pub p95: Duration,
+    #[serde(with = "duration_micros")]
     pub p99: Duration,
+}
+
+/// Serde helper for Duration as microseconds
+mod duration_micros {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::time::Duration;
+
+    pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(duration.as_micros() as u64)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let micros = u64::deserialize(deserializer)?;
+        Ok(Duration::from_micros(micros))
+    }
 }
 
 /// Counter for throughput measurement
@@ -216,6 +304,35 @@ impl ThroughputCounter {
     pub fn timeseries(&self) -> Vec<(u64, u64)> {
         self.timeseries.lock().clone()
     }
+
+    /// Create a serializable snapshot
+    pub fn snapshot(&self) -> ThroughputSnapshot {
+        ThroughputSnapshot {
+            total: self.count.load(Ordering::Relaxed),
+            elapsed_ms: self.start.elapsed().as_millis() as u64,
+            timeseries: self.timeseries.lock().clone(),
+        }
+    }
+}
+
+/// Serializable snapshot of throughput counter
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ThroughputSnapshot {
+    pub total: u64,
+    pub elapsed_ms: u64,
+    pub timeseries: Vec<(u64, u64)>,
+}
+
+impl ThroughputSnapshot {
+    /// Get throughput (ops/sec)
+    pub fn throughput(&self) -> f64 {
+        let elapsed_secs = self.elapsed_ms as f64 / 1000.0;
+        if elapsed_secs == 0.0 {
+            0.0
+        } else {
+            self.total as f64 / elapsed_secs
+        }
+    }
 }
 
 impl Default for ThroughputCounter {
@@ -225,7 +342,7 @@ impl Default for ThroughputCounter {
 }
 
 /// Resource usage snapshot
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ResourceSnapshot {
     pub timestamp_ms: u64,
     pub memory_rss_mb: f64,
@@ -302,6 +419,40 @@ impl ResourceMonitor {
         }
         snapshots.iter().map(|s| s.cpu_percent).sum::<f32>() / snapshots.len() as f32
     }
+
+    /// Create a serializable snapshot
+    pub fn snapshot(&self) -> ResourceMonitorSnapshot {
+        let snapshots = self.snapshots.lock().clone();
+        ResourceMonitorSnapshot {
+            snapshots,
+            elapsed_ms: self.start.elapsed().as_millis() as u64,
+        }
+    }
+}
+
+/// Serializable snapshot of resource monitor
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ResourceMonitorSnapshot {
+    pub snapshots: Vec<ResourceSnapshot>,
+    pub elapsed_ms: u64,
+}
+
+impl ResourceMonitorSnapshot {
+    /// Get peak memory usage
+    pub fn peak_memory_mb(&self) -> f64 {
+        self.snapshots
+            .iter()
+            .map(|s| s.memory_rss_mb)
+            .fold(0.0, f64::max)
+    }
+
+    /// Get average CPU usage
+    pub fn avg_cpu_percent(&self) -> f32 {
+        if self.snapshots.is_empty() {
+            return 0.0;
+        }
+        self.snapshots.iter().map(|s| s.cpu_percent).sum::<f32>() / self.snapshots.len() as f32
+    }
 }
 
 impl Default for ResourceMonitor {
@@ -366,6 +517,49 @@ impl BenchmarkMetrics {
         self.tasks_completed.sample();
         self.tasks_enqueued.sample();
         self.resources.sample();
+    }
+
+    /// Create a serializable snapshot of all metrics
+    pub fn snapshot(&self) -> MetricsSnapshot {
+        let custom: std::collections::HashMap<String, LatencyHistogramSnapshot> = self
+            .custom
+            .lock()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.snapshot()))
+            .collect();
+
+        MetricsSnapshot {
+            name: self.name.clone(),
+            elapsed_ms: self.start.elapsed().as_millis() as u64,
+            schedule_to_start: self.schedule_to_start.snapshot(),
+            execution: self.execution.snapshot(),
+            end_to_end: self.end_to_end.snapshot(),
+            tasks_completed: self.tasks_completed.snapshot(),
+            tasks_enqueued: self.tasks_enqueued.snapshot(),
+            resources: self.resources.snapshot(),
+            custom,
+        }
+    }
+}
+
+/// Serializable snapshot of all benchmark metrics
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MetricsSnapshot {
+    pub name: String,
+    pub elapsed_ms: u64,
+    pub schedule_to_start: LatencyHistogramSnapshot,
+    pub execution: LatencyHistogramSnapshot,
+    pub end_to_end: LatencyHistogramSnapshot,
+    pub tasks_completed: ThroughputSnapshot,
+    pub tasks_enqueued: ThroughputSnapshot,
+    pub resources: ResourceMonitorSnapshot,
+    pub custom: std::collections::HashMap<String, LatencyHistogramSnapshot>,
+}
+
+impl MetricsSnapshot {
+    /// Get elapsed duration
+    pub fn elapsed(&self) -> Duration {
+        Duration::from_millis(self.elapsed_ms)
     }
 }
 

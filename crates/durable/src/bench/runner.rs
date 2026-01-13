@@ -12,6 +12,9 @@ use indicatif::{ProgressBar, ProgressStyle};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
+use super::checkpoint::{
+    BenchmarkCheckpoint, CheckpointComparison, CheckpointStore, EnvironmentInfo,
+};
 use super::metrics::BenchmarkMetrics;
 use super::report::{BenchmarkReport, ReportConfig};
 
@@ -29,7 +32,7 @@ pub fn clear_terminal_progress() {
 }
 
 /// Configuration for a benchmark scenario
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScenarioConfig {
     /// Name of the scenario
     pub name: String,
@@ -352,6 +355,94 @@ impl BenchmarkRunner {
     /// Get metrics for custom analysis
     pub fn metrics(&self) -> Arc<BenchmarkMetrics> {
         self.metrics.clone()
+    }
+
+    /// Save benchmark results as a checkpoint
+    pub fn save_checkpoint(
+        &self,
+        environment: Option<EnvironmentInfo>,
+    ) -> std::io::Result<CheckpointSaveResult> {
+        let env = environment.unwrap_or_else(EnvironmentInfo::detect);
+        let store = CheckpointStore::default_location();
+
+        let checkpoint =
+            BenchmarkCheckpoint::new(&self.config.name, env.clone(), self.metrics.snapshot())
+                .with_config(&self.config);
+
+        let path = store.save(&checkpoint)?;
+
+        // Try to find a baseline for comparison
+        let comparison = store
+            .get_comparison(&self.config.name, Some(&env.moniker), 2)
+            .ok()
+            .and_then(|mut checkpoints| {
+                // Skip the one we just saved (first one is newest)
+                if checkpoints.len() >= 2 {
+                    Some(CheckpointComparison::compare(
+                        &checkpoints.remove(0),
+                        &checkpoints.remove(0),
+                    ))
+                } else {
+                    None
+                }
+            });
+
+        Ok(CheckpointSaveResult {
+            checkpoint,
+            path,
+            comparison,
+        })
+    }
+
+    /// Save checkpoint with custom moniker
+    pub fn save_checkpoint_with_moniker(
+        &self,
+        moniker: impl Into<String>,
+    ) -> std::io::Result<CheckpointSaveResult> {
+        let env = EnvironmentInfo::detect_with_moniker(moniker);
+        self.save_checkpoint(Some(env))
+    }
+
+    /// Compare current results with a baseline checkpoint
+    pub fn compare_with_baseline(
+        &self,
+        baseline_id: &str,
+    ) -> std::io::Result<CheckpointComparison> {
+        let store = CheckpointStore::default_location();
+        let baseline = store.load(baseline_id)?;
+
+        let current = BenchmarkCheckpoint::new(
+            &self.config.name,
+            EnvironmentInfo::detect(),
+            self.metrics.snapshot(),
+        );
+
+        Ok(CheckpointComparison::compare(&current, &baseline))
+    }
+}
+
+/// Result of saving a checkpoint
+pub struct CheckpointSaveResult {
+    /// The saved checkpoint
+    pub checkpoint: BenchmarkCheckpoint,
+    /// Path where checkpoint was saved
+    pub path: std::path::PathBuf,
+    /// Comparison with previous run (if available)
+    pub comparison: Option<CheckpointComparison>,
+}
+
+impl CheckpointSaveResult {
+    /// Print summary including comparison if available
+    pub fn print_summary(&self) {
+        println!("\n💾 Checkpoint saved: {}", self.path.display());
+        println!("   ID: {}", &self.checkpoint.id[..8]);
+        println!("   Environment: {}", self.checkpoint.environment.moniker);
+
+        if let Some(ref comparison) = self.comparison {
+            comparison.print_summary();
+        } else {
+            println!("   (No baseline for comparison - this is the first run for this benchmark+environment)");
+        }
     }
 }
 

@@ -759,6 +759,38 @@ case "$command" in
     echo "✅ Clean complete!"
     ;;
 
+  durable-bench)
+    echo "📊 Running durable execution benchmarks..."
+    echo ""
+    echo "Running concurrent_workers..."
+    cargo bench -p everruns-durable --bench concurrent_workers
+    echo ""
+    echo "Running workflow_throughput..."
+    cargo bench -p everruns-durable --bench workflow_throughput
+    echo ""
+    echo "✅ Benchmarks complete!"
+    echo "   Reports: target/benchmark-reports/"
+    ;;
+
+  durable-bench-save)
+    echo "📊 Running durable execution benchmarks (with checkpointing)..."
+    MONIKER_ARG=""
+    if [ -n "${2:-}" ]; then
+      MONIKER_ARG="--moniker $2"
+      echo "   Using moniker: $2"
+    fi
+    echo ""
+    echo "Running concurrent_workers..."
+    cargo bench -p everruns-durable --bench concurrent_workers -- --save $MONIKER_ARG
+    echo ""
+    echo "Running workflow_throughput..."
+    cargo bench -p everruns-durable --bench workflow_throughput -- --save $MONIKER_ARG
+    echo ""
+    echo "✅ Benchmarks complete with checkpoints saved!"
+    echo "   Reports:     target/benchmark-reports/"
+    echo "   Checkpoints: crates/durable/benches/checkpoints/"
+    ;;
+
   help|*)
     cat <<EOF
 Everrun Development Helper
@@ -793,6 +825,8 @@ Commands:
   docs-install Install docs dependencies
   logs        View Docker service logs
   clean       Clean build artifacts and Docker volumes
+  durable-bench      Run durable execution benchmarks
+  durable-bench-save Run benchmarks with checkpoint saving (optional: moniker)
   help        Show this help message
 
 Examples:
@@ -802,6 +836,9 @@ Examples:
   $0 pre-pr                # Run all checks before creating a PR
   $0 watch-api             # Just run API with auto-reload
   $0 docs                  # Start docs dev server
+  $0 durable-bench         # Run benchmarks
+  $0 durable-bench-save    # Run benchmarks with checkpointing
+  $0 durable-bench-save ci-4cpu-8gb  # With custom moniker
   $0 stop-all              # Stop everything
 EOF
     ;;
