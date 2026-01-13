@@ -83,3 +83,126 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ============================================
+   BRANDED BACKGROUND OPTIONS
+   Apply one of these classes to the body element
+   All work for both light and dark modes
+   ============================================ */
+
+/* Option 1: Subtle Dot Grid
+   - Tiny dots in a grid pattern
+   - Uses brand navy color at very low opacity
+*/
+.bg-brand-dots {
+  background-image: radial-gradient(
+    circle at center,
+    hsl(220 62% 13% / 0.03) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+}
+.dark .bg-brand-dots {
+  background-image: radial-gradient(
+    circle at center,
+    hsl(43 60% 53% / 0.03) 1px,
+    transparent 1px
+  );
+}
+
+/* Option 2: Diagonal Lines
+   - Very faint diagonal lines
+   - Subtle engineering/technical feel
+*/
+.bg-brand-lines {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    hsl(220 62% 13% / 0.015) 10px,
+    hsl(220 62% 13% / 0.015) 11px
+  );
+}
+.dark .bg-brand-lines {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    hsl(43 60% 53% / 0.02) 10px,
+    hsl(43 60% 53% / 0.02) 11px
+  );
+}
+
+/* Option 3: Corner Gradient
+   - Subtle radial gradient from corners
+   - Adds depth without distraction
+*/
+.bg-brand-gradient {
+  background-image:
+    radial-gradient(ellipse at 0% 0%, hsl(220 62% 13% / 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 100%, hsl(43 60% 53% / 0.03) 0%, transparent 50%);
+}
+.dark .bg-brand-gradient {
+  background-image:
+    radial-gradient(ellipse at 0% 0%, hsl(220 62% 30% / 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 100% 100%, hsl(43 60% 53% / 0.05) 0%, transparent 50%);
+}
+
+/* Option 4: Interlocking Rings (Borromean pattern)
+   - Inspired by the logo
+   - Very subtle overlapping circles
+*/
+.bg-brand-rings {
+  background-image:
+    radial-gradient(circle at 30% 30%, transparent 18%, hsl(220 62% 13% / 0.02) 18%, hsl(220 62% 13% / 0.02) 20%, transparent 20%),
+    radial-gradient(circle at 50% 50%, transparent 18%, hsl(220 62% 13% / 0.015) 18%, hsl(220 62% 13% / 0.015) 20%, transparent 20%),
+    radial-gradient(circle at 70% 40%, transparent 18%, hsl(43 60% 53% / 0.02) 18%, hsl(43 60% 53% / 0.02) 20%, transparent 20%);
+  background-size: 200px 200px;
+}
+.dark .bg-brand-rings {
+  background-image:
+    radial-gradient(circle at 30% 30%, transparent 18%, hsl(220 62% 40% / 0.04) 18%, hsl(220 62% 40% / 0.04) 20%, transparent 20%),
+    radial-gradient(circle at 50% 50%, transparent 18%, hsl(220 62% 40% / 0.03) 18%, hsl(220 62% 40% / 0.03) 20%, transparent 20%),
+    radial-gradient(circle at 70% 40%, transparent 18%, hsl(43 60% 53% / 0.04) 18%, hsl(43 60% 53% / 0.04) 20%, transparent 20%);
+  background-size: 200px 200px;
+}
+
+/* Option 5: Fine Grid
+   - Very subtle crosshatch grid
+   - Clean, technical aesthetic
+*/
+.bg-brand-grid {
+  background-image:
+    linear-gradient(to right, hsl(220 62% 13% / 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(220 62% 13% / 0.02) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.dark .bg-brand-grid {
+  background-image:
+    linear-gradient(to right, hsl(43 60% 53% / 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(43 60% 53% / 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Option 6: Noise Texture
+   - Very fine noise pattern
+   - Adds subtle texture without pattern
+   - Uses CSS noise via SVG filter
+*/
+.bg-brand-noise {
+  position: relative;
+}
+.bg-brand-noise::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+}
+.dark .bg-brand-noise::before {
+  opacity: 0.04;
+}

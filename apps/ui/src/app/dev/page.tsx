@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FlaskConical, MessageSquare, ArrowRight } from "lucide-react";
+import { FlaskConical, MessageSquare, ArrowRight, Palette } from "lucide-react";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -14,6 +14,12 @@ const devPages = [
     description: "Components used in the Session UI for chat messages, tool calls, and todo lists",
     href: "/dev/components",
     icon: MessageSquare,
+  },
+  {
+    title: "Branded Backgrounds",
+    description: "Barely visible background patterns that work for both light and dark modes",
+    href: "/dev/backgrounds",
+    icon: Palette,
   },
 ];
 
