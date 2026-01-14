@@ -223,14 +223,13 @@ async fn listen_to_sse(url: &str) -> Result<String, Box<dyn std::error::Error + 
                                 // Parse the agent's response
                                 if let Ok(msg_data) =
                                     serde_json::from_value::<MessageData>(event.data.clone())
+                                    && let Some(content) = msg_data.content
                                 {
-                                    if let Some(content) = msg_data.content {
-                                        for part in content {
-                                            if part.content_type == "text" {
-                                                if let Some(text) = part.text {
-                                                    agent_response = text;
-                                                }
-                                            }
+                                    for part in content {
+                                        if part.content_type == "text"
+                                            && let Some(text) = part.text
+                                        {
+                                            agent_response = text;
                                         }
                                     }
                                 }

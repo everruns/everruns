@@ -5,8 +5,8 @@
 // by event listeners rather than direct spans.
 
 use crate::storage::{
-    models::{CreateAgentRow, UpdateAgent},
     AgentRow, StorageBackend,
+    models::{CreateAgentRow, UpdateAgent},
 };
 use anyhow::Result;
 use everruns_core::{Agent, AgentStatus, CapabilityId};

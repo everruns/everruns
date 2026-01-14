@@ -6,8 +6,8 @@
 // Decision: No direct database access - all operations go through services layer
 
 use everruns_control_plane::services::{
-    session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
     AgentService, EventService, LlmResolverService, SessionFileService, SessionService,
+    session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
 };
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_durable::{
@@ -37,8 +37,8 @@ use everruns_internal_protocol::proto::{
     UpdateDurableWorkflowStatusResponse,
 };
 use everruns_internal_protocol::{
-    proto_event_request_to_schema, schema_agent_to_proto, schema_event_to_proto, WorkerService,
-    WorkerServiceServer,
+    WorkerService, WorkerServiceServer, proto_event_request_to_schema, schema_agent_to_proto,
+    schema_event_to_proto,
 };
 use std::sync::Arc;
 use tonic::{Request, Response, Status, Streaming};
@@ -130,10 +130,10 @@ fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::Messa
         EventData::MessageAgent(d) => Some(d.message.clone()),
         EventData::ToolCallCompleted(d) => {
             let result: Option<serde_json::Value> = d.result.as_ref().map(|parts| {
-                if parts.len() == 1 {
-                    if let ContentPart::Text(t) = &parts[0] {
-                        return serde_json::Value::String(t.text.clone());
-                    }
+                if parts.len() == 1
+                    && let ContentPart::Text(t) = &parts[0]
+                {
+                    return serde_json::Value::String(t.text.clone());
                 }
                 serde_json::to_value(parts).unwrap_or_default()
             });

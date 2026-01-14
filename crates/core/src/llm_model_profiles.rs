@@ -1507,10 +1507,12 @@ mod tests {
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::Medium);
         assert_eq!(effort.values.len(), 3);
-        assert!(!effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::None));
+        assert!(
+            !effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::None)
+        );
     }
 
     #[test]
@@ -1547,14 +1549,18 @@ mod tests {
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::None);
         assert_eq!(effort.values.len(), 4);
-        assert!(effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::None));
-        assert!(!effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::Xhigh));
+        assert!(
+            effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::None)
+        );
+        assert!(
+            !effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::Xhigh)
+        );
     }
 
     #[test]
@@ -1565,10 +1571,12 @@ mod tests {
 
         // After gpt-5.1-codex-max: supports xhigh
         let effort = profile.reasoning_effort.unwrap();
-        assert!(effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::Xhigh));
+        assert!(
+            effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::Xhigh)
+        );
     }
 
     #[test]
@@ -1581,10 +1589,12 @@ mod tests {
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::None);
         assert_eq!(effort.values.len(), 5);
-        assert!(effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::Xhigh));
+        assert!(
+            effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::Xhigh)
+        );
     }
 
     #[test]
@@ -1597,14 +1607,18 @@ mod tests {
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::Medium);
         assert_eq!(effort.values.len(), 3);
-        assert!(effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::Xhigh));
-        assert!(!effort
-            .values
-            .iter()
-            .any(|v| v.value == ReasoningEffort::None));
+        assert!(
+            effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::Xhigh)
+        );
+        assert!(
+            !effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::None)
+        );
     }
 
     #[test]

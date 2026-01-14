@@ -3,11 +3,11 @@
 // Decision: Support both JSON and cookie-based sessions
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Redirect,
     routing::{delete, get, post},
-    Json, Router,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{Duration, Utc};
@@ -32,7 +32,7 @@ use crate::storage::{
 /// Generate a random state string for OAuth (32 hex characters)
 fn generate_oauth_state() -> String {
     let mut rng = rand::thread_rng();
-    let bytes: [u8; 16] = rng.gen();
+    let bytes: [u8; 16] = rng.r#gen();
     hex::encode(bytes)
 }
 
@@ -182,12 +182,13 @@ pub async fn login(
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
     // In admin mode, check admin credentials directly (no database lookup)
     if state.config.mode == AuthMode::Admin {
-        if let Some(admin) = &state.config.admin {
-            if req.email == admin.email && req.password == admin.password {
-                // Create or get admin user
-                let user = get_or_create_admin_user(&state, admin).await?;
-                return generate_token_response(&state, jar, &user).await;
-            }
+        if let Some(admin) = &state.config.admin
+            && req.email == admin.email
+            && req.password == admin.password
+        {
+            // Create or get admin user
+            let user = get_or_create_admin_user(&state, admin).await?;
+            return generate_token_response(&state, jar, &user).await;
         }
         // Admin mode only allows the configured admin credentials
         return Err(AuthError::unauthorized("Invalid email or password"));

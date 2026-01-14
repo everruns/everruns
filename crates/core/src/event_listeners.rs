@@ -127,10 +127,10 @@ impl EventListener for CompositeEventListener {
     async fn on_event(&self, event: &Event) {
         for listener in &self.listeners {
             // Check if listener wants this event type
-            if let Some(types) = listener.event_types() {
-                if !types.contains(&event.event_type.as_str()) {
-                    continue;
-                }
+            if let Some(types) = listener.event_types()
+                && !types.contains(&event.event_type.as_str())
+            {
+                continue;
             }
             listener.on_event(event).await;
         }

@@ -1,7 +1,7 @@
 // HTTP client wrapper for Everruns API
 
 use reqwest::StatusCode;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 #[derive(Error, Debug)]

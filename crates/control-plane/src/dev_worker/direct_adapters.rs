@@ -22,8 +22,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::services::{EventService, LlmResolverService};
-use crate::storage::models::UpdateSession;
 use crate::storage::StorageBackend;
+use crate::storage::models::UpdateSession;
 
 // Helper to create store errors
 fn store_error(msg: impl Into<String>) -> AgentLoopError {
@@ -158,8 +158,8 @@ impl DirectMessageStore {
 #[async_trait]
 impl MessageStore for DirectMessageStore {
     async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
-        use everruns_core::events::EventContext;
         use everruns_core::EventData;
+        use everruns_core::events::EventContext;
 
         // Create a Message from the input
         let message = Message {

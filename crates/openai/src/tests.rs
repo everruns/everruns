@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod driver_tests {
-    use crate::{register_driver, DriverRegistry, OpenAILlmDriver};
+    use crate::{DriverRegistry, OpenAILlmDriver, register_driver};
     use everruns_core::llm_driver_registry::{ProviderConfig, ProviderType};
 
     #[test]

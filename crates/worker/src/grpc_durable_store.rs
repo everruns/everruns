@@ -10,7 +10,7 @@ use everruns_internal_protocol::proto::{
     GetDurableWorkflowStatusRequest, HeartbeatDurableTaskRequest, HeartbeatDurableWorkerRequest,
     RegisterDurableWorkerRequest, UpdateDurableWorkflowStatusRequest,
 };
-use everruns_internal_protocol::{json_to_proto_struct, uuid_to_proto_uuid, WorkerServiceClient};
+use everruns_internal_protocol::{WorkerServiceClient, json_to_proto_struct, uuid_to_proto_uuid};
 use tonic::transport::Channel;
 use uuid::Uuid;
 

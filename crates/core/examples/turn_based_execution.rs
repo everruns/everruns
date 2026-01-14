@@ -24,6 +24,7 @@
 
 use chrono::Utc;
 use everruns_core::{
+    InputMessage, MessageStore,
     agent::{Agent, AgentStatus},
     atoms::{
         ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
@@ -36,9 +37,8 @@ use everruns_core::{
     },
     session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
-    InputMessage, MessageStore,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 /// A simple weather tool for demonstration

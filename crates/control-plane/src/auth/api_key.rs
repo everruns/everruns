@@ -26,7 +26,7 @@ pub struct GeneratedApiKey {
 pub fn generate_api_key() -> GeneratedApiKey {
     // Generate random bytes
     let mut rng = rand::thread_rng();
-    let random_bytes: Vec<u8> = (0..API_KEY_LENGTH).map(|_| rng.gen()).collect();
+    let random_bytes: Vec<u8> = (0..API_KEY_LENGTH).map(|_| rng.r#gen()).collect();
     let random_hex = hex::encode(&random_bytes);
 
     // Full key with prefix

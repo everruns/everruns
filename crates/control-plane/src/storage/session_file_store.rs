@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    traits::SessionFileStore, AgentLoopError, FileInfo, FileStat, GrepMatch, Result, SessionFile,
+    AgentLoopError, FileInfo, FileStat, GrepMatch, Result, SessionFile, traits::SessionFileStore,
 };
 use regex::Regex;
 use uuid::Uuid;
@@ -240,18 +240,19 @@ impl SessionFileStore for DbSessionFileStore {
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
-        if let Some(ref f) = file {
-            if f.is_directory && !recursive {
-                let has_children = self
-                    .db
-                    .session_directory_has_children(session_id, &path)
-                    .await
-                    .map_err(|e| AgentLoopError::store(e.to_string()))?;
-                if has_children {
-                    return Err(AgentLoopError::store(
-                        "Directory is not empty. Use recursive=true to delete",
-                    ));
-                }
+        if let Some(ref f) = file
+            && f.is_directory
+            && !recursive
+        {
+            let has_children = self
+                .db
+                .session_directory_has_children(session_id, &path)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            if has_children {
+                return Err(AgentLoopError::store(
+                    "Directory is not empty. Use recursive=true to delete",
+                ));
             }
         }
 
@@ -285,13 +286,13 @@ impl SessionFileStore for DbSessionFileStore {
                     return Err(AgentLoopError::store(format!(
                         "Path is not a directory: {}",
                         path
-                    )))
+                    )));
                 }
                 None => {
                     return Err(AgentLoopError::store(format!(
                         "Directory not found: {}",
                         path
-                    )))
+                    )));
                 }
                 _ => {}
             }
@@ -380,18 +381,18 @@ impl SessionFileStore for DbSessionFileStore {
                 .await
                 .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
-            if let Some(f) = file {
-                if let Some(content) = f.content {
-                    // Try to decode as text
-                    if let Ok(text) = String::from_utf8(content) {
-                        for (i, line) in text.lines().enumerate() {
-                            if regex.is_match(line) {
-                                results.push(GrepMatch {
-                                    path: file_info.path.clone(),
-                                    line_number: i + 1,
-                                    line: line.to_string(),
-                                });
-                            }
+            if let Some(f) = file
+                && let Some(content) = f.content
+            {
+                // Try to decode as text
+                if let Ok(text) = String::from_utf8(content) {
+                    for (i, line) in text.lines().enumerate() {
+                        if regex.is_match(line) {
+                            results.push(GrepMatch {
+                                path: file_info.path.clone(),
+                                line_number: i + 1,
+                                line: line.to_string(),
+                            });
                         }
                     }
                 }

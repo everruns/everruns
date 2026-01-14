@@ -31,6 +31,8 @@ impl Capability for ResearchCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some("You have access to a research scratchpad. Use it to organize your thoughts and findings.")
+        Some(
+            "You have access to a research scratchpad. Use it to organize your thoughts and findings.",
+        )
     }
 }

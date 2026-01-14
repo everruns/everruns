@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
+use everruns_core::telemetry::{TelemetryConfig, init_telemetry};
 use everruns_worker::{DurableWorker, DurableWorkerConfig};
 
 #[tokio::main]

@@ -12,8 +12,8 @@
 
 use async_trait::async_trait;
 use futures::stream;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::Result;
 use crate::llm_driver_registry::{

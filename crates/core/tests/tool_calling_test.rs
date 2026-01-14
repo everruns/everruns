@@ -4,16 +4,16 @@
 // the ToolExecutor trait work correctly together.
 
 use async_trait::async_trait;
+use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use everruns_core::{
+    GetCurrentTimeTool, Message, MessageRole,
     memory::InMemoryMessageStore,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
-    GetCurrentTimeTool, Message, MessageRole,
 };
-use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use serde_json::json;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
 // =============================================================================

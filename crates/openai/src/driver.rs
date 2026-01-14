@@ -5,12 +5,12 @@
 
 use async_trait::async_trait;
 
+use everruns_core::OpenAIProtocolLlmDriver;
 use everruns_core::error::Result;
 use everruns_core::llm_driver_registry::{
     BoxedLlmDriver, DriverRegistry, LlmCallConfig, LlmDriver, LlmMessage, LlmResponseStream,
     ProviderType,
 };
-use everruns_core::OpenAIProtocolLlmDriver;
 
 /// OpenAI LLM Driver
 ///

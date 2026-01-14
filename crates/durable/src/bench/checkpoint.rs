@@ -239,12 +239,11 @@ impl CheckpointStore {
         for entry in fs::read_dir(&self.directory)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map(|e| e == "json").unwrap_or(false) {
-                if let Ok(checkpoint) = self.load(path.file_name().unwrap().to_str().unwrap()) {
-                    if checkpoint.id.starts_with(id_prefix) {
-                        return Ok(path);
-                    }
-                }
+            if path.extension().map(|e| e == "json").unwrap_or(false)
+                && let Ok(checkpoint) = self.load(path.file_name().unwrap().to_str().unwrap())
+                && checkpoint.id.starts_with(id_prefix)
+            {
+                return Ok(path);
             }
         }
         Err(io::Error::new(
@@ -265,12 +264,11 @@ impl CheckpointStore {
             let entry = entry?;
             let path = entry.path();
 
-            if path.extension().map(|e| e == "json").unwrap_or(false) {
-                if let Ok(checkpoint) = self.load(path.file_name().unwrap().to_str().unwrap()) {
-                    if filter.map(|f| f.matches(&checkpoint)).unwrap_or(true) {
-                        checkpoints.push(checkpoint);
-                    }
-                }
+            if path.extension().map(|e| e == "json").unwrap_or(false)
+                && let Ok(checkpoint) = self.load(path.file_name().unwrap().to_str().unwrap())
+                && filter.map(|f| f.matches(&checkpoint)).unwrap_or(true)
+            {
+                checkpoints.push(checkpoint);
             }
         }
 
@@ -350,34 +348,34 @@ pub struct CheckpointFilter {
 impl CheckpointFilter {
     /// Check if a checkpoint matches this filter
     pub fn matches(&self, checkpoint: &BenchmarkCheckpoint) -> bool {
-        if let Some(ref name) = self.benchmark_name {
-            if !checkpoint.benchmark_name.contains(name) {
-                return false;
-            }
+        if let Some(ref name) = self.benchmark_name
+            && !checkpoint.benchmark_name.contains(name)
+        {
+            return false;
         }
 
-        if let Some(ref moniker) = self.moniker {
-            if !checkpoint.environment.moniker.contains(moniker) {
-                return false;
-            }
+        if let Some(ref moniker) = self.moniker
+            && !checkpoint.environment.moniker.contains(moniker)
+        {
+            return false;
         }
 
-        if let Some(ref tag) = self.tag {
-            if !checkpoint.tags.contains(tag) {
-                return false;
-            }
+        if let Some(ref tag) = self.tag
+            && !checkpoint.tags.contains(tag)
+        {
+            return false;
         }
 
-        if let Some(after) = self.after {
-            if checkpoint.timestamp < after {
-                return false;
-            }
+        if let Some(after) = self.after
+            && checkpoint.timestamp < after
+        {
+            return false;
         }
 
-        if let Some(before) = self.before {
-            if checkpoint.timestamp > before {
-                return false;
-            }
+        if let Some(before) = self.before
+            && checkpoint.timestamp > before
+        {
+            return false;
         }
 
         true
@@ -567,12 +565,10 @@ mod tests {
         assert!(EnvironmentInfo::generate_moniker("Apple M4 Pro", 12, 48.0).contains("M4-Pro"));
 
         // Intel
-        assert!(EnvironmentInfo::generate_moniker(
-            "Intel(R) Core(TM) i9-12900K @ 3.20GHz",
-            24,
-            64.0
-        )
-        .contains("i9-12900K"));
+        assert!(
+            EnvironmentInfo::generate_moniker("Intel(R) Core(TM) i9-12900K @ 3.20GHz", 24, 64.0)
+                .contains("i9-12900K")
+        );
 
         // AMD
         assert!(

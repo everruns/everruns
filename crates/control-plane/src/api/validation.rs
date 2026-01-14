@@ -5,8 +5,8 @@
 // use while preventing resource exhaustion attacks.
 
 use super::common::ErrorResponse;
-use axum::http::StatusCode;
 use axum::Json;
+use axum::http::StatusCode;
 
 // =============================================================================
 // Input Size Limits
@@ -82,15 +82,15 @@ pub fn validate_agent_name(name: &str) -> Result<(), ValidationError> {
 
 /// Validate agent description size
 pub fn validate_agent_description(description: Option<&str>) -> Result<(), ValidationError> {
-    if let Some(desc) = description {
-        if desc.len() > MAX_AGENT_DESCRIPTION_BYTES {
-            tracing::warn!(
-                "Agent description exceeds limit: {} bytes (max: {})",
-                desc.len(),
-                MAX_AGENT_DESCRIPTION_BYTES
-            );
-            return Err(ValidationError);
-        }
+    if let Some(desc) = description
+        && desc.len() > MAX_AGENT_DESCRIPTION_BYTES
+    {
+        tracing::warn!(
+            "Agent description exceeds limit: {} bytes (max: {})",
+            desc.len(),
+            MAX_AGENT_DESCRIPTION_BYTES
+        );
+        return Err(ValidationError);
     }
     Ok(())
 }
@@ -160,15 +160,15 @@ pub fn validate_update_agent_input(
     }
     // For update, description is Option<Option<String>> effectively
     // but we receive Option<String> - validate if present
-    if let Some(desc) = description {
-        if desc.len() > MAX_AGENT_DESCRIPTION_BYTES {
-            tracing::warn!(
-                "Agent description exceeds limit: {} bytes (max: {})",
-                desc.len(),
-                MAX_AGENT_DESCRIPTION_BYTES
-            );
-            return Err(ValidationError);
-        }
+    if let Some(desc) = description
+        && desc.len() > MAX_AGENT_DESCRIPTION_BYTES
+    {
+        tracing::warn!(
+            "Agent description exceeds limit: {} bytes (max: {})",
+            desc.len(),
+            MAX_AGENT_DESCRIPTION_BYTES
+        );
+        return Err(ValidationError);
     }
     if let Some(prompt) = system_prompt {
         validate_agent_system_prompt(prompt)?;

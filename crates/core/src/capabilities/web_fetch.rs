@@ -16,7 +16,7 @@ use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::header::{
-    HeaderMap, HeaderValue, ACCEPT, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE,
+    ACCEPT, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, HeaderMap, HeaderValue,
     LAST_MODIFIED, USER_AGENT,
 };
 use serde_json::Value;
@@ -269,18 +269,18 @@ impl Tool for WebFetchTool {
         let filename = extract_filename_from_headers(response.headers(), url);
 
         // Check for binary content - return metadata instead of error
-        if let Some(ref ct) = content_type {
-            if is_binary_content_type(ct) {
-                return ToolExecutionResult::success(serde_json::json!({
-                    "url": url,
-                    "status_code": status_code,
-                    "content_type": content_type,
-                    "size": content_length,
-                    "filename": filename,
-                    "last_modified": last_modified,
-                    "error": "Binary content is not supported. Only textual content (HTML, text, JSON, etc.) can be fetched."
-                }));
-            }
+        if let Some(ref ct) = content_type
+            && is_binary_content_type(ct)
+        {
+            return ToolExecutionResult::success(serde_json::json!({
+                "url": url,
+                "status_code": status_code,
+                "content_type": content_type,
+                "size": content_length,
+                "filename": filename,
+                "last_modified": last_modified,
+                "error": "Binary content is not supported. Only textual content (HTML, text, JSON, etc.) can be fetched."
+            }));
         }
 
         // For HEAD requests, return headers info only
@@ -416,36 +416,35 @@ async fn read_body_with_timeout(
 /// Extract filename from Content-Disposition header or URL
 fn extract_filename_from_headers(headers: &HeaderMap, url: &str) -> Option<String> {
     // Try Content-Disposition header first
-    if let Some(disposition) = headers.get(CONTENT_DISPOSITION) {
-        if let Ok(value) = disposition.to_str() {
-            // Look for filename="..." or filename*=...
-            if let Some(start) = value.find("filename=") {
-                let rest = &value[start + 9..];
-                let filename = if let Some(stripped) = rest.strip_prefix('"') {
-                    // Quoted filename
-                    stripped.split('"').next()
-                } else {
-                    // Unquoted filename
-                    rest.split([';', ' ']).next()
-                };
-                if let Some(name) = filename {
-                    if !name.is_empty() {
-                        return Some(name.to_string());
-                    }
-                }
+    if let Some(disposition) = headers.get(CONTENT_DISPOSITION)
+        && let Ok(value) = disposition.to_str()
+    {
+        // Look for filename="..." or filename*=...
+        if let Some(start) = value.find("filename=") {
+            let rest = &value[start + 9..];
+            let filename = if let Some(stripped) = rest.strip_prefix('"') {
+                // Quoted filename
+                stripped.split('"').next()
+            } else {
+                // Unquoted filename
+                rest.split([';', ' ']).next()
+            };
+            if let Some(name) = filename
+                && !name.is_empty()
+            {
+                return Some(name.to_string());
             }
         }
     }
 
     // Fall back to extracting filename from URL path
-    if let Ok(parsed) = url::Url::parse(url) {
-        if let Some(mut segments) = parsed.path_segments() {
-            if let Some(last) = segments.next_back() {
-                if !last.is_empty() && last.contains('.') {
-                    return Some(last.to_string());
-                }
-            }
-        }
+    if let Ok(parsed) = url::Url::parse(url)
+        && let Some(mut segments) = parsed.path_segments()
+        && let Some(last) = segments.next_back()
+        && !last.is_empty()
+        && last.contains('.')
+    {
+        return Some(last.to_string());
     }
 
     None
@@ -928,10 +927,12 @@ mod tests {
 
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["status_code"], 200);
-            assert!(value["content"]
-                .as_str()
-                .unwrap()
-                .contains("Herman Melville"));
+            assert!(
+                value["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Herman Melville")
+            );
         } else {
             panic!("Expected successful response");
         }
@@ -1026,14 +1027,18 @@ mod tests {
         // Binary content should return success with error message and metadata
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["status_code"], 200);
-            assert!(value["content_type"]
-                .as_str()
-                .unwrap()
-                .contains("image/png"));
-            assert!(value["error"]
-                .as_str()
-                .unwrap()
-                .contains("Binary content is not supported"));
+            assert!(
+                value["content_type"]
+                    .as_str()
+                    .unwrap()
+                    .contains("image/png")
+            );
+            assert!(
+                value["error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("Binary content is not supported")
+            );
             // Should have size metadata if available
             assert!(value.get("size").is_some() || value["size"].is_null());
         } else {
@@ -1696,10 +1701,10 @@ mod tests {
         // Binary content returns metadata with size
         if let ToolExecutionResult::Success(value) = result {
             // For binary content, size comes from Content-Length header
-            if let Some(size) = value.get("size") {
-                if !size.is_null() {
-                    assert_eq!(size.as_u64().unwrap(), 100);
-                }
+            if let Some(size) = value.get("size")
+                && !size.is_null()
+            {
+                assert_eq!(size.as_u64().unwrap(), 100);
             }
         }
     }

@@ -1,7 +1,7 @@
 //! Activity execution context
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::mpsc;
 use uuid::Uuid;

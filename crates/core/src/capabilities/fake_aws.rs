@@ -21,7 +21,7 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Fake AWS Tools capability - mock AWS infrastructure management for demos
 pub struct FakeAwsCapability;
@@ -353,7 +353,9 @@ impl Tool for AwsCreateEc2InstanceTool {
         let instance_type = match arguments.get("instance_type").and_then(|v| v.as_str()) {
             Some(t) => t,
             None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: instance_type")
+                return ToolExecutionResult::tool_error(
+                    "Missing required parameter: instance_type",
+                );
             }
         };
 
@@ -478,7 +480,7 @@ impl Tool for AwsStopEc2InstanceTool {
         let instance_id = match arguments.get("instance_id").and_then(|v| v.as_str()) {
             Some(id) => id,
             None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: instance_id")
+                return ToolExecutionResult::tool_error("Missing required parameter: instance_id");
             }
         };
 
@@ -500,7 +502,7 @@ impl Tool for AwsStopEc2InstanceTool {
                 return ToolExecutionResult::tool_error(format!(
                     "Instance not found: {}",
                     instance_id
-                ))
+                ));
             }
         };
 

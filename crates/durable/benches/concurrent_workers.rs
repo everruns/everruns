@@ -9,8 +9,8 @@
 //!   cargo bench -p everruns-durable --bench concurrent_workers -- --save --moniker ci-4cpu-8gb
 
 use std::env;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -18,8 +18,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 
 use everruns_durable::bench::{
-    clear_terminal_progress, set_terminal_progress, ActivityDuration, BenchmarkCheckpoint,
-    BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo, ReportConfig,
+    ActivityDuration, BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore,
+    EnvironmentInfo, ReportConfig, clear_terminal_progress, set_terminal_progress,
 };
 use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,

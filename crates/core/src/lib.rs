@@ -90,12 +90,12 @@ pub use tools::{
 
 // Capability re-exports
 pub use capabilities::{
-    apply_capabilities, AddTool, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
+    AddTool, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
     CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, DeleteFileTool, DivideTool,
     FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetWeatherTool, GrepFilesTool,
     ListDirectoryTool, MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability,
     SandboxCapability, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
-    TestWeatherCapability, WriteFileTool, WriteTodosTool,
+    TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities,
 };
 
 // Atoms re-exports (stateless atomic operations)
@@ -114,13 +114,14 @@ pub use tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy, ToolResu
 pub use agent::{Agent, AgentStatus};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
-    ActCompletedData, ActStartedData, Event, EventBuilder, EventContext, EventData, EventRequest,
-    InputReceivedData, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
-    MessageAgentData, MessageUserData, ModelMetadata, ReasonCompletedData, ReasonStartedData,
-    SessionStartedData, TokenUsage, ToolCallCompletedData, ToolCallStartedData, ToolCallSummary,
-    TurnCompletedData, TurnFailedData, TurnStartedData, ACT_COMPLETED, ACT_STARTED, INPUT_RECEIVED,
-    LLM_GENERATION, MESSAGE_AGENT, MESSAGE_USER, REASON_COMPLETED, REASON_STARTED, SESSION_STARTED,
-    TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, UNKNOWN,
+    ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventBuilder,
+    EventContext, EventData, EventRequest, INPUT_RECEIVED, InputReceivedData, LLM_GENERATION,
+    LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, MESSAGE_AGENT, MESSAGE_USER,
+    MessageAgentData, MessageUserData, ModelMetadata, REASON_COMPLETED, REASON_STARTED,
+    ReasonCompletedData, ReasonStartedData, SESSION_STARTED, SessionStartedData,
+    TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, TokenUsage,
+    ToolCallCompletedData, ToolCallStartedData, ToolCallSummary, TurnCompletedData, TurnFailedData,
+    TurnStartedData, UNKNOWN,
 };
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{

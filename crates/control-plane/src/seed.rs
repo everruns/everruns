@@ -6,8 +6,8 @@
 // Decision: Modular design allows easy addition of new seeders
 
 use everruns_control_plane::storage::{
-    models::{CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow},
     StorageBackend,
+    models::{CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow},
 };
 use std::sync::Arc;
 use std::time::Duration;

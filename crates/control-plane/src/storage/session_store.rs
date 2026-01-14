@@ -5,9 +5,9 @@
 
 use async_trait::async_trait;
 use everruns_core::{
+    AgentLoopError, Result,
     session::{Session, SessionStatus},
     traits::SessionStore,
-    AgentLoopError, Result,
 };
 use uuid::Uuid;
 

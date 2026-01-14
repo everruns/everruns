@@ -8,11 +8,11 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::{
+    AgentLoopError, ContentPart, Event, EventData, Message, MessageRole, Result,
     events::{
         EventContext, EventRequest, MessageAgentData, MessageUserData, ToolCallCompletedData,
     },
     traits::{InputMessage, MessageStore},
-    AgentLoopError, ContentPart, Event, EventData, Message, MessageRole, Result,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -179,10 +179,10 @@ fn tool_call_to_message(data: ToolCallCompletedData) -> Message {
     // Extract result as JSON value
     let result: Option<serde_json::Value> = data.result.map(|parts| {
         // For simple text results, extract just the text
-        if parts.len() == 1 {
-            if let ContentPart::Text(t) = &parts[0] {
-                return serde_json::Value::String(t.text.clone());
-            }
+        if parts.len() == 1
+            && let ContentPart::Text(t) = &parts[0]
+        {
+            return serde_json::Value::String(t.text.clone());
         }
         serde_json::to_value(&parts).unwrap_or_default()
     });

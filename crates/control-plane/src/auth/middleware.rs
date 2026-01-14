@@ -3,10 +3,10 @@
 // Decision: In "none" mode, create an anonymous user context
 
 use axum::{
-    extract::FromRequestParts,
-    http::{header, request::Parts, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    extract::FromRequestParts,
+    http::{StatusCode, header, request::Parts},
+    response::{IntoResponse, Response},
 };
 use axum_extra::extract::CookieJar;
 use serde::Serialize;
@@ -14,7 +14,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    api_key::{hash_api_key, is_valid_api_key_format, ValidatedApiKey, API_KEY_PREFIX},
+    api_key::{API_KEY_PREFIX, ValidatedApiKey, hash_api_key, is_valid_api_key_format},
     config::{AuthConfig, AuthMode},
     jwt::JwtService,
 };

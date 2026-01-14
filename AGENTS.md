@@ -148,7 +148,7 @@ These secrets are pre-configured in the environment and do not require manual se
 
 ### Rust conventions
 
-- Use stable Rust (edition 2021) and keep the toolchain pinned via `rust-toolchain.toml`.
+- Use stable Rust (edition 2024) and keep the toolchain pinned via `rust-toolchain.toml`.
 - Run `cargo fmt` and `cargo clippy -- -D warnings` for touched crates.
 - Prefer `axum`/`tower` for HTTP, `sqlx` for Postgres, `serde` for DTOs.
 

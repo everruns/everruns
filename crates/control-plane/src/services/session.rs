@@ -1,8 +1,8 @@
 // Session service for business logic (M2)
 
 use crate::storage::{
-    models::{CreateSessionRow, UpdateSession},
     StorageBackend,
+    models::{CreateSessionRow, UpdateSession},
 };
 use anyhow::Result;
 use everruns_core::{Session, SessionStatus};

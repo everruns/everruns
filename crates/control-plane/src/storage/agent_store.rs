@@ -5,10 +5,10 @@
 
 use async_trait::async_trait;
 use everruns_core::{
+    AgentLoopError, Result,
     agent::{Agent, AgentStatus},
     capability_types::CapabilityId,
     traits::AgentStore,
-    AgentLoopError, Result,
 };
 use uuid::Uuid;
 

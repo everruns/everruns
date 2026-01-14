@@ -10,8 +10,8 @@ use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRo
 use crate::storage::StorageBackend;
 use anyhow::Result;
 use chrono::Utc;
-use everruns_core::events::{EventContext, EventRequest, MessageUserData};
 use everruns_core::Event;
+use everruns_core::events::{EventContext, EventRequest, MessageUserData};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -151,10 +151,10 @@ impl MessageService {
                     everruns_core::EventData::ToolCallCompleted(data) => {
                         // Convert tool result to message
                         let result: Option<serde_json::Value> = data.result.as_ref().map(|parts| {
-                            if parts.len() == 1 {
-                                if let everruns_core::ContentPart::Text(t) = &parts[0] {
-                                    return serde_json::Value::String(t.text.clone());
-                                }
+                            if parts.len() == 1
+                                && let everruns_core::ContentPart::Text(t) = &parts[0]
+                            {
+                                return serde_json::Value::String(t.text.clone());
                             }
                             serde_json::to_value(parts).unwrap_or_default()
                         });

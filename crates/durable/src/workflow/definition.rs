@@ -1,6 +1,6 @@
 //! Workflow trait definition
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use super::{WorkflowAction, WorkflowSignal};
 use crate::activity::ActivityError;

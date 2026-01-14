@@ -264,20 +264,26 @@ mod tests {
     #[test]
     fn test_is_terminal() {
         assert!(WorkflowEvent::WorkflowCompleted { result: json!({}) }.is_terminal());
-        assert!(WorkflowEvent::WorkflowFailed {
-            error: WorkflowError::new("error")
-        }
-        .is_terminal());
-        assert!(WorkflowEvent::WorkflowCancelled {
-            reason: "cancelled".to_string()
-        }
-        .is_terminal());
+        assert!(
+            WorkflowEvent::WorkflowFailed {
+                error: WorkflowError::new("error")
+            }
+            .is_terminal()
+        );
+        assert!(
+            WorkflowEvent::WorkflowCancelled {
+                reason: "cancelled".to_string()
+            }
+            .is_terminal()
+        );
 
         assert!(!WorkflowEvent::WorkflowStarted { input: json!({}) }.is_terminal());
-        assert!(!WorkflowEvent::ActivityCompleted {
-            activity_id: "x".to_string(),
-            result: json!({})
-        }
-        .is_terminal());
+        assert!(
+            !WorkflowEvent::ActivityCompleted {
+                activity_id: "x".to_string(),
+                result: json!({})
+            }
+            .is_terminal()
+        );
     }
 }

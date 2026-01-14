@@ -34,6 +34,6 @@ pub use metrics::{
 };
 pub use report::{BenchmarkReport, ReportConfig};
 pub use runner::{
-    clear_terminal_progress, set_terminal_progress, ActivityDuration, BenchmarkRunner,
-    BenchmarkScenario, CheckpointSaveResult, ScenarioConfig,
+    ActivityDuration, BenchmarkRunner, BenchmarkScenario, CheckpointSaveResult, ScenarioConfig,
+    clear_terminal_progress, set_terminal_progress,
 };

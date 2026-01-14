@@ -124,12 +124,12 @@ pub async fn run(
                         .data
                         .get("content")
                         .or_else(|| event.data.get("message").and_then(|m| m.get("content")));
-                    if let Some(content) = content {
-                        if let Some(parts) = content.as_array() {
-                            for part in parts {
-                                if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                    agent_content.push_str(text);
-                                }
+                    if let Some(content) = content
+                        && let Some(parts) = content.as_array()
+                    {
+                        for part in parts {
+                            if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                                agent_content.push_str(text);
                             }
                         }
                     }

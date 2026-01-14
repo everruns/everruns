@@ -13,9 +13,9 @@
 // Atoms emit events via EventEmitter for observability.
 
 use anyhow::{Context, Result};
+use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::ToolRegistry;
 use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;

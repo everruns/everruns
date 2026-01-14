@@ -14,4 +14,4 @@ mod signal;
 pub use action::{ActivityOptions, WorkflowAction};
 pub use definition::{Workflow, WorkflowError};
 pub use event::{TimeoutType, WorkflowEvent};
-pub use signal::{signal_types, WorkflowSignal};
+pub use signal::{WorkflowSignal, signal_types};
