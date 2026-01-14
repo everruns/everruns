@@ -3,10 +3,9 @@
 -- Architecture:
 -- 1. llm_generations table - SOURCE OF TRUTH for all LLM calls
 -- 2. Denormalized totals on sessions/agents - for fast queries
--- 3. Regeneration functions - rebuild totals from generations if needed
 --
--- This design ensures we can recover from any data corruption in the
--- denormalized columns by re-aggregating from the generations table.
+-- The llm_generations table stores every LLM call, allowing totals to be
+-- recalculated if needed.
 
 -- ============================================================================
 -- 1. Create llm_generations table (SOURCE OF TRUTH)
@@ -39,7 +38,6 @@ CREATE TABLE IF NOT EXISTS llm_generations (
 CREATE INDEX IF NOT EXISTS idx_llm_generations_session_id ON llm_generations(session_id);
 CREATE INDEX IF NOT EXISTS idx_llm_generations_turn_id ON llm_generations(turn_id) WHERE turn_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_llm_generations_created_at ON llm_generations(created_at);
-CREATE INDEX IF NOT EXISTS idx_llm_generations_model ON llm_generations(model) WHERE model IS NOT NULL;
 
 -- ============================================================================
 -- 2. Add denormalized usage columns to sessions and agents (for fast queries)
@@ -61,7 +59,6 @@ ADD COLUMN IF NOT EXISTS total_cache_creation_tokens BIGINT DEFAULT 0;
 -- 3. Trigger: Insert llm_generation AND update denormalized totals
 -- ============================================================================
 
--- Function to process llm.generation events
 CREATE OR REPLACE FUNCTION process_llm_generation_event()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -90,37 +87,17 @@ BEGIN
     v_provider := NEW.data->'metadata'->>'provider';
     v_duration_ms := (NEW.data->'metadata'->>'duration_ms')::INTEGER;
     v_turn_id := (NEW.data->'context'->>'turn_id')::UUID;
-
-    -- Extract finish_reason from array (first element)
     v_finish_reason := NEW.data->'metadata'->'finish_reasons'->>0;
 
     -- 1. Insert into llm_generations (SOURCE OF TRUTH)
     INSERT INTO llm_generations (
-        session_id,
-        turn_id,
-        event_id,
-        model,
-        provider,
-        input_tokens,
-        output_tokens,
-        cache_read_tokens,
-        cache_creation_tokens,
-        duration_ms,
-        finish_reason,
-        created_at
+        session_id, turn_id, event_id, model, provider,
+        input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+        duration_ms, finish_reason, created_at
     ) VALUES (
-        NEW.session_id,
-        v_turn_id,
-        NEW.id,
-        v_model,
-        v_provider,
-        v_input_tokens,
-        v_output_tokens,
-        v_cache_read_tokens,
-        v_cache_creation_tokens,
-        v_duration_ms,
-        v_finish_reason,
-        NEW.created_at
+        NEW.session_id, v_turn_id, NEW.id, v_model, v_provider,
+        v_input_tokens, v_output_tokens, v_cache_read_tokens, v_cache_creation_tokens,
+        v_duration_ms, v_finish_reason, NEW.created_at
     );
 
     -- 2. Update session denormalized totals
@@ -134,7 +111,6 @@ BEGIN
 
     -- 3. Update agent denormalized totals
     SELECT agent_id INTO v_agent_id FROM sessions WHERE id = NEW.session_id;
-
     IF v_agent_id IS NOT NULL THEN
         UPDATE agents
         SET
@@ -149,7 +125,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger
 DROP TRIGGER IF EXISTS trigger_process_llm_generation ON events;
 CREATE TRIGGER trigger_process_llm_generation
     AFTER INSERT ON events
@@ -157,113 +132,48 @@ CREATE TRIGGER trigger_process_llm_generation
     EXECUTE FUNCTION process_llm_generation_event();
 
 -- ============================================================================
--- 4. Regeneration functions (for disaster recovery)
+-- 4. Backfill existing llm.generation events
 -- ============================================================================
 
--- Regenerate session totals from llm_generations table
-CREATE OR REPLACE FUNCTION regenerate_session_usage(p_session_id UUID)
-RETURNS void AS $$
-BEGIN
-    UPDATE sessions s
-    SET
-        total_input_tokens = COALESCE(g.input_tokens, 0),
-        total_output_tokens = COALESCE(g.output_tokens, 0),
-        total_cache_read_tokens = COALESCE(g.cache_read_tokens, 0),
-        total_cache_creation_tokens = COALESCE(g.cache_creation_tokens, 0)
-    FROM (
-        SELECT
-            session_id,
-            SUM(input_tokens) as input_tokens,
-            SUM(output_tokens) as output_tokens,
-            SUM(cache_read_tokens) as cache_read_tokens,
-            SUM(cache_creation_tokens) as cache_creation_tokens
-        FROM llm_generations
-        WHERE session_id = p_session_id
-        GROUP BY session_id
-    ) g
-    WHERE s.id = p_session_id AND s.id = g.session_id;
-
-    -- Handle case where no generations exist
-    IF NOT FOUND THEN
-        UPDATE sessions
-        SET
-            total_input_tokens = 0,
-            total_output_tokens = 0,
-            total_cache_read_tokens = 0,
-            total_cache_creation_tokens = 0
-        WHERE id = p_session_id;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
-
--- Regenerate agent totals from llm_generations table
-CREATE OR REPLACE FUNCTION regenerate_agent_usage(p_agent_id UUID)
-RETURNS void AS $$
-BEGIN
-    UPDATE agents a
-    SET
-        total_input_tokens = COALESCE(g.input_tokens, 0),
-        total_output_tokens = COALESCE(g.output_tokens, 0),
-        total_cache_read_tokens = COALESCE(g.cache_read_tokens, 0),
-        total_cache_creation_tokens = COALESCE(g.cache_creation_tokens, 0)
-    FROM (
-        SELECT
-            s.agent_id,
-            SUM(lg.input_tokens) as input_tokens,
-            SUM(lg.output_tokens) as output_tokens,
-            SUM(lg.cache_read_tokens) as cache_read_tokens,
-            SUM(lg.cache_creation_tokens) as cache_creation_tokens
-        FROM llm_generations lg
-        JOIN sessions s ON lg.session_id = s.id
-        WHERE s.agent_id = p_agent_id
-        GROUP BY s.agent_id
-    ) g
-    WHERE a.id = p_agent_id AND a.id = g.agent_id;
-
-    -- Handle case where no generations exist
-    IF NOT FOUND THEN
-        UPDATE agents
-        SET
-            total_input_tokens = 0,
-            total_output_tokens = 0,
-            total_cache_read_tokens = 0,
-            total_cache_creation_tokens = 0
-        WHERE id = p_agent_id;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
-
--- Regenerate ALL session and agent totals (full rebuild)
-CREATE OR REPLACE FUNCTION regenerate_all_usage()
-RETURNS void AS $$
+DO $$
 DECLARE
-    v_session RECORD;
-    v_agent RECORD;
+    v_event RECORD;
 BEGIN
-    -- Reset all sessions first
-    UPDATE sessions SET
-        total_input_tokens = 0,
-        total_output_tokens = 0,
-        total_cache_read_tokens = 0,
-        total_cache_creation_tokens = 0;
+    FOR v_event IN
+        SELECT id, session_id, data, created_at
+        FROM events
+        WHERE event_type = 'llm.generation'
+        ORDER BY created_at
+    LOOP
+        INSERT INTO llm_generations (
+            session_id, turn_id, event_id, model, provider,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            duration_ms, finish_reason, created_at
+        ) VALUES (
+            v_event.session_id,
+            (v_event.data->'context'->>'turn_id')::UUID,
+            v_event.id,
+            v_event.data->'metadata'->>'model',
+            v_event.data->'metadata'->>'provider',
+            COALESCE((v_event.data->'metadata'->'usage'->>'input_tokens')::BIGINT, 0),
+            COALESCE((v_event.data->'metadata'->'usage'->>'output_tokens')::BIGINT, 0),
+            COALESCE((v_event.data->'metadata'->'usage'->>'cache_read_tokens')::BIGINT, 0),
+            COALESCE((v_event.data->'metadata'->'usage'->>'cache_creation_tokens')::BIGINT, 0),
+            (v_event.data->'metadata'->>'duration_ms')::INTEGER,
+            v_event.data->'metadata'->'finish_reasons'->>0,
+            v_event.created_at
+        ) ON CONFLICT DO NOTHING;
+    END LOOP;
 
-    -- Reset all agents first
-    UPDATE agents SET
-        total_input_tokens = 0,
-        total_output_tokens = 0,
-        total_cache_read_tokens = 0,
-        total_cache_creation_tokens = 0;
-
-    -- Regenerate session totals
+    -- Update session totals from llm_generations
     UPDATE sessions s
     SET
-        total_input_tokens = g.input_tokens,
-        total_output_tokens = g.output_tokens,
-        total_cache_read_tokens = g.cache_read_tokens,
-        total_cache_creation_tokens = g.cache_creation_tokens
+        total_input_tokens = COALESCE(g.input_tokens, 0),
+        total_output_tokens = COALESCE(g.output_tokens, 0),
+        total_cache_read_tokens = COALESCE(g.cache_read_tokens, 0),
+        total_cache_creation_tokens = COALESCE(g.cache_creation_tokens, 0)
     FROM (
-        SELECT
-            session_id,
+        SELECT session_id,
             SUM(input_tokens) as input_tokens,
             SUM(output_tokens) as output_tokens,
             SUM(cache_read_tokens) as cache_read_tokens,
@@ -273,100 +183,27 @@ BEGIN
     ) g
     WHERE s.id = g.session_id;
 
-    -- Regenerate agent totals
+    -- Update agent totals from sessions
     UPDATE agents a
     SET
-        total_input_tokens = g.input_tokens,
-        total_output_tokens = g.output_tokens,
-        total_cache_read_tokens = g.cache_read_tokens,
-        total_cache_creation_tokens = g.cache_creation_tokens
+        total_input_tokens = COALESCE(g.input_tokens, 0),
+        total_output_tokens = COALESCE(g.output_tokens, 0),
+        total_cache_read_tokens = COALESCE(g.cache_read_tokens, 0),
+        total_cache_creation_tokens = COALESCE(g.cache_creation_tokens, 0)
     FROM (
-        SELECT
-            s.agent_id,
-            SUM(lg.input_tokens) as input_tokens,
-            SUM(lg.output_tokens) as output_tokens,
-            SUM(lg.cache_read_tokens) as cache_read_tokens,
-            SUM(lg.cache_creation_tokens) as cache_creation_tokens
-        FROM llm_generations lg
-        JOIN sessions s ON lg.session_id = s.id
-        GROUP BY s.agent_id
+        SELECT agent_id,
+            SUM(total_input_tokens) as input_tokens,
+            SUM(total_output_tokens) as output_tokens,
+            SUM(total_cache_read_tokens) as cache_read_tokens,
+            SUM(total_cache_creation_tokens) as cache_creation_tokens
+        FROM sessions
+        GROUP BY agent_id
     ) g
     WHERE a.id = g.agent_id;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
--- 5. Backfill: Migrate existing llm.generation events to llm_generations table
--- ============================================================================
-
-DO $$
-DECLARE
-    v_event RECORD;
-    v_input_tokens BIGINT;
-    v_output_tokens BIGINT;
-    v_cache_read_tokens BIGINT;
-    v_cache_creation_tokens BIGINT;
-    v_model TEXT;
-    v_provider TEXT;
-    v_duration_ms INTEGER;
-    v_finish_reason TEXT;
-    v_turn_id UUID;
-BEGIN
-    -- Process all existing llm.generation events
-    FOR v_event IN
-        SELECT id, session_id, data, created_at
-        FROM events
-        WHERE event_type = 'llm.generation'
-        ORDER BY created_at
-    LOOP
-        -- Extract data
-        v_input_tokens := COALESCE((v_event.data->'metadata'->'usage'->>'input_tokens')::BIGINT, 0);
-        v_output_tokens := COALESCE((v_event.data->'metadata'->'usage'->>'output_tokens')::BIGINT, 0);
-        v_cache_read_tokens := COALESCE((v_event.data->'metadata'->'usage'->>'cache_read_tokens')::BIGINT, 0);
-        v_cache_creation_tokens := COALESCE((v_event.data->'metadata'->'usage'->>'cache_creation_tokens')::BIGINT, 0);
-        v_model := v_event.data->'metadata'->>'model';
-        v_provider := v_event.data->'metadata'->>'provider';
-        v_duration_ms := (v_event.data->'metadata'->>'duration_ms')::INTEGER;
-        v_turn_id := (v_event.data->'context'->>'turn_id')::UUID;
-        v_finish_reason := v_event.data->'metadata'->'finish_reasons'->>0;
-
-        -- Insert into llm_generations (skip if already exists based on event_id)
-        INSERT INTO llm_generations (
-            session_id,
-            turn_id,
-            event_id,
-            model,
-            provider,
-            input_tokens,
-            output_tokens,
-            cache_read_tokens,
-            cache_creation_tokens,
-            duration_ms,
-            finish_reason,
-            created_at
-        ) VALUES (
-            v_event.session_id,
-            v_turn_id,
-            v_event.id,
-            v_model,
-            v_provider,
-            v_input_tokens,
-            v_output_tokens,
-            v_cache_read_tokens,
-            v_cache_creation_tokens,
-            v_duration_ms,
-            v_finish_reason,
-            v_event.created_at
-        )
-        ON CONFLICT DO NOTHING;
-    END LOOP;
-
-    -- Regenerate all totals from the freshly populated llm_generations table
-    PERFORM regenerate_all_usage();
 END $$;
 
 -- ============================================================================
--- 6. Comments
+-- 5. Comments
 -- ============================================================================
 
 COMMENT ON TABLE llm_generations IS 'Source of truth for all LLM generation calls and their token usage';
@@ -382,7 +219,3 @@ COMMENT ON COLUMN agents.total_input_tokens IS 'Denormalized: sum of input_token
 COMMENT ON COLUMN agents.total_output_tokens IS 'Denormalized: sum of output_tokens across all sessions';
 COMMENT ON COLUMN agents.total_cache_read_tokens IS 'Denormalized: sum of cache_read_tokens across all sessions';
 COMMENT ON COLUMN agents.total_cache_creation_tokens IS 'Denormalized: sum of cache_creation_tokens across all sessions';
-
-COMMENT ON FUNCTION regenerate_session_usage(UUID) IS 'Rebuild session totals from llm_generations (disaster recovery)';
-COMMENT ON FUNCTION regenerate_agent_usage(UUID) IS 'Rebuild agent totals from llm_generations (disaster recovery)';
-COMMENT ON FUNCTION regenerate_all_usage() IS 'Rebuild ALL session and agent totals from llm_generations (full disaster recovery)';
