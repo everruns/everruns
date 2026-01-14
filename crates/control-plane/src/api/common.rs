@@ -144,6 +144,44 @@ impl<T> From<Vec<T>> for ListResponse<T> {
     }
 }
 
+/// Response wrapper for paginated list endpoints.
+/// Includes pagination metadata along with the data array.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PaginatedResponse<T> {
+    /// Array of items returned by the list operation.
+    pub data: Vec<T>,
+    /// Total number of items matching the query (across all pages).
+    pub total: u32,
+    /// Current offset (starting position).
+    pub offset: u32,
+    /// Maximum number of items per page.
+    pub limit: u32,
+}
+
+impl<T> PaginatedResponse<T> {
+    pub fn new(data: Vec<T>, total: u32, offset: u32, limit: u32) -> Self {
+        Self {
+            data,
+            total,
+            offset,
+            limit,
+        }
+    }
+}
+
+/// Pagination parameters for list endpoints.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Pagination {
+    pub offset: u32,
+    pub limit: u32,
+}
+
+impl Pagination {
+    pub fn new(offset: u32, limit: u32) -> Self {
+        Self { offset, limit }
+    }
+}
+
 /// Request to create an event (for internal use)
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

@@ -5,7 +5,8 @@ import type {
   Session,
   CreateSessionRequest,
   UpdateSessionRequest,
-  ListResponse,
+  PaginatedResponse,
+  PaginationParams,
 } from "./types";
 
 // Re-export message and event functions for convenience
@@ -27,11 +28,21 @@ export async function createSession(
   return response.data;
 }
 
-export async function listSessions(agentId: string): Promise<Session[]> {
-  const response = await api.get<ListResponse<Session>>(
-    `/v1/agents/${agentId}/sessions`
-  );
-  return response.data.data;
+export async function listSessions(
+  agentId: string,
+  params?: PaginationParams
+): Promise<PaginatedResponse<Session>> {
+  const searchParams = new URLSearchParams();
+  if (params?.offset !== undefined) {
+    searchParams.set("offset", String(params.offset));
+  }
+  if (params?.limit !== undefined) {
+    searchParams.set("limit", String(params.limit));
+  }
+  const query = searchParams.toString();
+  const url = `/v1/agents/${agentId}/sessions${query ? `?${query}` : ""}`;
+  const response = await api.get<PaginatedResponse<Session>>(url);
+  return response.data;
 }
 
 export async function getSession(

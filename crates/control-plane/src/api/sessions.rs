@@ -3,16 +3,16 @@
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
 use everruns_core::Session;
 
-use super::common::{ApiOptionExt, ApiResultExt, ListResponse};
+use super::common::{ApiOptionExt, ApiResultExt, PaginatedResponse, Pagination};
 use serde::Deserialize;
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 /// Request to create a session
@@ -44,6 +44,22 @@ pub struct UpdateSessionRequest {
     #[schema(example = json!(["resolved"]))]
     pub tags: Option<Vec<String>>,
 }
+
+/// Query parameters for listing sessions with pagination.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct ListSessionsQuery {
+    /// Number of items to skip (for pagination).
+    #[param(minimum = 0, default = 0)]
+    pub offset: Option<u32>,
+    /// Maximum number of items to return (for pagination).
+    #[param(minimum = 1, maximum = 100, default = 20)]
+    pub limit: Option<u32>,
+}
+
+/// Default limit for session listing
+const DEFAULT_LIMIT: u32 = 20;
+/// Maximum allowed limit for session listing
+const MAX_LIMIT: u32 = 100;
 
 use crate::services::SessionService;
 
@@ -111,10 +127,11 @@ pub async fn create_session(
     get,
     path = "/v1/agents/{agent_id}/sessions",
     params(
-        ("agent_id" = Uuid, Path, description = "Agent ID")
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ListSessionsQuery
     ),
     responses(
-        (status = 200, description = "List of sessions", body = ListResponse<Session>),
+        (status = 200, description = "Paginated list of sessions", body = PaginatedResponse<Session>),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -122,14 +139,19 @@ pub async fn create_session(
 pub async fn list_sessions(
     State(state): State<AppState>,
     Path(agent_id): Path<Uuid>,
-) -> Result<Json<ListResponse<Session>>, StatusCode> {
-    let sessions = state
+    Query(query): Query<ListSessionsQuery>,
+) -> Result<Json<PaginatedResponse<Session>>, StatusCode> {
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+    let pagination = Pagination::new(offset, limit);
+
+    let (sessions, total) = state
         .session_service
-        .list(agent_id)
+        .list(agent_id, pagination)
         .await
         .log_internal_error("list sessions")?;
 
-    Ok(Json(ListResponse::new(sessions)))
+    Ok(Json(PaginatedResponse::new(sessions, total, offset, limit)))
 }
 
 /// GET /v1/agents/{agent_id}/sessions/{session_id} - Get session

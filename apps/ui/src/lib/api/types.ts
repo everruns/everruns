@@ -394,11 +394,23 @@ export interface CreateEventRequest {
 }
 
 // ============================================
-// List response wrapper
+// List response wrappers
 // ============================================
 
 export interface ListResponse<T> {
   data: T[];
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface PaginationParams {
+  offset?: number;
+  limit?: number;
 }
 
 // ============================================

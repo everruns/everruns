@@ -333,15 +333,46 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of items to skip (for pagination).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "default": 0,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of items to return (for pagination).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "List of sessions",
+            "description": "Paginated list of sessions",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_Session"
+                  "$ref": "#/components/schemas/PaginatedResponse_Session"
                 }
               }
             }
@@ -3422,88 +3453,6 @@
           }
         }
       },
-      "ListResponse_Session": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "Session - instance of agentic loop execution.\nA session represents a single conversation with an agent.",
-              "required": [
-                "id",
-                "agent_id",
-                "status",
-                "created_at"
-              ],
-              "properties": {
-                "agent_id": {
-                  "type": "string",
-                  "format": "uuid",
-                  "description": "ID of the agent this session belongs to."
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when the session was created."
-                },
-                "finished_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp when the session finished (completed or failed)."
-                },
-                "id": {
-                  "type": "string",
-                  "format": "uuid",
-                  "description": "Unique identifier for the session."
-                },
-                "model_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "uuid",
-                  "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
-                },
-                "started_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp when the session started executing."
-                },
-                "status": {
-                  "$ref": "#/components/schemas/SessionStatus",
-                  "description": "Current execution status of the session."
-                },
-                "tags": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Tags for organizing and filtering sessions."
-                },
-                "title": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Human-readable title for the session."
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
       "ListResponse_User": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -4237,6 +4186,109 @@
           "src_path": {
             "type": "string",
             "description": "Source path"
+          }
+        }
+      },
+      "PaginatedResponse_Session": {
+        "type": "object",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "required": [
+          "data",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Session - instance of agentic loop execution.\nA session represents a single conversation with an agent.",
+              "required": [
+                "id",
+                "agent_id",
+                "status",
+                "created_at"
+              ],
+              "properties": {
+                "agent_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "ID of the agent this session belongs to."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the session was created."
+                },
+                "finished_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the session finished (completed or failed)."
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Unique identifier for the session."
+                },
+                "model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+                },
+                "started_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the session started executing."
+                },
+                "status": {
+                  "$ref": "#/components/schemas/SessionStatus",
+                  "description": "Current execution status of the session."
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags for organizing and filtering sessions."
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable title for the session."
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum number of items per page.",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Current offset (starting position).",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of items matching the query (across all pages).",
+            "minimum": 0
           }
         }
       },

@@ -396,7 +396,13 @@ impl InMemoryDatabase {
         Ok(self.sessions.read().get(&id).cloned())
     }
 
-    pub async fn list_sessions(&self, agent_id: Uuid) -> Result<Vec<SessionRow>> {
+    /// List sessions for an agent with pagination.
+    /// Returns (sessions, total_count).
+    pub async fn list_sessions(
+        &self,
+        agent_id: Uuid,
+        pagination: crate::api::common::Pagination,
+    ) -> Result<(Vec<SessionRow>, u32)> {
         let sessions = self.sessions.read();
         let mut result: Vec<_> = sessions
             .values()
@@ -404,7 +410,15 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        Ok(result)
+
+        let total = result.len() as u32;
+        let offset = pagination.offset as usize;
+        let limit = pagination.limit as usize;
+
+        // Apply pagination
+        let paginated = result.into_iter().skip(offset).take(limit).collect();
+
+        Ok((paginated, total))
     }
 
     pub async fn update_session(
@@ -1310,8 +1324,10 @@ mod tests {
             .await
             .unwrap();
 
-        let sessions = db.list_sessions(agent.id).await.unwrap();
+        let pagination = crate::api::common::Pagination::new(0, 20);
+        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
         assert_eq!(sessions.len(), 1);
+        assert_eq!(total, 1);
         assert_eq!(sessions[0].id, session.id);
     }
 

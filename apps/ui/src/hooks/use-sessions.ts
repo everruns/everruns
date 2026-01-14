@@ -13,12 +13,19 @@ import {
 } from "@/lib/api/sessions";
 import { getSseUrl } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateSessionRequest, UpdateSessionRequest, Controls, Event } from "@/lib/api/types";
+import type { CreateSessionRequest, UpdateSessionRequest, Controls, Event, PaginationParams } from "@/lib/api/types";
 
-export function useSessions(agentId: string | undefined) {
+/**
+ * Fetch paginated sessions for an agent.
+ * Returns { data, total, offset, limit } for pagination controls.
+ */
+export function useSessions(
+  agentId: string | undefined,
+  params?: PaginationParams
+) {
   return useQuery({
-    queryKey: queryKeys.sessions.list(agentId!),
-    queryFn: () => listSessions(agentId!),
+    queryKey: [...queryKeys.sessions.list(agentId!), params?.offset ?? 0, params?.limit ?? 20],
+    queryFn: () => listSessions(agentId!, params),
     enabled: !!agentId,
   });
 }

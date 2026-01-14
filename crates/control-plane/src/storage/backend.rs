@@ -11,6 +11,7 @@ use uuid::Uuid;
 use super::memory::InMemoryDatabase;
 use super::models::*;
 use super::repositories::Database;
+use crate::api::common::Pagination;
 
 /// Helper macro to dispatch method calls to the appropriate backend.
 ///
@@ -201,8 +202,14 @@ impl StorageBackend {
         dispatch!(self, get_session, id)
     }
 
-    pub async fn list_sessions(&self, agent_id: Uuid) -> Result<Vec<SessionRow>> {
-        dispatch!(self, list_sessions, agent_id)
+    /// List sessions for an agent with pagination.
+    /// Returns (sessions, total_count).
+    pub async fn list_sessions(
+        &self,
+        agent_id: Uuid,
+        pagination: Pagination,
+    ) -> Result<(Vec<SessionRow>, u32)> {
+        dispatch!(self, list_sessions, agent_id, pagination)
     }
 
     pub async fn update_session(
