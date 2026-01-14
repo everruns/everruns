@@ -221,15 +221,35 @@ impl InProcessWorker {
         Ok(tasks.len())
     }
 
-    /// Helper to append workflow events
+    /// Helper to append workflow events with retry on concurrency conflict
     async fn append_event(&self, workflow_id: Uuid, event: WorkflowEvent) -> Result<i32> {
-        // Get current sequence by loading events
-        let events = self.durable_store.load_events(workflow_id).await?;
-        let current_seq = events.len() as i32;
-        self.durable_store
-            .append_events(workflow_id, current_seq, vec![event])
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to append event: {}", e))
+        // Retry up to 5 times on concurrency conflicts
+        for attempt in 0..5 {
+            // Get current sequence by loading events
+            let events = self.durable_store.load_events(workflow_id).await?;
+            let current_seq = events.len() as i32;
+
+            match self
+                .durable_store
+                .append_events(workflow_id, current_seq, vec![event.clone()])
+                .await
+            {
+                Ok(seq) => return Ok(seq),
+                Err(everruns_durable::StoreError::ConcurrencyConflict { .. }) => {
+                    // Another event was appended concurrently, retry with new sequence
+                    debug!(
+                        workflow_id = %workflow_id,
+                        attempt = attempt + 1,
+                        "Concurrency conflict appending event, retrying"
+                    );
+                    continue;
+                }
+                Err(e) => return Err(anyhow::anyhow!("Failed to append event: {}", e)),
+            }
+        }
+        Err(anyhow::anyhow!(
+            "Failed to append event after 5 attempts due to concurrency conflicts"
+        ))
     }
 
     /// Execute a single task
