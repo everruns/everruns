@@ -179,6 +179,7 @@ async fn main() -> Result<()> {
     };
     let llm_providers_state = api::llm_providers::AppState::new(db.clone(), encryption.clone());
     let llm_models_state = api::llm_models::AppState::new(db.clone());
+    let mcp_servers_state = api::mcp_servers::AppState::new(db.clone(), encryption.clone());
     let capability_service = Arc::new(services::CapabilityService::new(db.clone()));
     let capabilities_state = api::capabilities::AppState::new(capability_service);
     let session_files_state = api::session_files::AppState::new(db.clone());
@@ -236,6 +237,7 @@ async fn main() -> Result<()> {
         .merge(api::events::routes(events_state))
         .merge(api::llm_models::routes(llm_models_state))
         .merge(api::llm_providers::routes(llm_providers_state))
+        .merge(api::mcp_servers::routes(mcp_servers_state))
         .merge(api::capabilities::routes(capabilities_state))
         .merge(api::session_files::routes(session_files_state))
         .merge(api::users::routes(users_state))

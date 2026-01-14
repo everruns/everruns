@@ -10,7 +10,8 @@ use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, Event, EventContext, EventData, FileInfo, FileStat,
     GrepMatch, GrepResult, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderStatus,
-    LlmProviderType, Session, SessionFile, SessionStatus, ToolCall,
+    LlmProviderType, McpServer, McpServerStatus, McpServerTransportType, Session, SessionFile,
+    SessionStatus, ToolCall,
     events::{
         ActCompletedData, ActStartedData, InputReceivedData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, MessageAgentData, MessageUserData,
@@ -67,6 +68,11 @@ use utoipa::OpenApi;
         api::session_files::copy_file,
         api::session_files::grep_files,
         api::session_files::stat_file,
+        api::mcp_servers::create_mcp_server,
+        api::mcp_servers::list_mcp_servers,
+        api::mcp_servers::get_mcp_server,
+        api::mcp_servers::update_mcp_server,
+        api::mcp_servers::delete_mcp_server,
     ),
     components(
         schemas(
@@ -110,6 +116,11 @@ use utoipa::OpenApi;
             ListResponse<GrepResult>,
             // Tool types
             ToolCall,
+            // MCP Server types
+            McpServer, McpServerStatus, McpServerTransportType,
+            api::mcp_servers::CreateMcpServerRequest,
+            api::mcp_servers::UpdateMcpServerRequest,
+            ListResponse<McpServer>,
         )
     ),
     tags(
@@ -121,7 +132,8 @@ use utoipa::OpenApi;
         (name = "llm-models", description = "LLM Model management endpoints"),
         (name = "capabilities", description = "Capability management endpoints"),
         (name = "users", description = "User management endpoints"),
-        (name = "filesystem", description = "Session virtual filesystem endpoints")
+        (name = "filesystem", description = "Session virtual filesystem endpoints"),
+        (name = "mcp-servers", description = "MCP Server management endpoints")
     ),
     info(
         title = "Everruns API",

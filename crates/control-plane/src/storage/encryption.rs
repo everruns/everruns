@@ -330,6 +330,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "api_key_encrypted",
         id_column: "id",
     },
+    // MCP Server API keys are encrypted at rest
+    EncryptedColumn {
+        table: "mcp_servers",
+        column: "api_key_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]

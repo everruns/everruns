@@ -97,4 +97,11 @@ export const queryKeys = {
       list: () => ["durable-runnable"] as const,
     },
   },
+
+  // MCP Server queries
+  mcpServers: {
+    all: ["mcp-servers"] as const,
+    list: () => ["mcp-servers"] as const,
+    detail: (serverId: string) => ["mcp-server", serverId] as const,
+  },
 };

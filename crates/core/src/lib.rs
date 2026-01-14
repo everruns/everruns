@@ -34,6 +34,7 @@ pub mod capability_dto;
 pub mod events;
 pub mod llm_model_profiles;
 pub mod llm_models;
+pub mod mcp_server;
 pub mod session;
 pub mod session_file;
 
@@ -129,6 +130,7 @@ pub use llm_models::{
     LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality, ReasoningEffort,
     ReasoningEffortConfig, ReasoningEffortValue,
 };
+pub use mcp_server::{McpServer, McpServerStatus, McpServerTransportType};
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
 

@@ -484,4 +484,36 @@ impl StorageBackend {
     ) -> Result<bool> {
         dispatch!(self, session_directory_has_children, session_id, path)
     }
+
+    // ============================================
+    // MCP Servers
+    // ============================================
+
+    pub async fn create_mcp_server(&self, input: CreateMcpServerRow) -> Result<McpServerRow> {
+        dispatch!(self, create_mcp_server, input)
+    }
+
+    pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
+        dispatch!(self, get_mcp_server, id)
+    }
+
+    pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
+        dispatch!(self, get_mcp_server_by_name, name)
+    }
+
+    pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+        dispatch!(self, list_mcp_servers)
+    }
+
+    pub async fn update_mcp_server(
+        &self,
+        id: Uuid,
+        input: UpdateMcpServer,
+    ) -> Result<Option<McpServerRow>> {
+        dispatch!(self, update_mcp_server, id, input)
+    }
+
+    pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_mcp_server, id)
+    }
 }
