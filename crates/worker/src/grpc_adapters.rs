@@ -102,6 +102,23 @@ fn proto_timestamp_to_datetime(ts: &proto::Timestamp) -> chrono::DateTime<chrono
         .unwrap_or_else(chrono::Utc::now)
 }
 
+/// Helper to convert optional proto timestamp to datetime (or now if missing).
+/// Reduces the repeated `.as_ref().map().unwrap_or_else()` pattern.
+fn proto_timestamp_or_now(ts: Option<&proto::Timestamp>) -> chrono::DateTime<chrono::Utc> {
+    ts.map(proto_timestamp_to_datetime)
+        .unwrap_or_else(chrono::Utc::now)
+}
+
+/// Helper to convert empty string to None.
+/// Reduces the repeated `if s.is_empty() { None } else { Some(s) }` pattern.
+fn non_empty_string(s: String) -> Option<String> {
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
 // ============================================================================
 // MessageStore implementation
 // ============================================================================
@@ -227,19 +244,13 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         _ => everruns_core::MessageRole::User,
     };
 
-    let created_at = proto_msg
-        .created_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
     Ok(Message {
         id,
         role,
         content,
         controls,
         metadata,
-        created_at,
+        created_at: proto_timestamp_or_now(proto_msg.created_at.as_ref()),
     })
 }
 
@@ -290,18 +301,6 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
 
-    let created_at = proto_agent
-        .created_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
-    let updated_at = proto_agent
-        .updated_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
     let status = match proto_agent.status.to_lowercase().as_str() {
         "active" => everruns_core::AgentStatus::Active,
         "archived" => everruns_core::AgentStatus::Archived,
@@ -311,11 +310,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
     Ok(Agent {
         id,
         name: proto_agent.name,
-        description: if proto_agent.description.is_empty() {
-            None
-        } else {
-            Some(proto_agent.description)
-        },
+        description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,
         default_model_id,
         tags: vec![],
@@ -325,8 +320,8 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
             .filter_map(|s| s.parse().ok())
             .collect(),
         status,
-        created_at,
-        updated_at,
+        created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(proto_agent.updated_at.as_ref()),
     })
 }
 
@@ -378,12 +373,6 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
 
-    let created_at = proto_session
-        .created_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
     let status = match proto_session.status.to_lowercase().as_str() {
         "started" => everruns_core::SessionStatus::Started,
         "active" => everruns_core::SessionStatus::Active,
@@ -397,15 +386,11 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
     Ok(Session {
         id,
         agent_id,
-        title: if proto_session.title.is_empty() {
-            None
-        } else {
-            Some(proto_session.title)
-        },
+        title: non_empty_string(proto_session.title),
         tags: vec![],
         model_id,
         status,
-        created_at,
+        created_at: proto_timestamp_or_now(proto_session.created_at.as_ref()),
         started_at: None,
         finished_at: None,
     })
@@ -675,24 +660,9 @@ impl SessionFileStore for GrpcSessionFileStore {
 }
 
 fn proto_session_file_to_file(proto: proto::SessionFile) -> Result<SessionFile> {
-    let id = proto_uuid_to_uuid(proto.id.as_ref())?;
-    let session_id = proto_uuid_to_uuid(proto.session_id.as_ref())?;
-
-    let created_at = proto
-        .created_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
-    let updated_at = proto
-        .updated_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
     Ok(SessionFile {
-        id,
-        session_id,
+        id: proto_uuid_to_uuid(proto.id.as_ref())?,
+        session_id: proto_uuid_to_uuid(proto.session_id.as_ref())?,
         path: proto.path,
         name: proto.name,
         content: proto.content,
@@ -700,61 +670,34 @@ fn proto_session_file_to_file(proto: proto::SessionFile) -> Result<SessionFile> 
         is_directory: proto.is_directory,
         is_readonly: proto.is_readonly,
         size_bytes: proto.size_bytes,
-        created_at,
-        updated_at,
+        created_at: proto_timestamp_or_now(proto.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(proto.updated_at.as_ref()),
     })
 }
 
 fn proto_file_info_to_file_info(proto: proto::FileInfo) -> Result<FileInfo> {
-    let id = proto_uuid_to_uuid(proto.id.as_ref())?;
-    let session_id = proto_uuid_to_uuid(proto.session_id.as_ref())?;
-
-    let created_at = proto
-        .created_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
-    let updated_at = proto
-        .updated_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
     Ok(FileInfo {
-        id,
-        session_id,
+        id: proto_uuid_to_uuid(proto.id.as_ref())?,
+        session_id: proto_uuid_to_uuid(proto.session_id.as_ref())?,
         path: proto.path,
         name: proto.name,
         is_directory: proto.is_directory,
         is_readonly: proto.is_readonly,
         size_bytes: proto.size_bytes,
-        created_at,
-        updated_at,
+        created_at: proto_timestamp_or_now(proto.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(proto.updated_at.as_ref()),
     })
 }
 
 fn proto_file_stat_to_stat(proto: proto::FileStat) -> Result<FileStat> {
-    let created_at = proto
-        .created_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
-    let updated_at = proto
-        .updated_at
-        .as_ref()
-        .map(proto_timestamp_to_datetime)
-        .unwrap_or_else(chrono::Utc::now);
-
     Ok(FileStat {
         path: proto.path,
         name: proto.name,
         is_directory: proto.is_directory,
         is_readonly: proto.is_readonly,
         size_bytes: proto.size_bytes,
-        created_at,
-        updated_at,
+        created_at: proto_timestamp_or_now(proto.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(proto.updated_at.as_ref()),
     })
 }
 
