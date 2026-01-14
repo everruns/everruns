@@ -223,10 +223,32 @@ impl InProcessWorker {
 
     /// Helper to append workflow events with retry on concurrency conflict
     async fn append_event(&self, workflow_id: Uuid, event: WorkflowEvent) -> Result<i32> {
-        // Retry up to 5 times on concurrency conflicts
+        use everruns_durable::StoreError;
+
+        // Retry up to 5 times on transient errors
         for attempt in 0..5 {
             // Get current sequence by loading events
-            let events = self.durable_store.load_events(workflow_id).await?;
+            let events = match self.durable_store.load_events(workflow_id).await {
+                Ok(events) => events,
+                Err(StoreError::WorkflowNotFound(_)) if attempt < 4 => {
+                    // Workflow might not be visible yet due to race condition, retry
+                    debug!(
+                        workflow_id = %workflow_id,
+                        attempt = attempt + 1,
+                        "Workflow not found when loading events, retrying"
+                    );
+                    tokio::time::sleep(Duration::from_millis(10 * (attempt as u64 + 1))).await;
+                    continue;
+                }
+                Err(e) => {
+                    error!(
+                        workflow_id = %workflow_id,
+                        error = %e,
+                        "Failed to load events for workflow"
+                    );
+                    return Err(anyhow::anyhow!("Failed to load events: {}", e));
+                }
+            };
             let current_seq = events.len() as i32;
 
             match self
@@ -235,16 +257,25 @@ impl InProcessWorker {
                 .await
             {
                 Ok(seq) => return Ok(seq),
-                Err(everruns_durable::StoreError::ConcurrencyConflict { .. }) => {
+                Err(StoreError::ConcurrencyConflict { expected, actual }) => {
                     // Another event was appended concurrently, retry with new sequence
                     debug!(
                         workflow_id = %workflow_id,
                         attempt = attempt + 1,
+                        expected = expected,
+                        actual = actual,
                         "Concurrency conflict appending event, retrying"
                     );
                     continue;
                 }
-                Err(e) => return Err(anyhow::anyhow!("Failed to append event: {}", e)),
+                Err(e) => {
+                    error!(
+                        workflow_id = %workflow_id,
+                        error = %e,
+                        "Failed to append event"
+                    );
+                    return Err(anyhow::anyhow!("Failed to append event: {}", e));
+                }
             }
         }
         Err(anyhow::anyhow!(
