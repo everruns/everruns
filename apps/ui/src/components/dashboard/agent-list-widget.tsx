@@ -10,25 +10,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Boxes,
-  Plus,
-  CircleOff,
-  Clock,
-  Search,
-  Box,
-  Folder,
-  LucideIcon,
-} from "lucide-react";
+import { Boxes, Plus } from "lucide-react";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
-
-const iconMap: Record<string, LucideIcon> = {
-  "circle-off": CircleOff,
-  clock: Clock,
-  search: Search,
-  box: Box,
-  folder: Folder,
-};
+import { getCapabilityIcon } from "@/lib/capability-icons";
 
 interface AgentListWidgetProps {
   agents: Agent[];
@@ -91,9 +75,7 @@ export function AgentListWidget({
                               {agentCapabilities.slice(0, 3).map((capId) => {
                                 const cap = getCapabilityInfo(capId);
                                 if (!cap) return null;
-                                const IconComponent = cap.icon
-                                  ? iconMap[cap.icon] || CircleOff
-                                  : CircleOff;
+                                const IconComponent = getCapabilityIcon(cap.icon);
 
                                 return (
                                   <Tooltip key={capId}>

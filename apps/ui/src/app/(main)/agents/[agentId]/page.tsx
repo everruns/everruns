@@ -15,23 +15,10 @@ import {
   Plus,
   MessageSquare,
   Pencil,
-  CircleOff,
-  Clock,
-  Search,
-  Box,
-  Folder,
   Download,
-  LucideIcon,
 } from "lucide-react";
 import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
-
-const iconMap: Record<string, LucideIcon> = {
-  "circle-off": CircleOff,
-  clock: Clock,
-  search: Search,
-  box: Box,
-  folder: Folder,
-};
+import { getCapabilityIcon } from "@/lib/capability-icons";
 
 export default function AgentDetailPage({
   params,
@@ -245,9 +232,7 @@ export default function AgentDetailPage({
                   {agentCapabilities.map((capId) => {
                     const cap = getCapabilityInfo(capId);
                     if (!cap) return null;
-                    const IconComponent = cap.icon
-                      ? iconMap[cap.icon] || CircleOff
-                      : CircleOff;
+                    const IconComponent = getCapabilityIcon(cap.icon);
 
                     return (
                       <div

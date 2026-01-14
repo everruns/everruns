@@ -10,34 +10,12 @@ import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import {
   ArrowLeft,
   CircleOff,
-  Clock,
-  Search,
-  Box,
-  Folder,
-  Calculator,
-  Globe,
-  ListChecks,
-  LucideIcon,
   Wrench,
   FileText,
   Code,
-  HardDrive,
-  CloudSun,
 } from "lucide-react";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
-
-const iconMap: Record<string, LucideIcon> = {
-  "circle-off": CircleOff,
-  clock: Clock,
-  search: Search,
-  box: Box,
-  folder: Folder,
-  calculator: Calculator,
-  globe: Globe,
-  "list-checks": ListChecks,
-  "hard-drive": HardDrive,
-  "cloud-sun": CloudSun,
-};
+import { getCapabilityIcon } from "@/lib/capability-icons";
 
 function getStatusBadgeVariant(
   status: CapabilityStatus
@@ -137,9 +115,7 @@ export default function CapabilityDetailPage({
     );
   }
 
-  const IconComponent = capability.icon
-    ? iconMap[capability.icon] || CircleOff
-    : CircleOff;
+  const IconComponent = getCapabilityIcon(capability.icon);
 
   const toolDefinitions = capability.tool_definitions || [];
 
