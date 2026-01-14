@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
-import { Server, Key, Users } from "lucide-react";
+import { Server, Key, Users, Plug } from "lucide-react";
 
 const settingsNavigation = [
   {
@@ -12,6 +12,12 @@ const settingsNavigation = [
     href: "/settings/providers",
     icon: Server,
     description: "Manage LLM providers and models",
+  },
+  {
+    name: "MCP Servers",
+    href: "/settings/mcp-servers",
+    icon: Plug,
+    description: "Manage MCP server connections",
   },
   {
     name: "API Keys",

@@ -1782,6 +1782,219 @@
         }
       }
     },
+    "/v1/mcp-servers": {
+      "get": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "summary": "GET /v1/mcp-servers - List all MCP servers",
+        "operationId": "list_mcp_servers",
+        "responses": {
+          "200": {
+            "description": "List of MCP servers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_McpServer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "summary": "POST /v1/mcp-servers - Create a new MCP server",
+        "operationId": "create_mcp_server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "MCP server created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or duplicate name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{server_id}": {
+      "get": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "summary": "GET /v1/mcp-servers/{server_id} - Get MCP server by ID",
+        "operationId": "get_mcp_server",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "description": "MCP server ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MCP server found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "summary": "DELETE /v1/mcp-servers/{server_id} - Delete MCP server",
+        "operationId": "delete_mcp_server",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "description": "MCP server ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "MCP server deleted successfully"
+          },
+          "404": {
+            "description": "MCP server not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "summary": "PATCH /v1/mcp-servers/{server_id} - Update MCP server",
+        "operationId": "update_mcp_server",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "description": "MCP server ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "MCP server updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/users": {
       "get": {
         "tags": [
@@ -2301,6 +2514,58 @@
           "provider_type": {
             "$ref": "#/components/schemas/LlmProviderType",
             "description": "The type of LLM provider (e.g., openai, anthropic)."
+          }
+        }
+      },
+      "CreateMcpServerRequest": {
+        "type": "object",
+        "description": "Request to create a new MCP server",
+        "required": [
+          "name",
+          "url"
+        ],
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API key for authentication (optional)."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A human-readable description of what the MCP server provides.",
+            "example": "Atlassian MCP Server for Jira and Confluence"
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Additional HTTP headers for authentication.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of the MCP server. Must be unique.",
+            "example": "atlassian-mcp-server"
+          },
+          "transport_type": {
+            "$ref": "#/components/schemas/McpServerTransportType",
+            "description": "Transport type. Currently only \"http\" is supported."
+          },
+          "url": {
+            "type": "string",
+            "description": "The URL of the MCP server endpoint.",
+            "example": "https://mcp.atlassian.com/v1/mcp"
           }
         }
       },
@@ -3378,6 +3643,90 @@
           }
         }
       },
+      "ListResponse_McpServer": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "MCP Server configuration.\nRepresents a remote MCP server that can provide tools and resources.",
+              "required": [
+                "id",
+                "name",
+                "url",
+                "transport_type",
+                "status",
+                "api_key_set",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "api_key_set": {
+                  "type": "boolean",
+                  "description": "Whether an API key has been configured."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the MCP server was created."
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable description of the MCP server.",
+                  "example": "Atlassian MCP Server for Jira and Confluence"
+                },
+                "headers": {
+                  "type": "object",
+                  "description": "Additional HTTP headers for authentication.\nKeys are header names, values are header values.",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  }
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Unique identifier for the MCP server."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name of the MCP server.",
+                  "example": "atlassian-mcp-server"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/McpServerStatus",
+                  "description": "Current lifecycle status of the MCP server."
+                },
+                "transport_type": {
+                  "$ref": "#/components/schemas/McpServerTransportType",
+                  "description": "Transport type (currently only HTTP supported)."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the MCP server was last updated."
+                },
+                "url": {
+                  "type": "string",
+                  "description": "URL of the MCP server endpoint.",
+                  "example": "https://mcp.atlassian.com/v1/mcp"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_Message": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -4021,6 +4370,92 @@
           "anthropic",
           "azure_openai",
           "llmsim"
+        ]
+      },
+      "McpServer": {
+        "type": "object",
+        "description": "MCP Server configuration.\nRepresents a remote MCP server that can provide tools and resources.",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "transport_type",
+          "status",
+          "api_key_set",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "api_key_set": {
+            "type": "boolean",
+            "description": "Whether an API key has been configured."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the MCP server was created."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description of the MCP server.",
+            "example": "Atlassian MCP Server for Jira and Confluence"
+          },
+          "headers": {
+            "type": "object",
+            "description": "Additional HTTP headers for authentication.\nKeys are header names, values are header values.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the MCP server."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the MCP server.",
+            "example": "atlassian-mcp-server"
+          },
+          "status": {
+            "$ref": "#/components/schemas/McpServerStatus",
+            "description": "Current lifecycle status of the MCP server."
+          },
+          "transport_type": {
+            "$ref": "#/components/schemas/McpServerTransportType",
+            "description": "Transport type (currently only HTTP supported)."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the MCP server was last updated."
+          },
+          "url": {
+            "type": "string",
+            "description": "URL of the MCP server endpoint.",
+            "example": "https://mcp.atlassian.com/v1/mcp"
+          }
+        }
+      },
+      "McpServerStatus": {
+        "type": "string",
+        "description": "MCP Server lifecycle status.\n- `active`: Server is available for use\n- `disabled`: Server is disabled and not used",
+        "enum": [
+          "active",
+          "disabled"
+        ]
+      },
+      "McpServerTransportType": {
+        "type": "string",
+        "description": "MCP Server transport type.\nCurrently only HTTP is supported.",
+        "enum": [
+          "http"
         ]
       },
       "Message": {
@@ -5106,6 +5541,78 @@
           }
         }
       },
+      "UpdateMcpServerRequest": {
+        "type": "object",
+        "description": "Request to update an MCP server. Only provided fields will be updated.",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API key for authentication. Set to update."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A human-readable description of what the MCP server provides.",
+            "example": "Updated description"
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Additional HTTP headers for authentication.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the MCP server.",
+            "example": "updated-mcp-server"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpServerStatus",
+                "description": "The status of the MCP server. Set to \"disabled\" to disable."
+              }
+            ]
+          },
+          "transport_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpServerTransportType",
+                "description": "Transport type."
+              }
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The URL of the MCP server endpoint.",
+            "example": "https://mcp.example.com/v1/mcp"
+          }
+        }
+      },
       "UpdateSessionRequest": {
         "type": "object",
         "description": "Request to update a session. Only provided fields will be updated.",
@@ -5215,6 +5722,10 @@
     {
       "name": "filesystem",
       "description": "Session virtual filesystem endpoints"
+    },
+    {
+      "name": "mcp-servers",
+      "description": "MCP Server management endpoints"
     }
   ]
 }

@@ -10,6 +10,7 @@ pub mod durable;
 pub mod events;
 pub mod llm_models;
 pub mod llm_providers;
+pub mod mcp_servers;
 pub mod messages;
 pub mod session_files;
 pub mod sessions;

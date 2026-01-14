@@ -1502,4 +1502,128 @@ impl Database {
 
         Ok(result.is_some())
     }
+
+    // ============================================
+    // MCP Servers
+    // ============================================
+
+    pub async fn create_mcp_server(&self, input: CreateMcpServerRow) -> Result<McpServerRow> {
+        let headers = input.headers.unwrap_or(serde_json::json!({}));
+        let settings = input.settings.unwrap_or(serde_json::json!({}));
+        let api_key_set = input.api_key_encrypted.is_some();
+
+        let row = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            INSERT INTO mcp_servers (name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            "#,
+        )
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.url)
+        .bind(&input.transport_type)
+        .bind(&input.api_key_encrypted)
+        .bind(api_key_set)
+        .bind(&headers)
+        .bind(&settings)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
+        let row = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            FROM mcp_servers
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
+        let row = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            FROM mcp_servers
+            WHERE name = $1
+            "#,
+        )
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+        let rows = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            FROM mcp_servers
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn update_mcp_server(
+        &self,
+        id: Uuid,
+        input: UpdateMcpServer,
+    ) -> Result<Option<McpServerRow>> {
+        // Handle api_key_set: if we're updating the encrypted key, also update the flag
+        let api_key_set = input.api_key_encrypted.as_ref().map(|_| true);
+
+        let row = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            UPDATE mcp_servers
+            SET
+                name = COALESCE($2, name),
+                description = COALESCE($3, description),
+                url = COALESCE($4, url),
+                transport_type = COALESCE($5, transport_type),
+                status = COALESCE($6, status),
+                api_key_encrypted = COALESCE($7, api_key_encrypted),
+                api_key_set = COALESCE($8, api_key_set),
+                headers = COALESCE($9, headers),
+                settings = COALESCE($10, settings)
+            WHERE id = $1
+            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.url)
+        .bind(&input.transport_type)
+        .bind(&input.status)
+        .bind(&input.api_key_encrypted)
+        .bind(api_key_set)
+        .bind(&input.headers)
+        .bind(&input.settings)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM mcp_servers WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
 }

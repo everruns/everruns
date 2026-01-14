@@ -27,6 +27,7 @@ pub struct InMemoryDatabase {
     llm_models: RwLock<HashMap<Uuid, LlmModelRow>>,
     agent_capabilities: RwLock<HashMap<(Uuid, String), AgentCapabilityRow>>,
     session_files: RwLock<HashMap<Uuid, SessionFileRow>>,
+    mcp_servers: RwLock<HashMap<Uuid, McpServerRow>>,
     // Event sequence counter per session
     event_sequences: RwLock<HashMap<Uuid, i32>>,
 }
@@ -1270,6 +1271,108 @@ impl InMemoryDatabase {
             .read()
             .values()
             .any(|f| f.session_id == session_id && f.path.starts_with(&prefix)))
+    }
+
+    // ============================================
+    // MCP Servers
+    // ============================================
+
+    pub async fn create_mcp_server(&self, input: CreateMcpServerRow) -> Result<McpServerRow> {
+        // Check for duplicate name
+        if self
+            .mcp_servers
+            .read()
+            .values()
+            .any(|s| s.name == input.name)
+        {
+            return Err(anyhow!(
+                "MCP server with name '{}' already exists",
+                input.name
+            ));
+        }
+
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let api_key_set = input.api_key_encrypted.is_some();
+
+        let row = McpServerRow {
+            id,
+            name: input.name,
+            description: input.description,
+            url: input.url,
+            transport_type: input.transport_type,
+            status: "active".to_string(),
+            api_key_encrypted: input.api_key_encrypted,
+            api_key_set,
+            headers: input.headers.unwrap_or(serde_json::json!({})),
+            settings: input.settings.unwrap_or(serde_json::json!({})),
+            created_at: now,
+            updated_at: now,
+        };
+
+        self.mcp_servers.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
+        Ok(self.mcp_servers.read().get(&id).cloned())
+    }
+
+    pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
+        Ok(self
+            .mcp_servers
+            .read()
+            .values()
+            .find(|s| s.name == name)
+            .cloned())
+    }
+
+    pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+        let mut servers: Vec<_> = self.mcp_servers.read().values().cloned().collect();
+        servers.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(servers)
+    }
+
+    pub async fn update_mcp_server(
+        &self,
+        id: Uuid,
+        input: UpdateMcpServer,
+    ) -> Result<Option<McpServerRow>> {
+        let mut servers = self.mcp_servers.write();
+        if let Some(server) = servers.get_mut(&id) {
+            if let Some(name) = input.name {
+                server.name = name;
+            }
+            if let Some(description) = input.description {
+                server.description = Some(description);
+            }
+            if let Some(url) = input.url {
+                server.url = url;
+            }
+            if let Some(transport_type) = input.transport_type {
+                server.transport_type = transport_type;
+            }
+            if let Some(status) = input.status {
+                server.status = status;
+            }
+            if let Some(api_key_encrypted) = input.api_key_encrypted {
+                server.api_key_encrypted = Some(api_key_encrypted);
+                server.api_key_set = true;
+            }
+            if let Some(headers) = input.headers {
+                server.headers = headers;
+            }
+            if let Some(settings) = input.settings {
+                server.settings = settings;
+            }
+            server.updated_at = Self::now();
+            return Ok(Some(server.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {
+        Ok(self.mcp_servers.write().remove(&id).is_some())
     }
 }
 

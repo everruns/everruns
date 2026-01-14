@@ -374,3 +374,49 @@ pub struct SessionFileInfoRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+// ============================================
+// MCP Server models
+// ============================================
+
+/// MCP Server row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct McpServerRow {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub url: String,
+    pub transport_type: String,
+    pub status: String,
+    pub api_key_encrypted: Option<Vec<u8>>,
+    pub api_key_set: bool,
+    pub headers: sqlx::types::JsonValue,
+    pub settings: sqlx::types::JsonValue,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an MCP server
+#[derive(Debug, Clone)]
+pub struct CreateMcpServerRow {
+    pub name: String,
+    pub description: Option<String>,
+    pub url: String,
+    pub transport_type: String,
+    pub api_key_encrypted: Option<Vec<u8>>,
+    pub headers: Option<serde_json::Value>,
+    pub settings: Option<serde_json::Value>,
+}
+
+/// Input for updating an MCP server
+#[derive(Debug, Clone, Default)]
+pub struct UpdateMcpServer {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub url: Option<String>,
+    pub transport_type: Option<String>,
+    pub status: Option<String>,
+    pub api_key_encrypted: Option<Vec<u8>>,
+    pub headers: Option<serde_json::Value>,
+    pub settings: Option<serde_json::Value>,
+}
