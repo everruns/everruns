@@ -12,11 +12,12 @@ import {
   listEvents,
 } from "@/lib/api/sessions";
 import { getSseUrl } from "@/lib/api/events";
+import { queryKeys } from "@/lib/query-keys";
 import type { CreateSessionRequest, UpdateSessionRequest, Controls, Event } from "@/lib/api/types";
 
 export function useSessions(agentId: string | undefined) {
   return useQuery({
-    queryKey: ["sessions", agentId],
+    queryKey: queryKeys.sessions.list(agentId!),
     queryFn: () => listSessions(agentId!),
     enabled: !!agentId,
   });
@@ -28,7 +29,7 @@ export function useSession(
   options?: { refetchInterval?: number | false }
 ) {
   return useQuery({
-    queryKey: ["session", agentId, sessionId],
+    queryKey: queryKeys.sessions.detail(agentId!, sessionId!),
     queryFn: () => getSession(agentId!, sessionId!),
     enabled: !!agentId && !!sessionId,
     refetchInterval: options?.refetchInterval,
@@ -47,7 +48,7 @@ export function useCreateSession() {
       request?: CreateSessionRequest;
     }) => createSession(agentId, request),
     onSuccess: (_, { agentId }) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions", agentId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
     },
   });
 }
@@ -66,9 +67,9 @@ export function useUpdateSession() {
       request: UpdateSessionRequest;
     }) => updateSession(agentId, sessionId, request),
     onSuccess: (_, { agentId, sessionId }) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions", agentId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
       queryClient.invalidateQueries({
-        queryKey: ["session", agentId, sessionId],
+        queryKey: queryKeys.sessions.detail(agentId, sessionId),
       });
     },
   });
@@ -86,7 +87,7 @@ export function useDeleteSession() {
       sessionId: string;
     }) => deleteSession(agentId, sessionId),
     onSuccess: (_, { agentId }) => {
-      queryClient.invalidateQueries({ queryKey: ["sessions", agentId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
     },
   });
 }
@@ -109,7 +110,7 @@ export function useSendMessage() {
     onSuccess: (_, { agentId, sessionId }) => {
       // Invalidate events query to refresh the message list
       queryClient.invalidateQueries({
-        queryKey: ["events", agentId, sessionId],
+        queryKey: queryKeys.events.list(agentId, sessionId),
       });
     },
   });
@@ -259,7 +260,7 @@ export function useEventsPolling(
   options?: { refetchInterval?: number | false }
 ) {
   return useQuery({
-    queryKey: ["events", agentId, sessionId],
+    queryKey: queryKeys.events.list(agentId!, sessionId!),
     queryFn: () => listEvents(agentId!, sessionId!),
     enabled: !!agentId && !!sessionId,
     refetchInterval: options?.refetchInterval,
