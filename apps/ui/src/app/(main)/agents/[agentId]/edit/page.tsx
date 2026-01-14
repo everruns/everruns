@@ -16,9 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CapabilitySelector } from "@/components/agents/capability-selector";
 import {
   Select,
   SelectContent,
@@ -26,16 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ArrowLeft,
-  Save,
-  Trash2,
-  ChevronUp,
-  ChevronDown,
-} from "lucide-react";
-import type { Capability, CapabilityId } from "@/lib/api/types";
+import { ArrowLeft, Save, Trash2 } from "lucide-react";
+import type { CapabilityId } from "@/lib/api/types";
 import { ProviderIcon } from "@/components/providers/provider-icon";
-import { getCapabilityIcon } from "@/lib/capability-icons";
 
 interface FormData {
   name: string;
@@ -105,54 +97,10 @@ export default function EditAgentPage({
   >(null);
   const selectedCapabilities = localCapabilities ?? initialCapabilities;
 
-  // Capabilities handlers
-  const handleToggle = useCallback(
-    (capabilityId: CapabilityId, checked: boolean) => {
-      const current = localCapabilities ?? initialCapabilities;
-      let newSelected: CapabilityId[];
-      if (checked) {
-        newSelected = [...current, capabilityId];
-      } else {
-        newSelected = current.filter((id) => id !== capabilityId);
-      }
-      setLocalCapabilities(newSelected);
-    },
-    [localCapabilities, initialCapabilities]
-  );
-
-  const moveUp = useCallback(
-    (index: number) => {
-      if (index === 0) return;
-      const current = localCapabilities ?? initialCapabilities;
-      const newSelected = [...current];
-      [newSelected[index - 1], newSelected[index]] = [
-        newSelected[index],
-        newSelected[index - 1],
-      ];
-      setLocalCapabilities(newSelected);
-    },
-    [localCapabilities, initialCapabilities]
-  );
-
-  const moveDown = useCallback(
-    (index: number) => {
-      const current = localCapabilities ?? initialCapabilities;
-      if (index === current.length - 1) return;
-      const newSelected = [...current];
-      [newSelected[index], newSelected[index + 1]] = [
-        newSelected[index + 1],
-        newSelected[index],
-      ];
-      setLocalCapabilities(newSelected);
-    },
-    [localCapabilities, initialCapabilities]
-  );
-
-  const getCapabilityInfo = useCallback(
-    (id: CapabilityId): Capability | undefined =>
-      allCapabilities?.find((c) => c.id === id),
-    [allCapabilities]
-  );
+  // Capabilities change handler
+  const handleCapabilitiesChange = useCallback((newCapabilities: CapabilityId[]) => {
+    setLocalCapabilities(newCapabilities);
+  }, []);
 
   // Submit handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -233,12 +181,6 @@ export default function EditAgentPage({
       </div>
     );
   }
-
-  // Filter capabilities
-  const availableCapabilities =
-    allCapabilities?.filter((c) => c.status === "available") || [];
-  const comingSoonCapabilities =
-    allCapabilities?.filter((c) => c.status === "coming_soon") || [];
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
@@ -403,131 +345,13 @@ export default function EditAgentPage({
               <CardHeader>
                 <CardTitle>Capabilities</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Selected capabilities with reordering */}
-                {selectedCapabilities.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Enabled ({selectedCapabilities.length})
-                    </p>
-                    {selectedCapabilities.map((capId, index) => {
-                      const cap = getCapabilityInfo(capId);
-                      if (!cap) return null;
-                      const IconComponent = getCapabilityIcon(cap.icon);
-
-                      return (
-                        <div
-                          key={capId}
-                          className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
-                        >
-                          <div className="flex flex-col gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => moveUp(index)}
-                              disabled={index === 0}
-                              className="text-muted-foreground hover:text-foreground disabled:opacity-30 p-0.5"
-                              aria-label="Move up"
-                            >
-                              <ChevronUp className="w-3 h-3" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveDown(index)}
-                              disabled={index === selectedCapabilities.length - 1}
-                              className="text-muted-foreground hover:text-foreground disabled:opacity-30 p-0.5"
-                              aria-label="Move down"
-                            >
-                              <ChevronDown className="w-3 h-3" />
-                            </button>
-                          </div>
-                          <span className="text-xs text-muted-foreground w-4">
-                            {index + 1}
-                          </span>
-                          <IconComponent className="w-4 h-4" />
-                          <span className="flex-1 text-sm">{cap.name}</span>
-                          <Checkbox
-                            checked={true}
-                            onCheckedChange={(checked) =>
-                              handleToggle(capId, checked as boolean)
-                            }
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Available capabilities not yet selected */}
-                {availableCapabilities.filter(
-                  (c) => !selectedCapabilities.includes(c.id)
-                ).length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Available
-                    </p>
-                    {availableCapabilities
-                      .filter((c) => !selectedCapabilities.includes(c.id))
-                      .map((cap) => {
-                        const IconComponent = getCapabilityIcon(cap.icon);
-
-                        return (
-                          <div
-                            key={cap.id}
-                            className="flex items-center gap-2 p-2 rounded-md border hover:bg-muted/50"
-                          >
-                            <IconComponent className="w-4 h-4" />
-                            <div className="flex-1">
-                              <p className="text-sm">{cap.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {cap.description}
-                              </p>
-                            </div>
-                            <Checkbox
-                              checked={false}
-                              onCheckedChange={(checked) =>
-                                handleToggle(cap.id, checked as boolean)
-                              }
-                            />
-                          </div>
-                        );
-                      })}
-                  </div>
-                )}
-
-                {/* Coming soon capabilities */}
-                {comingSoonCapabilities.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Coming Soon
-                    </p>
-                    {comingSoonCapabilities.map((cap) => {
-                      const IconComponent = getCapabilityIcon(cap.icon);
-
-                      return (
-                        <div
-                          key={cap.id}
-                          className="flex items-center gap-2 p-2 rounded-md border opacity-60"
-                        >
-                          <IconComponent className="w-4 h-4" />
-                          <div className="flex-1">
-                            <p className="text-sm">{cap.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {cap.description}
-                            </p>
-                          </div>
-                          <Badge variant="secondary">Coming Soon</Badge>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {selectedCapabilities.length === 0 &&
-                  availableCapabilities.length === 0 && (
-                    <p className="text-center py-4 text-muted-foreground">
-                      No capabilities available
-                    </p>
-                  )}
+              <CardContent>
+                <CapabilitySelector
+                  capabilities={allCapabilities || []}
+                  selected={selectedCapabilities}
+                  onChange={handleCapabilitiesChange}
+                  disabled={isSaving}
+                />
               </CardContent>
             </Card>
 

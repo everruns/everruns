@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateAgent, useLlmModels } from "@/hooks";
+import { useCreateAgent, useLlmModels, useCapabilities } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,11 +19,14 @@ import {
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ProviderIcon } from "@/components/providers/provider-icon";
+import { CapabilitySelector } from "@/components/agents/capability-selector";
+import type { CapabilityId } from "@/lib/api/types";
 
 export default function NewAgentPage() {
   const router = useRouter();
   const createAgent = useCreateAgent();
   const { data: models = [] } = useLlmModels();
+  const { data: allCapabilities = [] } = useCapabilities();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -31,6 +34,12 @@ export default function NewAgentPage() {
     system_prompt: "",
     default_model_id: "",
   });
+
+  const [selectedCapabilities, setSelectedCapabilities] = useState<CapabilityId[]>([]);
+
+  const handleCapabilitiesChange = useCallback((capabilities: CapabilityId[]) => {
+    setSelectedCapabilities(capabilities);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +50,7 @@ export default function NewAgentPage() {
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
         default_model_id: formData.default_model_id || undefined,
+        capabilities: selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
       });
 
       router.push(`/agents/${agent.id}`);
@@ -139,6 +149,20 @@ export default function NewAgentPage() {
               </Select>
               <p className="text-xs text-muted-foreground">
                 Select a specific model or leave empty to use the default
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Capabilities (optional)</Label>
+              <CapabilitySelector
+                capabilities={allCapabilities}
+                selected={selectedCapabilities}
+                onChange={handleCapabilitiesChange}
+                disabled={createAgent.isPending}
+                label=""
+              />
+              <p className="text-xs text-muted-foreground">
+                Add capabilities to give your agent tools and specialized behaviors
               </p>
             </div>
 
