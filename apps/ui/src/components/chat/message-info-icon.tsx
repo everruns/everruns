@@ -7,7 +7,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Event, MessageAgentData, ModelMetadata, TokenUsage } from "@/lib/api/types";
+import type { Event, MessageAgentData, TokenUsage } from "@/lib/api/types";
 
 interface MessageInfoIconProps {
   /** The event containing message data */
@@ -23,11 +23,15 @@ interface MessageInfoIconProps {
 export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconProps) {
   const isAgentMessage = event.type === "message.agent";
   const agentData = isAgentMessage ? (event.data as MessageAgentData) : null;
-  const modelMetadata: ModelMetadata | undefined = agentData?.metadata;
-  const usage: TokenUsage | undefined = agentData?.usage;
 
-  // Extract reasoning effort from event metadata if available
-  const reasoningEffort = (event.metadata as Record<string, unknown> | undefined)?.reasoning_effort as string | undefined;
+  // Model and reasoning are stored on message.metadata (set by ReasonAtom)
+  // Fallback to agentData.metadata for backward compatibility
+  const messageMetadata = agentData?.message?.metadata as Record<string, unknown> | undefined;
+  const model = (messageMetadata?.model as string) ?? agentData?.metadata?.model;
+  const reasoningEffort = messageMetadata?.reasoning_effort as string | undefined;
+
+  // Token usage from MessageAgentData (if populated)
+  const usage: TokenUsage | undefined = agentData?.usage;
 
   // Format timestamp
   const timestamp = new Date(event.ts);
@@ -52,10 +56,10 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
             <span className="text-muted-foreground">ID:</span>
             <span className="font-mono text-[10px] break-all">{event.id}</span>
           </div>
-          {modelMetadata?.model && (
+          {model && (
             <div className="flex gap-2">
               <span className="text-muted-foreground">Model:</span>
-              <span>{modelMetadata.model}</span>
+              <span>{model}</span>
             </div>
           )}
           {reasoningEffort && (
