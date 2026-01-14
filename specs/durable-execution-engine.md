@@ -1670,7 +1670,7 @@ cargo bench --bench workflow_throughput -p everruns-durable # Target scenario
 [package]
 name = "everruns-durable"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 # Async runtime
