@@ -7,7 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bot, ArrowLeft } from "lucide-react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
-import type { Message } from "@/lib/api/types";
+import { MessageInfoIcon } from "@/components/chat/message-info-icon";
+import type { Message, Event } from "@/lib/api/types";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -307,6 +308,88 @@ const sampleTodoData = {
   },
 };
 
+// Sample event data for MessageInfoIcon
+const sampleEvents = {
+  userMessage: {
+    id: "evt-user-123e4567-e89b-12d3-a456-426614174000",
+    type: "message.user",
+    ts: new Date().toISOString(),
+    session_id: "session-1",
+    context: { turn_id: "turn-1" },
+    data: {
+      message: {
+        id: "msg-user-1",
+        session_id: "session-1",
+        sequence: 1,
+        role: "user" as const,
+        content: [{ type: "text" as const, text: "Hello!" }],
+        tool_call_id: null,
+        created_at: new Date().toISOString(),
+      },
+    },
+  } satisfies Event,
+  agentMessage: {
+    id: "evt-agent-987fcdeb-51a2-4bc3-8def-012345678901",
+    type: "message.agent",
+    ts: new Date().toISOString(),
+    session_id: "session-1",
+    context: { turn_id: "turn-1" },
+    data: {
+      message: {
+        id: "msg-agent-1",
+        session_id: "session-1",
+        sequence: 2,
+        role: "agent" as const,
+        content: [{ type: "text" as const, text: "Hi there! How can I help?" }],
+        tool_call_id: null,
+        created_at: new Date().toISOString(),
+      },
+      metadata: {
+        model: "claude-sonnet-4-20250514",
+        model_id: "model-uuid-123",
+        provider_id: "provider-anthropic",
+      },
+      usage: {
+        input_tokens: 128,
+        output_tokens: 45,
+      },
+    },
+    metadata: {
+      reasoning_effort: "medium",
+    },
+  } satisfies Event,
+  agentMessageWithHighReasoning: {
+    id: "evt-agent-abc12345-6789-def0-1234-567890abcdef",
+    type: "message.agent",
+    ts: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+    session_id: "session-1",
+    context: { turn_id: "turn-2" },
+    data: {
+      message: {
+        id: "msg-agent-2",
+        session_id: "session-1",
+        sequence: 4,
+        role: "agent" as const,
+        content: [{ type: "text" as const, text: "Let me analyze this complex problem..." }],
+        tool_call_id: null,
+        created_at: new Date(Date.now() - 3600000).toISOString(),
+      },
+      metadata: {
+        model: "o1-preview",
+        model_id: "model-uuid-456",
+        provider_id: "provider-openai",
+      },
+      usage: {
+        input_tokens: 2048,
+        output_tokens: 1536,
+      },
+    },
+    metadata: {
+      reasoning_effort: "high",
+    },
+  } satisfies Event,
+};
+
 // ============================================
 // Main Page Component
 // ============================================
@@ -365,6 +448,56 @@ export default function DevComponentsPage() {
 
               <ShowcaseItem label="Assistant Message (Multiline)">
                 <AssistantMessage content={"Here's my analysis of the codebase:\n\n1. Current auth uses session cookies\n2. User model has email/password fields\n3. No OAuth support exists yet\n\nI recommend starting with the OAuth provider abstraction."} />
+              </ShowcaseItem>
+            </ShowcaseSection>
+
+            {/* MessageInfoIcon Section */}
+            <ShowcaseSection
+              title="MessageInfoIcon Component"
+              description="Small info icon showing message metadata on hover (components/chat/message-info-icon.tsx)"
+            >
+              <ShowcaseItem label="User Message (Light Variant)">
+                <div className="flex justify-end">
+                  <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <p className="text-sm whitespace-pre-wrap flex-1">Hello! Can you help me?</p>
+                      <MessageInfoIcon event={sampleEvents.userMessage} variant="light" />
+                    </div>
+                  </div>
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Agent Message (Default Variant)">
+                <div className="w-full bg-muted/60 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+                    <p className="text-sm whitespace-pre-wrap flex-1">Hi there! How can I help?</p>
+                    <MessageInfoIcon event={sampleEvents.agentMessage} />
+                  </div>
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Agent Message with High Reasoning Effort">
+                <div className="w-full bg-muted/60 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+                    <p className="text-sm whitespace-pre-wrap flex-1">Let me analyze this complex problem...</p>
+                    <MessageInfoIcon event={sampleEvents.agentMessageWithHighReasoning} />
+                  </div>
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Standalone Icons (hover to see tooltip)">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Default:</span>
+                    <MessageInfoIcon event={sampleEvents.agentMessage} />
+                  </div>
+                  <div className="flex items-center gap-2 bg-gray-500 rounded px-2 py-1">
+                    <span className="text-sm text-white">Light:</span>
+                    <MessageInfoIcon event={sampleEvents.userMessage} variant="light" />
+                  </div>
+                </div>
               </ShowcaseItem>
             </ShowcaseSection>
 
