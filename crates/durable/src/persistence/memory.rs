@@ -359,6 +359,28 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         }
     }
 
+    async fn get_task(&self, task_id: Uuid) -> Result<TaskInfo, StoreError> {
+        let tasks = self.tasks.read();
+        let task = tasks
+            .get(&task_id)
+            .ok_or(StoreError::TaskNotFound(task_id))?;
+
+        Ok(TaskInfo {
+            id: task_id,
+            workflow_id: task.definition.workflow_id,
+            activity_id: task.definition.activity_id.clone(),
+            activity_type: task.definition.activity_type.clone(),
+            status: task.status,
+            priority: task.definition.options.priority,
+            attempt: task.attempt,
+            max_attempts: task.definition.options.retry_policy.max_attempts,
+            claimed_by: task.claimed_by.clone(),
+            last_error: task.last_error.clone(),
+            created_at: task.created_at,
+            claimed_at: task.claimed_at,
+        })
+    }
+
     async fn reclaim_stale_tasks(
         &self,
         _stale_threshold: Duration,

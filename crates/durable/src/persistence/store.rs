@@ -406,6 +406,9 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     async fn fail_task(&self, task_id: Uuid, error: &str)
     -> Result<TaskFailureOutcome, StoreError>;
 
+    /// Get task info by ID
+    async fn get_task(&self, task_id: Uuid) -> Result<TaskInfo, StoreError>;
+
     /// Find and reclaim stale tasks (no heartbeat)
     async fn reclaim_stale_tasks(&self, stale_threshold: Duration)
     -> Result<Vec<Uuid>, StoreError>;

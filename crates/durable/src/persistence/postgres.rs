@@ -580,6 +580,53 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
+    async fn get_task(&self, task_id: Uuid) -> Result<TaskInfo, StoreError> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, workflow_id, activity_id, activity_type, status,
+                   priority, attempt, max_attempts, claimed_by, last_error,
+                   created_at, claimed_at
+            FROM durable_task_queue
+            WHERE id = $1
+            "#,
+        )
+        .bind(task_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to get task: {}", e);
+            StoreError::Database(e.to_string())
+        })?
+        .ok_or(StoreError::TaskNotFound(task_id))?;
+
+        let status_str: String = row.get("status");
+        let status = match status_str.as_str() {
+            "pending" => TaskStatus::Pending,
+            "claimed" => TaskStatus::Claimed,
+            "completed" => TaskStatus::Completed,
+            "failed" => TaskStatus::Failed,
+            "dead" => TaskStatus::Dead,
+            "cancelled" => TaskStatus::Cancelled,
+            _ => TaskStatus::Pending,
+        };
+
+        Ok(TaskInfo {
+            id: row.get("id"),
+            workflow_id: row.get("workflow_id"),
+            activity_id: row.get("activity_id"),
+            activity_type: row.get("activity_type"),
+            status,
+            priority: row.get("priority"),
+            attempt: row.get::<i32, _>("attempt") as u32,
+            max_attempts: row.get::<i32, _>("max_attempts") as u32,
+            claimed_by: row.get("claimed_by"),
+            last_error: row.get("last_error"),
+            created_at: row.get("created_at"),
+            claimed_at: row.get("claimed_at"),
+        })
+    }
+
+    #[instrument(skip(self))]
     async fn reclaim_stale_tasks(
         &self,
         stale_threshold: Duration,

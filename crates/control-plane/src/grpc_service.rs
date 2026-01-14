@@ -11,8 +11,9 @@ use everruns_control_plane::services::{
 };
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_durable::{
-    ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome,
-    WorkerInfo, WorkflowError, WorkflowEventStore, WorkflowStatus,
+    ActivityError, ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition,
+    TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore,
+    WorkflowStatus,
 };
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, ClaimDurableTasksRequest,
@@ -94,6 +95,71 @@ impl WorkerServiceImpl {
     /// Create a tonic server for this service
     pub fn into_server(self) -> WorkerServiceServer<Self> {
         WorkerServiceServer::new(self)
+    }
+
+    /// Append a workflow event with retry on concurrency conflicts
+    ///
+    /// This helper loads the current sequence, then appends the event with optimistic
+    /// concurrency control. If a ConcurrencyConflict occurs, it retries.
+    async fn append_workflow_event(
+        store: &PostgresWorkflowEventStore,
+        workflow_id: uuid::Uuid,
+        event: WorkflowEvent,
+    ) {
+        // Retry up to 5 times on concurrency conflicts
+        for attempt in 0..5 {
+            // Get current sequence by loading events
+            let events = match store.load_events(workflow_id).await {
+                Ok(events) => events,
+                Err(e) => {
+                    tracing::warn!(
+                        %workflow_id,
+                        attempt = attempt + 1,
+                        error = %e,
+                        "Failed to load events for appending, skipping event"
+                    );
+                    return;
+                }
+            };
+            let current_seq = events.len() as i32;
+
+            match store
+                .append_events(workflow_id, current_seq, vec![event.clone()])
+                .await
+            {
+                Ok(_seq) => {
+                    tracing::debug!(
+                        %workflow_id,
+                        event_type = ?std::mem::discriminant(&event),
+                        "Appended workflow event"
+                    );
+                    return;
+                }
+                Err(StoreError::ConcurrencyConflict { expected, actual }) => {
+                    tracing::debug!(
+                        %workflow_id,
+                        attempt = attempt + 1,
+                        expected = expected,
+                        actual = actual,
+                        "Concurrency conflict appending event, retrying"
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        %workflow_id,
+                        error = %e,
+                        "Failed to append workflow event"
+                    );
+                    return;
+                }
+            }
+        }
+
+        tracing::warn!(
+            %workflow_id,
+            "Failed to append workflow event after 5 retries"
+        );
     }
 
     /// Convert ResolvedModel to proto ModelWithProvider
@@ -1065,15 +1131,42 @@ impl WorkerService for WorkerServiceImpl {
         let output = req
             .output
             .map(|s| everruns_internal_protocol::proto_struct_to_json(&s));
-        let error = req.error.map(WorkflowError::new);
+        let error = req.error.clone().map(WorkflowError::new);
 
         store
-            .update_workflow_status(workflow_id, status, output, error)
+            .update_workflow_status(workflow_id, status, output.clone(), error)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update workflow status: {}", e);
                 Status::internal("Failed to update workflow status")
             })?;
+
+        // Append terminal workflow event based on new status
+        match status {
+            WorkflowStatus::Completed => {
+                let event = WorkflowEvent::WorkflowCompleted {
+                    result: output.unwrap_or_else(|| serde_json::json!({})),
+                };
+                Self::append_workflow_event(store, workflow_id, event).await;
+            }
+            WorkflowStatus::Failed => {
+                let event = WorkflowEvent::WorkflowFailed {
+                    error: WorkflowError::new(
+                        req.error.unwrap_or_else(|| "Unknown error".to_string()),
+                    ),
+                };
+                Self::append_workflow_event(store, workflow_id, event).await;
+            }
+            WorkflowStatus::Cancelled => {
+                let event = WorkflowEvent::WorkflowCancelled {
+                    reason: req.error.unwrap_or_else(|| "Cancelled".to_string()),
+                };
+                Self::append_workflow_event(store, workflow_id, event).await;
+            }
+            _ => {
+                // No event for Pending/Running status changes
+            }
+        }
 
         Ok(Response::new(UpdateDurableWorkflowStatusResponse {
             updated: true,
@@ -1103,16 +1196,25 @@ impl WorkerService for WorkerServiceImpl {
 
         let task = TaskDefinition {
             workflow_id,
-            activity_id: task_def.activity_id,
-            activity_type: task_def.activity_type,
-            input,
-            options,
+            activity_id: task_def.activity_id.clone(),
+            activity_type: task_def.activity_type.clone(),
+            input: input.clone(),
+            options: options.clone(),
         };
 
         let task_id = store.enqueue_task(task).await.map_err(|e| {
             tracing::error!("Failed to enqueue task: {}", e);
             Status::internal("Failed to enqueue task")
         })?;
+
+        // Append ActivityScheduled event
+        let event = WorkflowEvent::ActivityScheduled {
+            activity_id: task_def.activity_id,
+            activity_type: task_def.activity_type,
+            input,
+            options,
+        };
+        Self::append_workflow_event(store, workflow_id, event).await;
 
         use everruns_internal_protocol::uuid_to_proto_uuid;
         Ok(Response::new(EnqueueDurableTaskResponse {
@@ -1136,6 +1238,16 @@ impl WorkerService for WorkerServiceImpl {
                 tracing::error!("Failed to claim tasks: {}", e);
                 Status::internal("Failed to claim tasks")
             })?;
+
+        // Append ActivityStarted events for each claimed task
+        for task in &tasks {
+            let event = WorkflowEvent::ActivityStarted {
+                activity_id: task.activity_id.clone(),
+                attempt: task.attempt,
+                worker_id: req.worker_id.clone(),
+            };
+            Self::append_workflow_event(store, task.workflow_id, event).await;
+        }
 
         let proto_tasks: Vec<proto::DurableClaimedTask> = tasks
             .into_iter()
@@ -1168,9 +1280,31 @@ impl WorkerService for WorkerServiceImpl {
             .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
             .unwrap_or_else(|| serde_json::json!({}));
 
+        // Get task info before completing (to get workflow_id and activity_id for event)
+        let task_info = match store.get_task(task_id).await {
+            Ok(info) => Some(info),
+            Err(e) => {
+                tracing::warn!(%task_id, error = %e, "Failed to get task info for event");
+                None
+            }
+        };
+
         // complete_task now verifies worker ownership to prevent duplicate scheduling
-        match store.complete_task(task_id, worker_id, output).await {
-            Ok(()) => Ok(Response::new(CompleteDurableTaskResponse { success: true })),
+        match store
+            .complete_task(task_id, worker_id, output.clone())
+            .await
+        {
+            Ok(()) => {
+                // Append ActivityCompleted event
+                if let Some(info) = task_info {
+                    let event = WorkflowEvent::ActivityCompleted {
+                        activity_id: info.activity_id,
+                        result: output,
+                    };
+                    Self::append_workflow_event(store, info.workflow_id, event).await;
+                }
+                Ok(Response::new(CompleteDurableTaskResponse { success: true }))
+            }
             Err(StoreError::TaskNotOwned(_)) => {
                 // Task was reclaimed by another worker - not an error, just return false
                 tracing::info!(
@@ -1197,6 +1331,15 @@ impl WorkerService for WorkerServiceImpl {
         let store = self.durable_store()?;
         let task_id = parse_uuid(req.task_id.as_ref())?;
 
+        // Get task info before failing (to get workflow_id and activity_id for event)
+        let task_info = match store.get_task(task_id).await {
+            Ok(info) => Some(info),
+            Err(e) => {
+                tracing::warn!(%task_id, error = %e, "Failed to get task info for event");
+                None
+            }
+        };
+
         let outcome = store.fail_task(task_id, &req.error).await.map_err(|e| {
             tracing::error!("Failed to fail task: {}", e);
             Status::internal("Failed to fail task")
@@ -1204,6 +1347,21 @@ impl WorkerService for WorkerServiceImpl {
 
         // Check if task will be retried
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
+
+        // Append ActivityFailed event
+        if let Some(info) = task_info {
+            let event = WorkflowEvent::ActivityFailed {
+                activity_id: info.activity_id,
+                error: ActivityError {
+                    message: req.error.clone(),
+                    error_type: None,
+                    retryable: will_retry,
+                    details: None,
+                },
+                will_retry,
+            };
+            Self::append_workflow_event(store, info.workflow_id, event).await;
+        }
 
         Ok(Response::new(FailDurableTaskResponse {
             failed: true,
