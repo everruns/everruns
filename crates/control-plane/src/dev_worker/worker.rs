@@ -12,7 +12,9 @@ use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::{ActInput, InputAtomInput, ReasonInput, ReasonResult};
 use everruns_durable::{
-    ClaimedTask, InMemoryWorkflowEventStore, WorkerInfo, WorkflowEventStore, WorkflowStatus,
+    ActivityOptions, ClaimedTask, InMemoryWorkflowEventStore, WorkerInfo, WorkflowEvent,
+    WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
+    record_activity_failed, record_activity_started, record_workflow_completed,
 };
 use everruns_worker::{DurableTurnInput, create_driver_registry};
 use std::sync::Arc;
@@ -230,6 +232,16 @@ impl InProcessWorker {
             "Executing task"
         );
 
+        // Record ActivityStarted event
+        record_activity_started(
+            self.durable_store.as_ref(),
+            task.workflow_id,
+            task.activity_id.clone(),
+            task.attempt,
+            self.config.worker_id.clone(),
+        )
+        .await;
+
         // Execute based on activity type
         let (result, turn_input_opt) = match task.activity_type.as_str() {
             "process_input" | "reason" => {
@@ -270,6 +282,15 @@ impl InProcessWorker {
 
         match result {
             Ok(output) => {
+                // Record ActivityCompleted event
+                record_activity_completed(
+                    self.durable_store.as_ref(),
+                    task.workflow_id,
+                    task.activity_id.clone(),
+                    output.clone(),
+                )
+                .await;
+
                 // Complete the task - verify we still own it
                 let complete_result = self
                     .durable_store
@@ -307,6 +328,17 @@ impl InProcessWorker {
                 }
             }
             Err(e) => {
+                // Record ActivityFailed event
+                let will_retry = task.attempt < 3; // Default max attempts is 3
+                record_activity_failed(
+                    self.durable_store.as_ref(),
+                    task.workflow_id,
+                    task.activity_id.clone(),
+                    e.to_string(),
+                    will_retry,
+                )
+                .await;
+
                 return Err(e);
             }
         }
@@ -519,17 +551,28 @@ impl InProcessWorker {
         match completed_activity {
             "process_input" => {
                 // After input processing, schedule reason activity
+                let activity_id = format!("reason_{}", Uuid::now_v7());
                 let task = TaskDefinition {
                     workflow_id,
-                    activity_id: format!("reason_{}", Uuid::now_v7()),
+                    activity_id: activity_id.clone(),
                     activity_type: "reason".to_string(),
-                    input: input_json,
+                    input: input_json.clone(),
                     options: Default::default(),
                 };
                 self.durable_store
                     .enqueue_task(task)
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
+
+                // Record ActivityScheduled event
+                let scheduled_event = WorkflowEvent::ActivityScheduled {
+                    activity_id,
+                    activity_type: "reason".to_string(),
+                    input: input_json,
+                    options: ActivityOptions::default(),
+                };
+                let _ =
+                    append_event(self.durable_store.as_ref(), workflow_id, scheduled_event).await;
 
                 debug!(workflow_id = %workflow_id, "Scheduled reason activity");
             }
@@ -555,18 +598,29 @@ impl InProcessWorker {
                         tool_definitions: reason_result.tool_definitions,
                     };
                     let act_input_json = serde_json::to_value(&act_input)?;
+                    let activity_id = format!("act_{}", Uuid::now_v7());
 
                     let task = TaskDefinition {
                         workflow_id,
-                        activity_id: format!("act_{}", Uuid::now_v7()),
+                        activity_id: activity_id.clone(),
                         activity_type: "act".to_string(),
-                        input: act_input_json,
+                        input: act_input_json.clone(),
                         options: Default::default(),
                     };
                     self.durable_store
                         .enqueue_task(task)
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
+
+                    // Record ActivityScheduled event
+                    let scheduled_event = WorkflowEvent::ActivityScheduled {
+                        activity_id,
+                        activity_type: "act".to_string(),
+                        input: act_input_json,
+                        options: ActivityOptions::default(),
+                    };
+                    let _ = append_event(self.durable_store.as_ref(), workflow_id, scheduled_event)
+                        .await;
 
                     debug!(
                         workflow_id = %workflow_id,
@@ -575,6 +629,14 @@ impl InProcessWorker {
                     );
                 } else {
                     // No tool calls or failure - workflow complete
+                    // Record WorkflowCompleted event
+                    record_workflow_completed(
+                        self.durable_store.as_ref(),
+                        workflow_id,
+                        output.clone(),
+                    )
+                    .await;
+
                     self.durable_store
                         .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
                         .await
@@ -585,17 +647,28 @@ impl InProcessWorker {
             }
             "act" => {
                 // After action, schedule another reason activity
+                let activity_id = format!("reason_{}", Uuid::now_v7());
                 let task = TaskDefinition {
                     workflow_id,
-                    activity_id: format!("reason_{}", Uuid::now_v7()),
+                    activity_id: activity_id.clone(),
                     activity_type: "reason".to_string(),
-                    input: input_json,
+                    input: input_json.clone(),
                     options: Default::default(),
                 };
                 self.durable_store
                     .enqueue_task(task)
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
+
+                // Record ActivityScheduled event
+                let scheduled_event = WorkflowEvent::ActivityScheduled {
+                    activity_id,
+                    activity_type: "reason".to_string(),
+                    input: input_json,
+                    options: ActivityOptions::default(),
+                };
+                let _ =
+                    append_event(self.durable_store.as_ref(), workflow_id, scheduled_event).await;
 
                 debug!(workflow_id = %workflow_id, "Scheduled reason activity after act");
             }

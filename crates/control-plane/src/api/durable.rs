@@ -244,6 +244,13 @@ impl From<WorkflowEventInfo> for WorkflowEventResponse {
     }
 }
 
+/// Workflow events list response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkflowEventsListResponse {
+    pub data: Vec<WorkflowEventResponse>,
+    pub total: usize,
+}
+
 /// Task response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TaskResponse {
@@ -378,7 +385,7 @@ impl From<CircuitBreakerState> for CircuitBreakerResponse {
 /// Circuit breakers list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CircuitBreakersListResponse {
-    pub circuit_breakers: Vec<CircuitBreakerResponse>,
+    pub data: Vec<CircuitBreakerResponse>,
     pub total: usize,
 }
 
@@ -643,7 +650,7 @@ pub async fn get_workflow(
         ("workflow_id" = Uuid, Path, description = "Workflow ID")
     ),
     responses(
-        (status = 200, description = "Workflow events", body = Vec<WorkflowEventResponse>),
+        (status = 200, description = "List of workflow events", body = WorkflowEventsListResponse),
         (status = 404, description = "Workflow not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -652,7 +659,7 @@ pub async fn get_workflow(
 pub async fn get_workflow_events(
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
-) -> Result<Json<Vec<WorkflowEventResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<WorkflowEventsListResponse>, (StatusCode, Json<ErrorResponse>)> {
     let store = state.get_store()?;
     let events = store.get_workflow_events(workflow_id).await.map_err(|e| {
         tracing::error!("Failed to get workflow events: {}", e);
@@ -664,12 +671,13 @@ pub async fn get_workflow_events(
         )
     })?;
 
-    let events: Vec<WorkflowEventResponse> = events
+    let total = events.len();
+    let data: Vec<WorkflowEventResponse> = events
         .into_iter()
         .map(WorkflowEventResponse::from)
         .collect();
 
-    Ok(Json(events))
+    Ok(Json(WorkflowEventsListResponse { data, total }))
 }
 
 /// POST /v1/durable/workflows/:workflow_id/cancel - Cancel a workflow
@@ -926,13 +934,10 @@ pub async fn list_circuit_breakers(
     })?;
 
     let total = circuit_breakers.len();
-    let circuit_breakers: Vec<CircuitBreakerResponse> = circuit_breakers
+    let data: Vec<CircuitBreakerResponse> = circuit_breakers
         .into_iter()
         .map(CircuitBreakerResponse::from)
         .collect();
 
-    Ok(Json(CircuitBreakersListResponse {
-        circuit_breakers,
-        total,
-    }))
+    Ok(Json(CircuitBreakersListResponse { data, total }))
 }

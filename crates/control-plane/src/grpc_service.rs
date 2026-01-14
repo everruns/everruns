@@ -12,7 +12,9 @@ use everruns_control_plane::services::{
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_durable::{
     ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome,
-    WorkerInfo, WorkflowError, WorkflowEventStore, WorkflowStatus,
+    WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event,
+    record_activity_completed, record_activity_failed, record_activity_started,
+    record_workflow_cancelled, record_workflow_completed, record_workflow_failed,
 };
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, ClaimDurableTasksRequest,
@@ -1065,15 +1067,46 @@ impl WorkerService for WorkerServiceImpl {
         let output = req
             .output
             .map(|s| everruns_internal_protocol::proto_struct_to_json(&s));
-        let error = req.error.map(WorkflowError::new);
+        let error = req.error.clone().map(WorkflowError::new);
 
         store
-            .update_workflow_status(workflow_id, status, output, error)
+            .update_workflow_status(workflow_id, status, output.clone(), error)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update workflow status: {}", e);
                 Status::internal("Failed to update workflow status")
             })?;
+
+        // Record terminal workflow event based on new status
+        match status {
+            WorkflowStatus::Completed => {
+                record_workflow_completed(
+                    store.as_ref(),
+                    workflow_id,
+                    output.unwrap_or_else(|| serde_json::json!({})),
+                )
+                .await;
+            }
+            WorkflowStatus::Failed => {
+                record_workflow_failed(
+                    store.as_ref(),
+                    workflow_id,
+                    req.error.unwrap_or_else(|| "Unknown error".to_string()),
+                )
+                .await;
+            }
+            WorkflowStatus::Cancelled => {
+                record_workflow_cancelled(
+                    store.as_ref(),
+                    workflow_id,
+                    Some(req.error.unwrap_or_else(|| "Cancelled".to_string())),
+                )
+                .await;
+            }
+            _ => {
+                // No event for Pending/Running status changes
+            }
+        }
 
         Ok(Response::new(UpdateDurableWorkflowStatusResponse {
             updated: true,
@@ -1103,16 +1136,25 @@ impl WorkerService for WorkerServiceImpl {
 
         let task = TaskDefinition {
             workflow_id,
-            activity_id: task_def.activity_id,
-            activity_type: task_def.activity_type,
-            input,
-            options,
+            activity_id: task_def.activity_id.clone(),
+            activity_type: task_def.activity_type.clone(),
+            input: input.clone(),
+            options: options.clone(),
         };
 
         let task_id = store.enqueue_task(task).await.map_err(|e| {
             tracing::error!("Failed to enqueue task: {}", e);
             Status::internal("Failed to enqueue task")
         })?;
+
+        // Record ActivityScheduled event
+        let event = WorkflowEvent::ActivityScheduled {
+            activity_id: task_def.activity_id,
+            activity_type: task_def.activity_type,
+            input,
+            options,
+        };
+        let _ = append_event(store.as_ref(), workflow_id, event).await;
 
         use everruns_internal_protocol::uuid_to_proto_uuid;
         Ok(Response::new(EnqueueDurableTaskResponse {
@@ -1136,6 +1178,18 @@ impl WorkerService for WorkerServiceImpl {
                 tracing::error!("Failed to claim tasks: {}", e);
                 Status::internal("Failed to claim tasks")
             })?;
+
+        // Record ActivityStarted events for each claimed task
+        for task in &tasks {
+            record_activity_started(
+                store.as_ref(),
+                task.workflow_id,
+                task.activity_id.clone(),
+                task.attempt,
+                req.worker_id.clone(),
+            )
+            .await;
+        }
 
         let proto_tasks: Vec<proto::DurableClaimedTask> = tasks
             .into_iter()
@@ -1168,9 +1222,33 @@ impl WorkerService for WorkerServiceImpl {
             .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
             .unwrap_or_else(|| serde_json::json!({}));
 
+        // Get task info before completing (to get workflow_id and activity_id for event)
+        let task_info = match store.get_task(task_id).await {
+            Ok(info) => Some(info),
+            Err(e) => {
+                tracing::warn!(%task_id, error = %e, "Failed to get task info for event");
+                None
+            }
+        };
+
         // complete_task now verifies worker ownership to prevent duplicate scheduling
-        match store.complete_task(task_id, worker_id, output).await {
-            Ok(()) => Ok(Response::new(CompleteDurableTaskResponse { success: true })),
+        match store
+            .complete_task(task_id, worker_id, output.clone())
+            .await
+        {
+            Ok(()) => {
+                // Record ActivityCompleted event
+                if let Some(info) = task_info {
+                    record_activity_completed(
+                        store.as_ref(),
+                        info.workflow_id,
+                        info.activity_id,
+                        output,
+                    )
+                    .await;
+                }
+                Ok(Response::new(CompleteDurableTaskResponse { success: true }))
+            }
             Err(StoreError::TaskNotOwned(_)) => {
                 // Task was reclaimed by another worker - not an error, just return false
                 tracing::info!(
@@ -1197,6 +1275,15 @@ impl WorkerService for WorkerServiceImpl {
         let store = self.durable_store()?;
         let task_id = parse_uuid(req.task_id.as_ref())?;
 
+        // Get task info before failing (to get workflow_id and activity_id for event)
+        let task_info = match store.get_task(task_id).await {
+            Ok(info) => Some(info),
+            Err(e) => {
+                tracing::warn!(%task_id, error = %e, "Failed to get task info for event");
+                None
+            }
+        };
+
         let outcome = store.fail_task(task_id, &req.error).await.map_err(|e| {
             tracing::error!("Failed to fail task: {}", e);
             Status::internal("Failed to fail task")
@@ -1204,6 +1291,18 @@ impl WorkerService for WorkerServiceImpl {
 
         // Check if task will be retried
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
+
+        // Record ActivityFailed event
+        if let Some(info) = task_info {
+            record_activity_failed(
+                store.as_ref(),
+                info.workflow_id,
+                info.activity_id,
+                req.error.clone(),
+                will_retry,
+            )
+            .await;
+        }
 
         Ok(Response::new(FailDurableTaskResponse {
             failed: true,

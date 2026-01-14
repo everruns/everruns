@@ -993,6 +993,18 @@ export interface DlqResponse {
   total: number;
 }
 
+/** Workflow events list response */
+export interface WorkflowEventsResponse {
+  data: WorkflowEvent[];
+  total: number;
+}
+
+/** Circuit breakers list response */
+export interface CircuitBreakersResponse {
+  data: CircuitBreaker[];
+  total: number;
+}
+
 // ============================================
 // MCP Server types
 // ============================================

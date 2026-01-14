@@ -81,29 +81,38 @@ function getStatusBadgeVariant(status: WorkflowStatus) {
   }
 }
 
+function formatEventType(eventType: string): string {
+  // Convert snake_case to Title Case (e.g., "workflow_started" -> "Workflow Started")
+  return eventType
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 function getEventIcon(eventType: string) {
-  if (eventType.startsWith("Workflow")) {
-    if (eventType === "WorkflowStarted") return <Play className="h-4 w-4 text-green-500" />;
-    if (eventType === "WorkflowCompleted") return <CheckCircle className="h-4 w-4 text-green-500" />;
-    if (eventType === "WorkflowFailed") return <XCircle className="h-4 w-4 text-red-500" />;
-    if (eventType === "WorkflowCancelled") return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+  // Event types from backend are snake_case (e.g., "workflow_started", "activity_completed")
+  if (eventType.startsWith("workflow_")) {
+    if (eventType === "workflow_started") return <Play className="h-4 w-4 text-green-500" />;
+    if (eventType === "workflow_completed") return <CheckCircle className="h-4 w-4 text-green-500" />;
+    if (eventType === "workflow_failed") return <XCircle className="h-4 w-4 text-red-500" />;
+    if (eventType === "workflow_cancelled") return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     return <Activity className="h-4 w-4 text-blue-500" />;
   }
-  if (eventType.startsWith("Activity")) {
-    if (eventType === "ActivityScheduled") return <Clock className="h-4 w-4 text-blue-500" />;
-    if (eventType === "ActivityStarted") return <Play className="h-4 w-4 text-blue-500" />;
-    if (eventType === "ActivityCompleted") return <CheckCircle className="h-4 w-4 text-green-500" />;
-    if (eventType === "ActivityFailed") return <XCircle className="h-4 w-4 text-red-500" />;
-    if (eventType === "ActivityTimedOut") return <Clock className="h-4 w-4 text-yellow-500" />;
+  if (eventType.startsWith("activity_")) {
+    if (eventType === "activity_scheduled") return <Clock className="h-4 w-4 text-blue-500" />;
+    if (eventType === "activity_started") return <Play className="h-4 w-4 text-blue-500" />;
+    if (eventType === "activity_completed") return <CheckCircle className="h-4 w-4 text-green-500" />;
+    if (eventType === "activity_failed") return <XCircle className="h-4 w-4 text-red-500" />;
+    if (eventType === "activity_timed_out") return <Clock className="h-4 w-4 text-yellow-500" />;
     return <Activity className="h-4 w-4 text-gray-500" />;
   }
-  if (eventType.startsWith("Timer")) {
+  if (eventType.startsWith("timer_")) {
     return <Timer className="h-4 w-4 text-purple-500" />;
   }
-  if (eventType.startsWith("Signal")) {
+  if (eventType.startsWith("signal_")) {
     return <Zap className="h-4 w-4 text-yellow-500" />;
   }
-  if (eventType.startsWith("ChildWorkflow")) {
+  if (eventType.startsWith("child_workflow_")) {
     return <MessageSquare className="h-4 w-4 text-blue-500" />;
   }
   return <Activity className="h-4 w-4 text-gray-500" />;
@@ -133,7 +142,7 @@ function EventTimeline({ events }: { events: WorkflowEvent[] }) {
           </div>
           <div className="flex-1 pb-4">
             <div className="flex items-center justify-between">
-              <p className="font-medium text-sm">{event.event_type}</p>
+              <p className="font-medium text-sm">{formatEventType(event.event_type)}</p>
               <span className="text-xs text-muted-foreground">
                 #{event.sequence_num} · {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
               </span>

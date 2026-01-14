@@ -15,7 +15,8 @@ use uuid::Uuid;
 use crate::grpc_durable_store::{GrpcDurableStore, WorkflowStatus};
 use crate::runner::AgentRunner;
 use everruns_durable::{
-    InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
+    ActivityOptions, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEvent,
+    WorkflowEventStore,
 };
 
 // =============================================================================
@@ -75,6 +76,14 @@ pub trait DurableStoreBackend: Send + Sync {
     ) -> Result<Uuid>;
 
     async fn count_active_workflows(&mut self) -> Result<usize>;
+
+    /// Append workflow events (for event sourcing)
+    async fn append_events(
+        &mut self,
+        workflow_id: Uuid,
+        expected_sequence: i32,
+        events: Vec<WorkflowEvent>,
+    ) -> Result<i32>;
 }
 
 // =============================================================================
@@ -121,6 +130,17 @@ impl DurableStoreBackend for GrpcDurableStore {
 
     async fn count_active_workflows(&mut self) -> Result<usize> {
         GrpcDurableStore::count_active_workflows(self).await
+    }
+
+    async fn append_events(
+        &mut self,
+        _workflow_id: Uuid,
+        _expected_sequence: i32,
+        _events: Vec<WorkflowEvent>,
+    ) -> Result<i32> {
+        // gRPC mode doesn't support append_events directly yet
+        // Events are appended by the control-plane
+        Ok(0)
     }
 }
 
@@ -204,6 +224,18 @@ impl DurableStoreBackend for DirectDurableStore {
             .count_active_workflows()
             .await
             .map(|c| c as usize)
+            .map_err(Into::into)
+    }
+
+    async fn append_events(
+        &mut self,
+        workflow_id: Uuid,
+        expected_sequence: i32,
+        events: Vec<WorkflowEvent>,
+    ) -> Result<i32> {
+        self.store
+            .append_events(workflow_id, expected_sequence, events)
+            .await
             .map_err(Into::into)
     }
 }
@@ -303,6 +335,18 @@ impl DurableStoreBackend for InMemoryDurableStore {
     async fn count_active_workflows(&mut self) -> Result<usize> {
         // In-memory store doesn't have count_active_workflows, return workflow count
         Ok(self.store.workflow_count())
+    }
+
+    async fn append_events(
+        &mut self,
+        workflow_id: Uuid,
+        expected_sequence: i32,
+        events: Vec<WorkflowEvent>,
+    ) -> Result<i32> {
+        self.store
+            .append_events(workflow_id, expected_sequence, events)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -463,16 +507,38 @@ impl AgentRunner for DurableRunner {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create workflow: {}", e))?;
 
+        // Append WorkflowStarted event
+        let started_event = WorkflowEvent::WorkflowStarted {
+            input: input_json.clone(),
+        };
+        let sequence = store
+            .append_events(workflow_id, 0, vec![started_event])
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to append WorkflowStarted event: {}", e))?;
+
         // Enqueue the initial activity (input processing)
+        let activity_id = format!("input_{}", Uuid::now_v7());
         store
             .enqueue_task(
                 workflow_id,
-                format!("input_{}", Uuid::now_v7()),
+                activity_id.clone(),
                 "process_input".to_string(),
-                input_json,
+                input_json.clone(),
             )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
+
+        // Append ActivityScheduled event
+        let scheduled_event = WorkflowEvent::ActivityScheduled {
+            activity_id,
+            activity_type: "process_input".to_string(),
+            input: input_json,
+            options: ActivityOptions::default(),
+        };
+        let _ = store
+            .append_events(workflow_id, sequence, vec![scheduled_event])
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to append ActivityScheduled event: {}", e))?;
 
         info!(
             session_id = %session_id,
