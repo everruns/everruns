@@ -18,9 +18,8 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::message::Message;
-use crate::traits::{
-    AgentStore, InputMessage, LlmProviderStore, MessageRetriever, SessionStore, ToolExecutor,
-};
+use crate::message_retriever::{InputMessage, MessageRetriever};
+use crate::traits::{AgentStore, LlmProviderStore, SessionStore, ToolExecutor};
 use chrono::Utc;
 
 // ============================================================================

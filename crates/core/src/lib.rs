@@ -44,6 +44,7 @@ pub mod capabilities;
 pub mod error;
 pub mod llm_driver_registry;
 pub mod message;
+pub mod message_retriever;
 pub mod openai_protocol;
 pub mod runtime_agent;
 pub mod tools;
