@@ -816,25 +816,19 @@ impl Database {
         Ok(())
     }
 
-    /// Get a provider with its decrypted API key for use in LLM calls.
-    /// This should only be called by worker activities that need to make LLM requests.
+    /// Get a provider with its decrypted API key from database.
     ///
-    /// API key resolution order:
-    /// 1. Decrypted key from database (if set)
-    /// 2. Environment variable fallback (for development convenience):
-    ///    - openai: DEFAULT_OPENAI_API_KEY
-    ///    - anthropic: DEFAULT_ANTHROPIC_API_KEY
+    /// Note: Environment variable fallback (DEFAULT_*_API_KEY) is handled
+    /// at the service layer (LlmResolverService), not here.
     pub fn get_provider_with_api_key(
         &self,
         provider: &LlmProviderRow,
         encryption: &super::EncryptionService,
     ) -> Result<LlmProviderWithApiKey> {
-        // Try decrypted key from database first
         let api_key = if let Some(ref encrypted) = provider.api_key_encrypted {
             Some(encryption.decrypt_to_string(encrypted)?)
         } else {
-            // Fall back to environment variable based on provider type
-            get_default_api_key_from_env(&provider.provider_type)
+            None
         };
 
         // Convert settings from sqlx JsonValue to serde_json::Value
@@ -1485,111 +1479,5 @@ impl Database {
         .await?;
 
         Ok(result.is_some())
-    }
-}
-
-// ============================================================================
-// Helper functions
-// ============================================================================
-
-/// Get default API key from environment variable based on provider type.
-///
-/// Environment variables (for development convenience):
-/// - DEFAULT_OPENAI_API_KEY: Fallback API key for OpenAI providers
-/// - DEFAULT_ANTHROPIC_API_KEY: Fallback API key for Anthropic providers
-///
-/// These are only used when the provider doesn't have an API key set in the database.
-fn get_default_api_key_from_env(provider_type: &str) -> Option<String> {
-    let env_var = match provider_type.to_lowercase().as_str() {
-        "openai" => "DEFAULT_OPENAI_API_KEY",
-        "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
-        _ => return None,
-    };
-
-    std::env::var(env_var).ok().filter(|s| !s.is_empty())
-}
-
-#[cfg(test)]
-mod tests {
-    /// Testable version with injectable env lookup (test-only).
-    fn get_default_api_key_with_lookup<F>(provider_type: &str, env_lookup: F) -> Option<String>
-    where
-        F: Fn(&str) -> Option<String>,
-    {
-        let env_var = match provider_type.to_lowercase().as_str() {
-            "openai" => "DEFAULT_OPENAI_API_KEY",
-            "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
-            _ => return None,
-        };
-
-        env_lookup(env_var).filter(|s| !s.is_empty())
-    }
-
-    fn mock_env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |name| {
-            vars.iter()
-                .find(|(k, _)| *k == name)
-                .map(|(_, v)| v.to_string())
-        }
-    }
-
-    #[test]
-    fn test_get_default_api_key_openai() {
-        // Not set
-        assert_eq!(
-            get_default_api_key_with_lookup("openai", mock_env(&[])),
-            None
-        );
-        assert_eq!(
-            get_default_api_key_with_lookup("OpenAI", mock_env(&[])),
-            None
-        );
-
-        // Set
-        let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "sk-test-key")]);
-        assert_eq!(
-            get_default_api_key_with_lookup("openai", &env),
-            Some("sk-test-key".to_string())
-        );
-        assert_eq!(
-            get_default_api_key_with_lookup("OpenAI", &env),
-            Some("sk-test-key".to_string())
-        );
-    }
-
-    #[test]
-    fn test_get_default_api_key_anthropic() {
-        // Not set
-        assert_eq!(
-            get_default_api_key_with_lookup("anthropic", mock_env(&[])),
-            None
-        );
-
-        // Set
-        let env = mock_env(&[("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test-key")]);
-        assert_eq!(
-            get_default_api_key_with_lookup("anthropic", &env),
-            Some("sk-ant-test-key".to_string())
-        );
-        assert_eq!(
-            get_default_api_key_with_lookup("Anthropic", &env),
-            Some("sk-ant-test-key".to_string())
-        );
-    }
-
-    #[test]
-    fn test_get_default_api_key_unknown_provider() {
-        let env = mock_env(&[
-            ("DEFAULT_OPENAI_API_KEY", "sk-test"),
-            ("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test"),
-        ]);
-        assert_eq!(get_default_api_key_with_lookup("azure_openai", &env), None);
-        assert_eq!(get_default_api_key_with_lookup("unknown", &env), None);
-    }
-
-    #[test]
-    fn test_get_default_api_key_empty_value() {
-        let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "")]);
-        assert_eq!(get_default_api_key_with_lookup("openai", &env), None);
     }
 }
