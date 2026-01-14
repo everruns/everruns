@@ -205,6 +205,8 @@ jobs:
       GRPC_ADDRESS: 127.0.0.1:9001
       AUTH_MODE: none
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4

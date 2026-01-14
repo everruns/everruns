@@ -208,6 +208,13 @@ impl MessageStore for DirectMessageStore {
         Ok(message)
     }
 
+    async fn store(&self, _session_id: Uuid, _message: Message) -> Result<()> {
+        // No-op: message.agent events are emitted by ReasonAtom with proper turn context.
+        // This must match DbMessageStore behavior to prevent duplicate events.
+        // The actual storage happens via EventEmitter when ReasonAtom emits the message.agent event.
+        Ok(())
+    }
+
     async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
         let messages = self.load(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))
