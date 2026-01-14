@@ -427,11 +427,9 @@ pub struct ToolDefinitionSummary {
 
 impl From<&crate::tool_types::ToolDefinition> for ToolDefinitionSummary {
     fn from(tool: &crate::tool_types::ToolDefinition) -> Self {
-        match tool {
-            crate::tool_types::ToolDefinition::Builtin(builtin) => Self {
-                name: builtin.name.clone(),
-                description: builtin.description.clone(),
-            },
+        Self {
+            name: tool.name().to_string(),
+            description: tool.description().to_string(),
         }
     }
 }
@@ -881,107 +879,40 @@ impl EventData {
     }
 }
 
-// From implementations for each data type
-impl From<MessageUserData> for EventData {
-    fn from(data: MessageUserData) -> Self {
-        EventData::MessageUser(data)
-    }
+/// Macro to generate From implementations for EventData variants.
+///
+/// Reduces boilerplate from 5 lines to 1 line per variant.
+macro_rules! impl_from_event_data {
+    ($($data_type:ty => $variant:ident),* $(,)?) => {
+        $(
+            impl From<$data_type> for EventData {
+                fn from(data: $data_type) -> Self {
+                    EventData::$variant(data)
+                }
+            }
+        )*
+    };
 }
 
-impl From<MessageAgentData> for EventData {
-    fn from(data: MessageAgentData) -> Self {
-        EventData::MessageAgent(data)
-    }
-}
-
-impl From<TurnStartedData> for EventData {
-    fn from(data: TurnStartedData) -> Self {
-        EventData::TurnStarted(data)
-    }
-}
-
-impl From<TurnCompletedData> for EventData {
-    fn from(data: TurnCompletedData) -> Self {
-        EventData::TurnCompleted(data)
-    }
-}
-
-impl From<TurnFailedData> for EventData {
-    fn from(data: TurnFailedData) -> Self {
-        EventData::TurnFailed(data)
-    }
-}
-
-impl From<InputReceivedData> for EventData {
-    fn from(data: InputReceivedData) -> Self {
-        EventData::InputReceived(data)
-    }
-}
-
-impl From<ReasonStartedData> for EventData {
-    fn from(data: ReasonStartedData) -> Self {
-        EventData::ReasonStarted(data)
-    }
-}
-
-impl From<ReasonCompletedData> for EventData {
-    fn from(data: ReasonCompletedData) -> Self {
-        EventData::ReasonCompleted(data)
-    }
-}
-
-impl From<ActStartedData> for EventData {
-    fn from(data: ActStartedData) -> Self {
-        EventData::ActStarted(data)
-    }
-}
-
-impl From<ActCompletedData> for EventData {
-    fn from(data: ActCompletedData) -> Self {
-        EventData::ActCompleted(data)
-    }
-}
-
-impl From<ToolCallStartedData> for EventData {
-    fn from(data: ToolCallStartedData) -> Self {
-        EventData::ToolCallStarted(data)
-    }
-}
-
-impl From<ToolCallCompletedData> for EventData {
-    fn from(data: ToolCallCompletedData) -> Self {
-        EventData::ToolCallCompleted(data)
-    }
-}
-
-impl From<LlmGenerationData> for EventData {
-    fn from(data: LlmGenerationData) -> Self {
-        EventData::LlmGeneration(data)
-    }
-}
-
-impl From<SessionStartedData> for EventData {
-    fn from(data: SessionStartedData) -> Self {
-        EventData::SessionStarted(data)
-    }
-}
-
-impl From<SessionActivatedData> for EventData {
-    fn from(data: SessionActivatedData) -> Self {
-        EventData::SessionActivated(data)
-    }
-}
-
-impl From<SessionIdledData> for EventData {
-    fn from(data: SessionIdledData) -> Self {
-        EventData::SessionIdled(data)
-    }
-}
-
-impl From<serde_json::Value> for EventData {
-    fn from(data: serde_json::Value) -> Self {
-        EventData::Raw(data)
-    }
+// Generate From implementations for all typed event data
+impl_from_event_data! {
+    MessageUserData => MessageUser,
+    MessageAgentData => MessageAgent,
+    TurnStartedData => TurnStarted,
+    TurnCompletedData => TurnCompleted,
+    TurnFailedData => TurnFailed,
+    InputReceivedData => InputReceived,
+    ReasonStartedData => ReasonStarted,
+    ReasonCompletedData => ReasonCompleted,
+    ActStartedData => ActStarted,
+    ActCompletedData => ActCompleted,
+    ToolCallStartedData => ToolCallStarted,
+    ToolCallCompletedData => ToolCallCompleted,
+    LlmGenerationData => LlmGeneration,
+    SessionStartedData => SessionStarted,
+    SessionActivatedData => SessionActivated,
+    SessionIdledData => SessionIdled,
+    serde_json::Value => Raw,
 }
 
 // ============================================================================
