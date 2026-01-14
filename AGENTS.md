@@ -23,10 +23,15 @@ Fix root cause (not band-aid). Unsure: read more code; if still stuck, ask w/ sh
 
 Available specs:
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
-- `specs/models.md` - Data models (Agent, Thread, Run, etc.)
+- `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/apis.md` - HTTP API endpoints
+- `specs/events.md` - Event types and SSE streaming
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system for modular functionality
+- `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
+- `specs/authentication.md` - Authentication modes and OAuth integration
+- `specs/encryption.md` - Envelope encryption for sensitive data
+- `specs/session-filesystem.md` - Per-session virtual filesystem
 - `specs/documentation.md` - Documentation site (Astro Starlight, Cloudflare Pages)
 - `specs/brand.md` - Brand identity, colors, typography, voice
 - `specs/dismissed-options.md` - Technical options considered but dismissed
@@ -143,7 +148,7 @@ These secrets are pre-configured in the environment and do not require manual se
 
 ### Rust conventions
 
-- Use stable Rust (edition 2024) and keep the toolchain pinned via `rust-toolchain.toml`.
+- Use stable Rust (edition 2021) and keep the toolchain pinned via `rust-toolchain.toml`.
 - Run `cargo fmt` and `cargo clippy -- -D warnings` for touched crates.
 - Prefer `axum`/`tower` for HTTP, `sqlx` for Postgres, `serde` for DTOs.
 
