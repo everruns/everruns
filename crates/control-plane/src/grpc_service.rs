@@ -11,9 +11,10 @@ use everruns_control_plane::services::{
 };
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_durable::{
-    ActivityError, ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition,
-    TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore,
-    WorkflowStatus,
+    ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome,
+    WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event,
+    record_activity_completed, record_activity_failed, record_activity_started,
+    record_workflow_cancelled, record_workflow_completed, record_workflow_failed,
 };
 use everruns_internal_protocol::proto::{
     self, AddMessageRequest, AddMessageResponse, ClaimDurableTasksRequest,
@@ -95,71 +96,6 @@ impl WorkerServiceImpl {
     /// Create a tonic server for this service
     pub fn into_server(self) -> WorkerServiceServer<Self> {
         WorkerServiceServer::new(self)
-    }
-
-    /// Append a workflow event with retry on concurrency conflicts
-    ///
-    /// This helper loads the current sequence, then appends the event with optimistic
-    /// concurrency control. If a ConcurrencyConflict occurs, it retries.
-    async fn append_workflow_event(
-        store: &PostgresWorkflowEventStore,
-        workflow_id: uuid::Uuid,
-        event: WorkflowEvent,
-    ) {
-        // Retry up to 5 times on concurrency conflicts
-        for attempt in 0..5 {
-            // Get current sequence by loading events
-            let events = match store.load_events(workflow_id).await {
-                Ok(events) => events,
-                Err(e) => {
-                    tracing::warn!(
-                        %workflow_id,
-                        attempt = attempt + 1,
-                        error = %e,
-                        "Failed to load events for appending, skipping event"
-                    );
-                    return;
-                }
-            };
-            let current_seq = events.len() as i32;
-
-            match store
-                .append_events(workflow_id, current_seq, vec![event.clone()])
-                .await
-            {
-                Ok(_seq) => {
-                    tracing::debug!(
-                        %workflow_id,
-                        event_type = ?std::mem::discriminant(&event),
-                        "Appended workflow event"
-                    );
-                    return;
-                }
-                Err(StoreError::ConcurrencyConflict { expected, actual }) => {
-                    tracing::debug!(
-                        %workflow_id,
-                        attempt = attempt + 1,
-                        expected = expected,
-                        actual = actual,
-                        "Concurrency conflict appending event, retrying"
-                    );
-                    continue;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        %workflow_id,
-                        error = %e,
-                        "Failed to append workflow event"
-                    );
-                    return;
-                }
-            }
-        }
-
-        tracing::warn!(
-            %workflow_id,
-            "Failed to append workflow event after 5 retries"
-        );
     }
 
     /// Convert ResolvedModel to proto ModelWithProvider
@@ -1141,27 +1077,31 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to update workflow status")
             })?;
 
-        // Append terminal workflow event based on new status
+        // Record terminal workflow event based on new status
         match status {
             WorkflowStatus::Completed => {
-                let event = WorkflowEvent::WorkflowCompleted {
-                    result: output.unwrap_or_else(|| serde_json::json!({})),
-                };
-                Self::append_workflow_event(store, workflow_id, event).await;
+                record_workflow_completed(
+                    store.as_ref(),
+                    workflow_id,
+                    output.unwrap_or_else(|| serde_json::json!({})),
+                )
+                .await;
             }
             WorkflowStatus::Failed => {
-                let event = WorkflowEvent::WorkflowFailed {
-                    error: WorkflowError::new(
-                        req.error.unwrap_or_else(|| "Unknown error".to_string()),
-                    ),
-                };
-                Self::append_workflow_event(store, workflow_id, event).await;
+                record_workflow_failed(
+                    store.as_ref(),
+                    workflow_id,
+                    req.error.unwrap_or_else(|| "Unknown error".to_string()),
+                )
+                .await;
             }
             WorkflowStatus::Cancelled => {
-                let event = WorkflowEvent::WorkflowCancelled {
-                    reason: req.error.unwrap_or_else(|| "Cancelled".to_string()),
-                };
-                Self::append_workflow_event(store, workflow_id, event).await;
+                record_workflow_cancelled(
+                    store.as_ref(),
+                    workflow_id,
+                    Some(req.error.unwrap_or_else(|| "Cancelled".to_string())),
+                )
+                .await;
             }
             _ => {
                 // No event for Pending/Running status changes
@@ -1207,14 +1147,14 @@ impl WorkerService for WorkerServiceImpl {
             Status::internal("Failed to enqueue task")
         })?;
 
-        // Append ActivityScheduled event
+        // Record ActivityScheduled event
         let event = WorkflowEvent::ActivityScheduled {
             activity_id: task_def.activity_id,
             activity_type: task_def.activity_type,
             input,
             options,
         };
-        Self::append_workflow_event(store, workflow_id, event).await;
+        let _ = append_event(store.as_ref(), workflow_id, event).await;
 
         use everruns_internal_protocol::uuid_to_proto_uuid;
         Ok(Response::new(EnqueueDurableTaskResponse {
@@ -1239,14 +1179,16 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to claim tasks")
             })?;
 
-        // Append ActivityStarted events for each claimed task
+        // Record ActivityStarted events for each claimed task
         for task in &tasks {
-            let event = WorkflowEvent::ActivityStarted {
-                activity_id: task.activity_id.clone(),
-                attempt: task.attempt,
-                worker_id: req.worker_id.clone(),
-            };
-            Self::append_workflow_event(store, task.workflow_id, event).await;
+            record_activity_started(
+                store.as_ref(),
+                task.workflow_id,
+                task.activity_id.clone(),
+                task.attempt,
+                req.worker_id.clone(),
+            )
+            .await;
         }
 
         let proto_tasks: Vec<proto::DurableClaimedTask> = tasks
@@ -1295,13 +1237,15 @@ impl WorkerService for WorkerServiceImpl {
             .await
         {
             Ok(()) => {
-                // Append ActivityCompleted event
+                // Record ActivityCompleted event
                 if let Some(info) = task_info {
-                    let event = WorkflowEvent::ActivityCompleted {
-                        activity_id: info.activity_id,
-                        result: output,
-                    };
-                    Self::append_workflow_event(store, info.workflow_id, event).await;
+                    record_activity_completed(
+                        store.as_ref(),
+                        info.workflow_id,
+                        info.activity_id,
+                        output,
+                    )
+                    .await;
                 }
                 Ok(Response::new(CompleteDurableTaskResponse { success: true }))
             }
@@ -1348,19 +1292,16 @@ impl WorkerService for WorkerServiceImpl {
         // Check if task will be retried
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
 
-        // Append ActivityFailed event
+        // Record ActivityFailed event
         if let Some(info) = task_info {
-            let event = WorkflowEvent::ActivityFailed {
-                activity_id: info.activity_id,
-                error: ActivityError {
-                    message: req.error.clone(),
-                    error_type: None,
-                    retryable: will_retry,
-                    details: None,
-                },
+            record_activity_failed(
+                store.as_ref(),
+                info.workflow_id,
+                info.activity_id,
+                req.error.clone(),
                 will_retry,
-            };
-            Self::append_workflow_event(store, info.workflow_id, event).await;
+            )
+            .await;
         }
 
         Ok(Response::new(FailDurableTaskResponse {

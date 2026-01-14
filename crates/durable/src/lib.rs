@@ -67,6 +67,7 @@ pub mod activity;
 pub mod engine;
 pub mod persistence;
 pub mod reliability;
+pub mod task_events;
 pub mod worker;
 pub mod workflow;
 // pub mod observability; // Phase 5
@@ -108,4 +109,10 @@ pub use reliability::{CircuitBreakerConfig, CircuitState, RetryPolicy};
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{
     ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,
+};
+
+// Re-export task event recording functions
+pub use task_events::{
+    append_event, record_activity_completed, record_activity_failed, record_activity_started,
+    record_workflow_cancelled, record_workflow_completed, record_workflow_failed,
 };

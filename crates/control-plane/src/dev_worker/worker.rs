@@ -13,7 +13,8 @@ use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::{ActInput, InputAtomInput, ReasonInput, ReasonResult};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, InMemoryWorkflowEventStore, WorkerInfo, WorkflowEvent,
-    WorkflowEventStore, WorkflowStatus,
+    WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
+    record_activity_failed, record_activity_started, record_workflow_completed,
 };
 use everruns_worker::{DurableTurnInput, create_driver_registry};
 use std::sync::Arc;
@@ -221,68 +222,6 @@ impl InProcessWorker {
         Ok(tasks.len())
     }
 
-    /// Helper to append workflow events with retry on concurrency conflict
-    async fn append_event(&self, workflow_id: Uuid, event: WorkflowEvent) -> Result<i32> {
-        use everruns_durable::StoreError;
-
-        // Retry up to 5 times on transient errors
-        for attempt in 0..5 {
-            // Get current sequence by loading events
-            let events = match self.durable_store.load_events(workflow_id).await {
-                Ok(events) => events,
-                Err(StoreError::WorkflowNotFound(_)) if attempt < 4 => {
-                    // Workflow might not be visible yet due to race condition, retry
-                    debug!(
-                        workflow_id = %workflow_id,
-                        attempt = attempt + 1,
-                        "Workflow not found when loading events, retrying"
-                    );
-                    tokio::time::sleep(Duration::from_millis(10 * (attempt as u64 + 1))).await;
-                    continue;
-                }
-                Err(e) => {
-                    error!(
-                        workflow_id = %workflow_id,
-                        error = %e,
-                        "Failed to load events for workflow"
-                    );
-                    return Err(anyhow::anyhow!("Failed to load events: {}", e));
-                }
-            };
-            let current_seq = events.len() as i32;
-
-            match self
-                .durable_store
-                .append_events(workflow_id, current_seq, vec![event.clone()])
-                .await
-            {
-                Ok(seq) => return Ok(seq),
-                Err(StoreError::ConcurrencyConflict { expected, actual }) => {
-                    // Another event was appended concurrently, retry with new sequence
-                    debug!(
-                        workflow_id = %workflow_id,
-                        attempt = attempt + 1,
-                        expected = expected,
-                        actual = actual,
-                        "Concurrency conflict appending event, retrying"
-                    );
-                    continue;
-                }
-                Err(e) => {
-                    error!(
-                        workflow_id = %workflow_id,
-                        error = %e,
-                        "Failed to append event"
-                    );
-                    return Err(anyhow::anyhow!("Failed to append event: {}", e));
-                }
-            }
-        }
-        Err(anyhow::anyhow!(
-            "Failed to append event after 5 attempts due to concurrency conflicts"
-        ))
-    }
-
     /// Execute a single task
     async fn execute_task(&self, task: &ClaimedTask) -> Result<()> {
         info!(
@@ -293,15 +232,15 @@ impl InProcessWorker {
             "Executing task"
         );
 
-        // Append ActivityStarted event
-        let started_event = WorkflowEvent::ActivityStarted {
-            activity_id: task.activity_id.clone(),
-            attempt: task.attempt,
-            worker_id: self.config.worker_id.clone(),
-        };
-        if let Err(e) = self.append_event(task.workflow_id, started_event).await {
-            warn!(error = %e, "Failed to append ActivityStarted event");
-        }
+        // Record ActivityStarted event
+        record_activity_started(
+            self.durable_store.as_ref(),
+            task.workflow_id,
+            task.activity_id.clone(),
+            task.attempt,
+            self.config.worker_id.clone(),
+        )
+        .await;
 
         // Execute based on activity type
         let (result, turn_input_opt) = match task.activity_type.as_str() {
@@ -343,14 +282,14 @@ impl InProcessWorker {
 
         match result {
             Ok(output) => {
-                // Append ActivityCompleted event
-                let completed_event = WorkflowEvent::ActivityCompleted {
-                    activity_id: task.activity_id.clone(),
-                    result: output.clone(),
-                };
-                if let Err(e) = self.append_event(task.workflow_id, completed_event).await {
-                    warn!(error = %e, "Failed to append ActivityCompleted event");
-                }
+                // Record ActivityCompleted event
+                record_activity_completed(
+                    self.durable_store.as_ref(),
+                    task.workflow_id,
+                    task.activity_id.clone(),
+                    output.clone(),
+                )
+                .await;
 
                 // Complete the task - verify we still own it
                 let complete_result = self
@@ -389,20 +328,16 @@ impl InProcessWorker {
                 }
             }
             Err(e) => {
-                // Append ActivityFailed event
+                // Record ActivityFailed event
                 let will_retry = task.attempt < 3; // Default max attempts is 3
-                let failed_event = WorkflowEvent::ActivityFailed {
-                    activity_id: task.activity_id.clone(),
-                    error: if will_retry {
-                        everruns_durable::ActivityError::retryable(e.to_string())
-                    } else {
-                        everruns_durable::ActivityError::non_retryable(e.to_string())
-                    },
+                record_activity_failed(
+                    self.durable_store.as_ref(),
+                    task.workflow_id,
+                    task.activity_id.clone(),
+                    e.to_string(),
                     will_retry,
-                };
-                if let Err(ev_err) = self.append_event(task.workflow_id, failed_event).await {
-                    warn!(error = %ev_err, "Failed to append ActivityFailed event");
-                }
+                )
+                .await;
 
                 return Err(e);
             }
@@ -629,16 +564,15 @@ impl InProcessWorker {
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
 
-                // Append ActivityScheduled event
+                // Record ActivityScheduled event
                 let scheduled_event = WorkflowEvent::ActivityScheduled {
                     activity_id,
                     activity_type: "reason".to_string(),
                     input: input_json,
                     options: ActivityOptions::default(),
                 };
-                if let Err(e) = self.append_event(workflow_id, scheduled_event).await {
-                    warn!(error = %e, "Failed to append ActivityScheduled event");
-                }
+                let _ =
+                    append_event(self.durable_store.as_ref(), workflow_id, scheduled_event).await;
 
                 debug!(workflow_id = %workflow_id, "Scheduled reason activity");
             }
@@ -678,16 +612,15 @@ impl InProcessWorker {
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
 
-                    // Append ActivityScheduled event
+                    // Record ActivityScheduled event
                     let scheduled_event = WorkflowEvent::ActivityScheduled {
                         activity_id,
                         activity_type: "act".to_string(),
                         input: act_input_json,
                         options: ActivityOptions::default(),
                     };
-                    if let Err(e) = self.append_event(workflow_id, scheduled_event).await {
-                        warn!(error = %e, "Failed to append ActivityScheduled event");
-                    }
+                    let _ = append_event(self.durable_store.as_ref(), workflow_id, scheduled_event)
+                        .await;
 
                     debug!(
                         workflow_id = %workflow_id,
@@ -696,13 +629,13 @@ impl InProcessWorker {
                     );
                 } else {
                     // No tool calls or failure - workflow complete
-                    // Append WorkflowCompleted event
-                    let completed_event = WorkflowEvent::WorkflowCompleted {
-                        result: output.clone(),
-                    };
-                    if let Err(e) = self.append_event(workflow_id, completed_event).await {
-                        warn!(error = %e, "Failed to append WorkflowCompleted event");
-                    }
+                    // Record WorkflowCompleted event
+                    record_workflow_completed(
+                        self.durable_store.as_ref(),
+                        workflow_id,
+                        output.clone(),
+                    )
+                    .await;
 
                     self.durable_store
                         .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
@@ -727,16 +660,15 @@ impl InProcessWorker {
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
 
-                // Append ActivityScheduled event
+                // Record ActivityScheduled event
                 let scheduled_event = WorkflowEvent::ActivityScheduled {
                     activity_id,
                     activity_type: "reason".to_string(),
                     input: input_json,
                     options: ActivityOptions::default(),
                 };
-                if let Err(e) = self.append_event(workflow_id, scheduled_event).await {
-                    warn!(error = %e, "Failed to append ActivityScheduled event");
-                }
+                let _ =
+                    append_event(self.durable_store.as_ref(), workflow_id, scheduled_event).await;
 
                 debug!(workflow_id = %workflow_id, "Scheduled reason activity after act");
             }
