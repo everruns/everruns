@@ -47,6 +47,36 @@ pub struct BuiltinTool {
     pub policy: ToolPolicy,
 }
 
+impl ToolDefinition {
+    /// Get the tool name regardless of variant
+    pub fn name(&self) -> &str {
+        match self {
+            ToolDefinition::Builtin(b) => &b.name,
+        }
+    }
+
+    /// Get the tool description regardless of variant
+    pub fn description(&self) -> &str {
+        match self {
+            ToolDefinition::Builtin(b) => &b.description,
+        }
+    }
+
+    /// Get the tool parameters schema regardless of variant
+    pub fn parameters(&self) -> &serde_json::Value {
+        match self {
+            ToolDefinition::Builtin(b) => &b.parameters,
+        }
+    }
+
+    /// Get the tool policy regardless of variant
+    pub fn policy(&self) -> &ToolPolicy {
+        match self {
+            ToolDefinition::Builtin(b) => &b.policy,
+        }
+    }
+}
+
 /// Tool call from LLM response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -140,5 +170,20 @@ mod tests {
         assert_eq!(parsed.tool_call_id, result.tool_call_id);
         assert!(parsed.result.is_some());
         assert!(parsed.error.is_none());
+    }
+
+    #[test]
+    fn test_tool_definition_accessor_methods() {
+        let tool = ToolDefinition::Builtin(BuiltinTool {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            parameters: serde_json::json!({"type": "object"}),
+            policy: ToolPolicy::RequiresApproval,
+        });
+
+        assert_eq!(tool.name(), "test_tool");
+        assert_eq!(tool.description(), "A test tool");
+        assert_eq!(tool.parameters(), &serde_json::json!({"type": "object"}));
+        assert_eq!(tool.policy(), &ToolPolicy::RequiresApproval);
     }
 }

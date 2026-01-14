@@ -10,8 +10,14 @@ use crate::llm_models::LlmProviderType;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Build a map of tool names to definitions for efficient lookup
+fn build_tool_map(tool_defs: &[ToolDefinition]) -> HashMap<&str, &ToolDefinition> {
+    tool_defs.iter().map(|def| (def.name(), def)).collect()
+}
 
 use crate::error::Result;
 use crate::message::Message;
@@ -241,16 +247,7 @@ pub trait ToolExecutor: Send + Sync {
     ) -> Result<Vec<ToolResult>> {
         let mut results = Vec::with_capacity(tool_calls.len());
 
-        // Build a map of tool names to definitions
-        let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_defs
-            .iter()
-            .map(|def| {
-                let name = match def {
-                    ToolDefinition::Builtin(b) => b.name.as_str(),
-                };
-                (name, def)
-            })
-            .collect();
+        let tool_map = build_tool_map(tool_defs);
 
         for tool_call in tool_calls {
             let tool_def = tool_map.get(tool_call.name.as_str()).ok_or_else(|| {
@@ -277,16 +274,7 @@ pub trait ToolExecutor: Send + Sync {
     {
         use futures::future::join_all;
 
-        // Build a map of tool names to definitions
-        let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_defs
-            .iter()
-            .map(|def| {
-                let name = match def {
-                    ToolDefinition::Builtin(b) => b.name.as_str(),
-                };
-                (name, def)
-            })
-            .collect();
+        let tool_map = build_tool_map(tool_defs);
 
         let futures: Vec<_> = tool_calls
             .iter()

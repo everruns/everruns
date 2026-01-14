@@ -1,6 +1,6 @@
 // LLM Model API endpoints
 
-use crate::api::common::ListResponse;
+use crate::api::common::{ErrorResponse, ListResponse};
 use crate::storage::StorageBackend;
 use axum::{
     extract::{Path, State},
@@ -9,7 +9,7 @@ use axum::{
     Json, Router,
 };
 use everruns_core::{LlmModel, LlmModelStatus, LlmModelWithProvider};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -71,11 +71,6 @@ pub struct UpdateLlmModelRequest {
     /// The status of the model. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LlmModelStatus>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    error: String,
 }
 
 /// Create a new model for a provider
@@ -314,9 +309,7 @@ mod tests {
 
     #[test]
     fn test_error_response_serialization() {
-        let error = ErrorResponse {
-            error: "Internal server error".to_string(),
-        };
+        let error = ErrorResponse::new("Internal server error");
         let json = serde_json::to_string(&error).expect("Failed to serialize");
         assert_eq!(json, r#"{"error":"Internal server error"}"#);
     }
@@ -324,18 +317,14 @@ mod tests {
     #[test]
     fn test_error_response_internal_error_format() {
         // Verify that internal error responses use the generic message
-        let error = ErrorResponse {
-            error: "Internal server error".to_string(),
-        };
+        let error = ErrorResponse::new("Internal server error");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
         assert_eq!(parsed["error"], "Internal server error");
     }
 
     #[test]
     fn test_error_response_not_found_format() {
-        let error = ErrorResponse {
-            error: "Model not found".to_string(),
-        };
+        let error = ErrorResponse::new("Model not found");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
         assert_eq!(parsed["error"], "Model not found");
     }
