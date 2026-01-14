@@ -12,11 +12,11 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::{
-    AgentLoopError, ContentPart, Event, EventData, Message, MessageRole, Result,
+    AgentLoopError, ContentPart, Event, EventData, InputMessage, Message, MessageRetriever,
+    MessageRole, Result,
     events::{
         EventContext, EventRequest, MessageAgentData, MessageUserData, ToolCallCompletedData,
     },
-    traits::{InputMessage, MessageRetriever},
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -201,12 +201,6 @@ fn tool_call_to_message(data: ToolCallCompletedData) -> Message {
 /// Create a database-backed message retriever
 pub fn create_db_message_retriever(db: Arc<StorageBackend>) -> DbMessageRetriever {
     DbMessageRetriever::new(db)
-}
-
-// Backwards compatibility alias
-#[deprecated(note = "Use create_db_message_retriever instead")]
-pub fn create_db_message_store(db: Arc<StorageBackend>) -> DbMessageRetriever {
-    create_db_message_retriever(db)
 }
 
 // ============================================================================

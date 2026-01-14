@@ -31,8 +31,7 @@ pub use encryption::{
 };
 pub use llm_provider_store::{DbLlmProviderStore, create_db_llm_provider_store};
 pub use memory::InMemoryDatabase;
-#[allow(deprecated)]
-pub use message_store::{DbMessageRetriever, create_db_message_retriever, create_db_message_store};
+pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
 pub use repositories::*;
 pub use session_file_store::{DbSessionFileStore, create_db_session_file_store};

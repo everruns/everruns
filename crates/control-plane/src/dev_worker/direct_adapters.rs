@@ -11,13 +11,13 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest, MessageAgentData, MessageUserData};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, EventEmitter, InputMessage, LlmProviderStore, MessageRetriever, ModelWithProvider,
-    SessionFileStore, SessionStore,
+    AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
 };
 use everruns_core::{
     Agent, AgentStatus, ContentPart, LlmProviderType, Message, MessageRole, Session, SessionStatus,
     ToolResultContentPart,
 };
+use everruns_core::{InputMessage, MessageRetriever};
 use std::sync::Arc;
 use uuid::Uuid;
 

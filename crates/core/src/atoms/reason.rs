@@ -34,11 +34,10 @@ use crate::llm_driver_registry::{
     LlmStreamEvent, ProviderConfig, ProviderType,
 };
 use crate::message::{Message, MessageRole};
+use crate::message_retriever::MessageRetriever;
 use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::{
-    AgentStore, EventEmitter, LlmProviderStore, MessageRetriever, ModelWithProvider, SessionStore,
-};
+use crate::traits::{AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionStore};
 
 // ============================================================================
 // Helper Functions

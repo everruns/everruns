@@ -9,10 +9,10 @@
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, EventEmitter, InputMessage, LlmProviderStore, MessageRetriever, ModelWithProvider,
-    SessionFileStore, SessionStore,
+    AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
 };
 use everruns_core::{Agent, Message, Session};
 use everruns_internal_protocol::proto;

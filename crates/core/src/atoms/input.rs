@@ -12,7 +12,8 @@ use super::{Atom, AtomContext};
 use crate::error::{AgentLoopError, Result};
 use crate::events::{EventContext, EventRequest, InputReceivedData};
 use crate::message::Message;
-use crate::traits::{EventEmitter, MessageRetriever};
+use crate::message_retriever::MessageRetriever;
+use crate::traits::EventEmitter;
 
 // ============================================================================
 // Input and Output Types
@@ -143,7 +144,8 @@ where
 mod tests {
     use super::*;
     use crate::memory::InMemoryMessageRetriever;
-    use crate::traits::{InputMessage, NoopEventEmitter};
+    use crate::message_retriever::InputMessage;
+    use crate::traits::NoopEventEmitter;
     use uuid::Uuid;
 
     #[tokio::test]

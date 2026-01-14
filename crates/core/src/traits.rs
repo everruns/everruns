@@ -21,9 +21,6 @@ fn build_tool_map(tool_defs: &[ToolDefinition]) -> HashMap<&str, &ToolDefinition
 
 use crate::error::Result;
 
-// Re-export MessageRetriever and InputMessage from their module
-pub use crate::message_retriever::{InputMessage, MessageRetriever};
-
 // ============================================================================
 // AgentStore - For retrieving agent configurations
 // ============================================================================

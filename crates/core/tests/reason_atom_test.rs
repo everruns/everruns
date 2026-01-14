@@ -5,6 +5,7 @@
 //
 // Run with: cargo test -p everruns-core --test reason_atom_test
 
+use everruns_core::MessageRetriever;
 use everruns_core::agent::{Agent, AgentStatus};
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
@@ -15,7 +16,7 @@ use everruns_core::memory::{
     InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageRetriever, InMemorySessionStore,
 };
 use everruns_core::session::{Session, SessionStatus};
-use everruns_core::traits::{MessageRetriever, ModelWithProvider, NoopEventEmitter};
+use everruns_core::traits::{ModelWithProvider, NoopEventEmitter};
 use everruns_core::{Message, ToolCall};
 use serde_json::json;
 use uuid::Uuid;

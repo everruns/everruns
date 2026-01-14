@@ -16,6 +16,7 @@ Fix root cause (not band-aid). Unsure: read more code; if still stuck, ask w/ sh
 - Code should be easily testable, smoke testable, runnable in local dev env.
 - Prefer small, incremental PR-sized changes with a runnable state at each step.
 - Avoid adding dependencies with non-permissive licenses. If a dependency is non-permissive or unclear, stop and ask the repo owner.
+- No backward compatibility needed. All code is internal; no external consumers.
 
 ### Specs
 
@@ -171,7 +172,7 @@ The codebase follows a layered architecture with clear boundaries. See `specs/ar
    - Source of truth for all shared data structures
    - Domain types: `Agent`, `Session`, `Message`, `Event`, `ContentPart`
    - Tool types: `ToolCall`, `ToolResult`, `ToolDefinition`
-   - Trait definitions: `MessageStore`, `EventEmitter`, `LlmProvider`
+   - Trait definitions: `MessageRetriever`, `EventEmitter`, `LlmProvider`
    - Types are DB-agnostic and serializable
    - OpenAPI support via feature flag: `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
