@@ -9,33 +9,12 @@ import Link from "next/link";
 import {
   CircleOff,
   Clock,
-  Search,
-  Box,
-  Folder,
-  Calculator,
-  Globe,
-  ListChecks,
-  LucideIcon,
   CheckCircle2,
   AlertCircle,
   Info,
-  HardDrive,
-  CloudSun,
 } from "lucide-react";
 import type { Capability, CapabilityStatus } from "@/lib/api/types";
-
-const iconMap: Record<string, LucideIcon> = {
-  "circle-off": CircleOff,
-  clock: Clock,
-  search: Search,
-  box: Box,
-  folder: Folder,
-  calculator: Calculator,
-  globe: Globe,
-  "list-checks": ListChecks,
-  "hard-drive": HardDrive,
-  "cloud-sun": CloudSun,
-};
+import { getCapabilityIcon } from "@/lib/capability-icons";
 
 function getStatusBadgeVariant(
   status: CapabilityStatus
@@ -62,9 +41,7 @@ function getStatusLabel(status: CapabilityStatus): string {
 }
 
 function CapabilityCard({ capability }: { capability: Capability }) {
-  const IconComponent = capability.icon
-    ? iconMap[capability.icon] || CircleOff
-    : CircleOff;
+  const IconComponent = getCapabilityIcon(capability.icon);
 
   return (
     <Link href={`/capabilities/${capability.id}`}>
