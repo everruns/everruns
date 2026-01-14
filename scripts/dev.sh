@@ -304,6 +304,8 @@ case "$command" in
 
     # Cleanup function to kill child processes on exit
     cleanup() {
+      # Restore terminal settings first (child processes may have modified them)
+      stty sane 2>/dev/null || true
       echo ""
       echo "🛑 Stopping services..."
       for pid in "${CHILD_PIDS[@]}"; do
@@ -314,6 +316,8 @@ case "$command" in
       pkill -f "cargo-watch" 2>/dev/null || true
       pkill -f "everruns-control-plane" 2>/dev/null || true
       pkill -f "next dev" 2>/dev/null || true
+      # Restore terminal settings again after killing processes
+      stty sane 2>/dev/null || true
       echo "✅ Services stopped"
       exit 0
     }
@@ -408,6 +412,8 @@ case "$command" in
 
     # Cleanup function to kill child processes on exit
     cleanup() {
+      # Restore terminal settings first (child processes may have modified them)
+      stty sane 2>/dev/null || true
       echo ""
       echo "🛑 Stopping services..."
       for pid in "${CHILD_PIDS[@]}"; do
@@ -420,6 +426,8 @@ case "$command" in
       pkill -f "everruns-control-plane" 2>/dev/null || true
       pkill -f "everruns-worker" 2>/dev/null || true
       pkill -f "next dev" 2>/dev/null || true
+      # Restore terminal settings again after killing processes
+      stty sane 2>/dev/null || true
       echo "✅ Services stopped (Docker still running if started)"
       exit 0
     }
