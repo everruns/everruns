@@ -87,6 +87,10 @@ graph TD
    - Decision: Using PostgreSQL 17 because PostgreSQL 18 is not yet available on managed services like AWS Aurora RDS. This is temporary; we will migrate to PostgreSQL 18 with native uuidv7() when it becomes widely available.
 2. **UUID Strategy**: All IDs use UUID v7 (time-ordered, better indexing, naturally sortable)
 3. **Migrations**: Managed via sqlx-cli in `crates/control-plane/migrations/`
+4. **String Columns**: Use `TEXT` instead of `VARCHAR(n)` for string columns
+   - In PostgreSQL, TEXT and VARCHAR have identical performance
+   - TEXT avoids artificial length limits that may cause issues later
+   - No need to guess the "right" length for model names, provider names, etc.
 
 ### Execution Layer
 
