@@ -161,21 +161,13 @@ impl OpenAIProtocolLlmDriver {
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<OpenAiTool> {
         tools
             .iter()
-            .map(|tool| {
-                let (name, description, parameters) = match tool {
-                    ToolDefinition::Builtin(builtin) => {
-                        (&builtin.name, &builtin.description, &builtin.parameters)
-                    }
-                };
-
-                OpenAiTool {
-                    r#type: "function".to_string(),
-                    function: OpenAiFunction {
-                        name: name.clone(),
-                        description: description.clone(),
-                        parameters: parameters.clone(),
-                    },
-                }
+            .map(|tool| OpenAiTool {
+                r#type: "function".to_string(),
+                function: OpenAiFunction {
+                    name: tool.name().to_string(),
+                    description: tool.description().to_string(),
+                    parameters: tool.parameters().clone(),
+                },
             })
             .collect()
     }

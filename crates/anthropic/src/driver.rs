@@ -186,18 +186,10 @@ impl AnthropicLlmDriver {
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<AnthropicTool> {
         tools
             .iter()
-            .map(|tool| {
-                let (name, description, parameters) = match tool {
-                    ToolDefinition::Builtin(builtin) => {
-                        (&builtin.name, &builtin.description, &builtin.parameters)
-                    }
-                };
-
-                AnthropicTool {
-                    name: name.clone(),
-                    description: description.clone(),
-                    input_schema: parameters.clone(),
-                }
+            .map(|tool| AnthropicTool {
+                name: tool.name().to_string(),
+                description: tool.description().to_string(),
+                input_schema: tool.parameters().clone(),
             })
             .collect()
     }
