@@ -28,6 +28,7 @@ Available specs:
 - `specs/events.md` - Event types and SSE streaming
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system for modular functionality
+- `specs/mcp-servers.md` - MCP (Model Context Protocol) server registration
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
 - `specs/authentication.md` - Authentication modes and OAuth integration
 - `specs/encryption.md` - Envelope encryption for sensitive data

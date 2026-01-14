@@ -287,3 +287,82 @@ pub async fn delete_mcp_server(
         Err(StatusCode::NOT_FOUND)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_create_request_serialization() {
+        let json = r#"{
+            "name": "test-server",
+            "url": "https://mcp.example.com/v1/mcp"
+        }"#;
+
+        let req: CreateMcpServerRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.name, "test-server");
+        assert_eq!(req.url, "https://mcp.example.com/v1/mcp");
+        assert_eq!(req.transport_type, McpServerTransportType::Http);
+        assert!(req.description.is_none());
+        assert!(req.api_key.is_none());
+        assert!(req.headers.is_none());
+    }
+
+    #[test]
+    fn test_create_request_with_all_fields() {
+        let json = r#"{
+            "name": "full-server",
+            "description": "A test MCP server",
+            "url": "https://mcp.example.com/v1/mcp",
+            "transport_type": "http",
+            "api_key": "secret-key",
+            "headers": {"X-Custom": "value"}
+        }"#;
+
+        let req: CreateMcpServerRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.name, "full-server");
+        assert_eq!(req.description, Some("A test MCP server".to_string()));
+        assert_eq!(req.api_key, Some("secret-key".to_string()));
+        assert!(req.headers.is_some());
+        assert_eq!(
+            req.headers.unwrap().get("X-Custom"),
+            Some(&"value".to_string())
+        );
+    }
+
+    #[test]
+    fn test_update_request_partial() {
+        let json = r#"{
+            "description": "Updated description"
+        }"#;
+
+        let req: UpdateMcpServerRequest = serde_json::from_str(json).unwrap();
+        assert!(req.name.is_none());
+        assert_eq!(req.description, Some("Updated description".to_string()));
+        assert!(req.url.is_none());
+        assert!(req.status.is_none());
+    }
+
+    #[test]
+    fn test_update_request_status() {
+        let json = r#"{
+            "status": "disabled"
+        }"#;
+
+        let req: UpdateMcpServerRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.status, Some(McpServerStatus::Disabled));
+    }
+
+    #[test]
+    fn test_transport_type_deserialization() {
+        let json = r#"{"name": "test", "url": "http://test", "transport_type": "http"}"#;
+        let req: CreateMcpServerRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.transport_type, McpServerTransportType::Http);
+    }
+
+    #[test]
+    fn test_default_transport_type() {
+        assert_eq!(default_transport_type(), McpServerTransportType::Http);
+    }
+}
