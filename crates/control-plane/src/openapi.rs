@@ -5,7 +5,7 @@
 // and the export-openapi binary (for static spec generation).
 
 use crate::api;
-use crate::api::ListResponse;
+use crate::api::{ListResponse, PaginatedResponse};
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, Event, EventContext, EventData, FileInfo, FileStat,
@@ -87,7 +87,7 @@ use utoipa::OpenApi;
             api::messages::CreateMessageRequest, api::messages::InputMessage,
             api::messages::Controls, api::messages::ReasoningConfig,
             ListResponse<Agent>,
-            ListResponse<Session>,
+            PaginatedResponse<Session>,
             ListResponse<api::messages::Message>,
             ListResponse<Event>,
             LlmProvider, LlmProviderType, LlmProviderStatus,

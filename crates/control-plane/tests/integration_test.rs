@@ -1367,3 +1367,173 @@ async fn test_no_duplicate_tool_calls() {
 
     println!("No duplicate tool calls test completed!");
 }
+
+#[tokio::test]
+async fn test_sessions_pagination() {
+    let client = reqwest::Client::new();
+
+    println!("Testing sessions pagination...");
+
+    // Create an agent for the test
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Pagination Test Agent",
+            "system_prompt": "Test agent"
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.id);
+
+    // Create 15 sessions
+    println!("Creating 15 sessions...");
+    for i in 1..=15 {
+        let response = client
+            .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+            .json(&json!({ "title": format!("Session {}", i) }))
+            .send()
+            .await
+            .expect("Failed to create session");
+        assert_eq!(response.status(), 201, "Failed to create session {}", i);
+    }
+    println!("Created 15 sessions");
+
+    // Test 1: Default pagination returns all with metadata
+    println!("\nTest 1: Default pagination...");
+    let response = client
+        .get(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to list sessions");
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.expect("Failed to parse");
+
+    assert_eq!(body["total"], 15, "Expected total=15");
+    assert_eq!(body["offset"], 0, "Expected offset=0");
+    assert_eq!(body["limit"], 20, "Expected default limit=20");
+    assert_eq!(
+        body["data"].as_array().unwrap().len(),
+        15,
+        "Expected 15 sessions"
+    );
+    println!("✓ Default pagination works");
+
+    // Test 2: Custom limit
+    println!("\nTest 2: Custom limit=5...");
+    let response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions?limit=5",
+            API_BASE_URL, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list sessions with limit");
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.expect("Failed to parse");
+
+    assert_eq!(body["total"], 15, "Total should still be 15");
+    assert_eq!(body["limit"], 5, "Limit should be 5");
+    assert_eq!(
+        body["data"].as_array().unwrap().len(),
+        5,
+        "Expected 5 sessions"
+    );
+    println!("✓ Custom limit works");
+
+    // Test 3: Offset pagination
+    println!("\nTest 3: Offset=5, limit=5...");
+    let response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions?offset=5&limit=5",
+            API_BASE_URL, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list sessions with offset");
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.expect("Failed to parse");
+
+    assert_eq!(body["total"], 15);
+    assert_eq!(body["offset"], 5);
+    assert_eq!(body["limit"], 5);
+    assert_eq!(body["data"].as_array().unwrap().len(), 5);
+    println!("✓ Offset pagination works");
+
+    // Test 4: Last partial page
+    println!("\nTest 4: Last partial page (offset=10, limit=10)...");
+    let response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions?offset=10&limit=10",
+            API_BASE_URL, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list sessions");
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.expect("Failed to parse");
+
+    assert_eq!(body["total"], 15);
+    assert_eq!(
+        body["data"].as_array().unwrap().len(),
+        5,
+        "Expected 5 remaining sessions"
+    );
+    println!("✓ Last partial page works");
+
+    // Test 5: Beyond range returns empty data
+    println!("\nTest 5: Beyond range (offset=20)...");
+    let response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions?offset=20",
+            API_BASE_URL, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list sessions");
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.expect("Failed to parse");
+
+    assert_eq!(body["total"], 15);
+    assert_eq!(
+        body["data"].as_array().unwrap().len(),
+        0,
+        "Expected empty data"
+    );
+    println!("✓ Beyond range returns empty data");
+
+    // Test 6: Max limit enforcement
+    println!("\nTest 6: Max limit enforcement (limit=200 should cap to 100)...");
+    let response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions?limit=200",
+            API_BASE_URL, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list sessions");
+
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.expect("Failed to parse");
+
+    assert_eq!(body["limit"], 100, "Limit should be capped at 100");
+    println!("✓ Max limit enforcement works");
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("Sessions pagination test completed!");
+}

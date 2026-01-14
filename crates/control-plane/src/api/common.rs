@@ -144,6 +144,44 @@ impl<T> From<Vec<T>> for ListResponse<T> {
     }
 }
 
+/// Response wrapper for paginated list endpoints.
+/// Includes pagination metadata along with the data array.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PaginatedResponse<T> {
+    /// Array of items returned by the list operation.
+    pub data: Vec<T>,
+    /// Total number of items matching the query (across all pages).
+    pub total: u32,
+    /// Current offset (starting position).
+    pub offset: u32,
+    /// Maximum number of items per page.
+    pub limit: u32,
+}
+
+impl<T> PaginatedResponse<T> {
+    pub fn new(data: Vec<T>, total: u32, offset: u32, limit: u32) -> Self {
+        Self {
+            data,
+            total,
+            offset,
+            limit,
+        }
+    }
+}
+
+/// Pagination parameters for list endpoints.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Pagination {
+    pub offset: u32,
+    pub limit: u32,
+}
+
+impl Pagination {
+    pub fn new(offset: u32, limit: u32) -> Self {
+        Self { offset, limit }
+    }
+}
+
 /// Request to create an event (for internal use)
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -231,5 +269,41 @@ mod tests {
     fn test_list_response_from_vec() {
         let list: ListResponse<i32> = vec![1, 2, 3].into();
         assert_eq!(list.data, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_paginated_response_new() {
+        let response = PaginatedResponse::new(vec![1, 2, 3], 100, 0, 20);
+        assert_eq!(response.data, vec![1, 2, 3]);
+        assert_eq!(response.total, 100);
+        assert_eq!(response.offset, 0);
+        assert_eq!(response.limit, 20);
+    }
+
+    #[test]
+    fn test_paginated_response_serialization() {
+        let response = PaginatedResponse::new(vec!["a", "b"], 50, 10, 5);
+        let json = serde_json::to_string(&response).unwrap();
+
+        // Verify JSON structure
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["data"], serde_json::json!(["a", "b"]));
+        assert_eq!(parsed["total"], 50);
+        assert_eq!(parsed["offset"], 10);
+        assert_eq!(parsed["limit"], 5);
+    }
+
+    #[test]
+    fn test_pagination_new() {
+        let pagination = Pagination::new(10, 20);
+        assert_eq!(pagination.offset, 10);
+        assert_eq!(pagination.limit, 20);
+    }
+
+    #[test]
+    fn test_pagination_default() {
+        let pagination = Pagination::default();
+        assert_eq!(pagination.offset, 0);
+        assert_eq!(pagination.limit, 0);
     }
 }

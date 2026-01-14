@@ -396,7 +396,13 @@ impl InMemoryDatabase {
         Ok(self.sessions.read().get(&id).cloned())
     }
 
-    pub async fn list_sessions(&self, agent_id: Uuid) -> Result<Vec<SessionRow>> {
+    /// List sessions for an agent with pagination.
+    /// Returns (sessions, total_count).
+    pub async fn list_sessions(
+        &self,
+        agent_id: Uuid,
+        pagination: crate::api::common::Pagination,
+    ) -> Result<(Vec<SessionRow>, u32)> {
         let sessions = self.sessions.read();
         let mut result: Vec<_> = sessions
             .values()
@@ -404,7 +410,15 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        Ok(result)
+
+        let total = result.len() as u32;
+        let offset = pagination.offset as usize;
+        let limit = pagination.limit as usize;
+
+        // Apply pagination
+        let paginated = result.into_iter().skip(offset).take(limit).collect();
+
+        Ok((paginated, total))
     }
 
     pub async fn update_session(
@@ -1310,8 +1324,10 @@ mod tests {
             .await
             .unwrap();
 
-        let sessions = db.list_sessions(agent.id).await.unwrap();
+        let pagination = crate::api::common::Pagination::new(0, 20);
+        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
         assert_eq!(sessions.len(), 1);
+        assert_eq!(total, 1);
         assert_eq!(sessions[0].id, session.id);
     }
 
@@ -1362,5 +1378,102 @@ mod tests {
         assert_eq!(events[0].sequence, 1);
         assert_eq!(events[1].sequence, 2);
         assert_eq!(events[2].sequence, 3);
+    }
+
+    #[tokio::test]
+    async fn test_sessions_pagination() {
+        let db = InMemoryDatabase::new();
+
+        let agent = db
+            .create_agent(CreateAgentRow {
+                name: "Test Agent".to_string(),
+                description: None,
+                system_prompt: String::new(),
+                default_model_id: None,
+                tags: vec![],
+            })
+            .await
+            .unwrap();
+
+        // Create 15 sessions
+        for i in 0..15 {
+            db.create_session(CreateSessionRow {
+                agent_id: agent.id,
+                title: Some(format!("Session {}", i)),
+                tags: vec![],
+                model_id: None,
+            })
+            .await
+            .unwrap();
+        }
+
+        // Test default pagination (all sessions fit within limit)
+        let pagination = crate::api::common::Pagination::new(0, 20);
+        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        assert_eq!(total, 15);
+        assert_eq!(sessions.len(), 15);
+
+        // Test with limit=5
+        let pagination = crate::api::common::Pagination::new(0, 5);
+        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        assert_eq!(total, 15);
+        assert_eq!(sessions.len(), 5);
+
+        // Test with offset=5, limit=5
+        let pagination = crate::api::common::Pagination::new(5, 5);
+        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        assert_eq!(total, 15);
+        assert_eq!(sessions.len(), 5);
+
+        // Test last partial page (offset=10, limit=10 should return 5)
+        let pagination = crate::api::common::Pagination::new(10, 10);
+        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        assert_eq!(total, 15);
+        assert_eq!(sessions.len(), 5);
+
+        // Test beyond range (offset=20)
+        let pagination = crate::api::common::Pagination::new(20, 10);
+        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        assert_eq!(total, 15);
+        assert_eq!(sessions.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_sessions_pagination_ordering() {
+        let db = InMemoryDatabase::new();
+
+        let agent = db
+            .create_agent(CreateAgentRow {
+                name: "Test Agent".to_string(),
+                description: None,
+                system_prompt: String::new(),
+                default_model_id: None,
+                tags: vec![],
+            })
+            .await
+            .unwrap();
+
+        // Create sessions with sequential titles
+        for i in 1..=5 {
+            db.create_session(CreateSessionRow {
+                agent_id: agent.id,
+                title: Some(format!("Session {}", i)),
+                tags: vec![],
+                model_id: None,
+            })
+            .await
+            .unwrap();
+            // Small delay to ensure different created_at timestamps
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+
+        // Sessions should be ordered by created_at DESC (newest first)
+        let pagination = crate::api::common::Pagination::new(0, 10);
+        let (sessions, _) = db.list_sessions(agent.id, pagination).await.unwrap();
+
+        assert_eq!(sessions.len(), 5);
+        // Most recent session should be first
+        assert_eq!(sessions[0].title, Some("Session 5".to_string()));
+        assert_eq!(sessions[4].title, Some("Session 1".to_string()));
     }
 }

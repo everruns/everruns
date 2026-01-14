@@ -17,4 +17,4 @@ pub mod users;
 pub mod validation;
 
 // Re-export common types
-pub use common::{ErrorResponse, ListResponse};
+pub use common::{ErrorResponse, ListResponse, PaginatedResponse};

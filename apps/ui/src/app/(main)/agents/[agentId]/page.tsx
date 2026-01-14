@@ -28,7 +28,11 @@ export default function AgentDetailPage({
   const { agentId } = use(params);
   const router = useRouter();
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
-  const { data: sessions, isLoading: sessionsLoading } = useSessions(agentId);
+  // Fetch only top 10 sessions for the overview
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, { limit: 10 });
+  const sessions = sessionsResponse?.data ?? [];
+  const totalSessions = sessionsResponse?.total ?? 0;
+  const hasMoreSessions = totalSessions > 10;
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
@@ -159,8 +163,16 @@ export default function AgentDetailPage({
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Sessions</CardTitle>
+              {hasMoreSessions && (
+                <Link
+                  href={`/agents/${agentId}/sessions`}
+                  className="text-sm text-muted-foreground hover:text-foreground"
+                >
+                  View all {totalSessions} sessions →
+                </Link>
+              )}
             </CardHeader>
             <CardContent>
               {sessionsLoading ? (
@@ -168,13 +180,13 @@ export default function AgentDetailPage({
                   <Skeleton className="h-12 w-full" />
                   <Skeleton className="h-12 w-full" />
                 </div>
-              ) : sessions?.length === 0 ? (
+              ) : sessions.length === 0 ? (
                 <p className="text-center py-8 text-muted-foreground">
                   No sessions yet. Start a new session to begin chatting.
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {sessions?.map((session) => (
+                  {sessions.map((session) => (
                     <Link
                       key={session.id}
                       href={`/agents/${agentId}/sessions/${session.id}`}
@@ -208,6 +220,14 @@ export default function AgentDetailPage({
                       </div>
                     </Link>
                   ))}
+                  {hasMoreSessions && (
+                    <Link
+                      href={`/agents/${agentId}/sessions`}
+                      className="flex items-center justify-center p-3 rounded-md border border-dashed hover:bg-muted transition-colors text-muted-foreground"
+                    >
+                      View all {totalSessions} sessions
+                    </Link>
+                  )}
                 </div>
               )}
             </CardContent>

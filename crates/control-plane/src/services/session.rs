@@ -1,5 +1,6 @@
 // Session service for business logic (M2)
 
+use crate::api::common::Pagination;
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionRow, UpdateSession},
@@ -46,9 +47,15 @@ impl SessionService {
         Ok(row.map(Self::row_to_session))
     }
 
-    pub async fn list(&self, agent_id: Uuid) -> Result<Vec<Session>> {
-        let rows = self.db.list_sessions(agent_id).await?;
-        Ok(rows.into_iter().map(Self::row_to_session).collect())
+    /// List sessions for an agent with pagination.
+    /// Returns (sessions, total_count).
+    pub async fn list(
+        &self,
+        agent_id: Uuid,
+        pagination: Pagination,
+    ) -> Result<(Vec<Session>, u32)> {
+        let (rows, total) = self.db.list_sessions(agent_id, pagination).await?;
+        Ok((rows.into_iter().map(Self::row_to_session).collect(), total))
     }
 
     pub async fn update(&self, id: Uuid, req: UpdateSessionRequest) -> Result<Option<Session>> {

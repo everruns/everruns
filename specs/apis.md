@@ -246,6 +246,62 @@ The `ApiDoc` struct is shared between:
 
 All endpoints return JSON. Event streaming uses Server-Sent Events (SSE) with `text/event-stream` content type.
 
+### Pagination
+
+Endpoints that return lists support pagination via query parameters:
+
+| Parameter | Type | Default | Max | Description |
+|-----------|------|---------|-----|-------------|
+| `offset` | integer | 0 | - | Number of items to skip |
+| `limit` | integer | 20 | 100 | Maximum items to return |
+
+**Paginated Response Format:**
+
+```json
+{
+  "data": [...],
+  "total": 150,
+  "offset": 0,
+  "limit": 20
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data` | array | Items for the current page |
+| `total` | integer | Total count across all pages |
+| `offset` | integer | Current offset (echoed from request) |
+| `limit` | integer | Current limit (echoed from request) |
+
+**Endpoints with Pagination:**
+
+| Endpoint | Default Limit | Notes |
+|----------|---------------|-------|
+| `GET /v1/agents/{agent_id}/sessions` | 20 | Ordered by `created_at DESC` |
+
+**Non-Paginated List Endpoints:**
+
+These endpoints return all items wrapped in `{"data": [...]}`:
+- `GET /v1/agents` - Returns all agents
+- `GET /v1/agents/{agent_id}/sessions/{session_id}/messages` - Returns all messages
+- `GET /v1/agents/{agent_id}/sessions/{session_id}/events` - Returns all events
+- `GET /v1/llm-providers` - Returns all providers
+- `GET /v1/llm-models` - Returns all models
+- `GET /v1/capabilities` - Returns all capabilities
+
+**Example Usage:**
+
+```bash
+# First page (default)
+GET /v1/agents/{id}/sessions
+
+# Second page
+GET /v1/agents/{id}/sessions?offset=20&limit=20
+
+# Custom page size
+GET /v1/agents/{id}/sessions?limit=10
+```
+
 ### Error Responses
 
 ```json

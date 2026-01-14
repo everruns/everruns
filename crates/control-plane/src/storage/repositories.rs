@@ -489,20 +489,42 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_sessions(&self, agent_id: Uuid) -> Result<Vec<SessionRow>> {
+    /// List sessions for an agent with pagination.
+    /// Returns (sessions, total_count).
+    pub async fn list_sessions(
+        &self,
+        agent_id: Uuid,
+        pagination: crate::api::common::Pagination,
+    ) -> Result<(Vec<SessionRow>, u32)> {
+        // Get total count
+        let total: (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*) as count
+            FROM sessions
+            WHERE agent_id = $1
+            "#,
+        )
+        .bind(agent_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        // Get paginated results
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
             FROM sessions
             WHERE agent_id = $1
             ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
             "#,
         )
         .bind(agent_id)
+        .bind(pagination.limit as i64)
+        .bind(pagination.offset as i64)
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows)
+        Ok((rows, total.0 as u32))
     }
 
     pub async fn update_session(
