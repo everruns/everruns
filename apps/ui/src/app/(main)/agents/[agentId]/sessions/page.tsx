@@ -6,13 +6,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ProviderIcon } from "@/components/providers/provider-icon";
+import { SessionCard } from "@/components/session/session-card";
 import {
   ArrowLeft,
   Plus,
-  MessageSquare,
   ChevronLeft,
   ChevronRight,
   Trash2,
@@ -147,50 +145,28 @@ export default function SessionsListPage({
               {sessions.map((session) => (
                 <div
                   key={session.id}
-                  className="flex items-center justify-between p-3 rounded-md border hover:bg-muted transition-colors"
+                  className="flex items-center gap-2"
                 >
-                  <Link
-                    href={`/agents/${agentId}/sessions/${session.id}`}
-                    className="flex items-center gap-3 flex-1"
-                  >
-                    <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">
-                        {session.title || `Session ${session.id.slice(0, 8)}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(session.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  </Link>
-                  <div className="flex items-center gap-2">
-                    {session.model_id && modelMap.get(session.model_id) && (
-                      <Badge variant="outline" className="gap-1 text-xs">
-                        <ProviderIcon
-                          providerType={modelMap.get(session.model_id)!.provider_type}
-                          size="sm"
-                          showBackground={false}
-                        />
-                        {modelMap.get(session.model_id)!.display_name}
-                      </Badge>
-                    )}
-                    {session.finished_at && (
-                      <Badge variant="outline">Completed</Badge>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() =>
-                        handleDeleteSession(
-                          session.id,
-                          session.title || `Session ${session.id.slice(0, 8)}`
-                        )
-                      }
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  <div className="flex-1">
+                    <SessionCard
+                      session={session}
+                      agentId={agentId}
+                      model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                    />
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
+                    onClick={() =>
+                      handleDeleteSession(
+                        session.id,
+                        session.title || `Session ${session.id.slice(0, 8)}`
+                      )
+                    }
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               ))}
             </div>
