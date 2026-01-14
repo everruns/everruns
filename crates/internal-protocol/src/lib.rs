@@ -941,6 +941,7 @@ mod tests {
             status: everruns_core::AgentStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            usage: None,
         };
 
         // Convert to proto
@@ -993,6 +994,7 @@ mod tests {
             status: everruns_core::AgentStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            usage: None,
         };
 
         // Convert to proto

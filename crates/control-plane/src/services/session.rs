@@ -6,7 +6,7 @@ use crate::storage::{
     models::{CreateSessionRow, UpdateSession},
 };
 use anyhow::Result;
-use everruns_core::{Session, SessionStatus};
+use everruns_core::{Session, SessionStatus, TokenUsage};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -83,6 +83,26 @@ impl SessionService {
     }
 
     fn row_to_session(row: crate::storage::SessionRow) -> Session {
+        // Convert database usage columns to TokenUsage
+        let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
+            Some(TokenUsage::with_cache(
+                row.total_input_tokens as u32,
+                row.total_output_tokens as u32,
+                if row.total_cache_read_tokens > 0 {
+                    Some(row.total_cache_read_tokens as u32)
+                } else {
+                    None
+                },
+                if row.total_cache_creation_tokens > 0 {
+                    Some(row.total_cache_creation_tokens as u32)
+                } else {
+                    None
+                },
+            ))
+        } else {
+            None
+        };
+
         Session {
             id: row.id,
             agent_id: row.agent_id,
@@ -93,6 +113,7 @@ impl SessionService {
             created_at: row.created_at,
             started_at: row.started_at,
             finished_at: row.finished_at,
+            usage,
         }
     }
 }

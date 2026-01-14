@@ -179,7 +179,7 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
                 tracing::warn!(error = %e, "Failed to emit turn.failed event");
             }
         } else {
-            // Emit turn.completed event
+            // Emit turn.completed event with usage
             let turn_completed_event = EventRequest::new(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
@@ -187,6 +187,7 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
                     turn_id,
                     iterations: 1, // TODO: Track actual iterations when workflow supports it
                     duration_ms: None,
+                    usage: result.usage.clone(),
                 },
             );
             if let Err(e) = event_emitter.emit(turn_completed_event).await {
@@ -333,6 +334,7 @@ mod tests {
             tool_definitions: vec![],
             max_iterations: 10,
             error: None,
+            usage: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();

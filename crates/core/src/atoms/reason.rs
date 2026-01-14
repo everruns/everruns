@@ -27,11 +27,11 @@ use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
     EventContext, EventRequest, LlmGenerationData, MessageAgentData, ReasonCompletedData,
-    ReasonStartedData, ToolDefinitionSummary,
+    ReasonStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
-    DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmStreamEvent, ProviderConfig, ProviderType,
+    DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmStreamEvent, ProviderConfig, ProviderType,
 };
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
@@ -112,6 +112,9 @@ pub struct ReasonResult {
     /// Error message if the call failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Token usage from the LLM call
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
 }
 
 fn default_max_iterations() -> usize {
@@ -322,6 +325,7 @@ where
                     tool_definitions: vec![],
                     max_iterations: default_max_iterations(),
                     error: Some(error_msg),
+                    usage: None,
                 }
             }
         };
@@ -443,6 +447,7 @@ where
         // 12. Process stream
         let mut text = String::new();
         let mut tool_calls = Vec::new();
+        let mut completion_metadata: Option<LlmCompletionMetadata> = None;
 
         while let Some(event) = stream.next().await {
             match event? {
@@ -452,7 +457,8 @@ where
                 LlmStreamEvent::ToolCalls(calls) => {
                     tool_calls = calls;
                 }
-                LlmStreamEvent::Done(_) => {
+                LlmStreamEvent::Done(metadata) => {
+                    completion_metadata = Some(metadata);
                     break;
                 }
                 LlmStreamEvent::Error(err) => {
@@ -483,7 +489,20 @@ where
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 
-        // 13. Emit llm.generation event
+        // 13. Convert completion metadata to TokenUsage
+        let usage = completion_metadata.as_ref().and_then(|meta| {
+            match (meta.prompt_tokens, meta.completion_tokens) {
+                (Some(input), Some(output)) => Some(TokenUsage::with_cache(
+                    input,
+                    output,
+                    meta.cache_read_tokens,
+                    meta.cache_creation_tokens,
+                )),
+                _ => None,
+            }
+        });
+
+        // 14. Emit llm.generation event
         let event_context = EventContext::from_atom_context(context);
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
@@ -499,7 +518,7 @@ where
                     tool_calls.clone(),
                     runtime_agent.model.clone(),
                     Some(model_with_provider.provider_type.to_string()),
-                    None, // usage - not available from stream yet
+                    usage.clone(),
                     Some(llm_duration_ms),
                 ),
             ))
@@ -512,7 +531,7 @@ where
             );
         }
 
-        // 14. Build metadata with model and reasoning effort info
+        // 15. Build metadata with model and reasoning effort info
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),
@@ -525,7 +544,7 @@ where
             );
         }
 
-        // 14. Store and emit message.agent event with metadata
+        // 16. Store and emit message.agent event with metadata and usage
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -535,12 +554,17 @@ where
         assistant_message.metadata = Some(metadata);
 
         // Emit message.agent event (this stores the message as an event with proper turn context)
+        // Include token usage for tracking
         let message_event_context = EventContext::from_atom_context(context);
+        let mut message_agent_data = MessageAgentData::new(assistant_message);
+        if let Some(ref u) = usage {
+            message_agent_data = message_agent_data.with_usage(u.clone());
+        }
         self.event_emitter
             .emit(EventRequest::new(
                 session_id,
                 message_event_context,
-                MessageAgentData::new(assistant_message),
+                message_agent_data,
             ))
             .await?;
 
@@ -560,6 +584,7 @@ where
             tool_definitions: runtime_agent.tools.clone(),
             max_iterations: runtime_agent.max_iterations,
             error: None,
+            usage,
         })
     }
 

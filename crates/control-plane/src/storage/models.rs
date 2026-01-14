@@ -123,6 +123,18 @@ pub struct AgentRow {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Cumulative input tokens across all sessions
+    #[sqlx(default)]
+    pub total_input_tokens: i64,
+    /// Cumulative output tokens across all sessions
+    #[sqlx(default)]
+    pub total_output_tokens: i64,
+    /// Cumulative cache read tokens across all sessions
+    #[sqlx(default)]
+    pub total_cache_read_tokens: i64,
+    /// Cumulative cache creation tokens across all sessions
+    #[sqlx(default)]
+    pub total_cache_creation_tokens: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -159,6 +171,18 @@ pub struct SessionRow {
     pub created_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// Cumulative input tokens for all LLM calls in this session
+    #[sqlx(default)]
+    pub total_input_tokens: i64,
+    /// Cumulative output tokens for all LLM calls in this session
+    #[sqlx(default)]
+    pub total_output_tokens: i64,
+    /// Cumulative cache read tokens for all LLM calls in this session
+    #[sqlx(default)]
+    pub total_cache_read_tokens: i64,
+    /// Cumulative cache creation tokens for all LLM calls in this session
+    #[sqlx(default)]
+    pub total_cache_creation_tokens: i64,
 }
 
 #[derive(Debug, Clone, Default)]

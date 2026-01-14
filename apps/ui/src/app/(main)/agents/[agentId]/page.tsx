@@ -16,9 +16,26 @@ import {
   Plus,
   Pencil,
   Download,
+  Zap,
 } from "lucide-react";
-import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
+import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+
+// Helper function to format token counts in a compact way
+function formatTokens(tokens: number): string {
+  if (tokens >= 1000000) {
+    return `${(tokens / 1000000).toFixed(1)}M`;
+  }
+  if (tokens >= 1000) {
+    return `${(tokens / 1000).toFixed(1)}K`;
+  }
+  return tokens.toString();
+}
+
+// Helper function to calculate total tokens
+function totalTokens(usage: TokenUsage): number {
+  return usage.input_tokens + usage.output_tokens;
+}
 
 export default function AgentDetailPage({
   params,
@@ -284,6 +301,22 @@ export default function AgentDetailPage({
                         {tag}
                       </Badge>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {agent.usage && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Token Usage</p>
+                  <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
+                    <Zap className="w-4 h-4 text-yellow-500" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{formatTokens(totalTokens(agent.usage))} total</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatTokens(agent.usage.input_tokens)} input / {formatTokens(agent.usage.output_tokens)} output
+                        {agent.usage.cache_read_tokens && ` / ${formatTokens(agent.usage.cache_read_tokens)} cached`}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}

@@ -261,6 +261,8 @@ impl LlmDriver for AnthropicLlmDriver {
         let model = config.model.clone();
         let input_tokens = Arc::new(Mutex::new(0u32));
         let output_tokens = Arc::new(Mutex::new(0u32));
+        let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
 
@@ -268,6 +270,8 @@ impl LlmDriver for AnthropicLlmDriver {
             let model = model.clone();
             let input_tokens = Arc::clone(&input_tokens);
             let output_tokens = Arc::clone(&output_tokens);
+            let cache_read_tokens = Arc::clone(&cache_read_tokens);
+            let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
             let current_tool_call = Arc::clone(&current_tool_call);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
 
@@ -277,12 +281,20 @@ impl LlmDriver for AnthropicLlmDriver {
                         // Anthropic uses different event types
                         match event.event.as_str() {
                             "message_start" => {
-                                // Parse message_start for input token count
+                                // Parse message_start for input token count and cache tokens
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicMessageStart>(&event.data)
                                     && let Some(usage) = data.message.usage
                                 {
                                     *input_tokens.lock().unwrap() = usage.input_tokens;
+                                    if usage.cache_read_input_tokens.is_some() {
+                                        *cache_read_tokens.lock().unwrap() =
+                                            usage.cache_read_input_tokens;
+                                    }
+                                    if usage.cache_creation_input_tokens.is_some() {
+                                        *cache_creation_tokens.lock().unwrap() =
+                                            usage.cache_creation_input_tokens;
+                                    }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
@@ -348,6 +360,15 @@ impl LlmDriver for AnthropicLlmDriver {
                                 {
                                     if let Some(usage) = data.usage {
                                         *output_tokens.lock().unwrap() = usage.output_tokens;
+                                        // Cache tokens may also appear in delta
+                                        if usage.cache_read_input_tokens.is_some() {
+                                            *cache_read_tokens.lock().unwrap() =
+                                                usage.cache_read_input_tokens;
+                                        }
+                                        if usage.cache_creation_input_tokens.is_some() {
+                                            *cache_creation_tokens.lock().unwrap() =
+                                                usage.cache_creation_input_tokens;
+                                        }
                                     }
 
                                     if let Some(stop_reason) = data.delta.stop_reason
@@ -365,11 +386,15 @@ impl LlmDriver for AnthropicLlmDriver {
                             "message_stop" => {
                                 let in_tokens = *input_tokens.lock().unwrap();
                                 let out_tokens = *output_tokens.lock().unwrap();
+                                let cache_read = *cache_read_tokens.lock().unwrap();
+                                let cache_creation = *cache_creation_tokens.lock().unwrap();
 
                                 Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
                                     total_tokens: Some(in_tokens + out_tokens),
                                     prompt_tokens: Some(in_tokens),
                                     completion_tokens: Some(out_tokens),
+                                    cache_read_tokens: cache_read,
+                                    cache_creation_tokens: cache_creation,
                                     model: Some(model),
                                     finish_reason: Some("stop".to_string()),
                                 }))
@@ -549,6 +574,12 @@ struct AnthropicUsage {
     input_tokens: u32,
     #[serde(default)]
     output_tokens: u32,
+    /// Tokens read from cache (reduces cost)
+    #[serde(default)]
+    cache_read_input_tokens: Option<u32>,
+    /// Tokens written to cache
+    #[serde(default)]
+    cache_creation_input_tokens: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

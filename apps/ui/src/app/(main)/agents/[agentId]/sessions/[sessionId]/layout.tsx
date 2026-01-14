@@ -6,9 +6,20 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Sparkles, MessageSquare, Folder, Activity } from "lucide-react";
+import { ArrowLeft, Sparkles, MessageSquare, Folder, Activity, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SessionProvider, useSessionContext } from "./session-context";
+
+// Helper function to format token counts in a compact way
+function formatTokens(tokens: number): string {
+  if (tokens >= 1000000) {
+    return `${(tokens / 1000000).toFixed(1)}M`;
+  }
+  if (tokens >= 1000) {
+    return `${(tokens / 1000).toFixed(1)}K`;
+  }
+  return tokens.toString();
+}
 
 interface SessionLayoutProps {
   children: React.ReactNode;
@@ -90,6 +101,12 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {session.usage && (
+              <Badge variant="outline" className="gap-1" title="Token usage (input/output)">
+                <Zap className="w-3 h-3" />
+                {formatTokens(session.usage.input_tokens)} / {formatTokens(session.usage.output_tokens)}
+              </Badge>
+            )}
             {llmModel && (
               <Badge variant="outline" className="gap-1">
                 <Sparkles className="w-3 h-3" />

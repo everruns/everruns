@@ -121,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
         status: AgentStatus::Active,
         created_at: now,
         updated_at: now,
+        usage: None,
     };
     agent_store.add_agent(agent).await;
 
@@ -135,6 +136,7 @@ async fn main() -> anyhow::Result<()> {
         created_at: now,
         started_at: None,
         finished_at: None,
+        usage: None,
     };
     session_store.add_session(session).await;
 

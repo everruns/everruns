@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::capability_types::CapabilityId;
+use crate::events::TokenUsage;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -76,4 +77,7 @@ pub struct Agent {
     pub created_at: DateTime<Utc>,
     /// Timestamp when the agent was last updated.
     pub updated_at: DateTime<Utc>,
+    /// Cumulative token usage across all sessions for this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
 }

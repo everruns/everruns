@@ -260,11 +260,69 @@ pub struct ModelMetadata {
 }
 
 /// Token usage statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Tracks token consumption per LLM call including cache tokens for cost optimization.
+/// Cache tokens are provider-specific:
+/// - OpenAI: `cache_read_tokens` from prompt_tokens_details.cached_tokens
+/// - Anthropic: `cache_read_tokens` from cache_read_input_tokens,
+///   `cache_creation_tokens` from cache_creation_input_tokens
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TokenUsage {
+    /// Number of input/prompt tokens
     pub input_tokens: u32,
+    /// Number of output/completion tokens
     pub output_tokens: u32,
+    /// Number of tokens read from cache (reduces cost)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u32>,
+    /// Number of tokens written to cache (Anthropic-specific)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u32>,
+}
+
+impl TokenUsage {
+    /// Create a new TokenUsage with just input and output tokens
+    pub fn new(input_tokens: u32, output_tokens: u32) -> Self {
+        Self {
+            input_tokens,
+            output_tokens,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        }
+    }
+
+    /// Create a TokenUsage with cache tokens
+    pub fn with_cache(
+        input_tokens: u32,
+        output_tokens: u32,
+        cache_read_tokens: Option<u32>,
+        cache_creation_tokens: Option<u32>,
+    ) -> Self {
+        Self {
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+        }
+    }
+
+    /// Get total tokens (input + output)
+    pub fn total_tokens(&self) -> u32 {
+        self.input_tokens + self.output_tokens
+    }
+
+    /// Add another TokenUsage to this one (for aggregation)
+    pub fn add(&mut self, other: &TokenUsage) {
+        self.input_tokens += other.input_tokens;
+        self.output_tokens += other.output_tokens;
+        if let Some(cache) = other.cache_read_tokens {
+            *self.cache_read_tokens.get_or_insert(0) += cache;
+        }
+        if let Some(cache) = other.cache_creation_tokens {
+            *self.cache_creation_tokens.get_or_insert(0) += cache;
+        }
+    }
 }
 
 /// Data for message.user event
@@ -722,6 +780,10 @@ pub struct TurnCompletedData {
     /// Duration in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+
+    /// Aggregated token usage for all LLM calls in this turn
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
 }
 
 /// Data for turn.failed event
@@ -1165,6 +1227,8 @@ mod tests {
             Some(TokenUsage {
                 input_tokens: 10,
                 output_tokens: 5,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
             }),
             Some(100),
         );
@@ -1196,6 +1260,8 @@ mod tests {
             Some(TokenUsage {
                 input_tokens: 5,
                 output_tokens: 3,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
             }),
             Some(50),
             Some(vec!["end_turn".to_string()]),

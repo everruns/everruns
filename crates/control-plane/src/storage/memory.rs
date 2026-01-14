@@ -281,6 +281,10 @@ impl InMemoryDatabase {
             status: "active".to_string(), // Default status for new agents
             created_at: now,
             updated_at: now,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_cache_read_tokens: 0,
+            total_cache_creation_tokens: 0,
         };
         self.agents.write().insert(id, row.clone());
         Ok(row)
@@ -307,6 +311,10 @@ impl InMemoryDatabase {
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_cache_read_tokens: 0,
+            total_cache_creation_tokens: 0,
         };
         agents.insert(id, row.clone());
         Ok(Some(row))
@@ -388,6 +396,10 @@ impl InMemoryDatabase {
             created_at: now,
             started_at: None,
             finished_at: None,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_cache_read_tokens: 0,
+            total_cache_creation_tokens: 0,
         };
         self.sessions.write().insert(id, row.clone());
         Ok(row)

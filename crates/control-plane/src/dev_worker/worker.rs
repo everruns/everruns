@@ -495,6 +495,7 @@ impl InProcessWorker {
                         turn_id,
                         iterations: 1,
                         duration_ms: None,
+                        usage: result.usage.clone(),
                     },
                 );
                 if let Err(e) = event_emitter.emit(turn_completed_event).await {

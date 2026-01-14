@@ -325,6 +325,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         status,
         created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
         updated_at: proto_timestamp_or_now(proto_agent.updated_at.as_ref()),
+        usage: None, // Usage not tracked in worker context
     })
 }
 
@@ -396,6 +397,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         created_at: proto_timestamp_or_now(proto_session.created_at.as_ref()),
         started_at: None,
         finished_at: None,
+        usage: None, // Usage not tracked in worker context
     })
 }
 

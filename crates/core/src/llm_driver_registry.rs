@@ -44,6 +44,12 @@ pub enum LlmStreamEvent {
 }
 
 /// Metadata about LLM completion
+///
+/// Contains token usage and completion information from the LLM response.
+/// Cache token fields are provider-specific:
+/// - OpenAI: `cache_read_tokens` from prompt_tokens_details.cached_tokens
+/// - Anthropic: `cache_read_tokens` from cache_read_input_tokens,
+///   `cache_creation_tokens` from cache_creation_input_tokens
 #[derive(Debug, Clone, Default)]
 pub struct LlmCompletionMetadata {
     /// Total tokens used
@@ -52,6 +58,10 @@ pub struct LlmCompletionMetadata {
     pub prompt_tokens: Option<u32>,
     /// Completion tokens
     pub completion_tokens: Option<u32>,
+    /// Tokens read from cache (reduces cost)
+    pub cache_read_tokens: Option<u32>,
+    /// Tokens written to cache (Anthropic-specific)
+    pub cache_creation_tokens: Option<u32>,
     /// Model used
     pub model: Option<String>,
     /// Finish reason

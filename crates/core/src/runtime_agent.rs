@@ -347,6 +347,7 @@ mod tests {
             tags: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            usage: None,
         };
 
         let runtime_agent = RuntimeAgentBuilder::new()

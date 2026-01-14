@@ -321,7 +321,8 @@ impl Database {
             r#"
             INSERT INTO agents (name, description, system_prompt, default_model_id, tags, status)
             VALUES ($1, $2, $3, $4, $5, 'active')
-            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(&input.name)
@@ -347,7 +348,8 @@ impl Database {
             INSERT INTO agents (id, name, description, system_prompt, default_model_id, tags, status)
             VALUES ($1, $2, $3, $4, $5, $6, 'active')
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(id)
@@ -365,7 +367,8 @@ impl Database {
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE id = $1
             "#,
@@ -380,7 +383,8 @@ impl Database {
     pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
         let rows = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE status = 'active'
             ORDER BY created_at DESC
@@ -395,7 +399,8 @@ impl Database {
     pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE name = $1 AND status = 'active'
             "#,
@@ -420,7 +425,8 @@ impl Database {
                 status = COALESCE($7, status),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at
+            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(id)
@@ -461,7 +467,8 @@ impl Database {
             r#"
             INSERT INTO sessions (agent_id, title, tags, model_id, status)
             VALUES ($1, $2, $3, $4, 'started')
-            RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
+            RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(input.agent_id)
@@ -477,7 +484,8 @@ impl Database {
     pub async fn get_session(&self, id: Uuid) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
+            SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM sessions
             WHERE id = $1
             "#,
@@ -511,7 +519,8 @@ impl Database {
         // Get paginated results
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
+            SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM sessions
             WHERE agent_id = $1
             ORDER BY created_at DESC
@@ -543,7 +552,8 @@ impl Database {
                 started_at = COALESCE($6, started_at),
                 finished_at = COALESCE($7, finished_at)
             WHERE id = $1
-            RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at
+            RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(id)
