@@ -6,10 +6,11 @@ import type {
   WorkflowsResponse,
   DurableWorkflow,
   WorkflowEvent,
+  WorkflowEventsResponse,
   TasksResponse,
   TaskQueueStats,
   DlqResponse,
-  CircuitBreaker,
+  CircuitBreakersResponse,
   DurableSystemHealth,
 } from "./types";
 
@@ -71,10 +72,10 @@ export async function getWorkflow(workflowId: string): Promise<DurableWorkflow> 
 export async function getWorkflowEvents(
   workflowId: string
 ): Promise<WorkflowEvent[]> {
-  const response = await api.get<WorkflowEvent[]>(
+  const response = await api.get<WorkflowEventsResponse>(
     `/v1/durable/workflows/${workflowId}/events`
   );
-  return response.data;
+  return response.data.data;
 }
 
 export async function cancelWorkflow(workflowId: string): Promise<void> {
@@ -163,8 +164,8 @@ export async function purgeDlq(): Promise<{ deleted: number }> {
 // Circuit Breakers
 // ============================================
 
-export async function listCircuitBreakers(): Promise<CircuitBreaker[]> {
-  const response = await api.get<CircuitBreaker[]>("/v1/durable/circuit-breakers");
+export async function listCircuitBreakers(): Promise<CircuitBreakersResponse> {
+  const response = await api.get<CircuitBreakersResponse>("/v1/durable/circuit-breakers");
   return response.data;
 }
 

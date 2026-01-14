@@ -99,43 +99,30 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}/sse` | Stream events (SSE) |
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}/events` | List events (JSON) |
 
-### LLM Providers
+### LLM Provider Configuration
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/llm-providers` | Create LLM provider |
-| GET | `/v1/llm-providers` | List LLM providers |
-| GET | `/v1/llm-providers/{id}` | Get LLM provider |
-| PATCH | `/v1/llm-providers/{id}` | Update LLM provider |
-| DELETE | `/v1/llm-providers/{id}` | Delete LLM provider |
-
-### LLM Models
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/v1/llm-providers/{provider_id}/models` | Create model for provider |
-| GET | `/v1/llm-providers/{provider_id}/models` | List provider models |
-| GET | `/v1/llm-models` | List all models |
+| GET | `/v1/llm-providers` | List providers |
+| GET | `/v1/llm-providers/{id}` | Get provider |
+| PATCH | `/v1/llm-providers/{id}` | Update provider (API key, base URL) |
+| GET | `/v1/llm-models` | List models |
 | GET | `/v1/llm-models/{id}` | Get model |
-| PATCH | `/v1/llm-models/{id}` | Update model |
-| DELETE | `/v1/llm-models/{id}` | Delete model |
 
-### Capabilities
-
-Capabilities are modular functionality units that can be enabled on agents. See [capabilities.md](capabilities.md) for full specification.
-
-Capabilities are managed as part of the agent resource. When creating or updating an agent, you can specify the capabilities to enable. The agent response includes the list of enabled capabilities.
+### Agent Capabilities
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/capabilities` | List all available capabilities |
-| GET | `/v1/capabilities/{capability_id}` | Get capability details |
+| GET | `/v1/capabilities` | List available capabilities |
 
-**Request/Response Examples:**
+Capabilities are modular functionality units that can be enabled on agents. They provide:
+- **Tool groups**: Sets of related tools (e.g., `session_file_system` provides read/write/grep tools)
+- **System prompt additions**: Context injected into the agent's prompt
+- **Documentation**: User-facing descriptions of what the capability provides
 
-List capabilities:
+#### Response Format
+
 ```json
-GET /v1/capabilities
 {
   "items": [
     {
@@ -238,9 +225,19 @@ impl ApiDoc {
 }
 ```
 
-The `ApiDoc` struct is shared between:
-- `main.rs` - serves spec at `/api-doc/openapi.json` and Swagger UI
-- `bin/export_openapi.rs` - exports spec to stdout for static generation
+### Durable Execution Admin
+
+Administrative endpoints for monitoring and managing the durable execution engine.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/durable/workers` | List registered workers |
+| GET | `/v1/durable/workflows` | List workflows |
+| GET | `/v1/durable/workflows/{id}` | Get workflow details |
+| GET | `/v1/durable/workflows/{id}/events` | Get workflow event history |
+| GET | `/v1/durable/tasks` | List task queue |
+| GET | `/v1/durable/dlq` | List dead letter queue |
+| GET | `/v1/durable/circuit-breakers` | List circuit breakers |
 
 ### Response Formats
 
@@ -281,13 +278,20 @@ Endpoints that return lists support pagination via query parameters:
 
 **Non-Paginated List Endpoints:**
 
-These endpoints return all items wrapped in `{"data": [...]}`:
+These endpoints return all items wrapped in `{"data": [...], "total": N}`:
 - `GET /v1/agents` - Returns all agents
 - `GET /v1/agents/{agent_id}/sessions/{session_id}/messages` - Returns all messages
 - `GET /v1/agents/{agent_id}/sessions/{session_id}/events` - Returns all events
 - `GET /v1/llm-providers` - Returns all providers
 - `GET /v1/llm-models` - Returns all models
-- `GET /v1/capabilities` - Returns all capabilities
+- `GET /v1/durable/workers` - Returns all workers
+- `GET /v1/durable/workflows` - Returns all workflows
+- `GET /v1/durable/workflows/{id}/events` - Returns workflow events
+- `GET /v1/durable/tasks` - Returns all tasks
+- `GET /v1/durable/dlq` - Returns all DLQ entries
+- `GET /v1/durable/circuit-breakers` - Returns all circuit breakers
+
+**Exception:** The `/v1/capabilities` endpoint uses `items` instead of `data` for historical reasons.
 
 **Example Usage:**
 
@@ -312,11 +316,9 @@ GET /v1/agents/{id}/sessions?limit=10
 ```
 
 Standard HTTP status codes:
-- `200` - Success
-- `201` - Created
-- `204` - No content
-- `400` - Bad request
-- `401` - Unauthorized
-- `403` - Forbidden
-- `404` - Not found
-- `500` - Internal error
+- `400` - Bad Request (invalid input)
+- `401` - Unauthorized (missing/invalid auth)
+- `403` - Forbidden (insufficient permissions)
+- `404` - Not Found
+- `422` - Unprocessable Entity (validation error)
+- `500` - Internal Server Error
