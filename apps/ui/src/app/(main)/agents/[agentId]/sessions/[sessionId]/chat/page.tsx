@@ -14,6 +14,7 @@ import {
 import { Send, Bot, Loader2, Brain } from "lucide-react";
 import type { Controls, MessageUserData, MessageAgentData } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
+import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { useSessionContext } from "../session-context";
 import { useLlmModels } from "@/hooks";
 
@@ -168,14 +169,18 @@ export default function ChatPage() {
                     {isUser ? (
                       /* User message - dark box, 90% width */
                       <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
-                        <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                        <div className="flex items-start gap-2">
+                          <p className="text-sm whitespace-pre-wrap flex-1">{textContent}</p>
+                          <MessageInfoIcon event={event} variant="light" />
+                        </div>
                       </div>
                     ) : (
                       /* Agent message - darker background with robot icon */
                       <div className="w-full bg-muted/60 rounded-lg p-3">
                         <div className="flex items-start gap-2">
                           <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                          <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                          <p className="text-sm whitespace-pre-wrap flex-1">{textContent}</p>
+                          <MessageInfoIcon event={event} />
                         </div>
                       </div>
                     )}
