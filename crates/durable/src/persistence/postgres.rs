@@ -1244,7 +1244,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             WHERE ($1::text IS NULL OR status = $1)
               AND ($2::text IS NULL OR activity_type = $2)
               AND ($3::uuid IS NULL OR workflow_id = $3)
-            ORDER BY created_at DESC
+            ORDER BY created_at ASC
             OFFSET $4
             LIMIT $5
             "#,

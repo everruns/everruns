@@ -729,7 +729,8 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 claimed_at: t.claimed_at,
             })
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        // Sort by created_at ascending (oldest first) to show execution order
+        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
         let start = pagination.offset as usize;
         let end = (pagination.offset + pagination.limit) as usize;
