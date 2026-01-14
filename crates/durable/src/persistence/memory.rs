@@ -1182,4 +1182,248 @@ mod tests {
         // In the real workflow, after complete_task fails, the worker
         // should NOT call schedule_next_activity, preventing duplicate atoms
     }
+
+    // ========================================================================
+    // Additional edge case tests for comprehensive coverage
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_concurrent_completions_only_one_succeeds() {
+        // Test that concurrent attempts to complete by different workers
+        // result in exactly one success
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "step".to_string(),
+                activity_type: "process".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Worker A claims
+        store
+            .claim_task("worker-A", &["process".to_string()], 1)
+            .await
+            .unwrap();
+
+        // Try to complete with multiple worker IDs concurrently
+        let results = tokio::join!(
+            store.complete_task(task_id, "worker-A", serde_json::json!({})),
+            store.complete_task(task_id, "worker-B", serde_json::json!({})),
+            store.complete_task(task_id, "worker-C", serde_json::json!({})),
+        );
+
+        // Exactly one should succeed (worker-A, the one who claimed)
+        let successes = [&results.0, &results.1, &results.2]
+            .iter()
+            .filter(|r| r.is_ok())
+            .count();
+        assert_eq!(successes, 1, "Only one completion should succeed");
+
+        // Worker A should be the one that succeeded
+        assert!(results.0.is_ok(), "Worker A (the claimer) should succeed");
+        assert!(
+            matches!(results.1, Err(StoreError::TaskNotOwned(_))),
+            "Worker B should fail with TaskNotOwned"
+        );
+        assert!(
+            matches!(results.2, Err(StoreError::TaskNotOwned(_))),
+            "Worker C should fail with TaskNotOwned"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_not_found() {
+        // Completing a non-existent task should fail with TaskNotFound
+        let store = InMemoryWorkflowEventStore::new();
+        let fake_task_id = Uuid::now_v7();
+
+        let result = store
+            .complete_task(fake_task_id, "worker", serde_json::json!({}))
+            .await;
+
+        assert!(
+            matches!(result, Err(StoreError::TaskNotFound(_))),
+            "Expected TaskNotFound error, got {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_complete_unclaimed_task_fails() {
+        // Completing a task that was never claimed should fail
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(workflow_id, "test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "step".to_string(),
+                activity_type: "process".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Try to complete without claiming first
+        let result = store
+            .complete_task(task_id, "worker", serde_json::json!({}))
+            .await;
+
+        assert!(
+            matches!(result, Err(StoreError::TaskNotOwned(_))),
+            "Completing unclaimed task should fail with TaskNotOwned: {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn test_full_workflow_simulation_no_duplicates() {
+        // Simulate a full workflow cycle with potential for duplicates
+        // process_input -> reason -> act -> reason
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+
+        store
+            .create_workflow(
+                workflow_id,
+                "full_workflow",
+                serde_json::json!({"session": "test"}),
+                None,
+            )
+            .await
+            .unwrap();
+
+        // 1. process_input
+        let task1 = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "process_input_1".to_string(),
+                activity_type: "process_input".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        store
+            .claim_task("worker-1", &["process_input".to_string()], 1)
+            .await
+            .unwrap();
+        store
+            .complete_task(task1, "worker-1", serde_json::json!({}))
+            .await
+            .unwrap();
+
+        // 2. reason_1
+        let task2 = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "reason_1".to_string(),
+                activity_type: "reason".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        store
+            .claim_task("worker-1", &["reason".to_string()], 1)
+            .await
+            .unwrap();
+        store
+            .complete_task(
+                task2,
+                "worker-1",
+                serde_json::json!({"has_tool_calls": true}),
+            )
+            .await
+            .unwrap();
+
+        // 3. act - THIS IS WHERE RACE CONDITION OCCURS
+        let task3 = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "act_1".to_string(),
+                activity_type: "act".to_string(),
+                input: serde_json::json!({"tools": []}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Worker A claims
+        store
+            .claim_task("worker-A", &["act".to_string()], 1)
+            .await
+            .unwrap();
+
+        // Simulate reclaim: manually reset task to pending, then worker B claims
+        {
+            let mut tasks = store.tasks.write();
+            let task = tasks.get_mut(&task3).unwrap();
+            task.status = TaskStatus::Pending;
+            task.claimed_by = None;
+        }
+
+        // Worker B claims and completes
+        store
+            .claim_task("worker-B", &["act".to_string()], 1)
+            .await
+            .unwrap();
+        store
+            .complete_task(task3, "worker-B", serde_json::json!({}))
+            .await
+            .unwrap();
+
+        // Worker B schedules reason_2
+        let _task4 = store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: "reason_2".to_string(),
+                activity_type: "reason".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Worker A (late) tries to complete - MUST FAIL
+        let worker_a_result = store
+            .complete_task(task3, "worker-A", serde_json::json!({}))
+            .await;
+        assert!(
+            matches!(worker_a_result, Err(StoreError::TaskNotOwned(_))),
+            "Worker A (late) must fail"
+        );
+
+        // Count reason tasks - should be exactly 2
+        let tasks = store.tasks.read();
+        let reason_count = tasks
+            .values()
+            .filter(|t| t.definition.activity_type == "reason")
+            .count();
+
+        assert_eq!(
+            reason_count, 2,
+            "Should have exactly 2 reason tasks, not {}",
+            reason_count
+        );
+    }
 }
