@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS llm_generations (
     event_id UUID, -- Optional: links to the original event
 
     -- Model info
-    model VARCHAR(255),
-    provider VARCHAR(100),
+    model TEXT,
+    provider TEXT,
 
     -- Token usage (source of truth)
     input_tokens BIGINT NOT NULL DEFAULT 0,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS llm_generations (
 
     -- Metadata
     duration_ms INTEGER,
-    finish_reason VARCHAR(50),
+    finish_reason TEXT,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -69,10 +69,10 @@ DECLARE
     v_output_tokens BIGINT;
     v_cache_read_tokens BIGINT;
     v_cache_creation_tokens BIGINT;
-    v_model VARCHAR(255);
-    v_provider VARCHAR(100);
+    v_model TEXT;
+    v_provider TEXT;
     v_duration_ms INTEGER;
-    v_finish_reason VARCHAR(50);
+    v_finish_reason TEXT;
     v_turn_id UUID;
     v_agent_id UUID;
 BEGIN
@@ -306,10 +306,10 @@ DECLARE
     v_output_tokens BIGINT;
     v_cache_read_tokens BIGINT;
     v_cache_creation_tokens BIGINT;
-    v_model VARCHAR(255);
-    v_provider VARCHAR(100);
+    v_model TEXT;
+    v_provider TEXT;
     v_duration_ms INTEGER;
-    v_finish_reason VARCHAR(50);
+    v_finish_reason TEXT;
     v_turn_id UUID;
 BEGIN
     -- Process all existing llm.generation events
