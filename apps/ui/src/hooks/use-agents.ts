@@ -10,18 +10,19 @@ import {
   listAgents,
   updateAgent,
 } from "@/lib/api/agents";
+import { queryKeys } from "@/lib/query-keys";
 import type { CreateAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
 
 export function useAgents() {
   return useQuery({
-    queryKey: ["agents"],
+    queryKey: queryKeys.agents.list(),
     queryFn: listAgents,
   });
 }
 
 export function useAgent(agentId: string | undefined) {
   return useQuery({
-    queryKey: ["agent", agentId],
+    queryKey: queryKeys.agents.detail(agentId!),
     queryFn: () => getAgent(agentId!),
     enabled: !!agentId,
   });
@@ -33,7 +34,7 @@ export function useCreateAgent() {
   return useMutation({
     mutationFn: (request: CreateAgentRequest) => createAgent(request),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
   });
 }
@@ -50,8 +51,8 @@ export function useUpdateAgent() {
       request: UpdateAgentRequest;
     }) => updateAgent(agentId, request),
     onSuccess: (_, { agentId }) => {
-      queryClient.invalidateQueries({ queryKey: ["agents"] });
-      queryClient.invalidateQueries({ queryKey: ["agent", agentId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
     },
   });
 }
@@ -62,7 +63,7 @@ export function useDeleteAgent() {
   return useMutation({
     mutationFn: (agentId: string) => deleteAgent(agentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
   });
 }
@@ -79,7 +80,7 @@ export function useImportAgent() {
   return useMutation({
     mutationFn: (markdown: string) => importAgent(markdown),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
   });
 }
