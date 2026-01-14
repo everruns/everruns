@@ -1114,3 +1114,256 @@ async fn test_message_triggers_agent_workflow() {
 
     println!("Message triggers agent workflow test passed!");
 }
+
+/// Test that tool calls are not duplicated during workflow execution.
+///
+/// This test verifies that when an agent uses a tool (like current_time),
+/// the tool call appears only once in the events, not duplicated.
+///
+/// Regression test for duplicate tool call scheduling at initial scheduling.
+#[tokio::test]
+async fn test_no_duplicate_tool_calls() {
+    use std::collections::HashMap;
+
+    let client = reqwest::Client::new();
+
+    println!("Testing no duplicate tool calls...");
+
+    // Step 1: Create an LLM provider with API key (if available)
+    println!("\nStep 1: Creating LLM provider...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "Duplicate Tool Test Provider",
+            "provider_type": "openai",
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created provider: {}", provider.id);
+
+    // Step 2: Create a model configured for tool use
+    println!("\nStep 2: Creating model...");
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "gpt-4o-mini",
+            "display_name": "GPT-4o Mini Test"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!("Failed to create model: status={}, body={}", status, body);
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created model: {}", model.id);
+
+    // Step 3: Create an agent with current_time capability
+    println!("\nStep 3: Creating agent with current_time capability...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Time Tool Test Agent",
+            "system_prompt": "You are a helpful time assistant. When asked about the current time, use the get_current_time tool.",
+            "capabilities": ["current_time"],
+            "default_model_id": model.id
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!(
+        "Created agent: {} with capabilities: {:?}",
+        agent.id, agent.capabilities
+    );
+
+    // Step 4: Create a session
+    println!("\nStep 4: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    // Step 5: Send a message that should trigger tool use
+    println!("\nStep 5: Sending message to trigger tool use...");
+    let message_response = client
+        .post(format!(
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "What time is it right now?"}]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send message");
+
+    assert!(
+        message_response.status().is_success() || message_response.status() == 404,
+        "Expected success or 404, got {}",
+        message_response.status()
+    );
+
+    // Step 6: Wait for workflow to complete by polling messages
+    println!("\nStep 6: Waiting for workflow to complete...");
+    let mut tool_call_found = false;
+    for i in 1..=30 {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        let messages_response = client
+            .get(format!(
+                "{}/v1/agents/{}/sessions/{}/messages",
+                API_BASE_URL, agent.id, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = messages_response
+            && resp.status() == 200
+        {
+            let data: Value = resp.json().await.unwrap_or_default();
+            let empty_vec = vec![];
+            let messages = data["data"].as_array().unwrap_or(&empty_vec);
+
+            // Check if we have an agent response (workflow completed)
+            for msg in messages {
+                if msg["role"] == "agent" {
+                    // Check for tool calls in content
+                    if let Some(content) = msg["content"].as_array() {
+                        for part in content {
+                            if part.get("tool_call").is_some() {
+                                tool_call_found = true;
+                                println!("Found tool call after {}s", i);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if tool_call_found {
+                // Wait a bit more for workflow to fully complete
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                break;
+            }
+        }
+
+        if i % 5 == 0 {
+            println!("  Still waiting... ({}s)", i);
+        }
+    }
+
+    // Step 7: Get all messages and check for duplicates
+    println!("\nStep 7: Checking for duplicate tool calls...");
+    let messages_response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list messages");
+
+    let messages_data: Value = messages_response
+        .json()
+        .await
+        .expect("Failed to parse messages");
+    let empty_vec = vec![];
+    let messages = messages_data["data"].as_array().unwrap_or(&empty_vec);
+
+    println!("Found {} messages", messages.len());
+
+    // Count tool calls by their ID to detect duplicates
+    let mut tool_call_ids: HashMap<String, u32> = HashMap::new();
+
+    for msg in messages {
+        if let Some(content) = msg["content"].as_array() {
+            for part in content {
+                // Check for tool_call content parts
+                if let Some(tool_call) = part.get("tool_call") {
+                    let id = tool_call["id"].as_str().unwrap_or("unknown");
+                    let name = tool_call["name"].as_str().unwrap_or("unknown");
+                    println!("  Found tool_call: {} ({})", name, id);
+                    *tool_call_ids.entry(id.to_string()).or_insert(0) += 1;
+                }
+
+                // Check for tool_result content parts (from tool.call_completed events)
+                if let Some(tool_result) = part.get("tool_result") {
+                    let id = tool_result["id"].as_str().unwrap_or("unknown");
+                    let name = tool_result["name"].as_str().unwrap_or("unknown");
+                    println!("  Found tool_result: {} ({})", name, id);
+                }
+            }
+        }
+    }
+
+    // Check for duplicate tool calls
+    let mut has_duplicates = false;
+    for (id, count) in &tool_call_ids {
+        if *count > 1 {
+            println!(
+                "ERROR: Duplicate tool_call found! ID: {}, count: {}",
+                id, count
+            );
+            has_duplicates = true;
+        }
+    }
+
+    // If there were tool calls, verify no duplicates
+    if !tool_call_ids.is_empty() {
+        assert!(
+            !has_duplicates,
+            "Found duplicate tool calls in messages! Tool call IDs with counts: {:?}",
+            tool_call_ids
+        );
+        println!("No duplicate tool calls found - test passed!");
+    } else {
+        println!(
+            "No tool calls found in messages (workflow may not have completed or API key not configured)"
+        );
+    }
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+    client
+        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("No duplicate tool calls test completed!");
+}
