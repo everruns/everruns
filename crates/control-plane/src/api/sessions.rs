@@ -9,7 +9,7 @@ use axum::{
 };
 use everruns_core::Session;
 
-use super::common::ListResponse;
+use super::common::{ApiOptionExt, ApiResultExt, ListResponse};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -101,10 +101,7 @@ pub async fn create_session(
         .session_service
         .create(agent_id, req)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to create session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .log_internal_error("create session")?;
 
     Ok((StatusCode::CREATED, Json(session)))
 }
@@ -126,10 +123,11 @@ pub async fn list_sessions(
     State(state): State<AppState>,
     Path(agent_id): Path<Uuid>,
 ) -> Result<Json<ListResponse<Session>>, StatusCode> {
-    let sessions = state.session_service.list(agent_id).await.map_err(|e| {
-        tracing::error!("Failed to list sessions: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let sessions = state
+        .session_service
+        .list(agent_id)
+        .await
+        .log_internal_error("list sessions")?;
 
     Ok(Json(ListResponse::new(sessions)))
 }
@@ -157,11 +155,8 @@ pub async fn get_session(
         .session_service
         .get(session_id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .log_internal_error("get session")?
+        .ok_or_not_found()?;
 
     Ok(Json(session))
 }
@@ -191,11 +186,8 @@ pub async fn update_session(
         .session_service
         .update(session_id, req)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to update session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .log_internal_error("update session")?
+        .ok_or_not_found()?;
 
     Ok(Json(session))
 }
@@ -223,10 +215,7 @@ pub async fn delete_session(
         .session_service
         .delete(session_id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .log_internal_error("delete session")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)

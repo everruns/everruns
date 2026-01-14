@@ -12,7 +12,7 @@ use axum::{
 use chrono::Utc;
 use everruns_core::{Agent, AgentStatus, CapabilityId};
 
-use super::common::{ErrorResponse, ListResponse};
+use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use super::validation::{
     validate_create_agent_input, validate_import_file_size, validate_update_agent_input,
 };
@@ -148,10 +148,11 @@ pub async fn create_agent(
         req.capabilities.len(),
     )?;
 
-    let agent = state.service.create(req).await.map_err(|e| {
-        tracing::error!("Failed to create agent: {}", e);
-        ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
-    })?;
+    let agent = state
+        .service
+        .create(req)
+        .await
+        .log_internal_error_json("create agent")?;
 
     Ok((StatusCode::CREATED, Json(agent)))
 }
@@ -169,10 +170,11 @@ pub async fn create_agent(
 pub async fn list_agents(
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<Agent>>, StatusCode> {
-    let agents = state.service.list().await.map_err(|e| {
-        tracing::error!("Failed to list agents: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let agents = state
+        .service
+        .list()
+        .await
+        .log_internal_error("list agents")?;
 
     Ok(Json(ListResponse::new(agents)))
 }
@@ -199,11 +201,8 @@ pub async fn get_agent(
         .service
         .get(agent_id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get agent: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .log_internal_error("get agent")?
+        .ok_or_not_found()?;
 
     Ok(Json(agent))
 }
@@ -241,12 +240,8 @@ pub async fn update_agent(
         .service
         .update(agent_id, req)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to update agent: {}", e);
-            ErrorResponse::new("Internal server error")
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-        })?
-        .ok_or_else(|| ErrorResponse::new("Not found").into_response(StatusCode::NOT_FOUND))?;
+        .log_internal_error_json("update agent")?
+        .ok_or_not_found_json("Agent")?;
 
     Ok(Json(agent))
 }
@@ -269,10 +264,11 @@ pub async fn delete_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
-    let deleted = state.service.delete(agent_id).await.map_err(|e| {
-        tracing::error!("Failed to delete agent: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let deleted = state
+        .service
+        .delete(agent_id)
+        .await
+        .log_internal_error("delete agent")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
@@ -303,11 +299,8 @@ pub async fn export_agent(
         .service
         .get(agent_id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get agent for export: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .log_internal_error("get agent for export")?
+        .ok_or_not_found()?;
 
     let markdown = agent_to_markdown(&agent);
     let filename = format!("{}.md", slugify(&agent.name));
