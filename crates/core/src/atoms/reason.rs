@@ -37,7 +37,7 @@ use crate::message::{Message, MessageRole};
 use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
-    AgentStore, EventEmitter, LlmProviderStore, MessageStore, ModelWithProvider, SessionStore,
+    AgentStore, EventEmitter, LlmProviderStore, MessageRetriever, ModelWithProvider, SessionStore,
 };
 
 // ============================================================================
@@ -140,13 +140,13 @@ pub struct ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore,
     S: SessionStore,
-    M: MessageStore,
+    M: MessageRetriever,
     P: LlmProviderStore,
     E: EventEmitter,
 {
     agent_store: A,
     session_store: S,
-    message_store: M,
+    message_retriever: M,
     provider_store: P,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
@@ -157,7 +157,7 @@ impl<A, S, M, P, E> ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore,
     S: SessionStore,
-    M: MessageStore,
+    M: MessageRetriever,
     P: LlmProviderStore,
     E: EventEmitter,
 {
@@ -165,7 +165,7 @@ where
     pub fn new(
         agent_store: A,
         session_store: S,
-        message_store: M,
+        message_retriever: M,
         provider_store: P,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
@@ -174,7 +174,7 @@ where
         Self {
             agent_store,
             session_store,
-            message_store,
+            message_retriever,
             provider_store,
             capability_registry,
             driver_registry,
@@ -188,7 +188,7 @@ impl<A, S, M, P, E> Atom for ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore + Send + Sync,
     S: SessionStore + Send + Sync,
-    M: MessageStore + Send + Sync,
+    M: MessageRetriever + Send + Sync,
     P: LlmProviderStore + Send + Sync,
     E: EventEmitter + Send + Sync,
 {
@@ -281,19 +281,6 @@ where
                 // Create error message for the user to see
                 let error_message = Message::assistant(&user_error_text);
 
-                // Store message (no-op in production, but needed for InMemoryMessageStore in tests)
-                if let Err(store_err) = self
-                    .message_store
-                    .store(context.session_id, error_message.clone())
-                    .await
-                {
-                    tracing::warn!(
-                        session_id = %context.session_id,
-                        error = %store_err,
-                        "ReasonAtom: failed to store error message"
-                    );
-                }
-
                 // Emit message.agent event (stores message as event with proper turn context)
                 if let Err(emit_err) = self
                     .event_emitter
@@ -348,7 +335,7 @@ impl<A, S, M, P, E> ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore + Send + Sync,
     S: SessionStore + Send + Sync,
-    M: MessageStore + Send + Sync,
+    M: MessageRetriever + Send + Sync,
     P: LlmProviderStore + Send + Sync,
     E: EventEmitter + Send + Sync,
 {
@@ -374,7 +361,7 @@ where
             .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
 
         // 3. Load messages (needed for controls.model_id extraction)
-        let messages = self.message_store.load(session_id).await?;
+        let messages = self.message_retriever.load(session_id).await?;
 
         if messages.is_empty() {
             return Err(AgentLoopError::NoMessages);
@@ -547,11 +534,6 @@ where
             Message::assistant(&text)
         };
         assistant_message.metadata = Some(metadata);
-
-        // Store message (no-op in production via DbMessageStore, but needed for InMemoryMessageStore in tests)
-        self.message_store
-            .store(session_id, assistant_message.clone())
-            .await?;
 
         // Emit message.agent event (this stores the message as an event with proper turn context)
         let message_event_context = EventContext::from_atom_context(context);

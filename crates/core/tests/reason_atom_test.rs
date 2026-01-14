@@ -12,10 +12,10 @@ use everruns_core::llm_driver_registry::{DriverRegistry, ProviderType};
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_core::memory::{
-    InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageStore, InMemorySessionStore,
+    InMemoryAgentStore, InMemoryLlmProviderStore, InMemoryMessageRetriever, InMemorySessionStore,
 };
 use everruns_core::session::{Session, SessionStatus};
-use everruns_core::traits::{MessageStore, ModelWithProvider, NoopEventEmitter};
+use everruns_core::traits::{MessageRetriever, ModelWithProvider, NoopEventEmitter};
 use everruns_core::{Message, ToolCall};
 use serde_json::json;
 use uuid::Uuid;
@@ -24,14 +24,14 @@ use uuid::Uuid;
 async fn setup_test_environment() -> (
     InMemoryAgentStore,
     InMemorySessionStore,
-    InMemoryMessageStore,
+    InMemoryMessageRetriever,
     InMemoryLlmProviderStore,
     Uuid, // agent_id
     Uuid, // session_id
 ) {
     let agent_store = InMemoryAgentStore::new();
     let session_store = InMemorySessionStore::new();
-    let message_store = InMemoryMessageStore::new();
+    let message_retriever = InMemoryMessageRetriever::new();
     let provider_store = InMemoryLlmProviderStore::new();
 
     // Create a test agent
@@ -77,7 +77,7 @@ async fn setup_test_environment() -> (
     (
         agent_store,
         session_store,
-        message_store,
+        message_retriever,
         provider_store,
         agent_id,
         session_id,
@@ -102,11 +102,11 @@ fn create_context(session_id: Uuid) -> AtomContext {
 
 #[tokio::test]
 async fn test_reason_atom_with_fixed_response() {
-    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
     // Add a user message
-    message_store
+    message_retriever
         .seed(
             session_id,
             vec![Message::user("What is the capital of France?")],
@@ -120,7 +120,7 @@ async fn test_reason_atom_with_fixed_response() {
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
@@ -141,18 +141,18 @@ async fn test_reason_atom_with_fixed_response() {
     assert!(result.tool_calls.is_empty());
 
     // Verify the assistant message was stored
-    let messages = message_store.load(session_id).await.unwrap();
+    let messages = message_retriever.load(session_id).await.unwrap();
     assert_eq!(messages.len(), 2); // user + assistant
     assert_eq!(messages[1].text(), Some("The capital of France is Paris."));
 }
 
 #[tokio::test]
 async fn test_reason_atom_with_tool_calls() {
-    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
     // Add a user message
-    message_store
+    message_retriever
         .seed(
             session_id,
             vec![Message::user("What's the weather in Tokyo?")],
@@ -174,7 +174,7 @@ async fn test_reason_atom_with_tool_calls() {
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
@@ -199,11 +199,11 @@ async fn test_reason_atom_with_tool_calls() {
 
 #[tokio::test]
 async fn test_reason_atom_with_echo_response() {
-    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
     // Add a user message
-    message_store
+    message_retriever
         .seed(session_id, vec![Message::user("Hello, how are you?")])
         .await;
 
@@ -213,7 +213,7 @@ async fn test_reason_atom_with_echo_response() {
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
@@ -239,11 +239,11 @@ async fn test_reason_atom_with_different_configs() {
     // registry.create_driver() call creates a fresh driver. For registry-based
     // usage, use fixed responses or test sequences at the driver level.
 
-    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
     // First test with one configuration
-    message_store
+    message_retriever
         .seed(session_id, vec![Message::user("Question 1")])
         .await;
 
@@ -252,7 +252,7 @@ async fn test_reason_atom_with_different_configs() {
     let atom1 = ReasonAtom::new(
         agent_store.clone(),
         session_store.clone(),
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store.clone(),
         CapabilityRegistry::new(),
         driver_registry1,
@@ -284,7 +284,7 @@ async fn test_reason_atom_with_different_configs() {
         finished_at: None,
     };
     session_store.add_session(session2).await;
-    message_store
+    message_retriever
         .seed(session_id2, vec![Message::user("Question 2")])
         .await;
 
@@ -293,7 +293,7 @@ async fn test_reason_atom_with_different_configs() {
     let atom2 = ReasonAtom::new(
         agent_store.clone(),
         session_store.clone(),
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store.clone(),
         CapabilityRegistry::new(),
         driver_registry2,
@@ -314,11 +314,11 @@ async fn test_reason_atom_with_different_configs() {
 
 #[tokio::test]
 async fn test_reason_atom_with_multi_turn_conversation() {
-    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
     // Seed a multi-turn conversation
-    message_store
+    message_retriever
         .seed(
             session_id,
             vec![
@@ -336,7 +336,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
@@ -355,13 +355,13 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     assert!(result.text.contains("Bob"));
 
     // Verify all messages are preserved
-    let messages = message_store.load(session_id).await.unwrap();
+    let messages = message_retriever.load(session_id).await.unwrap();
     assert_eq!(messages.len(), 4); // 3 original + 1 new assistant response
 }
 
 #[tokio::test]
 async fn test_reason_atom_with_tool_result_continuation() {
-    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
     // Simulate a conversation where tool was called and result is available
@@ -371,7 +371,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
         arguments: json!({"city": "Tokyo"}),
     };
 
-    message_store
+    message_retriever
         .seed(
             session_id,
             vec![
@@ -393,7 +393,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
@@ -415,10 +415,10 @@ async fn test_reason_atom_with_tool_result_continuation() {
 
 #[tokio::test]
 async fn test_reason_atom_with_lorem_response() {
-    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
-    message_store
+    message_retriever
         .seed(session_id, vec![Message::user("Tell me a long story")])
         .await;
 
@@ -428,7 +428,7 @@ async fn test_reason_atom_with_lorem_response() {
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
@@ -453,11 +453,11 @@ async fn test_reason_atom_with_lorem_response() {
 async fn test_reason_atom_handles_llm_error() {
     use everruns_core::memory::InMemoryEventEmitter;
 
-    let (agent_store, session_store, message_store, provider_store, agent_id, session_id) =
+    let (agent_store, session_store, message_retriever, provider_store, agent_id, session_id) =
         setup_test_environment().await;
 
     // Add a user message
-    message_store
+    message_retriever
         .seed(session_id, vec![Message::user("Hello!")])
         .await;
 
@@ -470,7 +470,7 @@ async fn test_reason_atom_handles_llm_error() {
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
@@ -511,7 +511,7 @@ async fn test_reason_atom_handles_llm_error() {
     assert!(result.tool_calls.is_empty());
 
     // Verify an error message was stored for the user
-    let messages = message_store.load(session_id).await.unwrap();
+    let messages = message_retriever.load(session_id).await.unwrap();
     assert_eq!(messages.len(), 2, "Should have user + error message");
     assert_eq!(messages[1].role, everruns_core::MessageRole::Assistant);
     assert!(

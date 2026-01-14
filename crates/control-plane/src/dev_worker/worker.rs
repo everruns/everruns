@@ -24,7 +24,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::direct_adapters::{
-    DirectAgentStore, DirectEventEmitter, DirectLlmProviderStore, DirectMessageStore,
+    DirectAgentStore, DirectEventEmitter, DirectLlmProviderStore, DirectMessageRetriever,
     DirectSessionFileStore, DirectSessionStore, SessionStatusUpdater,
 };
 use crate::services::{EventService, LlmResolverService};
@@ -400,8 +400,9 @@ impl InProcessWorker {
         }
 
         // Execute InputAtom
-        let message_store = DirectMessageStore::new(self.db.clone(), self.event_service.clone());
-        let atom = InputAtom::new(message_store, event_emitter);
+        let message_retriever =
+            DirectMessageRetriever::new(self.db.clone(), self.event_service.clone());
+        let atom = InputAtom::new(message_retriever, event_emitter);
 
         let atom_input = InputAtomInput { context };
         let result = atom.execute(atom_input).await?;
@@ -436,7 +437,8 @@ impl InProcessWorker {
         // Create direct adapters
         let agent_store = DirectAgentStore::new(self.db.clone());
         let session_store = DirectSessionStore::new(self.db.clone());
-        let message_store = DirectMessageStore::new(self.db.clone(), self.event_service.clone());
+        let message_retriever =
+            DirectMessageRetriever::new(self.db.clone(), self.event_service.clone());
         let provider_store = DirectLlmProviderStore::new(self.llm_resolver.clone());
         let capability_registry = CapabilityRegistry::with_builtins();
         let driver_registry = create_driver_registry();
@@ -446,7 +448,7 @@ impl InProcessWorker {
         let atom = ReasonAtom::new(
             agent_store,
             session_store,
-            message_store,
+            message_retriever,
             provider_store,
             capability_registry,
             driver_registry,

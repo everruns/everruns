@@ -4,7 +4,8 @@
 // of an agentic loop (LLM call → tool execution → repeat).
 //
 // Key design decisions:
-// - Uses traits (MessageStore, ToolExecutor) for pluggable backends
+// - Uses traits (MessageRetriever, ToolExecutor) for pluggable backends
+// - MessageRetriever is retrieval-only; messages are stored via EventEmitter
 // - Can be decomposed into steps for durable activity execution
 // - Configuration via RuntimeAgent (can be built from Agent entity or created directly)
 // - Tools are defined via a Tool trait for flexibility (function-style tools)
@@ -66,7 +67,7 @@ pub use message::{
 };
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
+    EventEmitter, InputMessage, LlmProviderStore, MessageRetriever, ModelWithProvider,
     NoopEventEmitter, SessionFileStore, SessionStore, ToolContext, ToolExecutor,
 };
 

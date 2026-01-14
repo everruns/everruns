@@ -9,7 +9,7 @@
 // - ReasonAtom: LLM call with context preparation
 // - ActAtom: Parallel tool execution
 //
-// Atoms handle message loading/storage internally via MessageStore trait.
+// Atoms handle message loading internally via MessageRetriever trait.
 // Atoms emit events via EventEmitter for observability.
 
 use anyhow::{Context, Result};
@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageStore,
+    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageRetriever,
     GrpcSessionFileStore, GrpcSessionStore,
 };
 
@@ -91,8 +91,8 @@ pub async fn input_activity(
         tracing::warn!(error = %e, "Failed to emit turn.started event");
     }
 
-    let message_store = GrpcMessageStore::new(grpc_client.clone());
-    let atom = InputAtom::new(message_store, event_emitter);
+    let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
+    let atom = InputAtom::new(message_retriever, event_emitter);
 
     atom.execute(input)
         .await
@@ -132,7 +132,7 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
     // Create atom dependencies using gRPC adapters
     let agent_store = GrpcAgentStore::new(grpc_client.clone());
     let session_store = GrpcSessionStore::new(grpc_client.clone());
-    let message_store = GrpcMessageStore::new(grpc_client.clone());
+    let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
     let provider_store = GrpcLlmProviderStore::new(grpc_client.clone());
     let capability_registry = CapabilityRegistry::with_builtins();
     let driver_registry = create_driver_registry();
@@ -141,7 +141,7 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
-        message_store,
+        message_retriever,
         provider_store,
         capability_registry,
         driver_registry,
