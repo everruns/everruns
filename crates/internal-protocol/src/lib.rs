@@ -5,7 +5,7 @@
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
 use chrono::{DateTime, TimeZone, Utc};
-use prost_types::{value::Kind, ListValue, Struct, Value};
+use prost_types::{ListValue, Struct, Value, value::Kind};
 
 // Generated protobuf code
 pub mod proto {
@@ -196,8 +196,8 @@ fn deserialize_event_data(
     event_type: &str,
     data: serde_json::Value,
 ) -> Result<everruns_core::EventData, ConversionError> {
-    use everruns_core::events::*;
     use everruns_core::EventData;
+    use everruns_core::events::*;
 
     Ok(match event_type {
         MESSAGE_USER => {
@@ -948,24 +948,32 @@ mod tests {
 
         // Verify capability_ids are preserved
         assert_eq!(proto_agent.capability_ids.len(), 2);
-        assert!(proto_agent
-            .capability_ids
-            .contains(&"tools:read_file".to_string()));
-        assert!(proto_agent
-            .capability_ids
-            .contains(&"tools:write_file".to_string()));
+        assert!(
+            proto_agent
+                .capability_ids
+                .contains(&"tools:read_file".to_string())
+        );
+        assert!(
+            proto_agent
+                .capability_ids
+                .contains(&"tools:write_file".to_string())
+        );
 
         // Convert back to schema
         let schema_agent = proto_agent_to_schema(proto_agent).unwrap();
 
         // Verify capabilities survive roundtrip
         assert_eq!(schema_agent.capabilities.len(), 2);
-        assert!(schema_agent
-            .capabilities
-            .contains(&CapabilityId::new("tools:read_file")));
-        assert!(schema_agent
-            .capabilities
-            .contains(&CapabilityId::new("tools:write_file")));
+        assert!(
+            schema_agent
+                .capabilities
+                .contains(&CapabilityId::new("tools:read_file"))
+        );
+        assert!(
+            schema_agent
+                .capabilities
+                .contains(&CapabilityId::new("tools:write_file"))
+        );
     }
 
     #[test]

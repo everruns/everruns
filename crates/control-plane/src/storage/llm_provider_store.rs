@@ -5,9 +5,9 @@
 
 use async_trait::async_trait;
 use everruns_core::{
+    AgentLoopError, Result,
     llm_models::LlmProviderType,
     traits::{LlmProviderStore, ModelWithProvider},
-    AgentLoopError, Result,
 };
 use uuid::Uuid;
 

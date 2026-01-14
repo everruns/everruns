@@ -1,10 +1,10 @@
 // Session Files service for virtual filesystem operations
 
 use crate::storage::{
-    models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
     StorageBackend,
+    models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use everruns_core::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
 use regex::Regex;
 use std::sync::Arc;
@@ -250,7 +250,7 @@ impl SessionFileService {
             let dir = self.db.get_session_file(session_id, &path).await?;
             match dir {
                 Some(d) if !d.is_directory => {
-                    return Err(anyhow!("Path is not a directory: {}", path))
+                    return Err(anyhow!("Path is not a directory: {}", path));
                 }
                 None => return Err(anyhow!("Directory not found: {}", path)),
                 _ => {}
@@ -332,17 +332,18 @@ impl SessionFileService {
 
         // Check if it's a directory with children
         let file = self.db.get_session_file(session_id, &path).await?;
-        if let Some(ref f) = file {
-            if f.is_directory && !recursive {
-                let has_children = self
-                    .db
-                    .session_directory_has_children(session_id, &path)
-                    .await?;
-                if has_children {
-                    return Err(anyhow!(
-                        "Directory is not empty. Use recursive=true to delete"
-                    ));
-                }
+        if let Some(ref f) = file
+            && f.is_directory
+            && !recursive
+        {
+            let has_children = self
+                .db
+                .session_directory_has_children(session_id, &path)
+                .await?;
+            if has_children {
+                return Err(anyhow!(
+                    "Directory is not empty. Use recursive=true to delete"
+                ));
             }
         }
 
@@ -407,7 +408,7 @@ impl SessionFileService {
         match source {
             None => return Err(anyhow!("Source not found: {}", src_path)),
             Some(ref s) if s.is_directory => {
-                return Err(anyhow!("Cannot copy directories: {}", src_path))
+                return Err(anyhow!("Cannot copy directories: {}", src_path));
             }
             _ => {}
         }
@@ -449,27 +450,27 @@ impl SessionFileService {
                 .db
                 .get_session_file(session_id, &file_info.path)
                 .await?;
-            if let Some(f) = file {
-                if let Some(content) = f.content {
-                    // Try to decode as text
-                    if let Ok(text) = String::from_utf8(content) {
-                        let matches: Vec<GrepMatch> = text
-                            .lines()
-                            .enumerate()
-                            .filter(|(_, line)| regex.is_match(line))
-                            .map(|(i, line)| GrepMatch {
-                                path: file_info.path.clone(),
-                                line_number: i + 1,
-                                line: line.to_string(),
-                            })
-                            .collect();
+            if let Some(f) = file
+                && let Some(content) = f.content
+            {
+                // Try to decode as text
+                if let Ok(text) = String::from_utf8(content) {
+                    let matches: Vec<GrepMatch> = text
+                        .lines()
+                        .enumerate()
+                        .filter(|(_, line)| regex.is_match(line))
+                        .map(|(i, line)| GrepMatch {
+                            path: file_info.path.clone(),
+                            line_number: i + 1,
+                            line: line.to_string(),
+                        })
+                        .collect();
 
-                        if !matches.is_empty() {
-                            results.push(GrepResult {
-                                path: file_info.path.clone(),
-                                matches,
-                            });
-                        }
+                    if !matches.is_empty() {
+                        results.push(GrepResult {
+                            path: file_info.path.clone(),
+                            matches,
+                        });
                     }
                 }
             }

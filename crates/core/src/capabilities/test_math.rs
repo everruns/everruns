@@ -34,7 +34,9 @@ impl Capability for TestMathCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some("You have access to math tools. Use them for calculations: add, subtract, multiply, divide.")
+        Some(
+            "You have access to math tools. Use them for calculations: add, subtract, multiply, divide.",
+        )
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {

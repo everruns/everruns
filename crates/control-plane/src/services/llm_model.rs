@@ -1,12 +1,12 @@
 // LLM Model service for business logic
 
 use crate::storage::{
-    models::{CreateLlmModelRow, LlmModelRow, LlmModelWithProviderRow, UpdateLlmModel},
     StorageBackend,
+    models::{CreateLlmModelRow, LlmModelRow, LlmModelWithProviderRow, UpdateLlmModel},
 };
 use anyhow::Result;
 use everruns_core::{
-    get_model_profile, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType,
+    LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType, get_model_profile,
 };
 use std::sync::Arc;
 use uuid::Uuid;

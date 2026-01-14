@@ -5,15 +5,15 @@
 // - Initialization helpers for OTLP exporters
 // - Span creation helpers with proper attribute naming
 
-use opentelemetry::trace::TracerProvider as _;
 use opentelemetry::KeyValue;
+use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
-    trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
     Resource,
+    trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
 };
 use std::time::Duration;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 // ============================================================================
 // Gen-AI Semantic Conventions
@@ -231,10 +231,10 @@ pub struct TelemetryGuard {
 
 impl Drop for TelemetryGuard {
     fn drop(&mut self) {
-        if let Some(provider) = self._provider.take() {
-            if let Err(e) = provider.shutdown() {
-                eprintln!("Failed to shutdown tracer provider: {:?}", e);
-            }
+        if let Some(provider) = self._provider.take()
+            && let Err(e) = provider.shutdown()
+        {
+            eprintln!("Failed to shutdown tracer provider: {:?}", e);
         }
     }
 }

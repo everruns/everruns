@@ -1,10 +1,10 @@
 // LLM Provider service for business logic
 
 use crate::storage::{
-    models::{CreateLlmProviderRow, LlmProviderRow, UpdateLlmProvider},
     EncryptionService, StorageBackend,
+    models::{CreateLlmProviderRow, LlmProviderRow, UpdateLlmProvider},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{LlmProviderStatus, LlmProviderType};
 use std::sync::Arc;

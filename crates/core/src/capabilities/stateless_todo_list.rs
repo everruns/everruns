@@ -243,7 +243,8 @@ impl Tool for WriteTodosTool {
                 Some(other) => {
                     return ToolExecutionResult::tool_error(format!(
                         "Task {} has invalid status '{}'. Must be 'pending', 'in_progress', or 'completed'",
-                        idx + 1, other
+                        idx + 1,
+                        other
                     ));
                 }
                 None => {
@@ -265,7 +266,9 @@ impl Tool for WriteTodosTool {
         let warning = if in_progress_count == 0 && pending_count > 0 {
             Some("No task is marked as 'in_progress'. Consider marking one task as in_progress.")
         } else if in_progress_count > 1 {
-            Some("Multiple tasks are marked as 'in_progress'. Best practice is to have exactly one in_progress task at a time.")
+            Some(
+                "Multiple tasks are marked as 'in_progress'. Best practice is to have exactly one in_progress task at a time.",
+            )
         } else {
             None
         };
@@ -367,12 +370,14 @@ mod tests {
 
         if let ToolExecutionResult::Success(value) = result {
             assert!(value.get("warning").is_some());
-            assert!(value
-                .get("warning")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .contains("No task is marked as 'in_progress'"));
+            assert!(
+                value
+                    .get("warning")
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .contains("No task is marked as 'in_progress'")
+            );
         } else {
             panic!("Expected success");
         }
@@ -392,12 +397,14 @@ mod tests {
 
         if let ToolExecutionResult::Success(value) = result {
             assert!(value.get("warning").is_some());
-            assert!(value
-                .get("warning")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .contains("Multiple tasks"));
+            assert!(
+                value
+                    .get("warning")
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .contains("Multiple tasks")
+            );
         } else {
             panic!("Expected success");
         }

@@ -4,7 +4,7 @@
 // including API key decryption. Used by gRPC service for worker communication.
 
 use crate::storage::{EncryptionService, StorageBackend};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::sync::Arc;
 use uuid::Uuid;
 

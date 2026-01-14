@@ -1,7 +1,7 @@
 // Capabilities listing command
 
 use crate::client::Client;
-use crate::output::{print_table_header, print_table_row, OutputFormat};
+use crate::output::{OutputFormat, print_table_header, print_table_row};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 

@@ -9,10 +9,10 @@
 // - Circuit breaker status
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::{DateTime, Utc};
 use everruns_durable::{

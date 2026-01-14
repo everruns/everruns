@@ -18,7 +18,7 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Fake CRM Tools capability - mock customer relationship management for demos
 pub struct FakeCrmCapability;
@@ -283,7 +283,7 @@ impl Tool for CrmGetCustomerTool {
         let customer_id = match arguments.get("customer_id").and_then(|v| v.as_str()) {
             Some(id) => id,
             None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: customer_id")
+                return ToolExecutionResult::tool_error("Missing required parameter: customer_id");
             }
         };
 
@@ -561,7 +561,7 @@ impl Tool for CrmCreateTicketTool {
         let customer_id = match arguments.get("customer_id").and_then(|v| v.as_str()) {
             Some(id) => id,
             None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: customer_id")
+                return ToolExecutionResult::tool_error("Missing required parameter: customer_id");
             }
         };
 
@@ -573,7 +573,7 @@ impl Tool for CrmCreateTicketTool {
         let description = match arguments.get("description").and_then(|v| v.as_str()) {
             Some(d) => d,
             None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: description")
+                return ToolExecutionResult::tool_error("Missing required parameter: description");
             }
         };
 

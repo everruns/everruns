@@ -54,7 +54,9 @@ pub enum AgentLoopError {
     Internal(#[from] anyhow::Error),
 
     /// Driver not registered for provider type
-    #[error("No driver registered for provider type '{0}'. Make sure the driver is registered at startup.")]
+    #[error(
+        "No driver registered for provider type '{0}'. Make sure the driver is registered at startup."
+    )]
     DriverNotRegistered(String),
 }
 

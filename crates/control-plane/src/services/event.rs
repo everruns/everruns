@@ -13,8 +13,8 @@
 // observability integrations (OTel spans, metrics, etc.). Listeners are
 // called synchronously but should be non-blocking.
 
-use crate::storage::{models::CreateEventRow, EventRow, StorageBackend};
-use anyhow::{bail, Result};
+use crate::storage::{EventRow, StorageBackend, models::CreateEventRow};
+use anyhow::{Result, bail};
 use everruns_core::{Event, EventData, EventListener, EventRequest, UNKNOWN};
 use std::sync::Arc;
 use uuid::Uuid;

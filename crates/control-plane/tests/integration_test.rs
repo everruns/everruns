@@ -4,7 +4,7 @@
 
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{Agent, LlmModel, Session, SessionFile};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const API_BASE_URL: &str = "http://localhost:9000";
 
@@ -991,38 +991,38 @@ async fn test_message_triggers_agent_workflow() {
             .send()
             .await;
 
-        if let Ok(resp) = messages_response {
-            if resp.status() == 200 {
-                let data: Value = resp.json().await.unwrap_or_default();
-                let empty_vec = vec![];
-                let messages = data["data"].as_array().unwrap_or(&empty_vec);
+        if let Ok(resp) = messages_response
+            && resp.status() == 200
+        {
+            let data: Value = resp.json().await.unwrap_or_default();
+            let empty_vec = vec![];
+            let messages = data["data"].as_array().unwrap_or(&empty_vec);
 
-                // Debug: print message count and roles on first check and every 10s
-                if i == 1 || i % 10 == 0 {
-                    println!(
-                        "  [{}s] Found {} messages, roles: {:?}",
-                        i,
-                        messages.len(),
-                        messages
-                            .iter()
-                            .map(|m| m["role"].as_str().unwrap_or("?"))
-                            .collect::<Vec<_>>()
-                    );
-                }
+            // Debug: print message count and roles on first check and every 10s
+            if i == 1 || i % 10 == 0 {
+                println!(
+                    "  [{}s] Found {} messages, roles: {:?}",
+                    i,
+                    messages.len(),
+                    messages
+                        .iter()
+                        .map(|m| m["role"].as_str().unwrap_or("?"))
+                        .collect::<Vec<_>>()
+                );
+            }
 
-                for msg in messages {
-                    // API returns "agent" role (not "assistant")
-                    if msg["role"] == "agent" {
-                        assistant_found = true;
-                        let content = &msg["content"];
-                        println!("Found agent response after {}s: {:?}", i, content);
-                        break;
-                    }
-                }
-
-                if assistant_found {
+            for msg in messages {
+                // API returns "agent" role (not "assistant")
+                if msg["role"] == "agent" {
+                    assistant_found = true;
+                    let content = &msg["content"];
+                    println!("Found agent response after {}s: {:?}", i, content);
                     break;
                 }
+            }
+
+            if assistant_found {
+                break;
             }
         }
 
@@ -1041,25 +1041,23 @@ async fn test_message_triggers_agent_workflow() {
             ))
             .send()
             .await
+            && resp.status() == 200
+            && let Ok(data) = resp.json::<Value>().await
         {
-            if resp.status() == 200 {
-                if let Ok(data) = resp.json::<Value>().await {
-                    let events = data["data"].as_array();
-                    println!("  Events count: {}", events.map(|e| e.len()).unwrap_or(0));
-                    if let Some(events) = events {
-                        for (i, event) in events.iter().enumerate().take(10) {
-                            println!(
-                                "  Event {}: type={}, data_preview={}",
-                                i,
-                                event["type"].as_str().unwrap_or("?"),
-                                &event["data"]
-                                    .to_string()
-                                    .chars()
-                                    .take(100)
-                                    .collect::<String>()
-                            );
-                        }
-                    }
+            let events = data["data"].as_array();
+            println!("  Events count: {}", events.map(|e| e.len()).unwrap_or(0));
+            if let Some(events) = events {
+                for (i, event) in events.iter().enumerate().take(10) {
+                    println!(
+                        "  Event {}: type={}, data_preview={}",
+                        i,
+                        event["type"].as_str().unwrap_or("?"),
+                        &event["data"]
+                            .to_string()
+                            .chars()
+                            .take(100)
+                            .collect::<String>()
+                    );
                 }
             }
         }

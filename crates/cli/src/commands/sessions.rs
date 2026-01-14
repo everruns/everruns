@@ -1,7 +1,7 @@
 // Session management commands
 
 use crate::client::{Client, ClientError};
-use crate::output::{print_field, print_table_header, print_table_row, OutputFormat};
+use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::Result;
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};

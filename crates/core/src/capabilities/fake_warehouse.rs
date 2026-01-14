@@ -20,7 +20,7 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Fake Warehouse Tools capability - mock warehouse management for demos
 pub struct FakeWarehouseCapability;
@@ -339,7 +339,7 @@ impl Tool for WarehouseUpdateInventoryTool {
             None => {
                 return ToolExecutionResult::tool_error(
                     "Missing required parameter: quantity_change",
-                )
+                );
             }
         };
 
@@ -462,7 +462,7 @@ impl Tool for WarehouseCreateShipmentTool {
         let destination = match arguments.get("destination").and_then(|v| v.as_str()) {
             Some(d) => d,
             None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: destination")
+                return ToolExecutionResult::tool_error("Missing required parameter: destination");
             }
         };
 
@@ -657,7 +657,7 @@ impl Tool for WarehouseUpdateShipmentStatusTool {
         let shipment_id = match arguments.get("shipment_id").and_then(|v| v.as_str()) {
             Some(id) => id,
             None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: shipment_id")
+                return ToolExecutionResult::tool_error("Missing required parameter: shipment_id");
             }
         };
 
@@ -684,7 +684,7 @@ impl Tool for WarehouseUpdateShipmentStatusTool {
                 return ToolExecutionResult::tool_error(format!(
                     "Shipment not found: {}",
                     shipment_id
-                ))
+                ));
             }
         };
 

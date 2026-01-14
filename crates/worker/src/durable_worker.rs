@@ -6,13 +6,13 @@ use anyhow::Result;
 use everruns_core::atoms::AtomContext;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{Mutex, watch};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::activities::{
-    act_activity, input_activity, reason_activity, ActInput, InputAtomInput, ReasonInput,
-    ReasonResult,
+    ActInput, InputAtomInput, ReasonInput, ReasonResult, act_activity, input_activity,
+    reason_activity,
 };
 use crate::durable_runner::DurableTurnInput;
 use crate::grpc_adapters::GrpcClient;

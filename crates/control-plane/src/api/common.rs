@@ -2,8 +2,8 @@
 //
 // These types are shared across multiple API endpoints.
 
-use axum::http::StatusCode;
 use axum::Json;
+use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

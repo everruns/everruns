@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::Path;
 
-use minijinja::{context, Environment};
+use minijinja::{Environment, context};
 
 use super::metrics::{BenchmarkMetrics, LatencySummary, ResourceSnapshot};
 

@@ -3,11 +3,11 @@
 
 use crate::storage::StorageBackend;
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::sse::{Event as SseEvent, KeepAlive, Sse},
     routing::get,
-    Json, Router,
 };
 use everruns_core::{Event, EventListener};
 use serde::Deserialize;
@@ -15,8 +15,8 @@ use serde::Deserialize;
 use super::common::ListResponse;
 use crate::services::EventService;
 use futures::{
-    stream::{self, Stream},
     StreamExt,
+    stream::{self, Stream},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
 use uuid::Uuid;

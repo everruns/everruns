@@ -34,7 +34,9 @@ impl Capability for TestWeatherCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some("You have access to weather tools. Use get_weather for current conditions and get_forecast for multi-day forecasts.")
+        Some(
+            "You have access to weather tools. Use get_weather for current conditions and get_forecast for multi-day forecasts.",
+        )
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {

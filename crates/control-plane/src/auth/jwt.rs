@@ -4,7 +4,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -14,7 +14,7 @@ use super::config::JwtConfig;
 /// Generate a random identifier string (32 hex characters)
 fn generate_random_id() -> String {
     let mut rng = rand::thread_rng();
-    let bytes: [u8; 16] = rng.gen();
+    let bytes: [u8; 16] = rng.r#gen();
     hex::encode(bytes)
 }
 

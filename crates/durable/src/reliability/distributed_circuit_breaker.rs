@@ -269,10 +269,10 @@ impl DistributedCircuitBreaker {
         // Check local cache first
         {
             let cache = self.local_cache.read().await;
-            if let Some(cached) = cache.as_ref() {
-                if !cached.is_stale(self.cache_duration) {
-                    return Ok(cached.clone());
-                }
+            if let Some(cached) = cache.as_ref()
+                && !cached.is_stale(self.cache_duration)
+            {
+                return Ok(cached.clone());
             }
         }
 

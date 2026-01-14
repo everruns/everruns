@@ -590,36 +590,33 @@ where
         agent_model_id: Option<Uuid>,
     ) -> Result<ModelWithProvider> {
         // Try controls.model_id first (highest priority)
-        if let Some(model_id) = controls_model_id {
-            if let Some(model_with_provider) = self
+        if let Some(model_id) = controls_model_id
+            && let Some(model_with_provider) = self
                 .provider_store
                 .get_model_with_provider(model_id)
                 .await?
-            {
-                return Ok(model_with_provider);
-            }
+        {
+            return Ok(model_with_provider);
         }
 
         // Try session.model_id second
-        if let Some(model_id) = session_model_id {
-            if let Some(model_with_provider) = self
+        if let Some(model_id) = session_model_id
+            && let Some(model_with_provider) = self
                 .provider_store
                 .get_model_with_provider(model_id)
                 .await?
-            {
-                return Ok(model_with_provider);
-            }
+        {
+            return Ok(model_with_provider);
         }
 
         // Try agent.default_model_id third
-        if let Some(model_id) = agent_model_id {
-            if let Some(model_with_provider) = self
+        if let Some(model_id) = agent_model_id
+            && let Some(model_with_provider) = self
                 .provider_store
                 .get_model_with_provider(model_id)
                 .await?
-            {
-                return Ok(model_with_provider);
-            }
+        {
+            return Ok(model_with_provider);
         }
 
         // Fall back to system default model

@@ -12,7 +12,7 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 use everruns_core::error::{AgentLoopError, Result};
@@ -280,10 +280,9 @@ impl LlmDriver for AnthropicLlmDriver {
                                 // Parse message_start for input token count
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicMessageStart>(&event.data)
+                                    && let Some(usage) = data.message.usage
                                 {
-                                    if let Some(usage) = data.message.usage {
-                                        *input_tokens.lock().unwrap() = usage.input_tokens;
-                                    }
+                                    *input_tokens.lock().unwrap() = usage.input_tokens;
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
@@ -291,17 +290,15 @@ impl LlmDriver for AnthropicLlmDriver {
                                 // Check if starting a tool use block
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicContentBlockStart>(&event.data)
-                                {
-                                    if let AnthropicContentBlockDelta::ToolUse { id, name } =
+                                    && let AnthropicContentBlockDelta::ToolUse { id, name } =
                                         data.content_block
-                                    {
-                                        let mut current = current_tool_call.lock().unwrap();
-                                        *current = Some(ToolCall {
-                                            id,
-                                            name,
-                                            arguments: json!(""),
-                                        });
-                                    }
+                                {
+                                    let mut current = current_tool_call.lock().unwrap();
+                                    *current = Some(ToolCall {
+                                        id,
+                                        name,
+                                        arguments: json!(""),
+                                    });
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
@@ -353,13 +350,13 @@ impl LlmDriver for AnthropicLlmDriver {
                                         *output_tokens.lock().unwrap() = usage.output_tokens;
                                     }
 
-                                    if let Some(stop_reason) = data.delta.stop_reason {
-                                        if stop_reason == "tool_use" {
-                                            let tool_calls =
-                                                accumulated_tool_calls.lock().unwrap().clone();
-                                            if !tool_calls.is_empty() {
-                                                return Ok(LlmStreamEvent::ToolCalls(tool_calls));
-                                            }
+                                    if let Some(stop_reason) = data.delta.stop_reason
+                                        && stop_reason == "tool_use"
+                                    {
+                                        let tool_calls =
+                                            accumulated_tool_calls.lock().unwrap().clone();
+                                        if !tool_calls.is_empty() {
+                                            return Ok(LlmStreamEvent::ToolCalls(tool_calls));
                                         }
                                     }
                                 }

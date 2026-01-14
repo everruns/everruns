@@ -5,7 +5,7 @@
 // - Built from an Agent entity via the `with_agent` builder method
 
 use crate::agent::Agent;
-use crate::capabilities::{collect_capabilities, CapabilityRegistry};
+use crate::capabilities::{CapabilityRegistry, collect_capabilities};
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 

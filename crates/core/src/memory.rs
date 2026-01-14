@@ -806,8 +806,8 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_event_emitter_filter_by_type() {
         use crate::events::{
-            EventContext, EventRequest, InputReceivedData, ReasonStartedData, INPUT_RECEIVED,
-            REASON_STARTED,
+            EventContext, EventRequest, INPUT_RECEIVED, InputReceivedData, REASON_STARTED,
+            ReasonStartedData,
         };
 
         let emitter = InMemoryEventEmitter::new();

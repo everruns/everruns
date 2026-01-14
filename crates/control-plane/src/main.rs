@@ -16,14 +16,14 @@ use everruns_control_plane::services;
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 
 use anyhow::{Context, Result};
-use axum::http::{header, HeaderValue, Method};
-use axum::{extract::State, routing::get, Json, Router};
-use everruns_core::telemetry::{init_telemetry, TelemetryConfig};
+use axum::http::{HeaderValue, Method, header};
+use axum::{Json, Router, extract::State, routing::get};
+use everruns_core::telemetry::{TelemetryConfig, init_telemetry};
 use everruns_core::{EventListener, OtelEventListener};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
-use everruns_worker::{create_runner_with_backend, RunnerBackend};
+use everruns_worker::{RunnerBackend, create_runner_with_backend};
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -138,7 +138,10 @@ async fn main() -> Result<()> {
             Some(Arc::new(svc))
         }
         Err(e) => {
-            tracing::warn!("Encryption service not configured (SECRETS_ENCRYPTION_KEY not set): {}. API key storage disabled.", e);
+            tracing::warn!(
+                "Encryption service not configured (SECRETS_ENCRYPTION_KEY not set): {}. API key storage disabled.",
+                e
+            );
             None
         }
     };

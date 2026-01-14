@@ -16,15 +16,15 @@ pub use grpc_durable_store::{
     ClaimedTask as GrpcClaimedTask, GrpcDurableStore, HeartbeatResponse as GrpcHeartbeatResponse,
     WorkflowStatus as GrpcWorkflowStatus,
 };
-pub use runner::{create_runner, create_runner_with_backend, AgentRunner, RunnerBackend};
+pub use runner::{AgentRunner, RunnerBackend, create_runner, create_runner_with_backend};
 
 // Re-export LLM driver factory helpers
 pub use adapters::{create_driver_registry, create_llm_driver};
 
 // Re-export gRPC adapters for worker communication with control plane
 pub use grpc_adapters::{
-    load_turn_context, GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore,
-    GrpcMessageStore, GrpcSessionFileStore, GrpcSessionStore, TurnContext,
+    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageStore,
+    GrpcSessionFileStore, GrpcSessionStore, TurnContext, load_turn_context,
 };
 
 // Re-export OpenAI driver from the openai crate

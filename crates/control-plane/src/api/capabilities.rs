@@ -7,10 +7,10 @@
 // Agent capabilities are managed through the agents API (POST/PATCH /v1/agents).
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use everruns_core::{CapabilityId, CapabilityInfo};
 

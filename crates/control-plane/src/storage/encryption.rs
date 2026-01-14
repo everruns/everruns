@@ -3,11 +3,11 @@
 // See specs/encryption.md for full specification.
 
 use aes_gcm::{
-    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
+    aead::{Aead, KeyInit},
 };
 use anyhow::{Context, Result};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -577,10 +577,10 @@ mod tests {
                 let words: Vec<&str> = trimmed.split_whitespace().collect();
                 if !words.is_empty() {
                     let first_word = words[0].trim_start_matches('(').trim_end_matches(',');
-                    if first_word.ends_with("_encrypted") {
-                        if let Some(ref table) = current_table {
-                            found.insert((table.clone(), first_word.to_string()));
-                        }
+                    if first_word.ends_with("_encrypted")
+                        && let Some(ref table) = current_table
+                    {
+                        found.insert((table.clone(), first_word.to_string()));
                     }
                 }
 

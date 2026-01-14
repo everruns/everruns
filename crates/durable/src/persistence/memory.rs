@@ -484,15 +484,15 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         let mut entries: Vec<_> = dlq
             .values()
             .filter(|e| {
-                if let Some(wid) = filter.workflow_id {
-                    if e.workflow_id != wid {
-                        return false;
-                    }
+                if let Some(wid) = filter.workflow_id
+                    && e.workflow_id != wid
+                {
+                    return false;
                 }
-                if let Some(ref at) = filter.activity_type {
-                    if &e.activity_type != at {
-                        return false;
-                    }
+                if let Some(ref at) = filter.activity_type
+                    && &e.activity_type != at
+                {
+                    return false;
                 }
                 true
             })
@@ -624,16 +624,16 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .values()
             .filter(|w| {
                 // Apply status filter
-                if let Some(ref status) = filter.status {
-                    if &w.status != status {
-                        return false;
-                    }
+                if let Some(ref status) = filter.status
+                    && &w.status != status
+                {
+                    return false;
                 }
                 // Apply worker_group filter
-                if let Some(ref group) = filter.worker_group {
-                    if w.worker_group.as_ref() != Some(group) {
-                        return false;
-                    }
+                if let Some(ref group) = filter.worker_group
+                    && w.worker_group.as_ref() != Some(group)
+                {
+                    return false;
                 }
                 true
             })
@@ -653,16 +653,16 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .iter()
             .filter(|(_, w)| {
                 // Apply status filter
-                if let Some(ref status) = filter.status {
-                    if &w.status != status {
-                        return false;
-                    }
+                if let Some(ref status) = filter.status
+                    && &w.status != status
+                {
+                    return false;
                 }
                 // Apply workflow_type filter
-                if let Some(ref wf_type) = filter.workflow_type {
-                    if &w.workflow_type != wf_type {
-                        return false;
-                    }
+                if let Some(ref wf_type) = filter.workflow_type
+                    && &w.workflow_type != wf_type
+                {
+                    return false;
                 }
                 true
             })
@@ -695,22 +695,22 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .iter()
             .filter(|(_, t)| {
                 // Apply status filter
-                if let Some(ref status) = filter.status {
-                    if &t.status != status {
-                        return false;
-                    }
+                if let Some(ref status) = filter.status
+                    && &t.status != status
+                {
+                    return false;
                 }
                 // Apply activity_type filter
-                if let Some(ref activity_type) = filter.activity_type {
-                    if &t.definition.activity_type != activity_type {
-                        return false;
-                    }
+                if let Some(ref activity_type) = filter.activity_type
+                    && &t.definition.activity_type != activity_type
+                {
+                    return false;
                 }
                 // Apply workflow_id filter
-                if let Some(ref wf_id) = filter.workflow_id {
-                    if &t.definition.workflow_id != wf_id {
-                        return false;
-                    }
+                if let Some(ref wf_id) = filter.workflow_id
+                    && &t.definition.workflow_id != wf_id
+                {
+                    return false;
                 }
                 true
             })

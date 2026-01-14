@@ -5,7 +5,7 @@
 // This implementation provides a PostgreSQL-compatible API backed by in-memory
 // HashMaps, allowing the control-plane to run without a database for development.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -188,11 +188,11 @@ impl InMemoryDatabase {
 
     pub async fn delete_api_key(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
         let mut keys = self.api_keys.write();
-        if let Some(key) = keys.get(&id) {
-            if key.user_id == user_id {
-                keys.remove(&id);
-                return Ok(true);
-            }
+        if let Some(key) = keys.get(&id)
+            && key.user_id == user_id
+        {
+            keys.remove(&id);
+            return Ok(true);
         }
         Ok(false)
     }
@@ -512,10 +512,10 @@ impl InMemoryDatabase {
                     if e.id <= id {
                         return false;
                     }
-                } else if let Some(seq) = since_sequence {
-                    if e.sequence <= seq {
-                        return false;
-                    }
+                } else if let Some(seq) = since_sequence
+                    && e.sequence <= seq
+                {
+                    return false;
                 }
                 true
             })
@@ -689,22 +689,22 @@ impl InMemoryDatabase {
         let providers = self.llm_providers.read();
 
         for model in models.values() {
-            if model.is_default {
-                if let Some(provider) = providers.get(&model.provider_id) {
-                    return Ok(Some(LlmModelWithProviderRow {
-                        id: model.id,
-                        provider_id: model.provider_id,
-                        model_id: model.model_id.clone(),
-                        display_name: model.display_name.clone(),
-                        capabilities: model.capabilities.clone(),
-                        is_default: model.is_default,
-                        status: model.status.clone(),
-                        created_at: model.created_at,
-                        updated_at: model.updated_at,
-                        provider_name: provider.name.clone(),
-                        provider_type: provider.provider_type.clone(),
-                    }));
-                }
+            if model.is_default
+                && let Some(provider) = providers.get(&model.provider_id)
+            {
+                return Ok(Some(LlmModelWithProviderRow {
+                    id: model.id,
+                    provider_id: model.provider_id,
+                    model_id: model.model_id.clone(),
+                    display_name: model.display_name.clone(),
+                    capabilities: model.capabilities.clone(),
+                    is_default: model.is_default,
+                    status: model.status.clone(),
+                    created_at: model.created_at,
+                    updated_at: model.updated_at,
+                    provider_name: provider.name.clone(),
+                    provider_type: provider.provider_type.clone(),
+                }));
             }
         }
         Ok(None)
@@ -773,22 +773,22 @@ impl InMemoryDatabase {
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
 
-        if let Some(model) = models.get(&id) {
-            if let Some(provider) = providers.get(&model.provider_id) {
-                return Ok(Some(LlmModelWithProviderRow {
-                    id: model.id,
-                    provider_id: model.provider_id,
-                    model_id: model.model_id.clone(),
-                    display_name: model.display_name.clone(),
-                    capabilities: model.capabilities.clone(),
-                    is_default: model.is_default,
-                    status: model.status.clone(),
-                    created_at: model.created_at,
-                    updated_at: model.updated_at,
-                    provider_name: provider.name.clone(),
-                    provider_type: provider.provider_type.clone(),
-                }));
-            }
+        if let Some(model) = models.get(&id)
+            && let Some(provider) = providers.get(&model.provider_id)
+        {
+            return Ok(Some(LlmModelWithProviderRow {
+                id: model.id,
+                provider_id: model.provider_id,
+                model_id: model.model_id.clone(),
+                display_name: model.display_name.clone(),
+                capabilities: model.capabilities.clone(),
+                is_default: model.is_default,
+                status: model.status.clone(),
+                created_at: model.created_at,
+                updated_at: model.updated_at,
+                provider_name: provider.name.clone(),
+                provider_type: provider.provider_type.clone(),
+            }));
         }
         Ok(None)
     }
@@ -872,22 +872,22 @@ impl InMemoryDatabase {
         let providers = self.llm_providers.read();
 
         for model in models.values() {
-            if model.model_id == model_id {
-                if let Some(provider) = providers.get(&model.provider_id) {
-                    return Ok(Some(LlmModelWithProviderRow {
-                        id: model.id,
-                        provider_id: model.provider_id,
-                        model_id: model.model_id.clone(),
-                        display_name: model.display_name.clone(),
-                        capabilities: model.capabilities.clone(),
-                        is_default: model.is_default,
-                        status: model.status.clone(),
-                        created_at: model.created_at,
-                        updated_at: model.updated_at,
-                        provider_name: provider.name.clone(),
-                        provider_type: provider.provider_type.clone(),
-                    }));
-                }
+            if model.model_id == model_id
+                && let Some(provider) = providers.get(&model.provider_id)
+            {
+                return Ok(Some(LlmModelWithProviderRow {
+                    id: model.id,
+                    provider_id: model.provider_id,
+                    model_id: model.model_id.clone(),
+                    display_name: model.display_name.clone(),
+                    capabilities: model.capabilities.clone(),
+                    is_default: model.is_default,
+                    status: model.status.clone(),
+                    created_at: model.created_at,
+                    updated_at: model.updated_at,
+                    provider_name: provider.name.clone(),
+                    provider_type: provider.provider_type.clone(),
+                }));
             }
         }
         Ok(None)
@@ -1219,10 +1219,10 @@ impl InMemoryDatabase {
                 if f.session_id != session_id || f.is_directory {
                     return false;
                 }
-                if let Some(prefix) = path_prefix {
-                    if !f.path.starts_with(prefix) {
-                        return false;
-                    }
+                if let Some(prefix) = path_prefix
+                    && !f.path.starts_with(prefix)
+                {
+                    return false;
                 }
                 // Content is Vec<u8>, convert to str for regex matching
                 f.content

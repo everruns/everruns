@@ -13,7 +13,7 @@ mod driver;
 #[cfg(test)]
 mod tests;
 
-pub use driver::{register_driver, AnthropicLlmDriver};
+pub use driver::{AnthropicLlmDriver, register_driver};
 
 // Re-export core types for convenience
 pub use everruns_core::llm_driver_registry::{DriverRegistry, LlmDriver};

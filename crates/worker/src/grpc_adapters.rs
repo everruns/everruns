@@ -17,8 +17,8 @@ use everruns_core::traits::{
 use everruns_core::{Agent, Message, Session};
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
-    json_to_proto_list, json_to_proto_struct, proto_list_to_json, proto_struct_to_json,
-    WorkerServiceClient,
+    WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
+    proto_struct_to_json,
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -112,11 +112,7 @@ fn proto_timestamp_or_now(ts: Option<&proto::Timestamp>) -> chrono::DateTime<chr
 /// Helper to convert empty string to None.
 /// Reduces the repeated `if s.is_empty() { None } else { Some(s) }` pattern.
 fn non_empty_string(s: String) -> Option<String> {
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
+    if s.is_empty() { None } else { Some(s) }
 }
 
 // ============================================================================
@@ -466,7 +462,7 @@ fn proto_model_with_provider_to_model(
             return Err(grpc_error(format!(
                 "Unknown provider type: {}",
                 proto.provider_type
-            )))
+            )));
         }
     };
 

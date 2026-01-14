@@ -3,10 +3,10 @@
 use crate::api::common::{ErrorResponse, ListResponse};
 use crate::storage::StorageBackend;
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use everruns_core::{LlmModel, LlmModelStatus, LlmModelWithProvider};
 use serde::Deserialize;

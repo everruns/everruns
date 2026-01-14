@@ -18,7 +18,7 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Fake Financial Tools capability - mock financial management for demos
 pub struct FakeFinancialCapability;
@@ -291,7 +291,7 @@ impl Tool for FinanceCreateTransactionTool {
             None => {
                 return ToolExecutionResult::tool_error(
                     "Missing required parameter: transaction_type",
-                )
+                );
             }
         };
 
@@ -308,7 +308,7 @@ impl Tool for FinanceCreateTransactionTool {
         let description = match arguments.get("description").and_then(|v| v.as_str()) {
             Some(d) => d,
             None => {
-                return ToolExecutionResult::tool_error("Missing required parameter: description")
+                return ToolExecutionResult::tool_error("Missing required parameter: description");
             }
         };
 

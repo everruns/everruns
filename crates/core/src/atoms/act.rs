@@ -352,7 +352,7 @@ where
             self.tool_executor.execute(&tool_call, tool_def).await
         };
 
-        let tool_call_result = match result {
+        match result {
             Ok(tool_result) => {
                 let success = tool_result.error.is_none();
                 let status = if success { "success" } else { "error" };
@@ -456,9 +456,7 @@ where
                     status: "error".to_string(),
                 }
             }
-        };
-
-        tool_call_result
+        }
     }
 }
 
@@ -520,11 +518,13 @@ mod tests {
         assert_eq!(result.results.len(), 1);
         assert!(!result.results[0].success);
         assert_eq!(result.results[0].status, "error");
-        assert!(result.results[0]
-            .result
-            .error
-            .as_ref()
-            .unwrap()
-            .contains("not found"));
+        assert!(
+            result.results[0]
+                .result
+                .error
+                .as_ref()
+                .unwrap()
+                .contains("not found")
+        );
     }
 }

@@ -711,10 +711,12 @@ mod tests {
         );
 
         // TestWeather has system prompt addition and 2 tools
-        assert!(applied
-            .runtime_agent
-            .system_prompt
-            .contains("weather tools"));
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("weather tools")
+        );
         assert!(applied.tool_registry.has("get_weather"));
         assert!(applied.tool_registry.has("get_forecast"));
         assert_eq!(applied.tool_registry.len(), 2);
@@ -752,10 +754,12 @@ mod tests {
         );
 
         // StatelessTodoList has system prompt addition and 1 tool
-        assert!(applied
-            .runtime_agent
-            .system_prompt
-            .contains("Task Management"));
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("Task Management")
+        );
         assert!(applied.runtime_agent.system_prompt.contains("write_todos"));
         assert!(applied.tool_registry.has("write_todos"));
         assert_eq!(applied.tool_registry.len(), 1);

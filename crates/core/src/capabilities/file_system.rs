@@ -15,7 +15,7 @@ use super::{Capability, CapabilityId, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Session File System capability - provides file operations for session storage
 pub struct FileSystemCapability;
@@ -128,7 +128,9 @@ impl Tool for ReadFileTool {
         let file_store = match &context.file_store {
             Some(store) => store,
             None => {
-                return ToolExecutionResult::tool_error("File system not available in this context")
+                return ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                );
             }
         };
 
@@ -228,7 +230,9 @@ impl Tool for WriteFileTool {
         let file_store = match &context.file_store {
             Some(store) => store,
             None => {
-                return ToolExecutionResult::tool_error("File system not available in this context")
+                return ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                );
             }
         };
 
@@ -308,7 +312,9 @@ impl Tool for ListDirectoryTool {
         let file_store = match &context.file_store {
             Some(store) => store,
             None => {
-                return ToolExecutionResult::tool_error("File system not available in this context")
+                return ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                );
             }
         };
 
@@ -405,7 +411,9 @@ impl Tool for GrepFilesTool {
         let file_store = match &context.file_store {
             Some(store) => store,
             None => {
-                return ToolExecutionResult::tool_error("File system not available in this context")
+                return ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                );
             }
         };
 
@@ -507,7 +515,9 @@ impl Tool for DeleteFileTool {
         let file_store = match &context.file_store {
             Some(store) => store,
             None => {
-                return ToolExecutionResult::tool_error("File system not available in this context")
+                return ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                );
             }
         };
 
@@ -591,7 +601,9 @@ impl Tool for StatFileTool {
         let file_store = match &context.file_store {
             Some(store) => store,
             None => {
-                return ToolExecutionResult::tool_error("File system not available in this context")
+                return ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                );
             }
         };
 

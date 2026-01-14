@@ -4,8 +4,8 @@
 
 use std::future::Future;
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -197,11 +197,11 @@ impl BenchmarkRunner {
 
         for task_id in 0..total {
             // Check deadline
-            if let Some(deadline) = deadline {
-                if Instant::now() >= deadline {
-                    pb.set_message("deadline reached");
-                    break;
-                }
+            if let Some(deadline) = deadline
+                && Instant::now() >= deadline
+            {
+                pb.set_message("deadline reached");
+                break;
             }
 
             // Rate limiting
@@ -441,7 +441,9 @@ impl CheckpointSaveResult {
         if let Some(ref comparison) = self.comparison {
             comparison.print_summary();
         } else {
-            println!("   (No baseline for comparison - this is the first run for this benchmark+environment)");
+            println!(
+                "   (No baseline for comparison - this is the first run for this benchmark+environment)"
+            );
         }
     }
 }

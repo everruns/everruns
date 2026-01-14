@@ -3,7 +3,7 @@
 // These types represent files and directories stored within a session's
 // virtual filesystem. Each session has its own isolated filesystem.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

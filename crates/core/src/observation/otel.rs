@@ -19,9 +19,9 @@ use uuid::Uuid;
 
 use crate::event_listeners::EventListener;
 use crate::events::{
-    Event, EventData, LlmGenerationData, ToolCallCompletedData, ToolCallStartedData,
-    TurnCompletedData, TurnStartedData, LLM_GENERATION, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
-    TURN_COMPLETED, TURN_STARTED,
+    Event, EventData, LLM_GENERATION, LlmGenerationData, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED,
+    TURN_COMPLETED, TURN_STARTED, ToolCallCompletedData, ToolCallStartedData, TurnCompletedData,
+    TurnStartedData,
 };
 use crate::telemetry::gen_ai;
 

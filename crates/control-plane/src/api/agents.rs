@@ -2,12 +2,12 @@
 
 use crate::storage::StorageBackend;
 use axum::{
+    Json, Router,
     body::Body,
     extract::{Path, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::Response,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use everruns_core::{Agent, AgentStatus, CapabilityId};
@@ -446,17 +446,17 @@ fn parse_agent_content(content: &str) -> Result<AgentFile, String> {
     let content = content.trim();
 
     // Try markdown with front matter first (if starts with ---)
-    if content.starts_with("---") {
-        if let Ok(agent) = parse_markdown_frontmatter(content) {
-            return Ok(agent);
-        }
+    if content.starts_with("---")
+        && let Ok(agent) = parse_markdown_frontmatter(content)
+    {
+        return Ok(agent);
     }
 
     // Try JSON (if starts with {)
-    if content.starts_with('{') {
-        if let Ok(agent) = serde_json::from_str::<AgentFile>(content) {
-            return Ok(agent);
-        }
+    if content.starts_with('{')
+        && let Ok(agent) = serde_json::from_str::<AgentFile>(content)
+    {
+        return Ok(agent);
     }
 
     // Try YAML
