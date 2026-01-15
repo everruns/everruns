@@ -214,7 +214,6 @@ export default function ChatPage() {
             onKeyDown={handleKeyDown}
             placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
             className="flex-1 min-h-[60px] max-h-[200px] resize-none"
-            disabled={sendMessage.isPending}
           />
           <Button
             type="submit"
