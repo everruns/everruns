@@ -2095,9 +2095,9 @@
           "capabilities": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Capabilities enabled for this agent.\nCapabilities add tools and system prompt modifications."
+            "description": "Capabilities enabled for this agent with per-agent configuration.\nCapabilities add tools and system prompt modifications."
           },
           "created_at": {
             "type": "string",
@@ -2158,6 +2158,22 @@
                 "description": "Cumulative token usage across all sessions for this agent."
               }
             ]
+          }
+        }
+      },
+      "AgentCapabilityConfig": {
+        "type": "object",
+        "description": "Per-agent capability configuration\n\nAssociates a capability with an agent, including optional per-agent configuration.\nThe config field allows the same capability to behave differently per-agent.",
+        "required": [
+          "ref"
+        ],
+        "properties": {
+          "config": {
+            "description": "Per-agent configuration for this capability (capability-specific)"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Reference to the capability ID"
           }
         }
       },
@@ -2376,12 +2392,18 @@
           "capabilities": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Capabilities to enable for this agent.\nCapabilities provide tools and system prompt additions.",
+            "description": "Capabilities to enable for this agent with per-agent configuration.\nEach capability has a `ref` (capability ID) and optional `config`.",
             "example": [
-              "current_time",
-              "web_fetch"
+              {
+                "config": {},
+                "ref": "current_time"
+              },
+              {
+                "config": {},
+                "ref": "web_fetch"
+              }
             ]
           },
           "default_model_id": {
@@ -3151,9 +3173,9 @@
                 "capabilities": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "$ref": "#/components/schemas/AgentCapabilityConfig"
                   },
-                  "description": "Capabilities enabled for this agent.\nCapabilities add tools and system prompt modifications."
+                  "description": "Capabilities enabled for this agent with per-agent configuration.\nCapabilities add tools and system prompt modifications."
                 },
                 "created_at": {
                   "type": "string",
@@ -5417,12 +5439,18 @@
               "null"
             ],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Capabilities to enable for this agent. Replaces existing capabilities.",
+            "description": "Capabilities to enable for this agent with per-agent configuration.\nReplaces existing capabilities. Each has a `ref` (capability ID) and optional `config`.",
             "example": [
-              "current_time",
-              "web_fetch"
+              {
+                "config": {},
+                "ref": "current_time"
+              },
+              {
+                "config": {},
+                "ref": "web_fetch"
+              }
             ]
           },
           "default_model_id": {

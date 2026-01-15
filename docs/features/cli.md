@@ -80,11 +80,32 @@ system_prompt: |
   You are a helpful research assistant.
   Always cite your sources.
 capabilities:
-  - current_time
-  - web_fetch
+  - ref: current_time
+    config: {}
+  - ref: web_fetch
+    config: {}
 tags:
   - research
   - assistant
+```
+
+For backward compatibility, you can also use the shorthand format:
+
+```yaml
+capabilities:
+  - current_time
+  - web_fetch
+```
+
+The full format with `ref` and `config` allows per-agent capability configuration:
+
+```yaml
+capabilities:
+  - ref: filesystem
+    config:
+      allowed_paths: ["/home/user/projects"]
+  - ref: web_browser
+    config: {}
 ```
 
 **Markdown file format** (`agent.md`):
@@ -94,8 +115,10 @@ tags:
 name: "research-assistant"
 description: "Helps with research tasks"
 capabilities:
-  - current_time
-  - web_fetch
+  - ref: current_time
+    config: {}
+  - ref: web_fetch
+    config: {}
 tags:
   - research
 ---
@@ -104,7 +127,7 @@ You are a helpful research assistant.
 Always cite your sources and provide accurate information.
 ```
 
-The markdown body becomes the system prompt.
+The markdown body becomes the system prompt. Both the full format (`ref` + `config`) and shorthand (just capability ID) are supported in markdown files.
 
 #### List Agents
 
@@ -256,7 +279,11 @@ cat > agent.md << 'EOF'
 name: "code-reviewer"
 description: "Reviews code and suggests improvements"
 capabilities:
-  - current_time
+  - ref: current_time
+    config: {}
+  - ref: filesystem
+    config:
+      allowed_paths: ["/workspace"]
 tags:
   - development
 ---
