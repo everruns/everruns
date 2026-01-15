@@ -282,34 +282,16 @@ impl LlmDriver for AnthropicLlmDriver {
                         match event.event.as_str() {
                             "message_start" => {
                                 // Parse message_start for input token count and cache tokens
-                                match serde_json::from_str::<AnthropicMessageStart>(&event.data) {
-                                    Ok(data) => {
-                                        if let Some(usage) = data.message.usage {
-                                            tracing::debug!(
-                                                input_tokens = usage.input_tokens,
-                                                cache_read = ?usage.cache_read_input_tokens,
-                                                cache_creation = ?usage.cache_creation_input_tokens,
-                                                "Anthropic message_start usage"
-                                            );
-                                            *input_tokens.lock().unwrap() = usage.input_tokens;
-                                            if usage.cache_read_input_tokens.is_some() {
-                                                *cache_read_tokens.lock().unwrap() =
-                                                    usage.cache_read_input_tokens;
-                                            }
-                                            if usage.cache_creation_input_tokens.is_some() {
-                                                *cache_creation_tokens.lock().unwrap() =
-                                                    usage.cache_creation_input_tokens;
-                                            }
-                                        } else {
-                                            tracing::warn!("Anthropic message_start has no usage data");
-                                        }
+                                if let Ok(data) =
+                                    serde_json::from_str::<AnthropicMessageStart>(&event.data)
+                                    && let Some(usage) = data.message.usage
+                                {
+                                    *input_tokens.lock().unwrap() = usage.input_tokens;
+                                    if let Some(cache_read) = usage.cache_read_input_tokens {
+                                        *cache_read_tokens.lock().unwrap() = Some(cache_read);
                                     }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            error = %e,
-                                            data = %event.data,
-                                            "Failed to parse Anthropic message_start"
-                                        );
+                                    if let Some(cache_creation) = usage.cache_creation_input_tokens {
+                                        *cache_creation_tokens.lock().unwrap() = Some(cache_creation);
                                     }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))

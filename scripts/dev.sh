@@ -490,8 +490,7 @@ case "$command" in
     echo "4️⃣  Starting API server with auto-reload..."
     # Allow CORS from UI (localhost:9100) for SSE connections
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
-    # Set default log level (info for most, debug for token usage tracking)
-    export RUST_LOG=${RUST_LOG:-info,everruns_core::atoms::reason=debug,everruns_anthropic=debug,everruns_openai=debug}
+    export RUST_LOG=${RUST_LOG:-info}
     cargo watch -w crates -x 'run -p everruns-control-plane' &
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
