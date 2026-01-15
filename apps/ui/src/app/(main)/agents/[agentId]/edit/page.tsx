@@ -183,7 +183,7 @@ export default function EditAgentPage({
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="container mx-auto p-6">
       <Link
         href={`/agents/${agentId}`}
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
