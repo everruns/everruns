@@ -872,6 +872,69 @@ case "$command" in
     echo "   Checkpoints: crates/durable/benches/checkpoints/"
     ;;
 
+  durable-bench-db)
+    echo "📊 Running durable execution benchmarks (PostgreSQL)..."
+    echo ""
+
+    # Database configuration
+    # Default: postgres://postgres:postgres@localhost:5432/everruns_test
+    DB_HOST="${DB_HOST:-localhost}"
+    DB_PORT="${DB_PORT:-5432}"
+    DB_USER="${DB_USER:-postgres}"
+    DB_PASS="${DB_PASS:-postgres}"
+    DB_NAME="${DB_NAME:-everruns_test}"
+    export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+    echo "   Database: $DATABASE_URL"
+    echo ""
+
+    # Check PostgreSQL is accessible
+    echo "1️⃣  Checking PostgreSQL connection..."
+    if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+      echo "   ❌ PostgreSQL not reachable at $DB_HOST:$DB_PORT"
+      echo "   Start PostgreSQL or Docker: ./scripts/dev.sh start"
+      exit 1
+    fi
+    echo "   ✅ PostgreSQL is ready"
+
+    # Create/reset test database
+    echo "2️⃣  Resetting test database '$DB_NAME'..."
+    PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" > /dev/null 2>&1 || true
+    PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_NAME;" > /dev/null 2>&1
+    echo "   ✅ Database reset"
+
+    # Run migrations
+    echo "3️⃣  Running migrations..."
+    sqlx migrate run --source crates/control-plane/migrations
+    echo "   ✅ Migrations complete"
+
+    # Parse optional arguments
+    SAVE_ARG=""
+    MONIKER_ARG=""
+    shift || true
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --save) SAVE_ARG="--save" ;;
+        --moniker) MONIKER_ARG="--moniker $2"; shift ;;
+        *) ;;
+      esac
+      shift || true
+    done
+
+    echo ""
+    echo "4️⃣  Running db_concurrent_workers..."
+    cargo bench -p everruns-durable --bench db_concurrent_workers -- $SAVE_ARG $MONIKER_ARG
+    echo ""
+    echo "5️⃣  Running db_workflow_throughput..."
+    cargo bench -p everruns-durable --bench db_workflow_throughput -- $SAVE_ARG $MONIKER_ARG
+    echo ""
+    echo "✅ PostgreSQL benchmarks complete!"
+    echo "   Reports:  target/benchmark-reports/"
+    if [ -n "$SAVE_ARG" ]; then
+      echo "   Checkpoints: crates/durable/benches/checkpoints/"
+    fi
+    ;;
+
   help|*)
     cat <<EOF
 Everrun Development Helper
@@ -906,8 +969,9 @@ Commands:
   docs-install Install docs dependencies
   logs        View Docker service logs
   clean       Clean build artifacts and Docker volumes
-  durable-bench      Run durable execution benchmarks
+  durable-bench      Run durable execution benchmarks (in-memory)
   durable-bench-save Run benchmarks with checkpoint saving (optional: moniker)
+  durable-bench-db   Run benchmarks with PostgreSQL (resets test DB, runs migrations)
   help        Show this help message
 
 Examples:
@@ -918,9 +982,11 @@ Examples:
   $0 watch-control-plane   # Just run control-plane with auto-reload
   $0 control-plane         # Run control-plane (use DEV_MODE=true for in-process worker)
   $0 docs                  # Start docs dev server
-  $0 durable-bench         # Run benchmarks
-  $0 durable-bench-save    # Run benchmarks with checkpointing
+  $0 durable-bench         # Run in-memory benchmarks
+  $0 durable-bench-save    # Run in-memory benchmarks with checkpointing
   $0 durable-bench-save ci-4cpu-8gb  # With custom moniker
+  $0 durable-bench-db      # Run PostgreSQL benchmarks (uses everruns_test DB)
+  $0 durable-bench-db --save  # With checkpointing
   $0 stop-all              # Stop everything
 EOF
     ;;
