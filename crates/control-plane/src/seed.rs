@@ -20,12 +20,14 @@ use uuid::Uuid;
 ///   - 0x100-0x1FF: Agents
 ///   - 0x200-0x2FF: OpenAI Models
 ///   - 0x300-0x3FF: Anthropic Models
+///   - 0x400-0x4FF: LlmSim Models
 mod seed_ids {
     use uuid::Uuid;
 
     // LLM Providers (0x001-0x0FF)
     pub const OPENAI_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000001);
     pub const ANTHROPIC_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000002);
+    pub const LLMSIM_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000003);
 
     // Agents (0x100-0x1FF)
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
@@ -72,6 +74,9 @@ mod seed_ids {
     pub const CLAUDE_3_7_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000306);
     pub const CLAUDE_3_5_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000307);
     pub const CLAUDE_3_5_HAIKU: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000308);
+
+    // LlmSim Models (0x400-0x4FF)
+    pub const LLMSIM_DEFAULT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000401);
 }
 
 // ============================================
@@ -246,6 +251,11 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
         id: seed_ids::ANTHROPIC_PROVIDER,
         name: "Anthropic",
         provider_type: "anthropic",
+    },
+    SeedProvider {
+        id: seed_ids::LLMSIM_PROVIDER,
+        name: "LlmSim",
+        provider_type: "llmsim",
     },
 ];
 
@@ -566,6 +576,14 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-3-5-haiku-20241022",
         display_name: "Claude 3.5 Haiku",
+        is_default: false,
+    },
+    // LlmSim (simulated LLM for testing)
+    SeedModel {
+        id: seed_ids::LLMSIM_DEFAULT,
+        provider_id: seed_ids::LLMSIM_PROVIDER,
+        model_id: "llmsim-default",
+        display_name: "LlmSim Default",
         is_default: false,
     },
 ];
