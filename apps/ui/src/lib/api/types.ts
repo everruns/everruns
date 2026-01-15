@@ -567,6 +567,7 @@ export interface LlmModel {
   display_name: string;
   capabilities: string[];
   is_default: boolean;
+  is_favorite: boolean;
   status: LlmModelStatus;
   created_at: string;
   updated_at: string;
@@ -689,6 +690,7 @@ export interface CreateLlmModelRequest {
   display_name: string;
   capabilities?: string[];
   is_default?: boolean;
+  is_favorite?: boolean;
 }
 
 export interface UpdateLlmModelRequest {
@@ -696,6 +698,7 @@ export interface UpdateLlmModelRequest {
   display_name?: string;
   capabilities?: string[];
   is_default?: boolean;
+  is_favorite?: boolean;
   status?: LlmModelStatus;
 }
 

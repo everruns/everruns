@@ -825,7 +825,7 @@ impl Database {
     pub async fn get_default_llm_model(&self) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id
@@ -886,9 +886,9 @@ impl Database {
 
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            INSERT INTO llm_models (provider_id, model_id, display_name, capabilities, is_default)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, status, created_at, updated_at
+            INSERT INTO llm_models (provider_id, model_id, display_name, capabilities, is_default, is_favorite)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             "#,
         )
         .bind(input.provider_id)
@@ -896,6 +896,7 @@ impl Database {
         .bind(&input.display_name)
         .bind(&capabilities_json)
         .bind(input.is_default)
+        .bind(input.is_favorite)
         .fetch_one(&self.pool)
         .await?;
 
@@ -914,10 +915,10 @@ impl Database {
 
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            INSERT INTO llm_models (id, provider_id, model_id, display_name, capabilities, is_default)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO llm_models (id, provider_id, model_id, display_name, capabilities, is_default, is_favorite)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, status, created_at, updated_at
+            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -926,6 +927,7 @@ impl Database {
         .bind(&input.display_name)
         .bind(&capabilities_json)
         .bind(input.is_default)
+        .bind(input.is_favorite)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -935,7 +937,7 @@ impl Database {
     pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            SELECT id, provider_id, model_id, display_name, capabilities, is_default, status, created_at, updated_at
+            SELECT id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             FROM llm_models
             WHERE id = $1
             "#,
@@ -953,7 +955,7 @@ impl Database {
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id
@@ -973,7 +975,7 @@ impl Database {
     ) -> Result<Vec<LlmModelRow>> {
         let rows = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            SELECT id, provider_id, model_id, display_name, capabilities, is_default, status, created_at, updated_at
+            SELECT id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             FROM llm_models
             WHERE provider_id = $1
             ORDER BY display_name ASC
@@ -989,12 +991,12 @@ impl Database {
     pub async fn list_all_llm_models(&self) -> Result<Vec<LlmModelWithProviderRow>> {
         let rows = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id
             WHERE m.status = 'active' AND p.status = 'active'
-            ORDER BY p.name ASC, m.display_name ASC
+            ORDER BY m.is_favorite DESC, p.name ASC, m.display_name ASC
             "#,
         )
         .fetch_all(&self.pool)
@@ -1021,10 +1023,11 @@ impl Database {
                 display_name = COALESCE($3, display_name),
                 capabilities = COALESCE($4, capabilities),
                 is_default = COALESCE($5, is_default),
-                status = COALESCE($6, status),
+                is_favorite = COALESCE($6, is_favorite),
+                status = COALESCE($7, status),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, status, created_at, updated_at
+            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -1032,6 +1035,7 @@ impl Database {
         .bind(&input.display_name)
         .bind(&capabilities_json)
         .bind(input.is_default)
+        .bind(input.is_favorite)
         .bind(&input.status)
         .fetch_optional(&self.pool)
         .await?;
@@ -1055,7 +1059,7 @@ impl Database {
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id

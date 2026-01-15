@@ -34,6 +34,7 @@ impl LlmModelService {
             display_name: req.display_name,
             capabilities: req.capabilities,
             is_default: req.is_default,
+            is_favorite: req.is_favorite,
         };
 
         let row = self.db.create_llm_model(input).await?;
@@ -66,6 +67,7 @@ impl LlmModelService {
             display_name: req.display_name,
             capabilities: req.capabilities,
             is_default: req.is_default,
+            is_favorite: req.is_favorite,
             status: req.status.map(|s| match s {
                 LlmModelStatus::Active => "active".to_string(),
                 LlmModelStatus::Disabled => "disabled".to_string(),
@@ -96,6 +98,7 @@ impl LlmModelService {
             display_name: row.display_name.clone(),
             capabilities,
             is_default: row.is_default,
+            is_favorite: row.is_favorite,
             status: match row.status.as_str() {
                 "active" => LlmModelStatus::Active,
                 _ => LlmModelStatus::Disabled,
@@ -121,6 +124,7 @@ impl LlmModelService {
             display_name: row.display_name.clone(),
             capabilities,
             is_default: row.is_default,
+            is_favorite: row.is_favorite,
             status: match row.status.as_str() {
                 "active" => LlmModelStatus::Active,
                 _ => LlmModelStatus::Disabled,
