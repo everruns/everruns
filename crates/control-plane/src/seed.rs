@@ -318,7 +318,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.2-pro",
         display_name: "GPT-5.2 Pro",
         is_default: false,
-        is_favorite: false,
+        is_favorite: true, // Favorite model
     },
     SeedModel {
         id: seed_ids::GPT_5_2_CODEX,
@@ -326,7 +326,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.2-codex",
         display_name: "GPT-5.2 Codex",
         is_default: false,
-        is_favorite: false,
+        is_favorite: true, // Favorite model
     },
     SeedModel {
         id: seed_ids::GPT_5_2_CHAT,
