@@ -39,6 +39,7 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const hasUserSelectedModel = useRef(false);
   const modelSelectionStorageKey = useMemo(
     () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
@@ -119,6 +120,8 @@ export default function ChatPage() {
         window.localStorage.setItem(modelSelectionStorageKey, selectedModelId);
       }
       setInputValue("");
+      // Refocus the input after sending (use setTimeout to ensure React has processed state updates)
+      setTimeout(() => inputRef.current?.focus(), 0);
       // Start polling for the response
       setIsWaitingForResponse(true);
     } catch (error) {
@@ -209,6 +212,7 @@ export default function ChatPage() {
       <div className="border-t p-4">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea
+            ref={inputRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
