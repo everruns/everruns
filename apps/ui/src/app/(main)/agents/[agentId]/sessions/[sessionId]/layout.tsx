@@ -120,11 +120,11 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
                     <div className="text-xs space-y-1">
                       <div>Input: {session.usage.input_tokens.toLocaleString()}</div>
                       <div>Output: {session.usage.output_tokens.toLocaleString()}</div>
-                      {session.usage.cache_read_tokens > 0 && (
-                        <div>Cache read: {session.usage.cache_read_tokens.toLocaleString()}</div>
+                      {(session.usage.cache_read_tokens ?? 0) > 0 && (
+                        <div>Cache read: {session.usage.cache_read_tokens!.toLocaleString()}</div>
                       )}
-                      {session.usage.cache_creation_tokens > 0 && (
-                        <div>Cache created: {session.usage.cache_creation_tokens.toLocaleString()}</div>
+                      {(session.usage.cache_creation_tokens ?? 0) > 0 && (
+                        <div>Cache created: {session.usage.cache_creation_tokens!.toLocaleString()}</div>
                       )}
                     </div>
                   </TooltipContent>
