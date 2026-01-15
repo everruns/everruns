@@ -198,7 +198,9 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
             temperature: config.temperature,
             max_tokens: config.max_tokens,
             stream: true,
-            stream_options: Some(OpenAiStreamOptions { include_usage: true }),
+            stream_options: Some(OpenAiStreamOptions {
+                include_usage: true,
+            }),
             tools,
             reasoning_effort: config.reasoning_effort.clone(),
         };

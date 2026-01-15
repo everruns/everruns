@@ -290,8 +290,10 @@ impl LlmDriver for AnthropicLlmDriver {
                                     if let Some(cache_read) = usage.cache_read_input_tokens {
                                         *cache_read_tokens.lock().unwrap() = Some(cache_read);
                                     }
-                                    if let Some(cache_creation) = usage.cache_creation_input_tokens {
-                                        *cache_creation_tokens.lock().unwrap() = Some(cache_creation);
+                                    if let Some(cache_creation) = usage.cache_creation_input_tokens
+                                    {
+                                        *cache_creation_tokens.lock().unwrap() =
+                                            Some(cache_creation);
                                     }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
