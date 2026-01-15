@@ -157,7 +157,7 @@ export default function EditAgentPage({
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
+      <div className="container mx-auto p-6">
         <Skeleton className="h-8 w-1/4 mb-6" />
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
