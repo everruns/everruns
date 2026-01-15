@@ -49,13 +49,27 @@ impl SessionService {
 
     /// List sessions for an agent with pagination.
     /// Returns (sessions, total_count).
+    /// Sessions include preview text from the first user message.
     pub async fn list(
         &self,
         agent_id: Uuid,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
         let (rows, total) = self.db.list_sessions(agent_id, pagination).await?;
-        Ok((rows.into_iter().map(Self::row_to_session).collect(), total))
+        let mut sessions: Vec<Session> = rows.into_iter().map(Self::row_to_session).collect();
+
+        // Fetch previews for all sessions in a single query
+        let session_ids: Vec<Uuid> = sessions.iter().map(|s| s.id).collect();
+        let previews = self.db.get_session_previews(&session_ids).await?;
+
+        // Populate preview for each session
+        for session in &mut sessions {
+            if let Some(preview) = previews.get(&session.id) {
+                session.preview = Some(preview.clone());
+            }
+        }
+
+        Ok((sessions, total))
     }
 
     pub async fn update(&self, id: Uuid, req: UpdateSessionRequest) -> Result<Option<Session>> {
