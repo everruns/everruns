@@ -21,6 +21,8 @@ export interface Agent {
   status: AgentStatus;
   created_at: string;
   updated_at: string;
+  /** Cumulative token usage across all sessions for this agent */
+  usage?: TokenUsage;
 }
 
 export interface CreateAgentRequest {
@@ -62,6 +64,8 @@ export interface Session {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  /** Cumulative token usage for all LLM calls in this session */
+  usage?: TokenUsage;
 }
 
 export interface CreateSessionRequest {
@@ -233,6 +237,10 @@ export interface ModelMetadata {
 export interface TokenUsage {
   input_tokens: number;
   output_tokens: number;
+  /** Tokens read from cache (reduces cost) */
+  cache_read_tokens?: number;
+  /** Tokens written to cache (Anthropic-specific) */
+  cache_creation_tokens?: number;
 }
 
 /** Data for message.user event */
@@ -258,6 +266,8 @@ export interface TurnCompletedData {
   turn_id: string;
   iterations: number;
   duration_ms?: number;
+  /** Aggregated token usage for all LLM calls in this turn */
+  usage?: TokenUsage;
 }
 
 /** Data for turn.failed event */

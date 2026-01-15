@@ -384,6 +384,8 @@ mod tests {
                 usage: Some(TokenUsage {
                     input_tokens: 10,
                     output_tokens: 5,
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
                 }),
                 duration_ms: Some(100),
                 success: true,
@@ -426,6 +428,8 @@ mod tests {
                 usage: Some(TokenUsage {
                     input_tokens: 20,
                     output_tokens: 15,
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
                 }),
                 duration_ms: Some(200),
                 success: true,
@@ -569,6 +573,7 @@ mod tests {
             turn_id,
             iterations: 3,
             duration_ms: Some(1500),
+            usage: None,
         };
 
         let complete_event = Event::new(
@@ -590,6 +595,7 @@ mod tests {
             turn_id: Uuid::now_v7(),
             iterations: 1,
             duration_ms: None, // No duration provided
+            usage: None,
         };
 
         let event = Event::new(

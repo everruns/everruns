@@ -198,6 +198,9 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
             temperature: config.temperature,
             max_tokens: config.max_tokens,
             stream: true,
+            stream_options: Some(OpenAiStreamOptions {
+                include_usage: true,
+            }),
             tools,
             reasoning_effort: config.reasoning_effort.clone(),
         };
@@ -227,12 +230,14 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         let model = config.model.clone();
         let total_tokens = Arc::new(Mutex::new(0u32));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
+        let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
 
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
             let total_tokens = Arc::clone(&total_tokens);
             let prompt_tokens = Arc::clone(&prompt_tokens);
+            let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
 
             async move {
@@ -241,11 +246,14 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                         if event.data == "[DONE]" {
                             let output_tokens = *total_tokens.lock().unwrap();
                             let input_tokens = *prompt_tokens.lock().unwrap();
+                            let cached = *cache_read_tokens.lock().unwrap();
 
                             return Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
                                 total_tokens: Some(input_tokens + output_tokens),
                                 prompt_tokens: Some(input_tokens),
                                 completion_tokens: Some(output_tokens),
+                                cache_read_tokens: cached,
+                                cache_creation_tokens: None,
                                 model: Some(model),
                                 finish_reason: Some("stop".to_string()),
                             }));
@@ -260,6 +268,12 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                     }
                                     if let Some(ct) = usage.completion_tokens {
                                         *total_tokens.lock().unwrap() = ct;
+                                    }
+                                    // Capture cached tokens from prompt_tokens_details
+                                    if let Some(details) = &usage.prompt_tokens_details
+                                        && details.cached_tokens.is_some()
+                                    {
+                                        *cache_read_tokens.lock().unwrap() = details.cached_tokens;
                                     }
                                 }
 
@@ -328,10 +342,13 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                             }
                                         }
 
+                                        let cached = *cache_read_tokens.lock().unwrap();
                                         return Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
                                             total_tokens: Some(input_tokens + output_tokens),
                                             prompt_tokens: Some(input_tokens),
                                             completion_tokens: Some(output_tokens),
+                                            cache_read_tokens: cached,
+                                            cache_creation_tokens: None,
                                             model: Some(model),
                                             finish_reason: Some(finish_reason.clone()),
                                         }));
@@ -376,10 +393,18 @@ struct OpenAiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
     stream: bool,
+    /// Request usage info in streaming response (required for token counts)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_options: Option<OpenAiStreamOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<OpenAiTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAiStreamOptions {
+    include_usage: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -472,6 +497,16 @@ struct OpenAiStreamChunk {
 struct OpenAiUsage {
     prompt_tokens: Option<u32>,
     completion_tokens: Option<u32>,
+    /// Detailed breakdown of prompt tokens (includes cached tokens)
+    #[serde(default)]
+    prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct OpenAiPromptTokensDetails {
+    /// Number of tokens retrieved from cache
+    #[serde(default)]
+    cached_tokens: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -524,5 +559,32 @@ mod tests {
         );
         assert!(format!("{:?}", driver).contains("OpenAIProtocolLlmDriver"));
         assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
+    }
+
+    #[test]
+    fn test_request_includes_stream_options_for_usage() {
+        // OpenAI streaming API requires stream_options.include_usage=true
+        // to return token usage in the response
+        let request = OpenAiRequest {
+            model: "gpt-4o".to_string(),
+            messages: vec![OpenAiMessage {
+                role: "user".to_string(),
+                content: Some(OpenAiContent::Text("Hello".to_string())),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            stream: true,
+            stream_options: Some(OpenAiStreamOptions {
+                include_usage: true,
+            }),
+            tools: None,
+            reasoning_effort: None,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["stream"], true);
+        assert_eq!(json["stream_options"]["include_usage"], true);
     }
 }

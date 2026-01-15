@@ -67,6 +67,7 @@ impl AgentStore for DbAgentStore {
                     status: AgentStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     updated_at: row.updated_at,
+                    usage: None, // Usage not tracked in AgentStore context
                 }))
             }
             None => Ok(None),

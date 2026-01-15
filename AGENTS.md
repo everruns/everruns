@@ -34,6 +34,7 @@ Available specs:
 - `specs/authentication.md` - Authentication modes and OAuth integration
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/session-filesystem.md` - Per-session virtual filesystem
+- `specs/usage-tracking.md` - LLM token usage tracking and aggregation
 - `specs/documentation.md` - Documentation site (Astro Starlight, Cloudflare Pages)
 - `specs/brand.md` - Brand identity, colors, typography, voice
 - `specs/dismissed-options.md` - Technical options considered but dismissed

@@ -48,6 +48,7 @@ async fn setup_test_environment() -> (
         status: AgentStatus::Active,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        usage: None,
     };
     agent_store.add_agent(agent).await;
 
@@ -63,6 +64,7 @@ async fn setup_test_environment() -> (
         created_at: chrono::Utc::now(),
         started_at: None,
         finished_at: None,
+        usage: None,
     };
     session_store.add_session(session).await;
 
@@ -283,6 +285,7 @@ async fn test_reason_atom_with_different_configs() {
         created_at: chrono::Utc::now(),
         started_at: None,
         finished_at: None,
+        usage: None,
     };
     session_store.add_session(session2).await;
     message_retriever

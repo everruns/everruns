@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, Result,
+    AgentLoopError, Result, TokenUsage,
     session::{Session, SessionStatus},
     traits::SessionStore,
 };
@@ -42,17 +42,40 @@ impl SessionStore for DbSessionStore {
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
         match session_row {
-            Some(row) => Ok(Some(Session {
-                id: row.id,
-                agent_id: row.agent_id,
-                title: row.title,
-                tags: row.tags,
-                model_id: row.model_id,
-                status: SessionStatus::from(row.status.as_str()),
-                created_at: row.created_at,
-                started_at: row.started_at,
-                finished_at: row.finished_at,
-            })),
+            Some(row) => {
+                // Convert database usage columns to TokenUsage
+                let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
+                    Some(TokenUsage::with_cache(
+                        row.total_input_tokens as u32,
+                        row.total_output_tokens as u32,
+                        if row.total_cache_read_tokens > 0 {
+                            Some(row.total_cache_read_tokens as u32)
+                        } else {
+                            None
+                        },
+                        if row.total_cache_creation_tokens > 0 {
+                            Some(row.total_cache_creation_tokens as u32)
+                        } else {
+                            None
+                        },
+                    ))
+                } else {
+                    None
+                };
+
+                Ok(Some(Session {
+                    id: row.id,
+                    agent_id: row.agent_id,
+                    title: row.title,
+                    tags: row.tags,
+                    model_id: row.model_id,
+                    status: SessionStatus::from(row.status.as_str()),
+                    created_at: row.created_at,
+                    started_at: row.started_at,
+                    finished_at: row.finished_at,
+                    usage,
+                }))
+            }
             None => Ok(None),
         }
     }

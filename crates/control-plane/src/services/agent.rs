@@ -9,7 +9,7 @@ use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
 };
 use anyhow::Result;
-use everruns_core::{Agent, AgentStatus, CapabilityId};
+use everruns_core::{Agent, AgentStatus, CapabilityId, TokenUsage};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -123,6 +123,26 @@ impl AgentService {
     }
 
     fn row_to_agent(row: AgentRow, capabilities: Vec<CapabilityId>) -> Agent {
+        // Convert database usage columns to TokenUsage
+        let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
+            Some(TokenUsage::with_cache(
+                row.total_input_tokens as u32,
+                row.total_output_tokens as u32,
+                if row.total_cache_read_tokens > 0 {
+                    Some(row.total_cache_read_tokens as u32)
+                } else {
+                    None
+                },
+                if row.total_cache_creation_tokens > 0 {
+                    Some(row.total_cache_creation_tokens as u32)
+                } else {
+                    None
+                },
+            ))
+        } else {
+            None
+        };
+
         Agent {
             id: row.id,
             name: row.name,
@@ -134,6 +154,7 @@ impl AgentService {
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
+            usage,
         }
     }
 }

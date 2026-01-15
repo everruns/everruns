@@ -4,12 +4,12 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, ArrowLeft } from "lucide-react";
+import { Bot, ArrowLeft, Zap } from "lucide-react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { SessionCard } from "@/components/session/session-card";
-import type { Message, Event, Session, LlmModelWithProvider } from "@/lib/api/types";
+import type { Message, Event, Session, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -308,6 +308,81 @@ const sampleTodoData = {
     isExecuting: false,
   },
 };
+
+// ============================================
+// Token Usage Display
+// ============================================
+
+// Helper function to format token counts in a compact way
+function formatTokens(tokens: number): string {
+  if (tokens >= 1000000) {
+    return `${(tokens / 1000000).toFixed(1)}M`;
+  }
+  if (tokens >= 1000) {
+    return `${(tokens / 1000).toFixed(1)}K`;
+  }
+  return tokens.toString();
+}
+
+// Helper function to calculate total tokens
+function totalTokens(usage: TokenUsage): number {
+  return usage.input_tokens + usage.output_tokens;
+}
+
+// Sample usage data
+const sampleUsageData = {
+  small: {
+    input_tokens: 128,
+    output_tokens: 45,
+    cache_read_tokens: 0,
+    cache_creation_tokens: 0,
+  } satisfies TokenUsage,
+  medium: {
+    input_tokens: 15234,
+    output_tokens: 8721,
+    cache_read_tokens: 5000,
+    cache_creation_tokens: 0,
+  } satisfies TokenUsage,
+  large: {
+    input_tokens: 1250000,
+    output_tokens: 875000,
+    cache_read_tokens: 500000,
+    cache_creation_tokens: 125000,
+  } satisfies TokenUsage,
+};
+
+// Token Usage Card component (matches agent detail page)
+function TokenUsageCard({ usage, title }: { usage: TokenUsage; title: string }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
+          <Zap className="w-4 h-4 text-yellow-500" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">{formatTokens(totalTokens(usage))} total</p>
+            <p className="text-xs text-muted-foreground">
+              {formatTokens(usage.input_tokens)} input / {formatTokens(usage.output_tokens)} output
+              {usage.cache_read_tokens ? ` / ${formatTokens(usage.cache_read_tokens)} cached` : ""}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Token Usage Badge component (matches session header)
+function TokenUsageBadge({ usage }: { usage: TokenUsage }) {
+  return (
+    <Badge variant="outline" className="gap-1" title="Token usage (input/output)">
+      <Zap className="w-3 h-3" />
+      {formatTokens(usage.input_tokens)} / {formatTokens(usage.output_tokens)}
+    </Badge>
+  );
+}
 
 // Sample event data for MessageInfoIcon
 const sampleEvents = {
@@ -745,6 +820,53 @@ export default function DevComponentsPage() {
                     />
                   </div>
                   <AssistantMessage content="Your project has 5 files and all 24 tests passed successfully." />
+                </div>
+              </ShowcaseItem>
+            </ShowcaseSection>
+
+            {/* Token Usage Display Section */}
+            <ShowcaseSection
+              title="Token Usage Display"
+              description="Components showing LLM token usage statistics for agents and sessions"
+            >
+              <ShowcaseItem label="Usage Card (Agent Detail Page)">
+                <div className="grid grid-cols-3 gap-4">
+                  <TokenUsageCard usage={sampleUsageData.small} title="Small Usage" />
+                  <TokenUsageCard usage={sampleUsageData.medium} title="Medium Usage" />
+                  <TokenUsageCard usage={sampleUsageData.large} title="Large Usage" />
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Usage Badge (Session Header)">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Small:</span>
+                    <TokenUsageBadge usage={sampleUsageData.small} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Medium:</span>
+                    <TokenUsageBadge usage={sampleUsageData.medium} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Large:</span>
+                    <TokenUsageBadge usage={sampleUsageData.large} />
+                  </div>
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Session Header with Usage">
+                <div className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-bold">Example Session</h2>
+                      <p className="text-sm text-muted-foreground">Started Jan 15, 2026, 10:30 AM</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <TokenUsageBadge usage={sampleUsageData.medium} />
+                      <Badge variant="outline" className="gap-1">claude-sonnet-4</Badge>
+                      <Badge variant="secondary">Ready</Badge>
+                    </div>
+                  </div>
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>

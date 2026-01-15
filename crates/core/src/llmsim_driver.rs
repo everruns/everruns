@@ -428,6 +428,8 @@ impl LlmDriver for LlmSimDriver {
             total_tokens: Some(prompt_tokens + completion_tokens),
             prompt_tokens: Some(prompt_tokens),
             completion_tokens: Some(completion_tokens),
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
             model: Some(model_name),
             finish_reason: Some("stop".to_string()),
         })));

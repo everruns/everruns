@@ -7,6 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::events::TokenUsage;
+
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
@@ -78,4 +80,7 @@ pub struct Session {
     /// Timestamp when the session finished (completed or failed).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<DateTime<Utc>>,
+    /// Cumulative token usage for all LLM calls in this session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
 }

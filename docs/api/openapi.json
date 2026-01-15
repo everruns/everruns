@@ -2147,6 +2147,17 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when the agent was last updated."
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Cumulative token usage across all sessions for this agent."
+              }
+            ]
           }
         }
       },
@@ -3192,6 +3203,17 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "Timestamp when the agent was last updated."
+                },
+                "usage": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TokenUsage",
+                      "description": "Cumulative token usage across all sessions for this agent."
+                    }
+                  ]
                 }
               }
             },
@@ -4702,6 +4724,17 @@
                     "null"
                   ],
                   "description": "Human-readable title for the session."
+                },
+                "usage": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TokenUsage",
+                      "description": "Cumulative token usage for all LLM calls in this session."
+                    }
+                  ]
                 }
               }
             },
@@ -4921,6 +4954,17 @@
               "null"
             ],
             "description": "Human-readable title for the session."
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Cumulative token usage for all LLM calls in this session."
+              }
+            ]
           }
         }
       },
@@ -5085,20 +5129,40 @@
       },
       "TokenUsage": {
         "type": "object",
-        "description": "Token usage statistics",
+        "description": "Token usage statistics\n\nTracks token consumption per LLM call including cache tokens for cost optimization.\nCache tokens are provider-specific:\n- OpenAI: `cache_read_tokens` from prompt_tokens_details.cached_tokens\n- Anthropic: `cache_read_tokens` from cache_read_input_tokens,\n  `cache_creation_tokens` from cache_creation_input_tokens",
         "required": [
           "input_tokens",
           "output_tokens"
         ],
         "properties": {
+          "cache_creation_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of tokens written to cache (Anthropic-specific)",
+            "minimum": 0
+          },
+          "cache_read_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of tokens read from cache (reduces cost)",
+            "minimum": 0
+          },
           "input_tokens": {
             "type": "integer",
             "format": "int32",
+            "description": "Number of input/prompt tokens",
             "minimum": 0
           },
           "output_tokens": {
             "type": "integer",
             "format": "int32",
+            "description": "Number of output/completion tokens",
             "minimum": 0
           }
         }
@@ -5283,6 +5347,17 @@
             "type": "string",
             "format": "uuid",
             "description": "Turn identifier"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Aggregated token usage for all LLM calls in this turn"
+              }
+            ]
           }
         }
       },
