@@ -59,6 +59,7 @@ const sampleSessions = {
     id: "019234ab-cdef-7890-1234-567890abcdef",
     agent_id: "agent-123",
     title: "Working on implementing user authentication with OAuth 2.0 support for Google and GitHub providers",
+    preview: "Can you help me implement OAuth 2.0 authentication with support for Google and GitHub?",
     tags: ["auth", "oauth"],
     model_id: "model-uuid-anthropic",
     status: "active" as const,
@@ -76,6 +77,7 @@ const sampleSessions = {
     id: "019234cd-efgh-7890-1234-567890abcdef",
     agent_id: "agent-123",
     title: "Completed code review for the API endpoints",
+    preview: "Please review the changes in src/api/routes.ts and check for any issues",
     tags: ["review"],
     model_id: "model-uuid-openai",
     status: "idle" as const,
@@ -93,6 +95,7 @@ const sampleSessions = {
     id: "019234ef-ijkl-7890-1234-567890abcdef",
     agent_id: "agent-123",
     title: null,
+    preview: null,
     tags: [],
     model_id: null,
     status: "started" as const,
@@ -101,10 +104,29 @@ const sampleSessions = {
     finished_at: null,
     // No usage for new session
   } satisfies Session,
+  withPreviewOnly: {
+    id: "019234ab-wxyz-7890-1234-567890abcdef",
+    agent_id: "agent-123",
+    title: null,
+    preview: "Help me debug this failing test in the authentication module",
+    tags: ["debug"],
+    model_id: "model-uuid-anthropic",
+    status: "idle" as const,
+    created_at: new Date(Date.now() - 600000).toISOString(), // 10 minutes ago
+    started_at: new Date(Date.now() - 500000).toISOString(),
+    finished_at: null,
+    usage: {
+      input_tokens: 8500,
+      output_tokens: 3200,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+    },
+  } satisfies Session,
   longSummary: {
     id: "019234gh-mnop-7890-1234-567890abcdef",
     agent_id: "agent-123",
-    title: "Investigating the performance bottleneck in the database query layer. Found that the N+1 query problem is causing significant slowdowns when fetching related entities. Working on implementing eager loading with batch fetching to reduce the number of database round trips.",
+    title: "Investigating the performance bottleneck in the database query layer",
+    preview: "I noticed our API is slow when fetching related entities. Can you investigate the database query layer and identify the bottleneck?",
     tags: ["performance", "database", "optimization"],
     model_id: "model-uuid-anthropic",
     status: "active" as const,
@@ -209,14 +231,22 @@ export default function DevSessionCardPage() {
                 />
               </ShowcaseItem>
 
-              <ShowcaseItem label="New Session (No Title)">
+              <ShowcaseItem label="New Session (No Title or Preview)">
                 <SessionCard
                   session={sampleSessions.new}
                   agentId="agent-123"
                 />
               </ShowcaseItem>
 
-              <ShowcaseItem label="Session with Long Summary (Truncated)">
+              <ShowcaseItem label="Session with Preview Only (No Title)">
+                <SessionCard
+                  session={sampleSessions.withPreviewOnly}
+                  agentId="agent-123"
+                  model={sampleModels.anthropic}
+                />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Session with Title and Preview">
                 <SessionCard
                   session={sampleSessions.longSummary}
                   agentId="agent-123"

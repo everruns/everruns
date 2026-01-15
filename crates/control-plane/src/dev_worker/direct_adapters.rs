@@ -125,6 +125,7 @@ impl SessionStore for DirectSessionStore {
             id: r.id,
             agent_id: r.agent_id,
             title: r.title,
+            preview: None,
             tags: r.tags,
             model_id: r.model_id,
             status: match r.status.as_str() {

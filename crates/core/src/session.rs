@@ -63,6 +63,9 @@ pub struct Session {
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Preview text from the first user message (truncated).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
     pub tags: Vec<String>,

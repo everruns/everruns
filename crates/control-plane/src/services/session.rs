@@ -107,6 +107,7 @@ impl SessionService {
             id: row.id,
             agent_id: row.agent_id,
             title: row.title,
+            preview: None, // Populated separately in list()
             tags: row.tags,
             model_id: row.model_id,
             status: SessionStatus::from(row.status.as_str()),

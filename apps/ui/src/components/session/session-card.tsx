@@ -157,8 +157,8 @@ export function SessionCard({
 }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${session.id.slice(0, 8)}`;
-  // Only show summary if explicitly provided (avoid redundant title display)
-  const displaySummary = summary;
+  // Show preview from session (first message), explicit summary prop, or nothing
+  const displaySummary = summary ?? session.preview;
 
   return (
     <Link

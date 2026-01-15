@@ -67,6 +67,7 @@ impl SessionStore for DbSessionStore {
                     id: row.id,
                     agent_id: row.agent_id,
                     title: row.title,
+                    preview: None, // Preview populated separately when listing sessions
                     tags: row.tags,
                     model_id: row.model_id,
                     status: SessionStatus::from(row.status.as_str()),

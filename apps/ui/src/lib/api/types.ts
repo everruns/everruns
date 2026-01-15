@@ -69,6 +69,8 @@ export interface Session {
   id: string;
   agent_id: string;
   title: string | null;
+  /** Preview text from the first user message (truncated) */
+  preview?: string | null;
   tags: string[];
   model_id: string | null;
   status: SessionStatus;

@@ -4742,6 +4742,13 @@
                   "format": "uuid",
                   "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
                 },
+                "preview": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Preview text from the first user message (truncated)."
+                },
                 "started_at": {
                   "type": [
                     "string",
@@ -4971,6 +4978,13 @@
             ],
             "format": "uuid",
             "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+          },
+          "preview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Preview text from the first user message (truncated)."
           },
           "started_at": {
             "type": [
