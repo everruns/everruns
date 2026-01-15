@@ -196,6 +196,7 @@ impl TelemetryConfig {
     /// Create configuration from environment variables
     ///
     /// Environment variables:
+    /// - `OTEL_SDK_DISABLED`: If "true", disables OpenTelemetry tracing entirely
     /// - `OTEL_SERVICE_NAME`: Service name (default: "everruns")
     /// - `OTEL_SERVICE_VERSION`: Service version
     /// - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint (e.g., "http://localhost:4317")
@@ -203,11 +204,21 @@ impl TelemetryConfig {
     /// - `RUST_LOG` or `LOG_LEVEL`: Log filter
     /// - `OTEL_RECORD_CONTENT`: Whether to record input/output content ("true" to enable)
     pub fn from_env() -> Self {
+        // Check if SDK is disabled via environment variable
+        let sdk_disabled = std::env::var("OTEL_SDK_DISABLED")
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(false);
+
         Self {
             service_name: std::env::var("OTEL_SERVICE_NAME")
                 .unwrap_or_else(|_| "everruns".to_string()),
             service_version: std::env::var("OTEL_SERVICE_VERSION").ok(),
-            otlp_endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(),
+            // Don't configure OTLP endpoint if SDK is disabled
+            otlp_endpoint: if sdk_disabled {
+                None
+            } else {
+                std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()
+            },
             environment: std::env::var("OTEL_ENVIRONMENT").ok(),
             enable_console: true,
             log_filter: std::env::var("RUST_LOG")
