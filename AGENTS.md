@@ -250,6 +250,7 @@ Before creating a pull request, run the pre-PR check script:
 
 This runs all required checks:
 
+0. **Branch rebased**: Warns if branch is not rebased on latest `main`
 1. **Rust formatting**: `cargo fmt --check`
 2. **Rust linting**: `cargo clippy --all-targets --all-features -- -D warnings`
 3. **Rust tests**: `cargo test --all-features`
@@ -258,9 +259,18 @@ This runs all required checks:
 6. **OpenAPI spec freshness**: Verifies `docs/api/openapi.json` matches current code
 7. **Docs build**: `npm run check && npm run build` in `apps/docs/`
 
-Additional manual checks:
+**Additional manual requirements:**
 
-- **Smoke tests**: Run smoke tests for end-to-end verification
+- **Rebase on main**: Branch must be rebased on latest `main` before merging
+  ```bash
+  git fetch origin main && git rebase origin/main
+  ```
+- **Smoke tests**: New functionality must be smoke tested end-to-end
+- **UI screenshots**: If PR includes UI changes, attach screenshot of working UI
+  - Use real backend data (not faked), except for `/dev/*` component showcase pages
+  - Use `.claude/skills/ui-screenshots/` to capture screenshots via Playwright
+- **CI green**: All CI checks must pass before merging
+- **PR comments resolved**: No unaddressed review comments in PR
 - **Examples**: If modifying examples, validate they run against a running API
 - **Update specs**: If changes affect system behavior, update specs in `specs/`
 - **Update docs**: If changes affect usage, update docs in `docs/`
@@ -353,6 +363,8 @@ npx commitlint --from HEAD~1 --to HEAD
 ### PR (Pull Request) conventions
 
 PR titles should follow Conventional Commits format. Use the PR template (`.github/pull_request_template.md`) for descriptions.
+
+**Merge strategy**: Always use **Squash and Merge** via GitHub when merging PRs to `main`. This keeps the main branch history clean with one commit per PR.
 
 **PR Body Template:**
 

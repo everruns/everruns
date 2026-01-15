@@ -672,6 +672,24 @@ case "$command" in
     echo ""
     FAILED=0
 
+    # 0. Check branch is rebased on latest main
+    echo "0️⃣  Checking branch is rebased on main..."
+    # Fetch latest main without switching branches
+    if git fetch origin main --quiet 2>/dev/null; then
+      MAIN_HEAD=$(git rev-parse origin/main 2>/dev/null)
+      MERGE_BASE=$(git merge-base HEAD origin/main 2>/dev/null)
+      if [ "$MAIN_HEAD" = "$MERGE_BASE" ]; then
+        echo "   ✅ Branch is rebased on latest main"
+      else
+        echo "   ⚠️  Branch is not rebased on latest main"
+        echo "      Run: git fetch origin main && git rebase origin/main"
+        echo "      (This is a warning, not blocking)"
+      fi
+    else
+      echo "   ⚠️  Could not fetch origin/main (offline or no remote)"
+    fi
+    echo ""
+
     # 1. Rust formatting
     echo "1️⃣  Checking Rust formatting..."
     if cargo fmt --check; then
