@@ -2509,6 +2509,11 @@
             "description": "Whether this model should be the default for the provider.\nOnly one model per provider can be the default.",
             "example": false
           },
+          "is_favorite": {
+            "type": "boolean",
+            "description": "Whether this model should be marked as a favorite for quick access.",
+            "example": false
+          },
           "model_id": {
             "type": "string",
             "description": "The model identifier used by the provider's API (e.g., \"gpt-4\", \"claude-3-opus\").",
@@ -3500,6 +3505,7 @@
                 "display_name",
                 "capabilities",
                 "is_default",
+                "is_favorite",
                 "status",
                 "created_at",
                 "updated_at"
@@ -3523,6 +3529,9 @@
                   "format": "uuid"
                 },
                 "is_default": {
+                  "type": "boolean"
+                },
+                "is_favorite": {
                   "type": "boolean"
                 },
                 "model_id": {
@@ -3564,6 +3573,7 @@
                 "display_name",
                 "capabilities",
                 "is_default",
+                "is_favorite",
                 "status",
                 "created_at",
                 "updated_at",
@@ -3589,6 +3599,9 @@
                   "format": "uuid"
                 },
                 "is_default": {
+                  "type": "boolean"
+                },
+                "is_favorite": {
                   "type": "boolean"
                 },
                 "model_id": {
@@ -4048,6 +4061,7 @@
           "display_name",
           "capabilities",
           "is_default",
+          "is_favorite",
           "status",
           "created_at",
           "updated_at"
@@ -4071,6 +4085,9 @@
             "format": "uuid"
           },
           "is_default": {
+            "type": "boolean"
+          },
+          "is_favorite": {
             "type": "boolean"
           },
           "model_id": {
@@ -4292,6 +4309,7 @@
           "display_name",
           "capabilities",
           "is_default",
+          "is_favorite",
           "status",
           "created_at",
           "updated_at",
@@ -4317,6 +4335,9 @@
             "format": "uuid"
           },
           "is_default": {
+            "type": "boolean"
+          },
+          "is_favorite": {
             "type": "boolean"
           },
           "model_id": {
@@ -5581,6 +5602,14 @@
               "null"
             ],
             "description": "Whether this model should be the default for the provider.",
+            "example": true
+          },
+          "is_favorite": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether this model should be marked as a favorite for quick access.",
             "example": true
           },
           "model_id": {
