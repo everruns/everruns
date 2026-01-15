@@ -497,7 +497,27 @@ Session became idle (turn completed). Contains cumulative session usage for real
 }
 ```
 
-**Usage Field:** Contains cumulative session token usage at this point. This enables real-time usage tracking in the UI without polling. The UI can display this value directly when a `session.idled` event is received.
+**Usage Field:** Contains cumulative session token usage at this point.
+
+**Real-time Usage Tracking Pattern:**
+
+The UI uses a combination of events for real-time usage display:
+
+1. `session.idled` - Sets the baseline (cumulative from backend)
+2. `llm.generation` - Adds tokens during turn execution (real-time increments)
+3. `session.idled` - Resets to final cumulative value when turn completes
+
+```
+Timeline during a turn:
+──────────────────────────────────────────────────────────────────
+│ session.idled │ llm.generation │ llm.generation │ session.idled │
+│   (baseline)  │    (+tokens)   │    (+tokens)   │  (final set)  │
+──────────────────────────────────────────────────────────────────
+      500 in    →     650 in     →     800 in     →     800 in
+      100 out         130 out          175 out          175 out
+```
+
+This approach provides real-time feedback as tokens are consumed during LLM calls, while self-correcting to the accurate cumulative value when each turn ends.
 
 ## Event Type Registry
 
