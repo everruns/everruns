@@ -110,7 +110,7 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
             {session.usage && (
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger>
                     <Badge variant="outline" className="gap-1 cursor-help">
                       <Zap className="w-3 h-3" />
                       {formatTokens(session.usage.input_tokens)} / {formatTokens(session.usage.output_tokens)}
