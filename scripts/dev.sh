@@ -460,19 +460,45 @@ case "$command" in
     # Check PostgreSQL (can be local or Docker)
     echo "1️⃣  Checking PostgreSQL..."
 
+    # Track whether we need to start Jaeger
+    JAEGER_STARTED=false
+
     # Try local postgres first, then Docker
     if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
       echo "   ✅ Local PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
+      # Start Jaeger via Docker if available (for tracing support)
+      if resolve_docker_compose 2>/dev/null; then
+        if ! docker ps 2>/dev/null | grep -q jaeger; then
+          echo "   ℹ️  Starting Jaeger for tracing..."
+          ensure_docker_daemon || true
+          cd "$PROJECT_ROOT/harness"
+          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
+          cd "$PROJECT_ROOT"
+        else
+          JAEGER_STARTED=true
+        fi
+      fi
     elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
       echo "   ✅ Docker PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      # Ensure Jaeger is also running
+      if ! docker ps 2>/dev/null | grep -q jaeger; then
+        echo "   ℹ️  Starting Jaeger for tracing..."
+        if resolve_docker_compose 2>/dev/null; then
+          cd "$PROJECT_ROOT/harness"
+          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
+          cd "$PROJECT_ROOT"
+        fi
+      else
+        JAEGER_STARTED=true
+      fi
     else
       echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
       if resolve_docker_compose; then
         ensure_docker_daemon || exit 1
         cd "$PROJECT_ROOT/harness"
-        "${DOCKER_COMPOSE[@]}" up -d postgres
+        "${DOCKER_COMPOSE[@]}" up -d postgres jaeger
         cd "$PROJECT_ROOT"
         sleep 3
         until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
@@ -480,11 +506,18 @@ case "$command" in
           sleep 1
         done
         export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-        echo "   ✅ Docker PostgreSQL started"
+        echo "   ✅ Docker PostgreSQL and Jaeger started"
+        JAEGER_STARTED=true
       else
         echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
         exit 1
       fi
+    fi
+
+    # If Jaeger is not running, disable OpenTelemetry to avoid connection errors
+    if [ "$JAEGER_STARTED" = false ]; then
+      echo "   ⚠️  Jaeger not available, disabling OpenTelemetry tracing"
+      export OTEL_SDK_DISABLED=true
     fi
 
     # Run migrations
@@ -561,7 +594,11 @@ case "$command" in
     echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
     echo "   ⚙️ Worker:      running (auto-reload)"
     echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
-    echo "   🔍 Jaeger UI:   http://localhost:16686"
+    if [ "$JAEGER_STARTED" = true ]; then
+      echo "   🔍 Jaeger UI:   http://localhost:16686"
+    else
+      echo "   🔍 Jaeger:      disabled (no Docker)"
+    fi
     echo ""
     echo "👀 Edit code in crates/ and services will auto-restart"
     echo "💡 Press Ctrl+C to stop services"
