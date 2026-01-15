@@ -24,6 +24,10 @@ pub enum StoreError {
     #[error("task {0} not owned by worker (was reclaimed or already completed)")]
     TaskNotOwned(Uuid),
 
+    /// Circuit breaker not found
+    #[error("circuit breaker not found: {0}")]
+    CircuitBreakerNotFound(String),
+
     /// Concurrency conflict (optimistic locking failed)
     #[error("concurrency conflict: expected sequence {expected}, got {actual}")]
     ConcurrencyConflict { expected: i32, actual: i32 },
@@ -554,6 +558,21 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     /// List all circuit breakers
     async fn list_circuit_breakers(&self) -> Result<Vec<CircuitBreakerState>, StoreError> {
         Ok(vec![])
+    }
+
+    /// Force a circuit breaker to open (admin operation)
+    async fn force_open_circuit_breaker(&self, _key: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Force a circuit breaker to close (admin operation)
+    async fn force_close_circuit_breaker(&self, _key: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Delete a circuit breaker (reset to default)
+    async fn delete_circuit_breaker(&self, _key: &str) -> Result<(), StoreError> {
+        Ok(())
     }
 
     /// Drain a worker (set status to draining, stop accepting new tasks)

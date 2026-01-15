@@ -1378,6 +1378,103 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
+    async fn force_open_circuit_breaker(&self, key: &str) -> Result<(), StoreError> {
+        let result = sqlx::query(
+            r#"
+            UPDATE durable_circuit_breaker_state
+            SET state = 'open',
+                failure_count = 0,
+                success_count = 0,
+                opened_at = NOW(),
+                updated_at = NOW()
+            WHERE key = $1
+            "#,
+        )
+        .bind(key)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to force open circuit breaker: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if result.rows_affected() == 0 {
+            // Circuit breaker doesn't exist, create it in open state
+            sqlx::query(
+                r#"
+                INSERT INTO durable_circuit_breaker_state
+                    (key, state, failure_count, success_count, opened_at, updated_at)
+                VALUES ($1, 'open', 0, 0, NOW(), NOW())
+                "#,
+            )
+            .bind(key)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Failed to create circuit breaker in open state: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
+        }
+
+        info!(key, "force opened circuit breaker");
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn force_close_circuit_breaker(&self, key: &str) -> Result<(), StoreError> {
+        let result = sqlx::query(
+            r#"
+            UPDATE durable_circuit_breaker_state
+            SET state = 'closed',
+                failure_count = 0,
+                success_count = 0,
+                opened_at = NULL,
+                half_open_at = NULL,
+                updated_at = NOW()
+            WHERE key = $1
+            "#,
+        )
+        .bind(key)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to force close circuit breaker: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if result.rows_affected() == 0 {
+            return Err(StoreError::CircuitBreakerNotFound(key.to_string()));
+        }
+
+        info!(key, "force closed circuit breaker");
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn delete_circuit_breaker(&self, key: &str) -> Result<(), StoreError> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM durable_circuit_breaker_state
+            WHERE key = $1
+            "#,
+        )
+        .bind(key)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to delete circuit breaker: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if result.rows_affected() == 0 {
+            return Err(StoreError::CircuitBreakerNotFound(key.to_string()));
+        }
+
+        info!(key, "deleted circuit breaker");
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
     async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError> {
         sqlx::query(
             r#"

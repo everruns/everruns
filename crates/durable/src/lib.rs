@@ -105,7 +105,9 @@ pub use persistence::{
     WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo,
     WorkflowInfoExtended, WorkflowStatus,
 };
-pub use reliability::{CircuitBreakerConfig, CircuitState, RetryPolicy};
+pub use reliability::{
+    CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
+};
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{
     ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,

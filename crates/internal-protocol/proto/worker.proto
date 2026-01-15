@@ -90,6 +90,18 @@ service WorkerService {
 
     // Deregister a durable worker
     rpc DeregisterDurableWorker(DeregisterDurableWorkerRequest) returns (DeregisterDurableWorkerResponse);
+
+    // === Circuit breaker operations ===
+    // Used by workers to check circuit breaker state before external calls
+
+    // Check if a circuit breaker allows the call
+    rpc CheckCircuitBreaker(CheckCircuitBreakerRequest) returns (CheckCircuitBreakerResponse);
+
+    // Record a successful call (circuit breaker tracking)
+    rpc RecordCircuitBreakerSuccess(RecordCircuitBreakerSuccessRequest) returns (RecordCircuitBreakerSuccessResponse);
+
+    // Record a failed call (circuit breaker tracking)
+    rpc RecordCircuitBreakerFailure(RecordCircuitBreakerFailureRequest) returns (RecordCircuitBreakerFailureResponse);
 }
 
 // ============================================================================
@@ -595,4 +607,54 @@ message DeregisterDurableWorkerResponse {
     bool deregistered = 1;
     // Number of tasks that were reclaimed (set back to pending) during deregistration
     int32 tasks_reclaimed = 2;
+}
+
+// ============================================================================
+// Circuit breaker types
+// ============================================================================
+
+// Circuit breaker state enum
+enum CircuitBreakerState {
+    CIRCUIT_BREAKER_STATE_UNSPECIFIED = 0;
+    CIRCUIT_BREAKER_STATE_CLOSED = 1;
+    CIRCUIT_BREAKER_STATE_OPEN = 2;
+    CIRCUIT_BREAKER_STATE_HALF_OPEN = 3;
+}
+
+// === Check circuit breaker ===
+
+message CheckCircuitBreakerRequest {
+    // Key identifying the circuit breaker (e.g., "llm:openai", "llm:anthropic")
+    string key = 1;
+}
+
+message CheckCircuitBreakerResponse {
+    // Whether the call is allowed
+    bool allowed = 1;
+    // Current state of the circuit breaker
+    CircuitBreakerState state = 2;
+}
+
+// === Record success ===
+
+message RecordCircuitBreakerSuccessRequest {
+    string key = 1;
+}
+
+message RecordCircuitBreakerSuccessResponse {
+    // New state after recording success
+    CircuitBreakerState state = 1;
+}
+
+// === Record failure ===
+
+message RecordCircuitBreakerFailureRequest {
+    string key = 1;
+}
+
+message RecordCircuitBreakerFailureResponse {
+    // New state after recording failure
+    CircuitBreakerState state = 1;
+    // Whether the circuit is now open (tripped)
+    bool circuit_opened = 2;
 }

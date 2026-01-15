@@ -331,7 +331,10 @@ impl DurableWorker {
                     .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
                 let res = match task.activity_type.as_str() {
                     "process_input" => self.execute_input_activity(grpc_client, &turn_input).await,
-                    "reason" => self.execute_reason_activity(grpc_client, &turn_input).await,
+                    "reason" => {
+                        self.execute_reason_activity(grpc_client, &turn_input, self.store.clone())
+                            .await
+                    }
                     _ => unreachable!(),
                 };
                 (res, Some(turn_input))
@@ -451,15 +454,47 @@ impl DurableWorker {
     }
 
     /// Execute reasoning activity (LLM call)
+    ///
+    /// This activity is protected by a circuit breaker to prevent cascading
+    /// failures when the LLM provider is unavailable.
     async fn execute_reason_activity(
         &self,
         grpc_client: GrpcClient,
         input: &DurableTurnInput,
+        store: Arc<Mutex<GrpcDurableStore>>,
     ) -> Result<serde_json::Value> {
         debug!(
             session_id = %input.session_id,
             "Executing reason activity"
         );
+
+        // Circuit breaker key for LLM calls
+        // TODO: Make this per-provider (openai, anthropic) based on model config
+        let circuit_key = "llm";
+
+        // Check circuit breaker before making LLM call
+        {
+            let mut store_guard = store.lock().await;
+            let check = store_guard.check_circuit_breaker(circuit_key).await;
+            match check {
+                Ok(result) => {
+                    if !result.allowed {
+                        warn!(
+                            circuit_key = circuit_key,
+                            state = ?result.state,
+                            "Circuit breaker is open - rejecting LLM call"
+                        );
+                        return Err(anyhow::anyhow!(
+                            "LLM provider temporarily unavailable (circuit breaker open)"
+                        ));
+                    }
+                }
+                Err(e) => {
+                    // Log but continue - don't block on circuit breaker check failure
+                    warn!(error = %e, "Failed to check circuit breaker, proceeding anyway");
+                }
+            }
+        }
 
         // Create AtomContext for this execution
         let context = AtomContext {
@@ -475,8 +510,42 @@ impl DurableWorker {
         };
 
         // Use the existing reason_activity function with gRPC adapters
-        let result = reason_activity(grpc_client, reason_input).await?;
+        let result = reason_activity(grpc_client, reason_input).await;
 
+        // Record circuit breaker outcome
+        {
+            let mut store_guard = store.lock().await;
+            match &result {
+                Ok(_) => {
+                    if let Err(e) = store_guard
+                        .record_circuit_breaker_success(circuit_key)
+                        .await
+                    {
+                        warn!(error = %e, "Failed to record circuit breaker success");
+                    }
+                }
+                Err(_) => {
+                    match store_guard
+                        .record_circuit_breaker_failure(circuit_key)
+                        .await
+                    {
+                        Ok(failure_result) => {
+                            if failure_result.circuit_opened {
+                                warn!(
+                                    circuit_key = circuit_key,
+                                    "Circuit breaker opened due to LLM failures"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Failed to record circuit breaker failure");
+                        }
+                    }
+                }
+            }
+        }
+
+        let result = result?;
         Ok(serde_json::to_value(&result)?)
     }
 

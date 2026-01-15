@@ -191,6 +191,25 @@ export async function listCircuitBreakers(): Promise<CircuitBreakersResponse> {
   return response.data;
 }
 
-export async function resetCircuitBreaker(key: string): Promise<void> {
-  await api.post(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}/reset`);
+/**
+ * Force open a circuit breaker.
+ * Immediately blocks all calls through this circuit.
+ */
+export async function forceOpenCircuitBreaker(key: string): Promise<void> {
+  await api.post(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}/open`);
+}
+
+/**
+ * Force close a circuit breaker.
+ * Immediately allows calls through this circuit.
+ */
+export async function forceCloseCircuitBreaker(key: string): Promise<void> {
+  await api.post(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}/close`);
+}
+
+/**
+ * Delete a circuit breaker (reset to default state).
+ */
+export async function deleteCircuitBreaker(key: string): Promise<void> {
+  await api.delete(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}`);
 }

@@ -19,7 +19,9 @@ import {
   deleteDlqEntry,
   purgeDlq,
   listCircuitBreakers,
-  resetCircuitBreaker,
+  forceOpenCircuitBreaker,
+  forceCloseCircuitBreaker,
+  deleteCircuitBreaker,
   getDurableSseUrl,
   getWorkflowSseUrl,
   type ListWorkflowsParams,
@@ -412,11 +414,35 @@ export function useCircuitBreakers() {
   });
 }
 
-export function useResetCircuitBreaker() {
+export function useForceOpenCircuitBreaker() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (key: string) => resetCircuitBreaker(key),
+    mutationFn: (key: string) => forceOpenCircuitBreaker(key),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "circuit-breakers"] });
+      queryClient.invalidateQueries({ queryKey: ["durable", "health"] });
+    },
+  });
+}
+
+export function useForceCloseCircuitBreaker() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (key: string) => forceCloseCircuitBreaker(key),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["durable", "circuit-breakers"] });
+      queryClient.invalidateQueries({ queryKey: ["durable", "health"] });
+    },
+  });
+}
+
+export function useDeleteCircuitBreaker() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (key: string) => deleteCircuitBreaker(key),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["durable", "circuit-breakers"] });
       queryClient.invalidateQueries({ queryKey: ["durable", "health"] });

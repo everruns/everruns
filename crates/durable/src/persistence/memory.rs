@@ -611,6 +611,59 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         Ok(())
     }
 
+    async fn list_circuit_breakers(&self) -> Result<Vec<CircuitBreakerState>, StoreError> {
+        let breakers = self.circuit_breakers.read();
+        Ok(breakers
+            .iter()
+            .map(|(k, b)| CircuitBreakerState {
+                key: k.clone(),
+                state: b.state,
+                failure_count: b.failure_count,
+                success_count: b.success_count,
+                last_failure_at: None,
+                opened_at: b.opened_at,
+                half_open_at: None,
+                updated_at: Utc::now(),
+            })
+            .collect())
+    }
+
+    async fn force_open_circuit_breaker(&self, key: &str) -> Result<(), StoreError> {
+        let mut breakers = self.circuit_breakers.write();
+        breakers.insert(
+            key.to_string(),
+            CircuitBreakerMemState {
+                state: crate::reliability::CircuitState::Open,
+                failure_count: 0,
+                success_count: 0,
+                opened_at: Some(Utc::now()),
+            },
+        );
+        Ok(())
+    }
+
+    async fn force_close_circuit_breaker(&self, key: &str) -> Result<(), StoreError> {
+        let mut breakers = self.circuit_breakers.write();
+        if let Some(b) = breakers.get_mut(key) {
+            b.state = crate::reliability::CircuitState::Closed;
+            b.failure_count = 0;
+            b.success_count = 0;
+            b.opened_at = None;
+            Ok(())
+        } else {
+            Err(StoreError::CircuitBreakerNotFound(key.to_string()))
+        }
+    }
+
+    async fn delete_circuit_breaker(&self, key: &str) -> Result<(), StoreError> {
+        let mut breakers = self.circuit_breakers.write();
+        if breakers.remove(key).is_some() {
+            Ok(())
+        } else {
+            Err(StoreError::CircuitBreakerNotFound(key.to_string()))
+        }
+    }
+
     // Worker management methods
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
         let mut workers = self.workers.write();

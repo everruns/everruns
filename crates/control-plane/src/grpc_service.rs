@@ -11,15 +11,17 @@ use everruns_control_plane::services::{
 };
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_durable::{
-    ActivityOptions, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome,
-    WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event,
+    ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
+    PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo,
+    WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event,
     record_activity_completed, record_activity_failed, record_activity_started,
     record_workflow_cancelled, record_workflow_completed, record_workflow_failed,
 };
 use everruns_internal_protocol::proto::{
-    self, AddMessageRequest, AddMessageResponse, ClaimDurableTasksRequest,
-    ClaimDurableTasksResponse, CommitExecRequest, CommitExecResponse, CompleteDurableTaskRequest,
-    CompleteDurableTaskResponse, CountActiveDurableWorkflowsRequest,
+    self, AddMessageRequest, AddMessageResponse, CheckCircuitBreakerRequest,
+    CheckCircuitBreakerResponse, CircuitBreakerState as ProtoCircuitBreakerState,
+    ClaimDurableTasksRequest, ClaimDurableTasksResponse, CommitExecRequest, CommitExecResponse,
+    CompleteDurableTaskRequest, CompleteDurableTaskResponse, CountActiveDurableWorkflowsRequest,
     CountActiveDurableWorkflowsResponse, CreateDurableWorkflowRequest,
     CreateDurableWorkflowResponse, DeregisterDurableWorkerRequest, DeregisterDurableWorkerResponse,
     DurableWorkflowStatus, EmitEventRequest, EmitEventResponse, EmitEventStreamResponse,
@@ -29,7 +31,9 @@ use everruns_internal_protocol::proto::{
     GetModelWithProviderRequest, GetModelWithProviderResponse, GetSessionRequest,
     GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse, HeartbeatDurableTaskRequest,
     HeartbeatDurableTaskResponse, HeartbeatDurableWorkerRequest, HeartbeatDurableWorkerResponse,
-    LoadMessagesRequest, LoadMessagesResponse, RegisterDurableWorkerRequest,
+    LoadMessagesRequest, LoadMessagesResponse, RecordCircuitBreakerFailureRequest,
+    RecordCircuitBreakerFailureResponse, RecordCircuitBreakerSuccessRequest,
+    RecordCircuitBreakerSuccessResponse, RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse, SessionCreateDirectoryRequest, SessionCreateDirectoryResponse,
     SessionDeleteFileRequest, SessionDeleteFileResponse, SessionGrepFilesRequest,
     SessionGrepFilesResponse, SessionListDirectoryRequest, SessionListDirectoryResponse,
@@ -1428,9 +1432,124 @@ impl WorkerService for WorkerServiceImpl {
             tasks_reclaimed: tasks_reclaimed as i32,
         }))
     }
+
+    // ========================================================================
+    // Circuit breaker operations
+    // ========================================================================
+
+    async fn check_circuit_breaker(
+        &self,
+        request: Request<CheckCircuitBreakerRequest>,
+    ) -> Result<Response<CheckCircuitBreakerResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        // Create a circuit breaker instance for this key
+        let config = CircuitBreakerConfig::default();
+        let store_dyn: Arc<dyn WorkflowEventStore> = store.clone();
+        let breaker = DistributedCircuitBreaker::new(req.key.clone(), config, store_dyn);
+
+        // Try to get a permit (this checks if the circuit allows the call)
+        match breaker.allow().await {
+            Ok(_permit) => {
+                // Permit granted - get current state
+                let state = breaker.state().await.unwrap_or(CircuitState::Closed);
+                Ok(Response::new(CheckCircuitBreakerResponse {
+                    allowed: true,
+                    state: circuit_state_to_proto(state).into(),
+                }))
+            }
+            Err(e) => {
+                // Circuit is open or half-open
+                let state = match e {
+                    everruns_durable::CircuitBreakerError::Open => CircuitState::Open,
+                    _ => {
+                        tracing::error!("Circuit breaker error: {}", e);
+                        CircuitState::Closed
+                    }
+                };
+                Ok(Response::new(CheckCircuitBreakerResponse {
+                    allowed: false,
+                    state: circuit_state_to_proto(state).into(),
+                }))
+            }
+        }
+    }
+
+    async fn record_circuit_breaker_success(
+        &self,
+        request: Request<RecordCircuitBreakerSuccessRequest>,
+    ) -> Result<Response<RecordCircuitBreakerSuccessResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        // Create a circuit breaker instance and record success
+        let config = CircuitBreakerConfig::default();
+        let store_dyn: Arc<dyn WorkflowEventStore> = store.clone();
+        let breaker = DistributedCircuitBreaker::new(req.key.clone(), config, store_dyn);
+
+        // Get permit and record success
+        if let Ok(permit) = breaker.allow().await {
+            permit.success().await.map_err(|e| {
+                tracing::error!("Failed to record circuit breaker success: {}", e);
+                Status::internal("Failed to record success")
+            })?;
+        }
+
+        let state = breaker.state().await.unwrap_or(CircuitState::Closed);
+        Ok(Response::new(RecordCircuitBreakerSuccessResponse {
+            state: circuit_state_to_proto(state).into(),
+        }))
+    }
+
+    async fn record_circuit_breaker_failure(
+        &self,
+        request: Request<RecordCircuitBreakerFailureRequest>,
+    ) -> Result<Response<RecordCircuitBreakerFailureResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        // Create a circuit breaker instance and record failure
+        let config = CircuitBreakerConfig::default();
+        let store_dyn: Arc<dyn WorkflowEventStore> = store.clone();
+        let breaker = DistributedCircuitBreaker::new(req.key.clone(), config, store_dyn);
+
+        // Get the state before recording failure
+        let state_before = breaker.state().await.unwrap_or(CircuitState::Closed);
+
+        // Get permit and record failure
+        if let Ok(permit) = breaker.allow().await {
+            permit.failure().await.map_err(|e| {
+                tracing::error!("Failed to record circuit breaker failure: {}", e);
+                Status::internal("Failed to record failure")
+            })?;
+        }
+
+        // Get the state after recording failure
+        let state_after = breaker.state().await.unwrap_or(CircuitState::Closed);
+        let circuit_opened =
+            state_before != CircuitState::Open && state_after == CircuitState::Open;
+
+        if circuit_opened {
+            tracing::warn!(key = %req.key, "Circuit breaker opened");
+        }
+
+        Ok(Response::new(RecordCircuitBreakerFailureResponse {
+            state: circuit_state_to_proto(state_after).into(),
+            circuit_opened,
+        }))
+    }
 }
 
 // Helper functions for status conversion
+
+fn circuit_state_to_proto(state: CircuitState) -> ProtoCircuitBreakerState {
+    match state {
+        CircuitState::Closed => ProtoCircuitBreakerState::Closed,
+        CircuitState::Open => ProtoCircuitBreakerState::Open,
+        CircuitState::HalfOpen => ProtoCircuitBreakerState::HalfOpen,
+    }
+}
 
 fn workflow_status_to_proto(status: WorkflowStatus) -> DurableWorkflowStatus {
     match status {
