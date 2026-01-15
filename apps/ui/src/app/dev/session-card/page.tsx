@@ -65,6 +65,12 @@ const sampleSessions = {
     created_at: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
     started_at: new Date(Date.now() - 240000).toISOString(), // 4 minutes ago
     finished_at: null,
+    usage: {
+      input_tokens: 15234,
+      output_tokens: 8721,
+      cache_read_tokens: 5000,
+      cache_creation_tokens: 0,
+    },
   } satisfies Session,
   idle: {
     id: "019234cd-efgh-7890-1234-567890abcdef",
@@ -76,6 +82,12 @@ const sampleSessions = {
     created_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
     started_at: new Date(Date.now() - 3500000).toISOString(),
     finished_at: null,
+    usage: {
+      input_tokens: 45000,
+      output_tokens: 12500,
+      cache_read_tokens: 10000,
+      cache_creation_tokens: 0,
+    },
   } satisfies Session,
   new: {
     id: "019234ef-ijkl-7890-1234-567890abcdef",
@@ -87,6 +99,7 @@ const sampleSessions = {
     created_at: new Date().toISOString(),
     started_at: null,
     finished_at: null,
+    // No usage for new session
   } satisfies Session,
   longSummary: {
     id: "019234gh-mnop-7890-1234-567890abcdef",
@@ -98,6 +111,12 @@ const sampleSessions = {
     created_at: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
     started_at: new Date(Date.now() - 1700000).toISOString(),
     finished_at: null,
+    usage: {
+      input_tokens: 125000,
+      output_tokens: 87500,
+      cache_read_tokens: 50000,
+      cache_creation_tokens: 12500,
+    },
   } satisfies Session,
 };
 
