@@ -157,8 +157,10 @@ export function SessionCard({
 }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${session.id.slice(0, 8)}`;
-  // Show preview from session (first message), explicit summary prop, or nothing
-  const displaySummary = summary ?? session.preview;
+  // Show preview from session (first user message), explicit summary prop, or nothing
+  const inputPreview = summary ?? session.preview;
+  // Show output preview from session (last assistant message)
+  const outputPreview = session.output_preview;
 
   return (
     <Link
@@ -180,9 +182,16 @@ export function SessionCard({
               {statusInfo.label}
             </Badge>
           </div>
-          {displaySummary && (
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-              {truncateToLines(displaySummary, 2)}
+          {/* Input preview: first user message */}
+          {inputPreview && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+              {truncateToLines(inputPreview, 1)}
+            </p>
+          )}
+          {/* Output preview: last assistant response */}
+          {outputPreview && (
+            <p className="text-sm text-muted-foreground/70 mt-0.5 line-clamp-1 italic">
+              {truncateToLines(outputPreview, 1)}
             </p>
           )}
           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">

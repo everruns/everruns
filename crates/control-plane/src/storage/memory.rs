@@ -607,6 +607,41 @@ impl InMemoryDatabase {
         Ok(previews)
     }
 
+    /// Get output preview text for multiple sessions (in-memory implementation)
+    pub async fn get_session_output_previews(
+        &self,
+        session_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, String>> {
+        let mut previews = std::collections::HashMap::new();
+        let events = self.events.read();
+
+        for &session_id in session_ids {
+            // Find the last agent message for this session
+            let last_agent_msg = events
+                .values()
+                .filter(|e| e.session_id == session_id && e.event_type == "message.agent")
+                .max_by_key(|e| e.sequence);
+
+            if let Some(event) = last_agent_msg {
+                // Extract text from the message data
+                if let Some(text) = event
+                    .data
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.get(0))
+                    .and_then(|p| p.get("text"))
+                    .and_then(|t| t.as_str())
+                {
+                    // Truncate to 200 chars
+                    let preview: String = text.chars().take(200).collect();
+                    previews.insert(session_id, preview);
+                }
+            }
+        }
+
+        Ok(previews)
+    }
+
     // ============================================
     // LLM Providers
     // ============================================

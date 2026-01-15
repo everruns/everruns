@@ -4742,6 +4742,13 @@
                   "format": "uuid",
                   "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
                 },
+                "output_preview": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Preview text from the last assistant response (truncated)."
+                },
                 "preview": {
                   "type": [
                     "string",
@@ -4978,6 +4985,13 @@
             ],
             "format": "uuid",
             "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+          },
+          "output_preview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Preview text from the last assistant response (truncated)."
           },
           "preview": {
             "type": [

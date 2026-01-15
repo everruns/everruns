@@ -392,6 +392,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         agent_id,
         title: non_empty_string(proto_session.title),
         preview: None,
+        output_preview: None,
         tags: vec![],
         model_id,
         status,

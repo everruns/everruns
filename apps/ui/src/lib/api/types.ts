@@ -71,6 +71,8 @@ export interface Session {
   title: string | null;
   /** Preview text from the first user message (truncated) */
   preview?: string | null;
+  /** Preview text from the last assistant response (truncated) */
+  output_preview?: string | null;
   tags: string[];
   model_id: string | null;
   status: SessionStatus;

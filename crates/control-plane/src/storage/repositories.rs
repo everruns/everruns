@@ -734,6 +734,55 @@ impl Database {
         Ok(rows.into_iter().collect())
     }
 
+    /// Get output preview text for multiple sessions
+    ///
+    /// Returns a map of session_id -> preview text (first 200 chars of last agent message)
+    /// This is an efficient batch query that gets output previews for all provided session IDs.
+    pub async fn get_session_output_previews(
+        &self,
+        session_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, String>> {
+        if session_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        // Use DISTINCT ON with DESC order to get the last agent message for each session
+        // Extract text content from the JSON data structure
+        let rows: Vec<(Uuid, String)> = sqlx::query_as(
+            r#"
+            WITH last_messages AS (
+                SELECT DISTINCT ON (session_id)
+                    session_id,
+                    data
+                FROM events
+                WHERE session_id = ANY($1)
+                  AND event_type = 'message.agent'
+                ORDER BY session_id, sequence DESC
+            )
+            SELECT
+                session_id,
+                LEFT(
+                    COALESCE(
+                        -- Extract text from content array: [{"type": "text", "text": "..."}]
+                        data->'message'->'content'->0->>'text',
+                        -- Fallback: try direct text field
+                        data->'message'->>'text',
+                        ''
+                    ),
+                    200
+                ) as preview
+            FROM last_messages
+            WHERE data->'message'->'content'->0->>'text' IS NOT NULL
+               OR data->'message'->>'text' IS NOT NULL
+            "#,
+        )
+        .bind(session_ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().collect())
+    }
+
     // ============================================
     // LLM Providers
     // ============================================
