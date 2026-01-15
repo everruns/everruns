@@ -8,7 +8,6 @@ import {
   useUpdateAgent,
   useDeleteAgent,
   useCapabilities,
-  useLlmModels,
 } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -18,16 +17,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import type { CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
-import { ProviderIcon } from "@/components/providers/provider-icon";
 
 interface FormData {
   name: string;
@@ -53,9 +45,6 @@ export default function EditAgentPage({
   // Capabilities data
   const { data: allCapabilities, isLoading: capabilitiesLoading } =
     useCapabilities();
-
-  // LLM Models data
-  const { data: models = [] } = useLlmModels();
 
   // Form state - track user changes separately from initial values
   const [formChanges, setFormChanges] = useState<Partial<FormData>>({});
@@ -249,50 +238,11 @@ export default function EditAgentPage({
 
                 <div className="space-y-2">
                   <Label htmlFor="model">Model (optional)</Label>
-                  <Select
-                    value={formData.default_model_id || "none"}
-                    onValueChange={(value) =>
-                      handleFormChange("default_model_id", value === "none" ? "" : value)
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue>
-                        {(() => {
-                          const selectedModel = models.find((m) => m.id === formData.default_model_id);
-                          if (!selectedModel) return "Use default model";
-                          return (
-                            <div className="flex items-center gap-2">
-                              <ProviderIcon
-                                providerType={selectedModel.provider_type}
-                                size="sm"
-                                showBackground={false}
-                              />
-                              <span>
-                                {selectedModel.display_name} ({selectedModel.provider_name})
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Use default model</SelectItem>
-                      {models.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>
-                          <div className="flex items-center gap-2">
-                            <ProviderIcon
-                              providerType={model.provider_type}
-                              size="sm"
-                              showBackground={false}
-                            />
-                            <span>
-                              {model.display_name} ({model.provider_name})
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <ModelPicker
+                    value={formData.default_model_id || ""}
+                    onChange={(value) => handleFormChange("default_model_id", value)}
+                    placeholder="Use default model"
+                  />
                   <p className="text-xs text-muted-foreground">
                     Select a specific model or leave empty to use the default
                   </p>

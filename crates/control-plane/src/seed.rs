@@ -298,6 +298,7 @@ struct SeedModel {
     model_id: &'static str,
     display_name: &'static str,
     is_default: bool,
+    is_favorite: bool,
 }
 
 /// Built-in seed models
@@ -309,6 +310,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.2",
         display_name: "GPT-5.2",
         is_default: false,
+        is_favorite: true, // Favorite model
     },
     SeedModel {
         id: seed_ids::GPT_5_2_PRO,
@@ -316,6 +318,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.2-pro",
         display_name: "GPT-5.2 Pro",
         is_default: false,
+        is_favorite: true, // Favorite model
     },
     SeedModel {
         id: seed_ids::GPT_5_2_CODEX,
@@ -323,6 +326,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.2-codex",
         display_name: "GPT-5.2 Codex",
         is_default: false,
+        is_favorite: true, // Favorite model
     },
     SeedModel {
         id: seed_ids::GPT_5_2_CHAT,
@@ -330,6 +334,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.2-chat-latest",
         display_name: "GPT-5.2 Chat",
         is_default: false,
+        is_favorite: false,
     },
     // OpenAI GPT-5.1 series
     SeedModel {
@@ -338,6 +343,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.1",
         display_name: "GPT-5.1",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5_1_CODEX,
@@ -345,6 +351,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.1-codex",
         display_name: "GPT-5.1 Codex",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5_1_CODEX_MINI,
@@ -352,6 +359,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.1-codex-mini",
         display_name: "GPT-5.1 Codex mini",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5_1_CODEX_MAX,
@@ -359,6 +367,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.1-codex-max",
         display_name: "GPT-5.1 Codex max",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5_1_CHAT,
@@ -366,6 +375,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5.1-chat-latest",
         display_name: "GPT-5.1 Chat",
         is_default: false,
+        is_favorite: false,
     },
     // OpenAI GPT-5 series
     SeedModel {
@@ -373,7 +383,8 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5-mini",
         display_name: "GPT-5 mini",
-        is_default: true, // Default model
+        is_default: true,  // Default model
+        is_favorite: true, // Favorite model
     },
     SeedModel {
         id: seed_ids::GPT_5,
@@ -381,6 +392,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5",
         display_name: "GPT-5",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5_NANO,
@@ -388,6 +400,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5-nano",
         display_name: "GPT-5 nano",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5_PRO,
@@ -395,6 +408,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5-pro",
         display_name: "GPT-5 Pro",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5_CODEX,
@@ -402,6 +416,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5-codex",
         display_name: "GPT-5 Codex",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5_CHAT,
@@ -409,6 +424,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-5-chat-latest",
         display_name: "GPT-5 Chat",
         is_default: false,
+        is_favorite: false,
     },
     // OpenAI GPT-4.1 series
     SeedModel {
@@ -417,6 +433,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-4.1",
         display_name: "GPT-4.1",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_4_1_MINI,
@@ -424,6 +441,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-4.1-mini",
         display_name: "GPT-4.1 mini",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_4_1_NANO,
@@ -431,6 +449,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-4.1-nano",
         display_name: "GPT-4.1 nano",
         is_default: false,
+        is_favorite: false,
     },
     // OpenAI GPT-4 series
     SeedModel {
@@ -439,6 +458,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-4o",
         display_name: "GPT-4o",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_4O_MINI,
@@ -446,6 +466,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-4o-mini",
         display_name: "GPT-4o mini",
         is_default: false,
+        is_favorite: false,
     },
     // OpenAI Reasoning models (o-series)
     SeedModel {
@@ -454,6 +475,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o4-mini",
         display_name: "o4 mini",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O4_MINI_DEEP_RESEARCH,
@@ -461,6 +483,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o4-mini-deep-research",
         display_name: "o4 mini Deep Research",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O3,
@@ -468,6 +491,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o3",
         display_name: "o3",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O3_MINI,
@@ -475,6 +499,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o3-mini",
         display_name: "o3 mini",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O3_PRO,
@@ -482,6 +507,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o3-pro",
         display_name: "o3 Pro",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O3_DEEP_RESEARCH,
@@ -489,6 +515,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o3-deep-research",
         display_name: "o3 Deep Research",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O1,
@@ -496,6 +523,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o1",
         display_name: "o1",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O1_MINI,
@@ -503,6 +531,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o1-mini",
         display_name: "o1 mini",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O1_PRO,
@@ -510,6 +539,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o1-pro",
         display_name: "o1 Pro",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::O1_PREVIEW,
@@ -517,6 +547,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "o1-preview",
         display_name: "o1 Preview",
         is_default: false,
+        is_favorite: false,
     },
     // Anthropic Claude 4.5 series
     SeedModel {
@@ -525,6 +556,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "claude-opus-4-5-20251101",
         display_name: "Claude Opus 4.5",
         is_default: false,
+        is_favorite: true, // Favorite model
     },
     SeedModel {
         id: seed_ids::CLAUDE_SONNET_4_5,
@@ -532,6 +564,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "claude-sonnet-4-5-20250929",
         display_name: "Claude Sonnet 4.5",
         is_default: false,
+        is_favorite: true, // Favorite model
     },
     SeedModel {
         id: seed_ids::CLAUDE_HAIKU_4_5,
@@ -539,6 +572,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "claude-haiku-4-5-20251001",
         display_name: "Claude Haiku 4.5",
         is_default: false,
+        is_favorite: true, // Favorite model
     },
     // Anthropic Claude 4 series
     SeedModel {
@@ -547,6 +581,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "claude-opus-4-20250514",
         display_name: "Claude Opus 4",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::CLAUDE_SONNET_4,
@@ -554,6 +589,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "claude-sonnet-4-20250514",
         display_name: "Claude Sonnet 4",
         is_default: false,
+        is_favorite: false,
     },
     // Anthropic Claude 3.7
     SeedModel {
@@ -562,6 +598,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "claude-3-7-sonnet-20250219",
         display_name: "Claude 3.7 Sonnet",
         is_default: false,
+        is_favorite: false,
     },
     // Anthropic Claude 3.5
     SeedModel {
@@ -570,6 +607,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "claude-3-5-sonnet-20241022",
         display_name: "Claude 3.5 Sonnet",
         is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::CLAUDE_3_5_HAIKU,
@@ -577,6 +615,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "claude-3-5-haiku-20241022",
         display_name: "Claude 3.5 Haiku",
         is_default: false,
+        is_favorite: false,
     },
     // LlmSim (simulated LLM for testing)
     SeedModel {
@@ -585,6 +624,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "llmsim-default",
         display_name: "LlmSim Default",
         is_default: false,
+        is_favorite: false,
     },
 ];
 
@@ -599,6 +639,7 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             display_name: seed.display_name.to_string(),
             capabilities: vec![], // Empty capabilities for now
             is_default: seed.is_default,
+            is_favorite: seed.is_favorite,
         };
 
         match db.create_llm_model_with_id(seed.id, input).await? {

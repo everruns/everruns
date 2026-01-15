@@ -47,6 +47,10 @@ pub struct CreateLlmModelRequest {
     #[serde(default)]
     #[schema(example = false)]
     pub is_default: bool,
+    /// Whether this model should be marked as a favorite for quick access.
+    #[serde(default)]
+    #[schema(example = false)]
+    pub is_favorite: bool,
 }
 
 /// Request to update an LLM model. Only provided fields will be updated.
@@ -68,6 +72,10 @@ pub struct UpdateLlmModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub is_default: Option<bool>,
+    /// Whether this model should be marked as a favorite for quick access.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = true)]
+    pub is_favorite: Option<bool>,
     /// The status of the model. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LlmModelStatus>,

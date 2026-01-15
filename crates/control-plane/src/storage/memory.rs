@@ -726,6 +726,7 @@ impl InMemoryDatabase {
                     display_name: model.display_name.clone(),
                     capabilities: model.capabilities.clone(),
                     is_default: model.is_default,
+                    is_favorite: model.is_favorite,
                     status: model.status.clone(),
                     created_at: model.created_at,
                     updated_at: model.updated_at,
@@ -754,6 +755,7 @@ impl InMemoryDatabase {
             display_name: input.display_name,
             capabilities: serde_json::to_value(&input.capabilities)?,
             is_default: input.is_default,
+            is_favorite: input.is_favorite,
             status: "active".to_string(), // Default status for new models
             created_at: now,
             updated_at: now,
@@ -781,6 +783,7 @@ impl InMemoryDatabase {
             display_name: input.display_name,
             capabilities: serde_json::to_value(&input.capabilities)?,
             is_default: input.is_default,
+            is_favorite: input.is_favorite,
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
@@ -810,6 +813,7 @@ impl InMemoryDatabase {
                 display_name: model.display_name.clone(),
                 capabilities: model.capabilities.clone(),
                 is_default: model.is_default,
+                is_favorite: model.is_favorite,
                 status: model.status.clone(),
                 created_at: model.created_at,
                 updated_at: model.updated_at,
@@ -850,6 +854,7 @@ impl InMemoryDatabase {
                         display_name: model.display_name.clone(),
                         capabilities: model.capabilities.clone(),
                         is_default: model.is_default,
+                        is_favorite: model.is_favorite,
                         status: model.status.clone(),
                         created_at: model.created_at,
                         updated_at: model.updated_at,
@@ -858,7 +863,12 @@ impl InMemoryDatabase {
                     })
             })
             .collect();
-        result.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        // Sort by favorite first, then by display_name
+        result.sort_by(|a, b| {
+            b.is_favorite
+                .cmp(&a.is_favorite)
+                .then_with(|| a.display_name.cmp(&b.display_name))
+        });
         Ok(result)
     }
 
@@ -877,6 +887,9 @@ impl InMemoryDatabase {
             }
             if let Some(is_default) = input.is_default {
                 model.is_default = is_default;
+            }
+            if let Some(is_favorite) = input.is_favorite {
+                model.is_favorite = is_favorite;
             }
             if let Some(status) = input.status {
                 model.status = status;
@@ -909,6 +922,7 @@ impl InMemoryDatabase {
                     display_name: model.display_name.clone(),
                     capabilities: model.capabilities.clone(),
                     is_default: model.is_default,
+                    is_favorite: model.is_favorite,
                     status: model.status.clone(),
                     created_at: model.created_at,
                     updated_at: model.updated_at,
