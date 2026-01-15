@@ -49,7 +49,7 @@ impl Default for DurableWorkerConfig {
                 "act".to_string(),
             ],
             max_concurrent_tasks: 10,
-            poll_interval: Duration::from_secs(1),
+            poll_interval: Duration::from_millis(100), // Fast polling to minimize message delay
             heartbeat_interval: Duration::from_secs(10),
             grpc_address: "127.0.0.1:9001".to_string(),
         }
