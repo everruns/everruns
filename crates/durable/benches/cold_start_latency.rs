@@ -1,8 +1,8 @@
 //! Cold-start latency benchmark
 //!
 //! Measures the time from task enqueue to task execution start when the worker
-//! is idle. This directly measures the impact of poll interval on user-perceived
-//! responsiveness.
+//! is idle. This directly measures user-perceived responsiveness when sending
+//! a message to an idle agent.
 //!
 //! Usage:
 //!   cargo bench -p everruns-durable --bench cold_start_latency
@@ -15,7 +15,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use tokio::runtime::Runtime;
-use tokio::sync::Notify;
 
 use everruns_durable::bench::{
     BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
@@ -29,10 +28,10 @@ use uuid::Uuid;
 struct ColdStartConfig {
     /// Number of iterations to run
     iterations: usize,
-    /// Number of workers polling for tasks
+    /// Number of workers
     worker_count: usize,
-    /// Simulated poll interval (how often workers check for tasks)
-    poll_interval: Duration,
+    /// Worker check interval (simulates current implementation behavior)
+    check_interval: Duration,
     /// Name for this scenario
     name: String,
 }
@@ -44,15 +43,13 @@ async fn measure_single_cold_start(
     store: &Arc<InMemoryWorkflowEventStore>,
     workflow_id: Uuid,
     task_num: usize,
-    _worker_ready: &Arc<Notify>,
-    task_enqueued: &Arc<Notify>,
     task_claimed: &Arc<AtomicBool>,
     claim_time: &Arc<parking_lot::Mutex<Option<Instant>>>,
 ) -> Duration {
     // Signal that we're about to enqueue
     task_claimed.store(false, Ordering::SeqCst);
 
-    // Wait for worker to be in idle polling state
+    // Wait for worker to be in idle state
     tokio::time::sleep(Duration::from_millis(10)).await;
 
     // Record enqueue time and enqueue task
@@ -67,9 +64,6 @@ async fn measure_single_cold_start(
         })
         .await
         .unwrap();
-
-    // Notify worker that task is available
-    task_enqueued.notify_one();
 
     // Wait for worker to claim the task
     while !task_claimed.load(Ordering::SeqCst) {
@@ -95,23 +89,21 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
 
     println!("\n🚀 Running: {}", config.name);
     println!(
-        "   Iterations: {}, Workers: {}, Poll interval: {:?}",
-        config.iterations, config.worker_count, config.poll_interval
+        "   Iterations: {}, Workers: {}",
+        config.iterations, config.worker_count
     );
 
     // Synchronization primitives
-    let worker_ready = Arc::new(Notify::new());
-    let task_enqueued = Arc::new(Notify::new());
     let task_claimed = Arc::new(AtomicBool::new(false));
     let claim_time = Arc::new(parking_lot::Mutex::new(None));
     let shutdown = Arc::new(AtomicBool::new(false));
     let tasks_completed = Arc::new(AtomicU64::new(0));
 
-    // Spawn worker(s) that poll with the configured interval
+    // Spawn worker(s)
     let mut worker_handles = Vec::new();
     for worker_id in 0..config.worker_count {
         let store = store.clone();
-        let poll_interval = config.poll_interval;
+        let check_interval = config.check_interval;
         let task_claimed = task_claimed.clone();
         let claim_time = claim_time.clone();
         let shutdown = shutdown.clone();
@@ -125,7 +117,7 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
                     break;
                 }
 
-                // Poll for tasks (simulating real worker behavior)
+                // Check for tasks
                 let claimed = store
                     .claim_task(&worker_name, &["cold_start_activity".to_string()], 1)
                     .await
@@ -146,8 +138,8 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
                     }
                 }
 
-                // Wait for poll interval before next check
-                tokio::time::sleep(poll_interval).await;
+                // Wait before next check
+                tokio::time::sleep(check_interval).await;
             }
         }));
     }
@@ -161,8 +153,6 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
             &store,
             workflow_id,
             i,
-            &worker_ready,
-            &task_enqueued,
             &task_claimed,
             &claim_time,
         )
@@ -174,7 +164,7 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
         metrics.tasks_completed.increment();
 
         // Brief pause between iterations to ensure worker returns to idle
-        tokio::time::sleep(config.poll_interval * 2).await;
+        tokio::time::sleep(config.check_interval * 2).await;
     }
 
     // Shutdown workers
@@ -202,25 +192,6 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
         p99.as_secs_f64() * 1000.0,
         max.as_secs_f64() * 1000.0,
     );
-
-    // Interpretation
-    let poll_ms = config.poll_interval.as_secs_f64() * 1000.0;
-    let expected_avg = poll_ms / 2.0; // Uniform distribution expectation
-    let actual_avg = avg.as_secs_f64() * 1000.0;
-    println!(
-        "   💡 Expected avg ~{:.1}ms (poll/2), actual {:.1}ms",
-        expected_avg, actual_avg
-    );
-
-    if p99.as_secs_f64() * 1000.0 <= poll_ms * 1.1 {
-        println!("   ✅ P99 within expected bounds (poll interval)");
-    } else {
-        println!(
-            "   ⚠️  P99 {:.1}ms exceeds poll interval {:.1}ms",
-            p99.as_secs_f64() * 1000.0,
-            poll_ms
-        );
-    }
 
     metrics
 }
@@ -266,75 +237,37 @@ fn main() {
     println!("\nMeasures idle worker → task pickup latency");
     println!("This is what users experience when sending a message to an idle agent.\n");
 
-    // Scenario 1: Current production setting (100ms poll)
-    let poll_100ms = rt.block_on(run_cold_start_scenario(ColdStartConfig {
-        iterations: 100,
+    // Current implementation baseline
+    let baseline = rt.block_on(run_cold_start_scenario(ColdStartConfig {
+        iterations: 20,
         worker_count: 1,
-        poll_interval: Duration::from_millis(100),
-        name: "cold_start_100ms_poll".to_string(),
-    }));
-
-    // Scenario 2: Previous production setting (1s poll) for comparison
-    let poll_1s = rt.block_on(run_cold_start_scenario(ColdStartConfig {
-        iterations: 50,
-        worker_count: 1,
-        poll_interval: Duration::from_secs(1),
-        name: "cold_start_1s_poll".to_string(),
-    }));
-
-    // Scenario 3: Aggressive polling (10ms) - theoretical minimum with polling
-    let poll_10ms = rt.block_on(run_cold_start_scenario(ColdStartConfig {
-        iterations: 100,
-        worker_count: 1,
-        poll_interval: Duration::from_millis(10),
-        name: "cold_start_10ms_poll".to_string(),
-    }));
-
-    // Scenario 4: Multiple workers (should have similar latency, just for verification)
-    let multi_worker = rt.block_on(run_cold_start_scenario(ColdStartConfig {
-        iterations: 100,
-        worker_count: 4,
-        poll_interval: Duration::from_millis(100),
-        name: "cold_start_4_workers_100ms".to_string(),
+        check_interval: Duration::from_millis(100),
+        name: "cold_start_baseline".to_string(),
     }));
 
     // Summary
     println!("\n═══════════════════════════════════════════════════════════");
     println!("                    Summary");
     println!("═══════════════════════════════════════════════════════════");
-    println!("\nCold-start latency by poll interval:");
-    println!(
-        "{:<35} {:>12} {:>12} {:>12}",
-        "Scenario", "P50", "P99", "Max"
-    );
-    println!("{:-<35} {:->12} {:->12} {:->12}", "", "", "", "");
 
-    for (name, m) in [
-        ("cold_start_10ms_poll", &poll_10ms),
-        ("cold_start_100ms_poll", &poll_100ms),
-        ("cold_start_1s_poll", &poll_1s),
-        ("cold_start_4_workers_100ms", &multi_worker),
-    ] {
-        let s2s = m.schedule_to_start.summary();
-        println!(
-            "{:<35} {:>10.2}ms {:>10.2}ms {:>10.2}ms",
-            name,
-            s2s.p50.as_secs_f64() * 1000.0,
-            s2s.p99.as_secs_f64() * 1000.0,
-            s2s.max.as_secs_f64() * 1000.0,
-        );
+    let s2s = baseline.schedule_to_start.summary();
+    println!("\nCold-start latency (idle → work pickup):");
+    println!("   P50: {:.2}ms", s2s.p50.as_secs_f64() * 1000.0);
+    println!("   P99: {:.2}ms", s2s.p99.as_secs_f64() * 1000.0);
+    println!("   Max: {:.2}ms", s2s.max.as_secs_f64() * 1000.0);
+
+    // Target guidance
+    let p99_ms = s2s.p99.as_secs_f64() * 1000.0;
+    if p99_ms < 50.0 {
+        println!("\n   ✅ P99 < 50ms: Excellent responsiveness");
+    } else if p99_ms < 200.0 {
+        println!("\n   ⚠️  P99 {:.0}ms: Acceptable, but room for improvement", p99_ms);
+    } else {
+        println!("\n   ❌ P99 {:.0}ms: Users may perceive delay", p99_ms);
     }
 
-    // Calculate improvement
-    let old_p50 = poll_1s.schedule_to_start.summary().p50.as_secs_f64() * 1000.0;
-    let new_p50 = poll_100ms.schedule_to_start.summary().p50.as_secs_f64() * 1000.0;
-    let improvement = ((old_p50 - new_p50) / old_p50) * 100.0;
-
-    println!("\n📊 Impact of 1s → 100ms poll interval change:");
-    println!("   P50 latency: {:.1}ms → {:.1}ms ({:.0}% improvement)", old_p50, new_p50, improvement);
-
-    // Generate HTML reports
-    println!("\n📊 Generating HTML reports...");
+    // Generate HTML report
+    println!("\n📊 Generating HTML report...");
 
     let report_config = ReportConfig {
         title: "Cold-Start Latency Benchmark".to_string(),
@@ -342,20 +275,15 @@ fn main() {
         ..Default::default()
     };
 
-    for (name, m) in [
-        ("cold_start_100ms_poll", &poll_100ms),
-        ("cold_start_1s_poll", &poll_1s),
-    ] {
-        let report = BenchmarkReport::new(report_config.clone());
-        match report.generate(m) {
-            Ok(path) => println!("   ✅ {}: {}", name, path),
-            Err(e) => println!("   ❌ {}: {}", name, e),
-        }
+    let report = BenchmarkReport::new(report_config);
+    match report.generate(&baseline) {
+        Ok(path) => println!("   ✅ {}", path),
+        Err(e) => println!("   ❌ {}", e),
     }
 
-    // Save checkpoints
+    // Save checkpoint
     if opts.save_checkpoint {
-        println!("\n💾 Saving checkpoints...");
+        println!("\n💾 Saving checkpoint...");
 
         let env = match &opts.moniker {
             Some(m) => EnvironmentInfo::detect_with_moniker(m),
@@ -366,19 +294,13 @@ fn main() {
             env!("CARGO_MANIFEST_DIR")
         ));
 
-        for (name, m) in [
-            ("cold_start_100ms_poll", &poll_100ms),
-            ("cold_start_1s_poll", &poll_1s),
-            ("cold_start_10ms_poll", &poll_10ms),
-        ] {
-            let checkpoint = BenchmarkCheckpoint::new(name, env.clone(), m.snapshot());
-            match store.save(&checkpoint) {
-                Ok(path) => println!("   ✅ {}: {}", name, path.display()),
-                Err(e) => println!("   ❌ {}: {}", name, e),
-            }
+        let checkpoint = BenchmarkCheckpoint::new("cold_start_baseline", env, baseline.snapshot());
+        match store.save(&checkpoint) {
+            Ok(path) => println!("   ✅ {}", path.display()),
+            Err(e) => println!("   ❌ {}", e),
         }
     } else {
-        println!("\n💡 Tip: Use --save to save checkpoints for historical comparison");
+        println!("\n💡 Tip: Use --save to save checkpoint for historical comparison");
     }
 
     println!("\n═══════════════════════════════════════════════════════════");
