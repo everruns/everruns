@@ -266,40 +266,32 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
       return session?.usage;
     }
 
-    // Find the latest session.idled event and its index
-    let baseUsage: TokenUsage | undefined;
-    let baseIndex = -1;
+    // Find the latest session.idled event (regardless of whether it has usage)
+    // This marks the boundary - we only count llm.generation events AFTER this
+    let latestIdledIndex = -1;
+    let latestIdledUsage: TokenUsage | undefined;
 
     for (let i = events.length - 1; i >= 0; i--) {
       if (events[i].type === "session.idled") {
-        const data = events[i].data as SessionIdledData;
-        if (data.usage) {
-          baseUsage = data.usage;
-          baseIndex = i;
-          break;
-        }
+        latestIdledIndex = i;
+        latestIdledUsage = (events[i].data as SessionIdledData).usage;
+        break; // Always use the latest session.idled, even if usage is null
       }
     }
 
-    // If no session.idled found, use initial session usage as base
-    if (!baseUsage) {
-      baseUsage = session?.usage;
-      baseIndex = -1; // Consider all llm.generation events
-    }
+    // Sum ALL llm.generation events to get cumulative usage
+    // This is the source of truth for total tokens consumed
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheCreationTokens = 0;
+    let hasLlmEvents = false;
 
-    // Add any llm.generation events that came AFTER the last session.idled
-    // This provides real-time feedback during turn execution
-    let inputTokens = baseUsage?.input_tokens ?? 0;
-    let outputTokens = baseUsage?.output_tokens ?? 0;
-    let cacheReadTokens = baseUsage?.cache_read_tokens ?? 0;
-    let cacheCreationTokens = baseUsage?.cache_creation_tokens ?? 0;
-    let addedFromLlm = false;
-
-    for (let i = baseIndex + 1; i < events.length; i++) {
-      if (events[i].type === "llm.generation") {
-        const data = events[i].data as LlmGenerationData;
+    for (const event of events) {
+      if (event.type === "llm.generation") {
+        const data = event.data as LlmGenerationData;
         if (data.metadata?.usage) {
-          addedFromLlm = true;
+          hasLlmEvents = true;
           inputTokens += data.metadata.usage.input_tokens;
           outputTokens += data.metadata.usage.output_tokens;
           cacheReadTokens += data.metadata.usage.cache_read_tokens ?? 0;
@@ -308,8 +300,8 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
       }
     }
 
-    // If we have base usage or added from llm events, return the total
-    if (baseUsage || addedFromLlm) {
+    // If we have llm.generation events, use their sum as the source of truth
+    if (hasLlmEvents) {
       return {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
@@ -318,7 +310,8 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
       };
     }
 
-    return undefined;
+    // Fall back to session.idled usage or initial session usage
+    return latestIdledUsage ?? session?.usage;
   }, [events, session?.usage]);
 
   // Check if the model supports reasoning effort

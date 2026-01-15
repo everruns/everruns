@@ -117,16 +117,24 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <div className="text-xs space-y-1">
-                      <div>Input: {liveUsage.input_tokens.toLocaleString()}</div>
-                      <div>Output: {liveUsage.output_tokens.toLocaleString()}</div>
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                      <dt className="text-muted-foreground">Input</dt>
+                      <dd>{liveUsage.input_tokens.toLocaleString()}</dd>
+                      <dt className="text-muted-foreground">Output</dt>
+                      <dd>{liveUsage.output_tokens.toLocaleString()}</dd>
                       {(liveUsage.cache_read_tokens ?? 0) > 0 && (
-                        <div>Cache read: {liveUsage.cache_read_tokens!.toLocaleString()}</div>
+                        <>
+                          <dt className="text-muted-foreground">Cache read</dt>
+                          <dd>{liveUsage.cache_read_tokens!.toLocaleString()}</dd>
+                        </>
                       )}
                       {(liveUsage.cache_creation_tokens ?? 0) > 0 && (
-                        <div>Cache created: {liveUsage.cache_creation_tokens!.toLocaleString()}</div>
+                        <>
+                          <dt className="text-muted-foreground">Cache created</dt>
+                          <dd>{liveUsage.cache_creation_tokens!.toLocaleString()}</dd>
+                        </>
                       )}
-                    </div>
+                    </dl>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
