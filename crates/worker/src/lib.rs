@@ -4,6 +4,7 @@ pub mod durable_runner;
 pub mod durable_worker;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
+pub mod mcp_executor;
 pub mod runner;
 
 // Re-export main types

@@ -228,6 +228,8 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
 /// 4. Stores tool result messages
 /// 5. Emits act.completed event
 /// 6. Returns comprehensive results for all tools
+///
+/// Supports both built-in tools and MCP tools (via remote MCP servers).
 pub async fn act_activity(grpc_client: GrpcClient, input: ActInput) -> Result<ActResult> {
     tracing::info!(
         session_id = %input.context.session_id,
@@ -236,7 +238,11 @@ pub async fn act_activity(grpc_client: GrpcClient, input: ActInput) -> Result<Ac
         "Executing act_activity"
     );
 
-    let tool_executor = ToolRegistry::with_defaults();
+    // Create composite tool executor that handles both built-in and MCP tools
+    let builtin_executor = ToolRegistry::with_defaults();
+    let mcp_executor = Arc::new(crate::mcp_executor::McpToolExecutor::new(grpc_client.clone()));
+    let tool_executor = crate::mcp_executor::CompositeToolExecutor::new(builtin_executor, mcp_executor);
+
     let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
     let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client));
 

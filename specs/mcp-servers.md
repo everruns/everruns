@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This document defines the data model and API for MCP (Model Context Protocol) servers in Everruns. MCP servers extend agent capabilities by providing external tools and resources through a standardized protocol.
+This document defines the data model and API for MCP (Model Context Protocol) servers in Everruns. MCP servers extend agent capabilities by providing external tools through a standardized protocol. MCP servers appear as "virtual capabilities" in the capability system, allowing agents to use MCP tools alongside built-in capabilities.
 
 ## Requirements
 
@@ -13,7 +13,7 @@ Configuration for a remote MCP server connection. Currently supports only HTTP (
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
-| `name` | string | Unique display name |
+| `name` | string | Unique name (used as tool prefix) |
 | `description` | string? | Optional description of the MCP server |
 | `url` | string | Server endpoint URL |
 | `transport_type` | enum | Transport type: `http` |
@@ -22,6 +22,8 @@ Configuration for a remote MCP server connection. Currently supports only HTTP (
 | `api_key_encrypted` | bytes? | Encrypted API key (not exposed via API) |
 | `headers` | map[string]string | Additional HTTP headers for authentication |
 | `settings` | object | Server-specific settings (reserved for future use) |
+| `cached_tools` | json | Cached tool definitions from server |
+| `tools_cached_at` | timestamp? | When tools were last cached |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
 
@@ -29,7 +31,7 @@ Configuration for a remote MCP server connection. Currently supports only HTTP (
 
 | Field | Max Size | Notes |
 |-------|----------|-------|
-| `name` | 255 chars | Must be unique, non-empty |
+| `name` | 255 chars | Must be unique, non-empty, snake_case recommended |
 | `description` | 10 KB | Optional description |
 | `url` | 2 KB | Valid HTTP/HTTPS URL |
 | `headers` | 100 entries | Maximum header entries |
@@ -62,7 +64,7 @@ Create a new MCP server configuration.
 **Request Body:**
 ```json
 {
-  "name": "atlassian-mcp-server",
+  "name": "atlassian_mcp",
   "description": "Atlassian MCP Server for Jira and Confluence",
   "url": "https://mcp.atlassian.com/v1/mcp",
   "transport_type": "http",
@@ -119,12 +121,110 @@ Delete an MCP server.
 2. **API Key Not Exposed**: The `api_key_encrypted` field is never returned in API responses
 3. **Unique Names**: Server names must be unique to prevent configuration conflicts
 
-### Usage with Agents
+## MCP as Virtual Capabilities
 
-MCP servers can be associated with agents to extend their tool capabilities. When an agent session starts, the platform can:
+MCP servers integrate into the capability system as "virtual capabilities". This allows agents to select MCP servers alongside built-in capabilities using the same UI.
 
-1. Connect to configured MCP servers
-2. Retrieve available tools from each server
-3. Make tools available to the agent's LLM
+### Capability ID Format
 
-Note: Agent-MCP server association is planned for a future release.
+MCP capabilities use a prefixed ID format:
+```
+mcp:{server_uuid}
+```
+
+Example: `mcp:01933b5a-0000-7000-8000-000000000501`
+
+### Tool Name Prefixing
+
+To avoid naming conflicts, MCP tools are prefixed with the server name:
+```
+mcp_{server_name}_{tool_name}
+```
+
+Example: If server `microsoft_learn` provides tool `search`, it becomes `mcp_microsoft_learn_search`.
+
+### Tool Discovery
+
+Tools are discovered from MCP servers via the `tools/list` JSON-RPC method:
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list"
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
+        "name": "search",
+        "description": "Search for content",
+        "inputSchema": { "type": "object", ... }
+      }
+    ]
+  }
+}
+```
+
+### Tool Caching
+
+Tools are cached with hybrid TTL strategy:
+- Tools are fetched on first access or when cache is stale (24h TTL)
+- Background refresh for commonly used servers
+- Force refresh available via API
+
+### Tool Execution
+
+MCP tools are executed via the `tools/call` JSON-RPC method:
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "search",
+    "arguments": { "query": "Azure functions" }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      { "type": "text", "text": "Search results..." }
+    ],
+    "isError": false
+  }
+}
+```
+
+### UI Integration
+
+In the capability selector UI, MCP capabilities are displayed with:
+- An "MCP" badge to distinguish them from built-in capabilities
+- Server name as the capability name
+- Server description as the capability description
+- List of available tools
+
+## Seed Data
+
+The following MCP server is seeded by default:
+
+| Name | URL | Description |
+|------|-----|-------------|
+| `microsoft_learn` | `https://learn.microsoft.com/api/mcp` | Microsoft Learn documentation server |
+
+A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this MCP server.

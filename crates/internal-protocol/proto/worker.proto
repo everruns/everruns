@@ -116,6 +116,10 @@ service WorkerService {
 
     // Resolve multiple images in a batch (more efficient for multimodal messages)
     rpc ResolveImages(ResolveImagesRequest) returns (ResolveImagesResponse);
+
+    // === MCP server operations ===
+    // Get MCP server info by name prefix (for tool execution)
+    rpc GetMcpServerByPrefix(GetMcpServerByPrefixRequest) returns (GetMcpServerByPrefixResponse);
 }
 
 // ============================================================================
@@ -737,4 +741,26 @@ message TaskNotification {
     optional int32 pending_count = 3;
     // Server timestamp when notification was generated
     Timestamp timestamp = 4;
+}
+
+// ============================================================================
+// MCP server types
+// ============================================================================
+
+// MCP server info needed for tool execution
+message McpServerInfo {
+    Uuid id = 1;
+    string name = 2;
+    string url = 3;
+    optional string api_key = 4;  // Decrypted by control plane
+    map<string, string> headers = 5;
+}
+
+// Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn_search")
+message GetMcpServerByPrefixRequest {
+    string server_prefix = 1;
+}
+
+message GetMcpServerByPrefixResponse {
+    optional McpServerInfo server = 1;
 }

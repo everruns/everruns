@@ -33,6 +33,7 @@ mod fake_crm;
 mod fake_financial;
 mod fake_warehouse;
 mod file_system;
+pub mod mcp;
 mod noop;
 mod research;
 mod sandbox;
@@ -43,6 +44,10 @@ mod web_fetch;
 
 // Re-export capabilities
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
+pub use mcp::{
+    McpCapability, MCP_CAPABILITY_PREFIX, is_mcp_capability, mcp_capability_id,
+    parse_mcp_capability_id,
+};
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,

@@ -509,6 +509,14 @@ impl StorageBackend {
         dispatch!(self, create_mcp_server, input)
     }
 
+    pub async fn create_mcp_server_with_id(
+        &self,
+        id: Uuid,
+        input: CreateMcpServerRow,
+    ) -> Result<Option<McpServerRow>> {
+        dispatch!(self, create_mcp_server_with_id, id, input)
+    }
+
     pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
         dispatch!(self, get_mcp_server, id)
     }
@@ -521,12 +529,24 @@ impl StorageBackend {
         dispatch!(self, list_mcp_servers)
     }
 
+    pub async fn list_active_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+        dispatch!(self, list_active_mcp_servers)
+    }
+
     pub async fn update_mcp_server(
         &self,
         id: Uuid,
         input: UpdateMcpServer,
     ) -> Result<Option<McpServerRow>> {
         dispatch!(self, update_mcp_server, id, input)
+    }
+
+    pub async fn update_mcp_server_tools(
+        &self,
+        id: Uuid,
+        input: UpdateMcpServerTools,
+    ) -> Result<Option<McpServerRow>> {
+        dispatch!(self, update_mcp_server_tools, id, input)
     }
 
     pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {

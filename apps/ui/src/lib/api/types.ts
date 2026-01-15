@@ -730,6 +730,8 @@ export interface Capability {
   system_prompt?: string;
   /** Tool definitions provided by this capability */
   tool_definitions?: ToolDefinition[];
+  /** Whether this is an MCP server capability */
+  is_mcp?: boolean;
 }
 
 // ============================================

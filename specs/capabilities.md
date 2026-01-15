@@ -58,6 +58,7 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 | `status` | CapabilityStatus | Availability status |
 | `icon` | string? | Icon name for UI rendering |
 | `category` | string? | Category for grouping in UI |
+| `is_mcp` | boolean | True if this is an MCP virtual capability |
 
 #### CapabilityId (String wrapper)
 
@@ -402,6 +403,37 @@ The system prompt instructs agents to use task management when:
 2. **Update immediately** - Mark tasks completed as soon as done, don't batch
 3. **Replace entire list** - Each `write_todos` call replaces the full list
 4. **Completion criteria** - Only mark `completed` when fully done (tests pass, no errors)
+
+### MCP Virtual Capabilities
+
+MCP servers (see `specs/mcp-servers.md`) are integrated as "virtual capabilities" alongside built-in capabilities. This allows agents to use MCP tools through the same capability selection UI.
+
+#### Capability ID Format
+
+MCP capabilities use a prefixed ID format:
+```
+mcp:{server_uuid}
+```
+
+Example: `mcp:01933b5a-0000-7000-8000-000000000501`
+
+#### How MCP Capabilities Work
+
+1. **Discovery**: When listing capabilities, active MCP servers are included with their cached tools
+2. **Selection**: Agents can select MCP capabilities just like built-in capabilities
+3. **Tool Execution**: MCP tools are prefixed with `mcp_{server_name}_` to avoid conflicts
+4. **UI Badge**: MCP capabilities display an "MCP" badge in the capability selector
+
+#### Key Differences from Built-in Capabilities
+
+| Aspect | Built-in | MCP |
+|--------|----------|-----|
+| Source | Rust code | Remote server |
+| Tool discovery | Compile-time | Runtime (cached) |
+| Execution | In-process | HTTP call |
+| Availability | Always | Depends on server status |
+
+See `specs/mcp-servers.md` for full MCP integration details.
 
 ### Capability Application Flow
 

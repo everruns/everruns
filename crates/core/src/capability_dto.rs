@@ -40,13 +40,20 @@ pub struct CapabilityInfo {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
     pub tool_definitions: Vec<ToolDefinition>,
+    /// Whether this is an MCP server capability (for UI badge)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_mcp: bool,
 }
 
 impl CapabilityInfo {
     /// Create a CapabilityInfo DTO from a core Capability trait object
     pub fn from_core(cap: &dyn crate::capabilities::Capability) -> Self {
+        // Check if this is an MCP capability by checking the ID prefix
+        let id_str = cap.id();
+        let is_mcp = id_str.starts_with("mcp:");
+
         Self {
-            id: CapabilityId::new(cap.id()),
+            id: CapabilityId::new(id_str),
             name: cap.name().to_string(),
             description: cap.description().to_string(),
             status: cap.status(),
@@ -54,6 +61,7 @@ impl CapabilityInfo {
             category: cap.category().map(|s| s.to_string()),
             system_prompt: cap.system_prompt_addition().map(|s| s.to_string()),
             tool_definitions: cap.tool_definitions(),
+            is_mcp,
         }
     }
 }
@@ -84,12 +92,33 @@ mod tests {
             category: Some("AI".to_string()),
             system_prompt: Some("You have research capabilities.".to_string()),
             tool_definitions: vec![],
+            is_mcp: false,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
         assert!(json.contains("\"id\":\"research\""));
         assert!(json.contains("\"status\":\"available\""));
         assert!(json.contains("\"system_prompt\":\"You have research capabilities.\""));
+        // is_mcp: false should be skipped in serialization
+        assert!(!json.contains("\"is_mcp\""));
+    }
+
+    #[test]
+    fn test_mcp_capability_info_serialization() {
+        let cap = CapabilityInfo {
+            id: CapabilityId::new("mcp:550e8400-e29b-41d4-a716-446655440000"),
+            name: "Microsoft Learn".to_string(),
+            description: "MCP Server for Microsoft documentation".to_string(),
+            status: CapabilityStatus::Available,
+            icon: Some("plug".to_string()),
+            category: Some("MCP Servers".to_string()),
+            system_prompt: None,
+            tool_definitions: vec![],
+            is_mcp: true,
+        };
+
+        let json = serde_json::to_string(&cap).unwrap();
+        assert!(json.contains("\"is_mcp\":true"));
     }
 
     #[test]
