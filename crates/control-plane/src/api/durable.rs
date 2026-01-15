@@ -1339,3 +1339,160 @@ pub async fn stream_workflow_sse(
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_durable_snapshot_serialization() {
+        let snapshot = DurableSnapshot {
+            health: HealthResponse {
+                status: "healthy".to_string(),
+                total_workers: 2,
+                active_workers: 2,
+                workers_accepting: 2,
+                total_capacity: 10,
+                current_load: 3,
+                load_percentage: 30.0,
+                pending_tasks: 5,
+                claimed_tasks: 3,
+                running_workflows: 1,
+                pending_workflows: 0,
+                dlq_size: 0,
+            },
+            workers: vec![],
+            workflows: WorkflowsListResponse {
+                data: vec![],
+                total: 0,
+            },
+            tasks: TasksListResponse {
+                data: vec![],
+                total: 0,
+            },
+            dlq: DlqListResponse {
+                data: vec![],
+                total: 0,
+            },
+            circuit_breakers: CircuitBreakersListResponse {
+                data: vec![],
+                total: 0,
+            },
+        };
+
+        let json = serde_json::to_string(&snapshot).unwrap();
+        assert!(json.contains("\"status\":\"healthy\""));
+        assert!(json.contains("\"active_workers\":2"));
+        assert!(json.contains("\"load_percentage\":30.0"));
+    }
+
+    #[test]
+    fn test_workflow_snapshot_serialization() {
+        let snapshot = WorkflowSnapshot {
+            workflow: WorkflowResponse {
+                id: Uuid::nil(),
+                workflow_type: "test_workflow".to_string(),
+                status: "running".to_string(),
+                input: serde_json::json!({"key": "value"}),
+                result: None,
+                error: None,
+                created_at: Utc::now(),
+                started_at: Some(Utc::now()),
+                completed_at: None,
+            },
+            events: vec![],
+        };
+
+        let json = serde_json::to_string(&snapshot).unwrap();
+        assert!(json.contains("\"workflow_type\":\"test_workflow\""));
+        assert!(json.contains("\"status\":\"running\""));
+        assert!(json.contains("\"events\":[]"));
+    }
+
+    #[test]
+    fn test_health_response_from_system_health() {
+        let health = SystemHealth {
+            total_workers: 5,
+            active_workers: 3,
+            workers_accepting: 2,
+            total_capacity: 50,
+            current_load: 10,
+            pending_tasks: 5,
+            claimed_tasks: 10,
+            running_workflows: 2,
+            pending_workflows: 1,
+            dlq_size: 0,
+        };
+
+        let response = HealthResponse::from(health);
+
+        assert_eq!(response.status, "healthy");
+        assert_eq!(response.total_workers, 5);
+        assert_eq!(response.active_workers, 3);
+        assert_eq!(response.load_percentage, 20.0); // 10/50 * 100
+    }
+
+    #[test]
+    fn test_health_status_degraded_when_no_active_workers() {
+        let health = SystemHealth {
+            total_workers: 5,
+            active_workers: 0,
+            workers_accepting: 0,
+            total_capacity: 0,
+            current_load: 0,
+            pending_tasks: 0,
+            claimed_tasks: 0,
+            running_workflows: 0,
+            pending_workflows: 0,
+            dlq_size: 0,
+        };
+
+        let response = HealthResponse::from(health);
+        assert_eq!(response.status, "degraded");
+    }
+
+    #[test]
+    fn test_health_status_warning_when_dlq_has_items() {
+        let health = SystemHealth {
+            total_workers: 2,
+            active_workers: 2,
+            workers_accepting: 2,
+            total_capacity: 10,
+            current_load: 0,
+            pending_tasks: 0,
+            claimed_tasks: 0,
+            running_workflows: 0,
+            pending_workflows: 0,
+            dlq_size: 5,
+        };
+
+        let response = HealthResponse::from(health);
+        assert_eq!(response.status, "warning");
+    }
+
+    #[test]
+    fn test_load_percentage_zero_when_no_capacity() {
+        let health = SystemHealth {
+            total_workers: 0,
+            active_workers: 0,
+            workers_accepting: 0,
+            total_capacity: 0,
+            current_load: 0,
+            pending_tasks: 0,
+            claimed_tasks: 0,
+            running_workflows: 0,
+            pending_workflows: 0,
+            dlq_size: 0,
+        };
+
+        let response = HealthResponse::from(health);
+        assert_eq!(response.load_percentage, 0.0);
+    }
+
+    #[test]
+    fn test_app_state_get_store_none() {
+        let state = AppState::new(None);
+        let result = state.get_store();
+        assert!(result.is_err());
+    }
+}

@@ -90,4 +90,65 @@ mod tests {
         assert_eq!(config.next_backoff(10000), 20000);
         assert_eq!(config.next_backoff(15000), 20000); // Capped
     }
+
+    #[test]
+    fn test_min_backoff_duration() {
+        let config = SseStreamConfig::realtime();
+        assert_eq!(config.min_backoff(), Duration::from_millis(100));
+
+        let config = SseStreamConfig::monitoring();
+        assert_eq!(config.min_backoff(), Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn test_default_is_realtime() {
+        let config = SseStreamConfig::default();
+        assert_eq!(config.min_backoff_ms, 100);
+        assert_eq!(config.max_backoff_ms, 500);
+    }
+
+    #[test]
+    fn test_config_is_copy() {
+        let config = SseStreamConfig::realtime();
+        let config2 = config; // Copy
+        assert_eq!(config.min_backoff_ms, config2.min_backoff_ms);
+    }
+
+    #[test]
+    fn test_exponential_backoff_sequence_realtime() {
+        let config = SseStreamConfig::realtime();
+        let mut backoff = config.min_backoff_ms;
+
+        // Sequence: 100 -> 200 -> 400 -> 500 (capped)
+        assert_eq!(backoff, 100);
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 200);
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 400);
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 500); // Capped
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 500); // Stays at max
+    }
+
+    #[test]
+    fn test_exponential_backoff_sequence_monitoring() {
+        let config = SseStreamConfig::monitoring();
+        let mut backoff = config.min_backoff_ms;
+
+        // Sequence: 1000 -> 2000 -> 4000 -> 8000 -> 16000 -> 20000 (capped)
+        assert_eq!(backoff, 1000);
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 2000);
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 4000);
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 8000);
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 16000);
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 20000); // Capped
+        backoff = config.next_backoff(backoff);
+        assert_eq!(backoff, 20000); // Stays at max
+    }
 }
