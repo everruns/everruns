@@ -888,14 +888,38 @@ case "$command" in
     echo "   Database: $DATABASE_URL"
     echo ""
 
-    # Check PostgreSQL is accessible
+    # Check PostgreSQL is accessible, start Docker if needed
     echo "1️⃣  Checking PostgreSQL connection..."
     if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
-      echo "   ❌ PostgreSQL not reachable at $DB_HOST:$DB_PORT"
-      echo "   Start PostgreSQL or Docker: ./scripts/dev.sh start"
-      exit 1
+      echo "   ⚠️  PostgreSQL not reachable, attempting to start via Docker..."
+      if resolve_docker_compose; then
+        ensure_docker_daemon || exit 1
+        cd "$PROJECT_ROOT/harness"
+        "${DOCKER_COMPOSE[@]}" up -d postgres
+        cd "$PROJECT_ROOT"
+        echo "   Waiting for PostgreSQL to be ready..."
+        for i in {1..30}; do
+          if pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+            break
+          fi
+          sleep 1
+        done
+        if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+          echo "   ❌ PostgreSQL failed to start"
+          exit 1
+        fi
+        # Update credentials for Docker postgres
+        DB_USER="${DB_USER:-everruns}"
+        DB_PASS="${DB_PASS:-everruns}"
+        export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+        echo "   ✅ Docker PostgreSQL started"
+      else
+        echo "   ❌ PostgreSQL not reachable and Docker not available"
+        exit 1
+      fi
+    else
+      echo "   ✅ PostgreSQL is ready"
     fi
-    echo "   ✅ PostgreSQL is ready"
 
     # Create/reset test database
     echo "2️⃣  Resetting test database '$DB_NAME'..."
@@ -908,31 +932,90 @@ case "$command" in
     sqlx migrate run --source crates/control-plane/migrations
     echo "   ✅ Migrations complete"
 
-    # Parse optional arguments
-    SAVE_ARG=""
+    echo ""
+    echo "4️⃣  Running db_concurrent_workers..."
+    cargo bench -p everruns-durable --bench db_concurrent_workers
+    echo ""
+    echo "5️⃣  Running db_workflow_throughput..."
+    cargo bench -p everruns-durable --bench db_workflow_throughput
+    echo ""
+    echo "✅ PostgreSQL benchmarks complete!"
+    echo "   Reports: target/benchmark-reports/"
+    ;;
+
+  durable-bench-db-save)
+    echo "📊 Running durable execution benchmarks (PostgreSQL, with checkpointing)..."
     MONIKER_ARG=""
-    shift || true
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        --save) SAVE_ARG="--save" ;;
-        --moniker) MONIKER_ARG="--moniker $2"; shift ;;
-        *) ;;
-      esac
-      shift || true
-    done
+    if [ -n "${2:-}" ]; then
+      MONIKER_ARG="--moniker $2"
+      echo "   Using moniker: $2"
+    fi
+    echo ""
+
+    # Database configuration
+    DB_HOST="${DB_HOST:-localhost}"
+    DB_PORT="${DB_PORT:-5432}"
+    DB_USER="${DB_USER:-postgres}"
+    DB_PASS="${DB_PASS:-postgres}"
+    DB_NAME="${DB_NAME:-everruns_test}"
+    export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+    echo "   Database: $DATABASE_URL"
+    echo ""
+
+    # Check PostgreSQL is accessible, start Docker if needed
+    echo "1️⃣  Checking PostgreSQL connection..."
+    if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+      echo "   ⚠️  PostgreSQL not reachable, attempting to start via Docker..."
+      if resolve_docker_compose; then
+        ensure_docker_daemon || exit 1
+        cd "$PROJECT_ROOT/harness"
+        "${DOCKER_COMPOSE[@]}" up -d postgres
+        cd "$PROJECT_ROOT"
+        echo "   Waiting for PostgreSQL to be ready..."
+        for i in {1..30}; do
+          if pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+            break
+          fi
+          sleep 1
+        done
+        if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+          echo "   ❌ PostgreSQL failed to start"
+          exit 1
+        fi
+        DB_USER="${DB_USER:-everruns}"
+        DB_PASS="${DB_PASS:-everruns}"
+        export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+        echo "   ✅ Docker PostgreSQL started"
+      else
+        echo "   ❌ PostgreSQL not reachable and Docker not available"
+        exit 1
+      fi
+    else
+      echo "   ✅ PostgreSQL is ready"
+    fi
+
+    # Create/reset test database
+    echo "2️⃣  Resetting test database '$DB_NAME'..."
+    PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" > /dev/null 2>&1 || true
+    PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_NAME;" > /dev/null 2>&1
+    echo "   ✅ Database reset"
+
+    # Run migrations
+    echo "3️⃣  Running migrations..."
+    sqlx migrate run --source crates/control-plane/migrations
+    echo "   ✅ Migrations complete"
 
     echo ""
     echo "4️⃣  Running db_concurrent_workers..."
-    cargo bench -p everruns-durable --bench db_concurrent_workers -- $SAVE_ARG $MONIKER_ARG
+    cargo bench -p everruns-durable --bench db_concurrent_workers -- --save $MONIKER_ARG
     echo ""
     echo "5️⃣  Running db_workflow_throughput..."
-    cargo bench -p everruns-durable --bench db_workflow_throughput -- $SAVE_ARG $MONIKER_ARG
+    cargo bench -p everruns-durable --bench db_workflow_throughput -- --save $MONIKER_ARG
     echo ""
-    echo "✅ PostgreSQL benchmarks complete!"
-    echo "   Reports:  target/benchmark-reports/"
-    if [ -n "$SAVE_ARG" ]; then
-      echo "   Checkpoints: crates/durable/benches/checkpoints/"
-    fi
+    echo "✅ PostgreSQL benchmarks complete with checkpoints saved!"
+    echo "   Reports:     target/benchmark-reports/"
+    echo "   Checkpoints: crates/durable/benches/checkpoints/"
     ;;
 
   help|*)
@@ -969,9 +1052,10 @@ Commands:
   docs-install Install docs dependencies
   logs        View Docker service logs
   clean       Clean build artifacts and Docker volumes
-  durable-bench      Run durable execution benchmarks (in-memory)
-  durable-bench-save Run benchmarks with checkpoint saving (optional: moniker)
-  durable-bench-db   Run benchmarks with PostgreSQL (resets test DB, runs migrations)
+  durable-bench          Run durable benchmarks (in-memory)
+  durable-bench-save     Run durable benchmarks with checkpointing (optional: moniker)
+  durable-bench-db       Run durable benchmarks (PostgreSQL, auto-starts Docker)
+  durable-bench-db-save  Run durable benchmarks (PostgreSQL) with checkpointing
   help        Show this help message
 
 Examples:
@@ -984,9 +1068,10 @@ Examples:
   $0 docs                  # Start docs dev server
   $0 durable-bench         # Run in-memory benchmarks
   $0 durable-bench-save    # Run in-memory benchmarks with checkpointing
-  $0 durable-bench-save ci-4cpu-8gb  # With custom moniker
-  $0 durable-bench-db      # Run PostgreSQL benchmarks (uses everruns_test DB)
-  $0 durable-bench-db --save  # With checkpointing
+  $0 durable-bench-save ci-4cpu-8gb      # With custom moniker
+  $0 durable-bench-db      # Run PostgreSQL benchmarks (auto-starts Docker if needed)
+  $0 durable-bench-db-save # Run PostgreSQL benchmarks with checkpointing
+  $0 durable-bench-db-save ci-4cpu-8gb   # With custom moniker
   $0 stop-all              # Stop everything
 EOF
     ;;
