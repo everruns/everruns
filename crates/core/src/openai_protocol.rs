@@ -198,6 +198,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
             temperature: config.temperature,
             max_tokens: config.max_tokens,
             stream: true,
+            stream_options: Some(OpenAiStreamOptions { include_usage: true }),
             tools,
             reasoning_effort: config.reasoning_effort.clone(),
         };
@@ -390,10 +391,18 @@ struct OpenAiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
     stream: bool,
+    /// Request usage info in streaming response (required for token counts)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_options: Option<OpenAiStreamOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<OpenAiTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAiStreamOptions {
+    include_usage: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
