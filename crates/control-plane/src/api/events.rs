@@ -13,6 +13,7 @@ use everruns_core::{Event, EventListener};
 use serde::Deserialize;
 
 use super::common::ListResponse;
+use super::sse::SseStreamConfig;
 use crate::services::EventService;
 use futures::{
     StreamExt,
@@ -116,11 +117,8 @@ pub async fn stream_sse(
     let event_service = state.event_service.clone();
     let initial_since_id = query.since_id;
 
-    // Backoff configuration
-    // Keep max backoff low (500ms) to ensure responsive event delivery
-    // The backoff resets to MIN when new events arrive
-    const MIN_BACKOFF_MS: u64 = 100;
-    const MAX_BACKOFF_MS: u64 = 500;
+    // Use realtime config for session events (fast updates for interactive UX)
+    let config = SseStreamConfig::realtime();
 
     // State for stream: (last_id, backoff_ms, sent_connected)
     #[derive(Clone)]
@@ -128,12 +126,14 @@ pub async fn stream_sse(
         last_id: Option<Uuid>,
         backoff_ms: u64,
         sent_connected: bool,
+        config: SseStreamConfig,
     }
 
     let initial_state = StreamState {
         last_id: initial_since_id,
-        backoff_ms: MIN_BACKOFF_MS,
+        backoff_ms: config.min_backoff_ms,
         sent_connected: false,
+        config,
     };
 
     // Create stream that replays events from database
@@ -190,8 +190,9 @@ pub async fn stream_sse(
                     // Reset backoff on new events
                     let new_state = StreamState {
                         last_id: new_last_id,
-                        backoff_ms: MIN_BACKOFF_MS,
+                        backoff_ms: state.config.min_backoff_ms,
                         sent_connected: true,
+                        config: state.config,
                     };
                     Some((stream::iter(sse_events), new_state))
                 }
@@ -200,7 +201,7 @@ pub async fn stream_sse(
                     tokio::time::sleep(Duration::from_millis(state.backoff_ms)).await;
 
                     // Increase backoff for next iteration (double, up to max)
-                    let new_backoff = (state.backoff_ms * 2).min(MAX_BACKOFF_MS);
+                    let new_backoff = state.config.next_backoff(state.backoff_ms);
                     let new_state = StreamState {
                         backoff_ms: new_backoff,
                         ..state

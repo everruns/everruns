@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useWorkflow, useWorkflowEvents, useCancelWorkflow, useSignalWorkflow } from "@/hooks";
+import { useWorkflow, useWorkflowEvents, useWorkflowSSE, useCancelWorkflow, useSignalWorkflow } from "@/hooks";
 import type { WorkflowStatus, WorkflowEvent } from "@/lib/api/types";
 import {
   AlertTriangle,
@@ -163,6 +163,10 @@ function EventTimeline({ events }: { events: WorkflowEvent[] }) {
 
 export default function WorkflowDetailPage({ params }: { params: Promise<{ workflowId: string }> }) {
   const { workflowId } = use(params);
+
+  // Connect to workflow-specific SSE for real-time updates
+  useWorkflowSSE(workflowId);
+
   const { data: workflow, isLoading: workflowLoading, error: workflowError, refetch } = useWorkflow(workflowId);
   const { data: events, isLoading: eventsLoading } = useWorkflowEvents(workflowId);
   const cancelMutation = useCancelWorkflow();
