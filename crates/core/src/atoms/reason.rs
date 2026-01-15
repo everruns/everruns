@@ -491,6 +491,13 @@ where
 
         // 13. Convert completion metadata to TokenUsage
         let usage = completion_metadata.as_ref().and_then(|meta| {
+            tracing::debug!(
+                prompt_tokens = ?meta.prompt_tokens,
+                completion_tokens = ?meta.completion_tokens,
+                cache_read = ?meta.cache_read_tokens,
+                cache_creation = ?meta.cache_creation_tokens,
+                "ReasonAtom: LLM completion metadata"
+            );
             match (meta.prompt_tokens, meta.completion_tokens) {
                 (Some(input), Some(output)) => Some(TokenUsage::with_cache(
                     input,
@@ -501,6 +508,10 @@ where
                 _ => None,
             }
         });
+        tracing::debug!(
+            usage = ?usage,
+            "ReasonAtom: Token usage for llm.generation event"
+        );
 
         // 14. Emit llm.generation event
         let event_context = EventContext::from_atom_context(context);
