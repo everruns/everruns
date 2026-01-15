@@ -77,3 +77,11 @@ harness = false
 [[bench]]
 name = "cold_start_latency"
 harness = false
+
+[[bench]]
+name = "db_concurrent_workers"
+harness = false
+
+[[bench]]
+name = "db_workflow_throughput"
+harness = false
