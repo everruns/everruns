@@ -479,8 +479,8 @@ impl AgentRunner for DurableRunner {
 
         let mut store = self.store.lock().await;
 
-        // Check if workflow already exists (idempotency)
-        match store.get_workflow_status(workflow_id).await {
+        // Check if workflow already exists
+        let workflow_exists = match store.get_workflow_status(workflow_id).await {
             Ok((status, _, _)) => {
                 if !status.is_terminal() {
                     info!(
@@ -491,6 +491,14 @@ impl AgentRunner for DurableRunner {
                     );
                     return Ok(());
                 }
+                // Workflow exists but is terminal - we'll reset it for a new turn
+                info!(
+                    session_id = %session_id,
+                    workflow_id = %workflow_id,
+                    status = ?status,
+                    "Existing workflow is terminal, resetting for new turn"
+                );
+                true
             }
             Err(e) => {
                 // Check if it's a not found error (expected for new workflows)
@@ -498,47 +506,70 @@ impl AgentRunner for DurableRunner {
                 if !err_str.contains("not found") && !err_str.contains("NOT_FOUND") {
                     return Err(anyhow::anyhow!("Failed to check workflow status: {}", e));
                 }
+                false
             }
-        }
-
-        // Create new workflow
-        store
-            .create_workflow(workflow_id, "turn_workflow", input_json.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to create workflow: {}", e))?;
-
-        // Append WorkflowStarted event
-        let started_event = WorkflowEvent::WorkflowStarted {
-            input: input_json.clone(),
         };
-        let sequence = store
-            .append_events(workflow_id, 0, vec![started_event])
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to append WorkflowStarted event: {}", e))?;
 
         // Enqueue the initial activity (input processing)
         let activity_id = format!("input_{}", Uuid::now_v7());
-        store
-            .enqueue_task(
-                workflow_id,
-                activity_id.clone(),
-                "process_input".to_string(),
-                input_json.clone(),
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
 
-        // Append ActivityScheduled event
-        let scheduled_event = WorkflowEvent::ActivityScheduled {
-            activity_id,
-            activity_type: "process_input".to_string(),
-            input: input_json,
-            options: ActivityOptions::default(),
-        };
-        let _ = store
-            .append_events(workflow_id, sequence, vec![scheduled_event])
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to append ActivityScheduled event: {}", e))?;
+        if workflow_exists {
+            // Reset existing workflow to pending for new turn
+            store
+                .update_workflow_status(workflow_id, WorkflowStatus::Pending, None, None)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to reset workflow status: {}", e))?;
+
+            // Enqueue task for the new turn (skip appending events for reset workflows
+            // as the task input contains all necessary information)
+            store
+                .enqueue_task(
+                    workflow_id,
+                    activity_id,
+                    "process_input".to_string(),
+                    input_json,
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
+        } else {
+            // Create new workflow
+            store
+                .create_workflow(workflow_id, "turn_workflow", input_json.clone())
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to create workflow: {}", e))?;
+
+            // Append WorkflowStarted event
+            let started_event = WorkflowEvent::WorkflowStarted {
+                input: input_json.clone(),
+            };
+            let sequence = store
+                .append_events(workflow_id, 0, vec![started_event])
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to append WorkflowStarted event: {}", e))?;
+
+            // Enqueue task
+            store
+                .enqueue_task(
+                    workflow_id,
+                    activity_id.clone(),
+                    "process_input".to_string(),
+                    input_json.clone(),
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
+
+            // Append ActivityScheduled event
+            let scheduled_event = WorkflowEvent::ActivityScheduled {
+                activity_id,
+                activity_type: "process_input".to_string(),
+                input: input_json,
+                options: ActivityOptions::default(),
+            };
+            let _ = store
+                .append_events(workflow_id, sequence, vec![scheduled_event])
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to append ActivityScheduled event: {}", e))?;
+        }
 
         info!(
             session_id = %session_id,
@@ -609,5 +640,145 @@ mod tests {
         assert_eq!(input.session_id, parsed.session_id);
         assert_eq!(input.agent_id, parsed.agent_id);
         assert_eq!(input.input_message_id, parsed.input_message_id);
+    }
+
+    /// Test that start_run works for a new session (first message)
+    #[tokio::test]
+    async fn test_start_run_creates_new_workflow() {
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = Uuid::now_v7();
+        let agent_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+
+        // First call should create a new workflow
+        runner
+            .start_run(session_id, agent_id, message_id)
+            .await
+            .expect("First start_run should succeed");
+
+        // Workflow should be running
+        assert!(runner.is_running(session_id).await);
+    }
+
+    /// Test that start_run skips if workflow is already running
+    #[tokio::test]
+    async fn test_start_run_skips_if_running() {
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = Uuid::now_v7();
+        let agent_id = Uuid::now_v7();
+        let message_id1 = Uuid::now_v7();
+        let message_id2 = Uuid::now_v7();
+
+        // First message
+        runner
+            .start_run(session_id, agent_id, message_id1)
+            .await
+            .expect("First start_run should succeed");
+
+        assert!(runner.is_running(session_id).await);
+
+        // Second message while still running - should skip (not error)
+        runner
+            .start_run(session_id, agent_id, message_id2)
+            .await
+            .expect("Second start_run should skip gracefully");
+
+        // Still running (not double-started)
+        assert!(runner.is_running(session_id).await);
+    }
+
+    /// Test that start_run resets a completed workflow for a second message
+    ///
+    /// This is the key test for the second message bug fix:
+    /// When a workflow is completed and a new message arrives, the workflow
+    /// should be reset to pending so it can process the new message.
+    #[tokio::test]
+    async fn test_start_run_resets_completed_workflow() {
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = Uuid::now_v7();
+        let agent_id = Uuid::now_v7();
+        let message_id1 = Uuid::now_v7();
+        let message_id2 = Uuid::now_v7();
+
+        // First message - creates workflow
+        runner
+            .start_run(session_id, agent_id, message_id1)
+            .await
+            .expect("First start_run should succeed");
+
+        assert!(runner.is_running(session_id).await);
+
+        // Simulate workflow completion by updating status to Completed
+        {
+            let mut store = runner.store.lock().await;
+            store
+                .update_workflow_status(session_id, WorkflowStatus::Completed, None, None)
+                .await
+                .expect("Should update workflow status");
+        }
+
+        // Workflow should now be terminal (not running)
+        assert!(
+            !runner.is_running(session_id).await,
+            "Workflow should be completed"
+        );
+
+        // Second message - should reset and create new turn
+        // This is the bug fix - previously this would fail because it tried
+        // to create a workflow with the same ID
+        runner
+            .start_run(session_id, agent_id, message_id2)
+            .await
+            .expect("Second start_run should succeed (reset workflow)");
+
+        // Workflow should be running again (reset to pending, new task enqueued)
+        assert!(
+            runner.is_running(session_id).await,
+            "Workflow should be running again after reset"
+        );
+    }
+
+    /// Test that start_run resets a failed workflow for retry
+    #[tokio::test]
+    async fn test_start_run_resets_failed_workflow() {
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = Uuid::now_v7();
+        let agent_id = Uuid::now_v7();
+        let message_id1 = Uuid::now_v7();
+        let message_id2 = Uuid::now_v7();
+
+        // First message
+        runner
+            .start_run(session_id, agent_id, message_id1)
+            .await
+            .expect("First start_run should succeed");
+
+        // Simulate workflow failure
+        {
+            let mut store = runner.store.lock().await;
+            store
+                .update_workflow_status(
+                    session_id,
+                    WorkflowStatus::Failed,
+                    None,
+                    Some("Test error".to_string()),
+                )
+                .await
+                .expect("Should update workflow status");
+        }
+
+        assert!(!runner.is_running(session_id).await);
+
+        // Second message - should reset failed workflow
+        runner
+            .start_run(session_id, agent_id, message_id2)
+            .await
+            .expect("Second start_run should reset failed workflow");
+
+        assert!(runner.is_running(session_id).await);
     }
 }
