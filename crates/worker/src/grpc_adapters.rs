@@ -9,10 +9,10 @@
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
-    SessionFileStore, SessionStore,
+    AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
 };
 use everruns_core::{Agent, Message, Session};
 use everruns_internal_protocol::proto;
@@ -116,23 +116,27 @@ fn non_empty_string(s: String) -> Option<String> {
 }
 
 // ============================================================================
-// MessageStore implementation
+// MessageRetriever implementation
 // ============================================================================
 
-/// gRPC-backed message store
-pub struct GrpcMessageStore {
+/// gRPC-backed message retriever
+///
+/// Retrieves conversation messages via gRPC from the control-plane.
+/// Message storage is handled via EventEmitter (messages are stored as events).
+pub struct GrpcMessageRetriever {
     client: GrpcClient,
 }
 
-impl GrpcMessageStore {
+impl GrpcMessageRetriever {
     pub fn new(client: GrpcClient) -> Self {
         Self { client }
     }
-}
 
-#[async_trait]
-impl MessageStore for GrpcMessageStore {
-    async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+    /// Add a new message via gRPC
+    ///
+    /// Note: This is provided for API layer convenience.
+    /// Messages are stored via gRPC call to control-plane.
+    pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
         let mut client = self.client.inner.lock().await;
 
         // Convert content to prost ListValue
@@ -173,14 +177,10 @@ impl MessageStore for GrpcMessageStore {
 
         proto_message_to_message(proto_msg)
     }
+}
 
-    async fn store(&self, _session_id: Uuid, _message: Message) -> Result<()> {
-        // No-op: message.agent events are emitted by ReasonAtom with proper turn context.
-        // This must match DbMessageStore behavior to prevent duplicate events.
-        // The actual storage happens via EventEmitter when ReasonAtom emits the message.agent event.
-        Ok(())
-    }
-
+#[async_trait]
+impl MessageRetriever for GrpcMessageRetriever {
     async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
         // Load all messages and find the one we want
         // TODO: Add a specific get_message RPC

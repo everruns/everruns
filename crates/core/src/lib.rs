@@ -4,7 +4,8 @@
 // of an agentic loop (LLM call → tool execution → repeat).
 //
 // Key design decisions:
-// - Uses traits (MessageStore, ToolExecutor) for pluggable backends
+// - Uses traits (MessageRetriever, ToolExecutor) for pluggable backends
+// - MessageRetriever is retrieval-only; messages are stored via EventEmitter
 // - Can be decomposed into steps for durable activity execution
 // - Configuration via RuntimeAgent (can be built from Agent entity or created directly)
 // - Tools are defined via a Tool trait for flexibility (function-style tools)
@@ -43,6 +44,7 @@ pub mod capabilities;
 pub mod error;
 pub mod llm_driver_registry;
 pub mod message;
+pub mod message_retriever;
 pub mod openai_protocol;
 pub mod runtime_agent;
 pub mod tools;
@@ -64,10 +66,11 @@ pub use message::{
     ContentPart, ContentType, Controls, ImageContentPart, InputContentPart, Message, MessageRole,
     ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
 };
+pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
-    NoopEventEmitter, SessionFileStore, SessionStore, ToolContext, ToolExecutor,
+    EventEmitter, LlmProviderStore, ModelWithProvider, NoopEventEmitter, SessionFileStore,
+    SessionStore, ToolContext, ToolExecutor,
 };
 
 // Event listener re-exports

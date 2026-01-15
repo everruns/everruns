@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use everruns_core::{
-    GetCurrentTimeTool, Message, MessageRole,
-    memory::InMemoryMessageStore,
+    GetCurrentTimeTool, Message, MessageRetriever, MessageRole,
+    memory::InMemoryMessageRetriever,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
 };
@@ -284,10 +284,8 @@ async fn test_multiple_tools_in_registry() {
 // This specifically tests the bug fix where tool_calls were not being persisted.
 
 #[tokio::test]
-async fn test_message_store_preserves_tool_calls() {
-    use everruns_core::traits::MessageStore;
-
-    let store = InMemoryMessageStore::new();
+async fn test_message_retriever_preserves_tool_calls() {
+    let store = InMemoryMessageRetriever::new();
     let session_id = Uuid::now_v7();
 
     // Create an assistant message with tool calls (the critical case)
@@ -325,10 +323,8 @@ async fn test_message_store_preserves_tool_calls() {
 }
 
 #[tokio::test]
-async fn test_message_store_full_tool_conversation() {
-    use everruns_core::traits::MessageStore;
-
-    let store = InMemoryMessageStore::new();
+async fn test_message_retriever_full_tool_conversation() {
+    let store = InMemoryMessageRetriever::new();
     let session_id = Uuid::now_v7();
 
     // Simulate a full tool-calling conversation:
@@ -397,10 +393,8 @@ async fn test_message_store_full_tool_conversation() {
 }
 
 #[tokio::test]
-async fn test_message_store_parallel_tool_calls() {
-    use everruns_core::traits::MessageStore;
-
-    let store = InMemoryMessageStore::new();
+async fn test_message_retriever_parallel_tool_calls() {
+    let store = InMemoryMessageRetriever::new();
     let session_id = Uuid::now_v7();
 
     // Create an assistant message with multiple parallel tool calls

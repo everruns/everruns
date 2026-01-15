@@ -108,7 +108,7 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - Individual operations for messages, files, providers
 
 2. **gRPC Client Adapters** (in worker crate):
-   - `GrpcMessageStore` - Implements `MessageStore` trait via gRPC
+   - `GrpcMessageRetriever` - Implements `MessageRetriever` trait via gRPC
    - `GrpcAgentStore` - Implements `AgentStore` trait via gRPC
    - `GrpcSessionStore` - Implements `SessionStore` trait via gRPC
    - `GrpcLlmProviderStore` - Implements `LlmProviderStore` trait via gRPC
@@ -173,7 +173,7 @@ sequenceDiagram
 The core crate provides DB-agnostic agent abstractions with pluggable backends:
 
 1. **Trait-Based Design**:
-   - `MessageStore` - Load/store conversation messages (add, get, list methods)
+   - `MessageRetriever` - Retrieve conversation messages (get, load methods). Retrieval-only; messages are stored via EventEmitter.
    - `LlmProviderStore` - Resolve LLM models and providers
    - `ToolExecutor` - Execute tool calls
    - `AgentStore` - Load agent configurations
@@ -192,7 +192,7 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
    - `exec_id` - Unique identifier for this atom execution
 
 4. **In-Memory Implementations** (for testing/examples):
-   - `InMemoryMessageStore`
+   - `InMemoryMessageRetriever`
    - In-memory stores for testing: `InMemoryAgentStore`, `InMemorySessionStore`, `InMemoryLlmProviderStore`
 
 ### OpenAI Provider (`everruns-openai`)
@@ -376,7 +376,8 @@ No direct database access from transport layer handlers.
 2. **Core Layer** (`core/` → `everruns-core`):
    - Contains shared domain types used across layers (e.g., `ContentPart`, `Controls`, `Message`)
    - Contains domain entity types (e.g., `Agent`, `Session`, `LlmProvider`, `Event`, `Capability`)
-   - Provides trait definitions (`MessageStore`, `EventEmitter`, `LlmProvider` trait, `ToolExecutor`)
+   - Provides trait definitions (`MessageRetriever`, `EventEmitter`, `LlmProvider` trait, `ToolExecutor`)
+   - `MessageRetriever` is retrieval-only; messages are stored via `EventEmitter`
    - Provides tool types (`ToolDefinition`, `ToolCall`, `ToolResult`, `BuiltinTool`)
    - Domain types are DB-agnostic and serializable
    - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`

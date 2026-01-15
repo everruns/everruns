@@ -18,25 +18,28 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::message::Message;
-use crate::traits::{
-    AgentStore, InputMessage, LlmProviderStore, MessageStore, SessionStore, ToolExecutor,
-};
+use crate::message_retriever::{InputMessage, MessageRetriever};
+use crate::traits::{AgentStore, LlmProviderStore, SessionStore, ToolExecutor};
 use chrono::Utc;
 
 // ============================================================================
-// InMemoryMessageStore - Stores messages in memory
+// InMemoryMessageRetriever - In-memory message storage for testing
 // ============================================================================
 
-/// In-memory message store
+/// In-memory message retriever
 ///
 /// Stores messages in a HashMap keyed by session ID.
+/// Implements the `MessageRetriever` trait for retrieval operations.
+///
+/// Note: Write operations (add, store) are provided as inherent methods
+/// for testing purposes. In production, messages are stored via EventEmitter.
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryMessageStore {
+pub struct InMemoryMessageRetriever {
     messages: Arc<RwLock<HashMap<Uuid, Vec<Message>>>>,
 }
 
-impl InMemoryMessageStore {
-    /// Create a new in-memory message store
+impl InMemoryMessageRetriever {
+    /// Create a new in-memory message retriever
     pub fn new() -> Self {
         Self {
             messages: Arc::new(RwLock::new(HashMap::new())),
@@ -62,11 +65,12 @@ impl InMemoryMessageStore {
     pub async fn seed(&self, session_id: Uuid, messages: Vec<Message>) {
         self.messages.write().await.insert(session_id, messages);
     }
-}
 
-#[async_trait]
-impl MessageStore for InMemoryMessageStore {
-    async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+    /// Add a new message and return it with generated ID (for testing)
+    ///
+    /// Note: In production, messages are stored via EventService.
+    /// This method is provided for test setup and in-memory usage.
+    pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
         let message = Message {
             id: Uuid::now_v7(),
             role: input.role,
@@ -86,16 +90,11 @@ impl MessageStore for InMemoryMessageStore {
         Ok(message)
     }
 
-    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
-        Ok(self
-            .messages
-            .read()
-            .await
-            .get(&session_id)
-            .and_then(|messages| messages.iter().find(|m| m.id == message_id).cloned()))
-    }
-
-    async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
+    /// Store an existing message (for testing)
+    ///
+    /// Note: In production, messages are stored via EventEmitter.
+    /// This method is provided for test setup and in-memory usage.
+    pub async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
         self.messages
             .write()
             .await
@@ -103,6 +102,18 @@ impl MessageStore for InMemoryMessageStore {
             .or_default()
             .push(message);
         Ok(())
+    }
+}
+
+#[async_trait]
+impl MessageRetriever for InMemoryMessageRetriever {
+    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+        Ok(self
+            .messages
+            .read()
+            .await
+            .get(&session_id)
+            .and_then(|messages| messages.iter().find(|m| m.id == message_id).cloned()))
     }
 
     async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
@@ -664,8 +675,8 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_in_memory_message_store() {
-        let store = InMemoryMessageStore::new();
+    async fn test_in_memory_message_retriever() {
+        let store = InMemoryMessageRetriever::new();
         let session_id = Uuid::now_v7();
 
         store
@@ -679,11 +690,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_in_memory_message_store_add_and_get() {
-        let store = InMemoryMessageStore::new();
+    async fn test_in_memory_message_retriever_add_and_get() {
+        let store = InMemoryMessageRetriever::new();
         let session_id = Uuid::now_v7();
 
-        // Add a message using the new add method
+        // Add a message using the add method
         let message = store
             .add(session_id, InputMessage::user("Hello via add"))
             .await
@@ -699,17 +710,13 @@ mod tests {
         assert!(missing.is_none());
     }
 
-    /// Regression test: MessageStore::add must return message with ID usable for get()
+    /// Regression test: add() must return message with ID usable for get()
     ///
     /// This test documents a critical invariant: the ID in the message returned by
     /// add() must match the ID stored internally, so that get(returned_id) succeeds.
-    ///
-    /// Bug fixed: DirectMessageStore::add was returning event.id instead of message.id,
-    /// causing get() to fail because load() reconstructs messages from event payloads
-    /// which contain the original message.id.
     #[tokio::test]
-    async fn test_message_store_add_returns_consistent_id() {
-        let store = InMemoryMessageStore::new();
+    async fn test_message_retriever_add_returns_consistent_id() {
+        let store = InMemoryMessageRetriever::new();
         let session_id = Uuid::now_v7();
 
         // Add a message

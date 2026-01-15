@@ -1,18 +1,22 @@
-// Event-based MessageStore implementation
+// Event-based MessageRetriever implementation
 //
-// This module implements the core MessageStore trait using the events table
+// Design decision: MessageRetriever is retrieval-only.
+// Messages are stored via EventService (message.user, message.agent events).
+// This trait provides read access for building LLM context.
+//
+// This module implements the core MessageRetriever trait using the events table
 // as the sole source of truth for conversation messages.
 //
-// Messages are stored as typed events and reconstructed from the event data when loaded.
+// Messages are reconstructed from typed events when loaded.
 
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::{
-    AgentLoopError, ContentPart, Event, EventData, Message, MessageRole, Result,
+    AgentLoopError, ContentPart, Event, EventData, InputMessage, Message, MessageRetriever,
+    MessageRole, Result,
     events::{
         EventContext, EventRequest, MessageAgentData, MessageUserData, ToolCallCompletedData,
     },
-    traits::{InputMessage, MessageStore},
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -21,29 +25,33 @@ use super::StorageBackend;
 use crate::EventService;
 
 // ============================================================================
-// DbMessageStore - Stores messages as events
+// DbMessageRetriever - Retrieves messages from events
 // ============================================================================
 
-/// Event-based message store
+/// Event-based message retriever
 ///
-/// Stores conversation messages as typed events in the events table.
-/// Used by activities to load/store messages during workflow execution.
+/// Retrieves conversation messages reconstructed from events in the events table.
+/// Used by activities to load messages during workflow execution.
+///
+/// Note: Message creation happens via EventService, not this struct.
+/// The `add` method is provided for API layer convenience.
 #[derive(Clone)]
-pub struct DbMessageStore {
+pub struct DbMessageRetriever {
     db: Arc<StorageBackend>,
     event_service: EventService,
 }
 
-impl DbMessageStore {
+impl DbMessageRetriever {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         let event_service = EventService::new(db.clone());
         Self { db, event_service }
     }
-}
 
-#[async_trait]
-impl MessageStore for DbMessageStore {
-    async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+    /// Add a new message and store it as an event
+    ///
+    /// Note: This is provided for API layer convenience.
+    /// Messages are stored via EventService as typed events.
+    pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
         // Create the message
         let message = Message {
             id: Uuid::now_v7(),
@@ -79,17 +87,13 @@ impl MessageStore for DbMessageStore {
 
         Ok(message)
     }
+}
 
+#[async_trait]
+impl MessageRetriever for DbMessageRetriever {
     async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
         let messages = self.load(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))
-    }
-
-    async fn store(&self, _session_id: Uuid, _message: Message) -> Result<()> {
-        // No-op: message.agent events are emitted by ReasonAtom with proper turn context.
-        // This method exists for trait compatibility with InMemoryMessageStore (used in tests).
-        // The actual storage happens via EventEmitter when ReasonAtom emits the message.agent event.
-        Ok(())
     }
 
     async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
@@ -194,9 +198,9 @@ fn tool_call_to_message(data: ToolCallCompletedData) -> Message {
 // Factory
 // ============================================================================
 
-/// Create a database-backed message store
-pub fn create_db_message_store(db: Arc<StorageBackend>) -> DbMessageStore {
-    DbMessageStore::new(db)
+/// Create a database-backed message retriever
+pub fn create_db_message_retriever(db: Arc<StorageBackend>) -> DbMessageRetriever {
+    DbMessageRetriever::new(db)
 }
 
 // ============================================================================

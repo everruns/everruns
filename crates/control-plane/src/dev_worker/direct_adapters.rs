@@ -11,13 +11,13 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest, MessageAgentData, MessageUserData};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, EventEmitter, InputMessage, LlmProviderStore, MessageStore, ModelWithProvider,
-    SessionFileStore, SessionStore,
+    AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
 };
 use everruns_core::{
     Agent, AgentStatus, ContentPart, LlmProviderType, Message, MessageRole, Session, SessionStatus,
     ToolResultContentPart,
 };
+use everruns_core::{InputMessage, MessageRetriever};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -141,23 +141,27 @@ impl SessionStore for DirectSessionStore {
 }
 
 // ============================================================================
-// DirectMessageStore
+// DirectMessageRetriever
 // ============================================================================
 
-/// Direct message store using StorageBackend
-pub struct DirectMessageStore {
+/// Direct message retriever using StorageBackend
+///
+/// Retrieves messages reconstructed from events.
+/// Message storage is handled via EventService (messages are stored as events).
+pub struct DirectMessageRetriever {
     event_service: Arc<EventService>,
 }
 
-impl DirectMessageStore {
+impl DirectMessageRetriever {
     pub fn new(_db: Arc<StorageBackend>, event_service: Arc<EventService>) -> Self {
         Self { event_service }
     }
-}
 
-#[async_trait]
-impl MessageStore for DirectMessageStore {
-    async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+    /// Add a new message and store it as an event
+    ///
+    /// Note: This is provided for API layer convenience.
+    /// Messages are stored via EventService as typed events.
+    pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
         use everruns_core::EventData;
         use everruns_core::events::EventContext;
 
@@ -207,14 +211,10 @@ impl MessageStore for DirectMessageStore {
 
         Ok(message)
     }
+}
 
-    async fn store(&self, _session_id: Uuid, _message: Message) -> Result<()> {
-        // No-op: message.agent events are emitted by ReasonAtom with proper turn context.
-        // This must match DbMessageStore behavior to prevent duplicate events.
-        // The actual storage happens via EventEmitter when ReasonAtom emits the message.agent event.
-        Ok(())
-    }
-
+#[async_trait]
+impl MessageRetriever for DirectMessageRetriever {
     async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
         let messages = self.load(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))

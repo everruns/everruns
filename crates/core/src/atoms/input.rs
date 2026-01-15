@@ -12,7 +12,8 @@ use super::{Atom, AtomContext};
 use crate::error::{AgentLoopError, Result};
 use crate::events::{EventContext, EventRequest, InputReceivedData};
 use crate::message::Message;
-use crate::traits::{EventEmitter, MessageStore};
+use crate::message_retriever::MessageRetriever;
+use crate::traits::EventEmitter;
 
 // ============================================================================
 // Input and Output Types
@@ -39,7 +40,7 @@ pub struct InputAtomResult {
 /// Atom that records user input and starts a turn
 ///
 /// This atom:
-/// 1. Retrieves the user message from the message store using input_message_id
+/// 1. Retrieves the user message from the message retriever using input_message_id
 /// 2. Emits input.received event
 /// 3. Returns the message for downstream processing
 ///
@@ -47,22 +48,22 @@ pub struct InputAtomResult {
 /// This atom just retrieves it and prepares for the turn.
 pub struct InputAtom<M, E>
 where
-    M: MessageStore,
+    M: MessageRetriever,
     E: EventEmitter,
 {
-    message_store: M,
+    message_retriever: M,
     event_emitter: E,
 }
 
 impl<M, E> InputAtom<M, E>
 where
-    M: MessageStore,
+    M: MessageRetriever,
     E: EventEmitter,
 {
     /// Create a new InputAtom
-    pub fn new(message_store: M, event_emitter: E) -> Self {
+    pub fn new(message_retriever: M, event_emitter: E) -> Self {
         Self {
-            message_store,
+            message_retriever,
             event_emitter,
         }
     }
@@ -71,7 +72,7 @@ where
 #[async_trait]
 impl<M, E> Atom for InputAtom<M, E>
 where
-    M: MessageStore + Send + Sync,
+    M: MessageRetriever + Send + Sync,
     E: EventEmitter + Send + Sync,
 {
     type Input = InputAtomInput;
@@ -92,9 +93,9 @@ where
             "InputAtom: retrieving user message"
         );
 
-        // Retrieve the user message from the store
+        // Retrieve the user message from the retriever
         let message = self
-            .message_store
+            .message_retriever
             .get(context.session_id, context.input_message_id)
             .await?
             .ok_or_else(|| {
@@ -142,25 +143,26 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::InMemoryMessageStore;
-    use crate::traits::{InputMessage, NoopEventEmitter};
+    use crate::memory::InMemoryMessageRetriever;
+    use crate::message_retriever::InputMessage;
+    use crate::traits::NoopEventEmitter;
     use uuid::Uuid;
 
     #[tokio::test]
     async fn test_input_atom_retrieves_message() {
-        let store = InMemoryMessageStore::new();
+        let retriever = InMemoryMessageRetriever::new();
         let event_emitter = NoopEventEmitter;
         let session_id = Uuid::now_v7();
         let turn_id = Uuid::now_v7();
 
-        // Add a user message to the store
-        let user_message = store
+        // Add a user message to the retriever
+        let user_message = retriever
             .add(session_id, InputMessage::user("Hello, world!"))
             .await
             .unwrap();
 
         let context = AtomContext::new(session_id, turn_id, user_message.id);
-        let atom = InputAtom::new(store, event_emitter);
+        let atom = InputAtom::new(retriever, event_emitter);
 
         let result = atom.execute(InputAtomInput { context }).await.unwrap();
 
@@ -170,14 +172,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_atom_not_found() {
-        let store = InMemoryMessageStore::new();
+        let retriever = InMemoryMessageRetriever::new();
         let event_emitter = NoopEventEmitter;
         let session_id = Uuid::now_v7();
         let turn_id = Uuid::now_v7();
         let missing_id = Uuid::now_v7();
 
         let context = AtomContext::new(session_id, turn_id, missing_id);
-        let atom = InputAtom::new(store, event_emitter);
+        let atom = InputAtom::new(retriever, event_emitter);
 
         let result = atom.execute(InputAtomInput { context }).await;
 

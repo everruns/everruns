@@ -23,7 +23,7 @@ pub use adapters::{create_driver_registry, create_llm_driver};
 
 // Re-export gRPC adapters for worker communication with control plane
 pub use grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageStore,
+    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageRetriever,
     GrpcSessionFileStore, GrpcSessionStore, TurnContext, load_turn_context,
 };
 

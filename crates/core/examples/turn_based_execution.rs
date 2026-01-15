@@ -24,7 +24,7 @@
 
 use chrono::Utc;
 use everruns_core::{
-    InputMessage, MessageStore,
+    InputMessage, MessageRetriever,
     agent::{Agent, AgentStatus},
     atoms::{
         ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
@@ -32,8 +32,8 @@ use everruns_core::{
     capabilities::CapabilityRegistry,
     llm_driver_registry::DriverRegistry,
     memory::{
-        InMemoryAgentStore, InMemoryEventEmitter, InMemoryLlmProviderStore, InMemoryMessageStore,
-        InMemorySessionStore,
+        InMemoryAgentStore, InMemoryEventEmitter, InMemoryLlmProviderStore,
+        InMemoryMessageRetriever, InMemorySessionStore,
     },
     session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
     // Create shared dependencies
     let agent_store = InMemoryAgentStore::new();
     let session_store = InMemorySessionStore::new();
-    let message_store = InMemoryMessageStore::new();
+    let message_retriever = InMemoryMessageRetriever::new();
     let provider_store = InMemoryLlmProviderStore::from_env().await;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
@@ -155,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
     println!("User: {}\n", user_question);
 
     // Add user message to store (this would be done by the API layer)
-    let user_message = message_store
+    let user_message = message_retriever
         .add(session_id, InputMessage::user(user_question))
         .await?;
 
@@ -174,11 +174,11 @@ async fn main() -> anyhow::Result<()> {
     // Use InMemoryEventEmitter to track events emitted by atoms
     let event_emitter = InMemoryEventEmitter::new();
 
-    let input_atom = InputAtom::new(message_store.clone(), event_emitter.clone());
+    let input_atom = InputAtom::new(message_retriever.clone(), event_emitter.clone());
     let reason_atom = ReasonAtom::new(
         agent_store.clone(),
         session_store,
-        message_store.clone(),
+        message_retriever.clone(),
         provider_store,
         capability_registry,
         driver_registry,
@@ -305,7 +305,7 @@ async fn main() -> anyhow::Result<()> {
     // Conversation History
     // =========================================================================
     println!("\n━━━ Conversation History ━━━");
-    let messages = message_store.load(session_id).await?;
+    let messages = message_retriever.load(session_id).await?;
     for (i, msg) in messages.iter().enumerate() {
         println!(
             "  {}. [{:?}] {}",
