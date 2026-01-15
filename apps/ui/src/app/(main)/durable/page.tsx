@@ -176,6 +176,9 @@ export default function DurableDashboardPage() {
                     <Zap className="h-4 w-4 inline mr-2" />
                     {health.open_circuit_breakers.length} circuit breakers open: {health.open_circuit_breakers.join(", ")}
                   </span>
+                  <Link href="/durable/circuit-breakers">
+                    <Button variant="outline" size="sm">Manage</Button>
+                  </Link>
                 </div>
               )}
             </CardContent>

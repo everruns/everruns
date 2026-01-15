@@ -352,6 +352,24 @@ impl DistributedCircuitBreaker {
     pub async fn reset(&self) -> Result<(), CircuitBreakerError> {
         self.transition_to_closed().await
     }
+
+    /// Force the circuit breaker to open (admin operation)
+    ///
+    /// This immediately opens the circuit, rejecting all subsequent calls
+    /// until either the reset timeout passes or force_close is called.
+    pub async fn force_open(&self) -> Result<(), CircuitBreakerError> {
+        tracing::info!(key = %self.key, "Force opening circuit breaker");
+        self.transition_to_open().await
+    }
+
+    /// Force the circuit breaker to close (admin operation)
+    ///
+    /// This immediately closes the circuit, allowing calls to proceed.
+    /// Alias for reset() but with clearer intent for admin operations.
+    pub async fn force_close(&self) -> Result<(), CircuitBreakerError> {
+        tracing::info!(key = %self.key, "Force closing circuit breaker");
+        self.transition_to_closed().await
+    }
 }
 
 #[cfg(test)]
@@ -480,5 +498,51 @@ mod tests {
         breaker.reset().await.unwrap();
         let state = breaker.state().await.unwrap();
         assert_eq!(state, CircuitState::Closed);
+    }
+
+    #[tokio::test]
+    async fn test_force_open() {
+        let breaker = create_test_breaker().await;
+
+        // Circuit starts closed
+        let state = breaker.state().await.unwrap();
+        assert_eq!(state, CircuitState::Closed);
+
+        // Force open should work immediately
+        breaker.force_open().await.unwrap();
+
+        // Circuit should be open now
+        let state = breaker.state().await.unwrap();
+        assert_eq!(state, CircuitState::Open);
+
+        // Calls should be rejected
+        let result = breaker.allow().await;
+        assert!(matches!(result, Err(CircuitBreakerError::Open)));
+    }
+
+    #[tokio::test]
+    async fn test_force_close() {
+        let breaker = create_test_breaker().await;
+
+        // Open the circuit via failures
+        for _ in 0..3 {
+            let permit = breaker.allow().await.unwrap();
+            permit.failure().await.unwrap();
+        }
+
+        // Circuit should be open
+        let state = breaker.state().await.unwrap();
+        assert_eq!(state, CircuitState::Open);
+
+        // Force close should work immediately (without waiting for timeout)
+        breaker.force_close().await.unwrap();
+
+        // Circuit should be closed now
+        let state = breaker.state().await.unwrap();
+        assert_eq!(state, CircuitState::Closed);
+
+        // Calls should be allowed
+        let permit = breaker.allow().await;
+        assert!(permit.is_ok());
     }
 }

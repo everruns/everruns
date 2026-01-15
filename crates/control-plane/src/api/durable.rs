@@ -97,6 +97,22 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/durable/dlq/:dlq_id/retry", post(retry_dlq))
         // Circuit breakers
         .route("/v1/durable/circuit-breakers", get(list_circuit_breakers))
+        .route(
+            "/v1/durable/circuit-breakers/:key",
+            get(get_circuit_breaker),
+        )
+        .route(
+            "/v1/durable/circuit-breakers/:key/open",
+            post(force_open_circuit_breaker),
+        )
+        .route(
+            "/v1/durable/circuit-breakers/:key/close",
+            post(force_close_circuit_breaker),
+        )
+        .route(
+            "/v1/durable/circuit-breakers/:key",
+            axum::routing::delete(delete_circuit_breaker),
+        )
         .with_state(state)
 }
 
@@ -953,6 +969,168 @@ pub async fn list_circuit_breakers(
         .collect();
 
     Ok(Json(CircuitBreakersListResponse { data, total }))
+}
+
+/// GET /v1/durable/circuit-breakers/:key - Get a single circuit breaker
+#[utoipa::path(
+    get,
+    path = "/v1/durable/circuit-breakers/{key}",
+    params(
+        ("key" = String, Path, description = "Circuit breaker key")
+    ),
+    responses(
+        (status = 200, description = "Circuit breaker details", body = CircuitBreakerResponse),
+        (status = 404, description = "Circuit breaker not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "durable"
+)]
+pub async fn get_circuit_breaker(
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> Result<Json<CircuitBreakerResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
+    let circuit_breakers = store.list_circuit_breakers().await.map_err(|e| {
+        tracing::error!("Failed to list circuit breakers: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
+    })?;
+
+    let breaker = circuit_breakers
+        .into_iter()
+        .find(|cb| cb.key == key)
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Circuit breaker not found".to_string(),
+            }),
+        ))?;
+
+    Ok(Json(CircuitBreakerResponse::from(breaker)))
+}
+
+/// POST /v1/durable/circuit-breakers/:key/open - Force open a circuit breaker
+#[utoipa::path(
+    post,
+    path = "/v1/durable/circuit-breakers/{key}/open",
+    params(
+        ("key" = String, Path, description = "Circuit breaker key")
+    ),
+    responses(
+        (status = 200, description = "Circuit breaker opened"),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "durable"
+)]
+pub async fn force_open_circuit_breaker(
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
+    store.force_open_circuit_breaker(&key).await.map_err(|e| {
+        tracing::error!("Failed to force open circuit breaker: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Internal server error".to_string(),
+            }),
+        )
+    })?;
+
+    tracing::info!(key = %key, "Force opened circuit breaker");
+    Ok(StatusCode::OK)
+}
+
+/// POST /v1/durable/circuit-breakers/:key/close - Force close a circuit breaker
+#[utoipa::path(
+    post,
+    path = "/v1/durable/circuit-breakers/{key}/close",
+    params(
+        ("key" = String, Path, description = "Circuit breaker key")
+    ),
+    responses(
+        (status = 200, description = "Circuit breaker closed"),
+        (status = 404, description = "Circuit breaker not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "durable"
+)]
+pub async fn force_close_circuit_breaker(
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
+    store
+        .force_close_circuit_breaker(&key)
+        .await
+        .map_err(|e| match e {
+            everruns_durable::StoreError::CircuitBreakerNotFound(_) => (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Circuit breaker not found".to_string(),
+                }),
+            ),
+            _ => {
+                tracing::error!("Failed to force close circuit breaker: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Internal server error".to_string(),
+                    }),
+                )
+            }
+        })?;
+
+    tracing::info!(key = %key, "Force closed circuit breaker");
+    Ok(StatusCode::OK)
+}
+
+/// DELETE /v1/durable/circuit-breakers/:key - Delete/reset a circuit breaker
+#[utoipa::path(
+    delete,
+    path = "/v1/durable/circuit-breakers/{key}",
+    params(
+        ("key" = String, Path, description = "Circuit breaker key")
+    ),
+    responses(
+        (status = 200, description = "Circuit breaker deleted"),
+        (status = 404, description = "Circuit breaker not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "durable"
+)]
+pub async fn delete_circuit_breaker(
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.get_store()?;
+    store
+        .delete_circuit_breaker(&key)
+        .await
+        .map_err(|e| match e {
+            everruns_durable::StoreError::CircuitBreakerNotFound(_) => (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Circuit breaker not found".to_string(),
+                }),
+            ),
+            _ => {
+                tracing::error!("Failed to delete circuit breaker: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Internal server error".to_string(),
+                    }),
+                )
+            }
+        })?;
+
+    tracing::info!(key = %key, "Deleted circuit breaker");
+    Ok(StatusCode::OK)
 }
 
 // ============================================================================
