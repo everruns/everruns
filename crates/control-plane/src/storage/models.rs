@@ -341,6 +341,8 @@ pub struct AgentCapabilityRow {
     pub agent_id: Uuid,
     pub capability_id: String,
     pub position: i32,
+    /// Per-agent capability configuration (JSON)
+    pub config: serde_json::Value,
     pub created_at: DateTime<Utc>,
 }
 
@@ -349,6 +351,9 @@ pub struct CreateAgentCapabilityRow {
     pub agent_id: Uuid,
     pub capability_id: String,
     pub position: i32,
+    /// Per-agent capability configuration (JSON)
+    #[allow(dead_code)]
+    pub config: serde_json::Value,
 }
 
 // ============================================

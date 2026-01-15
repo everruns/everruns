@@ -1077,7 +1077,7 @@ impl Database {
     pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
         let rows = sqlx::query_as::<_, AgentCapabilityRow>(
             r#"
-            SELECT id, agent_id, capability_id, position, created_at
+            SELECT id, agent_id, capability_id, position, config, created_at
             FROM agent_capabilities
             WHERE agent_id = $1
             ORDER BY position ASC
@@ -1091,11 +1091,11 @@ impl Database {
     }
 
     /// Set capabilities for an agent (replaces existing capabilities)
-    /// capabilities: list of (capability_id, position) tuples
+    /// capabilities: list of (capability_id, position, config) tuples
     pub async fn set_agent_capabilities(
         &self,
         agent_id: Uuid,
-        capabilities: Vec<(String, i32)>,
+        capabilities: Vec<(String, i32, serde_json::Value)>,
     ) -> Result<Vec<AgentCapabilityRow>> {
         // Start a transaction
         let mut tx = self.pool.begin().await?;
@@ -1107,16 +1107,17 @@ impl Database {
             .await?;
 
         // Insert new capabilities
-        for (capability_id, position) in &capabilities {
+        for (capability_id, position, config) in &capabilities {
             sqlx::query(
                 r#"
-                INSERT INTO agent_capabilities (agent_id, capability_id, position)
-                VALUES ($1, $2, $3)
+                INSERT INTO agent_capabilities (agent_id, capability_id, position, config)
+                VALUES ($1, $2, $3, $4)
                 "#,
             )
             .bind(agent_id)
             .bind(capability_id)
             .bind(position)
+            .bind(config)
             .execute(&mut *tx)
             .await?;
         }
@@ -1135,14 +1136,15 @@ impl Database {
     ) -> Result<AgentCapabilityRow> {
         let row = sqlx::query_as::<_, AgentCapabilityRow>(
             r#"
-            INSERT INTO agent_capabilities (agent_id, capability_id, position)
-            VALUES ($1, $2, $3)
-            RETURNING id, agent_id, capability_id, position, created_at
+            INSERT INTO agent_capabilities (agent_id, capability_id, position, config)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, agent_id, capability_id, position, config, created_at
             "#,
         )
         .bind(input.agent_id)
         .bind(&input.capability_id)
         .bind(input.position)
+        .bind(&input.config)
         .fetch_one(&self.pool)
         .await?;
 

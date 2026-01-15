@@ -299,6 +299,12 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
     // Serialize proto to JSON, then deserialize to schema type
     // This is simpler and more maintainable than field-by-field conversion
     let tags: Vec<String> = vec![];
+    // Convert capability IDs to AgentCapabilityConfig format with empty config
+    let capabilities: Vec<serde_json::Value> = value
+        .capability_ids
+        .iter()
+        .map(|id| serde_json::json!({"ref": id, "config": {}}))
+        .collect();
     let json = serde_json::json!({
         "id": value.id.as_ref().map(|u| &u.value).unwrap_or(&String::new()),
         "name": value.name,
@@ -306,7 +312,7 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         "system_prompt": value.system_prompt,
         "default_model_id": value.default_model_id.as_ref().map(|u| &u.value),
         "tags": tags,
-        "capabilities": value.capability_ids,
+        "capabilities": capabilities,
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
@@ -327,7 +333,12 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
         status: value.status.to_string(),
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(value.updated_at)),
-        capability_ids: value.capabilities.iter().map(|c| c.to_string()).collect(),
+        // Extract capability IDs from AgentCapabilityConfig
+        capability_ids: value
+            .capabilities
+            .iter()
+            .map(|c| c.capability_id().to_string())
+            .collect(),
     }
 }
 
@@ -923,7 +934,7 @@ mod tests {
     #[test]
     fn test_proto_agent_includes_capability_ids() {
         use chrono::Utc;
-        use everruns_core::CapabilityId;
+        use everruns_core::AgentCapabilityConfig;
         use uuid::Uuid;
 
         // Create an Agent with capabilities
@@ -935,8 +946,8 @@ mod tests {
             default_model_id: None,
             tags: vec![],
             capabilities: vec![
-                CapabilityId::new("tools:read_file"),
-                CapabilityId::new("tools:write_file"),
+                AgentCapabilityConfig::new("tools:read_file"),
+                AgentCapabilityConfig::new("tools:write_file"),
             ],
             status: everruns_core::AgentStatus::Active,
             created_at: Utc::now(),
@@ -965,16 +976,14 @@ mod tests {
 
         // Verify capabilities survive roundtrip
         assert_eq!(schema_agent.capabilities.len(), 2);
-        assert!(
-            schema_agent
-                .capabilities
-                .contains(&CapabilityId::new("tools:read_file"))
-        );
-        assert!(
-            schema_agent
-                .capabilities
-                .contains(&CapabilityId::new("tools:write_file"))
-        );
+        // Check capability IDs are preserved (config defaults to empty)
+        let cap_ids: Vec<&str> = schema_agent
+            .capabilities
+            .iter()
+            .map(|c| c.capability_id())
+            .collect();
+        assert!(cap_ids.contains(&"tools:read_file"));
+        assert!(cap_ids.contains(&"tools:write_file"));
     }
 
     #[test]

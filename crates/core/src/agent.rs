@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::capability_types::CapabilityId;
+use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
 
 #[cfg(feature = "openapi")]
@@ -66,11 +66,10 @@ pub struct Agent {
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Capabilities enabled for this agent.
+    /// Capabilities enabled for this agent with per-agent configuration.
     /// Capabilities add tools and system prompt modifications.
     #[serde(default)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
-    pub capabilities: Vec<CapabilityId>,
+    pub capabilities: Vec<AgentCapabilityConfig>,
     /// Current lifecycle status of the agent.
     pub status: AgentStatus,
     /// Timestamp when the agent was created.

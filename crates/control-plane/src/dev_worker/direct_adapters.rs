@@ -6,7 +6,7 @@
 // Decision: Worker traits implemented directly against StorageBackend for DEV_MODE
 
 use async_trait::async_trait;
-use everruns_core::capabilities::CapabilityId;
+use everruns_core::capabilities::AgentCapabilityConfig;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest, MessageAgentData, MessageUserData};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
@@ -84,7 +84,7 @@ impl AgentStore for DirectAgentStore {
             tags: r.tags,
             capabilities: capabilities
                 .into_iter()
-                .filter_map(|c| c.capability_id.parse::<CapabilityId>().ok())
+                .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                 .collect(),
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,

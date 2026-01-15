@@ -195,13 +195,19 @@ async fn seed_agents(db: &StorageBackend) -> anyhow::Result<SeedResult> {
 
         match db.create_agent_with_id(seed.id, input).await? {
             Some(row) => {
-                // Set capabilities if any
+                // Set capabilities if any (with empty config)
                 if !seed.capabilities.is_empty() {
-                    let cap_tuples: Vec<(String, i32)> = seed
+                    let cap_tuples: Vec<(String, i32, serde_json::Value)> = seed
                         .capabilities
                         .iter()
                         .enumerate()
-                        .map(|(idx, cap)| (cap.to_string(), idx as i32))
+                        .map(|(idx, cap)| {
+                            (
+                                cap.to_string(),
+                                idx as i32,
+                                serde_json::json!({}), // Empty config for seed data
+                            )
+                        })
                         .collect();
                     db.set_agent_capabilities(row.id, cap_tuples).await?;
                 }

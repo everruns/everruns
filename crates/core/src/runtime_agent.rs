@@ -109,7 +109,7 @@ impl RuntimeAgentBuilder {
         let capability_ids: Vec<String> = agent
             .capabilities
             .iter()
-            .map(|cap_id| cap_id.as_str().to_string())
+            .map(|cap| cap.capability_id().to_string())
             .collect();
 
         self.system_prompt(&agent.system_prompt)
@@ -214,8 +214,7 @@ impl Default for RuntimeAgentBuilder {
 mod tests {
     use super::*;
     use crate::agent::AgentStatus;
-    use crate::capabilities::CapabilityId;
-    use crate::capability_types::CapabilityId as CapabilityIdType;
+    use crate::capabilities::{AgentCapabilityConfig, CapabilityId};
 
     #[test]
     fn test_runtime_agent_new() {
@@ -341,7 +340,7 @@ mod tests {
             name: "Test Agent".to_string(),
             description: None,
             system_prompt: "Agent prompt.".to_string(),
-            capabilities: vec![CapabilityIdType::from(CapabilityId::CURRENT_TIME)],
+            capabilities: vec![AgentCapabilityConfig::new(CapabilityId::CURRENT_TIME)],
             status: AgentStatus::Active,
             default_model_id: None,
             tags: vec![],

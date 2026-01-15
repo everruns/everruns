@@ -10,7 +10,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use everruns_core::{Agent, AgentStatus, CapabilityId};
+use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use super::validation::{
@@ -43,11 +43,11 @@ pub struct CreateAgentRequest {
     #[serde(default)]
     #[schema(example = json!(["support", "customer-facing"]))]
     pub tags: Vec<String>,
-    /// Capabilities to enable for this agent.
-    /// Capabilities provide tools and system prompt additions.
+    /// Capabilities to enable for this agent with per-agent configuration.
+    /// Each capability has a `ref` (capability ID) and optional `config`.
     #[serde(default)]
-    #[schema(example = json!(["current_time", "web_fetch"]), value_type = Vec<String>)]
-    pub capabilities: Vec<CapabilityId>,
+    #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
+    pub capabilities: Vec<AgentCapabilityConfig>,
 }
 
 /// Request to update an agent. Only provided fields will be updated.
@@ -72,17 +72,46 @@ pub struct UpdateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!(["updated-tag"]))]
     pub tags: Option<Vec<String>>,
-    /// Capabilities to enable for this agent. Replaces existing capabilities.
+    /// Capabilities to enable for this agent with per-agent configuration.
+    /// Replaces existing capabilities. Each has a `ref` (capability ID) and optional `config`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = json!(["current_time", "web_fetch"]), value_type = Option<Vec<String>>)]
-    pub capabilities: Option<Vec<CapabilityId>>,
+    #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
+    pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     /// The status of the agent. Set to "archived" to soft-delete.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<AgentStatus>,
 }
 
+/// Capability entry in agent file - supports both string and object formats
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum AgentFileCapability {
+    /// Legacy format: just capability ID string
+    Simple(String),
+    /// New format: object with ref and config
+    WithConfig {
+        #[serde(rename = "ref")]
+        capability_ref: String,
+        #[serde(default)]
+        config: serde_json::Value,
+    },
+}
+
+impl AgentFileCapability {
+    fn to_agent_capability_config(&self) -> AgentCapabilityConfig {
+        match self {
+            AgentFileCapability::Simple(id) => AgentCapabilityConfig::new(id.clone()),
+            AgentFileCapability::WithConfig {
+                capability_ref,
+                config,
+            } => AgentCapabilityConfig::with_config(capability_ref.clone(), config.clone()),
+        }
+    }
+}
+
 /// Agent file format for import (matches CLI format)
 /// Parsed from YAML front matter in Markdown files.
+/// Supports both legacy (string list) and new (object with ref/config) capability formats.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct AgentFile {
     pub name: Option<String>,
@@ -91,8 +120,9 @@ struct AgentFile {
     pub default_model_id: Option<Uuid>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Capabilities - supports both string IDs and objects with ref/config
     #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<AgentFileCapability>,
 }
 
 use crate::services::AgentService;
@@ -375,8 +405,8 @@ pub async fn import_agent(
         tags: agent_file.tags,
         capabilities: agent_file
             .capabilities
-            .into_iter()
-            .map(CapabilityId::from)
+            .iter()
+            .map(|c| c.to_agent_capability_config())
             .collect(),
     };
 
@@ -390,46 +420,33 @@ pub async fn import_agent(
 
 /// Convert agent to Markdown format with YAML front matter
 fn agent_to_markdown(agent: &Agent) -> String {
-    let mut front_matter = AgentFile {
-        name: Some(agent.name.clone()),
-        description: agent.description.clone(),
-        system_prompt: None, // System prompt goes in body
-        default_model_id: agent.default_model_id,
-        tags: agent.tags.clone(),
-        capabilities: agent.capabilities.iter().map(|c| c.to_string()).collect(),
-    };
-
-    // Don't include empty arrays in front matter
-    if front_matter.tags.is_empty() {
-        front_matter.tags = vec![];
-    }
-    if front_matter.capabilities.is_empty() {
-        front_matter.capabilities = vec![];
-    }
-
     // Build YAML front matter (skip empty/default fields)
     let mut yaml_lines = vec![];
     yaml_lines.push(format!("name: \"{}\"", agent.name.replace('"', "\\\"")));
 
-    if let Some(ref desc) = front_matter.description {
+    if let Some(desc) = &agent.description {
         yaml_lines.push(format!("description: \"{}\"", desc.replace('"', "\\\"")));
     }
 
-    if let Some(model_id) = front_matter.default_model_id {
+    if let Some(model_id) = agent.default_model_id {
         yaml_lines.push(format!("default_model_id: \"{}\"", model_id));
     }
 
-    if !front_matter.tags.is_empty() {
+    if !agent.tags.is_empty() {
         yaml_lines.push("tags:".to_string());
-        for tag in &front_matter.tags {
+        for tag in &agent.tags {
             yaml_lines.push(format!("  - \"{}\"", tag.replace('"', "\\\"")));
         }
     }
 
-    if !front_matter.capabilities.is_empty() {
+    if !agent.capabilities.is_empty() {
         yaml_lines.push("capabilities:".to_string());
-        for cap in &front_matter.capabilities {
-            yaml_lines.push(format!("  - {}", cap));
+        for cap in &agent.capabilities {
+            // Export capabilities with ref and config (inline JSON for config)
+            let config_json =
+                serde_json::to_string(&cap.config).unwrap_or_else(|_| "{}".to_string());
+            yaml_lines.push(format!("  - ref: {}", cap.capability_ref.as_str()));
+            yaml_lines.push(format!("    config: {}", config_json));
         }
     }
 

@@ -60,13 +60,13 @@ export function AgentCard({
         {agentCapabilities.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             <TooltipProvider>
-              {agentCapabilities.map((capId) => {
-                const cap = getCapabilityInfo(capId);
+              {agentCapabilities.map((capConfig) => {
+                const cap = getCapabilityInfo(capConfig.ref);
                 if (!cap) return null;
                 const IconComponent = getCapabilityIcon(cap.icon);
 
                 return (
-                  <Tooltip key={capId}>
+                  <Tooltip key={capConfig.ref}>
                     <TooltipTrigger className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-xs cursor-default">
                       <IconComponent className="w-3 h-3" />
                       {!compact && <span>{cap.name}</span>}

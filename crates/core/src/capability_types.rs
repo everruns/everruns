@@ -3,8 +3,15 @@
 // Design Decision: Capability IDs are now String-based to allow adding new capabilities
 // without requiring database migrations or code changes to enums.
 // Validation happens at the registry level rather than the type level.
+//
+// Design Decision: AgentCapabilityConfig uses `ref` for the capability ID to avoid
+// confusion with `id` which typically refers to primary keys. The config field stores
+// per-agent configuration for the capability.
 
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
 
 /// Capability identifier - a string-based ID for extensibility
 ///
@@ -161,6 +168,63 @@ impl std::fmt::Display for CapabilityStatus {
     }
 }
 
+/// Per-agent capability configuration
+///
+/// Associates a capability with an agent, including optional per-agent configuration.
+/// The config field allows the same capability to behave differently per-agent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AgentCapabilityConfig {
+    /// Reference to the capability ID
+    #[serde(rename = "ref")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub capability_ref: CapabilityId,
+    /// Per-agent configuration for this capability (capability-specific)
+    #[serde(default)]
+    pub config: serde_json::Value,
+}
+
+impl AgentCapabilityConfig {
+    /// Create a new capability config with the given ID and empty config
+    pub fn new(capability_id: impl Into<CapabilityId>) -> Self {
+        Self {
+            capability_ref: capability_id.into(),
+            config: serde_json::Value::Object(serde_json::Map::new()),
+        }
+    }
+
+    /// Create a new capability config with the given ID and config
+    pub fn with_config(capability_id: impl Into<CapabilityId>, config: serde_json::Value) -> Self {
+        Self {
+            capability_ref: capability_id.into(),
+            config,
+        }
+    }
+
+    /// Get the capability ID as a string reference
+    pub fn capability_id(&self) -> &str {
+        self.capability_ref.as_str()
+    }
+}
+
+impl From<CapabilityId> for AgentCapabilityConfig {
+    fn from(id: CapabilityId) -> Self {
+        Self::new(id)
+    }
+}
+
+impl From<&str> for AgentCapabilityConfig {
+    fn from(id: &str) -> Self {
+        Self::new(CapabilityId::new(id))
+    }
+}
+
+impl From<String> for AgentCapabilityConfig {
+    fn from(id: String) -> Self {
+        Self::new(CapabilityId::new(id))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +315,80 @@ mod tests {
         set.insert(CapabilityId::new("noop")); // Should not add a duplicate
 
         assert_eq!(set.len(), 2);
+    }
+
+    // AgentCapabilityConfig tests
+
+    #[test]
+    fn test_agent_capability_config_new() {
+        let config = AgentCapabilityConfig::new("current_time");
+        assert_eq!(config.capability_id(), "current_time");
+        assert_eq!(config.config, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_agent_capability_config_with_config() {
+        let config = AgentCapabilityConfig::with_config(
+            "web_fetch",
+            serde_json::json!({"timeout_ms": 30000}),
+        );
+        assert_eq!(config.capability_id(), "web_fetch");
+        assert_eq!(config.config["timeout_ms"], 30000);
+    }
+
+    #[test]
+    fn test_agent_capability_config_from_capability_id() {
+        let config: AgentCapabilityConfig = CapabilityId::current_time().into();
+        assert_eq!(config.capability_id(), "current_time");
+        assert_eq!(config.config, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_agent_capability_config_from_str() {
+        let config: AgentCapabilityConfig = "test_math".into();
+        assert_eq!(config.capability_id(), "test_math");
+    }
+
+    #[test]
+    fn test_agent_capability_config_from_string() {
+        let config: AgentCapabilityConfig = String::from("web_fetch").into();
+        assert_eq!(config.capability_id(), "web_fetch");
+    }
+
+    #[test]
+    fn test_agent_capability_config_serialization() {
+        let config = AgentCapabilityConfig::with_config(
+            "current_time",
+            serde_json::json!({"timezone": "UTC"}),
+        );
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"ref\":\"current_time\""));
+        assert!(json.contains("\"timezone\":\"UTC\""));
+
+        let parsed: AgentCapabilityConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.capability_id(), "current_time");
+        assert_eq!(parsed.config["timezone"], "UTC");
+    }
+
+    #[test]
+    fn test_agent_capability_config_serialization_empty_config() {
+        let config = AgentCapabilityConfig::new("noop");
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"ref\":\"noop\""));
+
+        let parsed: AgentCapabilityConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.capability_id(), "noop");
+        assert_eq!(parsed.config, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_agent_capability_config_equality() {
+        let config1 = AgentCapabilityConfig::new("current_time");
+        let config2 = AgentCapabilityConfig::new("current_time");
+        let config3 =
+            AgentCapabilityConfig::with_config("current_time", serde_json::json!({"key": "value"}));
+
+        assert_eq!(config1, config2);
+        assert_ne!(config1, config3); // Different config makes them unequal
     }
 }

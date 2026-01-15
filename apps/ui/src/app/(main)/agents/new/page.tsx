@@ -20,7 +20,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
-import type { CapabilityId } from "@/lib/api/types";
+import type { CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
 
 export default function NewAgentPage() {
   const router = useRouter();
@@ -45,12 +45,18 @@ export default function NewAgentPage() {
     e.preventDefault();
 
     try {
+      // Convert capability IDs to AgentCapabilityConfig format
+      const capabilityConfigs: AgentCapabilityConfig[] = selectedCapabilities.map(id => ({
+        ref: id,
+        config: {},
+      }));
+
       const agent = await createAgent.mutateAsync({
         name: formData.name,
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
         default_model_id: formData.default_model_id || undefined,
-        capabilities: selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
+        capabilities: capabilityConfigs.length > 0 ? capabilityConfigs : undefined,
       });
 
       router.push(`/agents/${agent.id}`);

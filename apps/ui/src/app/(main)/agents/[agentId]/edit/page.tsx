@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
-import type { CapabilityId } from "@/lib/api/types";
+import type { CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 
 interface FormData {
@@ -88,8 +88,9 @@ export default function EditAgentPage({
   );
 
   // Capabilities state - now included directly in agent response
+  // Extract just the capability IDs for the selector
   const initialCapabilities = useMemo(() => {
-    return agent?.capabilities ?? [];
+    return (agent?.capabilities ?? []).map((c) => c.ref);
   }, [agent?.capabilities]);
 
   const [localCapabilities, setLocalCapabilities] = useState<
@@ -113,10 +114,16 @@ export default function EditAgentPage({
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
 
-      // Get capabilities to save
-      const capabilitiesToSave = localCapabilities ?? initialCapabilities;
+      // Get capabilities to save (convert IDs to AgentCapabilityConfig format)
+      const capabilityIdsToSave = localCapabilities ?? initialCapabilities;
       const capabilitiesChanged =
-        JSON.stringify(capabilitiesToSave) !== JSON.stringify(initialCapabilities);
+        JSON.stringify(capabilityIdsToSave) !== JSON.stringify(initialCapabilities);
+
+      // Convert capability IDs to AgentCapabilityConfig format
+      const capabilityConfigs: AgentCapabilityConfig[] = capabilityIdsToSave.map(id => ({
+        ref: id,
+        config: {},
+      }));
 
       // Update agent (capabilities are now part of the agent resource)
       await updateAgent.mutateAsync({
@@ -128,7 +135,7 @@ export default function EditAgentPage({
           tags,
           default_model_id: formData.default_model_id || undefined,
           // Only include capabilities if they changed
-          ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
+          ...(capabilitiesChanged && { capabilities: capabilityConfigs }),
         },
       });
 

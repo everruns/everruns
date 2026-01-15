@@ -10,6 +10,14 @@ export type AgentStatus = "active" | "archived";
 /** Capability ID - extensible string-based identifier */
 export type CapabilityId = string;
 
+/** Per-agent capability configuration */
+export interface AgentCapabilityConfig {
+  /** Reference to the capability ID */
+  ref: CapabilityId;
+  /** Per-agent configuration for this capability (capability-specific) */
+  config: Record<string, unknown>;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -17,7 +25,8 @@ export interface Agent {
   system_prompt: string;
   default_model_id: string | null;
   tags: string[];
-  capabilities: CapabilityId[];
+  /** Capabilities with per-agent configuration */
+  capabilities: AgentCapabilityConfig[];
   status: AgentStatus;
   created_at: string;
   updated_at: string;
@@ -31,7 +40,8 @@ export interface CreateAgentRequest {
   system_prompt: string;
   default_model_id?: string;
   tags?: string[];
-  capabilities?: CapabilityId[];
+  /** Capabilities with per-agent configuration */
+  capabilities?: AgentCapabilityConfig[];
 }
 
 export interface UpdateAgentRequest {
@@ -40,7 +50,8 @@ export interface UpdateAgentRequest {
   system_prompt?: string;
   default_model_id?: string;
   tags?: string[];
-  capabilities?: CapabilityId[];
+  /** Capabilities with per-agent configuration */
+  capabilities?: AgentCapabilityConfig[];
   status?: AgentStatus;
 }
 

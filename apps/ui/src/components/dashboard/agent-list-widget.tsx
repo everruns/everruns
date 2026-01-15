@@ -72,13 +72,13 @@ export function AgentListWidget({
                         {agentCapabilities.length > 0 && (
                           <TooltipProvider>
                             <div className="flex gap-0.5">
-                              {agentCapabilities.slice(0, 3).map((capId) => {
-                                const cap = getCapabilityInfo(capId);
+                              {agentCapabilities.slice(0, 3).map((capConfig) => {
+                                const cap = getCapabilityInfo(capConfig.ref);
                                 if (!cap) return null;
                                 const IconComponent = getCapabilityIcon(cap.icon);
 
                                 return (
-                                  <Tooltip key={capId}>
+                                  <Tooltip key={capConfig.ref}>
                                     <TooltipTrigger className="p-0.5 rounded bg-muted cursor-default">
                                       <IconComponent className="w-3 h-3 text-muted-foreground" />
                                     </TooltipTrigger>
