@@ -9,8 +9,8 @@
 //    - openai: DEFAULT_OPENAI_API_KEY
 //    - anthropic: DEFAULT_ANTHROPIC_API_KEY
 
-use crate::storage::{EncryptionService, StorageBackend};
-use anyhow::{Result, anyhow};
+use crate::storage::{EncryptionService, StorageBackend, models::LlmProviderRow};
+use anyhow::Result;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -67,11 +67,6 @@ impl LlmResolverService {
 
     /// Resolve a model by ID with decrypted provider credentials
     pub async fn resolve_model(&self, model_id: Uuid) -> Result<Option<ResolvedModel>> {
-        let encryption = match &self.encryption {
-            Some(enc) => enc.as_ref().clone(),
-            None => return Err(anyhow!("Encryption service not configured")),
-        };
-
         // Look up the model
         let model_row = self.db.get_llm_model(model_id).await?;
 
@@ -88,31 +83,19 @@ impl LlmResolverService {
             None => return Ok(None),
         };
 
-        // Decrypt the API key from database
-        let provider_with_key = self
-            .db
-            .get_provider_with_api_key(&provider_row, &encryption)?;
-
-        // Apply env fallback if no API key in database
-        let api_key = provider_with_key
-            .api_key
-            .or_else(|| get_default_api_key_from_env(&provider_with_key.provider_type));
+        // Try to decrypt API key if encryption is available and provider has encrypted key
+        let api_key = self.resolve_api_key(&provider_row)?;
 
         Ok(Some(ResolvedModel {
             model_id: model_row.model_id,
-            provider_type: provider_with_key.provider_type,
+            provider_type: provider_row.provider_type.clone(),
             api_key,
-            base_url: provider_with_key.base_url,
+            base_url: provider_row.base_url.clone(),
         }))
     }
 
     /// Resolve the default model with decrypted provider credentials
     pub async fn resolve_default_model(&self) -> Result<Option<ResolvedModel>> {
-        let encryption = match &self.encryption {
-            Some(enc) => enc.as_ref().clone(),
-            None => return Err(anyhow!("Encryption service not configured")),
-        };
-
         // Look up the default model
         let model_row = self.db.get_default_llm_model().await?;
 
@@ -129,22 +112,46 @@ impl LlmResolverService {
             None => return Ok(None),
         };
 
-        // Decrypt the API key from database
-        let provider_with_key = self
-            .db
-            .get_provider_with_api_key(&provider_row, &encryption)?;
-
-        // Apply env fallback if no API key in database
-        let api_key = provider_with_key
-            .api_key
-            .or_else(|| get_default_api_key_from_env(&provider_with_key.provider_type));
+        // Try to decrypt API key if encryption is available and provider has encrypted key
+        let api_key = self.resolve_api_key(&provider_row)?;
 
         Ok(Some(ResolvedModel {
             model_id: model_row.model_id,
-            provider_type: provider_with_key.provider_type,
+            provider_type: provider_row.provider_type.clone(),
             api_key,
-            base_url: provider_with_key.base_url,
+            base_url: provider_row.base_url.clone(),
         }))
+    }
+
+    /// Resolve API key for a provider
+    ///
+    /// Resolution order:
+    /// 1. Decrypt from database if encryption is available and key is set
+    /// 2. Fall back to environment variable (DEFAULT_OPENAI_API_KEY or DEFAULT_ANTHROPIC_API_KEY)
+    ///
+    /// If provider has an encrypted key but encryption service is not available,
+    /// logs a warning and falls back to environment variable.
+    fn resolve_api_key(&self, provider: &LlmProviderRow) -> Result<Option<String>> {
+        // If provider has an encrypted API key, try to decrypt it
+        if provider.api_key_encrypted.is_some() {
+            if let Some(ref encryption) = self.encryption {
+                let provider_with_key = self.db.get_provider_with_api_key(provider, encryption)?;
+                if provider_with_key.api_key.is_some() {
+                    return Ok(provider_with_key.api_key);
+                }
+            } else {
+                // Provider has encrypted key but no encryption service
+                tracing::warn!(
+                    provider_id = %provider.id,
+                    provider_type = %provider.provider_type,
+                    "Provider has encrypted API key but encryption service is not configured. \
+                     Falling back to environment variable."
+                );
+            }
+        }
+
+        // Fall back to environment variable
+        Ok(get_default_api_key_from_env(&provider.provider_type))
     }
 
     /// Check if encryption service is available
