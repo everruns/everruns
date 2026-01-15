@@ -534,6 +534,7 @@ impl StorageBackend {
     }
 
     // ============================================
+<<<<<<< HEAD
     // LLM Generations (Usage Tracking)
     // ============================================
 
@@ -607,5 +608,29 @@ impl StorageBackend {
             cache_read_tokens,
             cache_creation_tokens
         )
+    }
+
+    // ============================================
+    // Images
+    // ============================================
+
+    pub async fn create_image(&self, input: CreateImageRow) -> Result<ImageRow> {
+        dispatch!(self, create_image, input)
+    }
+
+    pub async fn get_image(&self, id: Uuid) -> Result<Option<ImageRow>> {
+        dispatch!(self, get_image, id)
+    }
+
+    pub async fn get_image_info(&self, id: Uuid) -> Result<Option<ImageInfoRow>> {
+        dispatch!(self, get_image_info, id)
+    }
+
+    pub async fn delete_image(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_image, id)
+    }
+
+    pub async fn list_images(&self, limit: i64, offset: i64) -> Result<Vec<ImageInfoRow>> {
+        dispatch!(self, list_images, limit, offset)
     }
 }

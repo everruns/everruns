@@ -63,8 +63,9 @@ pub mod llmsim_driver;
 // Re-exports for convenience
 pub use error::{AgentLoopError, Result};
 pub use message::{
-    ContentPart, ContentType, Controls, ImageContentPart, InputContentPart, Message, MessageRole,
-    ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
+    ContentPart, ContentType, Controls, ImageContentPart, ImageFileContentPart, InputContentPart,
+    Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,
+    ToolResultContentPart,
 };
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};

@@ -79,10 +79,13 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 // type=text
 { "type": "text", "text": "Hello, how are you?" }
 
-// type=image
+// type=image (inline image data)
 { "type": "image", "url": "https://..." }
 // or
 { "type": "image", "base64": "...", "media_type": "image/png" }
+
+// type=image_file (reference to uploaded image)
+{ "type": "image_file", "image_id": "01933b5a-...", "filename": "photo.png" }
 
 // type=tool_call (assistant requesting tool execution)
 {
@@ -100,6 +103,8 @@ Conversation data stored as events in the `events` table with `event_type` prefi
   "error": null
 }
 ```
+
+**Note:** `image_file` content parts reference uploaded images (see Images API). Currently filtered from LLM requests; stored for future multimodal support.
 
 **Controls structure:**
 
@@ -151,9 +156,10 @@ Each level references a UUID that points to a configured model in the `llm_model
 
 **InputContentPart types (allowed in user messages):**
 
-Only text and image content can be sent by users:
+Only text, image, and image_file content can be sent by users:
 - `{ "type": "text", "text": "..." }`
 - `{ "type": "image", "url": "..." }` or `{ "type": "image", "base64": "...", "media_type": "image/png" }`
+- `{ "type": "image_file", "image_id": "...", "filename": "..." }` (reference to uploaded image)
 
 Tool calls and tool results are system-generated and cannot be created via the API.
 
@@ -185,6 +191,32 @@ Messages are stored in the `events` table with the full content in the `data` JS
   "tags": []
 }
 ```
+
+### Image
+
+Global storage for uploaded images. Images can be attached to messages via the `image_file` content part type.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID v7 | Unique identifier |
+| `filename` | string | Original filename |
+| `content_type` | string | MIME type (image/png, image/jpeg, image/gif, image/webp) |
+| `size_bytes` | integer | File size in bytes |
+| `data` | bytes | Full image data |
+| `thumbnail_data` | bytes? | Thumbnail image data (max 200x200) |
+| `thumbnail_content_type` | string? | Thumbnail MIME type |
+| `metadata` | object | Arbitrary metadata (e.g., session_id) |
+| `created_at` | timestamp | Upload time |
+
+**Constraints:**
+- Maximum file size: 100MB
+- Allowed content types: image/png, image/jpeg, image/gif, image/webp
+- Thumbnails generated automatically using Lanczos3 scaling
+
+**Storage:**
+- PostgreSQL: Full images stored in BYTEA columns
+- In-memory (DEV_MODE): Images lost on restart
+- Future: S3 storage planned
 
 ### Event
 

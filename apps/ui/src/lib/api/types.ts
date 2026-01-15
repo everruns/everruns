@@ -120,6 +120,7 @@ export type DisplayMessageRole = MessageRole | "tool_result";
 export type ContentPart =
   | { type: "text"; text: string }
   | { type: "image"; url?: string; base64?: string; media_type?: string }
+  | { type: "image_file"; image_id: string; filename?: string }
   | { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> }
   | { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string };
 
@@ -134,6 +135,10 @@ export function isToolCallPart(part: ContentPart): part is { type: "tool_call"; 
 
 export function isToolResultPart(part: ContentPart): part is { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string } {
   return part.type === "tool_result";
+}
+
+export function isImageFilePart(part: ContentPart): part is { type: "image_file"; image_id: string; filename?: string } {
+  return part.type === "image_file";
 }
 
 // Reasoning configuration for model controls
@@ -1079,3 +1084,39 @@ export interface UpdateMcpServerRequest {
   api_key?: string;
   headers?: Record<string, string>;
 }
+
+// ============================================
+// Image types (for message attachments)
+// ============================================
+
+/** Image metadata (returned from upload) */
+export interface ImageInfo {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+/** Image upload response */
+export interface ImageUploadResponse {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+/** Allowed image content types */
+export const ALLOWED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+] as const;
+
+export type AllowedImageType = typeof ALLOWED_IMAGE_TYPES[number];
+
+/** Maximum image size in bytes (100 MB) */
+export const MAX_IMAGE_SIZE = 100 * 1024 * 1024;

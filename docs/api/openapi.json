@@ -2292,6 +2292,29 @@
           {
             "allOf": [
               {
+                "$ref": "#/components/schemas/ImageFileContentPart",
+                "description": "Image file content (reference to uploaded image by ID)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image_file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Image file content (reference to uploaded image by ID)"
+          },
+          {
+            "allOf": [
+              {
                 "$ref": "#/components/schemas/ToolCallContentPart",
                 "description": "Tool call content (assistant requesting tool execution)"
               },
@@ -2336,7 +2359,7 @@
             "description": "Tool result content (result of tool execution)"
           }
         ],
-        "description": "A part of message content - can be text, image, tool_call, or tool_result\n\nThis is the canonical content part type used across the system.\nAPI layer enables the \"openapi\" feature to add ToSchema derive."
+        "description": "A part of message content - can be text, image, image_file, tool_call, or tool_result\n\nThis is the canonical content part type used across the system.\nAPI layer enables the \"openapi\" feature to add ToSchema derive."
       },
       "Controls": {
         "type": "object",
@@ -3070,6 +3093,27 @@
           }
         }
       },
+      "ImageFileContentPart": {
+        "type": "object",
+        "description": "Image file content part (reference to uploaded image)\n\nThis is used for images uploaded via the /images API.\nThe image data is stored separately and referenced by ID.\nNote: Currently filtered out before sending to LLM.",
+        "required": [
+          "image_id"
+        ],
+        "properties": {
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original filename (for display)"
+          },
+          "image_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID of the uploaded image"
+          }
+        }
+      },
       "InputContentPart": {
         "oneOf": [
           {
@@ -3117,9 +3161,32 @@
               }
             ],
             "description": "Image content (base64 or URL)"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ImageFileContentPart",
+                "description": "Image file content (reference to uploaded image by ID)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "image_file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Image file content (reference to uploaded image by ID)"
           }
         ],
-        "description": "Input content part - only text and image (for user input)\n\nThis is a subset of ContentPart that users can send.\nTool calls and results are system-generated."
+        "description": "Input content part - text, image, and image_file (for user input)\n\nThis is a subset of ContentPart that users can send.\nTool calls and results are system-generated."
       },
       "InputMessage": {
         "type": "object",

@@ -1742,6 +1742,7 @@ impl Database {
     }
 
     // ============================================
+<<<<<<< HEAD
     // LLM Generations (Usage Tracking)
     // ============================================
 
@@ -1846,5 +1847,86 @@ impl Database {
         .await?;
 
         Ok(())
+    }
+
+    // ============================================
+    // Images
+    // ============================================
+
+    pub async fn create_image(&self, input: CreateImageRow) -> Result<ImageRow> {
+        let row = sqlx::query_as::<_, ImageRow>(
+            r#"
+            INSERT INTO images (filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
+            "#,
+        )
+        .bind(&input.filename)
+        .bind(&input.content_type)
+        .bind(input.size_bytes)
+        .bind(&input.data)
+        .bind(&input.thumbnail_data)
+        .bind(&input.thumbnail_content_type)
+        .bind(&input.metadata)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_image(&self, id: Uuid) -> Result<Option<ImageRow>> {
+        let row = sqlx::query_as::<_, ImageRow>(
+            r#"
+            SELECT id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
+            FROM images
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_image_info(&self, id: Uuid) -> Result<Option<ImageInfoRow>> {
+        let row = sqlx::query_as::<_, ImageInfoRow>(
+            r#"
+            SELECT id, filename, content_type, size_bytes, metadata, created_at
+            FROM images
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_image(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM images WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn list_images(&self, limit: i64, offset: i64) -> Result<Vec<ImageInfoRow>> {
+        let rows = sqlx::query_as::<_, ImageInfoRow>(
+            r#"
+            SELECT id, filename, content_type, size_bytes, metadata, created_at
+            FROM images
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+            "#,
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
     }
 }

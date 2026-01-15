@@ -8,7 +8,10 @@ import { Bot, ArrowLeft, Zap } from "lucide-react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
-import type { Message, Event, TokenUsage } from "@/lib/api/types";
+import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
+import { SessionCard } from "@/components/session/session-card";
+import type { Message, Event, Session, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
+import type { PendingImage } from "@/lib/api/images";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -327,6 +330,38 @@ function formatTokens(tokens: number): string {
 function totalTokens(usage: TokenUsage): number {
   return usage.input_tokens + usage.output_tokens;
 }
+
+// Sample image attachment data
+const samplePendingImages: PendingImage[] = [
+  {
+    tempId: "temp-1",
+    file: null,
+    uploadPromise: null,
+    imageId: "img-uploaded-1",
+    filename: "screenshot.png",
+    previewUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23e2e8f0' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2394a3b8' font-size='10'%3EPNG%3C/text%3E%3C/svg%3E",
+    status: "uploaded",
+  },
+  {
+    tempId: "temp-2",
+    file: new File([], "photo.jpg"),
+    uploadPromise: Promise.resolve({ id: "", filename: "", content_type: "", size_bytes: 0, created_at: "" }),
+    imageId: null,
+    filename: "photo.jpg",
+    previewUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23fef3c7' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23d97706' font-size='10'%3EJPG%3C/text%3E%3C/svg%3E",
+    status: "uploading",
+  },
+  {
+    tempId: "temp-3",
+    file: null,
+    uploadPromise: null,
+    imageId: null,
+    filename: "failed.gif",
+    previewUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23fee2e2' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23dc2626' font-size='10'%3EGIF%3C/text%3E%3C/svg%3E",
+    status: "error",
+    error: "Upload failed",
+  },
+];
 
 // Sample usage data
 const sampleUsageData = {
@@ -683,6 +718,64 @@ export default function DevComponentsPage() {
                     />
                   </div>
                   <AssistantMessage content="Your project has 5 files and all 24 tests passed successfully." />
+                </div>
+              </ShowcaseItem>
+            </ShowcaseSection>
+
+            {/* Image Attachments Section */}
+            <ShowcaseSection
+              title="Image Attachments"
+              description="Components for uploading and displaying image attachments in chat (components/chat/image-attachments.tsx)"
+            >
+              <ShowcaseItem label="Pending Images (Upload Status)">
+                <ImageAttachments
+                  images={samplePendingImages}
+                  onRemove={(tempId) => console.log("Remove:", tempId)}
+                />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Uploaded Image Only">
+                <ImageAttachments
+                  images={[samplePendingImages[0]]}
+                  onRemove={(tempId) => console.log("Remove:", tempId)}
+                />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Uploading State">
+                <ImageAttachments
+                  images={[samplePendingImages[1]]}
+                  onRemove={(tempId) => console.log("Remove:", tempId)}
+                />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Error State">
+                <ImageAttachments
+                  images={[samplePendingImages[2]]}
+                  onRemove={(tempId) => console.log("Remove:", tempId)}
+                />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="MessageImage (In Chat History)">
+                <div className="flex gap-2">
+                  <MessageImage imageId="sample-image-1" filename="screenshot.png" />
+                  <MessageImage imageId="sample-image-2" filename="diagram.png" />
+                </div>
+              </ShowcaseItem>
+
+              <ShowcaseItem label="User Message with Image">
+                <div className="flex justify-end">
+                  <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 space-y-2">
+                        <p className="text-sm whitespace-pre-wrap">Here is a screenshot of the error I&apos;m seeing.</p>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <div className="w-20 h-20 rounded-md overflow-hidden bg-white/10 flex items-center justify-center">
+                            <span className="text-[10px] text-white/60">Preview</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>

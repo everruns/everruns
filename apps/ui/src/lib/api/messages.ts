@@ -45,3 +45,44 @@ export async function sendUserMessage(
     controls,
   });
 }
+
+/** Image attachment info for sending with message */
+export interface ImageAttachment {
+  imageId: string;
+  filename?: string;
+}
+
+/**
+ * Send a user message with optional image attachments
+ */
+export async function sendUserMessageWithImages(
+  agentId: string,
+  sessionId: string,
+  text: string,
+  images: ImageAttachment[],
+  controls?: Controls
+): Promise<Message> {
+  const content: Array<{ type: "text"; text: string } | { type: "image_file"; image_id: string; filename?: string }> = [];
+
+  // Add text content if provided
+  if (text.trim()) {
+    content.push({ type: "text", text: text.trim() });
+  }
+
+  // Add image file references
+  for (const img of images) {
+    content.push({
+      type: "image_file",
+      image_id: img.imageId,
+      filename: img.filename,
+    });
+  }
+
+  return createMessage(agentId, sessionId, {
+    message: {
+      role: "user",
+      content,
+    },
+    controls,
+  });
+}
