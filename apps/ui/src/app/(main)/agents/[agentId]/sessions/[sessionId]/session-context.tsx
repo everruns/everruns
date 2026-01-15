@@ -16,6 +16,8 @@ import type {
   MessageUserData,
   MessageAgentData,
   Message,
+  TokenUsage,
+  TurnCompletedData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -34,7 +36,9 @@ interface SessionContextValue {
   // Loading states
   sessionLoading: boolean;
   eventsLoading: boolean;
-  // Derived states
+  // Derived states (updated via SSE)
+  effectiveStatus: SessionStatus | undefined;
+  liveUsage: TokenUsage | undefined;
   isActive: boolean;
   shouldPoll: boolean;
   supportsReasoning: boolean;
@@ -252,6 +256,45 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     return map;
   }, [events]);
 
+  // Compute live usage by aggregating turn.completed events
+  // Falls back to initial session.usage if no turn events yet
+  const liveUsage = useMemo((): TokenUsage | undefined => {
+    if (!events || events.length === 0) {
+      return session?.usage;
+    }
+
+    // Sum usage from all turn.completed events
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheCreationTokens = 0;
+    let hasUsage = false;
+
+    for (const event of events) {
+      if (event.type === "turn.completed") {
+        const data = event.data as TurnCompletedData;
+        if (data.usage) {
+          hasUsage = true;
+          inputTokens += data.usage.input_tokens;
+          outputTokens += data.usage.output_tokens;
+          cacheReadTokens += data.usage.cache_read_tokens ?? 0;
+          cacheCreationTokens += data.usage.cache_creation_tokens ?? 0;
+        }
+      }
+    }
+
+    if (!hasUsage) {
+      return session?.usage;
+    }
+
+    return {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_read_tokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
+      cache_creation_tokens: cacheCreationTokens > 0 ? cacheCreationTokens : undefined,
+    };
+  }, [events, session?.usage]);
+
   // Check if the model supports reasoning effort
   const supportsReasoning = !!(llmModel?.profile?.reasoning && llmModel?.profile?.reasoning_effort);
   const reasoningEffortConfig = llmModel?.profile?.reasoning_effort;
@@ -296,6 +339,8 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     toolResultsMap,
     sessionLoading,
     eventsLoading,
+    effectiveStatus,
+    liveUsage,
     isActive,
     shouldPoll,
     supportsReasoning,
