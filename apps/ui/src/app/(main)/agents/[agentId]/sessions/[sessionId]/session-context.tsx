@@ -16,6 +16,9 @@ import type {
   MessageUserData,
   MessageAgentData,
   Message,
+  TokenUsage,
+  SessionIdledData,
+  LlmGenerationData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -34,7 +37,9 @@ interface SessionContextValue {
   // Loading states
   sessionLoading: boolean;
   eventsLoading: boolean;
-  // Derived states
+  // Derived states (updated via SSE)
+  effectiveStatus: SessionStatus | undefined;
+  liveUsage: TokenUsage | undefined;
   isActive: boolean;
   shouldPoll: boolean;
   supportsReasoning: boolean;
@@ -252,6 +257,63 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     return map;
   }, [events]);
 
+  // Compute live usage with real-time updates during turns:
+  // 1. session.idled - sets the baseline (cumulative from backend)
+  // 2. llm.generation - adds to counters during turn execution
+  // 3. session.idled - resets to final cumulative value
+  const liveUsage = useMemo((): TokenUsage | undefined => {
+    if (!events || events.length === 0) {
+      return session?.usage;
+    }
+
+    // Find the latest session.idled event (regardless of whether it has usage)
+    // This marks the boundary - we only count llm.generation events AFTER this
+    let latestIdledIndex = -1;
+    let latestIdledUsage: TokenUsage | undefined;
+
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (events[i].type === "session.idled") {
+        latestIdledIndex = i;
+        latestIdledUsage = (events[i].data as SessionIdledData).usage;
+        break; // Always use the latest session.idled, even if usage is null
+      }
+    }
+
+    // Sum ALL llm.generation events to get cumulative usage
+    // This is the source of truth for total tokens consumed
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheCreationTokens = 0;
+    let hasLlmEvents = false;
+
+    for (const event of events) {
+      if (event.type === "llm.generation") {
+        const data = event.data as LlmGenerationData;
+        if (data.metadata?.usage) {
+          hasLlmEvents = true;
+          inputTokens += data.metadata.usage.input_tokens;
+          outputTokens += data.metadata.usage.output_tokens;
+          cacheReadTokens += data.metadata.usage.cache_read_tokens ?? 0;
+          cacheCreationTokens += data.metadata.usage.cache_creation_tokens ?? 0;
+        }
+      }
+    }
+
+    // If we have llm.generation events, use their sum as the source of truth
+    if (hasLlmEvents) {
+      return {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_read_tokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
+        cache_creation_tokens: cacheCreationTokens > 0 ? cacheCreationTokens : undefined,
+      };
+    }
+
+    // Fall back to session.idled usage or initial session usage
+    return latestIdledUsage ?? session?.usage;
+  }, [events, session?.usage]);
+
   // Check if the model supports reasoning effort
   const supportsReasoning = !!(llmModel?.profile?.reasoning && llmModel?.profile?.reasoning_effort);
   const reasoningEffortConfig = llmModel?.profile?.reasoning_effort;
@@ -296,6 +358,8 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     toolResultsMap,
     sessionLoading,
     eventsLoading,
+    effectiveStatus,
+    liveUsage,
     isActive,
     shouldPoll,
     supportsReasoning,

@@ -10,7 +10,7 @@ use anyhow::Result;
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::{ActInput, InputAtomInput, ReasonInput, ReasonResult};
+use everruns_core::{ActInput, InputAtomInput, ReasonInput, ReasonResult, TokenUsage};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, InMemoryWorkflowEventStore, WorkerInfo, WorkflowEvent,
     WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
@@ -503,13 +503,40 @@ impl InProcessWorker {
                 }
             }
 
-            // Emit session.idled event
+            // Fetch session to get cumulative usage for session.idled event
+            let session_usage = match self.db.get_session(session_id).await {
+                Ok(Some(session_row)) => {
+                    if session_row.total_input_tokens > 0 || session_row.total_output_tokens > 0 {
+                        Some(TokenUsage::with_cache(
+                            session_row.total_input_tokens as u32,
+                            session_row.total_output_tokens as u32,
+                            if session_row.total_cache_read_tokens > 0 {
+                                Some(session_row.total_cache_read_tokens as u32)
+                            } else {
+                                None
+                            },
+                            if session_row.total_cache_creation_tokens > 0 {
+                                Some(session_row.total_cache_creation_tokens as u32)
+                            } else {
+                                None
+                            },
+                        ))
+                    } else {
+                        // Fall back to turn usage if no cumulative usage yet
+                        result.usage.clone()
+                    }
+                }
+                _ => result.usage.clone(), // Fall back to turn usage on error
+            };
+
+            // Emit session.idled event with cumulative usage
             let idled_event = EventRequest::new(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
                 SessionIdledData {
                     turn_id,
                     iterations: None,
+                    usage: session_usage,
                 },
             );
             if let Err(e) = event_emitter.emit(idled_event).await {

@@ -196,12 +196,15 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
         }
 
         // Emit session.idled event
+        // Note: Using turn usage as fallback since worker doesn't have DB access
+        // for cumulative session usage. The UI should handle accumulation.
         let idled_event = EventRequest::new(
             session_id,
             EventContext::turn(turn_id, input_message_id),
             SessionIdledData {
                 turn_id,
                 iterations: None, // We don't track iterations in the activity
+                usage: result.usage.clone(),
             },
         );
         if let Err(e) = event_emitter.emit(idled_event).await {

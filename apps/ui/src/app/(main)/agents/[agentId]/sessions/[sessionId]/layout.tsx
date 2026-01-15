@@ -52,7 +52,7 @@ interface SessionLayoutContentProps {
 
 function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutContentProps) {
   const pathname = usePathname();
-  const { agent, session, llmModel, sessionLoading } = useSessionContext();
+  const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage } = useSessionContext();
 
   // Determine active tab from pathname
   const getActiveTab = () => {
@@ -107,26 +107,34 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {session.usage && (
+            {liveUsage && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger>
                     <Badge variant="outline" className="gap-1 cursor-help">
                       <Zap className="w-3 h-3" />
-                      {formatTokens(session.usage.input_tokens)} / {formatTokens(session.usage.output_tokens)}
+                      {formatTokens(liveUsage.input_tokens)} / {formatTokens(liveUsage.output_tokens)}
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <div className="text-xs space-y-1">
-                      <div>Input: {session.usage.input_tokens.toLocaleString()}</div>
-                      <div>Output: {session.usage.output_tokens.toLocaleString()}</div>
-                      {(session.usage.cache_read_tokens ?? 0) > 0 && (
-                        <div>Cache read: {session.usage.cache_read_tokens!.toLocaleString()}</div>
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                      <dt className="text-muted-foreground">Input</dt>
+                      <dd>{liveUsage.input_tokens.toLocaleString()}</dd>
+                      <dt className="text-muted-foreground">Output</dt>
+                      <dd>{liveUsage.output_tokens.toLocaleString()}</dd>
+                      {(liveUsage.cache_read_tokens ?? 0) > 0 && (
+                        <>
+                          <dt className="text-muted-foreground">Cache read</dt>
+                          <dd>{liveUsage.cache_read_tokens!.toLocaleString()}</dd>
+                        </>
                       )}
-                      {(session.usage.cache_creation_tokens ?? 0) > 0 && (
-                        <div>Cache created: {session.usage.cache_creation_tokens!.toLocaleString()}</div>
+                      {(liveUsage.cache_creation_tokens ?? 0) > 0 && (
+                        <>
+                          <dt className="text-muted-foreground">Cache created</dt>
+                          <dd>{liveUsage.cache_creation_tokens!.toLocaleString()}</dd>
+                        </>
                       )}
-                    </div>
+                    </dl>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -137,9 +145,9 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
                 {llmModel.display_name}
               </Badge>
             )}
-            {session.status === "active" && <Badge variant="default">Processing...</Badge>}
-            {session.status === "idle" && <Badge variant="secondary">Ready</Badge>}
-            {session.status === "started" && <Badge variant="outline">New</Badge>}
+            {effectiveStatus === "active" && <Badge variant="default">Processing...</Badge>}
+            {effectiveStatus === "idle" && <Badge variant="secondary">Ready</Badge>}
+            {effectiveStatus === "started" && <Badge variant="outline">New</Badge>}
           </div>
         </div>
 
