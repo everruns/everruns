@@ -585,4 +585,69 @@ mod tests {
         assert_eq!(json["stream"], true);
         assert_eq!(json["stream_options"]["include_usage"], true);
     }
+
+    #[test]
+    fn test_usage_chunk_parsing() {
+        // OpenAI sends usage in a separate chunk after finish_reason
+        // This test verifies we can parse it correctly
+        let usage_chunk = r#"{
+            "id": "chatcmpl-123",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": "gpt-4o",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 150,
+                "completion_tokens": 42,
+                "total_tokens": 192
+            }
+        }"#;
+
+        let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
+        assert!(chunk.usage.is_some());
+        let usage = chunk.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, Some(150));
+        assert_eq!(usage.completion_tokens, Some(42));
+    }
+
+    #[test]
+    fn test_usage_chunk_with_cached_tokens() {
+        // OpenAI includes cached_tokens in prompt_tokens_details
+        let usage_chunk = r#"{
+            "id": "chatcmpl-123",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 150,
+                "completion_tokens": 42,
+                "prompt_tokens_details": {
+                    "cached_tokens": 100
+                }
+            }
+        }"#;
+
+        let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
+        let usage = chunk.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, Some(150));
+        assert_eq!(usage.completion_tokens, Some(42));
+        assert!(usage.prompt_tokens_details.is_some());
+        assert_eq!(usage.prompt_tokens_details.unwrap().cached_tokens, Some(100));
+    }
+
+    #[test]
+    fn test_finish_reason_chunk_parsing() {
+        // Finish reason comes in a chunk BEFORE the usage chunk
+        let finish_chunk = r#"{
+            "id": "chatcmpl-123",
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "finish_reason": "stop"
+            }]
+        }"#;
+
+        let chunk: OpenAiStreamChunk = serde_json::from_str(finish_chunk).unwrap();
+        assert!(chunk.usage.is_none()); // No usage in finish_reason chunk
+        assert_eq!(chunk.choices.len(), 1);
+        assert_eq!(chunk.choices[0].finish_reason, Some("stop".to_string()));
+    }
 }

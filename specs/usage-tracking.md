@@ -33,7 +33,25 @@ OpenAI's streaming API does not include usage data by default. To receive token 
 }
 ```
 
-When enabled, usage data appears in the final chunk of the stream with `choices: []`.
+**Streaming Chunk Order:**
+
+When enabled, OpenAI sends usage data in the following order:
+
+1. Content chunks (`delta.content`)
+2. Finish reason chunk (`finish_reason: "stop"`, no usage)
+3. Usage chunk (`choices: []`, contains `usage` object)
+4. `[DONE]` marker
+
+Important: Usage data arrives in a separate chunk AFTER the finish_reason chunk. Implementations must wait for the usage chunk before reporting final token counts.
+
+```
+Timeline:
+┌─────────────────┬─────────────────┬─────────────────┬────────┐
+│  delta.content  │  finish_reason  │     usage       │ [DONE] │
+│    (text)       │   (no usage)    │ (prompt_tokens, │        │
+│                 │                 │ completion_toks)│        │
+└─────────────────┴─────────────────┴─────────────────┴────────┘
+```
 
 ## Data Model
 
@@ -176,8 +194,29 @@ Turn completion includes aggregated usage for the turn:
 ### Session Detail Page
 
 Display usage badge showing total tokens for the session:
-- Format: "X tokens" where X = input + output tokens
-- Tooltip shows breakdown: input, output, cache tokens
+- Format: "X / Y" where X = input tokens, Y = output tokens (compact format)
+- Tooltip shows detailed breakdown: input, output, cache tokens
+
+### Real-time Usage Updates
+
+The session UI displays live usage updates during turn execution via SSE:
+
+1. Subscribe to session events via `/api/sessions/{id}/events` SSE endpoint
+2. Track `llm.generation` events and sum their usage incrementally
+3. Display running total as tokens are consumed
+
+**Implementation:**
+```typescript
+// Sum ALL llm.generation events for real-time usage
+const liveUsage = events
+  .filter(e => e.type === "llm.generation")
+  .reduce((acc, e) => ({
+    input_tokens: acc.input_tokens + e.data.metadata.usage.input_tokens,
+    output_tokens: acc.output_tokens + e.data.metadata.usage.output_tokens,
+  }), { input_tokens: 0, output_tokens: 0 });
+```
+
+**Note:** In DEV_MODE, the session cumulative totals may not be persisted (no database triggers), so summing `llm.generation` events provides the accurate real-time view.
 
 ### Agent Detail Page
 
