@@ -20,3 +20,7 @@ pub mod openapi;
 
 // DEV_MODE in-process worker
 pub mod dev_worker;
+
+// Task notification broadcaster for push-based notifications
+pub mod task_notifications;
+pub use task_notifications::TaskNotificationBroadcaster;

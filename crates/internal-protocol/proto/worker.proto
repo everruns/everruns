@@ -102,6 +102,11 @@ service WorkerService {
 
     // Record a failed call (circuit breaker tracking)
     rpc RecordCircuitBreakerFailure(RecordCircuitBreakerFailureRequest) returns (RecordCircuitBreakerFailureResponse);
+
+    // === Push-based task notifications ===
+    // Stream task availability notifications to workers for low-latency task pickup
+    // Workers subscribe with their activity types and receive notifications when tasks become available
+    rpc SubscribeTaskNotifications(SubscribeTaskNotificationsRequest) returns (stream TaskNotification);
 }
 
 // ============================================================================
@@ -657,4 +662,30 @@ message RecordCircuitBreakerFailureResponse {
     CircuitBreakerState state = 1;
     // Whether the circuit is now open (tripped)
     bool circuit_opened = 2;
+}
+
+// === Subscribe to task notifications ===
+
+message SubscribeTaskNotificationsRequest {
+    string worker_id = 1;
+    repeated string activity_types = 2;  // Activity types this worker handles
+}
+
+// Task notification types
+enum TaskNotificationType {
+    TASK_NOTIFICATION_TYPE_UNSPECIFIED = 0;
+    // A new task is available matching the subscribed activity types
+    TASK_NOTIFICATION_TYPE_TASK_AVAILABLE = 1;
+    // Heartbeat to keep the stream alive and detect disconnections
+    TASK_NOTIFICATION_TYPE_HEARTBEAT = 2;
+}
+
+message TaskNotification {
+    TaskNotificationType notification_type = 1;
+    // Set for TASK_AVAILABLE notifications - the activity type of the available task
+    optional string activity_type = 2;
+    // Approximate number of pending tasks for this activity type (hint for batch claiming)
+    optional int32 pending_count = 3;
+    // Server timestamp when notification was generated
+    Timestamp timestamp = 4;
 }
