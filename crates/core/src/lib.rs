@@ -94,12 +94,12 @@ pub use tools::{
 
 // Capability re-exports
 pub use capabilities::{
-    AddTool, AppliedCapabilities, Capability, CapabilityId, CapabilityRegistry,
-    CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability, DeleteFileTool, DivideTool,
-    FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetWeatherTool, GrepFilesTool,
-    ListDirectoryTool, MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability,
-    SandboxCapability, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
-    TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities,
+    AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
+    CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability,
+    DeleteFileTool, DivideTool, FileSystemCapability, GetCurrentTimeTool, GetForecastTool,
+    GetWeatherTool, GrepFilesTool, ListDirectoryTool, MultiplyTool, NoopCapability, ReadFileTool,
+    ResearchCapability, SandboxCapability, StatFileTool, StatelessTodoListCapability, SubtractTool,
+    TestMathCapability, TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities,
 };
 
 // Atoms re-exports (stateless atomic operations)

@@ -240,14 +240,14 @@ export default function AgentDetailPage({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {agentCapabilities.map((capId) => {
-                    const cap = getCapabilityInfo(capId);
+                  {agentCapabilities.map((capConfig) => {
+                    const cap = getCapabilityInfo(capConfig.ref);
                     if (!cap) return null;
                     const IconComponent = getCapabilityIcon(cap.icon);
 
                     return (
                       <div
-                        key={capId}
+                        key={capConfig.ref}
                         className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
                       >
                         <IconComponent className="w-4 h-4" />

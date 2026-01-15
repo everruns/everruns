@@ -5,9 +5,8 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, Result,
+    AgentCapabilityConfig, AgentLoopError, Result,
     agent::{Agent, AgentStatus},
-    capability_types::CapabilityId,
     traits::AgentStore,
 };
 use uuid::Uuid;
@@ -51,9 +50,9 @@ impl AgentStore for DbAgentStore {
                     .await
                     .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
-                let capabilities: Vec<CapabilityId> = capability_rows
+                let capabilities: Vec<AgentCapabilityConfig> = capability_rows
                     .into_iter()
-                    .map(|c| CapabilityId::new(c.capability_id))
+                    .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                     .collect();
 
                 Ok(Some(Agent {

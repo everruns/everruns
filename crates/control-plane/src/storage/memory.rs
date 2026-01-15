@@ -938,7 +938,7 @@ impl InMemoryDatabase {
     pub async fn set_agent_capabilities(
         &self,
         agent_id: Uuid,
-        capabilities: Vec<(String, i32)>,
+        capabilities: Vec<(String, i32, serde_json::Value)>,
     ) -> Result<Vec<AgentCapabilityRow>> {
         let now = Self::now();
         let mut caps = self.agent_capabilities.write();
@@ -955,12 +955,13 @@ impl InMemoryDatabase {
 
         // Add new capabilities
         let mut result = Vec::new();
-        for (capability_id, position) in capabilities.into_iter() {
+        for (capability_id, position, config) in capabilities.into_iter() {
             let row = AgentCapabilityRow {
                 id: Uuid::now_v7(),
                 agent_id,
                 capability_id: capability_id.clone(),
                 position,
+                config,
                 created_at: now,
             };
             caps.insert((agent_id, capability_id), row.clone());
@@ -982,6 +983,7 @@ impl InMemoryDatabase {
             agent_id: input.agent_id,
             capability_id: input.capability_id.clone(),
             position: input.position,
+            config: input.config,
             created_at: now,
         };
         caps.insert((input.agent_id, input.capability_id), row.clone());

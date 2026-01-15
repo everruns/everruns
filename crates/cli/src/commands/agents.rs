@@ -57,6 +57,57 @@ pub enum AgentsCommand {
 }
 
 /// Agent definition from YAML/JSON file
+/// Capability entry - supports both simple string and object formats for file parsing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AgentFileCapability {
+    /// Simple string format (legacy)
+    Simple(String),
+    /// Object format with ref and config
+    WithConfig {
+        #[serde(rename = "ref")]
+        capability_ref: String,
+        #[serde(default)]
+        config: serde_json::Value,
+    },
+}
+
+impl AgentFileCapability {
+    fn to_api_format(&self) -> CapabilityConfig {
+        match self {
+            AgentFileCapability::Simple(id) => CapabilityConfig {
+                capability_ref: id.clone(),
+                config: serde_json::json!({}),
+            },
+            AgentFileCapability::WithConfig {
+                capability_ref,
+                config,
+            } => CapabilityConfig {
+                capability_ref: capability_ref.clone(),
+                config: config.clone(),
+            },
+        }
+    }
+}
+
+/// Capability config for API requests
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilityConfig {
+    #[serde(rename = "ref")]
+    pub capability_ref: String,
+    #[serde(default)]
+    pub config: serde_json::Value,
+}
+
+impl CapabilityConfig {
+    fn new(id: &str) -> Self {
+        Self {
+            capability_ref: id.to_string(),
+            config: serde_json::json!({}),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentFile {
     pub name: Option<String>,
@@ -66,7 +117,7 @@ pub struct AgentFile {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<AgentFileCapability>,
 }
 
 /// Request to create an agent
@@ -81,7 +132,7 @@ struct CreateAgentRequest {
     #[serde(default)]
     tags: Vec<String>,
     #[serde(default)]
-    capabilities: Vec<String>,
+    capabilities: Vec<CapabilityConfig>,
 }
 
 /// Agent response from API
@@ -97,7 +148,7 @@ pub struct Agent {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<CapabilityConfig>,
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
@@ -249,10 +300,20 @@ async fn create(
     } else {
         tags
     };
-    let final_capabilities = if capabilities.is_empty() {
-        file_config.capabilities
+    // Convert capabilities to API format
+    let final_capabilities: Vec<CapabilityConfig> = if capabilities.is_empty() {
+        // Use file capabilities, converting to API format
+        file_config
+            .capabilities
+            .iter()
+            .map(|c| c.to_api_format())
+            .collect()
     } else {
+        // Use CLI capabilities (simple strings), converting to API format
         capabilities
+            .iter()
+            .map(|c| CapabilityConfig::new(c))
+            .collect()
     };
 
     let request = CreateAgentRequest {
@@ -273,7 +334,12 @@ async fn create(
             println!("Created agent: {}", agent.id);
             print_field("Name", &agent.name);
             if !agent.capabilities.is_empty() {
-                print_field("Capabilities", &agent.capabilities.join(", "));
+                let cap_ids: Vec<&str> = agent
+                    .capabilities
+                    .iter()
+                    .map(|c| c.capability_ref.as_str())
+                    .collect();
+                print_field("Capabilities", &cap_ids.join(", "));
             }
         }
     } else {
@@ -303,7 +369,12 @@ async fn list(client: &Client, output: OutputFormat) -> Result<()> {
             let caps = if agent.capabilities.is_empty() {
                 "-".to_string()
             } else {
-                agent.capabilities.join(", ")
+                agent
+                    .capabilities
+                    .iter()
+                    .map(|c| c.capability_ref.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             };
             print_table_row(&[
                 (&agent.id.to_string(), 36),
@@ -336,7 +407,12 @@ async fn get(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()
             print_field("Description", desc);
         }
         if !agent.capabilities.is_empty() {
-            print_field("Capabilities", &agent.capabilities.join(", "));
+            let cap_ids: Vec<&str> = agent
+                .capabilities
+                .iter()
+                .map(|c| c.capability_ref.as_str())
+                .collect();
+            print_field("Capabilities", &cap_ids.join(", "));
         }
         if !agent.tags.is_empty() {
             print_field("Tags", &agent.tags.join(", "));

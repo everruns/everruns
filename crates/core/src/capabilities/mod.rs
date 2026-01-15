@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 // Re-export capability types from capability_types module
-pub use crate::capability_types::{CapabilityId, CapabilityStatus};
+pub use crate::capability_types::{AgentCapabilityConfig, CapabilityId, CapabilityStatus};
 
 // ============================================================================
 // Capability Modules

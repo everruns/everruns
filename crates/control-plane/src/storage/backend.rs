@@ -374,7 +374,7 @@ impl StorageBackend {
     pub async fn set_agent_capabilities(
         &self,
         agent_id: Uuid,
-        capabilities: Vec<(String, i32)>,
+        capabilities: Vec<(String, i32, serde_json::Value)>,
     ) -> Result<Vec<AgentCapabilityRow>> {
         dispatch!(self, set_agent_capabilities, agent_id, capabilities)
     }

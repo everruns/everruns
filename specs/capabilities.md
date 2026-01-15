@@ -98,6 +98,45 @@ pub enum CapabilityStatus {
 }
 ```
 
+#### AgentCapabilityConfig (Per-agent configuration)
+
+Associates a capability with an agent, including optional per-agent configuration.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ref` | CapabilityId | Reference to the capability |
+| `config` | object | Per-agent configuration (capability-specific) |
+
+```rust
+/// Per-agent capability configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentCapabilityConfig {
+    /// Reference to the capability ID
+    #[serde(rename = "ref")]
+    pub capability_ref: CapabilityId,
+    /// Per-agent configuration for this capability
+    #[serde(default)]
+    pub config: serde_json::Value,
+}
+```
+
+The `config` field is capability-specific and passed to the capability during execution.
+This allows the same capability to behave differently per-agent.
+
+**Example usage:**
+```json
+{
+  "capabilities": [
+    { "ref": "current_time", "config": {} },
+    { "ref": "web_fetch", "config": { "timeout_ms": 30000 } }
+  ]
+}
+```
+
+**Import compatibility:** For backward compatibility, import accepts both formats:
+- New format: `{ "ref": "capability_id", "config": {} }`
+- Legacy format: `"capability_id"` (converted to new format with empty config)
+
 #### Capability Trait (everruns-core)
 
 Capabilities are defined as trait implementations in the core crate:
@@ -447,7 +486,10 @@ Content-Type: application/json
 {
   "name": "Research Assistant",
   "system_prompt": "You are a helpful research assistant.",
-  "capabilities": ["current_time", "test_math"]
+  "capabilities": [
+    { "ref": "current_time", "config": {} },
+    { "ref": "test_math", "config": {} }
+  ]
 }
 
 Response:
@@ -455,7 +497,10 @@ Response:
   "id": "...",
   "name": "Research Assistant",
   "system_prompt": "You are a helpful research assistant.",
-  "capabilities": ["current_time", "test_math"],
+  "capabilities": [
+    { "ref": "current_time", "config": {} },
+    { "ref": "test_math", "config": {} }
+  ],
   "status": "active",
   ...
 }
@@ -468,14 +513,22 @@ PATCH /v1/agents/{agent_id}
 Content-Type: application/json
 
 {
-  "capabilities": ["current_time", "web_fetch", "session_file_system"]
+  "capabilities": [
+    { "ref": "current_time", "config": {} },
+    { "ref": "web_fetch", "config": { "timeout_ms": 30000 } },
+    { "ref": "session_file_system", "config": {} }
+  ]
 }
 
 Response:
 {
   "id": "...",
   "name": "Research Assistant",
-  "capabilities": ["current_time", "web_fetch", "session_file_system"],
+  "capabilities": [
+    { "ref": "current_time", "config": {} },
+    { "ref": "web_fetch", "config": { "timeout_ms": 30000 } },
+    { "ref": "session_file_system", "config": {} }
+  ],
   ...
 }
 ```
@@ -491,6 +544,8 @@ CREATE TABLE agent_capabilities (
     -- Capability ID is a string; validation happens at application layer
     capability_id VARCHAR(50) NOT NULL,
     position INTEGER NOT NULL DEFAULT 0,
+    -- Per-agent capability configuration (JSON)
+    config JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(agent_id, capability_id)
 );
@@ -499,7 +554,7 @@ CREATE INDEX idx_agent_capabilities_agent_id ON agent_capabilities(agent_id);
 CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, position);
 ```
 
-**Note**: The `capability_id` column no longer has a CHECK constraint. Validation is performed at the application layer via `CapabilityRegistry`. This allows adding new capabilities without database migrations.
+**Note**: The `capability_id` column no longer has a CHECK constraint. Validation is performed at the application layer via `CapabilityRegistry`. This allows adding new capabilities without database migrations. The `config` column stores per-agent configuration as JSON, allowing capability-specific settings per agent.
 
 ### Design Decisions
 

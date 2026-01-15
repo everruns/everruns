@@ -1178,7 +1178,7 @@ async fn test_no_duplicate_tool_calls() {
         .json(&json!({
             "name": "Time Tool Test Agent",
             "system_prompt": "You are a helpful time assistant. When asked about the current time, use the get_current_time tool.",
-            "capabilities": ["current_time"],
+            "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
         }))
         .send()

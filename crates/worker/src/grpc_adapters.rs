@@ -320,7 +320,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         capabilities: proto_agent
             .capability_ids
             .into_iter()
-            .filter_map(|s| s.parse().ok())
+            .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
         status,
         created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),

@@ -9,7 +9,7 @@ use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
 };
 use anyhow::Result;
-use everruns_core::{Agent, AgentStatus, CapabilityId, TokenUsage};
+use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, TokenUsage};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -39,11 +39,17 @@ impl AgentService {
 
         // Set capabilities if provided
         let capabilities = if !req.capabilities.is_empty() {
-            let cap_tuples: Vec<(String, i32)> = req
+            let cap_tuples: Vec<(String, i32, serde_json::Value)> = req
                 .capabilities
                 .iter()
                 .enumerate()
-                .map(|(idx, cap)| (cap.to_string(), idx as i32))
+                .map(|(idx, cap)| {
+                    (
+                        cap.capability_ref.to_string(),
+                        idx as i32,
+                        cap.config.clone(),
+                    )
+                })
                 .collect();
             self.db.set_agent_capabilities(agent_id, cap_tuples).await?;
             req.capabilities
@@ -93,10 +99,16 @@ impl AgentService {
             Some(row) => {
                 // Update capabilities if provided
                 let capabilities = if let Some(caps) = req.capabilities {
-                    let cap_tuples: Vec<(String, i32)> = caps
+                    let cap_tuples: Vec<(String, i32, serde_json::Value)> = caps
                         .iter()
                         .enumerate()
-                        .map(|(idx, cap)| (cap.to_string(), idx as i32))
+                        .map(|(idx, cap)| {
+                            (
+                                cap.capability_ref.to_string(),
+                                idx as i32,
+                                cap.config.clone(),
+                            )
+                        })
                         .collect();
                     self.db.set_agent_capabilities(id, cap_tuples).await?;
                     caps
@@ -114,15 +126,15 @@ impl AgentService {
         self.db.delete_agent(id).await
     }
 
-    async fn get_capabilities(&self, agent_id: Uuid) -> Result<Vec<CapabilityId>> {
+    async fn get_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityConfig>> {
         let rows = self.db.get_agent_capabilities(agent_id).await?;
         Ok(rows
             .into_iter()
-            .map(|row| CapabilityId::new(&row.capability_id))
+            .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
             .collect())
     }
 
-    fn row_to_agent(row: AgentRow, capabilities: Vec<CapabilityId>) -> Agent {
+    fn row_to_agent(row: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
         // Convert database usage columns to TokenUsage
         let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
             Some(TokenUsage::with_cache(
