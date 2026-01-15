@@ -108,7 +108,7 @@ pub fn get_model_profile(
         LlmProviderType::Openai => get_openai_profile(model_id),
         LlmProviderType::Anthropic => get_anthropic_profile(model_id),
         LlmProviderType::AzureOpenAI => get_openai_profile(model_id), // Azure uses same model IDs
-        LlmProviderType::LlmSim => None, // No profile for simulated LLM
+        LlmProviderType::LlmSim => get_llmsim_profile(model_id),
     }
 }
 
@@ -1286,6 +1286,41 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             reasoning_effort: None,
         }),
 
+        _ => None,
+    }
+}
+
+/// Get LlmSim model profile (simulated LLM for testing)
+/// Profile is modeled close to GPT-5.2 for realistic testing
+fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
+    match model_id {
+        "llmsim-default" | "llmsim" => Some(LlmModelProfile {
+            name: "LlmSim Default".into(),
+            family: "llmsim".into(),
+            release_date: Some("2025-01-01".into()),
+            last_updated: Some("2025-01-01".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false, // Like gpt-5.2
+            knowledge: Some("2025-08-31".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 0.00, // Free for testing
+                output: 0.00,
+                cache_read: Some(0.00),
+            }),
+            limits: Some(LlmModelLimits {
+                context: 128_000,
+                output: 64_000,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt52()), // Same as GPT-5.2
+        }),
         _ => None,
     }
 }
