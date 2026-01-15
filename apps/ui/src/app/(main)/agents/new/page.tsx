@@ -60,7 +60,7 @@ export default function NewAgentPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
+    <div className="container mx-auto p-6">
       <Link
         href="/agents"
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
