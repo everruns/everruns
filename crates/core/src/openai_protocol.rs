@@ -560,4 +560,31 @@ mod tests {
         assert!(format!("{:?}", driver).contains("OpenAIProtocolLlmDriver"));
         assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
     }
+
+    #[test]
+    fn test_request_includes_stream_options_for_usage() {
+        // OpenAI streaming API requires stream_options.include_usage=true
+        // to return token usage in the response
+        let request = OpenAiRequest {
+            model: "gpt-4o".to_string(),
+            messages: vec![OpenAiMessage {
+                role: "user".to_string(),
+                content: Some(OpenAiContent::Text("Hello".to_string())),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            stream: true,
+            stream_options: Some(OpenAiStreamOptions {
+                include_usage: true,
+            }),
+            tools: None,
+            reasoning_effort: None,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["stream"], true);
+        assert_eq!(json["stream_options"]["include_usage"], true);
+    }
 }

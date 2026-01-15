@@ -20,6 +20,21 @@ Usage tracking captures token consumption from LLM calls across the platform. Th
 | OpenAI | `usage.prompt_tokens` | `usage.completion_tokens` | `usage.prompt_tokens_details.cached_tokens` | N/A |
 | Anthropic | `usage.input_tokens` | `usage.output_tokens` | `usage.cache_read_input_tokens` | `usage.cache_creation_input_tokens` |
 
+### OpenAI Streaming Requirement
+
+OpenAI's streaming API does not include usage data by default. To receive token counts in streaming responses, the request must include:
+
+```json
+{
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  }
+}
+```
+
+When enabled, usage data appears in the final chunk of the stream with `choices: []`.
+
 ## Data Model
 
 ### llm_generations Table (Source of Truth)
