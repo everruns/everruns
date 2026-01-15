@@ -1538,6 +1538,335 @@ async fn test_sessions_pagination() {
     println!("Sessions pagination test completed!");
 }
 
+/// Test that a second message in the same session triggers a new workflow
+///
+/// This test verifies:
+/// 1. First message triggers workflow and gets response
+/// 2. Second message triggers a NEW workflow and gets response
+///
+/// This is a regression test for the issue where second messages were not picked up
+/// because the workflow ID was the same as session_id and the completed workflow
+/// blocked creation of a new workflow.
+///
+/// Requirements: API + Worker (uses LlmSim provider, no real API keys needed).
+#[tokio::test]
+async fn test_second_message_triggers_workflow() {
+    use std::time::{Duration, Instant};
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("Failed to create client");
+
+    println!("Testing second message triggers workflow...");
+
+    // Step 0: Create LlmSim provider and model (no real API keys needed)
+    println!("\nStep 0: Creating LlmSim provider and model...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "LlmSim Second Message Test",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created LlmSim provider: {}", provider.id);
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-second-msg-test",
+            "display_name": "LlmSim Second Message Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim model: status={}, body={}",
+            status, body
+        );
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created LlmSim model: {}", model.id);
+
+    // Step 1: Create agent with LlmSim model
+    println!("\nStep 1: Creating agent with LlmSim model...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Second Message Test Agent",
+            "system_prompt": "You are a helpful assistant. Respond briefly.",
+            "default_model_id": model.id.to_string()
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!(
+        "Created agent: {} with model: {:?}",
+        agent.id, agent.default_model_id
+    );
+
+    // Step 2: Create session
+    println!("\nStep 2: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .json(&json!({"title": "Second Message Test Session"}))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    // Step 3: Send FIRST message and wait for response
+    println!("\nStep 3: Sending FIRST message...");
+    let first_message_response = client
+        .post(format!(
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "Hello, this is the first message."}]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to create first message");
+
+    assert_eq!(
+        first_message_response.status(),
+        201,
+        "First message creation should succeed"
+    );
+    println!("First message created");
+
+    // Wait for first response
+    println!("\nWaiting for first agent response...");
+    let mut first_response_found = false;
+    for i in 1..=30 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let messages_response = client
+            .get(format!(
+                "{}/v1/agents/{}/sessions/{}/messages",
+                API_BASE_URL, agent.id, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = messages_response
+            && resp.status() == 200
+        {
+            let data: Value = resp.json().await.unwrap_or_default();
+            let empty_vec = vec![];
+            let messages = data["data"].as_array().unwrap_or(&empty_vec);
+
+            // Count agent messages
+            let agent_count = messages.iter().filter(|m| m["role"] == "agent").count();
+            if agent_count >= 1 {
+                first_response_found = true;
+                println!("Found first agent response after {}s", i);
+                break;
+            }
+        }
+
+        if i % 5 == 0 {
+            println!("Still waiting for first response... ({}s)", i);
+        }
+    }
+
+    assert!(
+        first_response_found,
+        "First agent response not received within 30 seconds"
+    );
+
+    // Small delay to ensure workflow is fully completed
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // Step 4: Send SECOND message and wait for response
+    println!("\nStep 4: Sending SECOND message...");
+    let second_message_start = Instant::now();
+    let second_message_response = client
+        .post(format!(
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "Hello, this is the SECOND message. Please respond."}]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to create second message");
+
+    assert_eq!(
+        second_message_response.status(),
+        201,
+        "Second message creation should succeed"
+    );
+    println!(
+        "Second message created in {:?}",
+        second_message_start.elapsed()
+    );
+
+    // Wait for second response
+    println!("\nWaiting for SECOND agent response...");
+    let mut second_response_found = false;
+    for i in 1..=30 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let messages_response = client
+            .get(format!(
+                "{}/v1/agents/{}/sessions/{}/messages",
+                API_BASE_URL, agent.id, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = messages_response
+            && resp.status() == 200
+        {
+            let data: Value = resp.json().await.unwrap_or_default();
+            let empty_vec = vec![];
+            let messages = data["data"].as_array().unwrap_or(&empty_vec);
+
+            // Count user and agent messages
+            let user_count = messages.iter().filter(|m| m["role"] == "user").count();
+            let agent_count = messages.iter().filter(|m| m["role"] == "agent").count();
+
+            if i == 1 || i % 5 == 0 {
+                println!(
+                    "  [{}s] Messages: {} user, {} agent",
+                    i, user_count, agent_count
+                );
+            }
+
+            // We expect 2 user messages and 2 agent messages
+            if user_count >= 2 && agent_count >= 2 {
+                second_response_found = true;
+                println!("Found second agent response after {}s", i);
+                break;
+            }
+        }
+    }
+
+    // Debug: if second response not found, show all messages
+    if !second_response_found {
+        println!("\nDebug: Final message state:");
+        if let Ok(resp) = client
+            .get(format!(
+                "{}/v1/agents/{}/sessions/{}/messages",
+                API_BASE_URL, agent.id, session.id
+            ))
+            .send()
+            .await
+            && resp.status() == 200
+        {
+            let data: Value = resp.json().await.unwrap_or_default();
+            let empty_vec = vec![];
+            let messages = data["data"].as_array().unwrap_or(&empty_vec);
+            for (i, msg) in messages.iter().enumerate() {
+                let role = msg["role"].as_str().unwrap_or("?");
+                let content_preview = msg["content"].to_string();
+                let preview: String = content_preview.chars().take(100).collect();
+                println!("  Message {}: role={}, content={}", i, role, preview);
+            }
+        }
+    }
+
+    assert!(
+        second_response_found,
+        "Second agent response not received within 30 seconds. \
+        This indicates the second message workflow was not triggered. \
+        Bug: workflow_id = session_id causes conflict when creating second workflow."
+    );
+
+    // Step 5: Verify we have exactly 2 user messages and 2 agent messages
+    println!("\nStep 5: Verifying message counts...");
+    let final_messages_response = client
+        .get(format!(
+            "{}/v1/agents/{}/sessions/{}/messages",
+            API_BASE_URL, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to get final messages");
+
+    let final_data: Value = final_messages_response
+        .json()
+        .await
+        .expect("Failed to parse final messages");
+    let final_messages = final_data["data"]
+        .as_array()
+        .expect("Expected messages array");
+
+    let user_count = final_messages
+        .iter()
+        .filter(|m| m["role"] == "user")
+        .count();
+    let agent_count = final_messages
+        .iter()
+        .filter(|m| m["role"] == "agent")
+        .count();
+
+    println!(
+        "Final counts: {} user messages, {} agent messages",
+        user_count, agent_count
+    );
+    assert_eq!(user_count, 2, "Expected 2 user messages");
+    assert_eq!(agent_count, 2, "Expected 2 agent messages");
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+    client
+        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("Second message workflow test passed!");
+}
+
 /// Test MCP server CRUD operations
 ///
 /// This test verifies:
