@@ -232,6 +232,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
 
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
@@ -239,6 +240,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
             let prompt_tokens = Arc::clone(&prompt_tokens);
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+            let finish_reason = Arc::clone(&finish_reason);
 
             async move {
                 match result {
@@ -247,6 +249,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                             let output_tokens = *total_tokens.lock().unwrap();
                             let input_tokens = *prompt_tokens.lock().unwrap();
                             let cached = *cache_read_tokens.lock().unwrap();
+                            let reason = finish_reason.lock().unwrap().clone();
 
                             return Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
                                 total_tokens: Some(input_tokens + output_tokens),
@@ -255,7 +258,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                 cache_read_tokens: cached,
                                 cache_creation_tokens: None,
                                 model: Some(model),
-                                finish_reason: Some("stop".to_string()),
+                                finish_reason: reason.or_else(|| Some("stop".to_string())),
                             }));
                         }
 
@@ -317,11 +320,15 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                     }
 
                                     // Handle finish reason
-                                    if let Some(finish_reason) = &choice.finish_reason {
-                                        let output_tokens = *total_tokens.lock().unwrap();
-                                        let input_tokens = *prompt_tokens.lock().unwrap();
+                                    // Note: Don't return Done here - wait for [DONE] marker
+                                    // OpenAI sends usage in a separate chunk AFTER finish_reason
+                                    if let Some(fr) = &choice.finish_reason {
+                                        // Store finish_reason for the [DONE] handler
+                                        *finish_reason.lock().unwrap() = Some(fr.clone());
 
-                                        if finish_reason == "tool_calls" {
+                                        // For tool_calls, emit ToolCalls event immediately
+                                        // so the agent can start processing tools
+                                        if fr == "tool_calls" {
                                             let tool_calls =
                                                 accumulated_tool_calls.lock().unwrap().clone();
                                             if !tool_calls.is_empty() {
@@ -341,17 +348,8 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                                 return Ok(LlmStreamEvent::ToolCalls(parsed_calls));
                                             }
                                         }
-
-                                        let cached = *cache_read_tokens.lock().unwrap();
-                                        return Ok(LlmStreamEvent::Done(LlmCompletionMetadata {
-                                            total_tokens: Some(input_tokens + output_tokens),
-                                            prompt_tokens: Some(input_tokens),
-                                            completion_tokens: Some(output_tokens),
-                                            cache_read_tokens: cached,
-                                            cache_creation_tokens: None,
-                                            model: Some(model),
-                                            finish_reason: Some(finish_reason.clone()),
-                                        }));
+                                        // For other finish reasons (stop, length, etc.),
+                                        // just continue - [DONE] will return Done with usage
                                     }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
