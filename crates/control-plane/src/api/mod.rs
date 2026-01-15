@@ -14,6 +14,7 @@ pub mod mcp_servers;
 pub mod messages;
 pub mod session_files;
 pub mod sessions;
+pub mod sse;
 pub mod users;
 pub mod validation;
 
