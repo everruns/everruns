@@ -149,6 +149,8 @@ When running in cloud-hosted agent environments (e.g., Claude Code on the web), 
 
 These secrets are pre-configured in the environment and do not require manual setup.
 
+If `gh` tool is not available, use GitHub API with `GITHUB_TOKEN`.
+
 ### Rust conventions
 
 - Use stable Rust (edition 2024) and keep the toolchain pinned via `rust-toolchain.toml`.
