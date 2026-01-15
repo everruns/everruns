@@ -327,6 +327,21 @@ case "$command" in
     # Enable dev mode
     export DEV_MODE=true
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
+    export RUST_LOG=${RUST_LOG:-info}
+
+    # Configure LLM API keys from environment
+    if [ -n "${OPENAI_API_KEY:-}" ]; then
+      export DEFAULT_OPENAI_API_KEY="$OPENAI_API_KEY"
+      echo "   ✅ OpenAI API key configured"
+    else
+      echo "   ⚠️  OPENAI_API_KEY not set (OpenAI models may not work)"
+    fi
+    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+      export DEFAULT_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+      echo "   ✅ Anthropic API key configured"
+    else
+      echo "   ⚠️  ANTHROPIC_API_KEY not set (Anthropic models may not work)"
+    fi
 
     # Start control-plane in background with auto-reload (dev mode)
     echo "1️⃣  Starting control-plane (DEV MODE) with auto-reload..."
