@@ -17,7 +17,7 @@ import type {
   MessageAgentData,
   Message,
   TokenUsage,
-  TurnCompletedData,
+  SessionIdledData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -256,43 +256,26 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     return map;
   }, [events]);
 
-  // Compute live usage by aggregating turn.completed events
-  // Falls back to initial session.usage if no turn events yet
+  // Get live usage from the latest session.idled event (contains cumulative session usage)
+  // Falls back to initial session.usage if no session.idled event yet
   const liveUsage = useMemo((): TokenUsage | undefined => {
     if (!events || events.length === 0) {
       return session?.usage;
     }
 
-    // Sum usage from all turn.completed events
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cacheReadTokens = 0;
-    let cacheCreationTokens = 0;
-    let hasUsage = false;
-
-    for (const event of events) {
-      if (event.type === "turn.completed") {
-        const data = event.data as TurnCompletedData;
+    // Find the latest session.idled event (they contain cumulative usage)
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i];
+      if (event.type === "session.idled") {
+        const data = event.data as SessionIdledData;
         if (data.usage) {
-          hasUsage = true;
-          inputTokens += data.usage.input_tokens;
-          outputTokens += data.usage.output_tokens;
-          cacheReadTokens += data.usage.cache_read_tokens ?? 0;
-          cacheCreationTokens += data.usage.cache_creation_tokens ?? 0;
+          return data.usage;
         }
       }
     }
 
-    if (!hasUsage) {
-      return session?.usage;
-    }
-
-    return {
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      cache_read_tokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
-      cache_creation_tokens: cacheCreationTokens > 0 ? cacheCreationTokens : undefined,
-    };
+    // Fall back to initial session usage
+    return session?.usage;
   }, [events, session?.usage]);
 
   // Check if the model supports reasoning effort

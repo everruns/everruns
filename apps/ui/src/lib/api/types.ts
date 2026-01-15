@@ -387,6 +387,8 @@ export interface SessionActivatedData {
 export interface SessionIdledData {
   turn_id: string;
   iterations?: number;
+  /** Cumulative token usage for the session at this point */
+  usage?: TokenUsage;
 }
 
 /** Union type for all event data types */

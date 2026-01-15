@@ -454,6 +454,51 @@ Session execution started.
 }
 ```
 
+#### `session.activated`
+
+Session became active (turn started). Emitted when a new turn begins.
+
+```json
+{
+  "type": "session.activated",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  }
+}
+```
+
+#### `session.idled`
+
+Session became idle (turn completed). Contains cumulative session usage for real-time UI updates.
+
+```json
+{
+  "type": "session.idled",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "iterations": 3,
+    "usage": {
+      "input_tokens": 500,
+      "output_tokens": 150,
+      "cache_read_tokens": 100
+    }
+  }
+}
+```
+
+**Usage Field:** Contains cumulative session token usage at this point. This enables real-time usage tracking in the UI without polling. The UI can display this value directly when a `session.idled` event is received.
+
 ## Event Type Registry
 
 | Event Type | Category | Description |
@@ -472,6 +517,8 @@ Session execution started.
 | `tool.call_completed` | Atom | Individual tool completed (includes result) |
 | `llm.generation` | LLM | Full LLM API call with messages and response |
 | `session.started` | Session | Session execution started |
+| `session.activated` | Session | Session became active (turn started) |
+| `session.idled` | Session | Session became idle (turn completed, includes usage) |
 
 ## Database Storage
 

@@ -838,6 +838,10 @@ pub struct SessionIdledData {
     /// Number of iterations in the completed turn
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iterations: Option<u32>,
+
+    /// Cumulative token usage for the session at this point
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
 }
 
 // ============================================================================
