@@ -1307,7 +1307,7 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
             structured_output: true,
             open_weights: false,
             cost: Some(LlmModelCost {
-                input: 0.00,  // Free for testing
+                input: 0.00, // Free for testing
                 output: 0.00,
                 cache_read: Some(0.00),
             }),
