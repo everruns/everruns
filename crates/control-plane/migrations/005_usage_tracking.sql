@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS llm_generations (
 CREATE INDEX IF NOT EXISTS idx_llm_generations_session_id ON llm_generations(session_id);
 CREATE INDEX IF NOT EXISTS idx_llm_generations_turn_id ON llm_generations(turn_id) WHERE turn_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_llm_generations_created_at ON llm_generations(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_generations_event_id ON llm_generations(event_id) WHERE event_id IS NOT NULL;
 
 -- ============================================================================
 -- 2. Add denormalized usage columns to sessions and agents (for fast queries)
@@ -162,7 +163,7 @@ BEGIN
             (v_event.data->'metadata'->>'duration_ms')::INTEGER,
             v_event.data->'metadata'->'finish_reasons'->>0,
             v_event.created_at
-        ) ON CONFLICT DO NOTHING;
+        ) ON CONFLICT (event_id) DO NOTHING;
     END LOOP;
 
     -- Update session totals from llm_generations
