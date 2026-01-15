@@ -630,7 +630,10 @@ mod tests {
         assert_eq!(usage.prompt_tokens, Some(150));
         assert_eq!(usage.completion_tokens, Some(42));
         assert!(usage.prompt_tokens_details.is_some());
-        assert_eq!(usage.prompt_tokens_details.unwrap().cached_tokens, Some(100));
+        assert_eq!(
+            usage.prompt_tokens_details.unwrap().cached_tokens,
+            Some(100)
+        );
     }
 
     #[test]

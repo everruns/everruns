@@ -5090,6 +5090,17 @@
             "type": "string",
             "format": "uuid",
             "description": "Turn ID that just completed"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Cumulative token usage for the session at this point"
+              }
+            ]
           }
         }
       },
