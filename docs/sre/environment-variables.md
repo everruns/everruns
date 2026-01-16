@@ -262,7 +262,7 @@ OTEL_RECORD_CONTENT=true
 
 ## Local Development with Jaeger
 
-The `harness/docker-compose.yml` includes Jaeger for local trace visualization:
+The `local/docker-compose.yml` includes Jaeger for local trace visualization:
 
 ```bash
 # Start all services including Jaeger

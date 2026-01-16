@@ -51,7 +51,7 @@ case "$command" in
       echo "❌ Docker Compose not found. Install Docker Desktop/Colima or the docker-compose plugin."
       exit 1
     fi
-    cd harness
+    cd local
     "${DOCKER_COMPOSE[@]}" up -d
     echo "✅ Services started!"
     echo "   - Postgres: localhost:5432"
@@ -65,7 +65,7 @@ case "$command" in
       echo "❌ Docker Compose not found. Install Docker Desktop/Colima or the docker-compose plugin."
       exit 1
     fi
-    cd harness
+    cd local
     "${DOCKER_COMPOSE[@]}" down
     echo "✅ Services stopped!"
     ;;
@@ -76,7 +76,7 @@ case "$command" in
       echo "❌ Docker Compose not found. Install Docker Desktop/Colima or the docker-compose plugin."
       exit 1
     fi
-    cd harness
+    cd local
     "${DOCKER_COMPOSE[@]}" down -v
     echo "✅ Services reset!"
     ;;
@@ -472,7 +472,7 @@ case "$command" in
         if ! docker ps 2>/dev/null | grep -q jaeger; then
           echo "   ℹ️  Starting Jaeger for tracing..."
           ensure_docker_daemon || true
-          cd "$PROJECT_ROOT/harness"
+          cd "$PROJECT_ROOT/local"
           "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
           cd "$PROJECT_ROOT"
         else
@@ -486,7 +486,7 @@ case "$command" in
       if ! docker ps 2>/dev/null | grep -q jaeger; then
         echo "   ℹ️  Starting Jaeger for tracing..."
         if resolve_docker_compose 2>/dev/null; then
-          cd "$PROJECT_ROOT/harness"
+          cd "$PROJECT_ROOT/local"
           "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
           cd "$PROJECT_ROOT"
         fi
@@ -497,7 +497,7 @@ case "$command" in
       echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
       if resolve_docker_compose; then
         ensure_docker_daemon || exit 1
-        cd "$PROJECT_ROOT/harness"
+        cd "$PROJECT_ROOT/local"
         "${DOCKER_COMPOSE[@]}" up -d postgres jaeger
         cd "$PROJECT_ROOT"
         sleep 3
@@ -622,7 +622,7 @@ case "$command" in
     pkill -f "next dev" 2>/dev/null || true
 
     # Stop Docker services
-    cd harness
+    cd local
     "${DOCKER_COMPOSE[@]}" down
 
     echo "✅ All services stopped!"
@@ -633,7 +633,7 @@ case "$command" in
       echo "❌ Docker Compose not found. Install Docker Desktop/Colima or the docker-compose plugin."
       exit 1
     fi
-    cd harness
+    cd local
     "${DOCKER_COMPOSE[@]}" logs -f
     ;;
 
@@ -829,7 +829,7 @@ case "$command" in
       exit 1
     fi
     cargo clean
-    cd harness
+    cd local
     "${DOCKER_COMPOSE[@]}" down -v
     echo "✅ Clean complete!"
     ;;

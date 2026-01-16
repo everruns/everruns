@@ -110,7 +110,7 @@ When making changes that affect user-facing behavior or operations, update the r
 ### Local dev expectations
 
 **Full mode (with PostgreSQL):**
-- A `harness/docker-compose.yml` brings up Postgres + Jaeger
+- A `local/docker-compose.yml` brings up Postgres + Jaeger
 
 **DEV_MODE (no database required):**
 ```bash
@@ -449,7 +449,7 @@ everruns/
 │   ├── openai/           # OpenAI provider (everruns-openai)
 │   └── anthropic/        # Anthropic provider (everruns-anthropic)
 ├── docs/                 # Documentation content (published via apps/docs)
-├── harness/              # Docker Compose
+├── local/              # Docker Compose
 ├── specs/                # Specifications
 └── scripts/              # Dev scripts
 ```
