@@ -157,3 +157,50 @@ Critical for scalability at 1000+ workers:
 **Decision**: Workers communicate via gRPC only, no direct database access.
 
 **Rationale**: Clear separation between control-plane (owns state) and workers (stateless executors). Workers don't need database credentials.
+
+## Benchmarks
+
+Load tests for validating performance and scalability. Located in `crates/durable/benches/`.
+
+### In-Memory Benchmarks
+
+Fast iteration without database overhead:
+
+| Benchmark | Purpose |
+|-----------|---------|
+| `concurrent_workers` | Task claiming with SKIP LOCKED at various worker counts |
+| `workflow_throughput` | Multi-step workflow execution throughput |
+| `cold_start_latency` | Time from task enqueue to worker pickup |
+
+### PostgreSQL Benchmarks
+
+Real database performance with actual I/O:
+
+| Benchmark | Purpose |
+|-----------|---------|
+| `db_concurrent_workers` | Task claiming with real PostgreSQL |
+| `db_workflow_throughput` | Multi-step workflows with persistence |
+| `db_cold_start_latency` | Cold-start latency with database overhead |
+
+### Running Benchmarks
+
+```bash
+# In-memory benchmarks (fast)
+./scripts/dev.sh durable-bench
+
+# PostgreSQL benchmarks (auto-starts Docker)
+./scripts/dev.sh durable-bench-db
+
+# With checkpointing for historical comparison
+./scripts/dev.sh durable-bench --save
+./scripts/dev.sh durable-bench-db --save ci-4cpu-8gb
+```
+
+### Benchmark Framework
+
+Custom framework in `crates/durable/src/bench/`:
+
+- `runner.rs` - Scenario execution with warmup
+- `metrics.rs` - Latency histograms, throughput tracking
+- `checkpoint.rs` - JSON checkpoints for comparison
+- `report.rs` - Markdown report generation

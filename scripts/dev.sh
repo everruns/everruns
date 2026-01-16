@@ -835,41 +835,171 @@ case "$command" in
     ;;
 
   durable-bench)
-    echo "📊 Running durable execution benchmarks..."
-    echo ""
-    echo "Running concurrent_workers..."
-    cargo bench -p everruns-durable --bench concurrent_workers
-    echo ""
-    echo "Running workflow_throughput..."
-    cargo bench -p everruns-durable --bench workflow_throughput
-    echo ""
-    echo "Running cold_start_latency..."
-    cargo bench -p everruns-durable --bench cold_start_latency
-    echo ""
-    echo "✅ Benchmarks complete!"
-    echo "   Reports: target/benchmark-reports/"
-    ;;
-
-  durable-bench-save)
-    echo "📊 Running durable execution benchmarks (with checkpointing)..."
+    # Parse arguments: [--save] [moniker]
+    SAVE_ARG=""
     MONIKER_ARG=""
-    if [ -n "${2:-}" ]; then
-      MONIKER_ARG="--moniker $2"
-      echo "   Using moniker: $2"
+    shift || true
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --save) SAVE_ARG="--save" ;;
+        --moniker) MONIKER_ARG="--moniker $2"; shift ;;
+        *) [ -z "$MONIKER_ARG" ] && [ -n "$SAVE_ARG" ] && MONIKER_ARG="--moniker $1" ;;
+      esac
+      shift || true
+    done
+
+    if [ -n "$SAVE_ARG" ]; then
+      echo "📊 Running durable execution benchmarks (with checkpointing)..."
+      [ -n "$MONIKER_ARG" ] && echo "   Moniker: ${MONIKER_ARG#--moniker }"
+    else
+      echo "📊 Running durable execution benchmarks..."
     fi
     echo ""
     echo "Running concurrent_workers..."
-    cargo bench -p everruns-durable --bench concurrent_workers -- --save $MONIKER_ARG
+    cargo bench -p everruns-durable --bench concurrent_workers -- $SAVE_ARG $MONIKER_ARG
     echo ""
     echo "Running workflow_throughput..."
-    cargo bench -p everruns-durable --bench workflow_throughput -- --save $MONIKER_ARG
+    cargo bench -p everruns-durable --bench workflow_throughput -- $SAVE_ARG $MONIKER_ARG
     echo ""
     echo "Running cold_start_latency..."
-    cargo bench -p everruns-durable --bench cold_start_latency -- --save $MONIKER_ARG
+    cargo bench -p everruns-durable --bench cold_start_latency -- $SAVE_ARG $MONIKER_ARG
     echo ""
-    echo "✅ Benchmarks complete with checkpoints saved!"
-    echo "   Reports:     target/benchmark-reports/"
-    echo "   Checkpoints: crates/durable/benches/checkpoints/"
+    if [ -n "$SAVE_ARG" ]; then
+      echo "✅ Benchmarks complete with checkpoints saved!"
+      echo "   Reports:     target/benchmark-reports/"
+      echo "   Checkpoints: crates/durable/benches/checkpoints/"
+    else
+      echo "✅ Benchmarks complete!"
+      echo "   Reports: target/benchmark-reports/"
+      echo "   💡 Tip: Use --save to save checkpoints for comparison"
+    fi
+    ;;
+
+  durable-bench-db)
+    # Parse arguments: [--save] [moniker]
+    SAVE_ARG=""
+    MONIKER_ARG=""
+    shift || true
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --save) SAVE_ARG="--save" ;;
+        --moniker) MONIKER_ARG="--moniker $2"; shift ;;
+        *) [ -z "$MONIKER_ARG" ] && [ -n "$SAVE_ARG" ] && MONIKER_ARG="--moniker $1" ;;
+      esac
+      shift || true
+    done
+
+    if [ -n "$SAVE_ARG" ]; then
+      echo "📊 Running durable execution benchmarks (PostgreSQL, with checkpointing)..."
+      [ -n "$MONIKER_ARG" ] && echo "   Moniker: ${MONIKER_ARG#--moniker }"
+    else
+      echo "📊 Running durable execution benchmarks (PostgreSQL)..."
+    fi
+    echo ""
+
+    # Database configuration
+    DB_HOST="${DB_HOST:-localhost}"
+    DB_PORT="${DB_PORT:-5432}"
+    DB_NAME="${DB_NAME:-everruns_test}"
+    # Track whether we're using Docker postgres
+    USING_DOCKER_POSTGRES=false
+
+    # Check PostgreSQL is accessible, start Docker if needed
+    echo "1️⃣  Checking PostgreSQL connection..."
+
+    # First check if Docker postgres container is running
+    if command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q everruns-postgres; then
+      echo "   Found Docker PostgreSQL container"
+      USING_DOCKER_POSTGRES=true
+      DB_USER="everruns"
+      DB_PASS="everruns"
+      # Use docker exec for reliable readiness check
+      echo "   Waiting for PostgreSQL to be ready..."
+      for i in {1..30}; do
+        if docker exec everruns-postgres pg_isready -U everruns > /dev/null 2>&1; then
+          break
+        fi
+        sleep 1
+      done
+      if ! docker exec everruns-postgres pg_isready -U everruns > /dev/null 2>&1; then
+        echo "   ❌ PostgreSQL container not responding"
+        exit 1
+      fi
+      echo "   ✅ Docker PostgreSQL is ready"
+    elif pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+      # Local postgres is running
+      echo "   ✅ Local PostgreSQL is ready"
+      DB_USER="${DB_USER:-postgres}"
+      DB_PASS="${DB_PASS:-postgres}"
+    else
+      # Need to start Docker
+      echo "   ⚠️  PostgreSQL not reachable, attempting to start via Docker..."
+      if resolve_docker_compose; then
+        ensure_docker_daemon || exit 1
+        cd "$PROJECT_ROOT/harness"
+        "${DOCKER_COMPOSE[@]}" up -d postgres
+        cd "$PROJECT_ROOT"
+        USING_DOCKER_POSTGRES=true
+        DB_USER="everruns"
+        DB_PASS="everruns"
+        echo "   Waiting for PostgreSQL to be ready..."
+        for i in {1..30}; do
+          if docker exec everruns-postgres pg_isready -U everruns > /dev/null 2>&1; then
+            break
+          fi
+          sleep 1
+        done
+        if ! docker exec everruns-postgres pg_isready -U everruns > /dev/null 2>&1; then
+          echo "   ❌ PostgreSQL failed to start"
+          exit 1
+        fi
+        echo "   ✅ Docker PostgreSQL started"
+      else
+        echo "   ❌ PostgreSQL not reachable and Docker not available"
+        exit 1
+      fi
+    fi
+
+    export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    echo "   Database: $DATABASE_URL"
+
+    # Create/reset test database
+    echo "2️⃣  Resetting test database '$DB_NAME'..."
+    if [ "$USING_DOCKER_POSTGRES" = true ]; then
+      # Use docker exec for Docker postgres
+      docker exec everruns-postgres psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" > /dev/null 2>&1 || true
+      docker exec everruns-postgres psql -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_NAME;" > /dev/null 2>&1
+    else
+      # Use local psql for local postgres
+      PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" > /dev/null 2>&1 || true
+      PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_NAME;" > /dev/null 2>&1
+    fi
+    echo "   ✅ Database reset"
+
+    # Run migrations
+    echo "3️⃣  Running migrations..."
+    sqlx migrate run --source crates/control-plane/migrations
+    echo "   ✅ Migrations complete"
+
+    echo ""
+    echo "4️⃣  Running db_concurrent_workers..."
+    cargo bench -p everruns-durable --bench db_concurrent_workers -- $SAVE_ARG $MONIKER_ARG
+    echo ""
+    echo "5️⃣  Running db_workflow_throughput..."
+    cargo bench -p everruns-durable --bench db_workflow_throughput -- $SAVE_ARG $MONIKER_ARG
+    echo ""
+    echo "6️⃣  Running db_cold_start_latency..."
+    cargo bench -p everruns-durable --bench db_cold_start_latency -- $SAVE_ARG $MONIKER_ARG
+    echo ""
+    if [ -n "$SAVE_ARG" ]; then
+      echo "✅ PostgreSQL benchmarks complete with checkpoints saved!"
+      echo "   Reports:     target/benchmark-reports/"
+      echo "   Checkpoints: crates/durable/benches/checkpoints/"
+    else
+      echo "✅ PostgreSQL benchmarks complete!"
+      echo "   Reports: target/benchmark-reports/"
+      echo "   💡 Tip: Use --save to save checkpoints for comparison"
+    fi
     ;;
 
   help|*)
@@ -906,8 +1036,8 @@ Commands:
   docs-install Install docs dependencies
   logs        View Docker service logs
   clean       Clean build artifacts and Docker volumes
-  durable-bench      Run durable execution benchmarks
-  durable-bench-save Run benchmarks with checkpoint saving (optional: moniker)
+  durable-bench [--save] [moniker]     Run durable benchmarks (in-memory)
+  durable-bench-db [--save] [moniker]  Run durable benchmarks (PostgreSQL, auto-starts Docker)
   help        Show this help message
 
 Examples:
@@ -918,9 +1048,12 @@ Examples:
   $0 watch-control-plane   # Just run control-plane with auto-reload
   $0 control-plane         # Run control-plane (use DEV_MODE=true for in-process worker)
   $0 docs                  # Start docs dev server
-  $0 durable-bench         # Run benchmarks
-  $0 durable-bench-save    # Run benchmarks with checkpointing
-  $0 durable-bench-save ci-4cpu-8gb  # With custom moniker
+  $0 durable-bench                       # Run in-memory benchmarks
+  $0 durable-bench --save                # With checkpointing
+  $0 durable-bench --save ci-4cpu-8gb    # With custom moniker
+  $0 durable-bench-db                    # Run PostgreSQL benchmarks (auto-starts Docker)
+  $0 durable-bench-db --save             # With checkpointing
+  $0 durable-bench-db --save ci-4cpu-8gb # With custom moniker
   $0 stop-all              # Stop everything
 EOF
     ;;
