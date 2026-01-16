@@ -14,6 +14,7 @@ use everruns_control_plane::dev_worker::{InProcessWorker, InProcessWorkerConfig}
 use everruns_control_plane::openapi::ApiDoc;
 use everruns_control_plane::services;
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
+use everruns_control_plane::task_notifications::TaskNotificationBroadcaster;
 
 use anyhow::{Context, Result};
 use axum::http::{HeaderValue, Method, header};
@@ -290,13 +291,33 @@ async fn main() -> Result<()> {
         let grpc_db = db.clone();
         let grpc_encryption = encryption.clone();
         let grpc_event_service = event_service.clone();
+
+        // Create task notification broadcaster for push-based notifications
+        // This uses PostgreSQL NOTIFY/LISTEN for low-latency task delivery
+        let task_broadcaster = if let Some(pool) = db.pool() {
+            let broadcaster = TaskNotificationBroadcaster::new(pool.clone()).await;
+            tracing::info!(
+                "Task notification broadcaster initialized for push-based notifications"
+            );
+            Some(Arc::new(broadcaster))
+        } else {
+            tracing::warn!("Task notification broadcaster not available (no PostgreSQL pool)");
+            None
+        };
+
         tokio::spawn(async move {
             // Use the shared EventService with listeners (OTel, etc.)
-            let grpc_service = grpc_service::WorkerServiceImpl::new(
+            let mut grpc_service = grpc_service::WorkerServiceImpl::new(
                 (*grpc_event_service).clone(),
                 grpc_db,
                 grpc_encryption,
             );
+
+            // Set task broadcaster for push-based notifications
+            if let Some(broadcaster) = task_broadcaster {
+                grpc_service.set_task_broadcaster(broadcaster);
+            }
+
             let addr = grpc_addr.parse().expect("Invalid GRPC_ADDR");
             tracing::info!("gRPC server listening on {}", addr);
             if let Err(e) = tonic::transport::Server::builder()

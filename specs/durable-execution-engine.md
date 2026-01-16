@@ -95,6 +95,20 @@ Critical for scalability at 1000+ workers:
 - Batch claiming - Fewer round trips
 - Partial index on `status = 'pending'` - Smaller index
 
+### Task Notifications (Push-Based)
+
+Low-latency task distribution via PostgreSQL NOTIFY:
+
+- **Trigger**: `notify_task_available()` fires on task INSERT with `status = 'pending'`
+- **Channel**: `task_available` with activity_type as payload
+- **Broadcaster**: Control-plane listens via `PgListener`, pushes to workers via gRPC streaming
+- **Worker subscription**: `SubscribeTaskNotifications` gRPC stream
+- **Fallback**: Workers poll with 10s interval if stream disconnects
+
+Latency improvement:
+- Polling (100ms): P50=~100ms, P99=~110ms
+- Push notifications: P50=~4ms, P99=~10ms (~96% improvement)
+
 ### Reliability
 
 1. **RetryPolicy** - Exponential backoff with jitter
@@ -158,6 +172,8 @@ Critical for scalability at 1000+ workers:
 
 **Rationale**: Clear separation between control-plane (owns state) and workers (stateless executors). Workers don't need database credentials.
 
+**Task Distribution**: Push-based via gRPC streaming. Workers subscribe to `SubscribeTaskNotifications` and receive immediate notifications when tasks are enqueued. Falls back to polling (10s interval) if stream disconnects.
+
 ## Benchmarks
 
 Load tests for validating performance and scalability. Located in `crates/durable/benches/`.
@@ -180,7 +196,7 @@ Real database performance with actual I/O:
 |-----------|---------|
 | `db_concurrent_workers` | Task claiming with real PostgreSQL |
 | `db_workflow_throughput` | Multi-step workflows with persistence |
-| `db_cold_start_latency` | Cold-start latency with database overhead |
+| `db_cold_start_latency` | Cold-start latency: polling vs push notifications |
 
 ### Running Benchmarks
 

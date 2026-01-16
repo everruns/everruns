@@ -1,6 +1,7 @@
 // gRPC-based durable store adapter
 // Decision: Workers communicate with control-plane via gRPC for durable execution
 // Decision: No direct database access from workers - all operations go through gRPC
+// Decision: Supports push-based task notifications with polling fallback
 
 use anyhow::Result;
 use everruns_internal_protocol::proto::{
@@ -10,9 +11,11 @@ use everruns_internal_protocol::proto::{
     EnqueueDurableTaskRequest, FailDurableTaskRequest, GetDurableWorkflowStatusRequest,
     HeartbeatDurableTaskRequest, HeartbeatDurableWorkerRequest, RecordCircuitBreakerFailureRequest,
     RecordCircuitBreakerSuccessRequest, RegisterDurableWorkerRequest,
+    SubscribeTaskNotificationsRequest, TaskNotification, TaskNotificationType,
     UpdateDurableWorkflowStatusRequest,
 };
 use everruns_internal_protocol::{WorkerServiceClient, json_to_proto_struct, uuid_to_proto_uuid};
+use tonic::Streaming;
 use tonic::transport::Channel;
 use uuid::Uuid;
 
@@ -333,11 +336,89 @@ impl GrpcDurableStore {
             circuit_opened: inner.circuit_opened,
         })
     }
+
+    // ========================================================================
+    // Push-based task notifications
+    // ========================================================================
+
+    /// Subscribe to task notifications for push-based task pickup
+    ///
+    /// Returns a stream of task notifications. The stream will emit:
+    /// - TASK_AVAILABLE notifications when tasks matching the activity types are enqueued
+    /// - HEARTBEAT notifications periodically to keep the connection alive
+    ///
+    /// If the stream disconnects, the caller should fall back to polling.
+    pub async fn subscribe_task_notifications(
+        &mut self,
+        worker_id: &str,
+        activity_types: Vec<String>,
+    ) -> Result<TaskNotificationStream> {
+        let request = SubscribeTaskNotificationsRequest {
+            worker_id: worker_id.to_string(),
+            activity_types,
+        };
+
+        let response = self.client.subscribe_task_notifications(request).await?;
+
+        Ok(TaskNotificationStream {
+            inner: response.into_inner(),
+        })
+    }
+}
+
+/// Stream of task notifications from the control-plane
+pub struct TaskNotificationStream {
+    inner: Streaming<TaskNotification>,
+}
+
+impl TaskNotificationStream {
+    /// Receive the next notification from the stream
+    ///
+    /// Returns None if the stream has ended.
+    pub async fn recv(&mut self) -> Option<TaskNotificationEvent> {
+        match self.inner.message().await {
+            Ok(Some(notification)) => {
+                let notification_type =
+                    TaskNotificationType::try_from(notification.notification_type)
+                        .unwrap_or(TaskNotificationType::Unspecified);
+
+                match notification_type {
+                    TaskNotificationType::TaskAvailable => {
+                        Some(TaskNotificationEvent::TaskAvailable {
+                            activity_type: notification.activity_type,
+                            pending_count: notification.pending_count,
+                        })
+                    }
+                    TaskNotificationType::Heartbeat => Some(TaskNotificationEvent::Heartbeat),
+                    TaskNotificationType::Unspecified => Some(TaskNotificationEvent::Heartbeat),
+                }
+            }
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!("Task notification stream error: {}", e);
+                None
+            }
+        }
+    }
 }
 
 // ============================================================================
 // Helper types
 // ============================================================================
+
+/// Task notification event from the control-plane
+#[derive(Debug, Clone)]
+pub enum TaskNotificationEvent {
+    /// A task is available for claiming
+    TaskAvailable {
+        /// The activity type of the available task
+        activity_type: Option<String>,
+        /// Approximate number of pending tasks (hint for batch claiming)
+        pending_count: Option<i32>,
+    },
+    /// Heartbeat to keep the connection alive
+    Heartbeat,
+}
 
 /// Claimed task from the queue
 #[derive(Debug, Clone)]

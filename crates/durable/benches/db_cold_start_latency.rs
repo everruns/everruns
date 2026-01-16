@@ -1,11 +1,11 @@
 //! Cold-start latency benchmark with PostgreSQL backend
 //!
 //! Measures the time from task enqueue to task execution start when the worker
-//! is idle, using real PostgreSQL persistence. This measures the actual database
-//! overhead in user-perceived responsiveness.
+//! is idle, using real PostgreSQL persistence. Compares polling vs push-based
+//! notification approaches.
 //!
 //! Requirements:
-//!   - PostgreSQL 17 running with DATABASE_URL set
+//!   - PostgreSQL running with DATABASE_URL set
 //!   - Migrations applied from crates/control-plane/migrations/
 //!
 //! Usage:
@@ -19,7 +19,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use sqlx::PgPool;
+use sqlx::postgres::PgListener;
 use tokio::runtime::Runtime;
+use tokio::sync::mpsc;
 
 use everruns_durable::bench::{
     BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
@@ -49,7 +51,15 @@ struct ColdStartConfig {
     name: String,
 }
 
-/// Run a single cold-start measurement
+/// Configuration for push-based notification test
+struct PushNotificationConfig {
+    /// Number of iterations to run
+    iterations: usize,
+    /// Name for this scenario
+    name: String,
+}
+
+/// Run a single cold-start measurement (polling approach)
 ///
 /// Returns the duration from enqueue to task claim (schedule-to-start latency)
 async fn measure_single_cold_start(
@@ -88,7 +98,7 @@ async fn measure_single_cold_start(
     claimed_at.duration_since(enqueue_time)
 }
 
-/// Run cold-start latency scenario with PostgreSQL
+/// Run cold-start latency scenario with PostgreSQL (polling approach)
 async fn run_cold_start_scenario(pool: PgPool, config: ColdStartConfig) -> Arc<BenchmarkMetrics> {
     let metrics = Arc::new(BenchmarkMetrics::new(&config.name));
     let store = Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
@@ -105,7 +115,7 @@ async fn run_cold_start_scenario(pool: PgPool, config: ColdStartConfig) -> Arc<B
         .await
         .unwrap();
 
-    println!("\n🗄️  Running (PostgreSQL): {}", config.name);
+    println!("\n🗄️  Running (PostgreSQL, Polling): {}", config.name);
     println!(
         "   Iterations: {}, Workers: {}, Check interval: {:?}",
         config.iterations, config.worker_count, config.check_interval
@@ -215,6 +225,180 @@ async fn run_cold_start_scenario(pool: PgPool, config: ColdStartConfig) -> Arc<B
     metrics
 }
 
+/// Run push-based notification scenario with PostgreSQL LISTEN/NOTIFY
+///
+/// Measures the latency from task enqueue to notification received + task claimed.
+/// This simulates the push-based notification architecture where workers subscribe
+/// to notifications and immediately claim tasks when notified.
+async fn run_push_notification_scenario(
+    pool: PgPool,
+    config: PushNotificationConfig,
+) -> Arc<BenchmarkMetrics> {
+    let metrics = Arc::new(BenchmarkMetrics::new(&config.name));
+    let store = Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
+    let workflow_id = Uuid::now_v7();
+
+    // Create workflow
+    store
+        .create_workflow(
+            workflow_id,
+            "db_push_notification_benchmark",
+            serde_json::json!({}),
+            None,
+        )
+        .await
+        .unwrap();
+
+    println!(
+        "\n📡 Running (PostgreSQL, Push Notifications): {}",
+        config.name
+    );
+    println!("   Iterations: {}", config.iterations);
+
+    // Set up LISTEN for task notifications
+    let mut listener = PgListener::connect_with(&pool).await.unwrap();
+    listener.listen("task_available").await.unwrap();
+
+    // Channel for notification receipt timing
+    let (notify_tx, mut notify_rx) = mpsc::channel::<Instant>(1);
+
+    // Spawn listener task
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_clone = shutdown.clone();
+    let listener_handle = tokio::spawn(async move {
+        loop {
+            if shutdown_clone.load(Ordering::SeqCst) {
+                break;
+            }
+
+            tokio::select! {
+                result = listener.recv() => {
+                    if result.is_ok() {
+                        // Record when we received the notification
+                        let _ = notify_tx.send(Instant::now()).await;
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                    // Check shutdown periodically
+                }
+            }
+        }
+    });
+
+    // Run iterations
+    let start = Instant::now();
+    let mut latencies = Vec::with_capacity(config.iterations);
+
+    for i in 0..config.iterations {
+        // Clear any pending notifications
+        while notify_rx.try_recv().is_ok() {}
+
+        // Small pause to ensure listener is ready
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        // Record enqueue time and enqueue task
+        let enqueue_time = Instant::now();
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id,
+                activity_id: format!("push-notification-{}", i),
+                activity_type: "db_push_notification_activity".to_string(),
+                input: serde_json::json!({ "task_num": i }),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+
+        // Wait for notification
+        let notification_time = tokio::time::timeout(Duration::from_secs(5), notify_rx.recv())
+            .await
+            .expect("Timeout waiting for notification")
+            .expect("Channel closed");
+
+        // Immediately claim the task (simulating push-based worker behavior)
+        let claim_start = Instant::now();
+        let claimed = store
+            .claim_task(
+                "push-notification-worker",
+                &["db_push_notification_activity".to_string()],
+                1,
+            )
+            .await
+            .unwrap();
+
+        assert!(!claimed.is_empty(), "Should have claimed a task");
+
+        // Complete the task
+        for task in claimed {
+            store
+                .complete_task(
+                    task.id,
+                    "push-notification-worker",
+                    serde_json::json!({"ok": true}),
+                )
+                .await
+                .unwrap();
+        }
+
+        // Calculate latencies
+        let notification_latency = notification_time.duration_since(enqueue_time);
+        let claim_latency = claim_start.duration_since(enqueue_time);
+        let total_latency = Instant::now().duration_since(enqueue_time);
+
+        latencies.push(claim_latency);
+        metrics.schedule_to_start.record(claim_latency);
+        metrics.end_to_end.record(total_latency);
+        metrics.tasks_completed.increment();
+
+        // Log first few iterations for debugging
+        if i < 3 {
+            println!(
+                "   [{}] notify={:.2}ms claim={:.2}ms total={:.2}ms",
+                i,
+                notification_latency.as_secs_f64() * 1000.0,
+                claim_latency.as_secs_f64() * 1000.0,
+                total_latency.as_secs_f64() * 1000.0
+            );
+        }
+
+        // Brief pause between iterations
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // Shutdown listener
+    shutdown.store(true, Ordering::SeqCst);
+    listener_handle.abort();
+
+    let elapsed = start.elapsed();
+
+    // Cleanup test data
+    cleanup_workflow(&pool, workflow_id).await;
+
+    // Calculate statistics
+    latencies.sort();
+    let p50 = latencies[latencies.len() / 2];
+    let p99 = latencies[(latencies.len() as f64 * 0.99) as usize];
+    let min = latencies[0];
+    let max = latencies[latencies.len() - 1];
+    let avg: Duration = latencies.iter().sum::<Duration>() / latencies.len() as u32;
+
+    println!(
+        "✅ Completed {} iterations in {:.2}s",
+        config.iterations,
+        elapsed.as_secs_f64()
+    );
+    println!(
+        "   Cold-start latency: min={:.2}ms avg={:.2}ms p50={:.2}ms p99={:.2}ms max={:.2}ms",
+        min.as_secs_f64() * 1000.0,
+        avg.as_secs_f64() * 1000.0,
+        p50.as_secs_f64() * 1000.0,
+        p99.as_secs_f64() * 1000.0,
+        max.as_secs_f64() * 1000.0,
+    );
+
+    metrics
+}
+
 /// Cleanup test data after the benchmark
 async fn cleanup_workflow(pool: &PgPool, workflow_id: Uuid) {
     // Delete in reverse dependency order
@@ -292,48 +476,84 @@ fn main() {
     println!("       Cold-Start Latency Benchmark (PostgreSQL)");
     println!("═══════════════════════════════════════════════════════════");
     println!("Database: {}", database_url);
-    println!("\nMeasures idle worker → task pickup latency with real DB overhead.");
+    println!("\nCompares polling vs push-based notification approaches.");
     println!("This is what users experience when sending a message to an idle agent.\n");
 
-    // PostgreSQL baseline - same parameters as in-memory version
-    let baseline = rt.block_on(run_cold_start_scenario(
+    // Scenario 1: Polling approach (100ms interval)
+    let polling = rt.block_on(run_cold_start_scenario(
         pool.clone(),
         ColdStartConfig {
             iterations: 20,
             worker_count: 1,
             check_interval: Duration::from_millis(100),
-            name: "db_cold_start_baseline".to_string(),
+            name: "polling_100ms".to_string(),
         },
     ));
 
-    // Summary
+    // Scenario 2: Push-based notifications
+    let push = rt.block_on(run_push_notification_scenario(
+        pool.clone(),
+        PushNotificationConfig {
+            iterations: 20,
+            name: "push_notifications".to_string(),
+        },
+    ));
+
+    // Summary comparison
     println!("\n═══════════════════════════════════════════════════════════");
     println!("                    Summary");
     println!("═══════════════════════════════════════════════════════════");
 
-    let s2s = baseline.schedule_to_start.summary();
-    println!("\nCold-start latency (idle → work pickup) with PostgreSQL:");
-    println!("   P50: {:.2}ms", s2s.p50.as_secs_f64() * 1000.0);
-    println!("   P99: {:.2}ms", s2s.p99.as_secs_f64() * 1000.0);
-    println!("   Max: {:.2}ms", s2s.max.as_secs_f64() * 1000.0);
+    let polling_s2s = polling.schedule_to_start.summary();
+    let push_s2s = push.schedule_to_start.summary();
 
-    // Target guidance (slightly relaxed for DB overhead)
-    let p99_ms = s2s.p99.as_secs_f64() * 1000.0;
-    if p99_ms < 100.0 {
-        println!("\n   ✅ P99 < 100ms: Excellent responsiveness (with DB)");
-    } else if p99_ms < 300.0 {
-        println!(
-            "\n   ⚠️  P99 {:.0}ms: Acceptable, but check DB latency",
-            p99_ms
-        );
+    println!("\n┌─────────────────────┬────────────┬────────────┐");
+    println!("│ Metric              │ Polling    │ Push       │");
+    println!("├─────────────────────┼────────────┼────────────┤");
+    println!(
+        "│ P50 latency         │ {:>7.2}ms │ {:>7.2}ms │",
+        polling_s2s.p50.as_secs_f64() * 1000.0,
+        push_s2s.p50.as_secs_f64() * 1000.0
+    );
+    println!(
+        "│ P99 latency         │ {:>7.2}ms │ {:>7.2}ms │",
+        polling_s2s.p99.as_secs_f64() * 1000.0,
+        push_s2s.p99.as_secs_f64() * 1000.0
+    );
+    println!(
+        "│ Max latency         │ {:>7.2}ms │ {:>7.2}ms │",
+        polling_s2s.max.as_secs_f64() * 1000.0,
+        push_s2s.max.as_secs_f64() * 1000.0
+    );
+    println!("└─────────────────────┴────────────┴────────────┘");
+
+    // Calculate improvement
+    let p50_improvement = (polling_s2s.p50.as_secs_f64() - push_s2s.p50.as_secs_f64())
+        / polling_s2s.p50.as_secs_f64()
+        * 100.0;
+    let p99_improvement = (polling_s2s.p99.as_secs_f64() - push_s2s.p99.as_secs_f64())
+        / polling_s2s.p99.as_secs_f64()
+        * 100.0;
+
+    println!(
+        "\n📈 Push notifications improvement: P50={:.0}% faster, P99={:.0}% faster",
+        p50_improvement, p99_improvement
+    );
+
+    // Target guidance
+    let push_p99_ms = push_s2s.p99.as_secs_f64() * 1000.0;
+    if push_p99_ms < 10.0 {
+        println!("\n   ✅ Push P99 < 10ms: Excellent responsiveness!");
+    } else if push_p99_ms < 50.0 {
+        println!("\n   ✅ Push P99 < 50ms: Good responsiveness");
     } else {
         println!(
-            "\n   ❌ P99 {:.0}ms: High latency - investigate DB connection",
-            p99_ms
+            "\n   ⚠️  Push P99 {:.0}ms: Higher than expected",
+            push_p99_ms
         );
     }
 
-    // Generate HTML report
+    // Generate HTML report for push notifications (the primary metric)
     println!("\n📊 Generating HTML report...");
 
     let report_config = ReportConfig {
@@ -343,7 +563,7 @@ fn main() {
     };
 
     let report = BenchmarkReport::new(report_config);
-    match report.generate(&baseline) {
+    match report.generate(&push) {
         Ok(path) => println!("   ✅ {}", path),
         Err(e) => println!("   ❌ {}", e),
     }
@@ -362,7 +582,7 @@ fn main() {
         ));
 
         let checkpoint =
-            BenchmarkCheckpoint::new("db_cold_start_baseline", env, baseline.snapshot());
+            BenchmarkCheckpoint::new("db_cold_start_push_notifications", env, push.snapshot());
         match store.save(&checkpoint) {
             Ok(path) => println!("   ✅ {}", path.display()),
             Err(e) => println!("   ❌ {}", e),

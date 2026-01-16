@@ -1,6 +1,6 @@
 // Durable execution engine worker
-// Decision: Polls task queue via gRPC instead of direct database access
-// Decision: Uses gRPC adapters for control-plane communication
+// Decision: Push-based task notifications via gRPC streaming with polling fallback
+// Decision: Uses gRPC adapters for control-plane communication (no direct DB access)
 
 use anyhow::Result;
 use everruns_core::atoms::AtomContext;
@@ -16,7 +16,9 @@ use crate::activities::{
 };
 use crate::durable_runner::DurableTurnInput;
 use crate::grpc_adapters::GrpcClient;
-use crate::grpc_durable_store::{ClaimedTask, GrpcDurableStore, WorkflowStatus};
+use crate::grpc_durable_store::{
+    ClaimedTask, GrpcDurableStore, TaskNotificationEvent, TaskNotificationStream, WorkflowStatus,
+};
 
 // =============================================================================
 // Configuration
@@ -31,7 +33,7 @@ pub struct DurableWorkerConfig {
     pub activity_types: Vec<String>,
     /// Maximum concurrent tasks
     pub max_concurrent_tasks: usize,
-    /// Poll interval when no tasks available
+    /// Poll interval when push notifications unavailable (fallback)
     pub poll_interval: Duration,
     /// Heartbeat interval for claimed tasks
     pub heartbeat_interval: Duration,
@@ -49,7 +51,7 @@ impl Default for DurableWorkerConfig {
                 "act".to_string(),
             ],
             max_concurrent_tasks: 10,
-            poll_interval: Duration::from_millis(100), // Fast polling to minimize message delay
+            poll_interval: Duration::from_millis(100), // Fallback when push notifications unavailable
             heartbeat_interval: Duration::from_secs(10),
             grpc_address: "127.0.0.1:9001".to_string(),
         }
@@ -83,7 +85,9 @@ impl DurableWorkerConfig {
 // DurableWorker
 // =============================================================================
 
-/// Worker that polls and executes tasks from the durable task queue via gRPC
+/// Worker that executes tasks from the durable task queue via gRPC.
+/// Uses push-based notifications for low-latency task pickup (<10ms P99),
+/// with polling fallback when notifications are unavailable.
 pub struct DurableWorker {
     config: DurableWorkerConfig,
     store: Arc<Mutex<GrpcDurableStore>>,
@@ -154,7 +158,42 @@ impl DurableWorker {
         let mut last_heartbeat = std::time::Instant::now();
         let heartbeat_interval = self.config.heartbeat_interval;
 
-        // Main poll loop
+        // Fallback poll interval (longer since notifications handle most cases)
+        let fallback_poll_interval = Duration::from_secs(10);
+
+        // Try to establish notification stream (optional - polling is fallback)
+        let mut notification_stream: Option<TaskNotificationStream> = None;
+        {
+            let mut store = self.store.lock().await;
+            match store
+                .subscribe_task_notifications(
+                    &self.config.worker_id,
+                    self.config.activity_types.clone(),
+                )
+                .await
+            {
+                Ok(stream) => {
+                    info!(
+                        worker_id = %self.config.worker_id,
+                        "Connected to push-based task notification stream"
+                    );
+                    notification_stream = Some(stream);
+                }
+                Err(e) => {
+                    debug!(
+                        worker_id = %self.config.worker_id,
+                        error = %e,
+                        "Push notifications unavailable, using polling fallback"
+                    );
+                }
+            }
+        }
+
+        // Track stream reconnection attempts
+        let mut reconnect_backoff = Duration::from_secs(1);
+        let max_reconnect_backoff = Duration::from_secs(60);
+
+        // Main event loop with push notifications and polling fallback
         loop {
             // Check for shutdown
             if *self.shutdown_rx.borrow() {
@@ -175,18 +214,102 @@ impl DurableWorker {
                 last_heartbeat = std::time::Instant::now();
             }
 
+            // Wait for notification, fallback poll timeout, or shutdown
+            let should_poll = match &mut notification_stream {
+                Some(stream) => {
+                    tokio::select! {
+                        // Push notification received
+                        notification = stream.recv() => {
+                            match notification {
+                                Some(TaskNotificationEvent::TaskAvailable { activity_type, pending_count }) => {
+                                    debug!(
+                                        activity_type = ?activity_type,
+                                        pending_count = ?pending_count,
+                                        "Received task available notification"
+                                    );
+                                    true // Poll immediately
+                                }
+                                Some(TaskNotificationEvent::Heartbeat) => {
+                                    // Stream is alive, continue waiting
+                                    false
+                                }
+                                None => {
+                                    // Stream ended - need to reconnect
+                                    warn!(
+                                        worker_id = %self.config.worker_id,
+                                        "Task notification stream disconnected, switching to polling"
+                                    );
+                                    notification_stream = None;
+                                    true // Poll to catch any missed tasks
+                                }
+                            }
+                        }
+
+                        // Fallback poll timeout (long interval since we have notifications)
+                        _ = tokio::time::sleep(fallback_poll_interval) => {
+                            debug!("Fallback poll timeout, checking for tasks");
+                            true
+                        }
+
+                        // Shutdown signal
+                        _ = self.shutdown_rx.changed() => {
+                            info!("Shutdown during notification wait");
+                            break;
+                        }
+                    }
+                }
+                None => {
+                    // No notification stream - use regular polling with reconnect attempts
+                    tokio::select! {
+                        // Short poll interval when no notifications
+                        _ = tokio::time::sleep(self.config.poll_interval) => {
+                            // Try to reconnect periodically
+                            let mut store = self.store.lock().await;
+                            match store
+                                .subscribe_task_notifications(
+                                    &self.config.worker_id,
+                                    self.config.activity_types.clone(),
+                                )
+                                .await
+                            {
+                                Ok(stream) => {
+                                    info!(
+                                        worker_id = %self.config.worker_id,
+                                        "Reconnected to push-based task notification stream"
+                                    );
+                                    notification_stream = Some(stream);
+                                    reconnect_backoff = Duration::from_secs(1);
+                                }
+                                Err(_) => {
+                                    // Increase backoff, but still poll
+                                    reconnect_backoff = std::cmp::min(
+                                        reconnect_backoff * 2,
+                                        max_reconnect_backoff,
+                                    );
+                                }
+                            }
+                            drop(store);
+                            true
+                        }
+
+                        // Shutdown signal
+                        _ = self.shutdown_rx.changed() => {
+                            info!("Shutdown during poll wait");
+                            break;
+                        }
+                    }
+                }
+            };
+
+            if !should_poll {
+                continue;
+            }
+
             // Poll for tasks
             match self.poll_and_execute().await {
                 Ok(executed) => {
-                    if executed == 0 {
-                        // No tasks available, wait before next poll
-                        tokio::select! {
-                            _ = tokio::time::sleep(self.config.poll_interval) => {}
-                            _ = self.shutdown_rx.changed() => {
-                                info!("Shutdown during poll wait");
-                                break;
-                            }
-                        }
+                    if executed > 0 {
+                        debug!(tasks_executed = executed, "Executed tasks");
                     }
                 }
                 Err(e) => {

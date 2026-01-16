@@ -5,7 +5,7 @@
 //
 // Architecture:
 // - API calls `start_run` which queues a workflow
-// - Worker polls task queues and executes activities
+// - Worker receives push notifications when tasks are enqueued (via gRPC streaming)
 // - Each activity (input, reason, act) is idempotent
 // - ReasonAtom handles agent loading, model resolution, and LLM calls
 // - Events are persisted via gRPC to control-plane
