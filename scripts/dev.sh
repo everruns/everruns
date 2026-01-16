@@ -898,49 +898,70 @@ case "$command" in
     echo ""
 
     # Database configuration
-    # Default: postgres://postgres:postgres@localhost:5432/everruns_test
     DB_HOST="${DB_HOST:-localhost}"
     DB_PORT="${DB_PORT:-5432}"
-    DB_USER="${DB_USER:-postgres}"
-    DB_PASS="${DB_PASS:-postgres}"
     DB_NAME="${DB_NAME:-everruns_test}"
-    export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-
-    echo "   Database: $DATABASE_URL"
-    echo ""
+    # Track whether we're using Docker postgres
+    USING_DOCKER_POSTGRES=false
 
     # Check PostgreSQL is accessible, start Docker if needed
     echo "1️⃣  Checking PostgreSQL connection..."
-    if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+
+    # First check if Docker postgres container is running
+    if command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q everruns-postgres; then
+      echo "   Found Docker PostgreSQL container"
+      USING_DOCKER_POSTGRES=true
+      DB_USER="everruns"
+      DB_PASS="everruns"
+      # Use docker exec for reliable readiness check
+      echo "   Waiting for PostgreSQL to be ready..."
+      for i in {1..30}; do
+        if docker exec everruns-postgres pg_isready -U everruns > /dev/null 2>&1; then
+          break
+        fi
+        sleep 1
+      done
+      if ! docker exec everruns-postgres pg_isready -U everruns > /dev/null 2>&1; then
+        echo "   ❌ PostgreSQL container not responding"
+        exit 1
+      fi
+      echo "   ✅ Docker PostgreSQL is ready"
+    elif pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+      # Local postgres is running
+      echo "   ✅ Local PostgreSQL is ready"
+      DB_USER="${DB_USER:-postgres}"
+      DB_PASS="${DB_PASS:-postgres}"
+    else
+      # Need to start Docker
       echo "   ⚠️  PostgreSQL not reachable, attempting to start via Docker..."
       if resolve_docker_compose; then
         ensure_docker_daemon || exit 1
         cd "$PROJECT_ROOT/harness"
         "${DOCKER_COMPOSE[@]}" up -d postgres
         cd "$PROJECT_ROOT"
+        USING_DOCKER_POSTGRES=true
+        DB_USER="everruns"
+        DB_PASS="everruns"
         echo "   Waiting for PostgreSQL to be ready..."
         for i in {1..30}; do
-          if pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+          if docker exec everruns-postgres pg_isready -U everruns > /dev/null 2>&1; then
             break
           fi
           sleep 1
         done
-        if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+        if ! docker exec everruns-postgres pg_isready -U everruns > /dev/null 2>&1; then
           echo "   ❌ PostgreSQL failed to start"
           exit 1
         fi
-        # Update credentials for Docker postgres
-        DB_USER="everruns"
-        DB_PASS="everruns"
-        export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
         echo "   ✅ Docker PostgreSQL started"
       else
         echo "   ❌ PostgreSQL not reachable and Docker not available"
         exit 1
       fi
-    else
-      echo "   ✅ PostgreSQL is ready"
     fi
+
+    export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    echo "   Database: $DATABASE_URL"
 
     # Create/reset test database
     echo "2️⃣  Resetting test database '$DB_NAME'..."
