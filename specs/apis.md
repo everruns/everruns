@@ -106,6 +106,7 @@ Global image storage for message attachments. Images are stored with optional se
 
 **Constraints:**
 - Maximum file size: 100MB
+- Request body limit: 101MB (100MB file + 1MB multipart overhead)
 - Allowed types: image/png, image/jpeg, image/gif, image/webp
 - Thumbnails generated automatically (max 200x200 pixels)
 

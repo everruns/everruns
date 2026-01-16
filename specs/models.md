@@ -210,6 +210,7 @@ Global storage for uploaded images. Images can be attached to messages via the `
 
 **Constraints:**
 - Maximum file size: 100MB
+- Request body limit: 101MB (100MB file + 1MB multipart overhead)
 - Allowed content types: image/png, image/jpeg, image/gif, image/webp
 - Thumbnails generated automatically using Lanczos3 scaling
 
