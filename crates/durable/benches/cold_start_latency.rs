@@ -20,7 +20,9 @@ use everruns_durable::bench::{
     BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
     ReportConfig,
 };
-use everruns_durable::persistence::{InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore};
+use everruns_durable::persistence::{
+    InMemoryWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+};
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;
 
@@ -83,7 +85,12 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
 
     // Create workflow
     store
-        .create_workflow(workflow_id, "cold_start_benchmark", serde_json::json!({}), None)
+        .create_workflow(
+            workflow_id,
+            "cold_start_benchmark",
+            serde_json::json!({}),
+            None,
+        )
         .await
         .unwrap();
 
@@ -149,14 +156,8 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
     let mut latencies = Vec::with_capacity(config.iterations);
 
     for i in 0..config.iterations {
-        let latency = measure_single_cold_start(
-            &store,
-            workflow_id,
-            i,
-            &task_claimed,
-            &claim_time,
-        )
-        .await;
+        let latency =
+            measure_single_cold_start(&store, workflow_id, i, &task_claimed, &claim_time).await;
 
         latencies.push(latency);
         metrics.schedule_to_start.record(latency);
@@ -183,7 +184,11 @@ async fn run_cold_start_scenario(config: ColdStartConfig) -> Arc<BenchmarkMetric
     let max = latencies[latencies.len() - 1];
     let avg: Duration = latencies.iter().sum::<Duration>() / latencies.len() as u32;
 
-    println!("✅ Completed {} iterations in {:.2}s", config.iterations, elapsed.as_secs_f64());
+    println!(
+        "✅ Completed {} iterations in {:.2}s",
+        config.iterations,
+        elapsed.as_secs_f64()
+    );
     println!(
         "   Cold-start latency: min={:.2}ms avg={:.2}ms p50={:.2}ms p99={:.2}ms max={:.2}ms",
         min.as_secs_f64() * 1000.0,
@@ -261,7 +266,10 @@ fn main() {
     if p99_ms < 50.0 {
         println!("\n   ✅ P99 < 50ms: Excellent responsiveness");
     } else if p99_ms < 200.0 {
-        println!("\n   ⚠️  P99 {:.0}ms: Acceptable, but room for improvement", p99_ms);
+        println!(
+            "\n   ⚠️  P99 {:.0}ms: Acceptable, but room for improvement",
+            p99_ms
+        );
     } else {
         println!("\n   ❌ P99 {:.0}ms: Users may perceive delay", p99_ms);
     }
