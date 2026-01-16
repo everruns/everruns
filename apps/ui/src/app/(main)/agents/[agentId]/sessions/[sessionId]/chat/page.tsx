@@ -60,9 +60,6 @@ export default function ChatPage() {
     addFiles,
     removeImage,
     clearImages,
-    handlePaste,
-    handleDragOver,
-    handleDrop,
     hasImages,
     isUploading,
   } = useImageAttachments({ sessionId });
@@ -187,14 +184,6 @@ export default function ChatPage() {
       handleSubmit(e);
     }
   };
-
-  // Handle paste for images
-  const handleTextareaPaste = useCallback(
-    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      handlePaste(e);
-    },
-    [handlePaste]
-  );
 
   // Handle file input change
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -349,17 +338,56 @@ export default function ChatPage() {
             <ImagePlus className="h-5 w-5" />
           </Button>
 
-          <Textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handleTextareaPaste}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            placeholder="Type a message... (Paste or drop images, Enter to send)"
-            className="flex-1 min-h-[60px] max-h-[200px] resize-none"
-          />
+          {/* Textarea with drag-drop wrapper */}
+          <div
+            className="flex-1 relative"
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const files = e.dataTransfer?.files;
+              if (files && files.length > 0) {
+                const imageFiles = Array.from(files).filter((f) =>
+                  f.type.startsWith("image/")
+                );
+                if (imageFiles.length > 0) {
+                  addFiles(imageFiles);
+                }
+              }
+            }}
+          >
+            <Textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={(e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                const imageFiles: File[] = [];
+                for (const item of Array.from(items)) {
+                  if (item.type.startsWith("image/")) {
+                    const file = item.getAsFile();
+                    if (file) imageFiles.push(file);
+                  }
+                }
+                if (imageFiles.length > 0) {
+                  e.preventDefault();
+                  addFiles(imageFiles);
+                }
+              }}
+              placeholder="Type a message... (Paste or drop images, Enter to send)"
+              className="w-full min-h-[60px] max-h-[200px] resize-none"
+            />
+          </div>
+
           <Button
             type="submit"
             size="icon"

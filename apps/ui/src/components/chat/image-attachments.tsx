@@ -1,7 +1,6 @@
 "use client";
 
 import { X, Loader2, AlertCircle, ImageIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type { PendingImage } from "@/lib/api/images";
 import { getThumbnailUrl } from "@/lib/api/images";
 
@@ -60,16 +59,14 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
           </>
         )}
       </div>
-      {/* Remove button */}
-      <Button
+      {/* Remove button - monochrome style */}
+      <button
         type="button"
-        variant="secondary"
-        size="icon"
-        className="absolute -top-2 -right-2 w-5 h-5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
         onClick={() => onRemove(image.tempId)}
       >
-        <X className="w-3 h-3" />
-      </Button>
+        <X className="w-3 h-3 text-muted-foreground" />
+      </button>
       {/* Filename tooltip */}
       <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[10px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
         {image.filename}
