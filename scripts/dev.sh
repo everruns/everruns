@@ -843,6 +843,9 @@ case "$command" in
     echo "Running workflow_throughput..."
     cargo bench -p everruns-durable --bench workflow_throughput
     echo ""
+    echo "Running cold_start_latency..."
+    cargo bench -p everruns-durable --bench cold_start_latency
+    echo ""
     echo "✅ Benchmarks complete!"
     echo "   Reports: target/benchmark-reports/"
     ;;
@@ -860,6 +863,9 @@ case "$command" in
     echo ""
     echo "Running workflow_throughput..."
     cargo bench -p everruns-durable --bench workflow_throughput -- --save $MONIKER_ARG
+    echo ""
+    echo "Running cold_start_latency..."
+    cargo bench -p everruns-durable --bench cold_start_latency -- --save $MONIKER_ARG
     echo ""
     echo "✅ Benchmarks complete with checkpoints saved!"
     echo "   Reports:     target/benchmark-reports/"

@@ -1,0 +1,108 @@
+{
+  "id": "019bc425-cb79-749b-a719-b99a8cd59bc3",
+  "benchmark_name": "cold_start_baseline",
+  "timestamp": "2026-01-16T00:12:49.913591Z",
+  "environment": {
+    "moniker": "local-M4-Pro-48GB",
+    "os": "Darwin 15.5",
+    "cpu_name": "Apple M4 Pro",
+    "cpu_cores": 14,
+    "memory_gb": 48.0,
+    "hostname": "MAC-P73L96T"
+  },
+  "config": null,
+  "metrics": {
+    "name": "cold_start_baseline",
+    "elapsed_ms": 6086,
+    "schedule_to_start": {
+      "samples_micros": [
+        88491,
+        88684,
+        88822,
+        88963,
+        89083,
+        89197,
+        89245,
+        89446,
+        89617,
+        89738,
+        89937,
+        90174,
+        90183,
+        90632,
+        90691,
+        90759,
+        90783,
+        90840,
+        91205,
+        91873
+      ],
+      "sum_micros": 1798363,
+      "count": 20,
+      "min_micros": 88491,
+      "max_micros": 91873
+    },
+    "execution": {
+      "samples_micros": [],
+      "sum_micros": 0,
+      "count": 0,
+      "min_micros": 18446744073709551615,
+      "max_micros": 0
+    },
+    "end_to_end": {
+      "samples_micros": [
+        88491,
+        88684,
+        88822,
+        88963,
+        89083,
+        89197,
+        89245,
+        89446,
+        89617,
+        89738,
+        89937,
+        90174,
+        90183,
+        90632,
+        90691,
+        90759,
+        90783,
+        90840,
+        91205,
+        91873
+      ],
+      "sum_micros": 1798363,
+      "count": 20,
+      "min_micros": 88491,
+      "max_micros": 91873
+    },
+    "tasks_completed": {
+      "total": 20,
+      "elapsed_ms": 6090,
+      "timeseries": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    "tasks_enqueued": {
+      "total": 0,
+      "elapsed_ms": 6090,
+      "timeseries": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    "resources": {
+      "snapshots": [],
+      "elapsed_ms": 6086
+    },
+    "custom": {}
+  },
+  "tags": [],
+  "notes": null
+}

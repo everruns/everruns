@@ -73,3 +73,7 @@ harness = false
 [[bench]]
 name = "workflow_throughput"
 harness = false
+
+[[bench]]
+name = "cold_start_latency"
+harness = false
