@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Info, MessageSquare, Loader2 } from "lucide-react";
+import { Info, MessageSquare, Loader2, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import {
@@ -10,7 +10,44 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Session, SessionStatus, LlmModelWithProvider } from "@/lib/api/types";
+import type { Session, SessionStatus, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
+
+/**
+ * Format a date as relative time (e.g., "5 min ago", "2 hours ago", "yesterday")
+ */
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSecs < 60) return "just now";
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return date.toLocaleDateString();
+}
+
+/**
+ * Format token count in compact form
+ */
+function formatTokens(tokens: number): string {
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`;
+  return tokens.toString();
+}
+
+/**
+ * Format total tokens from usage
+ */
+function formatTotalTokens(usage: TokenUsage): string {
+  const total = usage.input_tokens + usage.output_tokens;
+  return formatTokens(total);
+}
 
 export interface SessionCardProps {
   /** The session to display */
@@ -120,7 +157,10 @@ export function SessionCard({
 }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${session.id.slice(0, 8)}`;
-  const displaySummary = summary ?? session.title;
+  // Show preview from session (first user message), explicit summary prop, or nothing
+  const inputPreview = summary ?? session.preview;
+  // Show output preview from session (last assistant message)
+  const outputPreview = session.output_preview;
 
   return (
     <Link
@@ -136,20 +176,33 @@ export function SessionCard({
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="font-medium truncate">{displayTitle}</p>
             <Badge variant={statusInfo.variant} className="flex-shrink-0 text-xs">
               {statusInfo.label}
             </Badge>
           </div>
-          {displaySummary && (
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-              {truncateToLines(displaySummary, 2)}
+          {/* Input preview: first user message */}
+          {inputPreview && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+              {truncateToLines(inputPreview, 1)}
             </p>
           )}
-          <p className="text-xs text-muted-foreground mt-1">
-            {new Date(session.created_at).toLocaleString()}
-          </p>
+          {/* Output preview: last assistant response */}
+          {outputPreview && (
+            <p className="text-sm text-muted-foreground/70 mt-0.5 line-clamp-1 italic">
+              {truncateToLines(outputPreview, 1)}
+            </p>
+          )}
+          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+            <span>{formatRelativeTime(session.created_at)}</span>
+            {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
+              <span className="flex items-center gap-1" title="Token usage">
+                <Zap className="w-3 h-3" />
+                {formatTotalTokens(session.usage)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0 ml-2">

@@ -747,9 +747,9 @@ case "$command" in
     fi
     echo ""
 
-    # 3. Rust tests
+    # 3. Rust tests (unit tests only, integration tests require running server)
     echo "3️⃣  Running Rust tests..."
-    if cargo test --all-features; then
+    if cargo test --all-features --lib --bins; then
       echo "   ✅ Rust tests passed"
     else
       echo "   ❌ Rust tests failed"

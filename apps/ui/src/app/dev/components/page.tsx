@@ -8,8 +8,7 @@ import { Bot, ArrowLeft, Zap } from "lucide-react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
-import { SessionCard } from "@/components/session/session-card";
-import type { Message, Event, Session, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
+import type { Message, Event, TokenUsage } from "@/lib/api/types";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -467,88 +466,6 @@ const sampleEvents = {
 };
 
 // ============================================
-// Sample Data for SessionCard
-// ============================================
-
-const sampleSessions = {
-  running: {
-    id: "019234ab-cdef-7890-1234-567890abcdef",
-    agent_id: "agent-123",
-    title: "Working on implementing user authentication with OAuth 2.0 support for Google and GitHub providers",
-    tags: ["auth", "oauth"],
-    model_id: "model-uuid-anthropic",
-    status: "active" as const,
-    created_at: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
-    started_at: new Date(Date.now() - 240000).toISOString(), // 4 minutes ago
-    finished_at: null,
-  } satisfies Session,
-  idle: {
-    id: "019234cd-efgh-7890-1234-567890abcdef",
-    agent_id: "agent-123",
-    title: "Completed code review for the API endpoints",
-    tags: ["review"],
-    model_id: "model-uuid-openai",
-    status: "idle" as const,
-    created_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-    started_at: new Date(Date.now() - 3500000).toISOString(),
-    finished_at: null,
-  } satisfies Session,
-  new: {
-    id: "019234ef-ijkl-7890-1234-567890abcdef",
-    agent_id: "agent-123",
-    title: null,
-    tags: [],
-    model_id: null,
-    status: "started" as const,
-    created_at: new Date().toISOString(),
-    started_at: null,
-    finished_at: null,
-  } satisfies Session,
-  longSummary: {
-    id: "019234gh-mnop-7890-1234-567890abcdef",
-    agent_id: "agent-123",
-    title: "Investigating the performance bottleneck in the database query layer. Found that the N+1 query problem is causing significant slowdowns when fetching related entities. Working on implementing eager loading with batch fetching to reduce the number of database round trips.",
-    tags: ["performance", "database", "optimization"],
-    model_id: "model-uuid-anthropic",
-    status: "active" as const,
-    created_at: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
-    started_at: new Date(Date.now() - 1700000).toISOString(),
-    finished_at: null,
-  } satisfies Session,
-};
-
-const sampleModels = {
-  anthropic: {
-    id: "model-uuid-anthropic",
-    provider_id: "provider-anthropic",
-    model_id: "claude-sonnet-4-20250514",
-    display_name: "Claude Sonnet 4",
-    capabilities: ["chat", "tools"],
-    is_default: true,
-    is_favorite: true,
-    status: "active" as const,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    provider_name: "Anthropic",
-    provider_type: "anthropic" as const,
-  } satisfies LlmModelWithProvider,
-  openai: {
-    id: "model-uuid-openai",
-    provider_id: "provider-openai",
-    model_id: "gpt-4o",
-    display_name: "GPT-4o",
-    capabilities: ["chat", "tools"],
-    is_default: false,
-    is_favorite: false,
-    status: "active" as const,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    provider_name: "OpenAI",
-    provider_type: "openai" as const,
-  } satisfies LlmModelWithProvider,
-};
-
-// ============================================
 // Main Page Component
 // ============================================
 
@@ -655,62 +572,6 @@ export default function DevComponentsPage() {
                     <span className="text-sm text-white">Light:</span>
                     <MessageInfoIcon event={sampleEvents.userMessage} variant="light" />
                   </div>
-                </div>
-              </ShowcaseItem>
-            </ShowcaseSection>
-
-            {/* SessionCard Section */}
-            <ShowcaseSection
-              title="SessionCard Component"
-              description="Session card with status, summary, and info button (components/session/session-card.tsx)"
-            >
-              <ShowcaseItem label="Running Session">
-                <SessionCard
-                  session={sampleSessions.running}
-                  agentId="agent-123"
-                  model={sampleModels.anthropic}
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Idle Session">
-                <SessionCard
-                  session={sampleSessions.idle}
-                  agentId="agent-123"
-                  model={sampleModels.openai}
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="New Session (No Title)">
-                <SessionCard
-                  session={sampleSessions.new}
-                  agentId="agent-123"
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Session with Long Summary (Truncated)">
-                <SessionCard
-                  session={sampleSessions.longSummary}
-                  agentId="agent-123"
-                  model={sampleModels.anthropic}
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Multiple Sessions (List View)">
-                <div className="space-y-2">
-                  <SessionCard
-                    session={sampleSessions.running}
-                    agentId="agent-123"
-                    model={sampleModels.anthropic}
-                  />
-                  <SessionCard
-                    session={sampleSessions.idle}
-                    agentId="agent-123"
-                    model={sampleModels.openai}
-                  />
-                  <SessionCard
-                    session={sampleSessions.new}
-                    agentId="agent-123"
-                  />
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>

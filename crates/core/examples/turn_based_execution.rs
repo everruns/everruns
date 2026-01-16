@@ -130,6 +130,8 @@ async fn main() -> anyhow::Result<()> {
         id: session_id,
         agent_id,
         title: Some("Weather Query".to_string()),
+        preview: None,
+        output_preview: None,
         tags: vec![],
         model_id: None,
         status: SessionStatus::Started,

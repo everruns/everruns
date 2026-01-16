@@ -245,6 +245,22 @@ impl StorageBackend {
         dispatch!(self, list_message_events, session_id)
     }
 
+    /// Get preview text for multiple sessions (first user message)
+    pub async fn get_session_previews(
+        &self,
+        session_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, String>> {
+        dispatch!(self, get_session_previews, session_ids)
+    }
+
+    /// Get output preview text for multiple sessions (last agent message)
+    pub async fn get_session_output_previews(
+        &self,
+        session_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, String>> {
+        dispatch!(self, get_session_output_previews, session_ids)
+    }
+
     // ============================================
     // LLM Providers
     // ============================================

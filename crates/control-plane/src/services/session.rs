@@ -49,13 +49,31 @@ impl SessionService {
 
     /// List sessions for an agent with pagination.
     /// Returns (sessions, total_count).
+    /// Sessions include preview text from first user message and last assistant response.
     pub async fn list(
         &self,
         agent_id: Uuid,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
         let (rows, total) = self.db.list_sessions(agent_id, pagination).await?;
-        Ok((rows.into_iter().map(Self::row_to_session).collect(), total))
+        let mut sessions: Vec<Session> = rows.into_iter().map(Self::row_to_session).collect();
+
+        // Fetch previews for all sessions in batch queries
+        let session_ids: Vec<Uuid> = sessions.iter().map(|s| s.id).collect();
+        let input_previews = self.db.get_session_previews(&session_ids).await?;
+        let output_previews = self.db.get_session_output_previews(&session_ids).await?;
+
+        // Populate previews for each session
+        for session in &mut sessions {
+            if let Some(preview) = input_previews.get(&session.id) {
+                session.preview = Some(preview.clone());
+            }
+            if let Some(preview) = output_previews.get(&session.id) {
+                session.output_preview = Some(preview.clone());
+            }
+        }
+
+        Ok((sessions, total))
     }
 
     pub async fn update(&self, id: Uuid, req: UpdateSessionRequest) -> Result<Option<Session>> {
@@ -107,6 +125,8 @@ impl SessionService {
             id: row.id,
             agent_id: row.agent_id,
             title: row.title,
+            preview: None,        // Populated separately in list()
+            output_preview: None, // Populated separately in list()
             tags: row.tags,
             model_id: row.model_id,
             status: SessionStatus::from(row.status.as_str()),
