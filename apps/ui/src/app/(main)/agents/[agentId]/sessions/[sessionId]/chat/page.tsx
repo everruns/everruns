@@ -61,6 +61,8 @@ export default function ChatPage() {
     removeImage,
     clearImages,
     handlePaste,
+    handleDragOver,
+    handleDrop,
     hasImages,
     isUploading,
   } = useImageAttachments({ sessionId });
@@ -353,7 +355,9 @@ export default function ChatPage() {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handleTextareaPaste}
-            placeholder="Type a message... (Paste images, Enter to send)"
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            placeholder="Type a message... (Paste or drop images, Enter to send)"
             className="flex-1 min-h-[60px] max-h-[200px] resize-none"
           />
           <Button

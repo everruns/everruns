@@ -63,7 +63,7 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
       {/* Remove button */}
       <Button
         type="button"
-        variant="destructive"
+        variant="secondary"
         size="icon"
         className="absolute -top-2 -right-2 w-5 h-5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         onClick={() => onRemove(image.tempId)}

@@ -164,6 +164,41 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
       }
 
       if (imageFiles.length > 0) {
+        // Prevent default to stop the image from being inserted as text/blob URL
+        event.preventDefault();
+        addFiles(imageFiles);
+      }
+    },
+    [addFiles]
+  );
+
+  /**
+   * Handle drag over event
+   */
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
+  /**
+   * Handle drop event - extract images from dropped files
+   */
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const files = event.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+
+      const imageFiles: File[] = [];
+      for (const file of Array.from(files)) {
+        if (file.type.startsWith("image/")) {
+          imageFiles.push(file);
+        }
+      }
+
+      if (imageFiles.length > 0) {
         addFiles(imageFiles);
       }
     },
@@ -178,6 +213,8 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
     removeImage,
     clearImages,
     handlePaste,
+    handleDragOver,
+    handleDrop,
     hasImages: pendingImages.length > 0,
     isUploading: pendingImages.some((img) => img.status === "uploading"),
   };
