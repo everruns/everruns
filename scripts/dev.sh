@@ -514,10 +514,32 @@ case "$command" in
       fi
     fi
 
-    # If Jaeger is not running, disable OpenTelemetry to avoid connection errors
+    # If Jaeger was started, wait for it to be ready before continuing
+    # This prevents "tcp connect error" spam when API/Worker start before Jaeger is ready
+    if [ "$JAEGER_STARTED" = true ]; then
+      echo "   ⏳ Waiting for Jaeger to be ready..."
+      JAEGER_READY=false
+      for i in {1..15}; do
+        # Check if Jaeger's OTLP gRPC port is accepting connections
+        if nc -z localhost 4317 2>/dev/null || (echo > /dev/tcp/localhost/4317) 2>/dev/null; then
+          JAEGER_READY=true
+          echo "   ✅ Jaeger is ready (OTLP gRPC on port 4317)"
+          export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+          break
+        fi
+        sleep 1
+      done
+      if [ "$JAEGER_READY" = false ]; then
+        echo "   ⚠️  Jaeger not ready after 15s, disabling OpenTelemetry tracing"
+        JAEGER_STARTED=false
+      fi
+    fi
+
+    # If Jaeger is not running or not ready, disable OpenTelemetry to avoid connection errors
     if [ "$JAEGER_STARTED" = false ]; then
       echo "   ⚠️  Jaeger not available, disabling OpenTelemetry tracing"
       export OTEL_SDK_DISABLED=true
+      unset OTEL_EXPORTER_OTLP_ENDPOINT
     fi
 
     # Run migrations
