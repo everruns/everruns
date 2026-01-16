@@ -532,4 +532,80 @@ impl StorageBackend {
     pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_mcp_server, id)
     }
+
+    // ============================================
+    // LLM Generations (Usage Tracking)
+    // ============================================
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_llm_generation(
+        &self,
+        session_id: Uuid,
+        turn_id: Option<Uuid>,
+        event_id: Option<Uuid>,
+        model: String,
+        provider: Option<String>,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+        duration_ms: Option<i32>,
+        finish_reason: Option<String>,
+        created_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            create_llm_generation,
+            session_id,
+            turn_id,
+            event_id,
+            model,
+            provider,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+            duration_ms,
+            finish_reason,
+            created_at
+        )
+    }
+
+    pub async fn increment_session_usage(
+        &self,
+        session_id: Uuid,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            increment_session_usage,
+            session_id,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens
+        )
+    }
+
+    pub async fn increment_agent_usage(
+        &self,
+        agent_id: Uuid,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            increment_agent_usage,
+            agent_id,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens
+        )
+    }
 }

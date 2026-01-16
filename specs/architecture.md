@@ -92,6 +92,19 @@ graph TD
    - TEXT avoids artificial length limits that may cause issues later
    - No need to guess the "right" length for model names, provider names, etc.
 
+### Database Conventions
+
+1. **Primary Keys**: All tables MUST use `UUID PRIMARY KEY DEFAULT uuidv7()` unless explicitly documented otherwise
+   - UUIDv7 provides time-ordering for better B-tree index performance
+   - Enables keyset pagination via `WHERE id > $cursor ORDER BY id`
+   - Never use `gen_random_uuid()` for primary keys
+
+2. **No Database Triggers**: Business logic MUST be implemented in Rust, not in PostgreSQL triggers
+   - Triggers are invisible to application code and hard to debug
+   - Triggers don't work in DEV_MODE (in-memory storage)
+   - Triggers create hidden coupling between tables
+   - Use EventListener pattern for event-driven side effects instead
+
 ### Execution Layer
 
 1. **Runner Abstraction**: `AgentRunner` trait provides the execution backend interface

@@ -1740,4 +1740,111 @@ impl Database {
 
         Ok(result.rows_affected() > 0)
     }
+
+    // ============================================
+    // LLM Generations (Usage Tracking)
+    // ============================================
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_llm_generation(
+        &self,
+        session_id: Uuid,
+        turn_id: Option<Uuid>,
+        event_id: Option<Uuid>,
+        model: String,
+        provider: Option<String>,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+        duration_ms: Option<i32>,
+        finish_reason: Option<String>,
+        created_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO llm_generations (
+                session_id, turn_id, event_id, model, provider,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                duration_ms, finish_reason, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            "#,
+        )
+        .bind(session_id)
+        .bind(turn_id)
+        .bind(event_id)
+        .bind(&model)
+        .bind(&provider)
+        .bind(input_tokens)
+        .bind(output_tokens)
+        .bind(cache_read_tokens)
+        .bind(cache_creation_tokens)
+        .bind(duration_ms)
+        .bind(&finish_reason)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn increment_session_usage(
+        &self,
+        session_id: Uuid,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE sessions
+            SET
+                total_input_tokens = total_input_tokens + $2,
+                total_output_tokens = total_output_tokens + $3,
+                total_cache_read_tokens = total_cache_read_tokens + $4,
+                total_cache_creation_tokens = total_cache_creation_tokens + $5
+            WHERE id = $1
+            "#,
+        )
+        .bind(session_id)
+        .bind(input_tokens)
+        .bind(output_tokens)
+        .bind(cache_read_tokens)
+        .bind(cache_creation_tokens)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn increment_agent_usage(
+        &self,
+        agent_id: Uuid,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE agents
+            SET
+                total_input_tokens = total_input_tokens + $2,
+                total_output_tokens = total_output_tokens + $3,
+                total_cache_read_tokens = total_cache_read_tokens + $4,
+                total_cache_creation_tokens = total_cache_creation_tokens + $5
+            WHERE id = $1
+            "#,
+        )
+        .bind(agent_id)
+        .bind(input_tokens)
+        .bind(output_tokens)
+        .bind(cache_read_tokens)
+        .bind(cache_creation_tokens)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
 }
