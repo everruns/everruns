@@ -125,7 +125,7 @@ POST /v1/agents/{agent_id}/sessions/{session_id}/messages
 }
 ```
 
-**Note:** `image_file` content parts are currently filtered from LLM requests (stored for future multimodal support).
+Images are sent to the LLM when processing messages. The system automatically resolves `image_file` references and converts them to the provider-specific format (OpenAI Vision or Anthropic Vision).
 
 ### Session Filesystem
 

@@ -70,8 +70,8 @@ pub use message::{
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
-    EventEmitter, LlmProviderStore, ModelWithProvider, NoopEventEmitter, SessionFileStore,
-    SessionStore, ToolContext, ToolExecutor,
+    EventEmitter, ImageResolver, LlmProviderStore, ModelWithProvider, NoopEventEmitter,
+    ResolvedImage, SessionFileStore, SessionStore, ToolContext, ToolExecutor,
 };
 
 // Event listener re-exports

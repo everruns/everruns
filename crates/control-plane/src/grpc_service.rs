@@ -5,6 +5,7 @@
 // Decision: gRPC service uses the same services layer as HTTP API for consistency
 // Decision: No direct database access - all operations go through services layer
 
+use base64::Engine;
 use everruns_control_plane::services::{
     AgentService, EventService, LlmResolverService, SessionFileService, SessionService,
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
@@ -35,14 +36,15 @@ use everruns_internal_protocol::proto::{
     LoadMessagesRequest, LoadMessagesResponse, RecordCircuitBreakerFailureRequest,
     RecordCircuitBreakerFailureResponse, RecordCircuitBreakerSuccessRequest,
     RecordCircuitBreakerSuccessResponse, RegisterDurableWorkerRequest,
-    RegisterDurableWorkerResponse, SessionCreateDirectoryRequest, SessionCreateDirectoryResponse,
-    SessionDeleteFileRequest, SessionDeleteFileResponse, SessionGrepFilesRequest,
-    SessionGrepFilesResponse, SessionListDirectoryRequest, SessionListDirectoryResponse,
-    SessionReadFileRequest, SessionReadFileResponse, SessionStatFileRequest,
-    SessionStatFileResponse, SessionWriteFileRequest, SessionWriteFileResponse,
-    SetSessionStatusRequest, SetSessionStatusResponse, SubscribeTaskNotificationsRequest,
-    TaskNotification, TaskNotificationType, UpdateDurableWorkflowStatusRequest,
-    UpdateDurableWorkflowStatusResponse,
+    RegisterDurableWorkerResponse, ResolveImageRequest, ResolveImageResponse, ResolveImagesRequest,
+    ResolveImagesResponse, ResolvedImageData, SessionCreateDirectoryRequest,
+    SessionCreateDirectoryResponse, SessionDeleteFileRequest, SessionDeleteFileResponse,
+    SessionGrepFilesRequest, SessionGrepFilesResponse, SessionListDirectoryRequest,
+    SessionListDirectoryResponse, SessionReadFileRequest, SessionReadFileResponse,
+    SessionStatFileRequest, SessionStatFileResponse, SessionWriteFileRequest,
+    SessionWriteFileResponse, SetSessionStatusRequest, SetSessionStatusResponse,
+    SubscribeTaskNotificationsRequest, TaskNotification, TaskNotificationType,
+    UpdateDurableWorkflowStatusRequest, UpdateDurableWorkflowStatusResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer, proto_event_request_to_schema, schema_agent_to_proto,
@@ -66,6 +68,8 @@ pub struct WorkerServiceImpl {
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
     /// Task notification broadcaster for push-based notifications
     task_broadcaster: Option<Arc<TaskNotificationBroadcaster>>,
+    /// Storage backend for image resolution
+    db: Arc<StorageBackend>,
 }
 
 impl WorkerServiceImpl {
@@ -93,6 +97,7 @@ impl WorkerServiceImpl {
             llm_resolver_service,
             durable_store,
             task_broadcaster: None, // Set via set_task_broadcaster() after async initialization
+            db,
         }
     }
 
@@ -1676,6 +1681,88 @@ impl WorkerService for WorkerServiceImpl {
         // Return the receiver as a stream
         let stream = ReceiverStream::new(rx);
         Ok(Response::new(Box::pin(stream)))
+    }
+
+    // =========================================================================
+    // Image Resolution Operations
+    // =========================================================================
+
+    /// Resolve a single image by ID
+    ///
+    /// Returns base64-encoded image data and media type for LLM consumption.
+    /// This is used by workers to resolve `image_file` content parts before
+    /// sending messages to LLM providers.
+    async fn resolve_image(
+        &self,
+        request: Request<ResolveImageRequest>,
+    ) -> Result<Response<ResolveImageResponse>, Status> {
+        let req = request.into_inner();
+        let image_id = parse_uuid(req.image_id.as_ref())?;
+
+        // Get image from storage
+        let image_row = match self.db.get_image(image_id).await {
+            Ok(Some(row)) => row,
+            Ok(None) => {
+                return Ok(Response::new(ResolveImageResponse {
+                    found: false,
+                    base64: None,
+                    media_type: None,
+                }));
+            }
+            Err(e) => {
+                tracing::error!(%image_id, error = %e, "Failed to get image");
+                return Err(Status::internal("Failed to get image"));
+            }
+        };
+
+        // Encode to base64
+        let base64_data = base64::engine::general_purpose::STANDARD.encode(&image_row.data);
+
+        Ok(Response::new(ResolveImageResponse {
+            found: true,
+            base64: Some(base64_data),
+            media_type: Some(image_row.content_type),
+        }))
+    }
+
+    /// Resolve multiple images in a batch
+    ///
+    /// More efficient than multiple single image calls for multimodal messages
+    /// with multiple images.
+    async fn resolve_images(
+        &self,
+        request: Request<ResolveImagesRequest>,
+    ) -> Result<Response<ResolveImagesResponse>, Status> {
+        let req = request.into_inner();
+
+        let mut images = std::collections::HashMap::new();
+
+        for proto_id in req.image_ids {
+            let image_id = parse_uuid(Some(&proto_id))?;
+
+            // Get image from storage
+            match self.db.get_image(image_id).await {
+                Ok(Some(row)) => {
+                    let base64_data = base64::engine::general_purpose::STANDARD.encode(&row.data);
+                    images.insert(
+                        image_id.to_string(),
+                        ResolvedImageData {
+                            base64: base64_data,
+                            media_type: row.content_type,
+                        },
+                    );
+                }
+                Ok(None) => {
+                    // Image not found - skip it
+                    tracing::debug!(%image_id, "Image not found during batch resolution");
+                }
+                Err(e) => {
+                    tracing::warn!(%image_id, error = %e, "Failed to get image during batch resolution");
+                }
+            }
+        }
+
+        Ok(Response::new(ResolveImagesResponse { images }))
     }
 }
 

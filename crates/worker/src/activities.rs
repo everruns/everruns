@@ -20,8 +20,8 @@ use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageRetriever,
-    GrpcSessionFileStore, GrpcSessionStore,
+    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcImageResolver, GrpcLlmProviderStore,
+    GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStore,
 };
 
 // Re-export atom types for activity callers
@@ -138,6 +138,9 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
     let driver_registry = create_driver_registry();
     let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
 
+    // Create image resolver for multimodal image support
+    let image_resolver = Arc::new(GrpcImageResolver::new(grpc_client.clone()));
+
     let atom = ReasonAtom::new(
         agent_store,
         session_store,
@@ -146,7 +149,8 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
         capability_registry,
         driver_registry,
         event_emitter,
-    );
+    )
+    .with_image_resolver(image_resolver);
 
     let result = atom
         .execute(input)

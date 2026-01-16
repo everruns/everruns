@@ -104,7 +104,7 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 }
 ```
 
-**Note:** `image_file` content parts reference uploaded images (see Images API). Currently filtered from LLM requests; stored for future multimodal support.
+**Note:** `image_file` content parts reference uploaded images (see Images API). During LLM calls, these references are resolved to actual image data using the `ImageResolver` trait. See [Image Resolution](#image-resolution) for details.
 
 **Controls structure:**
 
@@ -217,6 +217,45 @@ Global storage for uploaded images. Images can be attached to messages via the `
 - PostgreSQL: Full images stored in BYTEA columns
 - In-memory (DEV_MODE): Images lost on restart
 - Future: S3 storage planned
+
+### Image Resolution
+
+When messages containing `image_file` content parts are sent to an LLM, the system resolves these references to actual image data. This is handled by the `ImageResolver` trait, implemented by `GrpcImageResolver` in the worker.
+
+**Resolution Process:**
+
+1. **Extract IDs**: All unique `image_id` values are extracted from message content parts
+2. **Batch Resolve**: Images are resolved via gRPC (worker → control-plane)
+3. **Convert to Data URLs**: Resolved images are converted to `data:` URLs
+4. **Provider Formatting**: Each LLM provider converts data URLs to their native format
+
+**Provider-Specific Formats:**
+
+OpenAI Vision:
+```json
+{
+  "type": "image_url",
+  "image_url": { "url": "data:image/png;base64,..." }
+}
+```
+
+Anthropic Vision:
+```json
+{
+  "type": "image",
+  "source": {
+    "type": "base64",
+    "media_type": "image/png",
+    "data": "..."
+  }
+}
+```
+
+**Error Handling:**
+
+- Missing images: Replaced with placeholder text `[Image not found: {id}]`
+- Resolution failures: Logged as warnings, image treated as missing
+- The LLM call proceeds even if some images cannot be resolved
 
 ### Event
 

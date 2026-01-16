@@ -365,6 +365,11 @@ impl LlmCallConfigBuilder {
 // ============================================================================
 
 impl From<&crate::message::Message> for LlmMessage {
+    /// Convert a Message to LlmMessage (text-only, images become placeholders)
+    ///
+    /// This conversion is suitable for messages without images or when image
+    /// resolution is not available. For multimodal messages, use
+    /// `LlmMessage::from_message_with_images()` instead.
     fn from(msg: &crate::message::Message) -> Self {
         let role = match msg.role {
             crate::message::MessageRole::System => LlmMessageRole::System,
@@ -394,6 +399,147 @@ impl From<&crate::message::Message> for LlmMessage {
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
         }
+    }
+}
+
+// ============================================================================
+// Message Conversion with Images
+// ============================================================================
+
+use crate::traits::ResolvedImage;
+use uuid::Uuid;
+
+impl LlmMessage {
+    /// Convert a Message to LlmMessage with resolved images
+    ///
+    /// This method handles multimodal messages by converting:
+    /// - `text` content parts → `LlmContentPart::Text`
+    /// - `image` content parts → `LlmContentPart::Image` (data URL)
+    /// - `image_file` content parts → `LlmContentPart::Image` (resolved to data URL)
+    /// - `tool_call` content parts → extracted to `tool_calls` field
+    /// - `tool_result` content parts → text representation
+    ///
+    /// # Provider-specific formatting
+    ///
+    /// The `LlmContentPart::Image` uses data URLs which are converted by each provider:
+    /// - **OpenAI**: `{ "type": "image_url", "image_url": { "url": "data:..." } }`
+    /// - **Anthropic**: `{ "type": "image", "source": { "type": "base64", ... } }`
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The message to convert
+    /// * `resolved_images` - Pre-resolved images keyed by image_id
+    pub fn from_message_with_images(
+        msg: &crate::message::Message,
+        resolved_images: &HashMap<Uuid, ResolvedImage>,
+    ) -> Self {
+        use crate::message::{ContentPart, MessageRole};
+
+        let role = match msg.role {
+            MessageRole::System => LlmMessageRole::System,
+            MessageRole::User => LlmMessageRole::User,
+            MessageRole::Assistant => LlmMessageRole::Assistant,
+            MessageRole::ToolResult => LlmMessageRole::Tool,
+        };
+
+        // Convert content parts to LlmContentParts
+        let mut parts: Vec<LlmContentPart> = Vec::new();
+        let mut tool_calls: Vec<ToolCall> = Vec::new();
+
+        for part in &msg.content {
+            match part {
+                ContentPart::Text(t) => {
+                    parts.push(LlmContentPart::Text {
+                        text: t.text.clone(),
+                    });
+                }
+                ContentPart::Image(img) => {
+                    // Convert inline image to data URL
+                    if let Some(url) = &img.url {
+                        parts.push(LlmContentPart::Image { url: url.clone() });
+                    } else if let (Some(base64), Some(media_type)) = (&img.base64, &img.media_type)
+                    {
+                        let data_url = format!("data:{};base64,{}", media_type, base64);
+                        parts.push(LlmContentPart::Image { url: data_url });
+                    }
+                }
+                ContentPart::ImageFile(img_file) => {
+                    // Resolve image_file to actual image data
+                    if let Some(resolved) = resolved_images.get(&img_file.image_id) {
+                        parts.push(LlmContentPart::Image {
+                            url: resolved.to_data_url(),
+                        });
+                    } else {
+                        // Image not found - add placeholder text
+                        parts.push(LlmContentPart::Text {
+                            text: format!("[Image not found: {}]", img_file.image_id),
+                        });
+                    }
+                }
+                ContentPart::ToolCall(tc) => {
+                    // Extract tool calls to separate field (don't include in content)
+                    tool_calls.push(ToolCall {
+                        id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        arguments: tc.arguments.clone(),
+                    });
+                }
+                ContentPart::ToolResult(tr) => {
+                    // Convert tool result to text representation
+                    let text = if let Some(err) = &tr.error {
+                        format!("Tool error: {}", err)
+                    } else if let Some(res) = &tr.result {
+                        serde_json::to_string(res).unwrap_or_else(|_| "{}".to_string())
+                    } else {
+                        "{}".to_string()
+                    };
+                    parts.push(LlmContentPart::Text { text });
+                }
+            }
+        }
+
+        // Determine content format
+        let content = if parts.len() == 1 && matches!(&parts[0], LlmContentPart::Text { .. }) {
+            // Single text part - use simple Text format
+            if let LlmContentPart::Text { text } = &parts[0] {
+                LlmMessageContent::Text(text.clone())
+            } else {
+                LlmMessageContent::Parts(parts)
+            }
+        } else if parts.is_empty() {
+            // No content parts - use empty text
+            LlmMessageContent::Text(String::new())
+        } else {
+            // Multiple parts or non-text - use Parts format
+            LlmMessageContent::Parts(parts)
+        };
+
+        LlmMessage {
+            role,
+            content,
+            tool_calls: if tool_calls.is_empty() {
+                None
+            } else {
+                Some(tool_calls)
+            },
+            tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
+        }
+    }
+
+    /// Check if a message contains image_file references that need resolution
+    pub fn message_has_image_files(msg: &crate::message::Message) -> bool {
+        msg.content.iter().any(|p| p.is_image_file())
+    }
+
+    /// Extract all image_file IDs from a message
+    pub fn extract_image_file_ids(msg: &crate::message::Message) -> Vec<Uuid> {
+        msg.content
+            .iter()
+            .filter_map(|p| match p {
+                crate::message::ContentPart::ImageFile(f) => Some(f.image_id),
+                _ => None,
+            })
+            .collect()
     }
 }
 
