@@ -8,7 +8,7 @@ use crate::storage::{StorageBackend, models::CreateImageRow};
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{StatusCode, header},
     response::Response,
     routing::{get, post},
@@ -99,7 +99,13 @@ impl AppState {
 /// Create images routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/images", post(upload_image).get(list_images))
+        // Upload needs larger body limit (100MB + some overhead for multipart encoding)
+        .route(
+            "/v1/images",
+            post(upload_image)
+                .layer(DefaultBodyLimit::max(MAX_IMAGE_SIZE + 1024 * 1024))
+                .get(list_images),
+        )
         .route("/v1/images/:image_id", get(get_image).delete(delete_image))
         .route("/v1/images/:image_id/thumbnail", get(get_thumbnail))
         .with_state(state)
