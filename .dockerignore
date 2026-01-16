@@ -28,7 +28,7 @@ apps/ui/.turbo/
 coverage/
 
 # Local development
-harness/
+local/
 scripts/
 .env*
 *.local

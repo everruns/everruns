@@ -251,7 +251,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [sp
 
 ### Infrastructure
 
-1. **Local Development**: Docker Compose in `harness/` for Postgres, Jaeger
+1. **Local Development**: Docker Compose in `local/` for Postgres, Jaeger
 2. **Dev Mode**: In-memory storage mode for quick local development without PostgreSQL
 3. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
 4. **License Compliance**: cargo-deny for dependency license checking
