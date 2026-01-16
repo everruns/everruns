@@ -519,18 +519,18 @@ case "$command" in
     if [ "$JAEGER_STARTED" = true ]; then
       echo "   ⏳ Waiting for Jaeger to be ready..."
       JAEGER_READY=false
-      for i in {1..15}; do
-        # Check if Jaeger's OTLP gRPC port is accepting connections
-        if nc -z localhost 4317 2>/dev/null || (echo > /dev/tcp/localhost/4317) 2>/dev/null; then
+      for i in {1..30}; do
+        # Check if Jaeger UI is responding (more reliable than port check)
+        if curl -s --max-time 2 http://localhost:16686/ > /dev/null 2>&1; then
           JAEGER_READY=true
-          echo "   ✅ Jaeger is ready (OTLP gRPC on port 4317)"
+          echo "   ✅ Jaeger is ready (UI on port 16686)"
           export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
           break
         fi
         sleep 1
       done
       if [ "$JAEGER_READY" = false ]; then
-        echo "   ⚠️  Jaeger not ready after 15s, disabling OpenTelemetry tracing"
+        echo "   ⚠️  Jaeger not ready after 30s, disabling OpenTelemetry tracing"
         JAEGER_STARTED=false
       fi
     fi
