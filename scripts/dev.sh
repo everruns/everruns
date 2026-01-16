@@ -960,6 +960,9 @@ case "$command" in
     echo "5️⃣  Running db_workflow_throughput..."
     cargo bench -p everruns-durable --bench db_workflow_throughput -- $SAVE_ARG $MONIKER_ARG
     echo ""
+    echo "6️⃣  Running db_cold_start_latency..."
+    cargo bench -p everruns-durable --bench db_cold_start_latency -- $SAVE_ARG $MONIKER_ARG
+    echo ""
     if [ -n "$SAVE_ARG" ]; then
       echo "✅ PostgreSQL benchmarks complete with checkpoints saved!"
       echo "   Reports:     target/benchmark-reports/"
