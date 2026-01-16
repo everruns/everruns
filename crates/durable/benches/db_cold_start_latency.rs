@@ -89,10 +89,7 @@ async fn measure_single_cold_start(
 }
 
 /// Run cold-start latency scenario with PostgreSQL
-async fn run_cold_start_scenario(
-    pool: PgPool,
-    config: ColdStartConfig,
-) -> Arc<BenchmarkMetrics> {
+async fn run_cold_start_scenario(pool: PgPool, config: ColdStartConfig) -> Arc<BenchmarkMetrics> {
     let metrics = Arc::new(BenchmarkMetrics::new(&config.name));
     let store = Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
     let workflow_id = Uuid::now_v7();
@@ -286,9 +283,9 @@ fn main() {
     // Connect to PostgreSQL
     let database_url = get_database_url();
     let pool = rt.block_on(async {
-        PgPool::connect(&database_url)
-            .await
-            .expect("Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.")
+        PgPool::connect(&database_url).await.expect(
+            "Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.",
+        )
     });
 
     println!("═══════════════════════════════════════════════════════════");

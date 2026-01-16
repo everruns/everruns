@@ -71,7 +71,12 @@ impl DbTestScenario {
 
     async fn setup(&self) {
         self.store
-            .create_workflow(self.workflow_id, "db_benchmark", serde_json::json!({}), None)
+            .create_workflow(
+                self.workflow_id,
+                "db_benchmark",
+                serde_json::json!({}),
+                None,
+            )
             .await
             .expect("Failed to create workflow");
     }
@@ -366,9 +371,9 @@ fn main() {
     // Connect to PostgreSQL
     let database_url = get_database_url();
     let pool = rt.block_on(async {
-        PgPool::connect(&database_url)
-            .await
-            .expect("Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.")
+        PgPool::connect(&database_url).await.expect(
+            "Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.",
+        )
     });
 
     println!("═══════════════════════════════════════════════════════════");
@@ -378,20 +383,68 @@ fn main() {
 
     // Reduced task counts compared to in-memory due to DB overhead
     // Scenario 1: Baseline - single worker
-    let baseline = rt.block_on(run_db_scenario(pool.clone(), "db_baseline_1_worker", 1_000, 1, false));
+    let baseline = rt.block_on(run_db_scenario(
+        pool.clone(),
+        "db_baseline_1_worker",
+        1_000,
+        1,
+        false,
+    ));
 
     // Scenario 2: Worker scaling (no execution)
-    let scale_10 = rt.block_on(run_db_scenario(pool.clone(), "db_scale_10_workers", 1_000, 10, false));
-    let scale_50 = rt.block_on(run_db_scenario(pool.clone(), "db_scale_50_workers", 1_000, 50, false));
-    let scale_100 = rt.block_on(run_db_scenario(pool.clone(), "db_scale_100_workers", 1_000, 100, false));
+    let scale_10 = rt.block_on(run_db_scenario(
+        pool.clone(),
+        "db_scale_10_workers",
+        1_000,
+        10,
+        false,
+    ));
+    let scale_50 = rt.block_on(run_db_scenario(
+        pool.clone(),
+        "db_scale_50_workers",
+        1_000,
+        50,
+        false,
+    ));
+    let scale_100 = rt.block_on(run_db_scenario(
+        pool.clone(),
+        "db_scale_100_workers",
+        1_000,
+        100,
+        false,
+    ));
 
     // Scenario 3: Realistic execution (with simulated I/O wait)
-    let realistic_10 = rt.block_on(run_db_scenario(pool.clone(), "db_realistic_10_workers", 500, 10, true));
-    let realistic_50 = rt.block_on(run_db_scenario(pool.clone(), "db_realistic_50_workers", 500, 50, true));
-    let realistic_100 = rt.block_on(run_db_scenario(pool.clone(), "db_realistic_100_workers", 500, 100, true));
+    let realistic_10 = rt.block_on(run_db_scenario(
+        pool.clone(),
+        "db_realistic_10_workers",
+        500,
+        10,
+        true,
+    ));
+    let realistic_50 = rt.block_on(run_db_scenario(
+        pool.clone(),
+        "db_realistic_50_workers",
+        500,
+        50,
+        true,
+    ));
+    let realistic_100 = rt.block_on(run_db_scenario(
+        pool.clone(),
+        "db_realistic_100_workers",
+        500,
+        100,
+        true,
+    ));
 
     // Scenario 4: Higher volume burst (tests DB performance)
-    let burst = rt.block_on(run_db_scenario(pool.clone(), "db_burst_5k_tasks", 5_000, 100, false));
+    let burst = rt.block_on(run_db_scenario(
+        pool.clone(),
+        "db_burst_5k_tasks",
+        5_000,
+        100,
+        false,
+    ));
 
     println!("\n═══════════════════════════════════════════════════════════");
     println!("                    Summary");
@@ -467,7 +520,10 @@ fn main() {
         for (name, m) in [
             ("db_concurrent_workers_baseline_1_worker", &baseline),
             ("db_concurrent_workers_scale_100_workers", &scale_100),
-            ("db_concurrent_workers_realistic_100_workers", &realistic_100),
+            (
+                "db_concurrent_workers_realistic_100_workers",
+                &realistic_100,
+            ),
             ("db_concurrent_workers_burst_5k_tasks", &burst),
         ] {
             let checkpoint = BenchmarkCheckpoint::new(name, env.clone(), m.snapshot());

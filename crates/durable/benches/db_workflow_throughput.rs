@@ -59,7 +59,12 @@ struct DbWorkflowScenario {
 }
 
 impl DbWorkflowScenario {
-    fn new(pool: PgPool, workflow_count: usize, steps_per_workflow: u64, worker_count: usize) -> Self {
+    fn new(
+        pool: PgPool,
+        workflow_count: usize,
+        steps_per_workflow: u64,
+        worker_count: usize,
+    ) -> Self {
         Self {
             store: Arc::new(PostgresWorkflowEventStore::new(pool)),
             workflows: Vec::new(),
@@ -305,7 +310,8 @@ async fn run_db_workflow_test(
     );
     println!("   Total tasks: {}", total_tasks);
 
-    let mut scenario = DbWorkflowScenario::new(pool, workflow_count, steps_per_workflow, worker_count);
+    let mut scenario =
+        DbWorkflowScenario::new(pool, workflow_count, steps_per_workflow, worker_count);
 
     // Setup
     scenario.setup().await;
@@ -438,9 +444,9 @@ fn main() {
     // Connect to PostgreSQL
     let database_url = get_database_url();
     let pool = rt.block_on(async {
-        PgPool::connect(&database_url)
-            .await
-            .expect("Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.")
+        PgPool::connect(&database_url).await.expect(
+            "Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.",
+        )
     });
 
     println!("═══════════════════════════════════════════════════════════");
@@ -487,9 +493,9 @@ fn main() {
     let target_exec = rt.block_on(run_db_workflow_test(
         pool.clone(),
         "db_target_100wf_50steps_exec",
-        100, // workflows
-        50,  // steps per workflow
-        100, // workers
+        100,  // workflows
+        50,   // steps per workflow
+        100,  // workers
         true, // simulate execution (1-10ms per task)
     ));
 
