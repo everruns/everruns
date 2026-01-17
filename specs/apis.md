@@ -71,6 +71,63 @@ Messages store all conversation content (user, assistant, tool calls, tool resul
 | POST | `/v1/agents/{agent_id}/sessions/{session_id}/messages` | Create message (triggers workflow) |
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}/messages` | List messages |
 
+### Images
+
+Global image storage for message attachments. Images are stored with optional session metadata.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/images` | Upload image (multipart/form-data) |
+| GET | `/v1/images` | List images (paginated) |
+| GET | `/v1/images/{id}` | Get image metadata |
+| GET | `/v1/images/{id}/data` | Get full image data |
+| GET | `/v1/images/{id}/thumbnail` | Get thumbnail (200x200 max) |
+| DELETE | `/v1/images/{id}` | Delete image |
+
+**Upload Request (multipart/form-data):**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | file | Yes | Image file (PNG, JPEG, GIF, WebP) |
+| `session_id` | string | No | Optional session ID for metadata |
+
+**Upload Response:**
+
+```json
+{
+  "id": "01933b5a-0000-7000-8000-000000000001",
+  "filename": "screenshot.png",
+  "content_type": "image/png",
+  "size_bytes": 102400,
+  "has_thumbnail": true,
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+**Constraints:**
+- Maximum file size: 100MB
+- Request body limit: 101MB (100MB file + 1MB multipart overhead)
+- Allowed types: image/png, image/jpeg, image/gif, image/webp
+- Thumbnails generated automatically (max 200x200 pixels)
+
+**Usage in Messages:**
+
+Images can be attached to messages using the `image_file` content part type:
+
+```json
+POST /v1/agents/{agent_id}/sessions/{session_id}/messages
+{
+  "message": {
+    "content": [
+      { "type": "text", "text": "What's in this image?" },
+      { "type": "image_file", "image_id": "01933b5a-...", "filename": "photo.png" }
+    ]
+  }
+}
+```
+
+Images are sent to the LLM when processing messages. The system automatically resolves `image_file` references and converts them to the provider-specific format (OpenAI Vision or Anthropic Vision).
+
 ### Session Filesystem
 
 Virtual filesystem scoped to each session. See [session-filesystem.md](session-filesystem.md) for full specification.

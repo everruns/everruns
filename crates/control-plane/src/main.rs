@@ -204,6 +204,7 @@ async fn main() -> Result<()> {
             })
         };
     let durable_state = api::durable::AppState::new(durable_store);
+    let images_state = api::images::AppState::new(db.clone());
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),
     };
@@ -246,6 +247,7 @@ async fn main() -> Result<()> {
         .merge(api::session_files::routes(session_files_state))
         .merge(api::users::routes(users_state))
         .merge(api::durable::routes(durable_state))
+        .merge(api::images::routes(images_state))
         .merge(auth::routes(auth_state));
 
     // Build main router with health (not prefixed) and prefixed API routes

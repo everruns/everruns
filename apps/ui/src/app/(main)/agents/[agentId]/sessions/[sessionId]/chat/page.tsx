@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,12 +11,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Bot, Loader2, Brain } from "lucide-react";
-import type { Controls, MessageUserData, MessageAgentData } from "@/lib/api/types";
+import { Send, Bot, Loader2, Brain, ImagePlus } from "lucide-react";
+import type { Controls, MessageUserData, MessageAgentData, ContentPart } from "@/lib/api/types";
+import { isImageFilePart } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
+import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
 import { useSessionContext } from "../session-context";
-import { useLlmModels } from "@/hooks";
+import { useLlmModels, useImageAttachments } from "@/hooks";
+import { sendUserMessageWithImages } from "@/lib/api/messages";
+import { useMutation } from "@tanstack/react-query";
+import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
 
 export default function ChatPage() {
   const {
@@ -38,12 +43,27 @@ export default function ChatPage() {
 
   const [inputValue, setInputValue] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasUserSelectedModel = useRef(false);
   const modelSelectionStorageKey = useMemo(
     () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
     [agentId, sessionId]
   );
+
+  // Image attachments management
+  const {
+    pendingImages,
+    allUploaded,
+    uploadedImageIds,
+    addFiles,
+    removeImage,
+    clearImages,
+    hasImages,
+    isUploading,
+  } = useImageAttachments({ sessionId });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -93,9 +113,28 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatEvents]);
 
+  // Mutation for sending message with images
+  const sendMessageWithImages = useMutation({
+    mutationFn: async ({
+      text,
+      images,
+      controls,
+    }: {
+      text: string;
+      images: Array<{ imageId: string; filename?: string }>;
+      controls?: Controls;
+    }) => {
+      return sendUserMessageWithImages(agentId, sessionId, text, images, controls);
+    },
+  });
+
+  // Check if can submit (has content and all images uploaded)
+  const hasContent = inputValue.trim() || hasImages;
+  const canSubmit = hasContent && allUploaded && !sendMessage.isPending && !sendMessageWithImages.isPending;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || sendMessage.isPending) return;
+    if (!canSubmit) return;
 
     // Build controls with reasoning effort if selected
     const controls: Controls | undefined =
@@ -109,18 +148,32 @@ export default function ChatPage() {
         : undefined;
 
     try {
-      await sendMessage.mutateAsync({
-        agentId,
-        sessionId,
-        content: inputValue.trim(),
-        controls,
-      });
+      if (hasImages) {
+        // Send with images
+        await sendMessageWithImages.mutateAsync({
+          text: inputValue.trim(),
+          images: uploadedImageIds,
+          controls,
+        });
+        clearImages();
+      } else {
+        // Use the regular sendMessage for text-only (has optimistic UI)
+        await sendMessage.mutateAsync({
+          agentId,
+          sessionId,
+          content: inputValue.trim(),
+          controls,
+        });
+      }
+
       if (typeof window !== "undefined") {
         window.localStorage.setItem(modelSelectionStorageKey, selectedModelId);
       }
       setInputValue("");
       // Start polling for the response
       setIsWaitingForResponse(true);
+      // Refocus textarea after send
+      textareaRef.current?.focus();
     } catch (error) {
       console.error("Failed to send message:", error);
     }
@@ -131,6 +184,24 @@ export default function ChatPage() {
       e.preventDefault();
       handleSubmit(e);
     }
+  };
+
+  // Handle file input change
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      addFiles(Array.from(files));
+    }
+    // Reset input so same file can be selected again
+    e.target.value = "";
+  };
+
+  // Extract image files from message content
+  const getMessageImages = (content: ContentPart[]): Array<{ image_id: string; filename?: string }> => {
+    return content.filter(isImageFilePart).map((part) => ({
+      image_id: part.image_id,
+      filename: part.filename,
+    }));
   };
 
   return (
@@ -160,17 +231,33 @@ export default function ChatPage() {
             const data = event.data as MessageUserData | MessageAgentData;
             const textContent = getMessageText(data);
             const toolCalls = isUser ? [] : getToolCalls(data as MessageAgentData);
+            const images = data.message?.content ? getMessageImages(data.message.content) : [];
 
             return (
               <div key={event.id} className="space-y-2">
-                {/* Render text content if present */}
-                {textContent && (
+                {/* Render text content and images */}
+                {(textContent || images.length > 0) && (
                   <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                     {isUser ? (
                       /* User message - dark box, 90% width */
                       <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
                         <div className="flex items-start gap-2">
-                          <p className="text-sm whitespace-pre-wrap flex-1">{textContent}</p>
+                          <div className="flex-1 space-y-2">
+                            {textContent && (
+                              <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                            )}
+                            {images.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {images.map((img) => (
+                                  <MessageImage
+                                    key={img.image_id}
+                                    imageId={img.image_id}
+                                    filename={img.filename}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           <MessageInfoIcon event={event} variant="light" />
                         </div>
                       </div>
@@ -179,7 +266,22 @@ export default function ChatPage() {
                       <div className="w-full bg-muted/60 rounded-lg p-3">
                         <div className="flex items-start gap-2">
                           <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                          <p className="text-sm whitespace-pre-wrap flex-1">{textContent}</p>
+                          <div className="flex-1 space-y-2">
+                            {textContent && (
+                              <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                            )}
+                            {images.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {images.map((img) => (
+                                  <MessageImage
+                                    key={img.image_id}
+                                    imageId={img.image_id}
+                                    filename={img.filename}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           <MessageInfoIcon event={event} />
                         </div>
                       </div>
@@ -207,21 +309,110 @@ export default function ChatPage() {
 
       {/* Input area */}
       <div className="border-t p-4">
+        {/* Image attachments preview */}
+        {hasImages && (
+          <div className="mb-2">
+            <ImageAttachments images={pendingImages} onRemove={removeImage} />
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="flex gap-2">
-          <Textarea
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-            className="flex-1 min-h-[60px] max-h-[200px] resize-none"
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ALLOWED_IMAGE_TYPES.join(",")}
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
           />
+
+          {/* Image attachment button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-[60px] w-[60px] flex-shrink-0"
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach images (PNG, JPEG, GIF, WebP)"
+          >
+            <ImagePlus className="h-5 w-5" />
+          </Button>
+
+          {/* Textarea with drag-drop wrapper */}
+          <div
+            className={`flex-1 relative rounded-md transition-colors ${
+              isDraggingOver
+                ? "bg-primary/10 ring-2 ring-primary/50 ring-offset-2"
+                : ""
+            }`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // Only set to false if leaving the container (not entering a child)
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setIsDraggingOver(false);
+              }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingOver(false);
+              const files = e.dataTransfer?.files;
+              if (files && files.length > 0) {
+                const imageFiles = Array.from(files).filter((f) =>
+                  f.type.startsWith("image/")
+                );
+                if (imageFiles.length > 0) {
+                  addFiles(imageFiles);
+                }
+              }
+            }}
+          >
+            <Textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={(e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                const imageFiles: File[] = [];
+                for (const item of Array.from(items)) {
+                  if (item.type.startsWith("image/")) {
+                    const file = item.getAsFile();
+                    if (file) imageFiles.push(file);
+                  }
+                }
+                if (imageFiles.length > 0) {
+                  e.preventDefault();
+                  addFiles(imageFiles);
+                }
+              }}
+              placeholder="Type a message... (Paste or drop images, Enter to send)"
+              className="w-full min-h-[60px] max-h-[200px] resize-none"
+            />
+          </div>
+
           <Button
             type="submit"
             size="icon"
             className="h-[60px] w-[60px]"
-            disabled={!inputValue.trim() || sendMessage.isPending}
+            disabled={!canSubmit}
+            title={isUploading ? "Uploading images..." : undefined}
           >
-            {sendMessage.isPending ? (
+            {sendMessage.isPending || sendMessageWithImages.isPending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : isUploading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
               <Send className="h-5 w-5" />

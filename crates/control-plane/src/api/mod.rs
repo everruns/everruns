@@ -8,6 +8,7 @@ pub mod capabilities;
 pub mod common;
 pub mod durable;
 pub mod events;
+pub mod images;
 pub mod llm_models;
 pub mod llm_providers;
 pub mod mcp_servers;

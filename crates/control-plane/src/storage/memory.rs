@@ -28,6 +28,7 @@ pub struct InMemoryDatabase {
     agent_capabilities: RwLock<HashMap<(Uuid, String), AgentCapabilityRow>>,
     session_files: RwLock<HashMap<Uuid, SessionFileRow>>,
     mcp_servers: RwLock<HashMap<Uuid, McpServerRow>>,
+    images: RwLock<HashMap<Uuid, ImageRow>>,
     // Event sequence counter per session
     event_sequences: RwLock<HashMap<Uuid, i32>>,
 }
@@ -1536,6 +1537,69 @@ impl InMemoryDatabase {
             agent.total_cache_creation_tokens += cache_creation_tokens;
         }
         Ok(())
+    }
+
+    // ============================================
+    // Images
+    // ============================================
+
+    pub async fn create_image(&self, input: CreateImageRow) -> Result<ImageRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = ImageRow {
+            id,
+            filename: input.filename,
+            content_type: input.content_type,
+            size_bytes: input.size_bytes,
+            data: input.data,
+            thumbnail_data: input.thumbnail_data,
+            thumbnail_content_type: input.thumbnail_content_type,
+            metadata: input.metadata,
+            created_at: now,
+        };
+        self.images.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_image(&self, id: Uuid) -> Result<Option<ImageRow>> {
+        Ok(self.images.read().get(&id).cloned())
+    }
+
+    pub async fn get_image_info(&self, id: Uuid) -> Result<Option<ImageInfoRow>> {
+        Ok(self.images.read().get(&id).map(|img| ImageInfoRow {
+            id: img.id,
+            filename: img.filename.clone(),
+            content_type: img.content_type.clone(),
+            size_bytes: img.size_bytes,
+            metadata: img.metadata.clone(),
+            created_at: img.created_at,
+        }))
+    }
+
+    pub async fn delete_image(&self, id: Uuid) -> Result<bool> {
+        Ok(self.images.write().remove(&id).is_some())
+    }
+
+    pub async fn list_images(&self, limit: i64, offset: i64) -> Result<Vec<ImageInfoRow>> {
+        let images = self.images.read();
+        let mut result: Vec<_> = images
+            .values()
+            .map(|img| ImageInfoRow {
+                id: img.id,
+                filename: img.filename.clone(),
+                content_type: img.content_type.clone(),
+                size_bytes: img.size_bytes,
+                metadata: img.metadata.clone(),
+                created_at: img.created_at,
+            })
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        let result = result
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect();
+        Ok(result)
     }
 }
 

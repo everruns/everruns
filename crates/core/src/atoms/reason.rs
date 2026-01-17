@@ -19,6 +19,8 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -37,7 +39,10 @@ use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::{AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionStore};
+use crate::traits::{
+    AgentStore, EventEmitter, ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage,
+    SessionStore,
+};
 
 // ============================================================================
 // Helper Functions
@@ -134,10 +139,11 @@ fn default_max_iterations() -> usize {
 /// 4. Builds configuration with capabilities applied
 /// 5. Loads messages from the store
 /// 6. Patches dangling tool calls
-/// 7. Calls the LLM with the messages
-/// 8. Stores the assistant response
-/// 9. Emits reason.completed event
-/// 10. Returns the result with tool calls (if any)
+/// 7. Resolves image_file content parts to actual image data (if ImageResolver provided)
+/// 8. Calls the LLM with the messages
+/// 9. Stores the assistant response
+/// 10. Emits reason.completed event
+/// 11. Returns the result with tool calls (if any)
 pub struct ReasonAtom<A, S, M, P, E>
 where
     A: AgentStore,
@@ -153,6 +159,8 @@ where
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     event_emitter: E,
+    /// Optional image resolver for resolving image_file content parts
+    image_resolver: Option<Arc<dyn ImageResolver>>,
 }
 
 impl<A, S, M, P, E> ReasonAtom<A, S, M, P, E>
@@ -181,7 +189,25 @@ where
             capability_registry,
             driver_registry,
             event_emitter,
+            image_resolver: None,
         }
+    }
+
+    /// Set the image resolver for resolving image_file content parts
+    ///
+    /// When set, image_file references in messages will be resolved to actual
+    /// image data before being sent to the LLM. This is required for multimodal
+    /// conversations that include image attachments.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let resolver = Arc::new(GrpcImageResolver::new(client));
+    /// let atom = ReasonAtom::new(/* ... */).with_image_resolver(resolver);
+    /// ```
+    pub fn with_image_resolver(mut self, resolver: Arc<dyn ImageResolver>) -> Self {
+        self.image_resolver = Some(resolver);
+        self
     }
 }
 
@@ -404,7 +430,13 @@ where
         // 9. Patch dangling tool calls (add cancelled results for tool calls without responses)
         let patched_messages = patch_dangling_tool_calls(&messages);
 
-        // 10. Build LLM messages
+        // 10. Resolve images from image_file references (if any)
+        //
+        // Image resolution converts image_file content parts (which only contain UUIDs)
+        // into actual base64-encoded image data that can be sent to LLMs.
+        let resolved_images = self.resolve_images(&patched_messages).await;
+
+        // 11. Build LLM messages
         let mut llm_messages = Vec::new();
 
         // Add system prompt
@@ -417,12 +449,12 @@ where
             });
         }
 
-        // Add conversation messages
+        // Add conversation messages with resolved images
         for msg in &patched_messages {
-            llm_messages.push(msg.into());
+            llm_messages.push(LlmMessage::from_message_with_images(msg, &resolved_images));
         }
 
-        // 11. Build LLM call config with reasoning effort
+        // 12. Build LLM call config with reasoning effort
         let mut llm_config_builder = LlmCallConfigBuilder::from(&runtime_agent);
         if let Some(effort) = reasoning_effort.clone() {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
@@ -444,7 +476,7 @@ where
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
 
-        // 12. Process stream
+        // 13. Process stream
         let mut text = String::new();
         let mut tool_calls = Vec::new();
         let mut completion_metadata: Option<LlmCompletionMetadata> = None;
@@ -489,7 +521,7 @@ where
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 
-        // 13. Convert completion metadata to TokenUsage
+        // 14. Convert completion metadata to TokenUsage
         let usage = completion_metadata.as_ref().and_then(|meta| {
             match (meta.prompt_tokens, meta.completion_tokens) {
                 (Some(input), Some(output)) => Some(TokenUsage::with_cache(
@@ -502,7 +534,7 @@ where
             }
         });
 
-        // 14. Emit llm.generation event
+        // 15. Emit llm.generation event
         let event_context = EventContext::from_atom_context(context);
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
@@ -531,7 +563,7 @@ where
             );
         }
 
-        // 15. Build metadata with model and reasoning effort info
+        // 16. Build metadata with model and reasoning effort info
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),
@@ -544,7 +576,7 @@ where
             );
         }
 
-        // 16. Store and emit message.agent event with metadata and usage
+        // 17. Store and emit message.agent event with metadata and usage
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -657,6 +689,72 @@ where
         }
 
         self.driver_registry.create_driver(&config)
+    }
+
+    /// Resolve image_file references to actual image data
+    ///
+    /// This method extracts all image_file IDs from the messages and resolves
+    /// them to base64-encoded image data using the configured ImageResolver.
+    ///
+    /// # Returns
+    ///
+    /// A HashMap mapping image IDs to ResolvedImage data. If no ImageResolver
+    /// is configured, or if resolution fails for some images, those images
+    /// will simply be missing from the map (and converted to placeholder text).
+    async fn resolve_images(&self, messages: &[Message]) -> HashMap<Uuid, ResolvedImage> {
+        let mut resolved = HashMap::new();
+
+        // Check if we have an image resolver
+        let resolver = match &self.image_resolver {
+            Some(r) => r,
+            None => return resolved,
+        };
+
+        // Collect all unique image_file IDs from all messages
+        let image_ids: Vec<Uuid> = messages
+            .iter()
+            .flat_map(LlmMessage::extract_image_file_ids)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if image_ids.is_empty() {
+            return resolved;
+        }
+
+        tracing::debug!(
+            image_count = image_ids.len(),
+            "ReasonAtom: resolving image_file references"
+        );
+
+        // Resolve each image
+        for image_id in image_ids {
+            match resolver.resolve_image(image_id).await {
+                Ok(Some(image)) => {
+                    resolved.insert(image_id, image);
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        image_id = %image_id,
+                        "ReasonAtom: image not found during resolution"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        image_id = %image_id,
+                        error = %e,
+                        "ReasonAtom: failed to resolve image"
+                    );
+                }
+            }
+        }
+
+        tracing::debug!(
+            resolved_count = resolved.len(),
+            "ReasonAtom: image resolution complete"
+        );
+
+        resolved
     }
 }
 

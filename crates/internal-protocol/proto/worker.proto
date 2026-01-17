@@ -107,6 +107,15 @@ service WorkerService {
     // Stream task availability notifications to workers for low-latency task pickup
     // Workers subscribe with their activity types and receive notifications when tasks become available
     rpc SubscribeTaskNotifications(SubscribeTaskNotificationsRequest) returns (stream TaskNotification);
+
+    // === Image resolution operations ===
+    // Used to resolve image_file content parts to actual image data for LLM calls
+
+    // Resolve a single image by ID (returns base64 + media_type)
+    rpc ResolveImage(ResolveImageRequest) returns (ResolveImageResponse);
+
+    // Resolve multiple images in a batch (more efficient for multimodal messages)
+    rpc ResolveImages(ResolveImagesRequest) returns (ResolveImagesResponse);
 }
 
 // ============================================================================
@@ -638,6 +647,46 @@ message CheckCircuitBreakerResponse {
     bool allowed = 1;
     // Current state of the circuit breaker
     CircuitBreakerState state = 2;
+}
+
+// ============================================================================
+// Image resolution types
+// ============================================================================
+
+// Request to resolve an image by ID
+message ResolveImageRequest {
+    Uuid image_id = 1;
+}
+
+// Response with resolved image data
+// Returns base64-encoded image data and media type for LLM consumption
+message ResolveImageResponse {
+    // True if image was found
+    bool found = 1;
+    // Base64-encoded image data (without data URL prefix)
+    optional string base64 = 2;
+    // MIME type (e.g., "image/png", "image/jpeg")
+    optional string media_type = 3;
+}
+
+// Batch request to resolve multiple images
+message ResolveImagesRequest {
+    repeated Uuid image_ids = 1;
+}
+
+// Batch response with resolved images
+message ResolveImagesResponse {
+    // Map from image_id string to resolved image
+    // Only contains entries for found images
+    map<string, ResolvedImageData> images = 1;
+}
+
+// Resolved image data for batch response
+message ResolvedImageData {
+    // Base64-encoded image data (without data URL prefix)
+    string base64 = 1;
+    // MIME type (e.g., "image/png", "image/jpeg")
+    string media_type = 2;
 }
 
 // === Record success ===

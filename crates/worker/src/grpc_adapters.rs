@@ -36,13 +36,29 @@ pub struct GrpcClient {
     inner: Arc<Mutex<WorkerServiceClient<Channel>>>,
 }
 
+/// Max gRPC message size (150MB for base64-encoded images + overhead)
+///
+/// TODO: Sending large images over gRPC is inefficient. Future improvements:
+/// - Use presigned URLs to fetch images directly from storage
+/// - Stream images in chunks instead of single large messages
+/// - Move to S3/blob storage with direct worker access
+const MAX_GRPC_MESSAGE_SIZE: usize = 150 * 1024 * 1024;
+
 impl GrpcClient {
     /// Connect to the control plane gRPC server
     pub async fn connect(addr: &str) -> Result<Self> {
         let endpoint = format!("http://{}", addr);
-        let client = WorkerServiceClient::connect(endpoint)
+        let channel = tonic::transport::Endpoint::from_shared(endpoint)
+            .map_err(|e| grpc_error(format!("Invalid gRPC endpoint: {}", e)))?
+            .connect()
             .await
             .map_err(|e| grpc_error(format!("gRPC connection failed: {}", e)))?;
+
+        // Configure client with larger message size for image resolution
+        let client = WorkerServiceClient::new(channel)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
+
         Ok(Self {
             inner: Arc::new(Mutex::new(client)),
         })
@@ -50,8 +66,11 @@ impl GrpcClient {
 
     /// Create from an existing channel
     pub fn from_channel(channel: Channel) -> Self {
+        let client = WorkerServiceClient::new(channel)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
         Self {
-            inner: Arc::new(Mutex::new(WorkerServiceClient::new(channel))),
+            inner: Arc::new(Mutex::new(client)),
         }
     }
 
@@ -820,4 +839,91 @@ pub async fn load_turn_context(client: &GrpcClient, session_id: Uuid) -> Result<
         messages,
         model,
     })
+}
+
+// ============================================================================
+// ImageResolver implementation
+// ============================================================================
+
+use everruns_core::traits::{ImageResolver, ResolvedImage};
+use std::collections::HashMap;
+
+/// gRPC-backed image resolver for resolving image_file content parts
+///
+/// This is used by ReasonAtom to resolve image_file references to actual
+/// image data before sending messages to LLM providers.
+pub struct GrpcImageResolver {
+    client: GrpcClient,
+}
+
+impl GrpcImageResolver {
+    /// Create a new GrpcImageResolver
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+
+    /// Resolve multiple images in a batch (more efficient)
+    ///
+    /// Returns a HashMap mapping image_id to ResolvedImage for all found images.
+    /// Missing images are silently skipped.
+    pub async fn resolve_images_batch(
+        &self,
+        image_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, ResolvedImage>> {
+        if image_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut client = self.client.inner.lock().await;
+
+        let request = proto::ResolveImagesRequest {
+            image_ids: image_ids.iter().map(|id| uuid_to_proto(*id)).collect(),
+        };
+
+        let response = client
+            .resolve_images(request)
+            .await
+            .map_err(|e| grpc_error(format!("gRPC resolve_images failed: {}", e)))?;
+
+        let mut result = HashMap::new();
+        for (id_str, data) in response.into_inner().images {
+            if let Ok(id) = Uuid::parse_str(&id_str) {
+                result.insert(id, ResolvedImage::new(data.base64, data.media_type));
+            }
+        }
+
+        Ok(result)
+    }
+}
+
+#[async_trait]
+impl ImageResolver for GrpcImageResolver {
+    /// Resolve a single image by ID
+    ///
+    /// Returns the base64-encoded image data and media type, or None if not found.
+    async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
+        let mut client = self.client.inner.lock().await;
+
+        let request = proto::ResolveImageRequest {
+            image_id: Some(uuid_to_proto(image_id)),
+        };
+
+        let response = client
+            .resolve_image(request)
+            .await
+            .map_err(|e| grpc_error(format!("gRPC resolve_image failed: {}", e)))?;
+
+        let inner = response.into_inner();
+
+        if inner.found {
+            match (inner.base64, inner.media_type) {
+                (Some(base64), Some(media_type)) => {
+                    Ok(Some(ResolvedImage::new(base64, media_type)))
+                }
+                _ => Ok(None),
+            }
+        } else {
+            Ok(None)
+        }
+    }
 }

@@ -6,3 +6,4 @@ export * from "./use-llm-providers";
 export * from "./use-mcp-servers";
 export * from "./use-auth";
 export * from "./use-durable";
+export * from "./use-image-attachments";

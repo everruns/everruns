@@ -30,7 +30,7 @@ futures = "0.3"
 
 # HTTP framework
 axum = { version = "0.7", features = ["macros"] }
-axum-extra = { version = "0.9", features = ["cookie"] }
+axum-extra = { version = "0.9", features = ["cookie", "multipart"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
@@ -90,6 +90,9 @@ parking_lot = "0.12"
 # Protocol Buffers (used by tonic/gRPC)
 prost = "0.13"
 prost-types = "0.13"
+
+# Image processing (for thumbnail generation)
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
 [profile.dev]
 opt-level = 0

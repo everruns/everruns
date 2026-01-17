@@ -28,8 +28,8 @@ use crate::services::{MessageService, SessionService};
 // Re-export core types with ToSchema for OpenAPI
 #[allow(unused_imports)]
 pub use everruns_core::{
-    ContentPart, ContentType, Controls, ImageContentPart, InputContentPart, ReasoningConfig,
-    TextContentPart, ToolCallContentPart, ToolResultContentPart,
+    ContentPart, ContentType, Controls, ImageContentPart, ImageFileContentPart, InputContentPart,
+    ReasoningConfig, TextContentPart, ToolCallContentPart, ToolResultContentPart,
 };
 
 // ============================================

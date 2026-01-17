@@ -118,6 +118,7 @@ pub struct Message {
 pub enum ContentType {
     Text,
     Image,
+    ImageFile,
     ToolCall,
     ToolResult,
 }
@@ -127,6 +128,7 @@ impl std::fmt::Display for ContentType {
         match self {
             ContentType::Text => write!(f, "text"),
             ContentType::Image => write!(f, "image"),
+            ContentType::ImageFile => write!(f, "image_file"),
             ContentType::ToolCall => write!(f, "tool_call"),
             ContentType::ToolResult => write!(f, "tool_result"),
         }
@@ -137,6 +139,7 @@ impl From<&str> for ContentType {
     fn from(s: &str) -> Self {
         match s {
             "image" => ContentType::Image,
+            "image_file" => ContentType::ImageFile,
             "tool_call" => ContentType::ToolCall,
             "tool_result" => ContentType::ToolResult,
             _ => ContentType::Text,
@@ -187,6 +190,37 @@ impl ImageContentPart {
             url: None,
             base64: Some(base64.into()),
             media_type: Some(media_type.into()),
+        }
+    }
+}
+
+/// Image file content part (reference to uploaded image)
+///
+/// This is used for images uploaded via the /images API.
+/// The image data is stored separately and referenced by ID.
+/// Note: Currently filtered out before sending to LLM.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ImageFileContentPart {
+    /// ID of the uploaded image
+    pub image_id: Uuid,
+    /// Original filename (for display)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+}
+
+impl ImageFileContentPart {
+    pub fn new(image_id: Uuid) -> Self {
+        Self {
+            image_id,
+            filename: None,
+        }
+    }
+
+    pub fn with_filename(image_id: Uuid, filename: impl Into<String>) -> Self {
+        Self {
+            image_id,
+            filename: Some(filename.into()),
         }
     }
 }
@@ -260,7 +294,7 @@ impl ToolResultContentPart {
 // Content Part Enums
 // ============================================
 
-/// A part of message content - can be text, image, tool_call, or tool_result
+/// A part of message content - can be text, image, image_file, tool_call, or tool_result
 ///
 /// This is the canonical content part type used across the system.
 /// API layer enables the "openapi" feature to add ToSchema derive.
@@ -272,6 +306,8 @@ pub enum ContentPart {
     Text(TextContentPart),
     /// Image content (base64 or URL)
     Image(ImageContentPart),
+    /// Image file content (reference to uploaded image by ID)
+    ImageFile(ImageFileContentPart),
     /// Tool call content (assistant requesting tool execution)
     ToolCall(ToolCallContentPart),
     /// Tool result content (result of tool execution)
@@ -287,6 +323,11 @@ impl ContentPart {
     /// Create an image content part from URL
     pub fn image_url(url: impl Into<String>) -> Self {
         ContentPart::Image(ImageContentPart::from_url(url))
+    }
+
+    /// Create an image file content part (reference to uploaded image)
+    pub fn image_file(image_id: Uuid) -> Self {
+        ContentPart::ImageFile(ImageFileContentPart::new(image_id))
     }
 
     /// Create a tool call content part
@@ -315,18 +356,24 @@ impl ContentPart {
         }
     }
 
+    /// Check if this is an ImageFile part
+    pub fn is_image_file(&self) -> bool {
+        matches!(self, ContentPart::ImageFile(_))
+    }
+
     /// Get the content type
     pub fn content_type(&self) -> ContentType {
         match self {
             ContentPart::Text(_) => ContentType::Text,
             ContentPart::Image(_) => ContentType::Image,
+            ContentPart::ImageFile(_) => ContentType::ImageFile,
             ContentPart::ToolCall(_) => ContentType::ToolCall,
             ContentPart::ToolResult(_) => ContentType::ToolResult,
         }
     }
 }
 
-/// Input content part - only text and image (for user input)
+/// Input content part - text, image, and image_file (for user input)
 ///
 /// This is a subset of ContentPart that users can send.
 /// Tool calls and results are system-generated.
@@ -338,6 +385,8 @@ pub enum InputContentPart {
     Text(TextContentPart),
     /// Image content (base64 or URL)
     Image(ImageContentPart),
+    /// Image file content (reference to uploaded image by ID)
+    ImageFile(ImageFileContentPart),
 }
 
 impl From<InputContentPart> for ContentPart {
@@ -345,6 +394,7 @@ impl From<InputContentPart> for ContentPart {
         match input {
             InputContentPart::Text(t) => ContentPart::Text(t),
             InputContentPart::Image(i) => ContentPart::Image(i),
+            InputContentPart::ImageFile(f) => ContentPart::ImageFile(f),
         }
     }
 }
@@ -360,6 +410,11 @@ impl InputContentPart {
         InputContentPart::Image(ImageContentPart::from_url(url))
     }
 
+    /// Create an image file content part (reference to uploaded image)
+    pub fn image_file(image_id: Uuid) -> Self {
+        InputContentPart::ImageFile(ImageFileContentPart::new(image_id))
+    }
+
     /// Get text content if this is a Text part
     pub fn as_text(&self) -> Option<&str> {
         match self {
@@ -373,6 +428,7 @@ impl InputContentPart {
         match self {
             InputContentPart::Text(_) => ContentType::Text,
             InputContentPart::Image(_) => ContentType::Image,
+            InputContentPart::ImageFile(_) => ContentType::ImageFile,
         }
     }
 }
@@ -509,6 +565,7 @@ impl Message {
             .map(|part| match part {
                 ContentPart::Text(t) => t.text.clone(),
                 ContentPart::Image(_) => "[Image]".to_string(),
+                ContentPart::ImageFile(_) => "[Image File]".to_string(),
                 ContentPart::ToolCall(tc) => {
                     format!(
                         "Tool call: {} with arguments: {}",
