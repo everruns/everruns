@@ -39,6 +39,7 @@ Available specs:
 - `specs/brand.md` - Brand identity, colors, typography, voice
 - `specs/dismissed-options.md` - Technical options considered but dismissed
 - `specs/multitenancy.md` - Organization-based multitenancy and resource isolation
+- `specs/release-process.md` - Release workflow with CHANGELOG.md as source of truth
 
 Specification format: Abstract and Requirements sections.
 
