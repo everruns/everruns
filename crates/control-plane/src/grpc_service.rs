@@ -114,9 +114,14 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Durable execution not enabled"))
     }
 
+    /// Max gRPC message size (150MB for base64-encoded images + overhead)
+    const MAX_GRPC_MESSAGE_SIZE: usize = 150 * 1024 * 1024;
+
     /// Create a tonic server for this service
     pub fn into_server(self) -> WorkerServiceServer<Self> {
         WorkerServiceServer::new(self)
+            .max_decoding_message_size(Self::MAX_GRPC_MESSAGE_SIZE)
+            .max_encoding_message_size(Self::MAX_GRPC_MESSAGE_SIZE)
     }
 
     /// Convert ResolvedModel to proto ModelWithProvider

@@ -36,13 +36,24 @@ pub struct GrpcClient {
     inner: Arc<Mutex<WorkerServiceClient<Channel>>>,
 }
 
+/// Max gRPC message size (150MB for base64-encoded images + overhead)
+const MAX_GRPC_MESSAGE_SIZE: usize = 150 * 1024 * 1024;
+
 impl GrpcClient {
     /// Connect to the control plane gRPC server
     pub async fn connect(addr: &str) -> Result<Self> {
         let endpoint = format!("http://{}", addr);
-        let client = WorkerServiceClient::connect(endpoint)
+        let channel = tonic::transport::Endpoint::from_shared(endpoint)
+            .map_err(|e| grpc_error(format!("Invalid gRPC endpoint: {}", e)))?
+            .connect()
             .await
             .map_err(|e| grpc_error(format!("gRPC connection failed: {}", e)))?;
+
+        // Configure client with larger message size for image resolution
+        let client = WorkerServiceClient::new(channel)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
+
         Ok(Self {
             inner: Arc::new(Mutex::new(client)),
         })
@@ -50,8 +61,11 @@ impl GrpcClient {
 
     /// Create from an existing channel
     pub fn from_channel(channel: Channel) -> Self {
+        let client = WorkerServiceClient::new(channel)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
         Self {
-            inner: Arc::new(Mutex::new(WorkerServiceClient::new(channel))),
+            inner: Arc::new(Mutex::new(client)),
         }
     }
 
