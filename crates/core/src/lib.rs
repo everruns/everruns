@@ -36,6 +36,7 @@ pub mod events;
 pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod mcp_server;
+pub mod organization;
 pub mod session;
 pub mod session_file;
 
@@ -141,6 +142,10 @@ pub use mcp_server::{
     McpToolCallRequest, McpToolCallResponse, McpToolCallResult, McpToolDefinition,
     McpToolsListRequest, McpToolsListResponse, McpToolsListResult, is_mcp_tool, mcp_tool_name,
     parse_mcp_tool_name,
+};
+pub use organization::{
+    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, Organization, generate_org_public_id,
+    validate_org_public_id,
 };
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};

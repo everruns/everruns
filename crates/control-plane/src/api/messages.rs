@@ -1,4 +1,5 @@
 // Message HTTP routes and API contracts
+// Routes are org-scoped: /v1/orgs/:org/agents/:agent_id/sessions/:session_id/messages
 //
 // BREAKING CHANGE: Simplified message roles to just `user` and `agent`.
 // - Tool results are conveyed via `tool.call_completed` events
@@ -7,6 +8,7 @@
 // ContentPart and InputContentPart are defined in everruns-core.
 // We re-export them here with ToSchema for OpenAPI documentation.
 
+use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -145,22 +147,30 @@ impl CreateMessageRequest {
 pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
+    pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(db, runner)),
+            auth,
         }
     }
 }
 
-/// Create message routes (nested under sessions)
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
+    }
+}
+
+/// Create message routes (nested under sessions, org-scoped)
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/messages",
+            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/messages",
             post(create_message).get(list_messages),
         )
         .with_state(state)
@@ -170,11 +180,12 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// POST /v1/agents/{agent_id}/sessions/{session_id}/messages - Create message (user message triggers workflow)
+/// POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages - Create message (user message triggers workflow)
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/messages",
+    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
@@ -186,13 +197,14 @@ pub fn routes(state: AppState) -> Router {
     tag = "messages"
 )]
 pub async fn create_message(
+    org: OrgContext,
     State(state): State<AppState>,
-    Path((agent_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_org_path, agent_id, session_id)): Path<(String, Uuid, Uuid)>,
     Json(req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), StatusCode> {
     let message = state
         .message_service
-        .create(agent_id, session_id, req)
+        .create(org.org_id, agent_id, session_id, req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to create message: {}", e);
@@ -202,11 +214,12 @@ pub async fn create_message(
     Ok((StatusCode::CREATED, Json(message)))
 }
 
-/// GET /v1/agents/{agent_id}/sessions/{session_id}/messages - List messages (PRIMARY data)
+/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages - List messages (PRIMARY data)
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/messages",
+    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
@@ -218,13 +231,14 @@ pub async fn create_message(
     tag = "messages"
 )]
 pub async fn list_messages(
+    org: OrgContext,
     State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
 ) -> Result<Json<ListResponse<Message>>, StatusCode> {
     // Verify session exists
     let _session = state
         .session_service
-        .get(session_id)
+        .get(org.org_id, session_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

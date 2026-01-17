@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useOrg } from "@/providers/org-provider";
 
 interface ImageAttachmentsProps {
   images: PendingImage[];
@@ -20,12 +21,15 @@ interface ImageAttachmentsProps {
  * Component to display pending image attachments in the chat input area
  */
 export function ImageAttachments({ images, onRemove }: ImageAttachmentsProps) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   if (images.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-lg">
       {images.map((img) => (
-        <ImageAttachmentItem key={img.tempId} image={img} onRemove={onRemove} />
+        <ImageAttachmentItem key={img.tempId} image={img} onRemove={onRemove} org={org} />
       ))}
     </div>
   );
@@ -34,12 +38,13 @@ export function ImageAttachments({ images, onRemove }: ImageAttachmentsProps) {
 interface ImageAttachmentItemProps {
   image: PendingImage;
   onRemove: (tempId: string) => void;
+  org: string | undefined;
 }
 
-function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
+function ImageAttachmentItem({ image, onRemove, org }: ImageAttachmentItemProps) {
   // Use thumbnail URL if uploaded, otherwise use object URL preview
-  const displayUrl = image.imageId
-    ? getThumbnailUrl(image.imageId)
+  const displayUrl = image.imageId && org
+    ? getThumbnailUrl(org, image.imageId)
     : image.previewUrl;
 
   return (
@@ -91,9 +96,12 @@ interface MessageImageProps {
 }
 
 export function MessageImage({ imageId, filename }: MessageImageProps) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   const [isOpen, setIsOpen] = useState(false);
-  const thumbnailUrl = getThumbnailUrl(imageId);
-  const fullImageUrl = getImageUrl(imageId);
+  const thumbnailUrl = org ? getThumbnailUrl(org, imageId) : "";
+  const fullImageUrl = org ? getImageUrl(org, imageId) : "";
 
   const handleDownload = () => {
     const link = document.createElement("a");

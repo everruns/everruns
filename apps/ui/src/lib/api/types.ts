@@ -508,12 +508,20 @@ export interface TokenResponse {
   refresh_token?: string;
 }
 
+/** Organization membership info */
+export interface OrganizationMembership {
+  public_id: string;
+  name: string;
+}
+
 export interface UserInfoResponse {
   id: string;
   email: string;
   name: string;
   roles: string[];
   avatar_url?: string;
+  /** Organizations the user belongs to */
+  organizations?: OrganizationMembership[];
 }
 
 export interface ApiKeyResponse {

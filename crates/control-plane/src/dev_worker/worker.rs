@@ -10,7 +10,9 @@ use anyhow::Result;
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::{ActInput, InputAtomInput, ReasonInput, ReasonResult, TokenUsage};
+use everruns_core::{
+    ActInput, DEFAULT_ORG_ID, InputAtomInput, ReasonInput, ReasonResult, TokenUsage,
+};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, InMemoryWorkflowEventStore, WorkerInfo, WorkflowEvent,
     WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
@@ -264,8 +266,9 @@ impl InProcessWorker {
                 let act_input: ActInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
 
-                // Create DurableTurnInput from ActInput context
+                // Create DurableTurnInput from ActInput context (dev mode always uses DEFAULT_ORG_ID)
                 let turn_input = DurableTurnInput {
+                    org_id: DEFAULT_ORG_ID,
                     session_id: act_input.context.session_id,
                     agent_id: act_input.agent_id,
                     input_message_id: act_input.context.input_message_id,
@@ -514,7 +517,8 @@ impl InProcessWorker {
             }
 
             // Fetch session to get cumulative usage for session.idled event
-            let session_usage = match self.db.get_session(session_id).await {
+            // TODO: Get org_id from context after Phase 3
+            let session_usage = match self.db.get_session(DEFAULT_ORG_ID, session_id).await {
                 Ok(Some(session_row)) => {
                     if session_row.total_input_tokens > 0 || session_row.total_output_tokens > 0 {
                         Some(TokenUsage::with_cache(

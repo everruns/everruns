@@ -7,6 +7,7 @@ import {
   cleanupPendingImages,
   validateImageFile,
 } from "@/lib/api/images";
+import { useOrg } from "@/providers/org-provider";
 
 interface UseImageAttachmentsOptions {
   sessionId?: string;
@@ -25,6 +26,9 @@ interface UseImageAttachmentsOptions {
  */
 export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
   const { sessionId, maxImages = 10 } = options;
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
 
   // Track if all images are uploaded
@@ -50,6 +54,8 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
    */
   const addFiles = useCallback(
     async (files: File[]) => {
+      if (!org) return;
+
       // Filter to only valid files
       const validFiles: File[] = [];
       const errors: string[] = [];
@@ -80,7 +86,7 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
 
       // Create pending images and start uploads
       const newPendingImages = filesToAdd.map((file) =>
-        createPendingImage(file, sessionId)
+        createPendingImage(org, file, sessionId)
       );
 
       // Add to state
@@ -121,7 +127,7 @@ export function useImageAttachments(options: UseImageAttachmentsOptions = {}) {
           });
       }
     },
-    [pendingImages.length, maxImages, sessionId]
+    [org, pendingImages.length, maxImages, sessionId]
   );
 
   /**

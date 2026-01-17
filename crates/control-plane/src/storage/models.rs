@@ -5,6 +5,48 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 // ============================================
+// Organization models
+// ============================================
+
+/// Organization row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct OrganizationRow {
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Organization member row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct OrganizationMemberRow {
+    pub org_id: i64,
+    pub user_id: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating an organization
+#[derive(Debug, Clone)]
+pub struct CreateOrganizationRow {
+    pub public_id: String,
+    pub name: String,
+}
+
+/// Input for updating an organization
+#[derive(Debug, Clone, Default)]
+pub struct UpdateOrganization {
+    pub name: Option<String>,
+}
+
+/// Input for creating an organization member
+#[derive(Debug, Clone)]
+pub struct CreateOrganizationMemberRow {
+    pub org_id: i64,
+    pub user_id: Uuid,
+}
+
+// ============================================
 // Auth models
 // ============================================
 
@@ -38,6 +80,7 @@ pub struct AuthSessionRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct ApiKeyRow {
     pub id: Uuid,
+    pub org_id: i64,
     pub user_id: Uuid,
     pub name: String,
     pub key_hash: String,
@@ -92,6 +135,7 @@ pub struct CreateAuthSessionRow {
 /// Input for creating an API key
 #[derive(Debug, Clone)]
 pub struct CreateApiKeyRow {
+    pub org_id: i64,
     pub user_id: Uuid,
     pub name: String,
     pub key_hash: String,
@@ -115,6 +159,7 @@ pub struct CreateRefreshTokenRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentRow {
     pub id: Uuid,
+    pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
@@ -242,6 +287,7 @@ pub struct CreateEventRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct LlmProviderRow {
     pub id: Uuid,
+    pub org_id: i64,
     pub name: String,
     pub provider_type: String,
     pub base_url: Option<String>,
@@ -256,6 +302,7 @@ pub struct LlmProviderRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct LlmModelRow {
     pub id: Uuid,
+    pub org_id: i64,
     pub provider_id: Uuid,
     pub model_id: String,
     pub display_name: String,
@@ -271,6 +318,7 @@ pub struct LlmModelRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct LlmModelWithProviderRow {
     pub id: Uuid,
+    pub org_id: i64,
     pub provider_id: Uuid,
     pub model_id: String,
     pub display_name: String,
@@ -416,6 +464,7 @@ pub struct SessionFileInfoRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct McpServerRow {
     pub id: Uuid,
+    pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     pub url: String,

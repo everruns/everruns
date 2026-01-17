@@ -26,6 +26,7 @@ use everruns_durable::{
 /// Input for the turn workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DurableTurnInput {
+    pub org_id: i64,
     pub session_id: Uuid,
     pub agent_id: Uuid,
     pub input_message_id: Uuid,
@@ -454,11 +455,13 @@ impl AgentRunner for DurableRunner {
     /// Start a turn workflow for the given session
     async fn start_run(
         &self,
+        org_id: i64,
         session_id: Uuid,
         agent_id: Uuid,
         input_message_id: Uuid,
     ) -> Result<()> {
         info!(
+            org_id = org_id,
             session_id = %session_id,
             agent_id = %agent_id,
             input_message_id = %input_message_id,
@@ -467,6 +470,7 @@ impl AgentRunner for DurableRunner {
 
         // Build workflow input
         let input = DurableTurnInput {
+            org_id,
             session_id,
             agent_id,
             input_message_id,
@@ -628,7 +632,10 @@ mod tests {
 
     #[test]
     fn test_durable_turn_input_serialization() {
+        use everruns_core::DEFAULT_ORG_ID;
+
         let input = DurableTurnInput {
+            org_id: DEFAULT_ORG_ID,
             session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
             input_message_id: Uuid::now_v7(),
@@ -637,6 +644,7 @@ mod tests {
         let json = serde_json::to_string(&input).unwrap();
         let parsed: DurableTurnInput = serde_json::from_str(&json).unwrap();
 
+        assert_eq!(input.org_id, parsed.org_id);
         assert_eq!(input.session_id, parsed.session_id);
         assert_eq!(input.agent_id, parsed.agent_id);
         assert_eq!(input.input_message_id, parsed.input_message_id);
@@ -645,6 +653,8 @@ mod tests {
     /// Test that start_run works for a new session (first message)
     #[tokio::test]
     async fn test_start_run_creates_new_workflow() {
+        use everruns_core::DEFAULT_ORG_ID;
+
         let runner = DurableRunner::new_in_memory();
 
         let session_id = Uuid::now_v7();
@@ -653,7 +663,7 @@ mod tests {
 
         // First call should create a new workflow
         runner
-            .start_run(session_id, agent_id, message_id)
+            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id)
             .await
             .expect("First start_run should succeed");
 
@@ -664,6 +674,8 @@ mod tests {
     /// Test that start_run skips if workflow is already running
     #[tokio::test]
     async fn test_start_run_skips_if_running() {
+        use everruns_core::DEFAULT_ORG_ID;
+
         let runner = DurableRunner::new_in_memory();
 
         let session_id = Uuid::now_v7();
@@ -673,7 +685,7 @@ mod tests {
 
         // First message
         runner
-            .start_run(session_id, agent_id, message_id1)
+            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id1)
             .await
             .expect("First start_run should succeed");
 
@@ -681,7 +693,7 @@ mod tests {
 
         // Second message while still running - should skip (not error)
         runner
-            .start_run(session_id, agent_id, message_id2)
+            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id2)
             .await
             .expect("Second start_run should skip gracefully");
 
@@ -696,6 +708,8 @@ mod tests {
     /// should be reset to pending so it can process the new message.
     #[tokio::test]
     async fn test_start_run_resets_completed_workflow() {
+        use everruns_core::DEFAULT_ORG_ID;
+
         let runner = DurableRunner::new_in_memory();
 
         let session_id = Uuid::now_v7();
@@ -705,7 +719,7 @@ mod tests {
 
         // First message - creates workflow
         runner
-            .start_run(session_id, agent_id, message_id1)
+            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id1)
             .await
             .expect("First start_run should succeed");
 
@@ -730,7 +744,7 @@ mod tests {
         // This is the bug fix - previously this would fail because it tried
         // to create a workflow with the same ID
         runner
-            .start_run(session_id, agent_id, message_id2)
+            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id2)
             .await
             .expect("Second start_run should succeed (reset workflow)");
 
@@ -744,6 +758,8 @@ mod tests {
     /// Test that start_run resets a failed workflow for retry
     #[tokio::test]
     async fn test_start_run_resets_failed_workflow() {
+        use everruns_core::DEFAULT_ORG_ID;
+
         let runner = DurableRunner::new_in_memory();
 
         let session_id = Uuid::now_v7();
@@ -753,7 +769,7 @@ mod tests {
 
         // First message
         runner
-            .start_run(session_id, agent_id, message_id1)
+            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id1)
             .await
             .expect("First start_run should succeed");
 
@@ -775,7 +791,7 @@ mod tests {
 
         // Second message - should reset failed workflow
         runner
-            .start_run(session_id, agent_id, message_id2)
+            .start_run(DEFAULT_ORG_ID, session_id, agent_id, message_id2)
             .await
             .expect("Second start_run should reset failed workflow");
 

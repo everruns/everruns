@@ -6,7 +6,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType, get_model_profile,
+    DEFAULT_ORG_ID, LlmModel, LlmModelStatus, LlmModelWithProvider, LlmProviderType,
+    get_model_profile,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -24,8 +25,9 @@ impl LlmModelService {
 
     pub async fn create(&self, provider_id: Uuid, req: CreateLlmModelRequest) -> Result<LlmModel> {
         // If setting this model as default, clear all other defaults first ("last wins")
+        // TODO: Get org_id from context after Phase 3
         if req.is_default {
-            self.db.clear_all_model_defaults().await?;
+            self.db.clear_all_model_defaults(DEFAULT_ORG_ID).await?;
         }
 
         let input = CreateLlmModelRow {
@@ -37,7 +39,7 @@ impl LlmModelService {
             is_favorite: req.is_favorite,
         };
 
-        let row = self.db.create_llm_model(input).await?;
+        let row = self.db.create_llm_model(DEFAULT_ORG_ID, input).await?;
         Ok(Self::row_to_model(&row))
     }
 
@@ -52,14 +54,16 @@ impl LlmModelService {
     }
 
     pub async fn list_all(&self) -> Result<Vec<LlmModelWithProvider>> {
-        let rows = self.db.list_all_llm_models().await?;
+        // TODO: Get org_id from context after Phase 3
+        let rows = self.db.list_all_llm_models(DEFAULT_ORG_ID).await?;
         Ok(rows.iter().map(Self::row_to_model_with_provider).collect())
     }
 
     pub async fn update(&self, id: Uuid, req: UpdateLlmModelRequest) -> Result<Option<LlmModel>> {
         // If setting this model as default, clear all other defaults first ("last wins")
+        // TODO: Get org_id from context after Phase 3
         if req.is_default == Some(true) {
-            self.db.clear_all_model_defaults().await?;
+            self.db.clear_all_model_defaults(DEFAULT_ORG_ID).await?;
         }
 
         let input = UpdateLlmModel {
@@ -84,7 +88,8 @@ impl LlmModelService {
 
     /// Get the default model
     pub async fn get_default(&self) -> Result<Option<LlmModelWithProvider>> {
-        let row = self.db.get_default_llm_model().await?;
+        // TODO: Get org_id from context after Phase 3
+        let row = self.db.get_default_llm_model(DEFAULT_ORG_ID).await?;
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 

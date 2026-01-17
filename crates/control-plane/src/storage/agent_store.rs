@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentCapabilityConfig, AgentLoopError, Result,
+    AgentCapabilityConfig, AgentLoopError, DEFAULT_ORG_ID, Result,
     agent::{Agent, AgentStatus},
     traits::AgentStore,
 };
@@ -35,9 +35,10 @@ impl DbAgentStore {
 #[async_trait]
 impl AgentStore for DbAgentStore {
     async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
+        // TODO: Get org_id from context after Phase 3
         let agent_row = self
             .db
-            .get_agent(agent_id)
+            .get_agent(DEFAULT_ORG_ID, agent_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 

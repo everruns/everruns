@@ -262,7 +262,7 @@ impl WorkerService for WorkerServiceImpl {
         // Get session via SessionService
         let session = self
             .session_service
-            .get(session_id)
+            .get(req.org_id, session_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -273,7 +273,7 @@ impl WorkerService for WorkerServiceImpl {
         // Get agent with capabilities via AgentService
         let agent = self
             .agent_service
-            .get(session.agent_id)
+            .get(req.org_id, session.agent_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get agent: {}", e);
@@ -442,7 +442,7 @@ impl WorkerService for WorkerServiceImpl {
         // Get agent with capabilities via AgentService
         let agent = self
             .agent_service
-            .get(agent_id)
+            .get(req.org_id, agent_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
 
@@ -459,10 +459,14 @@ impl WorkerService for WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
         // Get session via SessionService
-        let session = self.session_service.get(session_id).await.map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            Status::internal("Failed to get session")
-        })?;
+        let session = self
+            .session_service
+            .get(req.org_id, session_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get session: {}", e);
+                Status::internal("Failed to get session")
+            })?;
 
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
@@ -501,7 +505,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let session = self
             .session_service
-            .update_status(session_id, req.status)
+            .update_status(req.org_id, session_id, req.status)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update session status: {}", e);

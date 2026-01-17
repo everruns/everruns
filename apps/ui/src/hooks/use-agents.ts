@@ -1,4 +1,5 @@
 // Agent hooks (M2)
+"use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,27 +13,37 @@ import {
 } from "@/lib/api/agents";
 import { queryKeys } from "@/lib/query-keys";
 import type { CreateAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
+import { useOrg } from "@/providers/org-provider";
 
 export function useAgents() {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: queryKeys.agents.list(),
-    queryFn: listAgents,
+    queryKey: [...queryKeys.agents.list(), org],
+    queryFn: () => listAgents(org!),
+    enabled: !!org,
   });
 }
 
 export function useAgent(agentId: string | undefined) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: queryKeys.agents.detail(agentId!),
-    queryFn: () => getAgent(agentId!),
-    enabled: !!agentId,
+    queryKey: [...queryKeys.agents.detail(agentId!), org],
+    queryFn: () => getAgent(org!, agentId!),
+    enabled: !!org && !!agentId,
   });
 }
 
 export function useCreateAgent() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (request: CreateAgentRequest) => createAgent(request),
+    mutationFn: (request: CreateAgentRequest) => createAgent(org!, request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
@@ -41,6 +52,8 @@ export function useCreateAgent() {
 
 export function useUpdateAgent() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -49,7 +62,7 @@ export function useUpdateAgent() {
     }: {
       agentId: string;
       request: UpdateAgentRequest;
-    }) => updateAgent(agentId, request),
+    }) => updateAgent(org!, agentId, request),
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
@@ -59,9 +72,11 @@ export function useUpdateAgent() {
 
 export function useDeleteAgent() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (agentId: string) => deleteAgent(agentId),
+    mutationFn: (agentId: string) => deleteAgent(org!, agentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
@@ -69,16 +84,21 @@ export function useDeleteAgent() {
 }
 
 export function useExportAgent() {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useMutation({
-    mutationFn: (agentId: string) => exportAgent(agentId),
+    mutationFn: (agentId: string) => exportAgent(org!, agentId),
   });
 }
 
 export function useImportAgent() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (markdown: string) => importAgent(markdown),
+    mutationFn: (markdown: string) => importAgent(org!, markdown),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },

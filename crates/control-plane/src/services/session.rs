@@ -21,13 +21,18 @@ impl SessionService {
         Self { db }
     }
 
-    pub async fn create(&self, agent_id: Uuid, req: CreateSessionRequest) -> Result<Session> {
+    pub async fn create(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        req: CreateSessionRequest,
+    ) -> Result<Session> {
         // If model_id not provided, use the agent's default_model_id
         let model_id = match req.model_id {
             Some(id) => Some(id),
             None => {
                 // Look up the agent to get its default_model_id
-                let agent = self.db.get_agent(agent_id).await?;
+                let agent = self.db.get_agent(org_id, agent_id).await?;
                 agent.and_then(|a| a.default_model_id)
             }
         };
@@ -42,8 +47,8 @@ impl SessionService {
         Ok(Self::row_to_session(row))
     }
 
-    pub async fn get(&self, id: Uuid) -> Result<Option<Session>> {
-        let row = self.db.get_session(id).await?;
+    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Session>> {
+        let row = self.db.get_session(org_id, id).await?;
         Ok(row.map(Self::row_to_session))
     }
 
@@ -52,10 +57,11 @@ impl SessionService {
     /// Sessions include preview text from first user message and last assistant response.
     pub async fn list(
         &self,
+        org_id: i64,
         agent_id: Uuid,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
-        let (rows, total) = self.db.list_sessions(agent_id, pagination).await?;
+        let (rows, total) = self.db.list_sessions(org_id, agent_id, pagination).await?;
         let mut sessions: Vec<Session> = rows.into_iter().map(Self::row_to_session).collect();
 
         // Fetch previews for all sessions in batch queries
@@ -76,28 +82,38 @@ impl SessionService {
         Ok((sessions, total))
     }
 
-    pub async fn update(&self, id: Uuid, req: UpdateSessionRequest) -> Result<Option<Session>> {
+    pub async fn update(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        req: UpdateSessionRequest,
+    ) -> Result<Option<Session>> {
         let input = UpdateSession {
             title: req.title,
             tags: req.tags,
             ..Default::default()
         };
-        let row = self.db.update_session(id, input).await?;
+        let row = self.db.update_session(org_id, id, input).await?;
         Ok(row.map(Self::row_to_session))
     }
 
     /// Update session status (used by worker via gRPC)
-    pub async fn update_status(&self, id: Uuid, status: String) -> Result<Option<Session>> {
+    pub async fn update_status(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        status: String,
+    ) -> Result<Option<Session>> {
         let input = UpdateSession {
             status: Some(status),
             ..Default::default()
         };
-        let row = self.db.update_session(id, input).await?;
+        let row = self.db.update_session(org_id, id, input).await?;
         Ok(row.map(Self::row_to_session))
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<bool> {
-        self.db.delete_session(id).await
+    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        self.db.delete_session(org_id, id).await
     }
 
     fn row_to_session(row: crate::storage::SessionRow) -> Session {

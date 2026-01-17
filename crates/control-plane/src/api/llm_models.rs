@@ -1,6 +1,8 @@
 // LLM Model API endpoints
+// Routes are org-scoped: /v1/orgs/:org/llm-providers/:provider_id/models/...
 
 use crate::api::common::{ErrorResponse, ListResponse};
+use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -19,13 +21,21 @@ use crate::services::LlmModelService;
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<LlmModelService>,
+    pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
             service: Arc::new(LlmModelService::new(db)),
+            auth,
         }
+    }
+}
+
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
     }
 }
 
@@ -84,8 +94,9 @@ pub struct UpdateLlmModelRequest {
 /// Create a new model for a provider
 #[utoipa::path(
     post,
-    path = "/v1/llm-providers/{provider_id}/models",
+    path = "/v1/orgs/{org}/llm-providers/{provider_id}/models",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("provider_id" = Uuid, Path, description = "Provider ID")
     ),
     request_body = CreateLlmModelRequest,
@@ -97,8 +108,9 @@ pub struct UpdateLlmModelRequest {
     tag = "llm-models"
 )]
 pub async fn create_model(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(provider_id): Path<Uuid>,
+    Path((_org_path, provider_id)): Path<(String, Uuid)>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<LlmModel>), (StatusCode, Json<ErrorResponse>)> {
     let model = state.service.create(provider_id, req).await.map_err(|e| {
@@ -117,8 +129,9 @@ pub async fn create_model(
 /// List models for a specific provider
 #[utoipa::path(
     get,
-    path = "/v1/llm-providers/{provider_id}/models",
+    path = "/v1/orgs/{org}/llm-providers/{provider_id}/models",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("provider_id" = Uuid, Path, description = "Provider ID")
     ),
     responses(
@@ -127,8 +140,9 @@ pub async fn create_model(
     tag = "llm-models"
 )]
 pub async fn list_provider_models(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(provider_id): Path<Uuid>,
+    Path((_org_path, provider_id)): Path<(String, Uuid)>,
 ) -> Result<Json<ListResponse<LlmModel>>, (StatusCode, Json<ErrorResponse>)> {
     let models = state
         .service
@@ -150,13 +164,17 @@ pub async fn list_provider_models(
 /// List all models across all providers
 #[utoipa::path(
     get,
-    path = "/v1/llm-models",
+    path = "/v1/orgs/{org}/llm-models",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
     responses(
         (status = 200, description = "List of all models", body = ListResponse<LlmModelWithProvider>)
     ),
     tag = "llm-models"
 )]
 pub async fn list_all_models(
+    _org: OrgContext,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
     let models = state.service.list_all().await.map_err(|e| {
@@ -175,8 +193,9 @@ pub async fn list_all_models(
 /// Get a specific model with provider info and profile
 #[utoipa::path(
     get,
-    path = "/v1/llm-models/{id}",
+    path = "/v1/orgs/{org}/llm-models/{id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("id" = Uuid, Path, description = "Model ID")
     ),
     responses(
@@ -186,8 +205,9 @@ pub async fn list_all_models(
     tag = "llm-models"
 )]
 pub async fn get_model(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((_org_path, id)): Path<(String, Uuid)>,
 ) -> Result<Json<LlmModelWithProvider>, (StatusCode, Json<ErrorResponse>)> {
     let model = state
         .service
@@ -217,8 +237,9 @@ pub async fn get_model(
 /// Update a model
 #[utoipa::path(
     patch,
-    path = "/v1/llm-models/{id}",
+    path = "/v1/orgs/{org}/llm-models/{id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("id" = Uuid, Path, description = "Model ID")
     ),
     request_body = UpdateLlmModelRequest,
@@ -229,8 +250,9 @@ pub async fn get_model(
     tag = "llm-models"
 )]
 pub async fn update_model(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((_org_path, id)): Path<(String, Uuid)>,
     Json(req): Json<UpdateLlmModelRequest>,
 ) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
     let model = state
@@ -261,8 +283,9 @@ pub async fn update_model(
 /// Delete a model
 #[utoipa::path(
     delete,
-    path = "/v1/llm-models/{id}",
+    path = "/v1/orgs/{org}/llm-models/{id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("id" = Uuid, Path, description = "Model ID")
     ),
     responses(
@@ -272,8 +295,9 @@ pub async fn update_model(
     tag = "llm-models"
 )]
 pub async fn delete_model(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((_org_path, id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let deleted = state.service.delete(id).await.map_err(|e| {
         tracing::error!("Failed to delete LLM model: {}", e);
@@ -300,12 +324,12 @@ pub async fn delete_model(
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/llm-providers/:provider_id/models",
+            "/v1/orgs/:org/llm-providers/:provider_id/models",
             post(create_model).get(list_provider_models),
         )
-        .route("/v1/llm-models", get(list_all_models))
+        .route("/v1/orgs/:org/llm-models", get(list_all_models))
         .route(
-            "/v1/llm-models/:id",
+            "/v1/orgs/:org/llm-models/:id",
             get(get_model).patch(update_model).delete(delete_model),
         )
         .with_state(state)

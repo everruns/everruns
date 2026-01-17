@@ -1,5 +1,7 @@
 // Agent CRUD HTTP routes (M2)
+// Routes are org-scoped: /v1/orgs/:org/agents/...
 
+use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -131,33 +133,44 @@ use crate::services::AgentService;
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<AgentService>,
+    pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
             service: Arc::new(AgentService::new(db)),
+            auth,
         }
     }
 }
 
-/// Create agent routes
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
+    }
+}
+
+/// Create agent routes (org-scoped)
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/agents", post(create_agent).get(list_agents))
-        .route("/v1/agents/import", post(import_agent))
+        .route("/v1/orgs/:org/agents", post(create_agent).get(list_agents))
+        .route("/v1/orgs/:org/agents/import", post(import_agent))
         .route(
-            "/v1/agents/:agent_id",
+            "/v1/orgs/:org/agents/:agent_id",
             get(get_agent).patch(update_agent).delete(delete_agent),
         )
-        .route("/v1/agents/:agent_id/export", get(export_agent))
+        .route("/v1/orgs/:org/agents/:agent_id/export", get(export_agent))
         .with_state(state)
 }
 
-/// POST /v1/agents - Create a new agent
+/// POST /v1/orgs/{org}/agents - Create a new agent
 #[utoipa::path(
     post,
-    path = "/v1/agents",
+    path = "/v1/orgs/{org}/agents",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
     request_body = CreateAgentRequest,
     responses(
         (status = 201, description = "Agent created successfully", body = Agent),
@@ -167,6 +180,7 @@ pub fn routes(state: AppState) -> Router {
     tag = "agents"
 )]
 pub async fn create_agent(
+    org: OrgContext,
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
@@ -180,17 +194,20 @@ pub async fn create_agent(
 
     let agent = state
         .service
-        .create(req)
+        .create(org.org_id, req)
         .await
         .log_internal_error_json("create agent")?;
 
     Ok((StatusCode::CREATED, Json(agent)))
 }
 
-/// GET /v1/agents - List all active agents
+/// GET /v1/orgs/{org}/agents - List all active agents
 #[utoipa::path(
     get,
-    path = "/v1/agents",
+    path = "/v1/orgs/{org}/agents",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
     responses(
         (status = 200, description = "List of agents", body = ListResponse<Agent>),
         (status = 500, description = "Internal server error")
@@ -198,22 +215,24 @@ pub async fn create_agent(
     tag = "agents"
 )]
 pub async fn list_agents(
+    org: OrgContext,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<Agent>>, StatusCode> {
     let agents = state
         .service
-        .list()
+        .list(org.org_id)
         .await
         .log_internal_error("list agents")?;
 
     Ok(Json(ListResponse::new(agents)))
 }
 
-/// GET /v1/agents/{agent_id} - Get agent by ID
+/// GET /v1/orgs/{org}/agents/{agent_id} - Get agent by ID
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}",
+    path = "/v1/orgs/{org}/agents/{agent_id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("agent_id" = Uuid, Path, description = "Agent ID")
     ),
     responses(
@@ -224,12 +243,13 @@ pub async fn list_agents(
     tag = "agents"
 )]
 pub async fn get_agent(
+    org: OrgContext,
     State(state): State<AppState>,
-    Path(agent_id): Path<Uuid>,
+    Path((_org_path, agent_id)): Path<(String, Uuid)>,
 ) -> Result<Json<Agent>, StatusCode> {
     let agent = state
         .service
-        .get(agent_id)
+        .get(org.org_id, agent_id)
         .await
         .log_internal_error("get agent")?
         .ok_or_not_found()?;
@@ -237,11 +257,12 @@ pub async fn get_agent(
     Ok(Json(agent))
 }
 
-/// PATCH /v1/agents/{agent_id} - Update agent
+/// PATCH /v1/orgs/{org}/agents/{agent_id} - Update agent
 #[utoipa::path(
     patch,
-    path = "/v1/agents/{agent_id}",
+    path = "/v1/orgs/{org}/agents/{agent_id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("agent_id" = Uuid, Path, description = "Agent ID")
     ),
     request_body = UpdateAgentRequest,
@@ -254,8 +275,9 @@ pub async fn get_agent(
     tag = "agents"
 )]
 pub async fn update_agent(
+    org: OrgContext,
     State(state): State<AppState>,
-    Path(agent_id): Path<Uuid>,
+    Path((_org_path, agent_id)): Path<(String, Uuid)>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> Result<Json<Agent>, (StatusCode, Json<ErrorResponse>)> {
     // Validate input sizes (last-resort protection against abuse)
@@ -268,7 +290,7 @@ pub async fn update_agent(
 
     let agent = state
         .service
-        .update(agent_id, req)
+        .update(org.org_id, agent_id, req)
         .await
         .log_internal_error_json("update agent")?
         .ok_or_not_found_json("Agent")?;
@@ -276,11 +298,12 @@ pub async fn update_agent(
     Ok(Json(agent))
 }
 
-/// DELETE /v1/agents/{agent_id} - Archive agent
+/// DELETE /v1/orgs/{org}/agents/{agent_id} - Archive agent
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{agent_id}",
+    path = "/v1/orgs/{org}/agents/{agent_id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("agent_id" = Uuid, Path, description = "Agent ID")
     ),
     responses(
@@ -291,12 +314,13 @@ pub async fn update_agent(
     tag = "agents"
 )]
 pub async fn delete_agent(
+    org: OrgContext,
     State(state): State<AppState>,
-    Path(agent_id): Path<Uuid>,
+    Path((_org_path, agent_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, StatusCode> {
     let deleted = state
         .service
-        .delete(agent_id)
+        .delete(org.org_id, agent_id)
         .await
         .log_internal_error("delete agent")?;
 
@@ -307,11 +331,12 @@ pub async fn delete_agent(
     }
 }
 
-/// GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter
+/// GET /v1/orgs/{org}/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/export",
+    path = "/v1/orgs/{org}/agents/{agent_id}/export",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("agent_id" = Uuid, Path, description = "Agent ID")
     ),
     responses(
@@ -322,12 +347,13 @@ pub async fn delete_agent(
     tag = "agents"
 )]
 pub async fn export_agent(
+    org: OrgContext,
     State(state): State<AppState>,
-    Path(agent_id): Path<Uuid>,
+    Path((_org_path, agent_id)): Path<(String, Uuid)>,
 ) -> Result<Response, StatusCode> {
     let agent = state
         .service
-        .get(agent_id)
+        .get(org.org_id, agent_id)
         .await
         .log_internal_error("get agent for export")?
         .ok_or_not_found()?;
@@ -346,7 +372,7 @@ pub async fn export_agent(
         .unwrap())
 }
 
-/// POST /v1/agents/import - Import agent from Markdown, YAML, or JSON
+/// POST /v1/orgs/{org}/agents/import - Import agent from Markdown, YAML, or JSON
 ///
 /// Accepts agent definition in multiple formats:
 /// - Markdown with YAML front matter (if starts with ---)
@@ -355,7 +381,10 @@ pub async fn export_agent(
 /// - Plain text (treated as system prompt, name auto-generated)
 #[utoipa::path(
     post,
-    path = "/v1/agents/import",
+    path = "/v1/orgs/{org}/agents/import",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
     request_body(content = String, content_type = "text/plain"),
     responses(
         (status = 201, description = "Agent imported successfully", body = Agent),
@@ -365,6 +394,7 @@ pub async fn export_agent(
     tag = "agents"
 )]
 pub async fn import_agent(
+    org: OrgContext,
     State(state): State<AppState>,
     body: String,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
@@ -410,10 +440,15 @@ pub async fn import_agent(
             .collect(),
     };
 
-    let agent = state.service.create(request).await.map_err(|e| {
-        tracing::error!("Failed to import agent: {}", e);
-        ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
-    })?;
+    let agent = state
+        .service
+        .create(org.org_id, request)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to import agent: {}", e);
+            ErrorResponse::new("Internal server error")
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
 
     Ok((StatusCode::CREATED, Json(agent)))
 }

@@ -158,36 +158,42 @@ impl StorageBackend {
     // Agents
     // ============================================
 
-    pub async fn create_agent(&self, input: CreateAgentRow) -> Result<AgentRow> {
-        dispatch!(self, create_agent, input)
+    pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
+        dispatch!(self, create_agent, org_id, input)
     }
 
     pub async fn create_agent_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
-        dispatch!(self, create_agent_with_id, id, input)
+        dispatch!(self, create_agent_with_id, org_id, id, input)
     }
 
-    pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
-        dispatch!(self, get_agent, id)
+    pub async fn get_agent(&self, org_id: i64, id: Uuid) -> Result<Option<AgentRow>> {
+        dispatch!(self, get_agent, org_id, id)
     }
 
-    pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
-        dispatch!(self, list_agents)
+    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
+        dispatch!(self, list_agents, org_id)
     }
 
-    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
-        dispatch!(self, get_agent_by_name, name)
+    pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
+        dispatch!(self, get_agent_by_name, org_id, name)
     }
 
-    pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
-        dispatch!(self, update_agent, id, input)
+    pub async fn update_agent(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateAgent,
+    ) -> Result<Option<AgentRow>> {
+        dispatch!(self, update_agent, org_id, id, input)
     }
 
-    pub async fn delete_agent(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_agent, id)
+    pub async fn delete_agent(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_agent, org_id, id)
     }
 
     // ============================================
@@ -198,30 +204,32 @@ impl StorageBackend {
         dispatch!(self, create_session, input)
     }
 
-    pub async fn get_session(&self, id: Uuid) -> Result<Option<SessionRow>> {
-        dispatch!(self, get_session, id)
+    pub async fn get_session(&self, org_id: i64, id: Uuid) -> Result<Option<SessionRow>> {
+        dispatch!(self, get_session, org_id, id)
     }
 
-    /// List sessions for an agent with pagination.
+    /// List sessions for an agent with pagination, validating org ownership.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(
         &self,
+        org_id: i64,
         agent_id: Uuid,
         pagination: Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        dispatch!(self, list_sessions, agent_id, pagination)
+        dispatch!(self, list_sessions, org_id, agent_id, pagination)
     }
 
     pub async fn update_session(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
-        dispatch!(self, update_session, id, input)
+        dispatch!(self, update_session, org_id, id, input)
     }
 
-    pub async fn delete_session(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_session, id)
+    pub async fn delete_session(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_session, org_id, id)
     }
 
     // ============================================
@@ -265,18 +273,23 @@ impl StorageBackend {
     // LLM Providers
     // ============================================
 
-    pub async fn create_llm_provider(&self, input: CreateLlmProviderRow) -> Result<LlmProviderRow> {
-        dispatch!(self, create_llm_provider, input)
+    pub async fn create_llm_provider(
+        &self,
+        org_id: i64,
+        input: CreateLlmProviderRow,
+    ) -> Result<LlmProviderRow> {
+        dispatch!(self, create_llm_provider, org_id, input)
     }
 
     /// Create a provider with a specific ID (for seeding)
     /// Returns None if provider already exists (idempotent)
     pub async fn create_llm_provider_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateLlmProviderRow,
     ) -> Result<Option<LlmProviderRow>> {
-        dispatch!(self, create_llm_provider_with_id, id, input)
+        dispatch!(self, create_llm_provider_with_id, org_id, id, input)
     }
 
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
@@ -316,26 +329,34 @@ impl StorageBackend {
     // LLM Models
     // ============================================
 
-    pub async fn get_default_llm_model(&self) -> Result<Option<LlmModelWithProviderRow>> {
-        dispatch!(self, get_default_llm_model)
+    pub async fn get_default_llm_model(
+        &self,
+        org_id: i64,
+    ) -> Result<Option<LlmModelWithProviderRow>> {
+        dispatch!(self, get_default_llm_model, org_id)
     }
 
-    pub async fn clear_all_model_defaults(&self) -> Result<()> {
-        dispatch!(self, clear_all_model_defaults)
+    pub async fn clear_all_model_defaults(&self, org_id: i64) -> Result<()> {
+        dispatch!(self, clear_all_model_defaults, org_id)
     }
 
-    pub async fn create_llm_model(&self, input: CreateLlmModelRow) -> Result<LlmModelRow> {
-        dispatch!(self, create_llm_model, input)
+    pub async fn create_llm_model(
+        &self,
+        org_id: i64,
+        input: CreateLlmModelRow,
+    ) -> Result<LlmModelRow> {
+        dispatch!(self, create_llm_model, org_id, input)
     }
 
     /// Create a model with a specific ID (for seeding)
     /// Returns None if model already exists (idempotent)
     pub async fn create_llm_model_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateLlmModelRow,
     ) -> Result<Option<LlmModelRow>> {
-        dispatch!(self, create_llm_model_with_id, id, input)
+        dispatch!(self, create_llm_model_with_id, org_id, id, input)
     }
 
     pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {
@@ -356,8 +377,8 @@ impl StorageBackend {
         dispatch!(self, list_llm_models_for_provider, provider_id)
     }
 
-    pub async fn list_all_llm_models(&self) -> Result<Vec<LlmModelWithProviderRow>> {
-        dispatch!(self, list_all_llm_models)
+    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
+        dispatch!(self, list_all_llm_models, org_id)
     }
 
     pub async fn update_llm_model(
@@ -374,9 +395,10 @@ impl StorageBackend {
 
     pub async fn get_llm_model_by_model_id(
         &self,
+        org_id: i64,
         model_id: &str,
     ) -> Result<Option<LlmModelWithProviderRow>> {
-        dispatch!(self, get_llm_model_by_model_id, model_id)
+        dispatch!(self, get_llm_model_by_model_id, org_id, model_id)
     }
 
     // ============================================
@@ -505,16 +527,21 @@ impl StorageBackend {
     // MCP Servers
     // ============================================
 
-    pub async fn create_mcp_server(&self, input: CreateMcpServerRow) -> Result<McpServerRow> {
-        dispatch!(self, create_mcp_server, input)
+    pub async fn create_mcp_server(
+        &self,
+        org_id: i64,
+        input: CreateMcpServerRow,
+    ) -> Result<McpServerRow> {
+        dispatch!(self, create_mcp_server, org_id, input)
     }
 
     pub async fn create_mcp_server_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateMcpServerRow,
     ) -> Result<Option<McpServerRow>> {
-        dispatch!(self, create_mcp_server_with_id, id, input)
+        dispatch!(self, create_mcp_server_with_id, org_id, id, input)
     }
 
     pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
@@ -560,6 +587,7 @@ impl StorageBackend {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_llm_generation(
         &self,
+        org_id: i64,
         session_id: Uuid,
         turn_id: Option<Uuid>,
         event_id: Option<Uuid>,
@@ -576,6 +604,7 @@ impl StorageBackend {
         dispatch!(
             self,
             create_llm_generation,
+            org_id,
             session_id,
             turn_id,
             event_id,
@@ -651,5 +680,84 @@ impl StorageBackend {
 
     pub async fn list_images(&self, limit: i64, offset: i64) -> Result<Vec<ImageInfoRow>> {
         dispatch!(self, list_images, limit, offset)
+    }
+
+    // ============================================
+    // Organizations
+    // ============================================
+
+    pub async fn create_organization(
+        &self,
+        input: CreateOrganizationRow,
+    ) -> Result<OrganizationRow> {
+        dispatch!(self, create_organization, input)
+    }
+
+    /// Create organization with specific org_id (for seeding).
+    /// Returns None if org_id already exists.
+    pub async fn create_organization_with_id(
+        &self,
+        org_id: i64,
+        input: CreateOrganizationRow,
+    ) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, create_organization_with_id, org_id, input)
+    }
+
+    pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, get_organization, org_id)
+    }
+
+    pub async fn get_organization_by_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, get_organization_by_public_id, public_id)
+    }
+
+    pub async fn list_organizations(&self) -> Result<Vec<OrganizationRow>> {
+        dispatch!(self, list_organizations)
+    }
+
+    pub async fn update_organization(
+        &self,
+        org_id: i64,
+        input: UpdateOrganization,
+    ) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, update_organization, org_id, input)
+    }
+
+    pub async fn delete_organization(&self, org_id: i64) -> Result<bool> {
+        dispatch!(self, delete_organization, org_id)
+    }
+
+    // ============================================
+    // Organization Members
+    // ============================================
+
+    pub async fn add_organization_member(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<OrganizationMemberRow> {
+        dispatch!(self, add_organization_member, org_id, user_id)
+    }
+
+    pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
+        dispatch!(self, remove_organization_member, org_id, user_id)
+    }
+
+    pub async fn list_organization_members(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrganizationMemberRow>> {
+        dispatch!(self, list_organization_members, org_id)
+    }
+
+    pub async fn list_user_organizations(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
+        dispatch!(self, list_user_organizations, user_id)
+    }
+
+    pub async fn is_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
+        dispatch!(self, is_organization_member, org_id, user_id)
     }
 }

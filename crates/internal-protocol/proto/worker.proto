@@ -141,6 +141,8 @@ message Timestamp {
 
 message GetTurnContextRequest {
     Uuid session_id = 1;
+    // Organization ID for resource validation
+    int64 org_id = 2;
 }
 
 message GetTurnContextResponse {
@@ -181,6 +183,8 @@ message Agent {
 
 message GetAgentRequest {
     Uuid agent_id = 1;
+    // Organization ID for resource validation
+    int64 org_id = 2;
 }
 
 message GetAgentResponse {
@@ -203,6 +207,8 @@ message Session {
 
 message GetSessionRequest {
     Uuid session_id = 1;
+    // Organization ID for resource validation
+    int64 org_id = 2;
 }
 
 message GetSessionResponse {
@@ -212,6 +218,8 @@ message GetSessionResponse {
 message SetSessionStatusRequest {
     Uuid session_id = 1;
     string status = 2;  // "started", "active", "idle"
+    // Organization ID for resource validation
+    int64 org_id = 3;
 }
 
 message SetSessionStatusResponse {
@@ -321,6 +329,8 @@ message ModelWithProvider {
 
 message GetModelWithProviderRequest {
     Uuid model_id = 1;
+    // Organization ID for resource validation
+    int64 org_id = 2;
 }
 
 message GetModelWithProviderResponse {
@@ -770,6 +780,8 @@ message McpServerInfo {
 // Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn__search")
 message GetMcpServerByPrefixRequest {
     string server_prefix = 1;
+    // Organization ID for resource validation
+    int64 org_id = 2;
 }
 
 message GetMcpServerByPrefixResponse {

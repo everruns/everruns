@@ -7,6 +7,8 @@ use everruns_core::{Agent, LlmModel, Session, SessionFile};
 use serde_json::{Value, json};
 
 const API_BASE_URL: &str = "http://localhost:9000";
+// Default organization ID for org-scoped routes
+const DEFAULT_ORG: &str = "org_00000000000000000000000000000001";
 
 #[tokio::test]
 async fn test_full_agent_session_workflow() {
@@ -17,7 +19,7 @@ async fn test_full_agent_session_workflow() {
     // Step 1: Create an agent
     println!("\nStep 1: Creating agent...");
     let create_agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Test Agent",
             "description": "An agent for testing",
@@ -46,7 +48,7 @@ async fn test_full_agent_session_workflow() {
     // Step 2: List agents
     println!("\nStep 2: Listing agents...");
     let list_response = client
-        .get(format!("{}/v1/agents", API_BASE_URL))
+        .get(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .send()
         .await
         .expect("Failed to list agents");
@@ -62,7 +64,10 @@ async fn test_full_agent_session_workflow() {
     // Step 3: Get agent by ID
     println!("\nStep 3: Getting agent by ID...");
     let get_response = client
-        .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .get(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to get agent");
@@ -75,7 +80,10 @@ async fn test_full_agent_session_workflow() {
     // Step 4: Update agent
     println!("\nStep 4: Updating agent...");
     let update_response = client
-        .patch(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .patch(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({
             "name": "Updated Test Agent",
             "description": "Updated description"
@@ -92,7 +100,10 @@ async fn test_full_agent_session_workflow() {
     // Step 5: Create a session
     println!("\nStep 5: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({
             "title": "Test Session"
         }))
@@ -112,8 +123,8 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 6: Adding user message...");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -137,8 +148,8 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 7: Listing messages...");
     let messages_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .send()
         .await
@@ -156,8 +167,8 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 8: Getting session...");
     let get_session_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .send()
         .await
@@ -175,8 +186,8 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 9: Listing events...");
     let events_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/events",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .send()
         .await
@@ -240,7 +251,10 @@ async fn test_llm_provider_and_model_workflow() {
     // Step 1: Create an LLM provider
     println!("\nStep 1: Creating LLM provider...");
     let create_provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "Test OpenAI Provider",
             "provider_type": "openai",
@@ -266,8 +280,8 @@ async fn test_llm_provider_and_model_workflow() {
     println!("\nStep 2: Creating model for provider...");
     let create_model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "gpt-5.2",
@@ -294,13 +308,19 @@ async fn test_llm_provider_and_model_workflow() {
     println!("\nCleaning up...");
 
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-models/{}",
+            API_BASE_URL, DEFAULT_ORG, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
 
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -317,7 +337,10 @@ async fn test_llm_model_profile() {
     // Step 1: Create an LLM provider
     println!("\nStep 1: Creating OpenAI provider...");
     let create_provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "Test Profile Provider",
             "provider_type": "openai",
@@ -338,8 +361,8 @@ async fn test_llm_model_profile() {
     println!("\nStep 2: Creating gpt-4o model...");
     let create_model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "gpt-4o",
@@ -362,7 +385,10 @@ async fn test_llm_model_profile() {
     // Step 3: Get the model via the list endpoint which includes profile
     println!("\nStep 3: Getting model with profile via list endpoint...");
     let list_models_response = client
-        .get(format!("{}/v1/llm-models", API_BASE_URL))
+        .get(format!(
+            "{}/v1/orgs/{}/llm-models",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .send()
         .await
         .expect("Failed to list models");
@@ -405,13 +431,19 @@ async fn test_llm_model_profile() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model_id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-models/{}",
+            API_BASE_URL, DEFAULT_ORG, model_id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
 
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -428,7 +460,10 @@ async fn test_session_inherits_agent_default_model() {
     // Step 1: Create an LLM provider
     println!("\nStep 1: Creating LLM provider...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "Test Provider for Session Model",
             "provider_type": "openai",
@@ -448,8 +483,8 @@ async fn test_session_inherits_agent_default_model() {
     println!("\nStep 2: Creating model...");
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "test-model",
@@ -466,7 +501,7 @@ async fn test_session_inherits_agent_default_model() {
     // Step 3: Create an agent with default_model_id
     println!("\nStep 3: Creating agent with default_model_id...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Agent with Default Model",
             "system_prompt": "Test agent",
@@ -487,7 +522,10 @@ async fn test_session_inherits_agent_default_model() {
     // Step 4: Create a session WITHOUT specifying model_id
     println!("\nStep 4: Creating session without model_id...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({
             "title": "Test Session"
         }))
@@ -518,8 +556,8 @@ async fn test_session_inherits_agent_default_model() {
     // Create another model
     let model2_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "test-model-2",
@@ -536,7 +574,10 @@ async fn test_session_inherits_agent_default_model() {
         .expect("Failed to parse second model");
 
     let session2_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({
             "title": "Test Session 2",
             "model_id": model2.id.to_string()
@@ -565,22 +606,34 @@ async fn test_session_inherits_agent_default_model() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-models/{}",
+            API_BASE_URL, DEFAULT_ORG, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model2.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-models/{}",
+            API_BASE_URL, DEFAULT_ORG, model2.id
+        ))
         .send()
         .await
         .expect("Failed to delete model2");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -597,7 +650,7 @@ async fn test_session_filesystem() {
     // Step 1: Create an agent
     println!("\nStep 1: Creating agent...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Filesystem Test Agent",
             "system_prompt": "Test agent for filesystem"
@@ -612,7 +665,10 @@ async fn test_session_filesystem() {
     // Step 2: Create a session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({
             "title": "Filesystem Test Session"
         }))
@@ -627,8 +683,8 @@ async fn test_session_filesystem() {
     println!("Created session: {}", session.id);
 
     let fs_url = format!(
-        "{}/v1/agents/{}/sessions/{}/fs",
-        API_BASE_URL, agent.id, session.id
+        "{}/v1/orgs/{}/agents/{}/sessions/{}/fs",
+        API_BASE_URL, DEFAULT_ORG, agent.id, session.id
     );
 
     // Step 3: List root directory (should be empty)
@@ -828,7 +884,10 @@ async fn test_session_filesystem() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -857,7 +916,10 @@ async fn test_message_triggers_agent_workflow() {
     // Step 0: Create LlmSim provider and model (no real API keys needed)
     println!("\nStep 0: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "LlmSim Test Provider",
             "provider_type": "llmsim"
@@ -882,8 +944,8 @@ async fn test_message_triggers_agent_workflow() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "llmsim-test",
@@ -907,7 +969,7 @@ async fn test_message_triggers_agent_workflow() {
     // Step 1: Create agent with LlmSim model
     println!("\nStep 1: Creating agent with LlmSim model...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Workflow Test Agent",
             "system_prompt": "You are a helpful assistant. Respond briefly.",
@@ -927,7 +989,10 @@ async fn test_message_triggers_agent_workflow() {
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({"title": "Workflow Test Session"}))
         .send()
         .await
@@ -945,8 +1010,8 @@ async fn test_message_triggers_agent_workflow() {
     let start = Instant::now();
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -985,8 +1050,8 @@ async fn test_message_triggers_agent_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await;
@@ -1036,8 +1101,8 @@ async fn test_message_triggers_agent_workflow() {
         println!("\nDebug: Checking events for session...");
         if let Ok(resp) = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/events",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await
@@ -1073,8 +1138,8 @@ async fn test_message_triggers_agent_workflow() {
     println!("\nStep 5: Verifying events...");
     let events_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/events",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .send()
         .await
@@ -1097,17 +1162,26 @@ async fn test_message_triggers_agent_workflow() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-models/{}",
+            API_BASE_URL, DEFAULT_ORG, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1132,7 +1206,10 @@ async fn test_no_duplicate_tool_calls() {
     // Step 1: Create an LLM provider with API key (if available)
     println!("\nStep 1: Creating LLM provider...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "Duplicate Tool Test Provider",
             "provider_type": "openai",
@@ -1152,8 +1229,8 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 2: Creating model...");
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "gpt-4o-mini",
@@ -1174,7 +1251,7 @@ async fn test_no_duplicate_tool_calls() {
     // Step 3: Create an agent with current_time capability
     println!("\nStep 3: Creating agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Time Tool Test Agent",
             "system_prompt": "You are a helpful time assistant. When asked about the current time, use the get_current_time tool.",
@@ -1194,7 +1271,10 @@ async fn test_no_duplicate_tool_calls() {
     // Step 4: Create a session
     println!("\nStep 4: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({}))
         .send()
         .await
@@ -1210,8 +1290,8 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 5: Sending message to trigger tool use...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
-            API_BASE_URL, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -1236,8 +1316,8 @@ async fn test_no_duplicate_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await;
@@ -1281,8 +1361,8 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 7: Checking for duplicate tool calls...");
     let messages_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .send()
         .await
@@ -1350,17 +1430,26 @@ async fn test_no_duplicate_tool_calls() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-models/{}",
+            API_BASE_URL, DEFAULT_ORG, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1376,7 +1465,7 @@ async fn test_sessions_pagination() {
 
     // Create an agent for the test
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Pagination Test Agent",
             "system_prompt": "Test agent"
@@ -1393,7 +1482,10 @@ async fn test_sessions_pagination() {
     println!("Creating 15 sessions...");
     for i in 1..=15 {
         let response = client
-            .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+            .post(format!(
+                "{}/v1/orgs/{}/agents/{}/sessions",
+                API_BASE_URL, DEFAULT_ORG, agent.id
+            ))
             .json(&json!({ "title": format!("Session {}", i) }))
             .send()
             .await
@@ -1405,7 +1497,10 @@ async fn test_sessions_pagination() {
     // Test 1: Default pagination returns all with metadata
     println!("\nTest 1: Default pagination...");
     let response = client
-        .get(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .get(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to list sessions");
@@ -1427,8 +1522,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 2: Custom limit=5...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?limit=5",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?limit=5",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1450,8 +1545,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 3: Offset=5, limit=5...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?offset=5&limit=5",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?offset=5&limit=5",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1470,8 +1565,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 4: Last partial page (offset=10, limit=10)...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?offset=10&limit=10",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?offset=10&limit=10",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1492,8 +1587,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 5: Beyond range (offset=20)...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?offset=20",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?offset=20",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1514,8 +1609,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 6: Max limit enforcement (limit=200 should cap to 100)...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?limit=200",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?limit=200",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1530,7 +1625,10 @@ async fn test_sessions_pagination() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
@@ -1563,7 +1661,10 @@ async fn test_second_message_triggers_workflow() {
     // Step 0: Create LlmSim provider and model (no real API keys needed)
     println!("\nStep 0: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "LlmSim Second Message Test",
             "provider_type": "llmsim"
@@ -1588,8 +1689,8 @@ async fn test_second_message_triggers_workflow() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "llmsim-second-msg-test",
@@ -1613,7 +1714,7 @@ async fn test_second_message_triggers_workflow() {
     // Step 1: Create agent with LlmSim model
     println!("\nStep 1: Creating agent with LlmSim model...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Second Message Test Agent",
             "system_prompt": "You are a helpful assistant. Respond briefly.",
@@ -1633,7 +1734,10 @@ async fn test_second_message_triggers_workflow() {
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({"title": "Second Message Test Session"}))
         .send()
         .await
@@ -1650,8 +1754,8 @@ async fn test_second_message_triggers_workflow() {
     println!("\nStep 3: Sending FIRST message...");
     let first_message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -1677,8 +1781,8 @@ async fn test_second_message_triggers_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await;
@@ -1717,8 +1821,8 @@ async fn test_second_message_triggers_workflow() {
     let second_message_start = Instant::now();
     let second_message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -1747,8 +1851,8 @@ async fn test_second_message_triggers_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await;
@@ -1785,8 +1889,8 @@ async fn test_second_message_triggers_workflow() {
         println!("\nDebug: Final message state:");
         if let Ok(resp) = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await
@@ -1815,8 +1919,8 @@ async fn test_second_message_triggers_workflow() {
     println!("\nStep 5: Verifying message counts...");
     let final_messages_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .send()
         .await
@@ -1849,17 +1953,26 @@ async fn test_second_message_triggers_workflow() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-models/{}",
+            API_BASE_URL, DEFAULT_ORG, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1886,7 +1999,10 @@ async fn test_mcp_server_crud() {
     // Step 1: Create an MCP server
     println!("\nStep 1: Creating MCP server...");
     let create_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/mcp-servers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "test-mcp-server",
             "description": "A test MCP server for integration testing",
@@ -1917,7 +2033,10 @@ async fn test_mcp_server_crud() {
     // Step 2: List MCP servers
     println!("\nStep 2: Listing MCP servers...");
     let list_response = client
-        .get(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .get(format!(
+            "{}/v1/orgs/{}/mcp-servers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .send()
         .await
         .expect("Failed to list MCP servers");
@@ -1933,7 +2052,10 @@ async fn test_mcp_server_crud() {
     // Step 3: Get MCP server by ID
     println!("\nStep 3: Getting MCP server by ID...");
     let get_response = client
-        .get(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .get(format!(
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server.id
+        ))
         .send()
         .await
         .expect("Failed to get MCP server");
@@ -1950,7 +2072,10 @@ async fn test_mcp_server_crud() {
     // Step 4: Update MCP server
     println!("\nStep 4: Updating MCP server...");
     let update_response = client
-        .patch(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .patch(format!(
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server.id
+        ))
         .json(&json!({
             "name": "updated-mcp-server",
             "description": "Updated description",
@@ -1976,7 +2101,10 @@ async fn test_mcp_server_crud() {
     // Step 5: Update MCP server status to disabled
     println!("\nStep 5: Disabling MCP server...");
     let disable_response = client
-        .patch(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .patch(format!(
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server.id
+        ))
         .json(&json!({
             "status": "disabled"
         }))
@@ -1995,7 +2123,10 @@ async fn test_mcp_server_crud() {
     // Step 6: Create MCP server with API key
     println!("\nStep 6: Creating MCP server with API key...");
     let create_with_key_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/mcp-servers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "mcp-server-with-key",
             "url": "https://secure.mcp.com/v1/mcp",
@@ -2019,7 +2150,10 @@ async fn test_mcp_server_crud() {
     // Step 7: Create MCP server with custom headers
     println!("\nStep 7: Creating MCP server with custom headers...");
     let create_with_headers_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/mcp-servers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "mcp-server-with-headers",
             "url": "https://headers.mcp.com/v1/mcp",
@@ -2051,7 +2185,10 @@ async fn test_mcp_server_crud() {
     // Step 8: Test validation - empty name
     println!("\nStep 8: Testing validation - empty name...");
     let empty_name_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/mcp-servers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "",
             "url": "https://mcp.example.com/v1/mcp"
@@ -2070,7 +2207,10 @@ async fn test_mcp_server_crud() {
     // Step 9: Test validation - empty URL
     println!("\nStep 9: Testing validation - empty URL...");
     let empty_url_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/mcp-servers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "test-server",
             "url": ""
@@ -2090,8 +2230,8 @@ async fn test_mcp_server_crud() {
     println!("\nStep 10: Testing 404 for non-existent server...");
     let not_found_response = client
         .get(format!(
-            "{}/v1/mcp-servers/00000000-0000-0000-0000-000000000000",
-            API_BASE_URL
+            "{}/v1/orgs/{}/mcp-servers/00000000-0000-0000-0000-000000000000",
+            API_BASE_URL, DEFAULT_ORG
         ))
         .send()
         .await
@@ -2107,22 +2247,25 @@ async fn test_mcp_server_crud() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server.id
+        ))
         .send()
         .await
         .expect("Failed to delete MCP server");
     client
         .delete(format!(
-            "{}/v1/mcp-servers/{}",
-            API_BASE_URL, server_with_key.id
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server_with_key.id
         ))
         .send()
         .await
         .expect("Failed to delete MCP server with key");
     client
         .delete(format!(
-            "{}/v1/mcp-servers/{}",
-            API_BASE_URL, server_with_headers.id
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server_with_headers.id
         ))
         .send()
         .await
@@ -2130,7 +2273,10 @@ async fn test_mcp_server_crud() {
 
     // Verify deletion
     let verify_deleted = client
-        .get(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .get(format!(
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server.id
+        ))
         .send()
         .await
         .expect("Failed to verify deletion");

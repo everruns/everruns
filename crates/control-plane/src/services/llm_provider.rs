@@ -6,7 +6,7 @@ use crate::storage::{
 };
 use anyhow::{Result, anyhow};
 use everruns_core::llm_models::LlmProvider;
-use everruns_core::{LlmProviderStatus, LlmProviderType};
+use everruns_core::{DEFAULT_ORG_ID, LlmProviderStatus, LlmProviderType};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -42,7 +42,7 @@ impl LlmProviderService {
             settings: None,
         };
 
-        let row = self.db.create_llm_provider(input).await?;
+        let row = self.db.create_llm_provider(DEFAULT_ORG_ID, input).await?; // TODO: Get org_id from context after Phase 3
         Ok(Self::row_to_provider(&row))
     }
 

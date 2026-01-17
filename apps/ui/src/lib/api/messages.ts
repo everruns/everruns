@@ -1,4 +1,5 @@
 // Message API functions
+// All routes are org-scoped: /v1/orgs/{org}/agents/{agentId}/sessions/{sessionId}/messages
 
 import { api } from "./client";
 import type {
@@ -9,35 +10,38 @@ import type {
 } from "./types";
 
 export async function createMessage(
+  org: string,
   agentId: string,
   sessionId: string,
   request: CreateMessageRequest
 ): Promise<Message> {
   const response = await api.post<Message>(
-    `/v1/agents/${agentId}/sessions/${sessionId}/messages`,
+    `/v1/orgs/${org}/agents/${agentId}/sessions/${sessionId}/messages`,
     request
   );
   return response.data;
 }
 
 export async function listMessages(
+  org: string,
   agentId: string,
   sessionId: string
 ): Promise<Message[]> {
   const response = await api.get<ListResponse<Message>>(
-    `/v1/agents/${agentId}/sessions/${sessionId}/messages`
+    `/v1/orgs/${org}/agents/${agentId}/sessions/${sessionId}/messages`
   );
   return response.data.data;
 }
 
 // Send a user message to a session (triggers workflow)
 export async function sendUserMessage(
+  org: string,
   agentId: string,
   sessionId: string,
   content: string,
   controls?: Controls
 ): Promise<Message> {
-  return createMessage(agentId, sessionId, {
+  return createMessage(org, agentId, sessionId, {
     message: {
       role: "user",
       content: [{ type: "text", text: content }],
@@ -56,6 +60,7 @@ export interface ImageAttachment {
  * Send a user message with optional image attachments
  */
 export async function sendUserMessageWithImages(
+  org: string,
   agentId: string,
   sessionId: string,
   text: string,
@@ -78,7 +83,7 @@ export async function sendUserMessageWithImages(
     });
   }
 
-  return createMessage(agentId, sessionId, {
+  return createMessage(org, agentId, sessionId, {
     message: {
       role: "user",
       content,

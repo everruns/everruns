@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/auth-provider";
+import { useOrg } from "@/providers/org-provider";
 import { useLogout } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -26,10 +27,13 @@ import {
   User,
   Key,
   ChevronUp,
+  ChevronDown,
   FlaskConical,
   Cog,
   Server,
   Workflow,
+  Building2,
+  Check,
 } from "lucide-react";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -64,6 +68,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, requiresAuth } = useAuth();
+  const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const logoutMutation = useLogout();
 
   const handleLogout = async () => {
@@ -80,6 +85,42 @@ export function Sidebar() {
           <span className="text-xl font-bold">Everruns</span>
         </Link>
       </div>
+
+      {/* Organization Selector */}
+      {organizations.length > 0 && (
+        <div className="border-b px-3 py-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-accent transition-colors"
+            >
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <span className="flex-1 text-left truncate font-medium">
+                {currentOrg?.name ?? "Select Organization"}
+              </span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuPositioner side="bottom" align="start">
+              <DropdownMenuContent className="w-56">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+                  {organizations.map((org) => (
+                    <DropdownMenuItem
+                      key={org.public_id}
+                      onClick={() => setCurrentOrg(org)}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="truncate">{org.name}</span>
+                      {currentOrg?.public_id === org.public_id && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenuPositioner>
+          </DropdownMenu>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">
