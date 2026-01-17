@@ -73,8 +73,12 @@ impl Tool for WebFetchTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        // Use the schema from fetchkit's Tool
-        fetchkit::Tool::default().input_schema()
+        // Use schema from fetchkit's Tool, but disable as_markdown option
+        // since fetchkit returns markdown by default for HTML content
+        fetchkit::Tool::builder()
+            .enable_markdown(false)
+            .build()
+            .input_schema()
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
@@ -105,22 +109,17 @@ impl Tool for WebFetchTool {
         };
 
         // Determine response format
-        let as_markdown = arguments
-            .get("as_markdown")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
+        // Note: as_markdown removed - fetchkit returns markdown by default for HTML
         let as_text = arguments
             .get("as_text")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
         // Build the fetch request
-        // Only set options to Some(true) when enabled, otherwise leave as None
         let request = FetchRequest {
             url,
             method: Some(method),
-            as_markdown: if as_markdown { Some(true) } else { None },
+            as_markdown: None, // fetchkit defaults to markdown for HTML
             as_text: if as_text { Some(true) } else { None },
         };
 
@@ -170,7 +169,11 @@ mod tests {
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["url"].is_object());
         assert!(schema["properties"]["method"].is_object());
-        assert!(schema["properties"]["as_markdown"].is_object());
+        // as_markdown is removed - fetchkit returns markdown by default
+        assert!(
+            schema["properties"]["as_markdown"].is_null(),
+            "as_markdown should not be in schema"
+        );
         assert!(schema["properties"]["as_text"].is_object());
         assert_eq!(schema["required"], serde_json::json!(["url"]));
     }
@@ -515,7 +518,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_web_fetch_as_markdown_converts_html() {
+    async fn test_web_fetch_html_returns_markdown_by_default() {
         let mock_server = MockServer::start().await;
 
         Mock::given(method("GET"))
@@ -531,10 +534,10 @@ mod tests {
             .await;
 
         let tool = WebFetchTool;
+        // No as_markdown needed - fetchkit returns markdown by default for HTML
         let result = tool
             .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri()),
-                "as_markdown": true
+                "url": format!("{}/html", mock_server.uri())
             }))
             .await;
 
@@ -825,37 +828,6 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires network access"]
-    async fn test_real_wasmtime_docs_as_markdown() {
-        let tool = WebFetchTool;
-        let result = tool
-            .execute(serde_json::json!({
-                "url": "https://docs.wasmtime.dev/",
-                "as_markdown": true
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            let content = value["content"].as_str().unwrap();
-            // Markdown conversion should preserve text content
-            assert!(
-                content.contains("Wasmtime") || content.contains("wasmtime"),
-                "Markdown should contain Wasmtime reference"
-            );
-            // Check format field
-            let format = value["format"].as_str().unwrap_or("raw");
-            assert!(
-                format == "markdown" || format == "raw",
-                "Format should be markdown or raw, got: {}",
-                format
-            );
-        } else {
-            panic!("Expected successful response with markdown conversion");
-        }
-    }
-
-    #[tokio::test]
-    #[ignore = "requires network access"]
     async fn test_real_wasmtime_docs_as_text() {
         let tool = WebFetchTool;
         let result = tool
@@ -916,10 +888,10 @@ mod tests {
     #[ignore = "requires network access"]
     async fn test_real_wasmtime_docs_subpage() {
         let tool = WebFetchTool;
+        // No as_markdown - fetchkit returns markdown by default
         let result = tool
             .execute(serde_json::json!({
-                "url": "https://docs.wasmtime.dev/introduction.html",
-                "as_markdown": true
+                "url": "https://docs.wasmtime.dev/introduction.html"
             }))
             .await;
 
@@ -933,6 +905,81 @@ mod tests {
             );
         } else {
             panic!("Expected successful response from introduction page");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn test_real_github_wasm3_readme() {
+        // GitHub READMEs may return HTML even though fetchkit tries to convert
+        // Note: fetchkit has 1-second first-byte timeout which GitHub often exceeds
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://github.com/wasm3/wasm3"
+            }))
+            .await;
+
+        match &result {
+            ToolExecutionResult::Success(value) => {
+                assert_eq!(value["status_code"], 200);
+                let content = value["content"].as_str().unwrap();
+                // Should contain wasm3 reference
+                assert!(
+                    content.to_lowercase().contains("wasm3"),
+                    "Content should mention wasm3"
+                );
+                // GitHub pages return HTML even with fetchkit's markdown conversion
+                // This documents the known limitation
+                if content.contains("<") && content.contains(">") {
+                    println!("Note: GitHub returned HTML content as expected");
+                }
+            }
+            ToolExecutionResult::ToolError(msg) if msg.contains("timed out") => {
+                // GitHub often times out with fetchkit's 1-second timeout
+                // This is a known limitation, not a test failure
+                println!("GitHub request timed out (expected with 1s timeout)");
+            }
+            other => {
+                panic!("Unexpected result from GitHub wasm3 repo: {:?}", other);
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn test_real_github_wasm3_as_text() {
+        // Test as_text conversion on GitHub page
+        // Note: fetchkit has 1-second first-byte timeout which GitHub often exceeds
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://github.com/wasm3/wasm3",
+                "as_text": true
+            }))
+            .await;
+
+        match &result {
+            ToolExecutionResult::Success(value) => {
+                assert_eq!(value["status_code"], 200);
+                let content = value["content"].as_str().unwrap();
+                // Should contain wasm3 reference
+                assert!(
+                    content.to_lowercase().contains("wasm3"),
+                    "Content should mention wasm3"
+                );
+            }
+            ToolExecutionResult::ToolError(msg) if msg.contains("timed out") => {
+                // GitHub often times out with fetchkit's 1-second timeout
+                // This is a known limitation, not a test failure
+                println!("GitHub request timed out (expected with 1s timeout)");
+            }
+            other => {
+                panic!(
+                    "Unexpected result from GitHub wasm3 with as_text: {:?}",
+                    other
+                );
+            }
         }
     }
 }
