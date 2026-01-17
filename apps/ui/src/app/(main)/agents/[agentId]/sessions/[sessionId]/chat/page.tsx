@@ -43,6 +43,7 @@ export default function ChatPage() {
 
   const [inputValue, setInputValue] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -340,7 +341,11 @@ export default function ChatPage() {
 
           {/* Textarea with drag-drop wrapper */}
           <div
-            className="flex-1 relative"
+            className={`flex-1 relative rounded-md transition-colors ${
+              isDraggingOver
+                ? "bg-primary/10 ring-2 ring-primary/50 ring-offset-2"
+                : ""
+            }`}
             onDragOver={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -348,10 +353,20 @@ export default function ChatPage() {
             onDragEnter={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              setIsDraggingOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // Only set to false if leaving the container (not entering a child)
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setIsDraggingOver(false);
+              }
             }}
             onDrop={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              setIsDraggingOver(false);
               const files = e.dataTransfer?.files;
               if (files && files.length > 0) {
                 const imageFiles = Array.from(files).filter((f) =>
