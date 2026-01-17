@@ -1,5 +1,5 @@
--- Everruns Base Schema (v0.3.0)
--- Squashed migration - represents the final state of all base migrations
+-- Everruns Base Schema (v0.4.0)
+-- Squashed migration - represents final state of all base migrations
 --
 -- Key design decisions:
 -- - UUID v7 for time-ordered, sortable IDs (better for DB performance)
@@ -8,6 +8,7 @@
 -- - PostgreSQL 17 with custom uuidv7() function (native support requires PostgreSQL 18+)
 -- - Capabilities validated at application layer via CapabilityRegistry (no DB constraint)
 -- - Session status: started/active/idle lifecycle
+-- - Organization-based multitenancy with default organization
 
 -- ============================================
 -- UUID v7 Function (conditional for PG < 18)
@@ -71,6 +72,33 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================
+-- Organizations (multitenancy)
+-- ============================================
+
+CREATE TABLE organizations (
+    org_id BIGSERIAL PRIMARY KEY,
+    public_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT organizations_public_id_format
+        CHECK (public_id ~ '^org_[0-9a-f]{32}$')
+);
+
+CREATE INDEX idx_organizations_public_id ON organizations(public_id);
+
+CREATE TRIGGER update_organizations_updated_at BEFORE UPDATE ON organizations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Seed default organization (required for FKs)
+INSERT INTO organizations (org_id, public_id, name)
+VALUES (1, 'org_00000000000000000000000000000001', 'Default Organization');
+
+-- Reset sequence to start after seeded org
+SELECT setval('organizations_org_id_seq', 1, true);
+
+-- ============================================
 -- Users
 -- ============================================
 
@@ -97,12 +125,26 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
+-- Organization Members
+-- ============================================
+
+CREATE TABLE organization_members (
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (org_id, user_id)
+);
+
+CREATE INDEX idx_organization_members_user_id ON organization_members(user_id);
+
+-- ============================================
 -- API Keys
 -- ============================================
 
 CREATE TABLE api_keys (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     name TEXT NOT NULL,
     -- SHA-256 hash of the key (for lookup)
     key_hash TEXT NOT NULL,
@@ -116,6 +158,7 @@ CREATE TABLE api_keys (
 
 CREATE UNIQUE INDEX idx_api_keys_hash ON api_keys(key_hash);
 CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX idx_api_keys_org_id ON api_keys(org_id);
 CREATE INDEX idx_api_keys_expires_at ON api_keys(expires_at) WHERE expires_at IS NOT NULL;
 
 -- ============================================
@@ -140,6 +183,7 @@ CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 
 CREATE TABLE llm_providers (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     name TEXT NOT NULL,
     provider_type TEXT NOT NULL CHECK (provider_type IN ('openai', 'anthropic', 'azure_openai', 'llmsim')),
     base_url TEXT,
@@ -155,6 +199,7 @@ CREATE TABLE llm_providers (
 
 CREATE INDEX idx_llm_providers_status ON llm_providers(status);
 CREATE INDEX idx_llm_providers_provider_type ON llm_providers(provider_type);
+CREATE INDEX idx_llm_providers_org_id ON llm_providers(org_id);
 
 CREATE TRIGGER update_llm_providers_updated_at BEFORE UPDATE ON llm_providers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -167,11 +212,13 @@ COMMENT ON COLUMN llm_providers.settings IS 'Provider-specific settings as JSON.
 
 CREATE TABLE llm_models (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     provider_id UUID NOT NULL REFERENCES llm_providers(id) ON DELETE CASCADE,
     model_id TEXT NOT NULL,
     display_name TEXT NOT NULL,
     capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    is_favorite BOOLEAN NOT NULL DEFAULT FALSE,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -179,13 +226,18 @@ CREATE TABLE llm_models (
 
 CREATE INDEX idx_llm_models_provider_id ON llm_models(provider_id);
 CREATE INDEX idx_llm_models_status ON llm_models(status);
+CREATE INDEX idx_llm_models_org_id ON llm_models(org_id);
 -- Unique model_id per provider
 CREATE UNIQUE INDEX idx_llm_models_provider_model ON llm_models(provider_id, model_id);
 -- Only one default model globally
 CREATE UNIQUE INDEX idx_llm_models_default ON llm_models(is_default) WHERE is_default = TRUE;
+-- Index for favorite model queries
+CREATE INDEX idx_llm_models_favorite ON llm_models(is_favorite) WHERE is_favorite = TRUE;
 
 CREATE TRIGGER update_llm_models_updated_at BEFORE UPDATE ON llm_models
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON COLUMN llm_models.is_favorite IS 'Whether this model is marked as a favorite for quick access';
 
 -- ============================================
 -- Agents (configuration for agentic loop)
@@ -193,21 +245,33 @@ CREATE TRIGGER update_llm_models_updated_at BEFORE UPDATE ON llm_models
 
 CREATE TABLE agents (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     system_prompt TEXT NOT NULL,
     default_model_id UUID REFERENCES llm_models(id),
     tags TEXT[] NOT NULL DEFAULT '{}',
     status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    -- Denormalized usage totals
+    total_input_tokens BIGINT NOT NULL DEFAULT 0,
+    total_output_tokens BIGINT NOT NULL DEFAULT 0,
+    total_cache_read_tokens BIGINT NOT NULL DEFAULT 0,
+    total_cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_agents_status ON agents(status);
 CREATE INDEX idx_agents_tags ON agents USING GIN(tags);
+CREATE INDEX idx_agents_org_id ON agents(org_id);
 
 CREATE TRIGGER update_agents_updated_at BEFORE UPDATE ON agents
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON COLUMN agents.total_input_tokens IS 'Denormalized: sum of input_tokens across all sessions';
+COMMENT ON COLUMN agents.total_output_tokens IS 'Denormalized: sum of output_tokens across all sessions';
+COMMENT ON COLUMN agents.total_cache_read_tokens IS 'Denormalized: sum of cache_read_tokens across all sessions';
+COMMENT ON COLUMN agents.total_cache_creation_tokens IS 'Denormalized: sum of cache_creation_tokens across all sessions';
 
 -- ============================================
 -- Agent Capabilities (junction table)
@@ -220,6 +284,8 @@ CREATE TABLE agent_capabilities (
     capability_id VARCHAR(50) NOT NULL,
     -- Position determines the order in the capability chain (lower = earlier)
     position INTEGER NOT NULL DEFAULT 0,
+    -- Per-agent capability configuration
+    config JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     -- Each agent can have each capability only once
     UNIQUE(agent_id, capability_id)
@@ -227,6 +293,8 @@ CREATE TABLE agent_capabilities (
 
 CREATE INDEX idx_agent_capabilities_agent_id ON agent_capabilities(agent_id);
 CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, position);
+
+COMMENT ON COLUMN agent_capabilities.config IS 'Per-agent capability configuration (JSON object)';
 
 -- ============================================
 -- Sessions (instance of agentic loop execution)
@@ -239,6 +307,11 @@ CREATE TABLE sessions (
     tags TEXT[] NOT NULL DEFAULT '{}',
     model_id UUID REFERENCES llm_models(id),
     status VARCHAR(50) NOT NULL DEFAULT 'started' CHECK (status IN ('started', 'active', 'idle')),
+    -- Denormalized usage totals
+    total_input_tokens BIGINT NOT NULL DEFAULT 0,
+    total_output_tokens BIGINT NOT NULL DEFAULT 0,
+    total_cache_read_tokens BIGINT NOT NULL DEFAULT 0,
+    total_cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ
@@ -248,6 +321,11 @@ CREATE INDEX idx_sessions_agent_id ON sessions(agent_id);
 CREATE INDEX idx_sessions_status ON sessions(status);
 CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
 CREATE INDEX idx_sessions_tags ON sessions USING GIN(tags);
+
+COMMENT ON COLUMN sessions.total_input_tokens IS 'Denormalized: sum of input_tokens from llm_generations';
+COMMENT ON COLUMN sessions.total_output_tokens IS 'Denormalized: sum of output_tokens from llm_generations';
+COMMENT ON COLUMN sessions.total_cache_read_tokens IS 'Denormalized: sum of cache_read_tokens from llm_generations';
+COMMENT ON COLUMN sessions.total_cache_creation_tokens IS 'Denormalized: sum of cache_creation_tokens from llm_generations';
 
 -- ============================================
 -- Events (SSE notification stream + message storage)
@@ -296,6 +374,56 @@ COMMENT ON COLUMN events.ts IS 'Event timestamp (when the event occurred)';
 COMMENT ON COLUMN events.context IS 'Event correlation context (turn_id, input_message_id, exec_id)';
 COMMENT ON COLUMN events.metadata IS 'Arbitrary metadata for the event';
 COMMENT ON COLUMN events.tags IS 'Tags for filtering and categorization';
+
+-- Append-only triggers for events table
+CREATE OR REPLACE FUNCTION prevent_event_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'events are append-only: % operations are not allowed', TG_OP;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER events_append_only_update
+    BEFORE UPDATE ON events
+    FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
+
+CREATE TRIGGER events_append_only_delete
+    BEFORE DELETE ON events
+    FOR EACH ROW EXECUTE FUNCTION prevent_event_mutation();
+
+COMMENT ON FUNCTION prevent_event_mutation() IS 'Enforces append-only semantics on the events table';
+
+-- ============================================
+-- Event Sequences (atomic per-session allocation)
+-- ============================================
+
+CREATE TABLE event_sequences (
+    session_id UUID PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    next_sequence INTEGER NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE event_sequences IS 'Per-session sequence counter for atomic event sequence allocation';
+COMMENT ON COLUMN event_sequences.next_sequence IS 'Next sequence number to allocate (1-indexed)';
+
+-- Function to atomically allocate the next sequence number
+CREATE OR REPLACE FUNCTION allocate_event_sequence(p_session_id UUID)
+RETURNS INTEGER AS $$
+DECLARE
+    allocated_seq INTEGER;
+BEGIN
+    INSERT INTO event_sequences (session_id, next_sequence, updated_at)
+    VALUES (p_session_id, 2, NOW())
+    ON CONFLICT (session_id) DO UPDATE
+    SET next_sequence = event_sequences.next_sequence + 1,
+        updated_at = NOW()
+    RETURNING next_sequence - 1 INTO allocated_seq;
+
+    RETURN allocated_seq;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION allocate_event_sequence(UUID) IS 'Atomically allocate the next event sequence number for a session';
 
 -- ============================================
 -- Session Files (virtual filesystem)
@@ -347,6 +475,122 @@ CREATE INDEX idx_session_files_name ON session_files(session_id, (substring(path
 CREATE TRIGGER update_session_files_updated_at
     BEFORE UPDATE ON session_files
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- MCP Servers
+-- ============================================
+
+CREATE TABLE mcp_servers (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    -- URL of the MCP server endpoint (e.g., https://mcp.atlassian.com/v1/mcp)
+    url TEXT NOT NULL,
+    -- Transport type: currently only 'http' is supported
+    transport_type VARCHAR(50) NOT NULL DEFAULT 'http' CHECK (transport_type IN ('http')),
+    -- Status for lifecycle management
+    status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    -- Optional API key for authentication (encrypted)
+    api_key_encrypted BYTEA,
+    api_key_set BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Additional headers as JSON (e.g., for custom authentication)
+    headers JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- MCP server-specific settings
+    settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- Cached tool definitions
+    cached_tools JSONB NOT NULL DEFAULT '[]'::jsonb,
+    tools_cached_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Unique constraint on name to prevent duplicates
+CREATE UNIQUE INDEX idx_mcp_servers_name ON mcp_servers(name);
+CREATE INDEX idx_mcp_servers_status ON mcp_servers(status);
+CREATE INDEX idx_mcp_servers_org_id ON mcp_servers(org_id);
+
+CREATE TRIGGER update_mcp_servers_updated_at BEFORE UPDATE ON mcp_servers
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON COLUMN mcp_servers.cached_tools IS 'Cached tool definitions from MCP server tools/list endpoint';
+COMMENT ON COLUMN mcp_servers.tools_cached_at IS 'Timestamp when tools were last fetched from the MCP server';
+
+-- ============================================
+-- LLM Generations (usage tracking)
+-- ============================================
+
+CREATE TABLE llm_generations (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    turn_id UUID,  -- Optional: links to turn for grouping
+    event_id UUID, -- Optional: links to the original event
+
+    -- Model info
+    model TEXT,
+    provider TEXT,
+
+    -- Token usage (source of truth)
+    input_tokens BIGINT NOT NULL DEFAULT 0,
+    output_tokens BIGINT NOT NULL DEFAULT 0,
+    cache_read_tokens BIGINT NOT NULL DEFAULT 0,
+    cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
+
+    -- Metadata
+    duration_ms INTEGER,
+    finish_reason TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for efficient querying
+CREATE INDEX idx_llm_generations_session_id ON llm_generations(session_id);
+CREATE INDEX idx_llm_generations_turn_id ON llm_generations(turn_id) WHERE turn_id IS NOT NULL;
+CREATE INDEX idx_llm_generations_created_at ON llm_generations(created_at);
+CREATE UNIQUE INDEX idx_llm_generations_event_id ON llm_generations(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX idx_llm_generations_org_id ON llm_generations(org_id);
+CREATE INDEX idx_llm_generations_org_created ON llm_generations(org_id, created_at);
+
+COMMENT ON TABLE llm_generations IS 'Source of truth for all LLM generation calls and their token usage';
+COMMENT ON COLUMN llm_generations.event_id IS 'Reference to original event (for traceability)';
+COMMENT ON COLUMN llm_generations.turn_id IS 'Groups generations within a turn';
+
+-- ============================================
+-- Images
+-- ============================================
+
+CREATE TABLE images (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+
+    -- Original file information
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size_bytes BIGINT NOT NULL,
+
+    -- Binary data (original and thumbnail)
+    data BYTEA NOT NULL,
+    thumbnail_data BYTEA,
+    thumbnail_content_type TEXT,
+
+    -- Metadata for tracking (includes session_id if uploaded from a session)
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+    -- Timestamps
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Index for listing images by creation date
+CREATE INDEX idx_images_created_at ON images(created_at DESC);
+
+-- Index for filtering by session_id in metadata
+CREATE INDEX idx_images_session_id ON images((metadata->>'session_id'))
+    WHERE metadata->>'session_id' IS NOT NULL;
+
+COMMENT ON TABLE images IS 'Global image storage for message attachments';
+COMMENT ON COLUMN images.content_type IS 'MIME type: image/png, image/jpeg, image/gif, image/webp';
+COMMENT ON COLUMN images.metadata IS 'JSON metadata including optional session_id for tracking';
+COMMENT ON COLUMN images.thumbnail_data IS 'Thumbnail image for efficient display (max 200x200)';
 
 -- ============================================
 -- Helper Functions

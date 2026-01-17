@@ -1,12 +1,14 @@
--- Durable Execution Engine Tables (v0.3.0)
+-- Durable Execution Engine Tables (v0.4.0)
+-- Squashed migration - PostgreSQL schema for the durable execution engine
 --
--- PostgreSQL schema for the durable execution engine providing:
+-- Provides:
 -- - Workflow instances with event sourcing
 -- - Task queue with efficient claiming for 1000+ workers
 -- - Dead letter queue for failed tasks
 -- - Signal queue for external workflow communication
 -- - Worker registry for monitoring
 -- - Circuit breaker state for reliability
+-- - Push-based task notifications via pg_notify
 
 -- ============================================
 -- V001: Workflow Instances
@@ -234,3 +236,32 @@ CREATE TRIGGER trigger_durable_workflow_instances_updated_at
     BEFORE UPDATE ON durable_workflow_instances
     FOR EACH ROW
     EXECUTE FUNCTION update_durable_updated_at();
+
+-- ============================================
+-- Push-based Task Notifications (pg_notify)
+-- ============================================
+-- Enables low-latency task pickup (<10ms) by notifying workers when tasks are enqueued
+
+-- Create notification function for task enqueue
+CREATE OR REPLACE FUNCTION notify_task_available()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Notify with activity_type as payload for filtering
+    PERFORM pg_notify('task_available', NEW.activity_type);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger on task insert (new tasks) and update to pending (retries)
+CREATE TRIGGER task_enqueue_notify
+    AFTER INSERT ON durable_task_queue
+    FOR EACH ROW
+    WHEN (NEW.status = 'pending')
+    EXECUTE FUNCTION notify_task_available();
+
+-- Also notify when tasks are set back to pending (retries, reclaims)
+CREATE TRIGGER task_pending_notify
+    AFTER UPDATE ON durable_task_queue
+    FOR EACH ROW
+    WHEN (OLD.status != 'pending' AND NEW.status = 'pending')
+    EXECUTE FUNCTION notify_task_available();
