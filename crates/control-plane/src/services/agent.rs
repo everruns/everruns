@@ -9,7 +9,7 @@ use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
 };
 use anyhow::Result;
-use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, DEFAULT_ORG_ID, TokenUsage};
+use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, TokenUsage};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -24,7 +24,7 @@ impl AgentService {
         Self { db }
     }
 
-    pub async fn create(&self, req: CreateAgentRequest) -> Result<Agent> {
+    pub async fn create(&self, org_id: i64, req: CreateAgentRequest) -> Result<Agent> {
         // Note: OTel instrumentation is handled via event listeners.
         // Agent creation events would be handled by listeners rather than direct spans.
         let input = CreateAgentRow {
@@ -34,7 +34,7 @@ impl AgentService {
             default_model_id: req.default_model_id,
             tags: req.tags,
         };
-        let row = self.db.create_agent(DEFAULT_ORG_ID, input).await?; // TODO: Get org_id from context after Phase 3
+        let row = self.db.create_agent(org_id, input).await?;
         let agent_id = row.id;
 
         // Set capabilities if provided
@@ -60,9 +60,8 @@ impl AgentService {
         Ok(Self::row_to_agent(row, capabilities))
     }
 
-    pub async fn get(&self, id: Uuid) -> Result<Option<Agent>> {
-        // TODO: Get org_id from context after Phase 3
-        let row = self.db.get_agent(DEFAULT_ORG_ID, id).await?;
+    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Agent>> {
+        let row = self.db.get_agent(org_id, id).await?;
         match row {
             Some(row) => {
                 let capabilities = self.get_capabilities(id).await?;
@@ -72,9 +71,8 @@ impl AgentService {
         }
     }
 
-    pub async fn list(&self) -> Result<Vec<Agent>> {
-        // TODO: Get org_id from context after Phase 3
-        let rows = self.db.list_agents(DEFAULT_ORG_ID).await?;
+    pub async fn list(&self, org_id: i64) -> Result<Vec<Agent>> {
+        let rows = self.db.list_agents(org_id).await?;
 
         // Fetch capabilities for each agent
         let mut agents = Vec::with_capacity(rows.len());
@@ -86,7 +84,12 @@ impl AgentService {
         Ok(agents)
     }
 
-    pub async fn update(&self, id: Uuid, req: UpdateAgentRequest) -> Result<Option<Agent>> {
+    pub async fn update(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        req: UpdateAgentRequest,
+    ) -> Result<Option<Agent>> {
         let input = UpdateAgent {
             name: req.name,
             description: req.description,
@@ -95,8 +98,7 @@ impl AgentService {
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
         };
-        // TODO: Get org_id from context after Phase 3
-        let row = self.db.update_agent(DEFAULT_ORG_ID, id, input).await?;
+        let row = self.db.update_agent(org_id, id, input).await?;
 
         match row {
             Some(row) => {
@@ -125,9 +127,8 @@ impl AgentService {
         }
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<bool> {
-        // TODO: Get org_id from context after Phase 3
-        self.db.delete_agent(DEFAULT_ORG_ID, id).await
+    pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        self.db.delete_agent(org_id, id).await
     }
 
     async fn get_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityConfig>> {

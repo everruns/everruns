@@ -1,4 +1,5 @@
 // Session and Message hooks (M2)
+"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +15,7 @@ import {
 import { getSseUrl } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
 import type { CreateSessionRequest, UpdateSessionRequest, Controls, Event, PaginationParams } from "@/lib/api/types";
+import { useOrg } from "@/providers/org-provider";
 
 /**
  * Fetch paginated sessions for an agent.
@@ -23,10 +25,13 @@ export function useSessions(
   agentId: string | undefined,
   params?: PaginationParams
 ) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: [...queryKeys.sessions.list(agentId!), params?.offset ?? 0, params?.limit ?? 20],
-    queryFn: () => listSessions(agentId!, params),
-    enabled: !!agentId,
+    queryKey: [...queryKeys.sessions.list(agentId!), org, params?.offset ?? 0, params?.limit ?? 20],
+    queryFn: () => listSessions(org!, agentId!, params),
+    enabled: !!org && !!agentId,
   });
 }
 
@@ -35,16 +40,21 @@ export function useSession(
   sessionId: string | undefined,
   options?: { refetchInterval?: number | false }
 ) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: queryKeys.sessions.detail(agentId!, sessionId!),
-    queryFn: () => getSession(agentId!, sessionId!),
-    enabled: !!agentId && !!sessionId,
+    queryKey: [...queryKeys.sessions.detail(agentId!, sessionId!), org],
+    queryFn: () => getSession(org!, agentId!, sessionId!),
+    enabled: !!org && !!agentId && !!sessionId,
     refetchInterval: options?.refetchInterval,
   });
 }
 
 export function useCreateSession() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -53,7 +63,7 @@ export function useCreateSession() {
     }: {
       agentId: string;
       request?: CreateSessionRequest;
-    }) => createSession(agentId, request),
+    }) => createSession(org!, agentId, request),
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
     },
@@ -62,6 +72,8 @@ export function useCreateSession() {
 
 export function useUpdateSession() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -72,7 +84,7 @@ export function useUpdateSession() {
       agentId: string;
       sessionId: string;
       request: UpdateSessionRequest;
-    }) => updateSession(agentId, sessionId, request),
+    }) => updateSession(org!, agentId, sessionId, request),
     onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
       queryClient.invalidateQueries({
@@ -84,6 +96,8 @@ export function useUpdateSession() {
 
 export function useDeleteSession() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -92,7 +106,7 @@ export function useDeleteSession() {
     }: {
       agentId: string;
       sessionId: string;
-    }) => deleteSession(agentId, sessionId),
+    }) => deleteSession(org!, agentId, sessionId),
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
     },
@@ -101,6 +115,8 @@ export function useDeleteSession() {
 
 export function useSendMessage() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -113,7 +129,7 @@ export function useSendMessage() {
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(agentId, sessionId, content, controls),
+    }) => sendUserMessage(org!, agentId, sessionId, content, controls),
     onSuccess: (_, { agentId, sessionId }) => {
       // Invalidate events query to refresh the message list
       queryClient.invalidateQueries({
@@ -139,6 +155,9 @@ export function useEvents(
   sessionId: string | undefined,
   options?: { enabled?: boolean }
 ) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -164,11 +183,11 @@ export function useEvents(
     setError(null);
     lastEventIdRef.current = null;
     eventIdsRef.current.clear();
-  }, [agentId, sessionId]);
+  }, [org, agentId, sessionId]);
 
   // SSE connection
   useEffect(() => {
-    if (!agentId || !sessionId || !isEnabled) {
+    if (!org || !agentId || !sessionId || !isEnabled) {
       cleanup();
       return;
     }
@@ -177,7 +196,7 @@ export function useEvents(
       // Close existing connection
       cleanup();
 
-      const sseUrl = getSseUrl(agentId, sessionId, lastEventIdRef.current ?? undefined);
+      const sseUrl = getSseUrl(org, agentId, sessionId, lastEventIdRef.current ?? undefined);
       const eventSource = new EventSource(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
 
@@ -248,7 +267,7 @@ export function useEvents(
     connectSSE();
 
     return cleanup;
-  }, [agentId, sessionId, isEnabled, cleanup]);
+  }, [org, agentId, sessionId, isEnabled, cleanup]);
 
   return {
     data: events,
@@ -266,10 +285,13 @@ export function useEventsPolling(
   sessionId: string | undefined,
   options?: { refetchInterval?: number | false }
 ) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: queryKeys.events.list(agentId!, sessionId!),
-    queryFn: () => listEvents(agentId!, sessionId!),
-    enabled: !!agentId && !!sessionId,
+    queryKey: [...queryKeys.events.list(agentId!, sessionId!), org],
+    queryFn: () => listEvents(org!, agentId!, sessionId!),
+    enabled: !!org && !!agentId && !!sessionId,
     refetchInterval: options?.refetchInterval,
   });
 }

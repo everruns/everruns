@@ -4,7 +4,7 @@
 
 use axum::{
     Json,
-    extract::{FromRequestParts, Path},
+    extract::FromRequestParts,
     http::{StatusCode, header, request::Parts},
     response::{IntoResponse, Response},
 };
@@ -403,10 +403,17 @@ pub struct OrgContext {
     pub name: String,
 }
 
-/// Path parameter for org routes
-#[derive(Debug, serde::Deserialize)]
-pub struct OrgPathParams {
-    pub org: String,
+/// Extract org from URI path directly (doesn't consume Path extractor)
+/// The path pattern is: /v1/orgs/{org}/...
+fn extract_org_from_uri(uri: &axum::http::Uri) -> Option<String> {
+    let path = uri.path();
+    let parts: Vec<&str> = path.split('/').collect();
+    // Expected: ["", "v1", "orgs", "{org}", ...]
+    if parts.len() >= 4 && parts[1] == "v1" && parts[2] == "orgs" {
+        Some(parts[3].to_string())
+    } else {
+        None
+    }
 }
 
 #[axum::async_trait]
@@ -421,21 +428,18 @@ where
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
 
-        // Extract org_public_id from URL path
-        // The path pattern is: /v1/orgs/{org}/...
-        let Path(params): Path<OrgPathParams> = Path::from_request_parts(parts, state)
-            .await
-            .map_err(|_| AuthError::unauthorized("Missing organization in path"))?;
-
-        let org_public_id = &params.org;
+        // Extract org_public_id from URL path directly (doesn't consume Path extractor)
+        // This allows handlers to use Path<T> for other path parameters
+        let org_public_id = extract_org_from_uri(&parts.uri)
+            .ok_or_else(|| AuthError::unauthorized("Missing organization in path"))?;
 
         // Validate the org_public_id format
-        if !validate_org_public_id(org_public_id) {
+        if !validate_org_public_id(&org_public_id) {
             return Err(AuthError::unauthorized("Invalid organization ID format"));
         }
 
         // Check if user is a member of this organization
-        let org = user.get_org(org_public_id).ok_or_else(|| {
+        let org = user.get_org(&org_public_id).ok_or_else(|| {
             // Return 404 to prevent enumeration (spec requirement)
             AuthError {
                 error: "Organization not found".to_string(),

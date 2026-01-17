@@ -160,9 +160,10 @@ async fn main() -> Result<()> {
     let auth_state = auth::AuthState::new(auth_config.clone(), db.clone());
 
     // Create module-specific states
-    let agents_state = api::agents::AppState::new(db.clone());
-    let sessions_state = api::sessions::AppState::new(db.clone());
-    let messages_state = api::messages::AppState::new(db.clone(), runner.clone());
+    let agents_state = api::agents::AppState::new(db.clone(), auth_state.clone());
+    let sessions_state = api::sessions::AppState::new(db.clone(), auth_state.clone());
+    let messages_state =
+        api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
 
     // Create event listeners for observability and tracking
     // OtelEventListener generates gen-ai semantic convention spans from events
@@ -180,15 +181,19 @@ async fn main() -> Result<()> {
     let events_state = api::events::AppState {
         session_service: Arc::new(services::SessionService::new(db.clone())),
         event_service: event_service.clone(),
+        auth: auth_state.clone(),
     };
-    let llm_providers_state = api::llm_providers::AppState::new(db.clone(), encryption.clone());
-    let llm_models_state = api::llm_models::AppState::new(db.clone());
-    let mcp_servers_state = api::mcp_servers::AppState::new(db.clone(), encryption.clone());
+    let llm_providers_state =
+        api::llm_providers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
+    let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone());
+    let mcp_servers_state =
+        api::mcp_servers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
     let capability_service = Arc::new(services::CapabilityService::new(
         db.clone(),
         encryption.clone(),
     ));
-    let capabilities_state = api::capabilities::AppState::new(capability_service);
+    let capabilities_state =
+        api::capabilities::AppState::new(capability_service, auth_state.clone());
     let session_files_state = api::session_files::AppState::new(db.clone());
     let users_state = api::users::UsersState {
         db: db.clone(),
@@ -207,7 +212,7 @@ async fn main() -> Result<()> {
             })
         };
     let durable_state = api::durable::AppState::new(durable_store);
-    let images_state = api::images::AppState::new(db.clone());
+    let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
     let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
     let health_state = HealthState {
         auth_mode: format!("{:?}", auth_config.mode),

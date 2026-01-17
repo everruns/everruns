@@ -1,5 +1,7 @@
 // LLM Provider API endpoints
+// Routes are org-scoped: /v1/orgs/:org/llm-providers/...
 
+use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -20,13 +22,25 @@ use crate::services::LlmProviderService;
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<LlmProviderService>,
+    pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        auth: AuthState,
+    ) -> Self {
         Self {
             service: Arc::new(LlmProviderService::new(db, encryption)),
+            auth,
         }
+    }
+}
+
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
     }
 }
 
@@ -75,7 +89,10 @@ pub struct UpdateLlmProviderRequest {
 /// Create a new LLM provider
 #[utoipa::path(
     post,
-    path = "/v1/llm-providers",
+    path = "/v1/orgs/{org}/llm-providers",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
     request_body = CreateLlmProviderRequest,
     responses(
         (status = 201, description = "Provider created", body = LlmProvider),
@@ -85,6 +102,7 @@ pub struct UpdateLlmProviderRequest {
     tag = "llm-providers"
 )]
 pub async fn create_provider(
+    _org: OrgContext,
     State(state): State<AppState>,
     Json(req): Json<CreateLlmProviderRequest>,
 ) -> Result<(StatusCode, Json<LlmProvider>), (StatusCode, Json<ErrorResponse>)> {
@@ -112,13 +130,17 @@ pub async fn create_provider(
 /// List all LLM providers
 #[utoipa::path(
     get,
-    path = "/v1/llm-providers",
+    path = "/v1/orgs/{org}/llm-providers",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
     responses(
         (status = 200, description = "List of providers", body = ListResponse<LlmProvider>)
     ),
     tag = "llm-providers"
 )]
 pub async fn list_providers(
+    _org: OrgContext,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
     let providers = state.service.list().await.map_err(|e| {
@@ -137,8 +159,9 @@ pub async fn list_providers(
 /// Get a specific LLM provider
 #[utoipa::path(
     get,
-    path = "/v1/llm-providers/{id}",
+    path = "/v1/orgs/{org}/llm-providers/{id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("id" = Uuid, Path, description = "Provider ID")
     ),
     responses(
@@ -148,8 +171,9 @@ pub async fn list_providers(
     tag = "llm-providers"
 )]
 pub async fn get_provider(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((_org_path, id)): Path<(String, Uuid)>,
 ) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
     let provider = state
         .service
@@ -179,8 +203,9 @@ pub async fn get_provider(
 /// Update an LLM provider
 #[utoipa::path(
     patch,
-    path = "/v1/llm-providers/{id}",
+    path = "/v1/orgs/{org}/llm-providers/{id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("id" = Uuid, Path, description = "Provider ID")
     ),
     request_body = UpdateLlmProviderRequest,
@@ -191,8 +216,9 @@ pub async fn get_provider(
     tag = "llm-providers"
 )]
 pub async fn update_provider(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((_org_path, id)): Path<(String, Uuid)>,
     Json(req): Json<UpdateLlmProviderRequest>,
 ) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
     let provider = state
@@ -231,8 +257,9 @@ pub async fn update_provider(
 /// Delete an LLM provider
 #[utoipa::path(
     delete,
-    path = "/v1/llm-providers/{id}",
+    path = "/v1/orgs/{org}/llm-providers/{id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("id" = Uuid, Path, description = "Provider ID")
     ),
     responses(
@@ -242,8 +269,9 @@ pub async fn update_provider(
     tag = "llm-providers"
 )]
 pub async fn delete_provider(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path((_org_path, id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let deleted = state.service.delete(id).await.map_err(|e| {
         tracing::error!("Failed to delete LLM provider: {}", e);
@@ -270,11 +298,11 @@ pub async fn delete_provider(
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/llm-providers",
+            "/v1/orgs/:org/llm-providers",
             post(create_provider).get(list_providers),
         )
         .route(
-            "/v1/llm-providers/:id",
+            "/v1/orgs/:org/llm-providers/:id",
             get(get_provider)
                 .patch(update_provider)
                 .delete(delete_provider),

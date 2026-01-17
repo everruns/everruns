@@ -1,5 +1,7 @@
 // MCP Server CRUD HTTP routes
+// Routes are org-scoped: /v1/orgs/:org/mcp-servers/...
 
+use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::services::McpServerService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -88,25 +90,37 @@ pub struct McpServerConfigResponse {
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<McpServerService>,
+    pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        auth: AuthState,
+    ) -> Self {
         Self {
             service: Arc::new(McpServerService::new(db, encryption)),
+            auth,
         }
     }
 }
 
-/// Create MCP server routes
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
+    }
+}
+
+/// Create MCP server routes (org-scoped)
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/mcp-servers",
+            "/v1/orgs/:org/mcp-servers",
             post(create_mcp_server).get(list_mcp_servers),
         )
         .route(
-            "/v1/mcp-servers/:server_id",
+            "/v1/orgs/:org/mcp-servers/:server_id",
             get(get_mcp_server)
                 .patch(update_mcp_server)
                 .delete(delete_mcp_server),
@@ -114,10 +128,13 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// POST /v1/mcp-servers - Create a new MCP server
+/// POST /v1/orgs/{org}/mcp-servers - Create a new MCP server
 #[utoipa::path(
     post,
-    path = "/v1/mcp-servers",
+    path = "/v1/orgs/{org}/mcp-servers",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
     request_body = CreateMcpServerRequest,
     responses(
         (status = 201, description = "MCP server created successfully", body = McpServer),
@@ -127,6 +144,7 @@ pub fn routes(state: AppState) -> Router {
     tag = "mcp-servers"
 )]
 pub async fn create_mcp_server(
+    _org: OrgContext,
     State(state): State<AppState>,
     Json(req): Json<CreateMcpServerRequest>,
 ) -> Result<(StatusCode, Json<McpServer>), (StatusCode, Json<ErrorResponse>)> {
@@ -158,10 +176,13 @@ pub async fn create_mcp_server(
     Ok((StatusCode::CREATED, Json(server)))
 }
 
-/// GET /v1/mcp-servers - List all MCP servers
+/// GET /v1/orgs/{org}/mcp-servers - List all MCP servers
 #[utoipa::path(
     get,
-    path = "/v1/mcp-servers",
+    path = "/v1/orgs/{org}/mcp-servers",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
     responses(
         (status = 200, description = "List of MCP servers", body = ListResponse<McpServer>),
         (status = 500, description = "Internal server error")
@@ -169,6 +190,7 @@ pub async fn create_mcp_server(
     tag = "mcp-servers"
 )]
 pub async fn list_mcp_servers(
+    _org: OrgContext,
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<McpServer>>, StatusCode> {
     let servers = state
@@ -180,11 +202,12 @@ pub async fn list_mcp_servers(
     Ok(Json(ListResponse::new(servers)))
 }
 
-/// GET /v1/mcp-servers/{server_id} - Get MCP server by ID
+/// GET /v1/orgs/{org}/mcp-servers/{server_id} - Get MCP server by ID
 #[utoipa::path(
     get,
-    path = "/v1/mcp-servers/{server_id}",
+    path = "/v1/orgs/{org}/mcp-servers/{server_id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("server_id" = Uuid, Path, description = "MCP server ID")
     ),
     responses(
@@ -195,8 +218,9 @@ pub async fn list_mcp_servers(
     tag = "mcp-servers"
 )]
 pub async fn get_mcp_server(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(server_id): Path<Uuid>,
+    Path((_org_path, server_id)): Path<(String, Uuid)>,
 ) -> Result<Json<McpServer>, StatusCode> {
     let server = state
         .service
@@ -208,11 +232,12 @@ pub async fn get_mcp_server(
     Ok(Json(server))
 }
 
-/// PATCH /v1/mcp-servers/{server_id} - Update MCP server
+/// PATCH /v1/orgs/{org}/mcp-servers/{server_id} - Update MCP server
 #[utoipa::path(
     patch,
-    path = "/v1/mcp-servers/{server_id}",
+    path = "/v1/orgs/{org}/mcp-servers/{server_id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("server_id" = Uuid, Path, description = "MCP server ID")
     ),
     request_body = UpdateMcpServerRequest,
@@ -225,8 +250,9 @@ pub async fn get_mcp_server(
     tag = "mcp-servers"
 )]
 pub async fn update_mcp_server(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(server_id): Path<Uuid>,
+    Path((_org_path, server_id)): Path<(String, Uuid)>,
     Json(req): Json<UpdateMcpServerRequest>,
 ) -> Result<Json<McpServer>, (StatusCode, Json<ErrorResponse>)> {
     // Validate name if provided
@@ -257,11 +283,12 @@ pub async fn update_mcp_server(
     Ok(Json(server))
 }
 
-/// DELETE /v1/mcp-servers/{server_id} - Delete MCP server
+/// DELETE /v1/orgs/{org}/mcp-servers/{server_id} - Delete MCP server
 #[utoipa::path(
     delete,
-    path = "/v1/mcp-servers/{server_id}",
+    path = "/v1/orgs/{org}/mcp-servers/{server_id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("server_id" = Uuid, Path, description = "MCP server ID")
     ),
     responses(
@@ -272,8 +299,9 @@ pub async fn update_mcp_server(
     tag = "mcp-servers"
 )]
 pub async fn delete_mcp_server(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(server_id): Path<Uuid>,
+    Path((_org_path, server_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, StatusCode> {
     let deleted = state
         .service

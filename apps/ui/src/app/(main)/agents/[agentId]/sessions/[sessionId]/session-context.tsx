@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useMemo, useEffect, type ReactNode
 import { useAgent, useSession, useEvents, useLlmModel } from "@/hooks";
 import { sendUserMessage } from "@/lib/api/sessions";
 import { useMutation } from "@tanstack/react-query";
+import { useOrg } from "@/providers/org-provider";
 import type {
   Agent,
   Session,
@@ -80,6 +81,9 @@ interface SessionProviderProps {
 }
 
 export function SessionProvider({ agentId, sessionId, children }: SessionProviderProps) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   const { data: agent } = useAgent(agentId);
 
   // Track if user has sent a message and is waiting for response
@@ -106,7 +110,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(agentId, sessionId, content, controls),
+    }) => sendUserMessage(org!, agentId, sessionId, content, controls),
     onMutate: async ({ sessionId, content }) => {
       // Create optimistic event immediately
       const optimisticId = `optimistic-${Date.now()}`;

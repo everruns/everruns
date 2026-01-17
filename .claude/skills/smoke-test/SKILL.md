@@ -66,6 +66,15 @@ Start the development environment before running tests:
 
 Run these tests in order. Each test builds on the previous one.
 
+### Setup
+
+All org-scoped API routes use the format `/v1/orgs/{org}/...`. Set the default org:
+
+```bash
+# Default organization ID (seeded on startup)
+ORG="org_00000000000000000000000000000001"
+```
+
 ### API Tests
 
 #### 1. Health Check
@@ -89,11 +98,11 @@ LOGIN_RESPONSE=$(curl -s -X POST http://localhost:9000/v1/auth/login \
 ACCESS_TOKEN=$(echo $LOGIN_RESPONSE | jq -r '.access_token')
 echo "Login successful: token starts with $(echo $ACCESS_TOKEN | cut -c1-20)..."
 
-# Get current user
+# Get current user (includes organizations list)
 curl -s http://localhost:9000/v1/auth/me \
   -H "Authorization: Bearer $ACCESS_TOKEN" | jq
 ```
-Expected: User object with email and name
+Expected: User object with email, name, and organizations array
 
 #### 1.7. API Key Authentication (when AUTH_MODE != none)
 ```bash
@@ -113,7 +122,7 @@ Expected: Same user object as with JWT
 
 #### 2. Create Agent
 ```bash
-AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
+AGENT=$(curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test Agent",
@@ -127,13 +136,13 @@ Expected: Valid UUID returned
 
 #### 3. Get Agent
 ```bash
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID" | jq
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID" | jq
 ```
 Expected: Agent object with matching ID
 
 #### 4. Update Agent
 ```bash
-curl -s -X PATCH "http://localhost:9000/v1/agents/$AGENT_ID" \
+curl -s -X PATCH "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID" \
   -H "Content-Type: application/json" \
   -d '{"name": "Updated Test Agent"}' | jq
 ```
@@ -141,13 +150,13 @@ Expected: Updated agent with new name
 
 #### 5. List Agents
 ```bash
-curl -s http://localhost:9000/v1/agents | jq '.data | length'
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents" | jq '.data | length'
 ```
 Expected: At least 1 agent
 
 #### 6. Create Session
 ```bash
-SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions" \
+SESSION=$(curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions" \
   -H "Content-Type: application/json" \
   -d '{"title": "Test Session"}')
 SESSION_ID=$(echo $SESSION | jq -r '.id')
@@ -157,13 +166,13 @@ Expected: Valid UUID returned
 
 #### 7. Get Session
 ```bash
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID" | jq
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID" | jq
 ```
 Expected: Session object with matching ID
 
 #### 8. Send User Message (Create Message)
 ```bash
-MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+MESSAGE=$(curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
   -H "Content-Type: application/json" \
   -d '{
     "message": {
@@ -179,7 +188,7 @@ Expected: Valid UUID returned, role "user"
 
 #### 9. List Messages
 ```bash
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data | length'
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data | length'
 ```
 Expected: At least 1 message
 
@@ -190,13 +199,13 @@ After sending a user message, verify the agent workflow executed correctly:
 sleep 10
 
 # Check session status (should be 'pending' after workflow completes)
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID" | jq '.status'
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID" | jq '.status'
 ```
 Expected: `"pending"` (workflow completed)
 
 ```bash
 # Check for assistant response (content is now an array of ContentPart)
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data[] | select(.role == "assistant") | .content[] | select(.type == "text") | .text'
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | jq '.data[] | select(.role == "assistant") | .content[] | select(.type == "text") | .text'
 ```
 Expected: Non-empty assistant response text
 
@@ -210,19 +219,19 @@ Expected: Logs showing `workflow_type: "agent_workflow"` and activities like `lo
 After workflow completes, verify events are created alongside messages:
 ```bash
 # List events for the session
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data | length'
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data | length'
 ```
 Expected: At least 2 events (message.user and message.agent)
 
 ```bash
 # Check for message.user event
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.user")'
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.user")'
 ```
 Expected: Event with `event_type: "message.user"` and `data` containing `message_id`, `content`
 
 ```bash
 # Check for message.agent event
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.agent")'
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/events" | jq '.data[] | select(.event_type == "message.agent")'
 ```
 Expected: Event with `event_type: "message.agent"` and `data` containing `message_id`, `role`, `content`
 
@@ -230,7 +239,7 @@ Expected: Event with `event_type: "message.agent"` and `data` containing `messag
 
 #### 10. List Sessions
 ```bash
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions" | jq '.data | length'
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions" | jq '.data | length'
 ```
 Expected: At least 1 session
 
@@ -243,19 +252,19 @@ Expected: "Everruns API"
 #### 12. LLM Providers and Models
 ```bash
 # List LLM providers
-curl -s http://localhost:9000/v1/llm-providers | jq '.data | length'
+curl -s "http://localhost:9000/v1/orgs/$ORG/llm-providers" | jq '.data | length'
 ```
 Expected: At least 1 provider
 
 ```bash
 # List all models with profile data
-curl -s http://localhost:9000/v1/llm-models | jq '.data[0]'
+curl -s "http://localhost:9000/v1/orgs/$ORG/llm-models" | jq '.data[0]'
 ```
 Expected: Model object with `profile` field (null for unknown models, object for known models like gpt-4o)
 
 ```bash
 # Verify profile contains expected fields for known models
-curl -s http://localhost:9000/v1/llm-models | jq '.data[] | select(.profile != null) | {model_id: .model_id, profile_name: .profile.name, has_cost: (.profile.cost != null)}'
+curl -s "http://localhost:9000/v1/orgs/$ORG/llm-models" | jq '.data[] | select(.profile != null) | {model_id: .model_id, profile_name: .profile.name, has_cost: (.profile.cost != null)}'
 ```
 Expected: Models like gpt-4o, claude-3-5-sonnet show profile with name and cost data
 
@@ -415,26 +424,29 @@ docker exec everruns-postgres psql -U everruns -d everruns -c "SELECT 1;"
 
 To verify the full workflow cycle works:
 ```bash
+# Setup org variable
+ORG="org_00000000000000000000000000000001"
+
 # 1. Create agent
-AGENT=$(curl -s -X POST http://localhost:9000/v1/agents \
+AGENT=$(curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents" \
   -H "Content-Type: application/json" \
   -d '{"name": "Test", "system_prompt": "You are helpful."}')
 AGENT_ID=$(echo $AGENT | jq -r '.id')
 
 # 2. Create session
-SESSION=$(curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions" \
+SESSION=$(curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions" \
   -H "Content-Type: application/json" \
   -d '{"title": "Test"}')
 SESSION_ID=$(echo $SESSION | jq -r '.id')
 
 # 3. Send message (this triggers the agent_workflow)
-curl -s -X POST "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
   -H "Content-Type: application/json" \
   -d '{"message": {"content": [{"type": "text", "text": "Hello!"}]}}'
 
 # 4. Wait and check for response
 sleep 10
-curl -s "http://localhost:9000/v1/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
+curl -s "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/messages" | \
   jq '.data[] | select(.role == "assistant") | .content[] | select(.type == "text") | .text'
 ```
 

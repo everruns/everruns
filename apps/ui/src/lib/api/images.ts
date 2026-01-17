@@ -1,4 +1,5 @@
 // Image upload API
+// All routes are org-scoped: /v1/orgs/{org}/images/...
 //
 // API functions for uploading, retrieving, and deleting images.
 // Images can be attached to messages as image_file content parts.
@@ -43,13 +44,14 @@ function formatBytes(bytes: number): string {
  * Upload an image file
  */
 export async function uploadImage(
+  org: string,
   file: File,
   sessionId?: string
 ): Promise<ImageUploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
 
-  let url = `${getApiBaseUrl()}/v1/images`;
+  let url = `${getApiBaseUrl()}/v1/orgs/${org}/images`;
   if (sessionId) {
     url += `?session_id=${sessionId}`;
   }
@@ -70,22 +72,22 @@ export async function uploadImage(
 /**
  * Get image URL for display (original size)
  */
-export function getImageUrl(imageId: string): string {
-  return `${getApiBaseUrl()}/v1/images/${imageId}`;
+export function getImageUrl(org: string, imageId: string): string {
+  return `${getApiBaseUrl()}/v1/orgs/${org}/images/${imageId}`;
 }
 
 /**
  * Get thumbnail URL for display
  */
-export function getThumbnailUrl(imageId: string): string {
-  return `${getApiBaseUrl()}/v1/images/${imageId}/thumbnail`;
+export function getThumbnailUrl(org: string, imageId: string): string {
+  return `${getApiBaseUrl()}/v1/orgs/${org}/images/${imageId}/thumbnail`;
 }
 
 /**
  * Delete an image
  */
-export async function deleteImage(imageId: string): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/v1/images/${imageId}`, {
+export async function deleteImage(org: string, imageId: string): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/v1/orgs/${org}/images/${imageId}`, {
     method: "DELETE",
   });
 
@@ -99,11 +101,12 @@ export async function deleteImage(imageId: string): Promise<void> {
  * List images
  */
 export async function listImages(
+  org: string,
   limit: number = 50,
   offset: number = 0
 ): Promise<ImageInfo[]> {
   const response = await fetch(
-    `${getApiBaseUrl()}/v1/images?limit=${limit}&offset=${offset}`
+    `${getApiBaseUrl()}/v1/orgs/${org}/images?limit=${limit}&offset=${offset}`
   );
 
   if (!response.ok) {
@@ -139,11 +142,11 @@ export interface PendingImage {
 /**
  * Create a pending image from a file
  */
-export function createPendingImage(file: File, sessionId?: string): PendingImage {
+export function createPendingImage(org: string, file: File, sessionId?: string): PendingImage {
   const tempId = crypto.randomUUID();
   const previewUrl = URL.createObjectURL(file);
 
-  const uploadPromise = uploadImage(file, sessionId);
+  const uploadPromise = uploadImage(org, file, sessionId);
 
   return {
     tempId,

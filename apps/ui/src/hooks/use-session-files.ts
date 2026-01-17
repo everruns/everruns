@@ -1,4 +1,5 @@
 // Session Files hooks for virtual filesystem operations
+"use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,16 +21,17 @@ import type {
   CopyFileRequest,
   GrepRequest,
 } from "@/lib/api/types";
+import { useOrg } from "@/providers/org-provider";
 
 // Query key factory
 const fileKeys = {
-  all: (agentId: string, sessionId: string) => ["files", agentId, sessionId] as const,
-  list: (agentId: string, sessionId: string, path: string, recursive: boolean) =>
-    [...fileKeys.all(agentId, sessionId), "list", path, recursive] as const,
-  file: (agentId: string, sessionId: string, path: string) =>
-    [...fileKeys.all(agentId, sessionId), "file", path] as const,
-  stat: (agentId: string, sessionId: string, path: string) =>
-    [...fileKeys.all(agentId, sessionId), "stat", path] as const,
+  all: (org: string, agentId: string, sessionId: string) => ["files", org, agentId, sessionId] as const,
+  list: (org: string, agentId: string, sessionId: string, path: string, recursive: boolean) =>
+    [...fileKeys.all(org, agentId, sessionId), "list", path, recursive] as const,
+  file: (org: string, agentId: string, sessionId: string, path: string) =>
+    [...fileKeys.all(org, agentId, sessionId), "file", path] as const,
+  stat: (org: string, agentId: string, sessionId: string, path: string) =>
+    [...fileKeys.all(org, agentId, sessionId), "stat", path] as const,
 };
 
 // ============================================
@@ -43,10 +45,13 @@ export function useFiles(
   path: string = "/",
   recursive: boolean = false
 ) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: fileKeys.list(agentId!, sessionId!, path, recursive),
-    queryFn: () => listFiles(agentId!, sessionId!, path, recursive),
-    enabled: !!agentId && !!sessionId,
+    queryKey: fileKeys.list(org!, agentId!, sessionId!, path, recursive),
+    queryFn: () => listFiles(org!, agentId!, sessionId!, path, recursive),
+    enabled: !!org && !!agentId && !!sessionId,
   });
 }
 
@@ -56,10 +61,13 @@ export function useFile(
   sessionId: string | undefined,
   path: string | undefined
 ) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: fileKeys.file(agentId!, sessionId!, path!),
-    queryFn: () => readFile(agentId!, sessionId!, path!),
-    enabled: !!agentId && !!sessionId && !!path,
+    queryKey: fileKeys.file(org!, agentId!, sessionId!, path!),
+    queryFn: () => readFile(org!, agentId!, sessionId!, path!),
+    enabled: !!org && !!agentId && !!sessionId && !!path,
   });
 }
 
@@ -69,10 +77,13 @@ export function useFileStat(
   sessionId: string | undefined,
   path: string | undefined
 ) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: fileKeys.stat(agentId!, sessionId!, path!),
-    queryFn: () => statFile(agentId!, sessionId!, path!),
-    enabled: !!agentId && !!sessionId && !!path,
+    queryKey: fileKeys.stat(org!, agentId!, sessionId!, path!),
+    queryFn: () => statFile(org!, agentId!, sessionId!, path!),
+    enabled: !!org && !!agentId && !!sessionId && !!path,
   });
 }
 
@@ -83,6 +94,8 @@ export function useFileStat(
 /** Create a file */
 export function useCreateFile() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -93,10 +106,10 @@ export function useCreateFile() {
       agentId: string;
       sessionId: string;
       request: CreateFileRequest;
-    }) => createFile(agentId, sessionId, request),
+    }) => createFile(org!, agentId, sessionId, request),
     onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(agentId, sessionId),
+        queryKey: fileKeys.all(org!, agentId, sessionId),
       });
     },
   });
@@ -105,6 +118,8 @@ export function useCreateFile() {
 /** Create a directory */
 export function useCreateDirectory() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -115,10 +130,10 @@ export function useCreateDirectory() {
       agentId: string;
       sessionId: string;
       path: string;
-    }) => mkdir(agentId, sessionId, path),
+    }) => mkdir(org!, agentId, sessionId, path),
     onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(agentId, sessionId),
+        queryKey: fileKeys.all(org!, agentId, sessionId),
       });
     },
   });
@@ -127,6 +142,8 @@ export function useCreateDirectory() {
 /** Update a file */
 export function useUpdateFile() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -139,13 +156,13 @@ export function useUpdateFile() {
       sessionId: string;
       path: string;
       request: UpdateFileRequest;
-    }) => updateFile(agentId, sessionId, path, request),
+    }) => updateFile(org!, agentId, sessionId, path, request),
     onSuccess: (_, { agentId, sessionId, path }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(agentId, sessionId),
+        queryKey: fileKeys.all(org!, agentId, sessionId),
       });
       queryClient.invalidateQueries({
-        queryKey: fileKeys.file(agentId, sessionId, path),
+        queryKey: fileKeys.file(org!, agentId, sessionId, path),
       });
     },
   });
@@ -154,6 +171,8 @@ export function useUpdateFile() {
 /** Delete a file or directory */
 export function useDeleteFile() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -166,10 +185,10 @@ export function useDeleteFile() {
       sessionId: string;
       path: string;
       recursive?: boolean;
-    }) => deleteFile(agentId, sessionId, path, recursive),
+    }) => deleteFile(org!, agentId, sessionId, path, recursive),
     onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(agentId, sessionId),
+        queryKey: fileKeys.all(org!, agentId, sessionId),
       });
     },
   });
@@ -178,6 +197,8 @@ export function useDeleteFile() {
 /** Move/rename a file */
 export function useMoveFile() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -188,10 +209,10 @@ export function useMoveFile() {
       agentId: string;
       sessionId: string;
       request: MoveFileRequest;
-    }) => moveFile(agentId, sessionId, request),
+    }) => moveFile(org!, agentId, sessionId, request),
     onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(agentId, sessionId),
+        queryKey: fileKeys.all(org!, agentId, sessionId),
       });
     },
   });
@@ -200,6 +221,8 @@ export function useMoveFile() {
 /** Copy a file */
 export function useCopyFile() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: ({
@@ -210,10 +233,10 @@ export function useCopyFile() {
       agentId: string;
       sessionId: string;
       request: CopyFileRequest;
-    }) => copyFile(agentId, sessionId, request),
+    }) => copyFile(org!, agentId, sessionId, request),
     onSuccess: (_, { agentId, sessionId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(agentId, sessionId),
+        queryKey: fileKeys.all(org!, agentId, sessionId),
       });
     },
   });
@@ -221,6 +244,9 @@ export function useCopyFile() {
 
 /** Search files using grep */
 export function useGrepFiles() {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useMutation({
     mutationFn: ({
       agentId,
@@ -230,6 +256,6 @@ export function useGrepFiles() {
       agentId: string;
       sessionId: string;
       request: GrepRequest;
-    }) => grepFiles(agentId, sessionId, request),
+    }) => grepFiles(org!, agentId, sessionId, request),
   });
 }

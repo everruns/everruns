@@ -3,6 +3,7 @@
 // Organization context and provider for multitenancy
 // Decision: Current org stored in localStorage for persistence across sessions
 // Decision: Default org ID used as fallback
+// Decision: When AUTH_MODE=none, use default org directly
 
 import {
   createContext,
@@ -18,6 +19,12 @@ import type { OrganizationMembership } from "@/lib/api/types";
 // Default organization public ID (matches backend DEFAULT_ORG_PUBLIC_ID)
 const DEFAULT_ORG_PUBLIC_ID = "org_00000000000000000000000000000001";
 const STORAGE_KEY = "everruns_current_org";
+
+// Default organization membership for anonymous auth mode
+const DEFAULT_ORG_MEMBERSHIP: OrganizationMembership = {
+  public_id: DEFAULT_ORG_PUBLIC_ID,
+  name: "Default Organization",
+};
 
 interface OrgContextValue {
   /** Currently selected organization */
@@ -37,14 +44,21 @@ interface OrgProviderProps {
 }
 
 export function OrgProvider({ children }: OrgProviderProps) {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, requiresAuth } = useAuth();
   const [currentOrg, setCurrentOrgState] = useState<OrganizationMembership | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Memoize organizations to prevent infinite re-renders
+  // When auth is not required (AUTH_MODE=none), use default org
   const organizations = useMemo(
-    () => user?.organizations ?? [],
-    [user?.organizations]
+    () => {
+      if (!requiresAuth) {
+        // Anonymous mode: use default organization
+        return [DEFAULT_ORG_MEMBERSHIP];
+      }
+      return user?.organizations ?? [];
+    },
+    [user?.organizations, requiresAuth]
   );
 
   // Initialize current org from localStorage or default

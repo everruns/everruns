@@ -1,6 +1,8 @@
 // Event streaming HTTP routes (SSE)
 // Events are notifications streamed to clients, NOT primary data storage
+// Routes are org-scoped: /v1/orgs/:org/agents/:agent_id/sessions/:session_id/...
 
+use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -41,36 +43,49 @@ pub struct EventsQuery {
 pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub event_service: Arc<EventService>,
+    pub auth: AuthState,
 }
 
 impl AppState {
     /// Create app state with default event service (no listeners)
     #[allow(dead_code)]
-    pub fn new(db: Arc<StorageBackend>) -> Self {
+    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::new(db)),
+            auth,
         }
     }
 
     /// Create app state with event listeners for observability
-    pub fn with_listeners(db: Arc<StorageBackend>, listeners: Vec<Arc<dyn EventListener>>) -> Self {
+    pub fn with_listeners(
+        db: Arc<StorageBackend>,
+        listeners: Vec<Arc<dyn EventListener>>,
+        auth: AuthState,
+    ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::with_listeners(db, listeners)),
+            auth,
         }
     }
 }
 
-/// Create event routes (nested under sessions)
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
+    }
+}
+
+/// Create event routes (nested under sessions, org-scoped)
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/sse",
+            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/sse",
             get(stream_sse),
         )
         .route(
-            "/v1/agents/:agent_id/sessions/:session_id/events",
+            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/events",
             get(list_events),
         )
         .with_state(state)
@@ -80,11 +95,12 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// GET /v1/agents/{agent_id}/sessions/{session_id}/sse - Stream events (SSE notifications)
+/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse - Stream events (SSE notifications)
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/sse",
+    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID"),
         EventsQuery
@@ -97,14 +113,15 @@ pub fn routes(state: AppState) -> Router {
     tag = "events"
 )]
 pub async fn stream_sse(
+    org: OrgContext,
     State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
     Query(query): Query<EventsQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
     // Verify session exists
     let _session = state
         .session_service
-        .get(session_id)
+        .get(org.org_id, session_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
@@ -224,11 +241,12 @@ pub async fn stream_sse(
 // List Events (JSON response for polling)
 // ============================================
 
-/// GET /v1/agents/{agent_id}/sessions/{session_id}/events - List events (JSON)
+/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events - List events (JSON)
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/sessions/{session_id}/events",
+    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("agent_id" = Uuid, Path, description = "Agent ID"),
         ("session_id" = Uuid, Path, description = "Session ID"),
         EventsQuery
@@ -241,14 +259,15 @@ pub async fn stream_sse(
     tag = "events"
 )]
 pub async fn list_events(
+    org: OrgContext,
     State(state): State<AppState>,
-    Path((_agent_id, session_id)): Path<(Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
     Query(query): Query<EventsQuery>,
 ) -> Result<Json<ListResponse<Event>>, StatusCode> {
     // Verify session exists
     let _session = state
         .session_service
-        .get(session_id)
+        .get(org.org_id, session_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

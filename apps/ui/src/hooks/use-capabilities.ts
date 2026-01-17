@@ -2,6 +2,7 @@
 //
 // Note: Agent-specific capabilities are now part of the agent resource.
 // Use useAgent() to get an agent with its capabilities included.
+"use client";
 
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -9,18 +10,26 @@ import {
   listCapabilities,
 } from "@/lib/api/capabilities";
 import type { CapabilityId } from "@/lib/api/types";
+import { useOrg } from "@/providers/org-provider";
 
 export function useCapabilities() {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: ["capabilities"],
-    queryFn: listCapabilities,
+    queryKey: ["capabilities", org],
+    queryFn: () => listCapabilities(org!),
+    enabled: !!org,
   });
 }
 
 export function useCapability(capabilityId: CapabilityId | undefined) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
   return useQuery({
-    queryKey: ["capability", capabilityId],
-    queryFn: () => getCapability(capabilityId!),
-    enabled: !!capabilityId,
+    queryKey: ["capability", capabilityId, org],
+    queryFn: () => getCapability(org!, capabilityId!),
+    enabled: !!org && !!capabilityId,
   });
 }

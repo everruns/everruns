@@ -101,20 +101,21 @@ export function Sidebar() {
             </DropdownMenuTrigger>
             <DropdownMenuPositioner side="bottom" align="start">
               <DropdownMenuContent className="w-56">
-                <DropdownMenuLabel>Organizations</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {organizations.map((org) => (
-                  <DropdownMenuItem
-                    key={org.public_id}
-                    onClick={() => setCurrentOrg(org)}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="truncate">{org.name}</span>
-                    {currentOrg?.public_id === org.public_id && (
-                      <Check className="h-4 w-4 text-primary" />
-                    )}
-                  </DropdownMenuItem>
-                ))}
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+                  {organizations.map((org) => (
+                    <DropdownMenuItem
+                      key={org.public_id}
+                      onClick={() => setCurrentOrg(org)}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="truncate">{org.name}</span>
+                      {currentOrg?.public_id === org.public_id && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenuPositioner>
           </DropdownMenu>

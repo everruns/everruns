@@ -391,61 +391,85 @@ ApiError::Forbidden("You don't have access to this agent")
 
 ## Implementation Phases
 
-### Phase 1: Schema & Core Types
-- [ ] Add `organizations` table
-- [ ] Add `organization_members` table
-- [ ] Add `org_id` FK to `agents`, `llm_providers`, `llm_models`, `api_keys`
-- [ ] Create core `Organization` and `OrganizationMember` types
-- [ ] Implement `OrgId` newtype with `public_id` generation
+### Phase 1: Schema & Core Types ✅
+- [x] Add `organizations` table
+- [x] Add `organization_members` table
+- [x] Add `org_id` FK to `agents`, `llm_providers`, `llm_models`, `api_keys`
+- [x] Create core `Organization` and `OrganizationMember` types
+- [x] Implement `OrgId` newtype with `public_id` generation
 
-### Phase 2: Storage Layer
-- [ ] Create `OrganizationRepository`
-- [ ] Create `OrganizationMemberRepository`
-- [ ] Update `AgentRepository` to require `org_id`
-- [ ] Update `SessionRepository` to validate org via agent
-- [ ] Update `EventRepository` to validate org via session→agent
-- [ ] Update `LlmProviderRepository` to require `org_id`
-- [ ] Update `LlmModelRepository` to require `org_id`
-- [ ] Update `ApiKeyRepository` to require `org_id`
-- [ ] Update InMemory storage with same changes
+### Phase 2: Storage Layer ✅
+- [x] Create `OrganizationRepository`
+- [x] Create `OrganizationMemberRepository`
+- [x] Update `AgentRepository` to require `org_id`
+- [x] Update `SessionRepository` to validate org via agent
+- [x] Update `EventRepository` to validate org via session→agent
+- [x] Update `LlmProviderRepository` to require `org_id`
+- [x] Update `LlmModelRepository` to require `org_id`
+- [x] Update `ApiKeyRepository` to require `org_id`
+- [x] Update InMemory storage with same changes
 
-### Phase 3: Auth & Extractors
-- [ ] Enhance `AuthUser` with `organizations` list
-- [ ] Create `OrgContext` extractor
-- [ ] Update API key auth to include org context
-- [ ] Update anonymous auth to use default org
+### Phase 3: Auth & Extractors ✅
+- [x] Enhance `AuthUser` with `organizations` list
+- [x] Create `OrgContext` extractor
+- [x] Update API key auth to include org context
+- [x] Update anonymous auth to use default org
 
-### Phase 4: API Routes
-- [ ] Add org CRUD endpoints (`/v1/orgs`)
-- [ ] Migrate all agent routes to `/v1/orgs/{org}/agents/...`
-- [ ] Migrate LLM provider routes to `/v1/orgs/{org}/llm-providers/...`
-- [ ] Migrate LLM model routes to `/v1/orgs/{org}/llm-models/...`
-- [ ] Migrate API key routes to `/v1/orgs/{org}/api-keys/...`
-- [ ] Update OpenAPI spec
+### Phase 4: API Routes ✅
+- [x] Add org CRUD endpoints (`/v1/orgs`)
+- [x] Migrate all agent routes to `/v1/orgs/{org}/agents/...`
+- [x] Migrate LLM provider routes to `/v1/orgs/{org}/llm-providers/...`
+- [x] Migrate LLM model routes to `/v1/orgs/{org}/llm-models/...`
+- [x] Migrate API key routes to `/v1/orgs/{org}/api-keys/...`
+- [x] Migrate capabilities routes to `/v1/orgs/{org}/capabilities/...`
+- [x] Migrate MCP server routes to `/v1/orgs/{org}/mcp-servers/...`
+- [x] Migrate session files routes to `/v1/orgs/{org}/agents/{agent}/sessions/{session}/fs/...`
+- [x] Update OpenAPI spec
 
-### Phase 5: Seeds
-- [ ] Update seed system to create default org first
-- [ ] Update provider seeds with `org_id`
-- [ ] Update model seeds with `org_id`
-- [ ] Update agent seeds with `org_id`
+### Phase 5: Seeds ✅
+- [x] Update seed system to create default org first
+- [x] Update provider seeds with `org_id`
+- [x] Update model seeds with `org_id`
+- [x] Update agent seeds with `org_id`
 
-### Phase 6: Worker Integration
-- [ ] Update gRPC protocol with `org_id`
-- [ ] Update worker context validation
-- [ ] Update durable execution with org context
+### Phase 6: Worker Integration ✅
+- [x] Update gRPC protocol with `org_id`
+- [x] Update worker context validation
+- [x] Update durable execution with org context
 
-### Phase 7: UI
-- [ ] Add organization selector component
-- [ ] Update all API calls with org path
-- [ ] Add org management page (view members)
-- [ ] Update URL routing with org prefix
-- [ ] Persist selected org in localStorage
+### Phase 7: UI ✅
+- [x] Add organization selector component (sidebar dropdown)
+- [x] Update all API calls with org path
+- [x] Add OrgProvider context with useOrg() hook
+- [x] Persist selected org in localStorage
+- [ ] Add org management page (view members) - deferred to future
 
-### Phase 8: Usage & Cleanup
-- [ ] Add `org_id` to usage tracking
-- [ ] Update usage aggregation queries
-- [ ] Remove any remaining global resource access
-- [ ] Security audit for org isolation
+### Phase 8: Usage & Cleanup ✅
+- [x] Add `org_id` to usage tracking
+- [x] Update usage aggregation queries
+- [x] Remove any remaining global resource access
+- [x] Security audit for org isolation
+
+## Implementation Notes
+
+### OrgContext Extractor
+The `OrgContext` extractor (`control-plane/src/api/org_context.rs`) extracts org from URI path directly since Axum's `Path<T>` extractor consumes the request body. It validates membership against the authenticated user's organizations.
+
+### Anonymous Auth Mode (AUTH_MODE=none)
+When auth is disabled, the UI uses a hardcoded default organization:
+- `public_id`: `org_00000000000000000000000000000001`
+- `name`: "Default Organization"
+
+The frontend `OrgProvider` handles this by returning `DEFAULT_ORG_MEMBERSHIP` when `!requiresAuth`.
+
+### System-Wide Resources
+Some resources remain system-wide (not org-scoped):
+- `/v1/durable/*` - Durable execution workers and workflows (infrastructure-level)
+- `/health` - Health check endpoint
+- `/v1/auth/*` - Authentication endpoints
+
+### UI Organization Selector
+Located in sidebar (`apps/ui/src/components/layout/sidebar.tsx`). Shows current org with dropdown to switch between user's organizations. Uses Base UI's `DropdownMenu` component.
 
 ## Future Considerations
 

@@ -1,9 +1,11 @@
 // Image upload HTTP routes
+// Routes are org-scoped: /v1/orgs/:org/images/...
 //
-// Global image storage for message attachments.
+// Organization image storage for message attachments.
 // Supports PNG, JPEG, GIF, WebP (OpenAI Vision compatible formats).
 // Generates thumbnails on upload for efficient display.
 
+use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::storage::{StorageBackend, models::CreateImageRow};
 use axum::{
     Json, Router,
@@ -88,26 +90,39 @@ pub struct UploadImageQuery {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
+    pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+        Self { db, auth }
     }
 }
 
-/// Create images routes
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
+    }
+}
+
+/// Create images routes (org-scoped)
 pub fn routes(state: AppState) -> Router {
     Router::new()
         // Upload needs larger body limit (100MB + some overhead for multipart encoding)
         .route(
-            "/v1/images",
+            "/v1/orgs/:org/images",
             post(upload_image)
                 .layer(DefaultBodyLimit::max(MAX_IMAGE_SIZE + 1024 * 1024))
                 .get(list_images),
         )
-        .route("/v1/images/:image_id", get(get_image).delete(delete_image))
-        .route("/v1/images/:image_id/thumbnail", get(get_thumbnail))
+        .route(
+            "/v1/orgs/:org/images/:image_id",
+            get(get_image).delete(delete_image),
+        )
+        .route(
+            "/v1/orgs/:org/images/:image_id/thumbnail",
+            get(get_thumbnail),
+        )
         .with_state(state)
 }
 
@@ -152,11 +167,12 @@ fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, Strin
 // HTTP Handlers
 // ============================================
 
-/// POST /v1/images - Upload an image
+/// POST /v1/orgs/{org}/images - Upload an image
 #[utoipa::path(
     post,
-    path = "/v1/images",
+    path = "/v1/orgs/{org}/images",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("session_id" = Option<Uuid>, Query, description = "Optional session ID for tracking")
     ),
     request_body(content = String, description = "Multipart form data with 'file' field", content_type = "multipart/form-data"),
@@ -168,6 +184,7 @@ fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, Strin
     tag = "images"
 )]
 pub async fn upload_image(
+    _org: OrgContext,
     State(state): State<AppState>,
     Query(query): Query<UploadImageQuery>,
     mut multipart: Multipart,
@@ -277,11 +294,12 @@ pub async fn upload_image(
     ))
 }
 
-/// GET /v1/images - List images
+/// GET /v1/orgs/{org}/images - List images
 #[utoipa::path(
     get,
-    path = "/v1/images",
+    path = "/v1/orgs/{org}/images",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("limit" = Option<i64>, Query, description = "Max items to return (default 50)"),
         ("offset" = Option<i64>, Query, description = "Items to skip")
     ),
@@ -292,6 +310,7 @@ pub async fn upload_image(
     tag = "images"
 )]
 pub async fn list_images(
+    _org: OrgContext,
     State(state): State<AppState>,
     Query(query): Query<ListImagesQuery>,
 ) -> Result<Json<Vec<ImageInfo>>, StatusCode> {
@@ -319,11 +338,12 @@ pub async fn list_images(
     Ok(Json(images))
 }
 
-/// GET /v1/images/{image_id} - Get image (returns binary data)
+/// GET /v1/orgs/{org}/images/{image_id} - Get image (returns binary data)
 #[utoipa::path(
     get,
-    path = "/v1/images/{image_id}",
+    path = "/v1/orgs/{org}/images/{image_id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("image_id" = Uuid, Path, description = "Image ID")
     ),
     responses(
@@ -334,8 +354,9 @@ pub async fn list_images(
     tag = "images"
 )]
 pub async fn get_image(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(image_id): Path<Uuid>,
+    Path((_org_path, image_id)): Path<(String, Uuid)>,
 ) -> Result<Response, StatusCode> {
     let row = state
         .db
@@ -361,11 +382,12 @@ pub async fn get_image(
     Ok(response)
 }
 
-/// GET /v1/images/{image_id}/thumbnail - Get image thumbnail
+/// GET /v1/orgs/{org}/images/{image_id}/thumbnail - Get image thumbnail
 #[utoipa::path(
     get,
-    path = "/v1/images/{image_id}/thumbnail",
+    path = "/v1/orgs/{org}/images/{image_id}/thumbnail",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("image_id" = Uuid, Path, description = "Image ID")
     ),
     responses(
@@ -376,8 +398,9 @@ pub async fn get_image(
     tag = "images"
 )]
 pub async fn get_thumbnail(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(image_id): Path<Uuid>,
+    Path((_org_path, image_id)): Path<(String, Uuid)>,
 ) -> Result<Response, StatusCode> {
     let row = state
         .db
@@ -405,11 +428,12 @@ pub async fn get_thumbnail(
     Ok(response)
 }
 
-/// DELETE /v1/images/{image_id} - Delete an image
+/// DELETE /v1/orgs/{org}/images/{image_id} - Delete an image
 #[utoipa::path(
     delete,
-    path = "/v1/images/{image_id}",
+    path = "/v1/orgs/{org}/images/{image_id}",
     params(
+        ("org" = String, Path, description = "Organization public ID"),
         ("image_id" = Uuid, Path, description = "Image ID")
     ),
     responses(
@@ -420,8 +444,9 @@ pub async fn get_thumbnail(
     tag = "images"
 )]
 pub async fn delete_image(
+    _org: OrgContext,
     State(state): State<AppState>,
-    Path(image_id): Path<Uuid>,
+    Path((_org_path, image_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, StatusCode> {
     let deleted = state.db.delete_image(image_id).await.map_err(|e| {
         tracing::error!("Failed to delete image: {}", e);
