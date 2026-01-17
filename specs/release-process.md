@@ -46,6 +46,18 @@ This commit message triggers the auto-tagging workflow on merge to main.
 3. Release body: Extracted from CHANGELOG.md section for that version
 4. Docker images tagged with version (triggered by tag push)
 
+### Docker Image Tagging
+
+| Event | Tags Generated |
+|-------|----------------|
+| Version tag (v0.4.0) | `v0.4.0`, `latest`, SHA |
+| Main branch push | `development`, SHA |
+| Pull request | SHA only (no push) |
+
+- **`latest`**: Only updated on version tags. Safe for production use.
+- **`development`**: Tracks main branch. Updated on every commit to main.
+- **SHA tags**: Always generated for traceability (short + full SHA).
+
 ### Tooling
 
 - **git-cliff**: Generates changelog entries from conventional commits
