@@ -39,6 +39,7 @@ impl MessageService {
     /// - Triggers workflow execution for the session
     pub async fn create(
         &self,
+        org_id: i64,
         agent_id: Uuid,
         session_id: Uuid,
         req: CreateMessageRequest,
@@ -91,7 +92,7 @@ impl MessageService {
         // The message is already persisted, so we can return immediately
         let runner = self.runner.clone();
         tokio::spawn(async move {
-            if let Err(e) = runner.start_run(session_id, agent_id, message_id).await {
+            if let Err(e) = runner.start_run(org_id, session_id, agent_id, message_id).await {
                 tracing::error!(
                     session_id = %session_id,
                     input_message_id = %message_id,

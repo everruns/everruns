@@ -13,7 +13,6 @@ use everruns_control_plane::services::{
 };
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_control_plane::task_notifications::TaskNotificationBroadcaster;
-use everruns_core::DEFAULT_ORG_ID;
 use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
     PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo,
@@ -261,10 +260,9 @@ impl WorkerService for WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
         // Get session via SessionService
-        // TODO: Get org_id from request when worker supports it
         let session = self
             .session_service
-            .get(DEFAULT_ORG_ID, session_id)
+            .get(req.org_id, session_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -273,10 +271,9 @@ impl WorkerService for WorkerServiceImpl {
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
         // Get agent with capabilities via AgentService
-        // TODO: Get org_id from request when worker supports it
         let agent = self
             .agent_service
-            .get(DEFAULT_ORG_ID, session.agent_id)
+            .get(req.org_id, session.agent_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get agent: {}", e);
@@ -443,10 +440,9 @@ impl WorkerService for WorkerServiceImpl {
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
         // Get agent with capabilities via AgentService
-        // TODO: Get org_id from request when worker supports it
         let agent = self
             .agent_service
-            .get(DEFAULT_ORG_ID, agent_id)
+            .get(req.org_id, agent_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
 
@@ -463,10 +459,9 @@ impl WorkerService for WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
         // Get session via SessionService
-        // TODO: Get org_id from request when worker supports it
         let session = self
             .session_service
-            .get(DEFAULT_ORG_ID, session_id)
+            .get(req.org_id, session_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -508,10 +503,9 @@ impl WorkerService for WorkerServiceImpl {
             )));
         }
 
-        // TODO: Get org_id from request when worker supports it
         let session = self
             .session_service
-            .update_status(DEFAULT_ORG_ID, session_id, req.status)
+            .update_status(req.org_id, session_id, req.status)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update session status: {}", e);

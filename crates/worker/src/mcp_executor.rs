@@ -33,14 +33,16 @@ pub struct McpServerInfo {
 /// MCP Tool Executor - executes tools by calling remote MCP servers
 pub struct McpToolExecutor {
     grpc_client: GrpcClient,
+    org_id: i64,
     /// Cache of MCP server info by server name prefix
     server_cache: tokio::sync::RwLock<HashMap<String, McpServerInfo>>,
 }
 
 impl McpToolExecutor {
-    pub fn new(grpc_client: GrpcClient) -> Self {
+    pub fn new(grpc_client: GrpcClient, org_id: i64) -> Self {
         Self {
             grpc_client,
+            org_id,
             server_cache: tokio::sync::RwLock::new(HashMap::new()),
         }
     }
@@ -82,7 +84,7 @@ impl McpToolExecutor {
         // Fetch from gRPC
         let info = self
             .grpc_client
-            .get_mcp_server_by_prefix(server_prefix)
+            .get_mcp_server_by_prefix(self.org_id, server_prefix)
             .await?;
 
         // Cache for future use

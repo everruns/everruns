@@ -197,14 +197,14 @@ pub fn routes(state: AppState) -> Router {
     tag = "messages"
 )]
 pub async fn create_message(
-    _org: OrgContext,
+    org: OrgContext,
     State(state): State<AppState>,
     Path((_org_path, agent_id, session_id)): Path<(String, Uuid, Uuid)>,
     Json(req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), StatusCode> {
     let message = state
         .message_service
-        .create(agent_id, session_id, req)
+        .create(org.org_id, agent_id, session_id, req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to create message: {}", e);

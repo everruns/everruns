@@ -75,10 +75,11 @@ impl GrpcClient {
     }
 
     /// Set session status (started, active, idle)
-    pub async fn set_session_status(&self, session_id: Uuid, status: &str) -> Result<Session> {
+    pub async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<Session> {
         let request = proto::SetSessionStatusRequest {
             session_id: Some(uuid_to_proto(session_id)),
             status: status.to_string(),
+            org_id,
         };
 
         let mut client = self.inner.lock().await;
@@ -98,11 +99,12 @@ impl GrpcClient {
     /// Get MCP server info by name prefix (for MCP tool execution)
     pub async fn get_mcp_server_by_prefix(
         &self,
+        org_id: i64,
         server_prefix: &str,
     ) -> Result<crate::mcp_executor::McpServerInfo> {
         let request = proto::GetMcpServerByPrefixRequest {
             server_prefix: server_prefix.to_string(),
-            org_id: None, // TODO: Pass org_id from context when available
+            org_id,
         };
 
         let mut client = self.inner.lock().await;
@@ -315,11 +317,12 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
 /// gRPC-backed agent store
 pub struct GrpcAgentStore {
     client: GrpcClient,
+    org_id: i64,
 }
 
 impl GrpcAgentStore {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
     }
 }
 
@@ -330,7 +333,7 @@ impl AgentStore for GrpcAgentStore {
 
         let request = proto::GetAgentRequest {
             agent_id: Some(uuid_to_proto(agent_id)),
-            org_id: None, // TODO: Pass org_id from context when available
+            org_id: self.org_id,
         };
 
         let response = client
@@ -388,11 +391,12 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
 /// gRPC-backed session store
 pub struct GrpcSessionStore {
     client: GrpcClient,
+    org_id: i64,
 }
 
 impl GrpcSessionStore {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
     }
 }
 
@@ -403,7 +407,7 @@ impl SessionStore for GrpcSessionStore {
 
         let request = proto::GetSessionRequest {
             session_id: Some(uuid_to_proto(session_id)),
-            org_id: None, // TODO: Pass org_id from context when available
+            org_id: self.org_id,
         };
 
         let response = client
@@ -463,11 +467,12 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
 /// gRPC-backed LLM provider store
 pub struct GrpcLlmProviderStore {
     client: GrpcClient,
+    org_id: i64,
 }
 
 impl GrpcLlmProviderStore {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
     }
 }
 
@@ -478,7 +483,7 @@ impl LlmProviderStore for GrpcLlmProviderStore {
 
         let request = proto::GetModelWithProviderRequest {
             model_id: Some(uuid_to_proto(model_id)),
-            org_id: None, // TODO: Pass org_id from context when available
+            org_id: self.org_id,
         };
 
         let response = client
@@ -835,12 +840,12 @@ pub struct TurnContext {
 /// Load turn context in one batched call (optimization)
 ///
 /// This is more efficient than making separate calls for agent, session, messages.
-pub async fn load_turn_context(client: &GrpcClient, session_id: Uuid) -> Result<TurnContext> {
+pub async fn load_turn_context(client: &GrpcClient, org_id: i64, session_id: Uuid) -> Result<TurnContext> {
     let mut grpc_client = client.inner.lock().await;
 
     let request = proto::GetTurnContextRequest {
         session_id: Some(uuid_to_proto(session_id)),
-        org_id: None, // TODO: Pass org_id from context when available
+        org_id,
     };
 
     let response = grpc_client

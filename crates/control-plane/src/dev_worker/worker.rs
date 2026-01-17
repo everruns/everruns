@@ -266,8 +266,9 @@ impl InProcessWorker {
                 let act_input: ActInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
 
-                // Create DurableTurnInput from ActInput context
+                // Create DurableTurnInput from ActInput context (dev mode always uses DEFAULT_ORG_ID)
                 let turn_input = DurableTurnInput {
+                    org_id: DEFAULT_ORG_ID,
                     session_id: act_input.context.session_id,
                     agent_id: act_input.agent_id,
                     input_message_id: act_input.context.input_message_id,

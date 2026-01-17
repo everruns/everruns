@@ -29,6 +29,7 @@ use crate::durable_runner::DurableRunner;
 /// Implementations handle the actual execution of agent runs
 ///
 /// Parameters map to session concepts:
+/// - org_id: The organization ID for resource validation
 /// - session_id: The session/conversation
 /// - agent_id: The agent configuration
 /// - input_message_id: The user message that triggered this turn
@@ -37,6 +38,7 @@ pub trait AgentRunner: Send + Sync {
     /// Start a new turn workflow for the given session
     async fn start_run(
         &self,
+        org_id: i64,
         session_id: Uuid,
         agent_id: Uuid,
         input_message_id: Uuid,

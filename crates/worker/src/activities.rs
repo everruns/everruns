@@ -42,6 +42,7 @@ pub use everruns_core::atoms::{
 /// 4. Returns the message for downstream processing
 pub async fn input_activity(
     grpc_client: GrpcClient,
+    org_id: i64,
     input: InputAtomInput,
 ) -> Result<InputAtomResult> {
     use everruns_core::events::{
@@ -50,6 +51,7 @@ pub async fn input_activity(
     use everruns_core::traits::EventEmitter;
 
     tracing::info!(
+        org_id = org_id,
         session_id = %input.context.session_id,
         turn_id = %input.context.turn_id,
         input_message_id = %input.context.input_message_id,
@@ -58,7 +60,7 @@ pub async fn input_activity(
 
     // Set session status to "active" - turn is starting
     if let Err(e) = grpc_client
-        .set_session_status(input.context.session_id, "active")
+        .set_session_status(org_id, input.context.session_id, "active")
         .await
     {
         tracing::warn!(error = %e, "Failed to set session status to active");
@@ -112,13 +114,14 @@ pub async fn input_activity(
 /// 8. If turn completes (no tool calls), emits turn.completed, sets session status to "idle" and emits session.idled
 ///
 /// Note: API key decryption is handled by the control-plane gRPC service.
-pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Result<ReasonResult> {
+pub async fn reason_activity(grpc_client: GrpcClient, org_id: i64, input: ReasonInput) -> Result<ReasonResult> {
     use everruns_core::events::{
         EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
     };
     use everruns_core::traits::EventEmitter;
 
     tracing::info!(
+        org_id = org_id,
         session_id = %input.context.session_id,
         turn_id = %input.context.turn_id,
         agent_id = %input.agent_id,
@@ -130,10 +133,10 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
     let input_message_id = input.context.input_message_id;
 
     // Create atom dependencies using gRPC adapters
-    let agent_store = GrpcAgentStore::new(grpc_client.clone());
-    let session_store = GrpcSessionStore::new(grpc_client.clone());
+    let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
+    let session_store = GrpcSessionStore::new(grpc_client.clone(), org_id);
     let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
-    let provider_store = GrpcLlmProviderStore::new(grpc_client.clone());
+    let provider_store = GrpcLlmProviderStore::new(grpc_client.clone(), org_id);
     let capability_registry = CapabilityRegistry::with_builtins();
     let driver_registry = create_driver_registry();
     let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
@@ -161,7 +164,7 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
     let turn_complete = !result.has_tool_calls || !result.success;
     if turn_complete {
         // Set session status to "idle"
-        if let Err(e) = grpc_client.set_session_status(session_id, "idle").await {
+        if let Err(e) = grpc_client.set_session_status(org_id, session_id, "idle").await {
             tracing::warn!(error = %e, "Failed to set session status to idle");
         }
 
@@ -230,8 +233,9 @@ pub async fn reason_activity(grpc_client: GrpcClient, input: ReasonInput) -> Res
 /// 6. Returns comprehensive results for all tools
 ///
 /// Supports both built-in tools and MCP tools (via remote MCP servers).
-pub async fn act_activity(grpc_client: GrpcClient, input: ActInput) -> Result<ActResult> {
+pub async fn act_activity(grpc_client: GrpcClient, org_id: i64, input: ActInput) -> Result<ActResult> {
     tracing::info!(
+        org_id = org_id,
         session_id = %input.context.session_id,
         turn_id = %input.context.turn_id,
         tool_count = %input.tool_calls.len(),
@@ -242,6 +246,7 @@ pub async fn act_activity(grpc_client: GrpcClient, input: ActInput) -> Result<Ac
     let builtin_executor = ToolRegistry::with_defaults();
     let mcp_executor = Arc::new(crate::mcp_executor::McpToolExecutor::new(
         grpc_client.clone(),
+        org_id,
     ));
     let tool_executor =
         crate::mcp_executor::CompositeToolExecutor::new(builtin_executor, mcp_executor);

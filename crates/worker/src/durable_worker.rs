@@ -19,6 +19,20 @@ use crate::grpc_adapters::{GrpcClient, load_turn_context};
 use crate::grpc_durable_store::{
     ClaimedTask, GrpcDurableStore, TaskNotificationEvent, TaskNotificationStream, WorkflowStatus,
 };
+use serde::{Deserialize, Serialize};
+
+// =============================================================================
+// Act Task Input Wrapper
+// =============================================================================
+
+/// Wrapper for act task input that includes org_id
+/// This keeps org_id (infrastructure concern) out of core types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ActTaskInput {
+    org_id: i64,
+    #[serde(flatten)]
+    act_input: ActInput,
+}
 
 // =============================================================================
 // Configuration
@@ -463,16 +477,17 @@ impl DurableWorker {
                 (res, Some(turn_input))
             }
             "act" => {
-                // Act activity uses ActInput directly - parse it to extract session context
-                let act_input: ActInput = serde_json::from_value(task.input.clone())
-                    .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
+                // Act activity uses ActTaskInput wrapper to include org_id
+                let act_task_input: ActTaskInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse ActTaskInput: {}", e))?;
                 // Create DurableTurnInput from ActInput context for scheduling next activity
                 let turn_input = DurableTurnInput {
-                    session_id: act_input.context.session_id,
-                    agent_id: act_input.agent_id, // Pass through agent_id for follow-up reason
-                    input_message_id: act_input.context.input_message_id,
+                    org_id: act_task_input.org_id,
+                    session_id: act_task_input.act_input.context.session_id,
+                    agent_id: act_task_input.act_input.agent_id, // Pass through agent_id for follow-up reason
+                    input_message_id: act_task_input.act_input.context.input_message_id,
                 };
-                let res = self.execute_act_activity(grpc_client, &task.input).await;
+                let res = self.execute_act_activity(grpc_client, act_task_input.org_id, act_task_input.act_input).await;
                 (res, Some(turn_input))
             }
             _ => (
@@ -571,7 +586,7 @@ impl DurableWorker {
         let atom_input = InputAtomInput { context };
 
         // Use the existing input_activity function with gRPC adapters
-        let result = input_activity(grpc_client, atom_input).await?;
+        let result = input_activity(grpc_client, input.org_id, atom_input).await?;
 
         Ok(serde_json::to_value(&result)?)
     }
@@ -623,7 +638,7 @@ impl DurableWorker {
         // Note: This fetches agent, session, messages in a single batched call
         // but reason_activity will refetch them via individual stores.
         // The key value here is the mcp_tool_definitions.
-        let turn_context = load_turn_context(&grpc_client, input.session_id)
+        let turn_context = load_turn_context(&grpc_client, input.org_id, input.session_id)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to load turn context: {}", e))?;
 
@@ -642,7 +657,7 @@ impl DurableWorker {
         };
 
         // Use the existing reason_activity function with gRPC adapters
-        let result = reason_activity(grpc_client, reason_input).await;
+        let result = reason_activity(grpc_client, input.org_id, reason_input).await;
 
         // Record circuit breaker outcome
         {
@@ -685,20 +700,18 @@ impl DurableWorker {
     async fn execute_act_activity(
         &self,
         grpc_client: GrpcClient,
-        task_input: &serde_json::Value,
+        org_id: i64,
+        act_input: ActInput,
     ) -> Result<serde_json::Value> {
-        // Parse ActInput from task input
-        let act_input: ActInput = serde_json::from_value(task_input.clone())
-            .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
-
         debug!(
+            org_id = org_id,
             session_id = %act_input.context.session_id,
             tool_count = act_input.tool_calls.len(),
             "Executing act activity"
         );
 
         // Use the existing act_activity function with gRPC adapters
-        let result = act_activity(grpc_client, act_input).await?;
+        let result = act_activity(grpc_client, org_id, act_input).await?;
 
         Ok(serde_json::to_value(&result)?)
     }
@@ -737,18 +750,21 @@ impl DurableWorker {
                 if reason_result.has_tool_calls && reason_result.success {
                     // Schedule act activity to execute the tool calls
                     let tool_count = reason_result.tool_calls.len();
-                    let act_input = ActInput {
-                        context: AtomContext {
-                            session_id: input.session_id,
-                            turn_id: Uuid::now_v7(),
-                            input_message_id: input.input_message_id,
-                            exec_id: Uuid::now_v7(),
+                    let act_task_input = ActTaskInput {
+                        org_id: input.org_id,
+                        act_input: ActInput {
+                            context: AtomContext {
+                                session_id: input.session_id,
+                                turn_id: Uuid::now_v7(),
+                                input_message_id: input.input_message_id,
+                                exec_id: Uuid::now_v7(),
+                            },
+                            agent_id: input.agent_id, // Pass through for follow-up reason activity
+                            tool_calls: reason_result.tool_calls,
+                            tool_definitions: reason_result.tool_definitions,
                         },
-                        agent_id: input.agent_id, // Pass through for follow-up reason activity
-                        tool_calls: reason_result.tool_calls,
-                        tool_definitions: reason_result.tool_definitions,
                     };
-                    let act_input_json = serde_json::to_value(&act_input)?;
+                    let act_input_json = serde_json::to_value(&act_task_input)?;
 
                     store
                         .enqueue_task(
