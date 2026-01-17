@@ -119,7 +119,7 @@ impl Capability for McpCapability {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some("plug") // Plug icon for MCP/external tools
+        Some("mcp") // Official MCP logo
     }
 
     fn category(&self) -> Option<&str> {
