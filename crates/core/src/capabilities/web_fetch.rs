@@ -785,4 +785,154 @@ mod tests {
             panic!("Expected successful response");
         }
     }
+
+    // ========================================================================
+    // Real-world integration tests (require network access)
+    // Run with: cargo test -p everruns-core --lib -- web_fetch::tests::test_real --ignored
+    // ========================================================================
+
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn test_real_wasmtime_docs_fetch() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://docs.wasmtime.dev/"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            assert!(
+                value["content_type"]
+                    .as_str()
+                    .unwrap()
+                    .contains("text/html")
+            );
+            let content = value["content"].as_str().unwrap();
+            assert!(
+                content.contains("Wasmtime") || content.contains("wasmtime"),
+                "Content should mention Wasmtime"
+            );
+            assert!(
+                value["size"].as_u64().unwrap() > 1000,
+                "Page should have substantial content"
+            );
+        } else {
+            panic!("Expected successful response from docs.wasmtime.dev");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn test_real_wasmtime_docs_as_markdown() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://docs.wasmtime.dev/",
+                "as_markdown": true
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            let content = value["content"].as_str().unwrap();
+            // Markdown conversion should preserve text content
+            assert!(
+                content.contains("Wasmtime") || content.contains("wasmtime"),
+                "Markdown should contain Wasmtime reference"
+            );
+            // Check format field
+            let format = value["format"].as_str().unwrap_or("raw");
+            assert!(
+                format == "markdown" || format == "raw",
+                "Format should be markdown or raw, got: {}",
+                format
+            );
+        } else {
+            panic!("Expected successful response with markdown conversion");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn test_real_wasmtime_docs_as_text() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://docs.wasmtime.dev/",
+                "as_text": true
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            let content = value["content"].as_str().unwrap();
+            // Content should be present and mention Wasmtime
+            assert!(
+                content.contains("Wasmtime") || content.contains("wasmtime"),
+                "Text should contain Wasmtime reference"
+            );
+            // Check format field - may be "text" or "raw" depending on HTML detection
+            let format = value["format"].as_str().unwrap_or("raw");
+            assert!(
+                format == "text" || format == "raw",
+                "Format should be text or raw, got: {}",
+                format
+            );
+        } else {
+            panic!("Expected successful response with text conversion");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn test_real_wasmtime_docs_head_request() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://docs.wasmtime.dev/",
+                "method": "HEAD"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            assert_eq!(value["method"], "HEAD");
+            // HEAD should return metadata but not content
+            assert!(
+                value["content"].is_null()
+                    || value["content"].as_str().map_or(true, |s| s.is_empty()),
+                "HEAD request should not return content body"
+            );
+            // Should have content-type header info
+            assert!(value["content_type"].as_str().is_some());
+        } else {
+            panic!("Expected successful HEAD response");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn test_real_wasmtime_docs_subpage() {
+        let tool = WebFetchTool;
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "https://docs.wasmtime.dev/introduction.html",
+                "as_markdown": true
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            let content = value["content"].as_str().unwrap();
+            // Introduction page should have relevant content
+            assert!(
+                content.len() > 500,
+                "Introduction page should have substantial content"
+            );
+        } else {
+            panic!("Expected successful response from introduction page");
+        }
+    }
 }
