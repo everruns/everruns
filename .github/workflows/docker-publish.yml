@@ -84,10 +84,11 @@ jobs:
         with:
           images: ${{ env.IMAGE_BASE }}/${{ matrix.image_name }}
           tags: |
-            # On main push: tag as 'latest'
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            # On version tags: use the tag name (e.g., v1.0.0)
+            # On version tags (v*): use the tag name + update latest
             type=ref,event=tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            # On main push: tag as 'development' (mutable, tracks main branch)
+            type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             # Always tag with short and full SHA
             type=raw,value=${{ steps.sha.outputs.sha_short }}
             type=raw,value=${{ steps.sha.outputs.sha }}
