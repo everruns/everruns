@@ -31,6 +31,7 @@ pub use crate::capability_types::{
 // ============================================================================
 
 mod current_time;
+mod docker_container;
 mod fake_aws;
 mod fake_crm;
 mod fake_financial;
@@ -48,6 +49,10 @@ mod web_fetch;
 
 // Re-export capabilities
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
+pub use docker_container::{
+    DockerContainerCapability, DockerContainerConfig, DockerExecTool, DockerReadFileTool,
+    DockerWriteFileTool,
+};
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
@@ -233,6 +238,8 @@ impl CapabilityRegistry {
         registry.register(FakeAwsCapability);
         registry.register(FakeCrmCapability);
         registry.register(FakeFinancialCapability);
+        // Experimental capabilities
+        registry.register(DockerContainerCapability);
         registry
     }
 
@@ -539,7 +546,8 @@ mod tests {
         assert!(registry.has(CapabilityId::FAKE_AWS));
         assert!(registry.has(CapabilityId::FAKE_CRM));
         assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
-        assert_eq!(registry.len(), 14);
+        assert!(registry.has(CapabilityId::DOCKER_CONTAINER));
+        assert_eq!(registry.len(), 15);
     }
 
     #[test]
