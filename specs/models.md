@@ -425,6 +425,7 @@ Configuration for LLM API providers. Stores encrypted API keys and provider-spec
 | `is_default` | boolean | Default provider for new agents |
 | `status` | enum | `active` or `disabled` |
 | `settings` | JSON | Provider-specific settings (e.g., Azure deployment_name) |
+| `last_synced_at` | timestamp? | Last time models were synced from provider API |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
 
@@ -470,9 +471,23 @@ Configuration for a specific model within a provider.
 | `features` | string[] | Model features (e.g., vision, function_calling, streaming) |
 | `context_window` | integer? | Context window size |
 | `is_default` | boolean | Default model for this provider |
+| `is_favorite` | boolean | User-marked favorite for quick access |
 | `status` | enum | `active` or `disabled` |
+| `source` | enum | How model was added: `manual`, `discovered`, `predefined` |
+| `last_seen_at` | timestamp? | Last time model was seen in provider API (discovered models only) |
+| `provider_metadata` | JSON? | Raw metadata from provider API response |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
+
+**Model Sources:**
+
+- `manual` - Added by user via API/UI
+- `discovered` - Automatically discovered from provider's models API
+- `predefined` - Seeded on startup (default models for providers)
+
+**Stale Model Detection:**
+
+Discovered models become "stale" when they are no longer returned by the provider's models API. A model is considered stale when `last_seen_at < provider.last_synced_at`. Stale models are kept in the database (not deleted) to preserve any user customizations.
 
 ### LLM Model Profile
 
@@ -537,6 +552,34 @@ Configuration for reasoning models (OpenAI o1, o1-mini, o3-mini, o1-pro).
 - **Anthropic:** claude-sonnet-4, claude-opus-4, claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku
 
 Profiles are matched by provider_type + model_id with version normalization (e.g., "gpt-4o-2024-11-20" → "gpt-4o").
+
+### Model Discovery
+
+Automatic discovery of available models from provider APIs.
+
+**Supported Providers:**
+- OpenAI - via `GET /v1/models`
+- Anthropic - via `GET /v1/models`
+
+**Discovery Flow:**
+
+1. **Background Sync** - Every 24 hours (configurable via `MODEL_SYNC_INTERVAL_HOURS`, set to 0 to disable)
+2. **Manual Sync** - `POST /v1/orgs/:org/llm-providers/:id/sync-models`
+
+**Sync Behavior:**
+
+- Only providers with standard base URLs are synced (custom URLs are skipped)
+- OpenAI models are filtered to chat/completion models only (excludes embeddings, TTS, image models)
+- New models are automatically added with `source: "discovered"`
+- Existing discovered models have `last_seen_at` updated
+- Models not seen in sync become stale (detected via `last_seen_at < last_synced_at`)
+
+**Listing Models:**
+
+`GET /v1/orgs/:org/llm-models` supports query parameters:
+- `source` - Filter by source (`manual`, `discovered`, `predefined`)
+- `include_stale` - Include stale models (default: true)
+- `favorites_only` - Only return favorites (default: false)
 
 ## Design Decisions
 

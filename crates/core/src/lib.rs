@@ -80,9 +80,10 @@ pub use event_listeners::{CompositeEventListener, EventListener, NoopEventListen
 
 // LLM driver types re-exports
 pub use llm_driver_registry::{
-    BoxedLlmDriver, DriverFactory, DriverRegistry, LlmCallConfig, LlmCallConfigBuilder,
-    LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ProviderType,
+    BoxedLlmDriver, DiscoveredModel, DriverFactory, DriverRegistry, LlmCallConfig,
+    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage,
+    LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
+    ProviderConfig, ProviderType,
 };
 
 // OpenAI Protocol driver (base implementation for OpenAI-compatible APIs)
@@ -134,9 +135,9 @@ pub use events::{
 };
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{
-    LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelStatus,
-    LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality, ReasoningEffort,
-    ReasoningEffortConfig, ReasoningEffortValue,
+    LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelSource,
+    LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality,
+    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 pub use mcp_server::{
     McpContent, McpError, McpServer, McpServerStatus, McpServerTransportType, McpToolCallParams,

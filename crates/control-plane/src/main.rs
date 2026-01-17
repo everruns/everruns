@@ -24,7 +24,7 @@ use everruns_core::{EventListener, OtelEventListener};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
-use everruns_worker::{RunnerBackend, create_runner_with_backend};
+use everruns_worker::{RunnerBackend, create_driver_registry, create_runner_with_backend};
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -182,8 +182,14 @@ async fn main() -> Result<()> {
         event_service: event_service.clone(),
         auth: auth_state.clone(),
     };
-    let llm_providers_state =
-        api::llm_providers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
+    // Create driver registry for model sync operations
+    let driver_registry = Arc::new(create_driver_registry());
+    let llm_providers_state = api::llm_providers::AppState::new(
+        db.clone(),
+        encryption.clone(),
+        driver_registry.clone(),
+        auth_state.clone(),
+    );
     let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone());
     let mcp_servers_state =
         api::mcp_servers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
@@ -382,6 +388,82 @@ async fn main() -> Result<()> {
                         }
                     }
                 });
+            }
+        }
+
+        // Start background task for model discovery sync (only with PostgreSQL)
+        {
+            use std::time::Duration;
+
+            // Sync interval defaults to 24 hours, configurable via MODEL_SYNC_INTERVAL_HOURS
+            let sync_interval_hours: u64 = std::env::var("MODEL_SYNC_INTERVAL_HOURS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(24);
+
+            // Skip sync if interval is 0 (disabled)
+            if sync_interval_hours > 0 {
+                let sync_service = Arc::new(services::ModelSyncService::new(
+                    db.clone(),
+                    driver_registry.clone(),
+                ));
+                let sync_interval = Duration::from_secs(sync_interval_hours * 3600);
+
+                tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(sync_interval);
+                    // Skip the first tick (don't sync immediately on startup)
+                    interval.tick().await;
+
+                    tracing::info!(
+                        interval_hours = sync_interval_hours,
+                        "Started model discovery sync background task"
+                    );
+
+                    loop {
+                        interval.tick().await;
+                        tracing::info!("Starting scheduled model sync for all providers");
+
+                        match sync_service.sync_all().await {
+                            Ok(results) => {
+                                for (provider_id, result) in results {
+                                    match result {
+                                        services::SyncResult::Success {
+                                            created,
+                                            updated,
+                                            stale,
+                                        } => {
+                                            tracing::info!(
+                                                %provider_id,
+                                                created,
+                                                updated,
+                                                stale,
+                                                "Model sync completed for provider"
+                                            );
+                                        }
+                                        services::SyncResult::NotSupported => {
+                                            tracing::debug!(
+                                                %provider_id,
+                                                "Model sync not supported for provider"
+                                            );
+                                        }
+                                        services::SyncResult::Failed { error } => {
+                                            tracing::warn!(
+                                                %provider_id,
+                                                %error,
+                                                "Model sync failed for provider"
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to run model sync: {}", e);
+                            }
+                        }
+                    }
+                });
+            } else {
+                tracing::info!("Model sync background task disabled (MODEL_SYNC_INTERVAL_HOURS=0)");
             }
         }
     } else {

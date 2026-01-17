@@ -728,6 +728,8 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             capabilities: vec![], // Empty capabilities for now
             is_default: seed.is_default,
             is_favorite: seed.is_favorite,
+            source: "predefined".to_string(), // Seed models are predefined
+            provider_metadata: None,
         };
 
         match db

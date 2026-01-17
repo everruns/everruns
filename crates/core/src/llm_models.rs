@@ -67,6 +67,43 @@ pub enum LlmModelStatus {
     Disabled,
 }
 
+/// How the model was added to the system
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum LlmModelSource {
+    /// User-created via API or UI
+    #[default]
+    Manual,
+    /// Automatically discovered from provider's list_models API
+    Discovered,
+    /// From hardcoded seed data
+    Predefined,
+}
+
+impl std::fmt::Display for LlmModelSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LlmModelSource::Manual => write!(f, "manual"),
+            LlmModelSource::Discovered => write!(f, "discovered"),
+            LlmModelSource::Predefined => write!(f, "predefined"),
+        }
+    }
+}
+
+impl std::str::FromStr for LlmModelSource {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "manual" => Ok(LlmModelSource::Manual),
+            "discovered" => Ok(LlmModelSource::Discovered),
+            "predefined" => Ok(LlmModelSource::Predefined),
+            _ => Err(format!("Unknown model source: {}", s)),
+        }
+    }
+}
+
 /// LLM Provider entity (API keys never exposed)
 /// Note: This is the entity struct, separate from the LlmProvider trait in llm.rs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +117,9 @@ pub struct LlmProvider {
     /// Whether an API key is configured (key is never returned)
     pub api_key_set: bool,
     pub status: LlmProviderStatus,
+    /// When models were last synced from provider API
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_synced_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -96,6 +136,8 @@ pub struct LlmModel {
     pub is_default: bool,
     pub is_favorite: bool,
     pub status: LlmModelStatus,
+    /// How the model was added to the system
+    pub source: LlmModelSource,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -112,6 +154,8 @@ pub struct LlmModelWithProvider {
     pub is_default: bool,
     pub is_favorite: bool,
     pub status: LlmModelStatus,
+    /// How the model was added to the system
+    pub source: LlmModelSource,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub provider_name: String,

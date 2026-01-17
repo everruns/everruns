@@ -18,6 +18,7 @@ use crate::error::{AgentLoopError, Result};
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures::Stream;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -41,6 +42,22 @@ pub enum LlmStreamEvent {
     Done(LlmCompletionMetadata),
     /// Error during streaming
     Error(String),
+}
+
+/// Model information discovered from a provider's list_models API
+///
+/// Represents a model available from a provider. Used for dynamic model discovery
+/// to sync available models from provider APIs into the database.
+#[derive(Debug, Clone)]
+pub struct DiscoveredModel {
+    /// Model identifier (e.g., "gpt-5.2", "claude-opus-4-5-20251101")
+    pub model_id: String,
+    /// Human-readable display name (if provided by API)
+    pub display_name: Option<String>,
+    /// When the model was created/released
+    pub created_at: Option<DateTime<Utc>>,
+    /// Owner or organization (e.g., "openai", "system")
+    pub owned_by: Option<String>,
 }
 
 /// Metadata about LLM completion
@@ -112,6 +129,18 @@ pub trait LlmDriver: Send + Sync {
             metadata,
         })
     }
+
+    /// List available models from the provider
+    ///
+    /// Returns `Ok(Some(models))` if the provider supports model listing,
+    /// or `Ok(None)` if not supported (e.g., custom endpoints, proxies).
+    ///
+    /// Implementations should filter to chat/completion models only,
+    /// excluding embedding models, TTS, whisper, etc.
+    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+        // Default: not supported. Providers override if they support listing.
+        Ok(None)
+    }
 }
 
 /// Implement LlmDriver for Box<dyn LlmDriver> to allow dynamic dispatch
@@ -131,6 +160,10 @@ impl LlmDriver for Box<dyn LlmDriver> {
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         (**self).chat_completion(messages, config).await
+    }
+
+    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+        (**self).list_models().await
     }
 }
 

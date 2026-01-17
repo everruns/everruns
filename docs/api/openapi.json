@@ -1678,6 +1678,40 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Filter by model source (manual, discovered, predefined)",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/LlmModelSource"
+                }
+              ]
+            }
+          },
+          {
+            "name": "include_stale",
+            "in": "query",
+            "description": "Include models that are stale (not seen in recent sync). Default: true",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "favorites_only",
+            "in": "query",
+            "description": "Only return favorite models. Default: false",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -4014,6 +4048,7 @@
                 "is_default",
                 "is_favorite",
                 "status",
+                "source",
                 "created_at",
                 "updated_at"
               ],
@@ -4047,6 +4082,10 @@
                 "provider_id": {
                   "type": "string",
                   "format": "uuid"
+                },
+                "source": {
+                  "$ref": "#/components/schemas/LlmModelSource",
+                  "description": "How the model was added to the system"
                 },
                 "status": {
                   "$ref": "#/components/schemas/LlmModelStatus"
@@ -4082,6 +4121,7 @@
                 "is_default",
                 "is_favorite",
                 "status",
+                "source",
                 "created_at",
                 "updated_at",
                 "provider_name",
@@ -4135,6 +4175,10 @@
                 "provider_type": {
                   "$ref": "#/components/schemas/LlmProviderType"
                 },
+                "source": {
+                  "$ref": "#/components/schemas/LlmModelSource",
+                  "description": "How the model was added to the system"
+                },
                 "status": {
                   "$ref": "#/components/schemas/LlmModelStatus"
                 },
@@ -4187,6 +4231,14 @@
                 "id": {
                   "type": "string",
                   "format": "uuid"
+                },
+                "last_synced_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When models were last synced from provider API"
                 },
                 "name": {
                   "type": "string"
@@ -4579,6 +4631,7 @@
           "is_default",
           "is_favorite",
           "status",
+          "source",
           "created_at",
           "updated_at"
         ],
@@ -4612,6 +4665,10 @@
           "provider_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LlmModelSource",
+            "description": "How the model was added to the system"
           },
           "status": {
             "$ref": "#/components/schemas/LlmModelStatus"
@@ -4807,6 +4864,15 @@
           }
         }
       },
+      "LlmModelSource": {
+        "type": "string",
+        "description": "How the model was added to the system",
+        "enum": [
+          "manual",
+          "discovered",
+          "predefined"
+        ]
+      },
       "LlmModelStatus": {
         "type": "string",
         "description": "LLM model status",
@@ -4827,6 +4893,7 @@
           "is_default",
           "is_favorite",
           "status",
+          "source",
           "created_at",
           "updated_at",
           "provider_name",
@@ -4880,6 +4947,10 @@
           "provider_type": {
             "$ref": "#/components/schemas/LlmProviderType"
           },
+          "source": {
+            "$ref": "#/components/schemas/LlmModelSource",
+            "description": "How the model was added to the system"
+          },
           "status": {
             "$ref": "#/components/schemas/LlmModelStatus"
           },
@@ -4919,6 +4990,14 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When models were last synced from provider API"
           },
           "name": {
             "type": "string"
