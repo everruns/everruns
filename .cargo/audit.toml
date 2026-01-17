@@ -1,0 +1,14 @@
+# Cargo audit configuration
+# https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+
+[advisories]
+# RUSTSEC-2023-0071: rsa crate Marvin Attack timing sidechannel
+# This appears in Cargo.lock due to sqlx-macros-core unconditionally depending
+# on sqlx-mysql, but cargo tree confirms it's NOT compiled into the binary.
+# See: https://github.com/launchbadge/sqlx/issues/3538
+#
+# RUSTSEC-2024-0436: paste crate unmaintained
+# RUSTSEC-2026-0002: lru crate unsound IterMut
+# Both are transitive dependencies via llmsim -> ratatui (LLM simulation for testing).
+# No newer llmsim version available. These don't affect production code.
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2024-0436", "RUSTSEC-2026-0002"]
