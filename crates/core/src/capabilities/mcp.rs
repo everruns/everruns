@@ -105,12 +105,10 @@ impl Capability for McpCapability {
     }
 
     fn description(&self) -> &str {
-        let desc = self.description.clone().unwrap_or_else(|| {
-            format!(
-                "MCP Server providing {} tool(s)",
-                self.tools.len()
-            )
-        });
+        let desc = self
+            .description
+            .clone()
+            .unwrap_or_else(|| format!("MCP Server providing {} tool(s)", self.tools.len()));
         Box::leak(desc.into_boxed_str())
     }
 
@@ -176,7 +174,9 @@ mod tests {
 
     #[test]
     fn test_is_mcp_capability() {
-        assert!(is_mcp_capability("mcp:550e8400-e29b-41d4-a716-446655440000"));
+        assert!(is_mcp_capability(
+            "mcp:550e8400-e29b-41d4-a716-446655440000"
+        ));
         assert!(!is_mcp_capability("current_time"));
         assert!(!is_mcp_capability("mcp_something")); // Wrong format
     }
@@ -195,18 +195,16 @@ mod tests {
     #[test]
     fn test_mcp_capability_tool_definitions() {
         let server_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let tools = vec![
-            McpToolDefinition {
-                name: "search".to_string(),
-                description: Some("Search documentation".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "query": { "type": "string" }
-                    }
-                }),
-            },
-        ];
+        let tools = vec![McpToolDefinition {
+            name: "search".to_string(),
+            description: Some("Search documentation".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string" }
+                }
+            }),
+        }];
 
         let capability = McpCapability::new(
             server_id,
@@ -218,12 +216,9 @@ mod tests {
         let defs = capability.tool_definitions();
         assert_eq!(defs.len(), 1);
 
-        if let ToolDefinition::Builtin(builtin) = &defs[0] {
-            assert_eq!(builtin.name, "mcp_microsoft_learn_search");
-            assert_eq!(builtin.description, "Search documentation");
-        } else {
-            panic!("Expected builtin tool definition");
-        }
+        let ToolDefinition::Builtin(builtin) = &defs[0];
+        assert_eq!(builtin.name, "mcp_microsoft_learn__search");
+        assert_eq!(builtin.description, "Search documentation");
     }
 
     #[test]

@@ -150,10 +150,7 @@ impl WorkerServiceImpl {
     ///
     /// Extracts MCP server UUIDs from capability IDs (format: "mcp:{uuid}"),
     /// fetches cached tools for each server, and converts to proto McpToolDef.
-    async fn build_mcp_tool_definitions(
-        &self,
-        agent: &everruns_core::Agent,
-    ) -> Vec<McpToolDef> {
+    async fn build_mcp_tool_definitions(&self, agent: &everruns_core::Agent) -> Vec<McpToolDef> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
 
@@ -196,7 +193,8 @@ impl WorkerServiceImpl {
                 let description = tool
                     .description
                     .unwrap_or_else(|| format!("Tool from MCP server: {}", server_name));
-                let parameters = everruns_internal_protocol::json_to_proto_struct(&tool.input_schema);
+                let parameters =
+                    everruns_internal_protocol::json_to_proto_struct(&tool.input_schema);
 
                 mcp_tools.push(McpToolDef {
                     name: prefixed_name,

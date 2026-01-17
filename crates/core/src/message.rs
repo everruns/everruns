@@ -461,12 +461,18 @@ impl Message {
     /// Create a new assistant message with tool calls
     ///
     /// Tool calls are stored as ContentPart::ToolCall in the content array
-    /// alongside the text content.
+    /// alongside the text content. Empty text content is omitted to avoid
+    /// LLM API errors (e.g., Anthropic requires non-empty text blocks).
     pub fn assistant_with_tools(
         content: impl Into<String>,
         tool_calls: Vec<crate::tool_types::ToolCall>,
     ) -> Self {
-        let mut parts = vec![ContentPart::text(content)];
+        let text_content = content.into();
+        let mut parts = Vec::new();
+        // Only include text part if non-empty
+        if !text_content.is_empty() {
+            parts.push(ContentPart::text(text_content));
+        }
         for tc in tool_calls {
             parts.push(ContentPart::ToolCall(ToolCallContentPart {
                 id: tc.id,
@@ -591,6 +597,7 @@ impl Message {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool_types::ToolCall;
 
     #[test]
     fn test_user_message() {
@@ -615,5 +622,78 @@ mod tests {
         );
         assert_eq!(msg.role, MessageRole::ToolResult);
         assert_eq!(msg.tool_call_id(), Some("call_123"));
+    }
+
+    #[test]
+    fn test_assistant_with_tools_and_text() {
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: serde_json::json!({"location": "Tokyo"}),
+        };
+        let msg = Message::assistant_with_tools("Let me check the weather.", vec![tool_call]);
+
+        assert_eq!(msg.role, MessageRole::Assistant);
+        assert_eq!(msg.text(), Some("Let me check the weather."));
+        assert_eq!(msg.tool_calls().len(), 1);
+        assert_eq!(msg.tool_calls()[0].name, "get_weather");
+    }
+
+    #[test]
+    fn test_assistant_with_tools_empty_text() {
+        // When LLM returns only tool calls without text, we shouldn't include an empty text block
+        // This is important for Anthropic API which rejects empty text content blocks
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            name: "search".to_string(),
+            arguments: serde_json::json!({"query": "rust"}),
+        };
+        let msg = Message::assistant_with_tools("", vec![tool_call]);
+
+        assert_eq!(msg.role, MessageRole::Assistant);
+        // Empty text should result in None, not Some("")
+        assert_eq!(msg.text(), None);
+        // But tool calls should still be present
+        assert_eq!(msg.tool_calls().len(), 1);
+        assert_eq!(msg.tool_calls()[0].name, "search");
+        // Content should only have tool_call, no empty text part
+        assert_eq!(msg.content.len(), 1);
+        assert!(matches!(msg.content[0], ContentPart::ToolCall(_)));
+    }
+
+    #[test]
+    fn test_assistant_with_tools_whitespace_text() {
+        // Whitespace-only text is not empty (could be intentional)
+        let tool_call = ToolCall {
+            id: "call_456".to_string(),
+            name: "fetch".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let msg = Message::assistant_with_tools("   ", vec![tool_call]);
+
+        // Whitespace text is preserved (not treated as empty)
+        assert_eq!(msg.text(), Some("   "));
+        assert_eq!(msg.content.len(), 2); // Text + ToolCall
+    }
+
+    #[test]
+    fn test_assistant_with_multiple_tool_calls() {
+        let tool_calls = vec![
+            ToolCall {
+                id: "call_1".to_string(),
+                name: "search".to_string(),
+                arguments: serde_json::json!({"q": "a"}),
+            },
+            ToolCall {
+                id: "call_2".to_string(),
+                name: "fetch".to_string(),
+                arguments: serde_json::json!({"url": "http://example.com"}),
+            },
+        ];
+        let msg = Message::assistant_with_tools("", tool_calls);
+
+        assert_eq!(msg.tool_calls().len(), 2);
+        // Only tool calls, no empty text
+        assert_eq!(msg.content.len(), 2);
     }
 }

@@ -132,10 +132,7 @@ impl CapabilityService {
 
     /// Refresh tools for an MCP server
     #[allow(dead_code)]
-    pub async fn refresh_mcp_tools(
-        &self,
-        server_id: uuid::Uuid,
-    ) -> Result<Vec<McpToolDefinition>> {
+    pub async fn refresh_mcp_tools(&self, server_id: uuid::Uuid) -> Result<Vec<McpToolDefinition>> {
         self.mcp_service.refresh_tools(server_id).await
     }
 

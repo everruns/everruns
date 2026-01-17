@@ -718,14 +718,12 @@ struct SeedMcpServer {
 }
 
 /// Built-in seed MCP servers
-const SEED_MCP_SERVERS: &[SeedMcpServer] = &[
-    SeedMcpServer {
-        id: seed_ids::MS_LEARN_MCP,
-        name: "microsoft_learn",
-        description: "Microsoft Learn documentation MCP server - search and retrieve Microsoft documentation",
-        url: "https://learn.microsoft.com/api/mcp",
-    },
-];
+const SEED_MCP_SERVERS: &[SeedMcpServer] = &[SeedMcpServer {
+    id: seed_ids::MS_LEARN_MCP,
+    name: "microsoft_learn",
+    description: "Microsoft Learn documentation MCP server - search and retrieve Microsoft documentation",
+    url: "https://learn.microsoft.com/api/mcp",
+}];
 
 /// Seed MCP servers into the database
 async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {

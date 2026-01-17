@@ -134,14 +134,27 @@ mcp:{server_uuid}
 
 Example: `mcp:01933b5a-0000-7000-8000-000000000501`
 
+When this capability is enabled on an agent, tools from this MCP server become available with prefixed names (e.g., `mcp_microsoft_learn__search`).
+
 ### Tool Name Prefixing
 
-To avoid naming conflicts, MCP tools are prefixed with the server name:
+To avoid naming conflicts, MCP tools are prefixed with the server name using a **double underscore** separator:
 ```
-mcp_{server_name}_{tool_name}
+mcp_{server_name}__{tool_name}
 ```
 
-Example: If server `microsoft_learn` provides tool `search`, it becomes `mcp_microsoft_learn_search`.
+The double underscore (`__`) separator is used instead of single underscore because server names can contain underscores (e.g., `microsoft_learn`). This allows unambiguous parsing of the tool name back to its components.
+
+**Examples:**
+- Server `microsoft_learn` with tool `search` → `mcp_microsoft_learn__search`
+- Server `github` with tool `search_repos` → `mcp_github__search_repos`
+- Server `atlassian_jira` with tool `create_issue` → `mcp_atlassian_jira__create_issue`
+
+**Parsing:** To extract server name and tool name:
+1. Verify the name starts with `mcp_`
+2. Find the double underscore separator `__`
+3. Server name is between `mcp_` and `__`
+4. Tool name is everything after `__`
 
 ### Tool Discovery
 
@@ -197,7 +210,7 @@ MCP tools are executed via the `tools/call` JSON-RPC method:
 }
 ```
 
-**Response:**
+**Response (Plain JSON):**
 ```json
 {
   "jsonrpc": "2.0",
@@ -210,6 +223,45 @@ MCP tools are executed via the `tools/call` JSON-RPC method:
   }
 }
 ```
+
+**Response (Server-Sent Events format):**
+
+Some MCP servers (e.g., Microsoft Learn) return responses in SSE format:
+```
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{"content":[...],"isError":false}}
+```
+
+The executor automatically detects and parses both formats:
+- If response starts with `event:` or contains `\ndata:`, parse as SSE
+- Extract JSON from the `data:` line
+- Otherwise, parse as plain JSON
+
+### MCP Content Types
+
+MCP tool results can contain various content types:
+
+| Type | Fields | Description |
+|------|--------|-------------|
+| `text` | `text` | Plain text content |
+| `image` | `data`, `mime_type` | Base64-encoded image |
+| `resource` | `uri`, `mime_type`, `text` | External resource reference |
+
+The executor converts MCP content to the internal format:
+- Single text content → simplified `{ "result": "text" }`
+- Multiple content blocks → `{ "content": [...] }`
+- Errors → `{ "error": "message" }`
+
+### LLM Provider Compatibility
+
+**Anthropic Provider:**
+- Text content blocks must be non-empty (Anthropic API rejects empty strings)
+- Assistant messages with tool calls but empty text are valid - the empty text is filtered out
+- The conversion layer automatically filters empty text blocks before sending to the API
+
+**OpenAI Provider:**
+- Empty text content is allowed
+- No special filtering required
 
 ### UI Integration
 
@@ -228,3 +280,40 @@ The following MCP server is seeded by default:
 | `microsoft_learn` | `https://learn.microsoft.com/api/mcp` | Microsoft Learn documentation server |
 
 A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this MCP server.
+
+## Implementation Details
+
+### Crate Structure
+
+| Crate | Responsibility |
+|-------|----------------|
+| `everruns-core` | MCP types (`McpServer`, `McpToolDefinition`), tool name helpers (`mcp_tool_name`, `parse_mcp_tool_name`, `is_mcp_tool`) |
+| `everruns-control-plane` | API routes, gRPC services, database operations |
+| `everruns-worker` | `McpToolExecutor` for HTTP calls, `CompositeToolExecutor` for routing |
+
+### Key Components
+
+**McpToolExecutor** (`crates/worker/src/mcp_executor.rs`):
+- Executes MCP tools by calling remote HTTP endpoints
+- Parses tool names to extract server prefix and original tool name
+- Caches server info for efficiency
+- Handles both plain JSON and SSE response formats
+
+**CompositeToolExecutor** (`crates/worker/src/mcp_executor.rs`):
+- Routes tool calls to appropriate executor
+- MCP tools (prefixed with `mcp_`) → McpToolExecutor
+- Built-in tools → ToolRegistry
+
+**gRPC Protocol** (`crates/internal-protocol/proto/worker.proto`):
+- `GetTurnContext` returns `mcp_tool_definitions` with prefixed tool names
+- `GetMcpServerByPrefix` resolves server info by name prefix
+
+### Error Handling
+
+| Error | Response |
+|-------|----------|
+| Invalid tool name format | `400 Bad Request` with error message |
+| MCP server not found | `404 Not Found` |
+| MCP server unreachable | `502 Bad Gateway` with timeout after 60s |
+| MCP tool returns error | Success with `{ "error": "message" }` in result |
+| JSON-RPC error | Error propagated with code and message |

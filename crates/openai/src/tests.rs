@@ -213,6 +213,22 @@ mod provider_tests {
     }
 
     #[test]
+    fn test_empty_content_message() {
+        // OpenAI accepts empty content (unlike Anthropic which rejects it)
+        // This test documents that empty strings are allowed
+        let msg = ChatMessage {
+            role: MessageRole::Assistant,
+            content: String::new(),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        assert_eq!(msg.content, "");
+        // Can serialize without error
+        let json = serde_json::to_string(&msg).expect("Should serialize empty content");
+        assert!(json.contains("\"content\":\"\""));
+    }
+
+    #[test]
     fn test_chat_message_to_openai_conversion() {
         let msg = ChatMessage {
             role: MessageRole::User,

@@ -240,8 +240,11 @@ pub async fn act_activity(grpc_client: GrpcClient, input: ActInput) -> Result<Ac
 
     // Create composite tool executor that handles both built-in and MCP tools
     let builtin_executor = ToolRegistry::with_defaults();
-    let mcp_executor = Arc::new(crate::mcp_executor::McpToolExecutor::new(grpc_client.clone()));
-    let tool_executor = crate::mcp_executor::CompositeToolExecutor::new(builtin_executor, mcp_executor);
+    let mcp_executor = Arc::new(crate::mcp_executor::McpToolExecutor::new(
+        grpc_client.clone(),
+    ));
+    let tool_executor =
+        crate::mcp_executor::CompositeToolExecutor::new(builtin_executor, mcp_executor);
 
     let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
     let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client));

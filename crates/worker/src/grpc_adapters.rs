@@ -110,10 +110,12 @@ impl GrpcClient {
             .await
             .map_err(|e| grpc_error(format!("Failed to get MCP server: {}", e)))?;
 
-        let proto_server = response
-            .into_inner()
-            .server
-            .ok_or_else(|| grpc_error(format!("MCP server not found for prefix: {}", server_prefix)))?;
+        let proto_server = response.into_inner().server.ok_or_else(|| {
+            grpc_error(format!(
+                "MCP server not found for prefix: {}",
+                server_prefix
+            ))
+        })?;
 
         Ok(crate::mcp_executor::McpServerInfo {
             id: proto_uuid_to_uuid(proto_server.id.as_ref())?,

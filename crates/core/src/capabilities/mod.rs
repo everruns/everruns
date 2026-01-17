@@ -44,10 +44,6 @@ mod web_fetch;
 
 // Re-export capabilities
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
-pub use mcp::{
-    McpCapability, MCP_CAPABILITY_PREFIX, is_mcp_capability, mcp_capability_id,
-    parse_mcp_capability_id,
-};
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
@@ -73,6 +69,10 @@ pub use fake_warehouse::{
 pub use file_system::{
     DeleteFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool, ReadFileTool,
     StatFileTool, WriteFileTool,
+};
+pub use mcp::{
+    MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
+    parse_mcp_capability_id,
 };
 pub use noop::NoopCapability;
 pub use research::ResearchCapability;

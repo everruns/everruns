@@ -767,7 +767,7 @@ message McpServerInfo {
     map<string, string> headers = 5;
 }
 
-// Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn_search")
+// Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn__search")
 message GetMcpServerByPrefixRequest {
     string server_prefix = 1;
 }

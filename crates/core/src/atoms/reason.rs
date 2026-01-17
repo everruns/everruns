@@ -273,7 +273,12 @@ where
 
         // Execute the LLM call and handle errors gracefully
         let result = match self
-            .execute_llm_call(context.session_id, agent_id, &context, &mcp_tool_definitions)
+            .execute_llm_call(
+                context.session_id,
+                agent_id,
+                &context,
+                &mcp_tool_definitions,
+            )
             .await
         {
             Ok(result) => {

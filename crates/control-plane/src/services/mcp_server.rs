@@ -114,7 +114,10 @@ impl McpServerService {
     /// List active MCP servers with their cached tools
     pub async fn list_active_with_tools(&self) -> Result<Vec<McpServerWithTools>> {
         let rows = self.db.list_active_mcp_servers().await?;
-        Ok(rows.iter().map(Self::row_to_mcp_server_with_tools).collect())
+        Ok(rows
+            .iter()
+            .map(Self::row_to_mcp_server_with_tools)
+            .collect())
     }
 
     /// Refresh cached tools for an MCP server by calling tools/list
@@ -260,7 +263,11 @@ async fn fetch_mcp_tools(
     let mcp_response: McpToolsListResponse = response.json().await?;
 
     if let Some(error) = mcp_response.error {
-        return Err(anyhow!("MCP server error: {} ({})", error.message, error.code));
+        return Err(anyhow!(
+            "MCP server error: {} ({})",
+            error.message,
+            error.code
+        ));
     }
 
     let result = mcp_response

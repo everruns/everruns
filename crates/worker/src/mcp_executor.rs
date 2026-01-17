@@ -5,11 +5,11 @@
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use everruns_core::traits::{ToolContext, ToolExecutor};
 use everruns_core::{
     McpContent, McpToolCallRequest, McpToolCallResponse, ToolCall, ToolDefinition, ToolResult,
     is_mcp_tool, parse_mcp_tool_name,
 };
-use everruns_core::traits::{ToolContext, ToolExecutor};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -46,10 +46,7 @@ impl McpToolExecutor {
     }
 
     /// Execute an MCP tool by calling the remote server
-    pub async fn execute_mcp_tool(
-        &self,
-        tool_call: &ToolCall,
-    ) -> Result<ToolResult> {
+    pub async fn execute_mcp_tool(&self, tool_call: &ToolCall) -> Result<ToolResult> {
         // Parse tool name to get server prefix and original tool name
         let (server_prefix, original_tool_name) = parse_mcp_tool_name(&tool_call.name)
             .ok_or_else(|| anyhow!("Invalid MCP tool name: {}", tool_call.name))?;
@@ -58,7 +55,12 @@ impl McpToolExecutor {
         let server_info = self.get_server_info(&server_prefix).await?;
 
         // Call the MCP server
-        let result = call_mcp_tool(&server_info, &original_tool_name, tool_call.arguments.clone()).await?;
+        let result = call_mcp_tool(
+            &server_info,
+            &original_tool_name,
+            tool_call.arguments.clone(),
+        )
+        .await?;
 
         Ok(ToolResult {
             tool_call_id: tool_call.id.clone(),
@@ -78,7 +80,10 @@ impl McpToolExecutor {
         }
 
         // Fetch from gRPC
-        let info = self.grpc_client.get_mcp_server_by_prefix(server_prefix).await?;
+        let info = self
+            .grpc_client
+            .get_mcp_server_by_prefix(server_prefix)
+            .await?;
 
         // Cache for future use
         {
@@ -153,11 +158,26 @@ async fn call_mcp_tool(
         return Err(anyhow!("MCP server returned error: {} - {}", status, body));
     }
 
-    let mcp_response: McpToolCallResponse = response.json().await.map_err(|e| {
+    // Parse response - handle both plain JSON and SSE (Server-Sent Events) formats
+    let response_text = response.text().await.map_err(|e| {
         tracing::error!(
             mcp_server = %server_info.name,
             tool_name = %tool_name,
             error = %e,
+            "Failed to read MCP response body"
+        );
+        anyhow!("Failed to read MCP response body: {}", e)
+    })?;
+
+    let json_str = extract_json_from_response(&response_text)
+        .ok_or_else(|| anyhow!("SSE response missing data line"))?;
+
+    let mcp_response: McpToolCallResponse = serde_json::from_str(json_str).map_err(|e| {
+        tracing::error!(
+            mcp_server = %server_info.name,
+            tool_name = %tool_name,
+            error = %e,
+            response_preview = %&json_str[..json_str.len().min(200)],
             "Failed to parse MCP response"
         );
         anyhow!("Failed to parse MCP response: {}", e)
@@ -165,7 +185,11 @@ async fn call_mcp_tool(
 
     // Check for MCP-level errors
     if let Some(error) = mcp_response.error {
-        return Err(anyhow!("MCP tool error: {} (code: {})", error.message, error.code));
+        return Err(anyhow!(
+            "MCP tool error: {} (code: {})",
+            error.message,
+            error.code
+        ));
     }
 
     // Extract result
@@ -175,7 +199,9 @@ async fn call_mcp_tool(
 
     // Check if tool returned an error
     if result.is_error {
-        let error_text = result.content.iter()
+        let error_text = result
+            .content
+            .iter()
             .filter_map(|c| match c {
                 McpContent::Text { text } => Some(text.as_str()),
                 _ => None,
@@ -186,7 +212,9 @@ async fn call_mcp_tool(
     }
 
     // Convert MCP content to JSON
-    let content_json: Vec<serde_json::Value> = result.content.iter()
+    let content_json: Vec<serde_json::Value> = result
+        .content
+        .iter()
         .map(|c| match c {
             McpContent::Text { text } => json!({ "type": "text", "text": text }),
             McpContent::Image { data, mime_type } => json!({
@@ -194,7 +222,11 @@ async fn call_mcp_tool(
                 "data": data,
                 "mime_type": mime_type
             }),
-            McpContent::Resource { uri, mime_type, text } => json!({
+            McpContent::Resource {
+                uri,
+                mime_type,
+                text,
+            } => json!({
                 "type": "resource",
                 "uri": uri,
                 "mime_type": mime_type,
@@ -226,7 +258,11 @@ impl CompositeToolExecutor {
 
 #[async_trait]
 impl ToolExecutor for CompositeToolExecutor {
-    async fn execute(&self, tool_call: &ToolCall, tool_def: &ToolDefinition) -> everruns_core::Result<ToolResult> {
+    async fn execute(
+        &self,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+    ) -> everruns_core::Result<ToolResult> {
         if McpToolExecutor::is_mcp_tool(&tool_call.name) {
             // Execute MCP tool
             self.mcp.execute_mcp_tool(tool_call).await.map_err(|e| {
@@ -253,7 +289,83 @@ impl ToolExecutor for CompositeToolExecutor {
             })
         } else {
             // Execute built-in tool with context
-            self.builtin.execute_with_context(tool_call, tool_def, context).await
+            self.builtin
+                .execute_with_context(tool_call, tool_def, context)
+                .await
         }
+    }
+}
+
+/// Extract JSON from MCP response, handling both plain JSON and SSE formats.
+/// SSE format: "event: message\ndata: {...json...}\n"
+fn extract_json_from_response(response_text: &str) -> Option<&str> {
+    if response_text.starts_with("event:") || response_text.contains("\ndata:") {
+        // Parse SSE format - extract JSON from "data: {...}" line
+        response_text
+            .lines()
+            .find(|line| line.starts_with("data:"))
+            .map(|line| line.trim_start_matches("data:").trim())
+    } else {
+        // Plain JSON response
+        Some(response_text.trim())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_json_from_plain_json() {
+        let response = r#"{"result": {"content": [{"type": "text", "text": "Hello"}]}, "id": 1, "jsonrpc": "2.0"}"#;
+        let result = extract_json_from_response(response);
+        assert_eq!(result, Some(response.trim()));
+    }
+
+    #[test]
+    fn test_extract_json_from_sse_format() {
+        let response = "event: message\ndata: {\"result\": {\"content\": []}, \"id\": 1, \"jsonrpc\": \"2.0\"}\n";
+        let result = extract_json_from_response(response);
+        assert_eq!(
+            result,
+            Some("{\"result\": {\"content\": []}, \"id\": 1, \"jsonrpc\": \"2.0\"}")
+        );
+    }
+
+    #[test]
+    fn test_extract_json_from_sse_with_multiple_events() {
+        let response = "event: open\ndata: \n\nevent: message\ndata: {\"result\": {}, \"id\": 1}\n";
+        let result = extract_json_from_response(response);
+        // Should find first data line (empty one)
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_extract_json_from_sse_real_microsoft_learn() {
+        // Simulated Microsoft Learn MCP response format
+        let response = r#"event: message
+data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1,"jsonrpc":"2.0"}"#;
+        let result = extract_json_from_response(response);
+        assert_eq!(
+            result,
+            Some(
+                r#"{"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1,"jsonrpc":"2.0"}"#
+            )
+        );
+    }
+
+    #[test]
+    fn test_extract_json_from_plain_json_with_whitespace() {
+        let response = "  \n{\"result\": {}}\n  ";
+        let result = extract_json_from_response(response);
+        assert_eq!(result, Some("{\"result\": {}}"));
+    }
+
+    #[test]
+    fn test_extract_json_detects_sse_with_newline_data() {
+        // Edge case: newline before data: should still detect SSE format
+        let response = "some text\ndata: {\"key\": \"value\"}";
+        let result = extract_json_from_response(response);
+        assert_eq!(result, Some("{\"key\": \"value\"}"));
     }
 }
