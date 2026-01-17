@@ -910,8 +910,8 @@ pub struct SessionIdledData {
 /// - `tool.call_started` → ToolCallStartedData
 /// - `tool.call_completed` → ToolCallCompletedData
 /// - `llm.generation` → LlmGenerationData
-/// - `agent.thinking` → AgentThinkingData
 /// - `text.delta` → TextDeltaData
+/// - `agent.thinking` → AgentThinkingData
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
@@ -946,8 +946,12 @@ pub enum EventData {
     LlmGeneration(LlmGenerationData),
 
     // Streaming events
-    AgentThinking(AgentThinkingData),
+    // NOTE: TextDelta must come BEFORE AgentThinking for untagged enum deserialization.
+    // TextDelta has more required fields (turn_id, delta, accumulated) while
+    // AgentThinking only requires turn_id (model is optional). If AgentThinking
+    // comes first, it will match TextDelta JSON and discard delta/accumulated fields.
     TextDelta(TextDeltaData),
+    AgentThinking(AgentThinkingData),
 
     // Session events
     SessionStarted(SessionStartedData),
@@ -979,8 +983,8 @@ impl EventData {
             EventData::ToolCallStarted(_) => TOOL_CALL_STARTED,
             EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
-            EventData::AgentThinking(_) => AGENT_THINKING,
             EventData::TextDelta(_) => TEXT_DELTA,
+            EventData::AgentThinking(_) => AGENT_THINKING,
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
             EventData::SessionIdled(_) => SESSION_IDLED,
