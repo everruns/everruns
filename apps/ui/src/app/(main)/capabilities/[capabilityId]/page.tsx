@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
+import { InlineMarkdown } from "@/components/ui/markdown";
 import {
   ArrowLeft,
   CircleOff,
@@ -156,7 +157,10 @@ export default function CapabilityDetailPage({
               <CardTitle>Description</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">{capability.description}</p>
+              <InlineMarkdown
+                content={capability.description}
+                className="text-muted-foreground"
+              />
             </CardContent>
           </Card>
 

@@ -54,11 +54,50 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 |-------|------|-------------|
 | `id` | CapabilityId | Unique string identifier |
 | `name` | string | Display name |
-| `description` | string | Description of functionality |
+| `description` | string | Description of functionality (supports markdown) |
 | `status` | CapabilityStatus | Availability status |
 | `icon` | string? | Icon name for UI rendering |
 | `category` | string? | Category for grouping in UI |
 | `is_mcp` | boolean | True if this is an MCP virtual capability |
+
+##### Description Markdown Support
+
+Capability descriptions support GitHub Flavored Markdown including:
+
+- Basic formatting: **bold**, *italic*, `code`, [links](url)
+- Lists (ordered and unordered)
+- Code blocks with syntax highlighting
+- Tables
+- GitHub-style alerts for callouts:
+
+```markdown
+> [!NOTE]
+> Highlights information that users should take into account.
+
+> [!TIP]
+> Optional information to help a user be more successful.
+
+> [!IMPORTANT]
+> Crucial information necessary for users to succeed.
+
+> [!WARNING]
+> Critical content demanding immediate user attention due to potential risks.
+
+> [!CAUTION]
+> Negative potential consequences of an action.
+```
+
+Example capability description with alerts:
+
+```
+Fetch content from URLs and convert HTML to markdown.
+
+> [!TIP]
+> Use `as_markdown: true` for better readability when fetching HTML pages.
+
+> [!WARNING]
+> Binary content (images, PDFs) cannot be fetched as text. Only metadata is returned.
+```
 
 #### CapabilityId (String wrapper)
 
