@@ -15,7 +15,7 @@ use crate::activities::{
     reason_activity,
 };
 use crate::durable_runner::DurableTurnInput;
-use crate::grpc_adapters::GrpcClient;
+use crate::grpc_adapters::{GrpcClient, load_turn_context};
 use crate::grpc_durable_store::{
     ClaimedTask, GrpcDurableStore, TaskNotificationEvent, TaskNotificationStream, WorkflowStatus,
 };
@@ -619,6 +619,14 @@ impl DurableWorker {
             }
         }
 
+        // Fetch turn context to get MCP tool definitions
+        // Note: This fetches agent, session, messages in a single batched call
+        // but reason_activity will refetch them via individual stores.
+        // The key value here is the mcp_tool_definitions.
+        let turn_context = load_turn_context(&grpc_client, input.session_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to load turn context: {}", e))?;
+
         // Create AtomContext for this execution
         let context = AtomContext {
             session_id: input.session_id,
@@ -630,6 +638,7 @@ impl DurableWorker {
         let reason_input = ReasonInput {
             context,
             agent_id: input.agent_id,
+            mcp_tool_definitions: turn_context.mcp_tool_definitions,
         };
 
         // Use the existing reason_activity function with gRPC adapters

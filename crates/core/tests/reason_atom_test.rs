@@ -133,7 +133,7 @@ async fn test_reason_atom_with_fixed_response() {
     );
 
     let context = create_context(session_id);
-    let input = ReasonInput { context, agent_id };
+    let input = ReasonInput { context, agent_id, mcp_tool_definitions: vec![] };
 
     let result = atom
         .execute(input)
@@ -187,7 +187,7 @@ async fn test_reason_atom_with_tool_calls() {
     );
 
     let context = create_context(session_id);
-    let input = ReasonInput { context, agent_id };
+    let input = ReasonInput { context, agent_id, mcp_tool_definitions: vec![] };
 
     let result = atom
         .execute(input)
@@ -226,7 +226,7 @@ async fn test_reason_atom_with_echo_response() {
     );
 
     let context = create_context(session_id);
-    let input = ReasonInput { context, agent_id };
+    let input = ReasonInput { context, agent_id, mcp_tool_definitions: vec![] };
 
     let result = atom
         .execute(input)
@@ -269,6 +269,7 @@ async fn test_reason_atom_with_different_configs() {
         .execute(ReasonInput {
             context: context1,
             agent_id,
+            mcp_tool_definitions: vec![],
         })
         .await
         .expect("First call should succeed");
@@ -313,6 +314,7 @@ async fn test_reason_atom_with_different_configs() {
         .execute(ReasonInput {
             context: context2,
             agent_id,
+            mcp_tool_definitions: vec![],
         })
         .await
         .expect("Second call should succeed");
@@ -352,7 +354,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     );
 
     let context = create_context(session_id);
-    let input = ReasonInput { context, agent_id };
+    let input = ReasonInput { context, agent_id, mcp_tool_definitions: vec![] };
 
     let result = atom
         .execute(input)
@@ -409,7 +411,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
     );
 
     let context = create_context(session_id);
-    let input = ReasonInput { context, agent_id };
+    let input = ReasonInput { context, agent_id, mcp_tool_definitions: vec![] };
 
     let result = atom
         .execute(input)
@@ -444,7 +446,7 @@ async fn test_reason_atom_with_lorem_response() {
     );
 
     let context = create_context(session_id);
-    let input = ReasonInput { context, agent_id };
+    let input = ReasonInput { context, agent_id, mcp_tool_definitions: vec![] };
 
     let result = atom
         .execute(input)
@@ -486,7 +488,7 @@ async fn test_reason_atom_handles_llm_error() {
     );
 
     let context = create_context(session_id);
-    let input = ReasonInput { context, agent_id };
+    let input = ReasonInput { context, agent_id, mcp_tool_definitions: vec![] };
 
     let result = atom
         .execute(input)

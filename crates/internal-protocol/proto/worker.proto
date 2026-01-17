@@ -148,6 +148,17 @@ message GetTurnContextResponse {
     Session session = 2;
     repeated Message messages = 3;
     ModelWithProvider model = 4;
+    // MCP tool definitions from agent's MCP capabilities
+    // These are pre-resolved to avoid MCP capability lookup in worker
+    repeated McpToolDef mcp_tool_definitions = 5;
+}
+
+// MCP tool definition for passing to worker
+// Contains the prefixed name and schema ready for LLM
+message McpToolDef {
+    string name = 1;  // Prefixed: mcp_{server_name}_{tool_name}
+    string description = 2;
+    google.protobuf.Struct parameters = 3;  // JSON Schema
 }
 
 // ============================================================================

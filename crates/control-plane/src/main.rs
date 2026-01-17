@@ -384,6 +384,12 @@ async fn main() -> Result<()> {
                 encryption.clone(),
             ));
 
+            // Create MCP server service for the in-process worker
+            let mcp_server_service = Arc::new(services::McpServerService::new(
+                db.clone(),
+                encryption.clone(),
+            ));
+
             // Create in-process worker configuration
             let worker_config = InProcessWorkerConfig::default();
 
@@ -397,6 +403,7 @@ async fn main() -> Result<()> {
                     worker_db,
                     worker_event_service,
                     llm_resolver,
+                    mcp_server_service,
                 );
 
                 if let Err(e) = worker.run().await {

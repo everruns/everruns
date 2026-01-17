@@ -301,6 +301,7 @@ mod tests {
         let input = ReasonInput {
             context: context.clone(),
             agent_id: Uuid::parse_str("880e8400-e29b-41d4-a716-446655440000").unwrap(),
+            mcp_tool_definitions: vec![],
         };
 
         let json = serde_json::to_string(&input).unwrap();

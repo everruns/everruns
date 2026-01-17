@@ -94,6 +94,11 @@ pub struct ReasonInput {
     pub context: AtomContext,
     /// Agent ID for loading configuration
     pub agent_id: Uuid,
+    /// MCP tool definitions from agent's MCP capabilities (pre-resolved)
+    /// These are passed from the control-plane since MCP capabilities
+    /// are not in the CapabilityRegistry.
+    #[serde(default)]
+    pub mcp_tool_definitions: Vec<ToolDefinition>,
 }
 
 /// Result of the ReasonAtom
@@ -228,13 +233,18 @@ where
     }
 
     async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
-        let ReasonInput { context, agent_id } = input;
+        let ReasonInput {
+            context,
+            agent_id,
+            mcp_tool_definitions,
+        } = input;
 
         tracing::info!(
             session_id = %context.session_id,
             turn_id = %context.turn_id,
             exec_id = %context.exec_id,
             agent_id = %agent_id,
+            mcp_tools_count = %mcp_tool_definitions.len(),
             "ReasonAtom: starting LLM call"
         );
 
@@ -263,7 +273,7 @@ where
 
         // Execute the LLM call and handle errors gracefully
         let result = match self
-            .execute_llm_call(context.session_id, agent_id, &context)
+            .execute_llm_call(context.session_id, agent_id, &context, &mcp_tool_definitions)
             .await
         {
             Ok(result) => {
@@ -374,6 +384,7 @@ where
         session_id: Uuid,
         agent_id: Uuid,
         context: &AtomContext,
+        mcp_tool_definitions: &[ToolDefinition],
     ) -> Result<ReasonResult> {
         // 1. Retrieve agent
         let agent = self
@@ -410,8 +421,10 @@ where
             .await?;
 
         // 6. Build runtime agent from agent with capabilities applied
+        // Also include MCP tool definitions that were pre-resolved by control-plane
         let runtime_agent = RuntimeAgentBuilder::new()
             .with_agent(&agent, &self.capability_registry)
+            .tools(mcp_tool_definitions.iter().cloned())
             .model(&model_with_provider.model)
             .build();
 

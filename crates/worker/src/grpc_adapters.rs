@@ -822,6 +822,8 @@ pub struct TurnContext {
     pub session: Session,
     pub messages: Vec<Message>,
     pub model: Option<ModelWithProvider>,
+    /// MCP tool definitions pre-resolved from agent's MCP capabilities
+    pub mcp_tool_definitions: Vec<everruns_core::ToolDefinition>,
 }
 
 /// Load turn context in one batched call (optimization)
@@ -862,11 +864,39 @@ pub async fn load_turn_context(client: &GrpcClient, session_id: Uuid) -> Result<
         .map(proto_model_with_provider_to_model)
         .transpose()?;
 
+    // Convert MCP tool definitions from proto to core types
+    let mcp_tool_definitions = inner
+        .mcp_tool_definitions
+        .into_iter()
+        .map(proto_mcp_tool_def_to_tool_definition)
+        .collect();
+
     Ok(TurnContext {
         agent,
         session,
         messages,
         model,
+        mcp_tool_definitions,
+    })
+}
+
+/// Convert proto McpToolDef to core ToolDefinition
+fn proto_mcp_tool_def_to_tool_definition(
+    proto_tool: proto::McpToolDef,
+) -> everruns_core::ToolDefinition {
+    use everruns_core::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+
+    // Convert proto Struct to serde_json::Value
+    let parameters = proto_tool
+        .parameters
+        .map(|s| proto_struct_to_json(&s))
+        .unwrap_or_else(|| serde_json::json!({"type": "object"}));
+
+    ToolDefinition::Builtin(BuiltinTool {
+        name: proto_tool.name,
+        description: proto_tool.description,
+        parameters,
+        policy: ToolPolicy::Auto, // MCP tools are auto-executed
     })
 }
 

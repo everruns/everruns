@@ -228,6 +228,7 @@ async fn main() -> anyhow::Result<()> {
             .execute(ReasonInput {
                 context: reason_context,
                 agent_id,
+                mcp_tool_definitions: vec![],
             })
             .await?;
 
