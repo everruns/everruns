@@ -587,6 +587,7 @@ impl StorageBackend {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_llm_generation(
         &self,
+        org_id: i64,
         session_id: Uuid,
         turn_id: Option<Uuid>,
         event_id: Option<Uuid>,
@@ -603,6 +604,7 @@ impl StorageBackend {
         dispatch!(
             self,
             create_llm_generation,
+            org_id,
             session_id,
             turn_id,
             event_id,

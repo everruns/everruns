@@ -1695,6 +1695,7 @@ impl InMemoryDatabase {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_llm_generation(
         &self,
+        _org_id: i64,
         _session_id: Uuid,
         _turn_id: Option<Uuid>,
         _event_id: Option<Uuid>,

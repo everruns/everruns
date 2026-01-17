@@ -53,10 +53,37 @@ impl EventListener for UsageTrackingListener {
         let cache_read_tokens = usage.cache_read_tokens.unwrap_or(0) as i64;
         let cache_creation_tokens = usage.cache_creation_tokens.unwrap_or(0) as i64;
 
-        // Insert into llm_generations
+        // Get session to determine org_id
+        let session = match self.db.get_session(DEFAULT_ORG_ID, event.session_id).await {
+            Ok(Some(s)) => s,
+            Ok(None) => {
+                error!("Session not found for usage tracking: {}", event.session_id);
+                return;
+            }
+            Err(e) => {
+                error!("Failed to get session for usage tracking: {}", e);
+                return;
+            }
+        };
+
+        // Get org_id from agent (sessions don't have direct org_id)
+        let org_id = match self.db.get_agent(DEFAULT_ORG_ID, session.agent_id).await {
+            Ok(Some(agent)) => agent.org_id,
+            Ok(None) => {
+                error!("Agent not found for usage tracking: {}", session.agent_id);
+                DEFAULT_ORG_ID
+            }
+            Err(e) => {
+                error!("Failed to get agent for usage tracking: {}", e);
+                DEFAULT_ORG_ID
+            }
+        };
+
+        // Insert into llm_generations with org_id
         if let Err(e) = self
             .db
             .create_llm_generation(
+                org_id,
                 event.session_id,
                 event.context.turn_id,
                 Some(event.id),
@@ -94,19 +121,17 @@ impl EventListener for UsageTrackingListener {
             error!("Failed to update session usage: {}", e);
         }
 
-        // Update agent totals (need to get agent_id from session)
-        // TODO: Get org_id from context after Phase 3
-        if let Ok(Some(session)) = self.db.get_session(DEFAULT_ORG_ID, event.session_id).await
-            && let Err(e) = self
-                .db
-                .increment_agent_usage(
-                    session.agent_id,
-                    input_tokens,
-                    output_tokens,
-                    cache_read_tokens,
-                    cache_creation_tokens,
-                )
-                .await
+        // Update agent totals
+        if let Err(e) = self
+            .db
+            .increment_agent_usage(
+                session.agent_id,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+            )
+            .await
         {
             error!("Failed to update agent usage: {}", e);
         }

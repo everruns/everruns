@@ -1887,6 +1887,7 @@ impl Database {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_llm_generation(
         &self,
+        org_id: i64,
         session_id: Uuid,
         turn_id: Option<Uuid>,
         event_id: Option<Uuid>,
@@ -1903,12 +1904,13 @@ impl Database {
         sqlx::query(
             r#"
             INSERT INTO llm_generations (
-                session_id, turn_id, event_id, model, provider,
+                org_id, session_id, turn_id, event_id, model, provider,
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
                 duration_ms, finish_reason, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             "#,
         )
+        .bind(org_id)
         .bind(session_id)
         .bind(turn_id)
         .bind(event_id)
