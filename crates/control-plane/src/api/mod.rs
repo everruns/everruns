@@ -13,6 +13,7 @@ pub mod llm_models;
 pub mod llm_providers;
 pub mod mcp_servers;
 pub mod messages;
+pub mod organizations;
 pub mod session_files;
 pub mod sessions;
 pub mod sse;
