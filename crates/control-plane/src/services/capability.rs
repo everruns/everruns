@@ -154,6 +154,9 @@ impl CapabilityService {
     /// - System prompt additions are prepended to the base prompt
     /// - Tool definitions are collected from all capabilities
     ///
+    /// For MCP capabilities, uses cached tools (even if stale) to avoid blocking
+    /// on external MCP server calls during preview.
+    ///
     /// # Arguments
     ///
     /// * `base_system_prompt` - The agent's base system prompt
@@ -192,9 +195,9 @@ impl CapabilityService {
         }
         tool_definitions.extend(collected.tool_definitions);
 
-        // Collect from MCP capabilities
+        // Collect from MCP capabilities using cached tools only (no refresh)
         for server_id in mcp_cap_ids {
-            let tools = self.mcp_service.get_tools(server_id, false).await?;
+            let tools = self.mcp_service.get_cached_tools(server_id).await;
             let server = self.mcp_service.get(server_id).await?;
 
             if let Some(server) = server {

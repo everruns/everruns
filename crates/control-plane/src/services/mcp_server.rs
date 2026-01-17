@@ -187,6 +187,15 @@ impl McpServerService {
         self.refresh_tools(id).await
     }
 
+    /// Get cached tools for an MCP server without refreshing (for preview)
+    /// Returns empty vec if server not found or no cached tools
+    pub async fn get_cached_tools(&self, id: Uuid) -> Vec<McpToolDefinition> {
+        match self.db.get_mcp_server(id).await {
+            Ok(Some(row)) => serde_json::from_value(row.cached_tools.clone()).unwrap_or_default(),
+            _ => Vec::new(),
+        }
+    }
+
     fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         // Parse headers from JSON
         let headers: HashMap<String, String> =
