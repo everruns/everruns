@@ -922,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -940,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -956,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-control-plane"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1002,7 +1002,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1033,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1065,7 +1065,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1099,7 +1099,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5172,9 +5172,9 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.14"
+version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd8f3f50b848df28f887acb68e41201b5aea6bc8a8dacc00fb40635ff9a72fea"
+checksum = "94f63c051f4fe3c1509da62131a678643c5b6fbdc9273b2b79d4378ebda003d2"
 
 [[package]]
 name = "zopfli"

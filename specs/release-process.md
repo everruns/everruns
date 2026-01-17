@@ -31,6 +31,16 @@ The `/prepare-release` command updates version in:
 - `apps/ui/package.json` (version field)
 - `CHANGELOG.md` (new version section)
 
+All packages (Rust crates and UI) are released together with the same version number.
+
+### Lock File Updates
+
+Lock files must be updated when preparing a release:
+- `Cargo.lock` - Run `cargo update` to sync with new workspace version
+- `apps/ui/package-lock.json` - Run `npm install` in apps/ui to regenerate
+
+This ensures lock files reflect the current version and any dependency updates.
+
 ### Commit Convention
 
 Release commits use: `chore(release): prepare vX.Y.Z`
