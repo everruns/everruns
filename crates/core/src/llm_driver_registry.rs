@@ -862,4 +862,183 @@ mod tests {
         assert!(registry.has_driver(&ProviderType::OpenAI));
         assert!(!registry.has_driver(&ProviderType::Anthropic));
     }
+
+    // ========================================================================
+    // Image resolution tests
+    // ========================================================================
+
+    use crate::{ContentPart, ImageFileContentPart, Message, MessageRole, TextContentPart};
+
+    #[test]
+    fn test_message_has_image_files_with_image_file() {
+        let message = Message {
+            id: uuid::Uuid::new_v4(),
+            role: MessageRole::User,
+            content: vec![
+                ContentPart::Text(TextContentPart {
+                    text: "Look at this image".to_string(),
+                }),
+                ContentPart::ImageFile(ImageFileContentPart {
+                    image_id: uuid::Uuid::new_v4(),
+                    filename: Some("test.png".to_string()),
+                }),
+            ],
+            controls: None,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+        };
+
+        assert!(LlmMessage::message_has_image_files(&message));
+    }
+
+    #[test]
+    fn test_message_has_image_files_without_image_file() {
+        let message = Message {
+            id: uuid::Uuid::new_v4(),
+            role: MessageRole::User,
+            content: vec![ContentPart::Text(TextContentPart {
+                text: "Just text".to_string(),
+            })],
+            controls: None,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+        };
+
+        assert!(!LlmMessage::message_has_image_files(&message));
+    }
+
+    #[test]
+    fn test_extract_image_file_ids() {
+        let id1 = uuid::Uuid::new_v4();
+        let id2 = uuid::Uuid::new_v4();
+
+        let message = Message {
+            id: uuid::Uuid::new_v4(),
+            role: MessageRole::User,
+            content: vec![
+                ContentPart::Text(TextContentPart {
+                    text: "Look at these images".to_string(),
+                }),
+                ContentPart::ImageFile(ImageFileContentPart {
+                    image_id: id1,
+                    filename: Some("test1.png".to_string()),
+                }),
+                ContentPart::ImageFile(ImageFileContentPart {
+                    image_id: id2,
+                    filename: Some("test2.png".to_string()),
+                }),
+            ],
+            controls: None,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+        };
+
+        let ids = LlmMessage::extract_image_file_ids(&message);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&id1));
+        assert!(ids.contains(&id2));
+    }
+
+    #[test]
+    fn test_from_message_with_images_text_only() {
+        let message = Message {
+            id: uuid::Uuid::new_v4(),
+            role: MessageRole::User,
+            content: vec![ContentPart::Text(TextContentPart {
+                text: "Hello".to_string(),
+            })],
+            controls: None,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+        };
+
+        let resolved = std::collections::HashMap::new();
+        let llm_message = LlmMessage::from_message_with_images(&message, &resolved);
+
+        assert_eq!(llm_message.role, LlmMessageRole::User);
+        match llm_message.content {
+            LlmMessageContent::Text(text) => assert_eq!(text, "Hello"),
+            _ => panic!("Expected text content"),
+        }
+    }
+
+    #[test]
+    fn test_from_message_with_images_resolved_image() {
+        let image_id = uuid::Uuid::new_v4();
+        let message = Message {
+            id: uuid::Uuid::new_v4(),
+            role: MessageRole::User,
+            content: vec![
+                ContentPart::Text(TextContentPart {
+                    text: "Look at this".to_string(),
+                }),
+                ContentPart::ImageFile(ImageFileContentPart {
+                    image_id,
+                    filename: Some("test.png".to_string()),
+                }),
+            ],
+            controls: None,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+        };
+
+        let mut resolved = std::collections::HashMap::new();
+        resolved.insert(
+            image_id,
+            crate::ResolvedImage::new("base64data", "image/png"),
+        );
+
+        let llm_message = LlmMessage::from_message_with_images(&message, &resolved);
+
+        match &llm_message.content {
+            LlmMessageContent::Parts(parts) => {
+                assert_eq!(parts.len(), 2);
+                // First part should be text
+                assert!(matches!(&parts[0], LlmContentPart::Text { .. }));
+                // Second part should be resolved image
+                if let LlmContentPart::Image { url } = &parts[1] {
+                    assert!(url.starts_with("data:image/png;base64,"));
+                } else {
+                    panic!("Expected image content part");
+                }
+            }
+            _ => panic!("Expected parts content"),
+        }
+    }
+
+    #[test]
+    fn test_from_message_with_images_unresolved_image() {
+        let image_id = uuid::Uuid::new_v4();
+        let message = Message {
+            id: uuid::Uuid::new_v4(),
+            role: MessageRole::User,
+            content: vec![ContentPart::ImageFile(ImageFileContentPart {
+                image_id,
+                filename: Some("missing.png".to_string()),
+            })],
+            controls: None,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+        };
+
+        // Empty resolved map - image not found
+        let resolved = std::collections::HashMap::new();
+        let llm_message = LlmMessage::from_message_with_images(&message, &resolved);
+
+        // Should have placeholder text for missing image
+        // When there's only one part, it may return Text directly instead of Parts
+        match &llm_message.content {
+            LlmMessageContent::Text(text) => {
+                assert!(text.contains("Image not found"));
+            }
+            LlmMessageContent::Parts(parts) => {
+                assert_eq!(parts.len(), 1);
+                if let LlmContentPart::Text { text } = &parts[0] {
+                    assert!(text.contains("Image not found"));
+                } else {
+                    panic!("Expected text placeholder for missing image");
+                }
+            }
+        }
+    }
 }

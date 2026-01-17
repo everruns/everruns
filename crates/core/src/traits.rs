@@ -389,3 +389,33 @@ pub trait ImageResolver: Send + Sync {
     /// Returns `None` if the image is not found.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>>;
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolved_image_new() {
+        let image = ResolvedImage::new("SGVsbG8=", "image/png");
+        assert_eq!(image.base64, "SGVsbG8=");
+        assert_eq!(image.media_type, "image/png");
+    }
+
+    #[test]
+    fn test_resolved_image_to_data_url() {
+        let image = ResolvedImage::new("SGVsbG8=", "image/png");
+        let data_url = image.to_data_url();
+        assert_eq!(data_url, "data:image/png;base64,SGVsbG8=");
+    }
+
+    #[test]
+    fn test_resolved_image_jpeg() {
+        let image = ResolvedImage::new("base64data", "image/jpeg");
+        let data_url = image.to_data_url();
+        assert!(data_url.starts_with("data:image/jpeg;base64,"));
+    }
+}

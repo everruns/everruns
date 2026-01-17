@@ -252,6 +252,12 @@ Anthropic Vision:
 }
 ```
 
+**gRPC Transfer:**
+
+Image data is transferred from control-plane to worker via gRPC. The gRPC message size limit is set to 150MB to accommodate base64-encoded images (100MB raw + ~33% encoding overhead + metadata).
+
+> **Note:** Transferring large images over gRPC is inefficient. Future improvements may include presigned URLs, streaming, or direct S3/blob storage access.
+
 **Error Handling:**
 
 - Missing images: Replaced with placeholder text `[Image not found: {id}]`
