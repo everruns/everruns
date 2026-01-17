@@ -66,7 +66,7 @@ impl CapabilityService {
                 name: server_with_tools.server.name.clone(),
                 description,
                 status: CapabilityStatus::Available,
-                icon: Some("plug".to_string()),
+                icon: Some("mcp".to_string()), // Official MCP logo
                 category: Some("MCP Servers".to_string()),
                 system_prompt: None,
                 tool_definitions: mcp_cap.tool_definitions(),
@@ -103,7 +103,7 @@ impl CapabilityService {
                     name: server.name,
                     description,
                     status: CapabilityStatus::Available,
-                    icon: Some("plug".to_string()),
+                    icon: Some("mcp".to_string()), // Official MCP logo
                     category: Some("MCP Servers".to_string()),
                     system_prompt: None,
                     tool_definitions: mcp_cap.tool_definitions(),
