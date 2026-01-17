@@ -19,12 +19,10 @@ This specification defines the release process for Everruns. The process is desi
 
 1. CHANGELOG.md is the canonical source for release notes
 2. GitHub Release notes are extracted from the corresponding version section in CHANGELOG.md
-3. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-4. Each version section may include:
-   - **Highlights** - Key features or changes (user-written)
-   - **Added/Changed/Fixed/Removed** - Generated from conventional commits
-   - **Screenshots** - Links to images demonstrating changes
-   - **Migration Notes** - Breaking changes or upgrade instructions
+3. Each version section includes:
+   - **Highlights** - Key features (user-written, 3-5 items)
+   - **What's Changed** - List of commits with markdown links: `- <message> ([#PR](url)) by [@user](url))`
+   - **Migration Notes** - Breaking changes or upgrade instructions (if needed)
 
 ### Version Updates
 
@@ -60,7 +58,7 @@ This commit message triggers the auto-tagging workflow on merge to main.
 
 ### Tooling
 
-- **git-cliff**: Generates changelog entries from conventional commits
+- **git log**: Lists commits since last tag for changelog generation
 - **GitHub Actions**: Auto-creates tag and release on merge
 - **`/prepare-release` command**: Agent-invocable command for release preparation
 

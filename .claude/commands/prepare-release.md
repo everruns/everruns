@@ -15,19 +15,16 @@ See `specs/release-process.md` for the full release process specification.
    - Version should follow semver (e.g., 0.4.0)
    - Confirm the version makes sense (check current version in Cargo.toml)
 
-2. **Generate changelog draft using git-cliff**
+2. **Generate commit list using git log**
    ```bash
-   # Check if git-cliff is installed
-   which git-cliff || cargo install git-cliff
-
-   # Generate unreleased changes since last tag (or all if no tags)
-   git cliff --unreleased --strip header
+   # List commits since last tag (or last 50 if no tags)
+   git log $(git describe --tags --abbrev=0 2>/dev/null || echo HEAD~50)..HEAD --oneline
    ```
 
-3. **Show the generated draft to the user** and ask them to:
-   - Review which items are significant enough for the changelog
-   - Identify any items that need rewording
-   - Decide if highlights section is needed
+3. **Show the generated list to the user** and ask them to:
+   - Review commits and confirm they look correct
+   - Provide 3-5 highlights for the release
+   - Note: Add markdown links for PRs `([#123](url))` and usernames `[@user](url))`
 
 4. **After user approval**, update these files:
 
@@ -50,17 +47,17 @@ See `specs/release-process.md` for the full release process specification.
 
    ### Highlights
 
-   <!-- Add key highlights, screenshots, or notes here -->
+   - **Feature Name** - Short description
+   - **Feature Name** - Short description
 
-   ### Added
-   - Feature 1
-   - Feature 2
+   ### What's Changed
 
-   ### Changed
-   - Change 1
+   - feat: commit message ([#123](https://github.com/everruns/everruns/pull/123)) by [@username](https://github.com/username)
+   - fix: commit message ([#124](https://github.com/everruns/everruns/pull/124)) by [@username](https://github.com/username)
 
-   ### Fixed
-   - Fix 1
+   ### Migration Notes
+
+   **X.Y.Z → X.Y.Z:** Migration instructions if needed.
    ```
 
 5. **Ask about migrations**:
