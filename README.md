@@ -3,8 +3,8 @@
 [![Website](https://img.shields.io/badge/Website-everruns.com-blue)](https://everruns.com)
 [![Docs](https://img.shields.io/badge/Docs-docs.everruns.com-green)](https://docs.everruns.com)
 [![CI](https://github.com/everruns/everruns/actions/workflows/ci.yml/badge.svg)](https://github.com/everruns/everruns/actions/workflows/ci.yml)
-[![Status: Vibecoding PoC](https://img.shields.io/badge/status-vibecoding%20PoC-orange)](https://github.com/everruns/everruns)
-[![Repo: Agent Friendly](https://img.shields.io/badge/repo-agent%20friendly-blue)](AGENTS.md)
+[![Status: Vibecoding PoC](https://img.shields.io/badge/Status-Vibecoding%20PoC-orange)](https://github.com/everruns/everruns)
+[![Repo: Agent Friendly](https://img.shields.io/badge/Repo-Agent%20Friendly-blue)](AGENTS.md)
 
 > **Note:** This repository is in **Heavy Vibecoding PoC Mode**. Expect rapid changes, experimental features, and unconventional approaches as we explore ideas quickly.
 
