@@ -1522,8 +1522,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 2: Custom limit=5...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?limit=5",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?limit=5",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1545,8 +1545,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 3: Offset=5, limit=5...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?offset=5&limit=5",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?offset=5&limit=5",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1565,8 +1565,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 4: Last partial page (offset=10, limit=10)...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?offset=10&limit=10",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?offset=10&limit=10",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1587,8 +1587,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 5: Beyond range (offset=20)...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?offset=20",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?offset=20",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -1609,8 +1609,8 @@ async fn test_sessions_pagination() {
     println!("\nTest 6: Max limit enforcement (limit=200 should cap to 100)...");
     let response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions?limit=200",
-            API_BASE_URL, agent.id
+            "{}/v1/orgs/{}/agents/{}/sessions?limit=200",
+            API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
         .await
@@ -2256,16 +2256,16 @@ async fn test_mcp_server_crud() {
         .expect("Failed to delete MCP server");
     client
         .delete(format!(
-            "{}/v1/mcp-servers/{}",
-            API_BASE_URL, server_with_key.id
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server_with_key.id
         ))
         .send()
         .await
         .expect("Failed to delete MCP server with key");
     client
         .delete(format!(
-            "{}/v1/mcp-servers/{}",
-            API_BASE_URL, server_with_headers.id
+            "{}/v1/orgs/{}/mcp-servers/{}",
+            API_BASE_URL, DEFAULT_ORG, server_with_headers.id
         ))
         .send()
         .await
