@@ -1,8 +1,15 @@
 "use client";
 
-import { X, Loader2, AlertCircle, ImageIcon } from "lucide-react";
+import { useState } from "react";
+import { X, Loader2, AlertCircle, ImageIcon, Download } from "lucide-react";
 import type { PendingImage } from "@/lib/api/images";
-import { getThumbnailUrl } from "@/lib/api/images";
+import { getThumbnailUrl, getImageUrl } from "@/lib/api/images";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface ImageAttachmentsProps {
   images: PendingImage[];
@@ -84,32 +91,74 @@ interface MessageImageProps {
 }
 
 export function MessageImage({ imageId, filename }: MessageImageProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const thumbnailUrl = getThumbnailUrl(imageId);
+  const fullImageUrl = getImageUrl(imageId);
+
+  const handleDownload = () => {
+    const link = document.createElement("a");
+    link.href = fullImageUrl;
+    link.download = filename || `image-${imageId}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
-    <div className="inline-block">
-      {/* API endpoint, not a Next.js page - using <a> is intentional */}
-      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-      <a
-        href={`/v1/images/${imageId}/data`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={thumbnailUrl}
-          alt={filename || "Image"}
-          className="max-w-[200px] max-h-[200px] rounded-md border hover:opacity-90 transition-opacity"
-          title={filename || "Click to view full size"}
-        />
-      </a>
-      {filename && (
-        <span className="text-xs text-muted-foreground mt-1 block truncate max-w-[200px]">
-          {filename}
-        </span>
-      )}
-    </div>
+    <>
+      <div className="inline-block">
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="block cursor-pointer"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={thumbnailUrl}
+            alt={filename || "Image"}
+            className="max-w-[200px] max-h-[200px] rounded-md border hover:opacity-90 transition-opacity"
+            title={filename || "Click to view full size"}
+          />
+        </button>
+        {filename && (
+          <span className="text-xs text-muted-foreground mt-1 block truncate max-w-[200px]">
+            {filename}
+          </span>
+        )}
+      </div>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden">
+          <DialogTitle className="sr-only">{filename || "Image preview"}</DialogTitle>
+          <div className="relative flex flex-col">
+            {/* Image container */}
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-muted/30">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={fullImageUrl}
+                alt={filename || "Image"}
+                className="max-w-full max-h-[70vh] object-contain rounded"
+              />
+            </div>
+            {/* Footer with filename and download */}
+            <div className="flex items-center justify-between p-3 border-t bg-background">
+              <span className="text-sm text-muted-foreground truncate max-w-[60%]">
+                {filename || "Image"}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownload}
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Download
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
