@@ -632,6 +632,94 @@ To add a new capability:
 
 4. **No database migration required** - the capability ID is validated at runtime
 
+### Capability Mount Points
+
+Capabilities can declare mount points to populate files and directories in the session filesystem when a session is created. This allows capabilities to provide sample data, documentation, configuration files, or other resources that agents can access during execution.
+
+#### Mount Point Data Model
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` | string | Target path in session filesystem (e.g., "/samples") |
+| `access` | MountAccess | Read/write permissions: `ReadOnly` or `ReadWrite` |
+| `source` | MountSource | Content to mount (file or directory) |
+| `capability_id` | string | ID of the capability providing this mount |
+
+#### MountAccess
+
+```rust
+pub enum MountAccess {
+    ReadOnly,   // Files cannot be modified or deleted
+    ReadWrite,  // Files can be read and written
+}
+```
+
+#### MountSource
+
+```rust
+pub enum MountSource {
+    InlineFile {
+        content: String,   // File content
+        encoding: String,  // "text" or "base64"
+    },
+    InlineDirectory {
+        entries: HashMap<String, MountEntry>,
+    },
+}
+```
+
+#### Capability Trait Addition
+
+```rust
+pub trait Capability: Send + Sync {
+    // ... existing methods ...
+
+    /// Returns mount points to populate in the session filesystem.
+    /// Default: empty vector (no mounts).
+    fn mounts(&self) -> Vec<MountPoint> { vec![] }
+}
+```
+
+#### Mount Application Flow
+
+1. Session is created via POST `/v1/agents/{agent_id}/sessions`
+2. SessionService fetches agent's capabilities
+3. Mounts are collected from all enabled capabilities
+4. Files and directories are created in session filesystem
+5. Files from readonly mounts are marked `is_readonly = true`
+
+#### Example Capability with Mounts
+
+```rust
+impl Capability for SampleDataCapability {
+    fn id(&self) -> &str { "sample_data" }
+    fn name(&self) -> &str { "Sample Data" }
+
+    fn mounts(&self) -> Vec<MountPoint> {
+        let samples_dir = MountDirectoryBuilder::new()
+            .file("users.json", USERS_JSON)
+            .file("config.yaml", CONFIG_YAML)
+            .build();
+
+        vec![MountPoint::readonly("/samples", samples_dir, self.id())]
+    }
+}
+```
+
+#### Built-in Capabilities with Mounts
+
+##### SampleData
+
+- **Status**: Available
+- **ID**: `sample_data`
+- **Purpose**: Demonstrates capability mounting with sample data files
+- **Mounts**:
+  - `/samples/users.json` - Sample JSON user data (readonly)
+  - `/samples/config.yaml` - Sample YAML configuration (readonly)
+  - `/samples/README.md` - Documentation about sample files (readonly)
+- **Icon**: "database"
+- **Category**: "Data"
+
 ### Extension Points (Future)
 
 1. **Custom Capabilities**: User-defined capabilities with custom tools
@@ -639,3 +727,4 @@ To add a new capability:
 3. **Capability Configuration**: Per-agent settings for capabilities
 4. **Conflict Resolution**: Handle tool name conflicts between capabilities
 5. **Capability Versioning**: Track capability API versions for compatibility
+6. **Dynamic Mount Sources**: External file sources (URLs, S3, etc.)
