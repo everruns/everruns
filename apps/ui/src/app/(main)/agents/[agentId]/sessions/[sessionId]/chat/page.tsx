@@ -17,6 +17,8 @@ import { isImageFilePart } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
+import { ThinkingIndicator } from "@/components/thinking-indicator";
+import { StreamingMessage } from "@/components/streaming-message";
 import { useSessionContext } from "../session-context";
 import { useLlmModels, useImageAttachments } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
@@ -38,6 +40,8 @@ export default function ChatPage() {
     reasoningEffort,
     setReasoningEffort,
     setIsWaitingForResponse,
+    isThinking,
+    streamingText,
     sendMessage,
     getMessageText,
     getToolCalls,
@@ -112,10 +116,10 @@ export default function ChatPage() {
     }
   }, [supportsReasoning, reasoningEffortConfig, reasoningEffort, setReasoningEffort]);
 
-  // Auto-scroll to bottom when new events arrive
+  // Auto-scroll to bottom when new events arrive or streaming text updates
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatEvents]);
+  }, [chatEvents, streamingText, isThinking]);
 
   // Auto-focus message input when session loads
   useEffect(() => {
@@ -315,6 +319,25 @@ export default function ChatPage() {
             );
           })
         )}
+
+        {/* Streaming content - thinking indicator or streaming text */}
+        {(isThinking || streamingText) && (
+          <div className="flex justify-start">
+            <div className="w-full bg-muted/60 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+                <div className="flex-1">
+                  {isThinking && !streamingText ? (
+                    <ThinkingIndicator />
+                  ) : streamingText ? (
+                    <StreamingMessage text={streamingText} />
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 

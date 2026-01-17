@@ -37,6 +37,10 @@ pub const TOOL_CALL_COMPLETED: &str = "tool.call_completed";
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
 
+// Streaming events (for real-time UI updates)
+pub const AGENT_THINKING: &str = "agent.thinking";
+pub const TEXT_DELTA: &str = "text.delta";
+
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
 pub const SESSION_ACTIVATED: &str = "session.activated";
@@ -753,6 +757,43 @@ impl LlmGenerationData {
 }
 
 // ============================================================================
+// Streaming Event Data Types
+// ============================================================================
+
+/// Data for agent.thinking event
+///
+/// Emitted when the LLM starts generating a response. UI can show a
+/// "thinking" indicator until text.delta or message.agent events arrive.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AgentThinkingData {
+    /// Turn ID this thinking indicator belongs to
+    pub turn_id: Uuid,
+
+    /// Optional model name being used
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+/// Data for text.delta event
+///
+/// Emitted during LLM streaming to provide incremental text updates.
+/// These events are batched (typically ~100ms) to reduce event volume.
+/// UI should accumulate deltas until message.agent arrives with final text.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TextDeltaData {
+    /// Turn ID this delta belongs to (for correlation)
+    pub turn_id: Uuid,
+
+    /// The text delta (new text since last delta)
+    pub delta: String,
+
+    /// Accumulated text so far (convenience for UI)
+    pub accumulated: String,
+}
+
+// ============================================================================
 // Turn Event Data Types
 // ============================================================================
 
@@ -869,6 +910,8 @@ pub struct SessionIdledData {
 /// - `tool.call_started` → ToolCallStartedData
 /// - `tool.call_completed` → ToolCallCompletedData
 /// - `llm.generation` → LlmGenerationData
+/// - `agent.thinking` → AgentThinkingData
+/// - `text.delta` → TextDeltaData
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
@@ -902,6 +945,10 @@ pub enum EventData {
     // LLM events
     LlmGeneration(LlmGenerationData),
 
+    // Streaming events
+    AgentThinking(AgentThinkingData),
+    TextDelta(TextDeltaData),
+
     // Session events
     SessionStarted(SessionStartedData),
     SessionActivated(SessionActivatedData),
@@ -932,6 +979,8 @@ impl EventData {
             EventData::ToolCallStarted(_) => TOOL_CALL_STARTED,
             EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
+            EventData::AgentThinking(_) => AGENT_THINKING,
+            EventData::TextDelta(_) => TEXT_DELTA,
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
             EventData::SessionIdled(_) => SESSION_IDLED,
@@ -975,6 +1024,8 @@ impl_from_event_data! {
     ToolCallStartedData => ToolCallStarted,
     ToolCallCompletedData => ToolCallCompleted,
     LlmGenerationData => LlmGeneration,
+    AgentThinkingData => AgentThinking,
+    TextDeltaData => TextDelta,
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,

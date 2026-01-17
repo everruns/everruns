@@ -20,6 +20,8 @@ import type {
   TokenUsage,
   SessionIdledData,
   LlmGenerationData,
+  AgentThinkingData,
+  TextDeltaData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -52,6 +54,10 @@ interface SessionContextValue {
   // Response waiting state
   isWaitingForResponse: boolean;
   setIsWaitingForResponse: (waiting: boolean) => void;
+  // Streaming state (for real-time text updates)
+  isThinking: boolean;
+  streamingText: string | null;
+  streamingTurnId: string | null;
   // Message sending
   sendMessage: UseMutationResult<
     Message,
@@ -91,6 +97,11 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
 
   // Track session status locally based on SSE events (no polling needed)
   const [localStatus, setLocalStatus] = useState<SessionStatus | null>(null);
+
+  // Streaming state - tracks real-time text generation
+  const [isThinking, setIsThinking] = useState(false);
+  const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
 
   // Optimistic events - shown immediately before SSE confirms
   const [optimisticEvents, setOptimisticEvents] = useState<Event[]>([]);
@@ -173,10 +184,57 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     }
   }, [events]);
 
-  // Reset local status and optimistic events when session changes
+  // Update streaming state from SSE events (agent.thinking, text.delta, message.agent)
+  // This provides real-time feedback while the LLM generates text
+  useEffect(() => {
+    if (!events || events.length === 0) return;
+
+    // Process events from newest to oldest to find current streaming state
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i];
+
+      // message.agent finalizes the response - stop streaming
+      if (event.type === "message.agent") {
+        const turnId = event.context?.turn_id;
+        // Only clear streaming if this message is for the current streaming turn
+        if (!streamingTurnId || turnId === streamingTurnId) {
+          setIsThinking(false);
+          setStreamingText(null);
+          setStreamingTurnId(null);
+        }
+        break;
+      }
+
+      // text.delta provides incremental text updates
+      if (event.type === "text.delta") {
+        const data = event.data as TextDeltaData;
+        setIsThinking(false); // No longer just thinking, now we have text
+        setStreamingText(data.accumulated);
+        setStreamingTurnId(data.turn_id);
+        break;
+      }
+
+      // agent.thinking indicates LLM is generating (before first text)
+      if (event.type === "agent.thinking") {
+        const data = event.data as AgentThinkingData;
+        // Only set thinking if we don't already have streaming text for this turn
+        if (!streamingText || streamingTurnId !== data.turn_id) {
+          setIsThinking(true);
+          setStreamingText(null);
+          setStreamingTurnId(data.turn_id);
+        }
+        break;
+      }
+    }
+  }, [events, streamingTurnId, streamingText]);
+
+  // Reset local status, optimistic events, and streaming state when session changes
   useEffect(() => {
     setLocalStatus(null);
     setOptimisticEvents([]);
+    setIsThinking(false);
+    setStreamingText(null);
+    setStreamingTurnId(null);
   }, [sessionId]);
 
   // Use local status if available, otherwise fall back to session status
@@ -373,6 +431,9 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     defaultEffortName,
     isWaitingForResponse,
     setIsWaitingForResponse,
+    isThinking,
+    streamingText,
+    streamingTurnId,
     sendMessage,
     getMessageText,
     getToolCalls,

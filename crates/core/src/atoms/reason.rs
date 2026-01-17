@@ -28,8 +28,8 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmGenerationData, MessageAgentData, ReasonCompletedData,
-    ReasonStartedData, TokenUsage, ToolDefinitionSummary,
+    AgentThinkingData, EventContext, EventRequest, LlmGenerationData, MessageAgentData,
+    ReasonCompletedData, ReasonStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -494,20 +494,95 @@ where
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
 
-        // 13. Process stream
+        // 13. Emit agent.thinking event to indicate LLM generation started
+        // This allows UI to show a thinking indicator immediately
+        let streaming_event_context = EventContext::from_atom_context(context);
+        if let Err(e) = self
+            .event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                streaming_event_context.clone(),
+                AgentThinkingData {
+                    turn_id: context.turn_id,
+                    model: Some(runtime_agent.model.clone()),
+                },
+            ))
+            .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "ReasonAtom: failed to emit agent.thinking event"
+            );
+        }
+
+        // 14. Process stream with batched text.delta emissions
+        // Batch deltas every 100ms to reduce event volume while providing real-time feedback
+        const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let mut text = String::new();
         let mut tool_calls = Vec::new();
         let mut completion_metadata: Option<LlmCompletionMetadata> = None;
+        let mut pending_delta = String::new();
+        let mut last_delta_emit = Instant::now();
 
         while let Some(event) = stream.next().await {
             match event? {
                 LlmStreamEvent::TextDelta(delta) => {
                     text.push_str(&delta);
+                    pending_delta.push_str(&delta);
+
+                    // Emit batched delta if interval elapsed
+                    if last_delta_emit.elapsed().as_millis() as u64 >= DELTA_BATCH_INTERVAL_MS
+                        && !pending_delta.is_empty()
+                    {
+                        if let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                TextDeltaData {
+                                    turn_id: context.turn_id,
+                                    delta: pending_delta.clone(),
+                                    accumulated: text.clone(),
+                                },
+                            ))
+                            .await
+                        {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                error = %e,
+                                "ReasonAtom: failed to emit text.delta event"
+                            );
+                        }
+                        pending_delta.clear();
+                        last_delta_emit = Instant::now();
+                    }
                 }
                 LlmStreamEvent::ToolCalls(calls) => {
                     tool_calls = calls;
                 }
                 LlmStreamEvent::Done(metadata) => {
+                    // Emit any remaining pending delta before completing
+                    if !pending_delta.is_empty()
+                        && let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                TextDeltaData {
+                                    turn_id: context.turn_id,
+                                    delta: pending_delta.clone(),
+                                    accumulated: text.clone(),
+                                },
+                            ))
+                            .await
+                    {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            error = %e,
+                            "ReasonAtom: failed to emit final text.delta event"
+                        );
+                    }
                     completion_metadata = Some(metadata);
                     break;
                 }
@@ -539,7 +614,7 @@ where
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 
-        // 14. Convert completion metadata to TokenUsage
+        // 15. Convert completion metadata to TokenUsage
         let usage = completion_metadata.as_ref().and_then(|meta| {
             match (meta.prompt_tokens, meta.completion_tokens) {
                 (Some(input), Some(output)) => Some(TokenUsage::with_cache(
@@ -552,7 +627,7 @@ where
             }
         });
 
-        // 15. Emit llm.generation event
+        // 16. Emit llm.generation event
         let event_context = EventContext::from_atom_context(context);
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
@@ -581,7 +656,7 @@ where
             );
         }
 
-        // 16. Build metadata with model and reasoning effort info
+        // 17. Build metadata with model and reasoning effort info
         let mut metadata = std::collections::HashMap::new();
         metadata.insert(
             "model".to_string(),
@@ -594,7 +669,7 @@ where
             );
         }
 
-        // 17. Store and emit message.agent event with metadata and usage
+        // 18. Store and emit message.agent event with metadata and usage
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())

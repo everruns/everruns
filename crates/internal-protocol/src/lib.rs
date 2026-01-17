@@ -252,9 +252,25 @@ fn deserialize_event_data(
             let typed: LlmGenerationData = serde_json::from_value(data)?;
             EventData::LlmGeneration(typed)
         }
+        AGENT_THINKING => {
+            let typed: AgentThinkingData = serde_json::from_value(data)?;
+            EventData::AgentThinking(typed)
+        }
+        TEXT_DELTA => {
+            let typed: TextDeltaData = serde_json::from_value(data)?;
+            EventData::TextDelta(typed)
+        }
         SESSION_STARTED => {
             let typed: SessionStartedData = serde_json::from_value(data)?;
             EventData::SessionStarted(typed)
+        }
+        SESSION_ACTIVATED => {
+            let typed: SessionActivatedData = serde_json::from_value(data)?;
+            EventData::SessionActivated(typed)
+        }
+        SESSION_IDLED => {
+            let typed: SessionIdledData = serde_json::from_value(data)?;
+            EventData::SessionIdled(typed)
         }
         _ => {
             // Unknown event type - store as raw JSON
@@ -283,6 +299,8 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ToolCallStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ToolCallCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::LlmGeneration(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::AgentThinking(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::TextDelta(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionIdled(d) => serde_json::to_value(d).unwrap_or_default(),
