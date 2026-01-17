@@ -158,16 +158,17 @@ impl StorageBackend {
     // Agents
     // ============================================
 
-    pub async fn create_agent(&self, input: CreateAgentRow) -> Result<AgentRow> {
-        dispatch!(self, create_agent, input)
+    pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
+        dispatch!(self, create_agent, org_id, input)
     }
 
     pub async fn create_agent_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
-        dispatch!(self, create_agent_with_id, id, input)
+        dispatch!(self, create_agent_with_id, org_id, id, input)
     }
 
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
@@ -265,18 +266,23 @@ impl StorageBackend {
     // LLM Providers
     // ============================================
 
-    pub async fn create_llm_provider(&self, input: CreateLlmProviderRow) -> Result<LlmProviderRow> {
-        dispatch!(self, create_llm_provider, input)
+    pub async fn create_llm_provider(
+        &self,
+        org_id: i64,
+        input: CreateLlmProviderRow,
+    ) -> Result<LlmProviderRow> {
+        dispatch!(self, create_llm_provider, org_id, input)
     }
 
     /// Create a provider with a specific ID (for seeding)
     /// Returns None if provider already exists (idempotent)
     pub async fn create_llm_provider_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateLlmProviderRow,
     ) -> Result<Option<LlmProviderRow>> {
-        dispatch!(self, create_llm_provider_with_id, id, input)
+        dispatch!(self, create_llm_provider_with_id, org_id, id, input)
     }
 
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
@@ -316,26 +322,34 @@ impl StorageBackend {
     // LLM Models
     // ============================================
 
-    pub async fn get_default_llm_model(&self) -> Result<Option<LlmModelWithProviderRow>> {
-        dispatch!(self, get_default_llm_model)
+    pub async fn get_default_llm_model(
+        &self,
+        org_id: i64,
+    ) -> Result<Option<LlmModelWithProviderRow>> {
+        dispatch!(self, get_default_llm_model, org_id)
     }
 
-    pub async fn clear_all_model_defaults(&self) -> Result<()> {
-        dispatch!(self, clear_all_model_defaults)
+    pub async fn clear_all_model_defaults(&self, org_id: i64) -> Result<()> {
+        dispatch!(self, clear_all_model_defaults, org_id)
     }
 
-    pub async fn create_llm_model(&self, input: CreateLlmModelRow) -> Result<LlmModelRow> {
-        dispatch!(self, create_llm_model, input)
+    pub async fn create_llm_model(
+        &self,
+        org_id: i64,
+        input: CreateLlmModelRow,
+    ) -> Result<LlmModelRow> {
+        dispatch!(self, create_llm_model, org_id, input)
     }
 
     /// Create a model with a specific ID (for seeding)
     /// Returns None if model already exists (idempotent)
     pub async fn create_llm_model_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateLlmModelRow,
     ) -> Result<Option<LlmModelRow>> {
-        dispatch!(self, create_llm_model_with_id, id, input)
+        dispatch!(self, create_llm_model_with_id, org_id, id, input)
     }
 
     pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {
@@ -356,8 +370,8 @@ impl StorageBackend {
         dispatch!(self, list_llm_models_for_provider, provider_id)
     }
 
-    pub async fn list_all_llm_models(&self) -> Result<Vec<LlmModelWithProviderRow>> {
-        dispatch!(self, list_all_llm_models)
+    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
+        dispatch!(self, list_all_llm_models, org_id)
     }
 
     pub async fn update_llm_model(
@@ -374,9 +388,10 @@ impl StorageBackend {
 
     pub async fn get_llm_model_by_model_id(
         &self,
+        org_id: i64,
         model_id: &str,
     ) -> Result<Option<LlmModelWithProviderRow>> {
-        dispatch!(self, get_llm_model_by_model_id, model_id)
+        dispatch!(self, get_llm_model_by_model_id, org_id, model_id)
     }
 
     // ============================================
@@ -505,16 +520,21 @@ impl StorageBackend {
     // MCP Servers
     // ============================================
 
-    pub async fn create_mcp_server(&self, input: CreateMcpServerRow) -> Result<McpServerRow> {
-        dispatch!(self, create_mcp_server, input)
+    pub async fn create_mcp_server(
+        &self,
+        org_id: i64,
+        input: CreateMcpServerRow,
+    ) -> Result<McpServerRow> {
+        dispatch!(self, create_mcp_server, org_id, input)
     }
 
     pub async fn create_mcp_server_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateMcpServerRow,
     ) -> Result<Option<McpServerRow>> {
-        dispatch!(self, create_mcp_server_with_id, id, input)
+        dispatch!(self, create_mcp_server_with_id, org_id, id, input)
     }
 
     pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {

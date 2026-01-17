@@ -316,15 +316,16 @@ impl Database {
     // Agents (configuration for agentic loop)
     // ============================================
 
-    pub async fn create_agent(&self, input: CreateAgentRow) -> Result<AgentRow> {
+    pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (name, description, system_prompt, default_model_id, tags, status)
-            VALUES ($1, $2, $3, $4, $5, 'active')
-            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            INSERT INTO agents (org_id, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'active')
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
+        .bind(org_id)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
@@ -340,19 +341,21 @@ impl Database {
     /// Returns None if agent already exists with this ID
     pub async fn create_agent_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (id, name, description, system_prompt, default_model_id, tags, status)
-            VALUES ($1, $2, $3, $4, $5, $6, 'active')
+            INSERT INTO agents (id, org_id, name, description, system_prompt, default_model_id, tags, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(id)
+        .bind(org_id)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
@@ -367,7 +370,7 @@ impl Database {
     pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE id = $1
@@ -383,7 +386,7 @@ impl Database {
     pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
         let rows = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE status = 'active'
@@ -399,7 +402,7 @@ impl Database {
     pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE name = $1 AND status = 'active'
@@ -425,7 +428,7 @@ impl Database {
                 status = COALESCE($7, status),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
+            RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -787,17 +790,22 @@ impl Database {
     // LLM Providers
     // ============================================
 
-    pub async fn create_llm_provider(&self, input: CreateLlmProviderRow) -> Result<LlmProviderRow> {
+    pub async fn create_llm_provider(
+        &self,
+        org_id: i64,
+        input: CreateLlmProviderRow,
+    ) -> Result<LlmProviderRow> {
         let api_key_set = input.api_key_encrypted.is_some();
         let settings = input.settings.unwrap_or(serde_json::json!({}));
 
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            INSERT INTO llm_providers (name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
+            INSERT INTO llm_providers (org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             "#,
         )
+        .bind(org_id)
         .bind(&input.name)
         .bind(&input.provider_type)
         .bind(&input.base_url)
@@ -815,6 +823,7 @@ impl Database {
     /// Returns None if provider already exists
     pub async fn create_llm_provider_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateLlmProviderRow,
     ) -> Result<Option<LlmProviderRow>> {
@@ -823,13 +832,14 @@ impl Database {
 
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            INSERT INTO llm_providers (id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO llm_providers (id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
+            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             "#,
         )
         .bind(id)
+        .bind(org_id)
         .bind(&input.name)
         .bind(&input.provider_type)
         .bind(&input.base_url)
@@ -845,7 +855,7 @@ impl Database {
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
         let row = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
+            SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             FROM llm_providers
             WHERE id = $1
             "#,
@@ -860,7 +870,7 @@ impl Database {
     pub async fn list_llm_providers(&self) -> Result<Vec<LlmProviderRow>> {
         let rows = sqlx::query_as::<_, LlmProviderRow>(
             r#"
-            SELECT id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
+            SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             FROM llm_providers
             ORDER BY created_at DESC
             "#,
@@ -892,7 +902,7 @@ impl Database {
                 settings = COALESCE($8, settings),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
+            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -920,28 +930,35 @@ impl Database {
 
     /// Get the default LLM model with provider info.
     /// Returns the model marked as default (is_default = true) with its provider info.
-    pub async fn get_default_llm_model(&self) -> Result<Option<LlmModelWithProviderRow>> {
+    pub async fn get_default_llm_model(
+        &self,
+        org_id: i64,
+    ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id
-            WHERE m.is_default = TRUE AND m.status = 'active' AND p.status = 'active'
+            WHERE m.is_default = TRUE AND m.status = 'active' AND p.status = 'active' AND m.org_id = $1
             "#,
         )
+        .bind(org_id)
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
     }
 
-    /// Clear all model defaults (set is_default = false for all models).
+    /// Clear all model defaults (set is_default = false for all models in org).
     /// Used to implement "last wins" default logic.
-    pub async fn clear_all_model_defaults(&self) -> Result<()> {
-        sqlx::query("UPDATE llm_models SET is_default = FALSE WHERE is_default = TRUE")
-            .execute(&self.pool)
-            .await?;
+    pub async fn clear_all_model_defaults(&self, org_id: i64) -> Result<()> {
+        sqlx::query(
+            "UPDATE llm_models SET is_default = FALSE WHERE is_default = TRUE AND org_id = $1",
+        )
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -979,16 +996,21 @@ impl Database {
     // LLM Models
     // ============================================
 
-    pub async fn create_llm_model(&self, input: CreateLlmModelRow) -> Result<LlmModelRow> {
+    pub async fn create_llm_model(
+        &self,
+        org_id: i64,
+        input: CreateLlmModelRow,
+    ) -> Result<LlmModelRow> {
         let capabilities_json = serde_json::to_value(&input.capabilities)?;
 
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            INSERT INTO llm_models (provider_id, model_id, display_name, capabilities, is_default, is_favorite)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
+            INSERT INTO llm_models (org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             "#,
         )
+        .bind(org_id)
         .bind(input.provider_id)
         .bind(&input.model_id)
         .bind(&input.display_name)
@@ -1006,6 +1028,7 @@ impl Database {
     /// Returns None if model already exists
     pub async fn create_llm_model_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateLlmModelRow,
     ) -> Result<Option<LlmModelRow>> {
@@ -1013,13 +1036,14 @@ impl Database {
 
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            INSERT INTO llm_models (id, provider_id, model_id, display_name, capabilities, is_default, is_favorite)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO llm_models (id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
+            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             "#,
         )
         .bind(id)
+        .bind(org_id)
         .bind(input.provider_id)
         .bind(&input.model_id)
         .bind(&input.display_name)
@@ -1035,7 +1059,7 @@ impl Database {
     pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            SELECT id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
+            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             FROM llm_models
             WHERE id = $1
             "#,
@@ -1053,7 +1077,7 @@ impl Database {
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id
@@ -1073,7 +1097,7 @@ impl Database {
     ) -> Result<Vec<LlmModelRow>> {
         let rows = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            SELECT id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
+            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             FROM llm_models
             WHERE provider_id = $1
             ORDER BY display_name ASC
@@ -1086,17 +1110,18 @@ impl Database {
         Ok(rows)
     }
 
-    pub async fn list_all_llm_models(&self) -> Result<Vec<LlmModelWithProviderRow>> {
+    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
         let rows = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id
-            WHERE m.status = 'active' AND p.status = 'active'
+            WHERE m.status = 'active' AND p.status = 'active' AND m.org_id = $1
             ORDER BY m.is_favorite DESC, p.name ASC, m.display_name ASC
             "#,
         )
+        .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
 
@@ -1125,7 +1150,7 @@ impl Database {
                 status = COALESCE($7, status),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
+            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -1153,18 +1178,20 @@ impl Database {
     /// Get model by model_id string (for resolving agent model references)
     pub async fn get_llm_model_by_model_id(
         &self,
+        org_id: i64,
         model_id: &str,
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
+            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_default, m.is_favorite, m.status, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id
-            WHERE m.model_id = $1 AND m.status = 'active' AND p.status = 'active'
+            WHERE m.model_id = $1 AND m.status = 'active' AND p.status = 'active' AND m.org_id = $2
             "#,
         )
         .bind(model_id)
+        .bind(org_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -1621,18 +1648,23 @@ impl Database {
     // MCP Servers
     // ============================================
 
-    pub async fn create_mcp_server(&self, input: CreateMcpServerRow) -> Result<McpServerRow> {
+    pub async fn create_mcp_server(
+        &self,
+        org_id: i64,
+        input: CreateMcpServerRow,
+    ) -> Result<McpServerRow> {
         let headers = input.headers.unwrap_or(serde_json::json!({}));
         let settings = input.settings.unwrap_or(serde_json::json!({}));
         let api_key_set = input.api_key_encrypted.is_some();
 
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            INSERT INTO mcp_servers (name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            INSERT INTO mcp_servers (org_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
+        .bind(org_id)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.url)
@@ -1651,6 +1683,7 @@ impl Database {
     /// Returns None if server already exists with this ID
     pub async fn create_mcp_server_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateMcpServerRow,
     ) -> Result<Option<McpServerRow>> {
@@ -1660,13 +1693,14 @@ impl Database {
 
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            INSERT INTO mcp_servers (id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO mcp_servers (id, org_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
         .bind(id)
+        .bind(org_id)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.url)
@@ -1684,7 +1718,7 @@ impl Database {
     pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
             WHERE id = $1
             "#,
@@ -1699,7 +1733,7 @@ impl Database {
     pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
             WHERE name = $1
             "#,
@@ -1714,7 +1748,7 @@ impl Database {
     pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
         let rows = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
             ORDER BY created_at DESC
             "#,
@@ -1729,7 +1763,7 @@ impl Database {
     pub async fn list_active_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
         let rows = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
             WHERE status = 'active'
             ORDER BY name ASC
@@ -1763,7 +1797,7 @@ impl Database {
                 headers = COALESCE($9, headers),
                 settings = COALESCE($10, settings)
             WHERE id = $1
-            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -1795,7 +1829,7 @@ impl Database {
                 cached_tools = $2,
                 tools_cached_at = NOW()
             WHERE id = $1
-            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
         .bind(id)

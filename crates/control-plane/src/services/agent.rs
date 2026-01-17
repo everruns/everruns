@@ -9,7 +9,7 @@ use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
 };
 use anyhow::Result;
-use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, TokenUsage};
+use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, DEFAULT_ORG_ID, TokenUsage};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -34,7 +34,7 @@ impl AgentService {
             default_model_id: req.default_model_id,
             tags: req.tags,
         };
-        let row = self.db.create_agent(input).await?;
+        let row = self.db.create_agent(DEFAULT_ORG_ID, input).await?; // TODO: Get org_id from context after Phase 3
         let agent_id = row.id;
 
         // Set capabilities if provided

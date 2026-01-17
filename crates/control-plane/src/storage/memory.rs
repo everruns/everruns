@@ -7,6 +7,7 @@
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -15,8 +16,12 @@ use super::models::*;
 
 /// In-memory database for dev mode
 /// All data is stored in memory and lost on restart
-#[derive(Default)]
 pub struct InMemoryDatabase {
+    // TODO: Used in Phase 3 when org APIs are implemented
+    #[allow(dead_code)]
+    organizations: RwLock<HashMap<i64, OrganizationRow>>,
+    #[allow(dead_code)]
+    organization_members: RwLock<HashMap<(i64, Uuid), OrganizationMemberRow>>,
     users: RwLock<HashMap<Uuid, UserRow>>,
     api_keys: RwLock<HashMap<Uuid, ApiKeyRow>>,
     refresh_tokens: RwLock<HashMap<Uuid, RefreshTokenRow>>,
@@ -31,6 +36,43 @@ pub struct InMemoryDatabase {
     images: RwLock<HashMap<Uuid, ImageRow>>,
     // Event sequence counter per session
     event_sequences: RwLock<HashMap<Uuid, i32>>,
+}
+
+impl Default for InMemoryDatabase {
+    fn default() -> Self {
+        let now = Utc::now();
+
+        // Pre-create default organization
+        let mut organizations = HashMap::new();
+        organizations.insert(
+            DEFAULT_ORG_ID,
+            OrganizationRow {
+                org_id: DEFAULT_ORG_ID,
+                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                name: "Default Organization".to_string(),
+                created_at: now,
+                updated_at: now,
+            },
+        );
+
+        Self {
+            organizations: RwLock::new(organizations),
+            organization_members: RwLock::new(HashMap::new()),
+            users: RwLock::new(HashMap::new()),
+            api_keys: RwLock::new(HashMap::new()),
+            refresh_tokens: RwLock::new(HashMap::new()),
+            agents: RwLock::new(HashMap::new()),
+            sessions: RwLock::new(HashMap::new()),
+            events: RwLock::new(HashMap::new()),
+            llm_providers: RwLock::new(HashMap::new()),
+            llm_models: RwLock::new(HashMap::new()),
+            agent_capabilities: RwLock::new(HashMap::new()),
+            session_files: RwLock::new(HashMap::new()),
+            mcp_servers: RwLock::new(HashMap::new()),
+            images: RwLock::new(HashMap::new()),
+            event_sequences: RwLock::new(HashMap::new()),
+        }
+    }
 }
 
 impl InMemoryDatabase {
@@ -148,6 +190,7 @@ impl InMemoryDatabase {
         let id = Uuid::now_v7();
         let row = ApiKeyRow {
             id,
+            org_id: input.org_id,
             user_id: input.user_id,
             name: input.name,
             key_hash: input.key_hash,
@@ -269,11 +312,12 @@ impl InMemoryDatabase {
     // Agents
     // ============================================
 
-    pub async fn create_agent(&self, input: CreateAgentRow) -> Result<AgentRow> {
+    pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let now = Self::now();
         let id = Uuid::now_v7();
         let row = AgentRow {
             id,
+            org_id,
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
@@ -294,6 +338,7 @@ impl InMemoryDatabase {
     /// Create agent with a specific ID, idempotent (returns None if exists)
     pub async fn create_agent_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
@@ -304,6 +349,7 @@ impl InMemoryDatabase {
         let now = Self::now();
         let row = AgentRow {
             id,
+            org_id,
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
@@ -647,12 +693,17 @@ impl InMemoryDatabase {
     // LLM Providers
     // ============================================
 
-    pub async fn create_llm_provider(&self, input: CreateLlmProviderRow) -> Result<LlmProviderRow> {
+    pub async fn create_llm_provider(
+        &self,
+        org_id: i64,
+        input: CreateLlmProviderRow,
+    ) -> Result<LlmProviderRow> {
         let now = Self::now();
         let id = Uuid::now_v7();
         let api_key_set = input.api_key_encrypted.is_some();
         let row = LlmProviderRow {
             id,
+            org_id,
             name: input.name,
             provider_type: input.provider_type,
             base_url: input.base_url,
@@ -671,6 +722,7 @@ impl InMemoryDatabase {
     /// Returns None if provider already exists (idempotent)
     pub async fn create_llm_provider_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateLlmProviderRow,
     ) -> Result<Option<LlmProviderRow>> {
@@ -682,6 +734,7 @@ impl InMemoryDatabase {
         let api_key_set = input.api_key_encrypted.is_some();
         let row = LlmProviderRow {
             id,
+            org_id,
             name: input.name,
             provider_type: input.provider_type,
             base_url: input.base_url,
@@ -782,16 +835,21 @@ impl InMemoryDatabase {
     // LLM Models
     // ============================================
 
-    pub async fn get_default_llm_model(&self) -> Result<Option<LlmModelWithProviderRow>> {
+    pub async fn get_default_llm_model(
+        &self,
+        org_id: i64,
+    ) -> Result<Option<LlmModelWithProviderRow>> {
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
 
         for model in models.values() {
             if model.is_default
+                && model.org_id == org_id
                 && let Some(provider) = providers.get(&model.provider_id)
             {
                 return Ok(Some(LlmModelWithProviderRow {
                     id: model.id,
+                    org_id: model.org_id,
                     provider_id: model.provider_id,
                     model_id: model.model_id.clone(),
                     display_name: model.display_name.clone(),
@@ -809,18 +867,25 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn clear_all_model_defaults(&self) -> Result<()> {
+    pub async fn clear_all_model_defaults(&self, org_id: i64) -> Result<()> {
         for model in self.llm_models.write().values_mut() {
-            model.is_default = false;
+            if model.org_id == org_id {
+                model.is_default = false;
+            }
         }
         Ok(())
     }
 
-    pub async fn create_llm_model(&self, input: CreateLlmModelRow) -> Result<LlmModelRow> {
+    pub async fn create_llm_model(
+        &self,
+        org_id: i64,
+        input: CreateLlmModelRow,
+    ) -> Result<LlmModelRow> {
         let now = Self::now();
         let id = Uuid::now_v7();
         let row = LlmModelRow {
             id,
+            org_id,
             provider_id: input.provider_id,
             model_id: input.model_id,
             display_name: input.display_name,
@@ -839,6 +904,7 @@ impl InMemoryDatabase {
     /// Returns None if model already exists (idempotent)
     pub async fn create_llm_model_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateLlmModelRow,
     ) -> Result<Option<LlmModelRow>> {
@@ -849,6 +915,7 @@ impl InMemoryDatabase {
         let now = Self::now();
         let row = LlmModelRow {
             id,
+            org_id,
             provider_id: input.provider_id,
             model_id: input.model_id,
             display_name: input.display_name,
@@ -879,6 +946,7 @@ impl InMemoryDatabase {
         {
             return Ok(Some(LlmModelWithProviderRow {
                 id: model.id,
+                org_id: model.org_id,
                 provider_id: model.provider_id,
                 model_id: model.model_id.clone(),
                 display_name: model.display_name.clone(),
@@ -909,17 +977,19 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    pub async fn list_all_llm_models(&self) -> Result<Vec<LlmModelWithProviderRow>> {
+    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
 
         let mut result: Vec<_> = models
             .values()
+            .filter(|model| model.org_id == org_id)
             .filter_map(|model| {
                 providers
                     .get(&model.provider_id)
                     .map(|provider| LlmModelWithProviderRow {
                         id: model.id,
+                        org_id: model.org_id,
                         provider_id: model.provider_id,
                         model_id: model.model_id.clone(),
                         display_name: model.display_name.clone(),
@@ -977,6 +1047,7 @@ impl InMemoryDatabase {
 
     pub async fn get_llm_model_by_model_id(
         &self,
+        org_id: i64,
         model_id: &str,
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let models = self.llm_models.read();
@@ -984,10 +1055,12 @@ impl InMemoryDatabase {
 
         for model in models.values() {
             if model.model_id == model_id
+                && model.org_id == org_id
                 && let Some(provider) = providers.get(&model.provider_id)
             {
                 return Ok(Some(LlmModelWithProviderRow {
                     id: model.id,
+                    org_id: model.org_id,
                     provider_id: model.provider_id,
                     model_id: model.model_id.clone(),
                     display_name: model.display_name.clone(),
@@ -1376,13 +1449,17 @@ impl InMemoryDatabase {
     // MCP Servers
     // ============================================
 
-    pub async fn create_mcp_server(&self, input: CreateMcpServerRow) -> Result<McpServerRow> {
-        // Check for duplicate name
+    pub async fn create_mcp_server(
+        &self,
+        org_id: i64,
+        input: CreateMcpServerRow,
+    ) -> Result<McpServerRow> {
+        // Check for duplicate name within org
         if self
             .mcp_servers
             .read()
             .values()
-            .any(|s| s.name == input.name)
+            .any(|s| s.name == input.name && s.org_id == org_id)
         {
             return Err(anyhow!(
                 "MCP server with name '{}' already exists",
@@ -1396,6 +1473,7 @@ impl InMemoryDatabase {
 
         let row = McpServerRow {
             id,
+            org_id,
             name: input.name,
             description: input.description,
             url: input.url,
@@ -1419,6 +1497,7 @@ impl InMemoryDatabase {
     /// Returns None if server already exists with this ID
     pub async fn create_mcp_server_with_id(
         &self,
+        org_id: i64,
         id: Uuid,
         input: CreateMcpServerRow,
     ) -> Result<Option<McpServerRow>> {
@@ -1432,6 +1511,7 @@ impl InMemoryDatabase {
 
         let row = McpServerRow {
             id,
+            org_id,
             name: input.name,
             description: input.description,
             url: input.url,
@@ -1671,13 +1751,14 @@ impl InMemoryDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::DEFAULT_ORG_ID;
 
     #[tokio::test]
     async fn test_create_and_get_agent() {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(CreateAgentRow {
+            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
                 name: "Test Agent".to_string(),
                 description: Some("A test agent".to_string()),
                 system_prompt: "You are helpful".to_string(),
@@ -1699,7 +1780,7 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(CreateAgentRow {
+            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
                 name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
@@ -1733,7 +1814,7 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(CreateAgentRow {
+            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
                 name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
@@ -1780,7 +1861,7 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(CreateAgentRow {
+            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
                 name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
@@ -1838,7 +1919,7 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(CreateAgentRow {
+            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
                 name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),

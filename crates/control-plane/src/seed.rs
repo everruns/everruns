@@ -9,6 +9,7 @@ use everruns_control_plane::storage::{
     StorageBackend,
     models::{CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow},
 };
+use everruns_core::DEFAULT_ORG_ID;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -238,7 +239,10 @@ async fn seed_agents(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             tags: seed.tags.iter().map(|s| s.to_string()).collect(),
         };
 
-        match db.create_agent_with_id(seed.id, input).await? {
+        match db
+            .create_agent_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .await?
+        {
             Some(row) => {
                 // Set capabilities if any (with empty config)
                 if !seed.capabilities.is_empty() {
@@ -312,7 +316,10 @@ async fn seed_providers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             settings: None,
         };
 
-        match db.create_llm_provider_with_id(seed.id, input).await? {
+        match db
+            .create_llm_provider_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .await?
+        {
             Some(_) => {
                 tracing::info!(name = seed.name, id = %seed.id, "Created seed provider");
                 result.created += 1;
@@ -682,7 +689,10 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             is_favorite: seed.is_favorite,
         };
 
-        match db.create_llm_model_with_id(seed.id, input).await? {
+        match db
+            .create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .await?
+        {
             Some(_) => {
                 tracing::info!(
                     model_id = seed.model_id,
@@ -740,7 +750,10 @@ async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             settings: None,
         };
 
-        match db.create_mcp_server_with_id(seed.id, input).await? {
+        match db
+            .create_mcp_server_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .await?
+        {
             Some(_) => {
                 tracing::info!(
                     name = seed.name,

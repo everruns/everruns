@@ -11,6 +11,7 @@
 
 use crate::storage::{EncryptionService, StorageBackend, models::LlmProviderRow};
 use anyhow::Result;
+use everruns_core::DEFAULT_ORG_ID;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -97,7 +98,8 @@ impl LlmResolverService {
     /// Resolve the default model with decrypted provider credentials
     pub async fn resolve_default_model(&self) -> Result<Option<ResolvedModel>> {
         // Look up the default model
-        let model_row = self.db.get_default_llm_model().await?;
+        // TODO: Get org_id from context after Phase 3
+        let model_row = self.db.get_default_llm_model(DEFAULT_ORG_ID).await?;
 
         let model_row = match model_row {
             Some(row) => row,

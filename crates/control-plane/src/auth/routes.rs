@@ -11,6 +11,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{Duration, Utc};
+use everruns_core::DEFAULT_ORG_ID;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -582,6 +583,7 @@ pub async fn create_api_key_route(
     let key_row = state
         .db
         .create_api_key(CreateApiKeyRow {
+            org_id: DEFAULT_ORG_ID, // TODO: Get from request context after Phase 3
             user_id: user.id,
             name: req.name.clone(),
             key_hash: generated.key_hash.clone(),

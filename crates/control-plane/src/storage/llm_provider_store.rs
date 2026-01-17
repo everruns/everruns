@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, Result,
+    AgentLoopError, DEFAULT_ORG_ID, Result,
     llm_models::LlmProviderType,
     traits::{LlmProviderStore, ModelWithProvider},
 };
@@ -81,9 +81,10 @@ impl LlmProviderStore for DbLlmProviderStore {
 
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
         // Look up the default model (is_default = true)
+        // TODO: Get org_id from context after Phase 3
         let model_row = self
             .db
-            .get_default_llm_model()
+            .get_default_llm_model(DEFAULT_ORG_ID)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 

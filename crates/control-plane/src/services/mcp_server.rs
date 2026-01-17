@@ -8,8 +8,8 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition, McpToolsListRequest,
-    McpToolsListResponse,
+    DEFAULT_ORG_ID, McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition,
+    McpToolsListRequest, McpToolsListResponse,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -58,7 +58,7 @@ impl McpServerService {
             settings: None,
         };
 
-        let row = self.db.create_mcp_server(input).await?;
+        let row = self.db.create_mcp_server(DEFAULT_ORG_ID, input).await?; // TODO: Get org_id from context after Phase 3
         Ok(Self::row_to_mcp_server(&row))
     }
 
