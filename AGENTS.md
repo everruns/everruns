@@ -38,6 +38,7 @@ Available specs:
 - `specs/documentation.md` - Documentation site (Astro Starlight, Cloudflare Pages)
 - `specs/brand.md` - Brand identity, colors, typography, voice
 - `specs/dismissed-options.md` - Technical options considered but dismissed
+- `specs/multitenancy.md` - Organization-based multitenancy and resource isolation
 
 Specification format: Abstract and Requirements sections.
 
