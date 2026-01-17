@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useCallback } from "react";
+import { use, useMemo, useCallback, useState } from "react";
 import { useAgent, useSessions, useCreateSession, useCapabilities, useLlmModels, useExportAgent } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -11,12 +11,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { AgentPreview } from "@/components/agents/agent-preview";
 import {
   ArrowLeft,
   Plus,
   Pencil,
   Download,
   Zap,
+  Eye,
+  LayoutDashboard,
 } from "lucide-react";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -44,6 +48,7 @@ export default function AgentDetailPage({
 }) {
   const { agentId } = use(params);
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState("overview");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   // Fetch only top 10 sessions for the overview
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, { limit: 10 });
@@ -168,7 +173,20 @@ export default function AgentDetailPage({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-6">
+          <TabsTrigger value="overview">
+            <LayoutDashboard className="w-4 h-4 mr-2" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="preview">
+            <Eye className="w-4 h-4 mr-2" />
+            Preview
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview">
+          <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
@@ -337,7 +355,19 @@ export default function AgentDetailPage({
             </CardContent>
           </Card>
         </div>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="preview">
+          <AgentPreview
+            systemPrompt={agent.system_prompt}
+            capabilities={agentCapabilities.map((cap) => ({
+              ref: cap.ref,
+              config: cap.config,
+            }))}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
