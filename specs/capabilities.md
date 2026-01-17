@@ -322,14 +322,14 @@ This capability intentionally does not contribute to the system prompt. The tool
 
 Binary content (images, PDFs, audio, video, etc.) cannot be fetched as textual content. However, instead of returning a tool error, the response includes available metadata (content type, size, filename, last modified) along with an error message explaining binary content is not supported. This allows agents to understand what the resource is even though they cannot access its content.
 
-##### Design Decision: Built-in HTML Conversion
+##### Design Decision: fetchkit Library
 
-The capability includes built-in HTML to markdown/text conversion rather than requiring external dependencies. This provides:
+The capability uses the [fetchkit](https://github.com/everruns/fetchkit) library for all HTTP operations and HTML conversion. This provides:
 - Consistent behavior across deployments
-- No external library licensing concerns
-- Predictable output format
-
-The conversion handles common HTML elements (headings, lists, emphasis, code blocks, etc.) and strips script/style content.
+- Built-in HTML to markdown/text conversion optimized for LLM consumption
+- Automatic binary content detection
+- Timeout management with partial content on body timeout
+- Excessive newline filtering
 
 #### StatelessTodoList
 
