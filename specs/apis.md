@@ -38,13 +38,48 @@ See [authentication.md](authentication.md) for full authentication specification
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/agents` | Create agent |
-| GET | `/v1/agents` | List agents (paginated) |
-| GET | `/v1/agents/{id}` | Get agent by ID |
-| PATCH | `/v1/agents/{id}` | Update agent |
-| DELETE | `/v1/agents/{id}` | Archive agent (soft delete) |
-| POST | `/v1/agents/import` | Import agent from file content |
-| GET | `/v1/agents/{id}/export` | Export agent as Markdown |
+| POST | `/v1/orgs/{org}/agents` | Create agent |
+| GET | `/v1/orgs/{org}/agents` | List agents (paginated) |
+| GET | `/v1/orgs/{org}/agents/{id}` | Get agent by ID |
+| PATCH | `/v1/orgs/{org}/agents/{id}` | Update agent |
+| DELETE | `/v1/orgs/{org}/agents/{id}` | Archive agent (soft delete) |
+| POST | `/v1/orgs/{org}/agents/import` | Import agent from file content |
+| GET | `/v1/orgs/{org}/agents/{id}/export` | Export agent as Markdown |
+| POST | `/v1/orgs/{org}/agents/preview` | Preview final agent shape |
+
+#### Agent Preview
+
+The preview endpoint computes the final agent shape without persisting anything. Useful for UI to show users what their agent will look like at runtime.
+
+**Request:**
+```json
+POST /v1/orgs/{org}/agents/preview
+{
+  "system_prompt": "You are a helpful assistant.",
+  "capabilities": [
+    { "ref": "current_time" },
+    { "ref": "mcp:01234567-89ab-cdef-0123-456789abcdef" }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "system_prompt": "## Current Time\nYou have access to...\n\nYou are a helpful assistant.",
+  "tools": [
+    {
+      "name": "get_current_time",
+      "description": "Get the current date and time",
+      "parameters": { ... }
+    }
+  ]
+}
+```
+
+The response shows:
+- `system_prompt`: Final prompt with capability additions prepended
+- `tools`: All tool definitions from enabled capabilities (including MCP servers)
 
 **Input Validation:**
 
