@@ -1849,6 +1849,29 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    /// Create organization with specific org_id (for seeding).
+    /// Returns None if org_id already exists.
+    pub async fn create_organization_with_id(
+        &self,
+        org_id: i64,
+        input: CreateOrganizationRow,
+    ) -> Result<Option<OrganizationRow>> {
+        let now = Self::now();
+        let mut orgs = self.organizations.write();
+        if orgs.contains_key(&org_id) {
+            return Ok(None);
+        }
+        let row = OrganizationRow {
+            org_id,
+            public_id: input.public_id,
+            name: input.name,
+            created_at: now,
+            updated_at: now,
+        };
+        orgs.insert(org_id, row.clone());
+        Ok(Some(row))
+    }
+
     pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
         Ok(self.organizations.read().get(&org_id).cloned())
     }

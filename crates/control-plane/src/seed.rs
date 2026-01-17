@@ -7,9 +7,12 @@
 
 use everruns_control_plane::storage::{
     StorageBackend,
-    models::{CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow},
+    models::{
+        CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
+        CreateOrganizationRow,
+    },
 };
-use everruns_core::DEFAULT_ORG_ID;
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -100,6 +103,44 @@ impl SeedResult {
         self.created += other.created;
         self.skipped += other.skipped;
     }
+}
+
+// ============================================
+// Default Organization Seeder
+// ============================================
+
+/// Seed the default organization (must run first)
+async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    let input = CreateOrganizationRow {
+        public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+        name: "Default Organization".to_string(),
+    };
+
+    match db
+        .create_organization_with_id(DEFAULT_ORG_ID, input)
+        .await?
+    {
+        Some(_) => {
+            tracing::info!(
+                org_id = DEFAULT_ORG_ID,
+                public_id = DEFAULT_ORG_PUBLIC_ID,
+                "Created default organization"
+            );
+            result.created += 1;
+        }
+        None => {
+            tracing::debug!(
+                org_id = DEFAULT_ORG_ID,
+                public_id = DEFAULT_ORG_PUBLIC_ID,
+                "Default organization already exists, skipping"
+            );
+            result.skipped += 1;
+        }
+    }
+
+    Ok(result)
 }
 
 // ============================================
@@ -868,12 +909,21 @@ async fn run_seed_with_retry(db: &StorageBackend) -> Result<SeedResult, String> 
 }
 
 /// Run all seeders in order
-/// Providers must be seeded before models (foreign key dependency)
-/// MCP servers must be seeded before agents (agents may reference them)
+/// Order: organization → providers → models → mcp_servers → agents
+/// Organization must be seeded first (all resources have org_id FK)
 async fn seed_all(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
-    // Seed providers first (models depend on providers)
+    // Seed default organization first (all other resources depend on it)
+    let org_result = seed_default_organization(db).await?;
+    tracing::debug!(
+        created = org_result.created,
+        skipped = org_result.skipped,
+        "Default organization seeded"
+    );
+    result.merge(org_result);
+
+    // Seed providers (models depend on them)
     let provider_result = seed_providers(db).await?;
     tracing::debug!(
         created = provider_result.created,
@@ -882,7 +932,7 @@ async fn seed_all(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     );
     result.merge(provider_result);
 
-    // Seed models (after providers)
+    // Seed models (depend on providers)
     let model_result = seed_models(db).await?;
     tracing::debug!(
         created = model_result.created,

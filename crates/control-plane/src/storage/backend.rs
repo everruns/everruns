@@ -691,6 +691,16 @@ impl StorageBackend {
         dispatch!(self, create_organization, input)
     }
 
+    /// Create organization with specific org_id (for seeding).
+    /// Returns None if org_id already exists.
+    pub async fn create_organization_with_id(
+        &self,
+        org_id: i64,
+        input: CreateOrganizationRow,
+    ) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, create_organization_with_id, org_id, input)
+    }
+
     pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
         dispatch!(self, get_organization, org_id)
     }

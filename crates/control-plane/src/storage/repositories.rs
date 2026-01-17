@@ -2091,6 +2091,30 @@ impl Database {
         Ok(row)
     }
 
+    /// Create organization with specific org_id (for seeding).
+    /// Returns None if org_id already exists.
+    pub async fn create_organization_with_id(
+        &self,
+        org_id: i64,
+        input: CreateOrganizationRow,
+    ) -> Result<Option<OrganizationRow>> {
+        let row = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            INSERT INTO organizations (org_id, public_id, name)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (org_id) DO NOTHING
+            RETURNING org_id, public_id, name, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(&input.public_id)
+        .bind(&input.name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
