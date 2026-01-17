@@ -7,8 +7,14 @@
 // Design Decision: AgentCapabilityConfig uses `ref` for the capability ID to avoid
 // confusion with `id` which typically refers to primary keys. The config field stores
 // per-agent configuration for the capability.
+//
+// Design Decision: Capabilities can declare mount points to populate files in the session
+// filesystem. Mount points specify a path, access mode (readonly/readwrite), and content
+// source. This allows capabilities to provide sample data, documentation, or configuration
+// files that agents can access during execution.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -47,6 +53,8 @@ impl CapabilityId {
     pub const FAKE_AWS: &'static str = "fake_aws";
     pub const FAKE_CRM: &'static str = "fake_crm";
     pub const FAKE_FINANCIAL: &'static str = "fake_financial";
+    // Demo capability with mount points
+    pub const SAMPLE_DATA: &'static str = "sample_data";
 
     /// Create the noop capability ID
     pub fn noop() -> Self {
@@ -111,6 +119,11 @@ impl CapabilityId {
     /// Create the fake_financial capability ID
     pub fn fake_financial() -> Self {
         Self::new(Self::FAKE_FINANCIAL)
+    }
+
+    /// Create the sample_data capability ID
+    pub fn sample_data() -> Self {
+        Self::new(Self::SAMPLE_DATA)
     }
 }
 
@@ -222,6 +235,184 @@ impl From<&str> for AgentCapabilityConfig {
 impl From<String> for AgentCapabilityConfig {
     fn from(id: String) -> Self {
         Self::new(CapabilityId::new(id))
+    }
+}
+
+// ============================================================================
+// Mount Point Types
+// ============================================================================
+
+/// Access mode for mounted files/directories
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MountAccess {
+    /// Files are read-only (cannot be modified or deleted by agents)
+    #[default]
+    ReadOnly,
+    /// Files can be read and written by agents
+    ReadWrite,
+}
+
+impl std::fmt::Display for MountAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MountAccess::ReadOnly => write!(f, "readonly"),
+            MountAccess::ReadWrite => write!(f, "readwrite"),
+        }
+    }
+}
+
+/// Source content for a mount entry
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MountSource {
+    /// A single file with inline content
+    InlineFile {
+        /// File content (text or base64-encoded binary)
+        content: String,
+        /// Content encoding: "text" or "base64"
+        encoding: String,
+    },
+    /// A directory containing multiple entries
+    InlineDirectory {
+        /// Map of filename to mount entry
+        entries: HashMap<String, MountEntry>,
+    },
+}
+
+impl MountSource {
+    /// Create an inline text file source
+    pub fn text_file(content: impl Into<String>) -> Self {
+        Self::InlineFile {
+            content: content.into(),
+            encoding: "text".to_string(),
+        }
+    }
+
+    /// Create an inline base64-encoded binary file source
+    pub fn binary_file(content: impl Into<String>) -> Self {
+        Self::InlineFile {
+            content: content.into(),
+            encoding: "base64".to_string(),
+        }
+    }
+
+    /// Create an inline directory source
+    pub fn directory(entries: HashMap<String, MountEntry>) -> Self {
+        Self::InlineDirectory { entries }
+    }
+
+    /// Check if this source is a directory
+    pub fn is_directory(&self) -> bool {
+        matches!(self, Self::InlineDirectory { .. })
+    }
+}
+
+/// A single entry in a mount (file or directory)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MountEntry {
+    /// The source content
+    pub source: MountSource,
+}
+
+impl MountEntry {
+    /// Create a new mount entry from a source
+    pub fn new(source: MountSource) -> Self {
+        Self { source }
+    }
+
+    /// Create a text file entry
+    pub fn text_file(content: impl Into<String>) -> Self {
+        Self::new(MountSource::text_file(content))
+    }
+
+    /// Create a directory entry with children
+    pub fn directory(entries: HashMap<String, MountEntry>) -> Self {
+        Self::new(MountSource::directory(entries))
+    }
+}
+
+/// A mount point declaration from a capability
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MountPoint {
+    /// Target path in the session filesystem (e.g., "/samples")
+    pub path: String,
+    /// Access mode for the mounted content
+    pub access: MountAccess,
+    /// The source content to mount
+    pub source: MountSource,
+    /// ID of the capability providing this mount
+    pub capability_id: String,
+}
+
+impl MountPoint {
+    /// Create a new mount point
+    pub fn new(
+        path: impl Into<String>,
+        access: MountAccess,
+        source: MountSource,
+        capability_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            access,
+            source,
+            capability_id: capability_id.into(),
+        }
+    }
+
+    /// Create a read-only mount point
+    pub fn readonly(
+        path: impl Into<String>,
+        source: MountSource,
+        capability_id: impl Into<String>,
+    ) -> Self {
+        Self::new(path, MountAccess::ReadOnly, source, capability_id)
+    }
+
+    /// Create a read-write mount point
+    pub fn readwrite(
+        path: impl Into<String>,
+        source: MountSource,
+        capability_id: impl Into<String>,
+    ) -> Self {
+        Self::new(path, MountAccess::ReadWrite, source, capability_id)
+    }
+
+    /// Check if this mount is read-only
+    pub fn is_readonly(&self) -> bool {
+        self.access == MountAccess::ReadOnly
+    }
+}
+
+/// Builder for creating mount directories with a fluent API
+#[derive(Debug, Default)]
+pub struct MountDirectoryBuilder {
+    entries: HashMap<String, MountEntry>,
+}
+
+impl MountDirectoryBuilder {
+    /// Create a new directory builder
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a text file to the directory
+    pub fn file(mut self, name: impl Into<String>, content: impl Into<String>) -> Self {
+        self.entries
+            .insert(name.into(), MountEntry::text_file(content));
+        self
+    }
+
+    /// Add a subdirectory to the directory
+    pub fn dir(mut self, name: impl Into<String>, builder: MountDirectoryBuilder) -> Self {
+        self.entries
+            .insert(name.into(), MountEntry::directory(builder.entries));
+        self
+    }
+
+    /// Build the mount source
+    pub fn build(self) -> MountSource {
+        MountSource::directory(self.entries)
     }
 }
 
@@ -390,5 +581,129 @@ mod tests {
 
         assert_eq!(config1, config2);
         assert_ne!(config1, config3); // Different config makes them unequal
+    }
+
+    // MountAccess tests
+
+    #[test]
+    fn test_mount_access_display() {
+        assert_eq!(MountAccess::ReadOnly.to_string(), "readonly");
+        assert_eq!(MountAccess::ReadWrite.to_string(), "readwrite");
+    }
+
+    #[test]
+    fn test_mount_access_default() {
+        assert_eq!(MountAccess::default(), MountAccess::ReadOnly);
+    }
+
+    // MountSource tests
+
+    #[test]
+    fn test_mount_source_text_file() {
+        let source = MountSource::text_file("Hello, World!");
+        assert!(!source.is_directory());
+        match source {
+            MountSource::InlineFile { content, encoding } => {
+                assert_eq!(content, "Hello, World!");
+                assert_eq!(encoding, "text");
+            }
+            _ => panic!("Expected InlineFile"),
+        }
+    }
+
+    #[test]
+    fn test_mount_source_binary_file() {
+        let source = MountSource::binary_file("SGVsbG8=");
+        match source {
+            MountSource::InlineFile { content, encoding } => {
+                assert_eq!(content, "SGVsbG8=");
+                assert_eq!(encoding, "base64");
+            }
+            _ => panic!("Expected InlineFile"),
+        }
+    }
+
+    #[test]
+    fn test_mount_source_directory() {
+        let mut entries = HashMap::new();
+        entries.insert("test.txt".to_string(), MountEntry::text_file("content"));
+        let source = MountSource::directory(entries);
+        assert!(source.is_directory());
+    }
+
+    // MountEntry tests
+
+    #[test]
+    fn test_mount_entry_text_file() {
+        let entry = MountEntry::text_file("content");
+        match entry.source {
+            MountSource::InlineFile { content, encoding } => {
+                assert_eq!(content, "content");
+                assert_eq!(encoding, "text");
+            }
+            _ => panic!("Expected InlineFile"),
+        }
+    }
+
+    // MountPoint tests
+
+    #[test]
+    fn test_mount_point_new() {
+        let source = MountSource::text_file("content");
+        let mount = MountPoint::new("/test", MountAccess::ReadOnly, source, "test_cap");
+        assert_eq!(mount.path, "/test");
+        assert_eq!(mount.access, MountAccess::ReadOnly);
+        assert_eq!(mount.capability_id, "test_cap");
+        assert!(mount.is_readonly());
+    }
+
+    #[test]
+    fn test_mount_point_readonly() {
+        let source = MountSource::text_file("content");
+        let mount = MountPoint::readonly("/test", source, "test_cap");
+        assert!(mount.is_readonly());
+        assert_eq!(mount.access, MountAccess::ReadOnly);
+    }
+
+    #[test]
+    fn test_mount_point_readwrite() {
+        let source = MountSource::text_file("content");
+        let mount = MountPoint::readwrite("/test", source, "test_cap");
+        assert!(!mount.is_readonly());
+        assert_eq!(mount.access, MountAccess::ReadWrite);
+    }
+
+    // MountDirectoryBuilder tests
+
+    #[test]
+    fn test_mount_directory_builder() {
+        let source = MountDirectoryBuilder::new()
+            .file("readme.txt", "Hello")
+            .file("config.json", "{}")
+            .dir(
+                "nested",
+                MountDirectoryBuilder::new().file("inner.txt", "Nested content"),
+            )
+            .build();
+
+        match source {
+            MountSource::InlineDirectory { entries } => {
+                assert_eq!(entries.len(), 3);
+                assert!(entries.contains_key("readme.txt"));
+                assert!(entries.contains_key("config.json"));
+                assert!(entries.contains_key("nested"));
+
+                // Check nested directory
+                if let MountSource::InlineDirectory { entries: nested } =
+                    &entries.get("nested").unwrap().source
+                {
+                    assert_eq!(nested.len(), 1);
+                    assert!(nested.contains_key("inner.txt"));
+                } else {
+                    panic!("Expected nested InlineDirectory");
+                }
+            }
+            _ => panic!("Expected InlineDirectory"),
+        }
     }
 }

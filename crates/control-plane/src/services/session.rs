@@ -1,12 +1,20 @@
 // Session service for business logic (M2)
+//
+// Design Decision: Capability mounts are applied at session creation time.
+// This ensures mounted files are available immediately when the session starts.
+// The service collects mounts from the agent's capabilities and applies them
+// to the session filesystem.
 
 use crate::api::common::Pagination;
+use crate::services::session_file::SessionFileService;
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionRow, UpdateSession},
 };
 use anyhow::Result;
-use everruns_core::{Session, SessionStatus, TokenUsage};
+use everruns_core::{
+    CapabilityRegistry, Session, SessionStatus, TokenUsage, capabilities::collect_capabilities,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -14,11 +22,26 @@ use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
 
 pub struct SessionService {
     db: Arc<StorageBackend>,
+    capability_registry: CapabilityRegistry,
+    session_file_service: SessionFileService,
 }
 
 impl SessionService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        Self {
+            capability_registry: CapabilityRegistry::with_builtins(),
+            session_file_service: SessionFileService::new(db.clone()),
+            db,
+        }
+    }
+
+    /// Create a new SessionService with a custom capability registry.
+    pub fn with_registry(db: Arc<StorageBackend>, registry: CapabilityRegistry) -> Self {
+        Self {
+            capability_registry: registry,
+            session_file_service: SessionFileService::new(db.clone()),
+            db,
+        }
     }
 
     pub async fn create(
@@ -44,7 +67,64 @@ impl SessionService {
             model_id,
         };
         let row = self.db.create_session(input).await?;
-        Ok(Self::row_to_session(row))
+        let session = Self::row_to_session(row);
+
+        // Apply capability mounts to the session filesystem
+        self.apply_capability_mounts(agent_id, session.id).await?;
+
+        Ok(session)
+    }
+
+    /// Apply capability mounts to a session's filesystem.
+    ///
+    /// This method:
+    /// 1. Gets the agent's enabled capabilities
+    /// 2. Collects mount points from those capabilities
+    /// 3. Creates the mounted files/directories in the session filesystem
+    async fn apply_capability_mounts(&self, agent_id: Uuid, session_id: Uuid) -> Result<()> {
+        // Get agent's capability IDs
+        let capability_rows = self.db.get_agent_capabilities(agent_id).await?;
+        let capability_ids: Vec<String> = capability_rows
+            .iter()
+            .map(|r| r.capability_id.clone())
+            .collect();
+
+        if capability_ids.is_empty() {
+            return Ok(()); // No capabilities, nothing to mount
+        }
+
+        // Collect mounts from capabilities
+        let collected = collect_capabilities(&capability_ids, &self.capability_registry);
+
+        if collected.mounts.is_empty() {
+            return Ok(()); // No mounts to apply
+        }
+
+        // Apply mounts to session filesystem
+        let result = self
+            .session_file_service
+            .apply_capability_mounts(session_id, &collected.mounts)
+            .await?;
+
+        if !result.is_success() {
+            tracing::warn!(
+                session_id = %session_id,
+                agent_id = %agent_id,
+                errors = ?result.errors,
+                "Some capability mounts failed to apply"
+            );
+        } else {
+            tracing::debug!(
+                session_id = %session_id,
+                agent_id = %agent_id,
+                files_created = result.files_created,
+                directories_created = result.directories_created,
+                mount_points = result.mount_points_applied,
+                "Capability mounts applied successfully"
+            );
+        }
+
+        Ok(())
     }
 
     pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Session>> {

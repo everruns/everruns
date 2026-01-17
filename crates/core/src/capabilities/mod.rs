@@ -21,7 +21,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 // Re-export capability types from capability_types module
-pub use crate::capability_types::{AgentCapabilityConfig, CapabilityId, CapabilityStatus};
+pub use crate::capability_types::{
+    AgentCapabilityConfig, CapabilityId, CapabilityStatus, MountAccess, MountDirectoryBuilder,
+    MountEntry, MountPoint, MountSource,
+};
 
 // ============================================================================
 // Capability Modules
@@ -36,6 +39,7 @@ mod file_system;
 pub mod mcp;
 mod noop;
 mod research;
+mod sample_data;
 mod sandbox;
 mod stateless_todo_list;
 mod test_math;
@@ -76,6 +80,7 @@ pub use mcp::{
 };
 pub use noop::NoopCapability;
 pub use research::ResearchCapability;
+pub use sample_data::SampleDataCapability;
 pub use sandbox::SandboxCapability;
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
@@ -157,6 +162,17 @@ pub trait Capability: Send + Sync {
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools().iter().map(|t| t.to_definition()).collect()
     }
+
+    /// Returns mount points to populate in the session filesystem
+    ///
+    /// Mount points allow capabilities to provide files and directories
+    /// that are automatically created when a session starts. This is useful
+    /// for providing sample data, documentation, or configuration files.
+    ///
+    /// By default, returns an empty vector (no mounts).
+    fn mounts(&self) -> Vec<MountPoint> {
+        vec![]
+    }
 }
 
 // ============================================================================
@@ -210,6 +226,8 @@ impl CapabilityRegistry {
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
         registry.register(WebFetchCapability);
+        // Demo capability with mount points
+        registry.register(SampleDataCapability);
         // Fake demo capabilities
         registry.register(FakeWarehouseCapability);
         registry.register(FakeAwsCapability);
@@ -335,6 +353,8 @@ pub struct CollectedCapabilities {
     pub tools: Vec<Box<dyn Tool>>,
     /// Tool definitions for config
     pub tool_definitions: Vec<ToolDefinition>,
+    /// Mount points from capabilities
+    pub mounts: Vec<MountPoint>,
     /// IDs of capabilities that were collected
     pub applied_ids: Vec<String>,
 }
@@ -353,9 +373,9 @@ impl CollectedCapabilities {
 
 /// Collect contributions from capabilities without applying them.
 ///
-/// This extracts system prompt additions, tools, and tool definitions from
-/// the given capabilities. Use this when you need the raw capability data
-/// before applying it to a config or builder.
+/// This extracts system prompt additions, tools, tool definitions, and mount
+/// points from the given capabilities. Use this when you need the raw capability
+/// data before applying it to a config or builder.
 ///
 /// # Arguments
 ///
@@ -368,6 +388,7 @@ pub fn collect_capabilities(
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
+    let mut mounts: Vec<MountPoint> = Vec::new();
     let mut applied_ids: Vec<String> = Vec::new();
 
     for cap_id in capability_ids {
@@ -388,6 +409,9 @@ pub fn collect_capabilities(
             // Collect tool definitions
             tool_definitions.extend(capability.tool_definitions());
 
+            // Collect mount points
+            mounts.extend(capability.mounts());
+
             applied_ids.push(cap_id.clone());
         }
     }
@@ -396,6 +420,7 @@ pub fn collect_capabilities(
         system_prompt_parts,
         tools,
         tool_definitions,
+        mounts,
         applied_ids,
     }
 }
@@ -509,11 +534,12 @@ mod tests {
         assert!(registry.has(CapabilityId::TEST_WEATHER));
         assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
         assert!(registry.has(CapabilityId::WEB_FETCH));
+        assert!(registry.has(CapabilityId::SAMPLE_DATA));
         assert!(registry.has(CapabilityId::FAKE_WAREHOUSE));
         assert!(registry.has(CapabilityId::FAKE_AWS));
         assert!(registry.has(CapabilityId::FAKE_CRM));
         assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
-        assert_eq!(registry.len(), 13);
+        assert_eq!(registry.len(), 14);
     }
 
     #[test]
@@ -788,5 +814,65 @@ mod tests {
         );
         assert!(applied.tool_registry.has("web_fetch"));
         assert_eq!(applied.tool_registry.len(), 1);
+    }
+
+    // =========================================================================
+    // Mount collection tests
+    // =========================================================================
+
+    #[test]
+    fn test_collect_capabilities_includes_mounts() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let collected = collect_capabilities(&[CapabilityId::SAMPLE_DATA.to_string()], &registry);
+
+        assert!(!collected.mounts.is_empty());
+        assert_eq!(collected.mounts.len(), 1);
+        assert_eq!(collected.mounts[0].path, "/samples");
+        assert!(collected.mounts[0].is_readonly());
+    }
+
+    #[test]
+    fn test_collect_capabilities_empty_mounts_by_default() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Most capabilities don't have mounts
+        let collected = collect_capabilities(&[CapabilityId::CURRENT_TIME.to_string()], &registry);
+
+        assert!(collected.mounts.is_empty());
+    }
+
+    #[test]
+    fn test_collect_capabilities_combines_mounts() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Collect from multiple capabilities - only sample_data has mounts
+        let collected = collect_capabilities(
+            &[
+                CapabilityId::SAMPLE_DATA.to_string(),
+                CapabilityId::CURRENT_TIME.to_string(),
+            ],
+            &registry,
+        );
+
+        assert_eq!(collected.mounts.len(), 1);
+        assert_eq!(collected.applied_ids.len(), 2);
+    }
+
+    #[test]
+    fn test_sample_data_capability() {
+        let registry = CapabilityRegistry::with_builtins();
+        let cap = registry.get(CapabilityId::SAMPLE_DATA).unwrap();
+
+        assert_eq!(cap.id(), CapabilityId::SAMPLE_DATA);
+        assert_eq!(cap.name(), "Sample Data");
+        assert_eq!(cap.status(), CapabilityStatus::Available);
+
+        // Has system prompt but no tools
+        assert!(cap.system_prompt_addition().is_some());
+        assert!(cap.tools().is_empty());
+
+        // Has mounts
+        assert!(!cap.mounts().is_empty());
     }
 }

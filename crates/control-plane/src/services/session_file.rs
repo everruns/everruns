@@ -1,11 +1,18 @@
 // Session Files service for virtual filesystem operations
+//
+// Design Decision: Capability mounts are applied at session creation time.
+// This ensures mount points are available immediately when the session starts,
+// rather than waiting until execution time. The apply_capability_mounts()
+// method recursively creates files and directories from mount point definitions.
 
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
 };
 use anyhow::{Result, anyhow};
-use everruns_core::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
+use everruns_core::{
+    FileInfo, FileStat, GrepMatch, GrepResult, MountEntry, MountPoint, MountSource, SessionFile,
+};
 use regex::Regex;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -529,4 +536,224 @@ impl SessionFileService {
             updated_at: row.updated_at,
         }
     }
+
+    // =========================================================================
+    // Capability Mount Methods
+    // =========================================================================
+
+    /// Apply capability mounts to a session filesystem.
+    ///
+    /// This method creates files and directories in the session filesystem
+    /// based on the mount points defined by capabilities. Each mount point
+    /// specifies a path, access mode (readonly/readwrite), and content source.
+    ///
+    /// Files created from readonly mounts are marked as readonly and cannot
+    /// be modified or deleted by agents.
+    pub async fn apply_capability_mounts(
+        &self,
+        session_id: Uuid,
+        mounts: &[MountPoint],
+    ) -> Result<MountApplicationResult> {
+        let mut result = MountApplicationResult::default();
+
+        for mount in mounts {
+            match self.apply_single_mount(session_id, mount).await {
+                Ok(stats) => {
+                    result.files_created += stats.files_created;
+                    result.directories_created += stats.directories_created;
+                    result.mount_points_applied += 1;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        mount_path = %mount.path,
+                        capability_id = %mount.capability_id,
+                        error = %e,
+                        "Failed to apply capability mount"
+                    );
+                    result.errors.push(MountError {
+                        path: mount.path.clone(),
+                        capability_id: mount.capability_id.clone(),
+                        error: e.to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Apply a single mount point to the session filesystem.
+    async fn apply_single_mount(&self, session_id: Uuid, mount: &MountPoint) -> Result<MountStats> {
+        let path = Self::normalize_path(&mount.path);
+        Self::validate_path(&path)?;
+
+        let is_readonly = mount.is_readonly();
+        let mut stats = MountStats::default();
+
+        self.apply_mount_source(session_id, &path, &mount.source, is_readonly, &mut stats)
+            .await?;
+
+        Ok(stats)
+    }
+
+    /// Recursively apply a mount source to the filesystem.
+    fn apply_mount_source<'a>(
+        &'a self,
+        session_id: Uuid,
+        path: &'a str,
+        source: &'a MountSource,
+        is_readonly: bool,
+        stats: &'a mut MountStats,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            match source {
+                MountSource::InlineFile { content, encoding } => {
+                    self.create_mounted_file(session_id, path, content, encoding, is_readonly)
+                        .await?;
+                    stats.files_created += 1;
+                }
+                MountSource::InlineDirectory { entries } => {
+                    // Create the directory first
+                    self.create_mounted_directory(session_id, path, is_readonly)
+                        .await?;
+                    stats.directories_created += 1;
+
+                    // Recursively create children
+                    for (name, entry) in entries {
+                        let child_path = format!("{}/{}", path, name);
+                        self.apply_mount_entry(session_id, &child_path, entry, is_readonly, stats)
+                            .await?;
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Apply a single mount entry (recursive helper).
+    fn apply_mount_entry<'a>(
+        &'a self,
+        session_id: Uuid,
+        path: &'a str,
+        entry: &'a MountEntry,
+        is_readonly: bool,
+        stats: &'a mut MountStats,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            self.apply_mount_source(session_id, path, &entry.source, is_readonly, stats)
+                .await
+        })
+    }
+
+    /// Create a file from a mount source.
+    async fn create_mounted_file(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        content: &str,
+        encoding: &str,
+        is_readonly: bool,
+    ) -> Result<()> {
+        // Check if file already exists
+        if self.db.session_file_exists(session_id, path).await? {
+            return Err(anyhow!("Mount conflict: file already exists at {}", path));
+        }
+
+        // Ensure parent directory exists
+        if let Some(parent) = FileInfo::parent_path(path) {
+            self.ensure_directory_exists(session_id, &parent).await?;
+        }
+
+        // Decode content
+        let content_bytes = SessionFile::decode_content(content, encoding)?;
+
+        let input = CreateSessionFileRow {
+            session_id,
+            path: path.to_string(),
+            content: Some(content_bytes),
+            is_directory: false,
+            is_readonly,
+        };
+
+        self.db.create_session_file(input).await?;
+        Ok(())
+    }
+
+    /// Create a directory for a mount (if it doesn't exist).
+    ///
+    /// When is_readonly is true, the directory is marked readonly, preventing
+    /// creation of new files within it (only mount-time creation is allowed).
+    async fn create_mounted_directory(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        is_readonly: bool,
+    ) -> Result<()> {
+        // Check if path exists
+        if let Some(existing) = self.db.get_session_file(session_id, path).await? {
+            if existing.is_directory {
+                return Ok(()); // Directory already exists, that's fine
+            } else {
+                return Err(anyhow!(
+                    "Mount conflict: file exists at directory path {}",
+                    path
+                ));
+            }
+        }
+
+        // Ensure parent directory exists
+        if let Some(parent) = FileInfo::parent_path(path) {
+            self.ensure_directory_exists(session_id, &parent).await?;
+        }
+
+        let input = CreateSessionFileRow {
+            session_id,
+            path: path.to_string(),
+            content: None,
+            is_directory: true,
+            is_readonly,
+        };
+
+        self.db.create_session_file(input).await?;
+        Ok(())
+    }
+}
+
+/// Result of applying capability mounts to a session.
+#[derive(Debug, Clone, Default)]
+pub struct MountApplicationResult {
+    /// Number of files created
+    pub files_created: usize,
+    /// Number of directories created
+    pub directories_created: usize,
+    /// Number of mount points successfully applied
+    pub mount_points_applied: usize,
+    /// Errors encountered during mount application
+    pub errors: Vec<MountError>,
+}
+
+impl MountApplicationResult {
+    /// Check if all mounts were applied successfully
+    pub fn is_success(&self) -> bool {
+        self.errors.is_empty()
+    }
+}
+
+/// Error during mount application
+#[derive(Debug, Clone)]
+pub struct MountError {
+    /// Path that failed
+    pub path: String,
+    /// Capability that provided the mount
+    pub capability_id: String,
+    /// Error message
+    pub error: String,
+}
+
+/// Statistics for a single mount application
+#[derive(Debug, Clone, Default)]
+struct MountStats {
+    files_created: usize,
+    directories_created: usize,
 }

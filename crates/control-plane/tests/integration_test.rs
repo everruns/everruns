@@ -1980,6 +1980,232 @@ async fn test_second_message_triggers_workflow() {
     println!("Second message workflow test passed!");
 }
 
+/// Test capability mounts are applied when session is created
+///
+/// This test verifies:
+/// 1. Create agent with sample_data capability (which has mount points)
+/// 2. Create session for the agent
+/// 3. Verify the /samples directory exists with expected files
+/// 4. Verify files are read-only (from readonly mount)
+#[tokio::test]
+async fn test_capability_mounts_applied_on_session_creation() {
+    let client = reqwest::Client::new();
+
+    println!("Testing capability mounts applied on session creation...");
+
+    // Step 1: Create an agent with sample_data capability
+    println!("\nStep 1: Creating agent with sample_data capability...");
+    let agent_response = client
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({
+            "name": "Mount Test Agent",
+            "system_prompt": "Test agent for capability mounts",
+            "capabilities": [
+                {"ref": "sample_data", "config": {}},
+                {"ref": "session_file_system", "config": {}}
+            ]
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(
+        agent_response.status(),
+        201,
+        "Expected 201 Created for agent"
+    );
+
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!(
+        "Created agent: {} with capabilities: {:?}",
+        agent.id, agent.capabilities
+    );
+    assert_eq!(
+        agent.capabilities.len(),
+        2,
+        "Agent should have 2 capabilities"
+    );
+
+    // Step 2: Create a session (this should trigger mount application)
+    println!("\nStep 2: Creating session...");
+    let session_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .json(&json!({
+            "title": "Mount Test Session"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    let fs_url = format!(
+        "{}/v1/orgs/{}/agents/{}/sessions/{}/fs",
+        API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+    );
+
+    // Step 3: Verify /samples directory exists
+    println!("\nStep 3: Verifying /samples directory exists...");
+    let stat_response = client
+        .post(format!("{}/_/stat", fs_url))
+        .json(&json!({"path": "/samples"}))
+        .send()
+        .await
+        .expect("Failed to stat /samples");
+
+    assert_eq!(stat_response.status(), 200);
+    let stat: Value = stat_response.json().await.expect("Failed to parse stat");
+    assert_eq!(stat["is_directory"], true, "/samples should be a directory");
+    println!("/samples directory exists");
+
+    // Step 4: List /samples directory contents
+    println!("\nStep 4: Listing /samples directory...");
+    let list_response = client
+        .get(format!("{}/samples", fs_url))
+        .send()
+        .await
+        .expect("Failed to list /samples");
+
+    assert_eq!(list_response.status(), 200);
+    let list_result: Value = list_response.json().await.expect("Failed to parse list");
+    let files = list_result["data"].as_array().expect("Expected data array");
+    println!("Found {} files in /samples", files.len());
+
+    // Should have users.json, config.yaml, README.md
+    let file_names: Vec<&str> = files.iter().map(|f| f["name"].as_str().unwrap()).collect();
+    assert!(
+        file_names.contains(&"users.json"),
+        "Expected users.json in /samples"
+    );
+    assert!(
+        file_names.contains(&"config.yaml"),
+        "Expected config.yaml in /samples"
+    );
+    assert!(
+        file_names.contains(&"README.md"),
+        "Expected README.md in /samples"
+    );
+    println!("All expected files present: {:?}", file_names);
+
+    // Step 5: Verify users.json is readable
+    println!("\nStep 5: Reading /samples/users.json...");
+    let read_response = client
+        .get(format!("{}/samples/users.json", fs_url))
+        .send()
+        .await
+        .expect("Failed to read users.json");
+
+    assert_eq!(read_response.status(), 200);
+    let file: SessionFile = read_response.json().await.expect("Failed to parse file");
+    assert!(file.content.is_some(), "File should have content");
+    let content = file.content.as_ref().unwrap();
+    assert!(content.contains("Alice"), "users.json should contain Alice");
+    assert!(file.is_readonly, "Mounted file should be readonly");
+    println!("users.json is readable and readonly");
+
+    // Step 6: Verify readonly protection - try to update users.json
+    println!("\nStep 6: Verifying readonly protection...");
+    let update_response = client
+        .put(format!("{}/samples/users.json", fs_url))
+        .json(&json!({
+            "content": "modified content"
+        }))
+        .send()
+        .await
+        .expect("Failed to send update request");
+
+    // Should fail because file is readonly
+    assert_ne!(
+        update_response.status(),
+        200,
+        "Readonly file update should fail"
+    );
+    println!("Readonly protection working - update rejected");
+
+    // Step 7: Verify config.yaml content
+    println!("\nStep 7: Reading /samples/config.yaml...");
+    let config_response = client
+        .get(format!("{}/samples/config.yaml", fs_url))
+        .send()
+        .await
+        .expect("Failed to read config.yaml");
+
+    assert_eq!(config_response.status(), 200);
+    let config_file: SessionFile = config_response.json().await.expect("Failed to parse file");
+    let config_content = config_file.content.as_ref().unwrap();
+    assert!(
+        config_content.contains("application:"),
+        "config.yaml should contain application:"
+    );
+    assert!(
+        config_content.contains("database:"),
+        "config.yaml should contain database:"
+    );
+    println!("config.yaml has expected YAML content");
+
+    // Step 8: Create a second session - verify mounts are independent
+    println!("\nStep 8: Creating second session...");
+    let session2_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .json(&json!({
+            "title": "Second Mount Test Session"
+        }))
+        .send()
+        .await
+        .expect("Failed to create second session");
+
+    assert_eq!(session2_response.status(), 201);
+    let session2: Session = session2_response
+        .json()
+        .await
+        .expect("Failed to parse session2");
+    println!("Created session2: {}", session2.id);
+
+    // Verify second session also has mounts
+    let fs_url2 = format!(
+        "{}/v1/orgs/{}/agents/{}/sessions/{}/fs",
+        API_BASE_URL, DEFAULT_ORG, agent.id, session2.id
+    );
+    let stat2_response = client
+        .post(format!("{}/_/stat", fs_url2))
+        .json(&json!({"path": "/samples"}))
+        .send()
+        .await
+        .expect("Failed to stat /samples in session2");
+
+    assert_eq!(stat2_response.status(), 200);
+    let stat2: Value = stat2_response.json().await.expect("Failed to parse stat2");
+    assert_eq!(
+        stat2["is_directory"], true,
+        "session2 should also have /samples"
+    );
+    println!("Second session also has /samples directory mounted");
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("Capability mounts test passed!");
+}
+
 /// Test MCP server CRUD operations
 ///
 /// This test verifies:

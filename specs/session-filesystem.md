@@ -174,6 +174,7 @@ Response:
 2. **Delete cascade:** Deleting a session deletes all its files (via FK cascade)
 3. **Encoding detection:** Files with null bytes in first 8KB are base64 encoded
 4. **Readonly protection:** Cannot modify content of readonly files (can still delete)
+5. **Capability mounts:** When a session is created, files from capability mount points are automatically populated (see `specs/capabilities.md` for details)
 
 ### Database Schema
 
