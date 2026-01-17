@@ -2325,7 +2325,10 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "LlmSim Tool Test Provider",
             "provider_type": "llmsim"
@@ -2350,8 +2353,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "llmsim-tool-test",
@@ -2375,7 +2378,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Step 2: Create a dad jokes agent with current_time capability
     println!("\nStep 2: Creating dad jokes agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Dad Jokes Time Agent",
             "system_prompt": "You are a dad jokes comedian. When asked for a joke about the time, first use the get_current_time tool to get the current time, then tell a dad joke that incorporates the time. Your jokes should be punny and family-friendly.",
@@ -2396,7 +2399,10 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Step 3: Create a session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({"title": "Dad Jokes Session"}))
         .send()
         .await
@@ -2413,8 +2419,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     println!("\nStep 4: Sending message asking for time-based joke...");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -2439,8 +2445,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await;
@@ -2510,8 +2516,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Get final messages
     let final_messages_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .send()
         .await
@@ -2564,17 +2570,26 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -2616,7 +2631,10 @@ async fn test_agent_execution_openai_with_tool_calls() {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY should be set");
 
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "OpenAI Tool Test Provider",
             "provider_type": "openai",
@@ -2644,8 +2662,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Create model (gpt-4o-mini for cost-effectiveness)
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "gpt-4o-mini",
@@ -2666,7 +2684,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Step 2: Create dad jokes agent with current_time capability
     println!("\nStep 2: Creating dad jokes agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "OpenAI Dad Jokes Agent",
             "system_prompt": "You are a dad jokes comedian. When the user asks for a joke about the time, you MUST first use the get_current_time tool to get the current time, then tell a short dad joke that somehow references the time you received. Keep your response brief.",
@@ -2684,7 +2702,10 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({"title": "OpenAI Dad Jokes Session"}))
         .send()
         .await
@@ -2701,8 +2722,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
     println!("\nStep 4: Sending message...");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -2726,8 +2747,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await;
@@ -2793,17 +2814,26 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Cleanup first before assertions
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -2861,7 +2891,10 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY should be set");
 
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "Anthropic Tool Test Provider",
             "provider_type": "anthropic",
@@ -2889,8 +2922,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Create model (claude-3-5-haiku for cost-effectiveness)
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "claude-3-5-haiku-latest",
@@ -2911,7 +2944,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Step 2: Create dad jokes agent with current_time capability
     println!("\nStep 2: Creating dad jokes agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Anthropic Dad Jokes Agent",
             "system_prompt": "You are a dad jokes comedian. When the user asks for a joke about the time, you MUST first use the get_current_time tool to get the current time, then tell a short dad joke that somehow references the time you received. Keep your response brief.",
@@ -2929,7 +2962,10 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({"title": "Anthropic Dad Jokes Session"}))
         .send()
         .await
@@ -2946,8 +2982,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     println!("\nStep 4: Sending message...");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -2971,8 +3007,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await;
@@ -3038,17 +3074,26 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Cleanup first before assertions
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3093,7 +3138,10 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
         .json(&json!({
             "name": "LlmSim Multi-Tool Test",
             "provider_type": "llmsim"
@@ -3117,8 +3165,8 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
-            API_BASE_URL, provider.id
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
         ))
         .json(&json!({
             "model_id": "llmsim-multi-tool",
@@ -3134,7 +3182,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Step 2: Create agent with test_math capability
     println!("\nStep 2: Creating math agent with test_math capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Math Calculator Agent",
             "system_prompt": "You are a math calculator. Use the available math tools (add, subtract, multiply, divide) to solve problems. Show your work step by step.",
@@ -3152,7 +3200,10 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Step 3: Create session and send message
     println!("\nStep 3: Creating session and sending message...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .json(&json!({}))
         .send()
         .await
@@ -3165,8 +3216,8 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
         ))
         .json(&json!({
             "message": {
@@ -3188,8 +3239,8 @@ async fn test_agent_execution_multiple_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/agents/{}/sessions/{}/messages",
-                API_BASE_URL, agent.id, session.id
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
             ))
             .send()
             .await;
@@ -3222,17 +3273,26 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
         .send()
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id, model.id
+        ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
         .send()
         .await
         .expect("Failed to delete provider");
