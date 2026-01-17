@@ -33,6 +33,7 @@ mod fake_crm;
 mod fake_financial;
 mod fake_warehouse;
 mod file_system;
+pub mod mcp;
 mod noop;
 mod research;
 mod sandbox;
@@ -68,6 +69,10 @@ pub use fake_warehouse::{
 pub use file_system::{
     DeleteFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool, ReadFileTool,
     StatFileTool, WriteFileTool,
+};
+pub use mcp::{
+    MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
+    parse_mcp_capability_id,
 };
 pub use noop::NoopCapability;
 pub use research::ResearchCapability;

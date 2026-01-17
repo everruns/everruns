@@ -27,7 +27,7 @@ use super::direct_adapters::{
     DirectAgentStore, DirectEventEmitter, DirectLlmProviderStore, DirectMessageRetriever,
     DirectSessionFileStore, DirectSessionStore, SessionStatusUpdater,
 };
-use crate::services::{EventService, LlmResolverService};
+use crate::services::{EventService, LlmResolverService, McpServerService};
 use crate::storage::StorageBackend;
 
 /// Configuration for the in-process worker
@@ -68,6 +68,7 @@ pub struct InProcessWorker {
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     llm_resolver: Arc<LlmResolverService>,
+    mcp_server_service: Arc<McpServerService>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -80,6 +81,7 @@ impl InProcessWorker {
         db: Arc<StorageBackend>,
         event_service: Arc<EventService>,
         llm_resolver: Arc<LlmResolverService>,
+        mcp_server_service: Arc<McpServerService>,
     ) -> Self {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -94,6 +96,7 @@ impl InProcessWorker {
             db,
             event_service,
             llm_resolver,
+            mcp_server_service,
             shutdown_tx,
             shutdown_rx,
         }
@@ -455,9 +458,16 @@ impl InProcessWorker {
             event_emitter,
         );
 
+        // Fetch MCP tool definitions for agent's MCP capabilities
+        let mcp_tool_definitions = self
+            .build_mcp_tool_definitions(input.agent_id)
+            .await
+            .unwrap_or_default();
+
         let reason_input = ReasonInput {
             context,
             agent_id: input.agent_id,
+            mcp_tool_definitions,
         };
 
         let result = atom.execute(reason_input).await?;
@@ -711,5 +721,68 @@ impl InProcessWorker {
         }
 
         Ok(())
+    }
+
+    /// Build MCP tool definitions from agent's MCP capabilities
+    async fn build_mcp_tool_definitions(
+        &self,
+        agent_id: Uuid,
+    ) -> Result<Vec<everruns_core::ToolDefinition>> {
+        use everruns_core::capabilities::mcp::parse_mcp_capability_id;
+        use everruns_core::mcp_server::mcp_tool_name;
+        use everruns_core::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+
+        // Get the agent's capability IDs
+        let capability_rows = self.db.get_agent_capabilities(agent_id).await?;
+
+        let mut mcp_tools = Vec::new();
+
+        for cap_row in &capability_rows {
+            let cap_id = &cap_row.capability_id;
+            // Parse MCP server UUID from capability ID
+            let server_id = match parse_mcp_capability_id(cap_id) {
+                Some(id) => id,
+                None => continue, // Not an MCP capability
+            };
+
+            // Fetch MCP server tools (using cache)
+            let tools = match self.mcp_server_service.get_tools(server_id, false).await {
+                Ok(t) => t,
+                Err(e) => {
+                    warn!(
+                        server_id = %server_id,
+                        error = %e,
+                        "Failed to get MCP server tools, skipping"
+                    );
+                    continue;
+                }
+            };
+
+            // Get server name for tool prefixing
+            let server_name = match self.mcp_server_service.get(server_id).await {
+                Ok(Some(s)) => s.name,
+                _ => {
+                    warn!(server_id = %server_id, "MCP server not found, skipping");
+                    continue;
+                }
+            };
+
+            // Convert each MCP tool to ToolDefinition
+            for tool in tools {
+                let prefixed_name = mcp_tool_name(&server_name, &tool.name);
+                let description = tool
+                    .description
+                    .unwrap_or_else(|| format!("Tool from MCP server: {}", server_name));
+
+                mcp_tools.push(ToolDefinition::Builtin(BuiltinTool {
+                    name: prefixed_name,
+                    description,
+                    parameters: tool.input_schema,
+                    policy: ToolPolicy::Auto,
+                }));
+            }
+        }
+
+        Ok(mcp_tools)
     }
 }

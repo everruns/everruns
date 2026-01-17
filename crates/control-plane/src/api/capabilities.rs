@@ -50,9 +50,12 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn list_capabilities(
     State(state): State<AppState>,
-) -> Json<ListResponse<CapabilityInfo>> {
-    let capabilities = state.service.list_all();
-    Json(ListResponse::new(capabilities))
+) -> Result<Json<ListResponse<CapabilityInfo>>, StatusCode> {
+    let capabilities = state.service.list_all().await.map_err(|e| {
+        tracing::error!("Failed to list capabilities: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(ListResponse::new(capabilities)))
 }
 
 /// GET /v1/capabilities/{capability_id} - Get a specific capability
@@ -74,7 +77,15 @@ pub async fn get_capability(
 ) -> Result<Json<CapabilityInfo>, StatusCode> {
     let cap_id = CapabilityId::new(&capability_id);
 
-    let capability = state.service.get(&cap_id).ok_or(StatusCode::NOT_FOUND)?;
+    let capability = state
+        .service
+        .get(&cap_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get capability: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(capability))
 }

@@ -7,7 +7,8 @@
 
 use base64::Engine;
 use everruns_control_plane::services::{
-    AgentService, EventService, LlmResolverService, SessionFileService, SessionService,
+    AgentService, EventService, LlmResolverService, McpServerService, SessionFileService,
+    SessionService,
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
 };
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
@@ -30,10 +31,11 @@ use everruns_internal_protocol::proto::{
     EnqueueDurableTaskRequest, EnqueueDurableTaskResponse, FailDurableTaskRequest,
     FailDurableTaskResponse, GetAgentRequest, GetAgentResponse, GetDefaultModelRequest,
     GetDefaultModelResponse, GetDurableWorkflowStatusRequest, GetDurableWorkflowStatusResponse,
-    GetModelWithProviderRequest, GetModelWithProviderResponse, GetSessionRequest,
-    GetSessionResponse, GetTurnContextRequest, GetTurnContextResponse, HeartbeatDurableTaskRequest,
-    HeartbeatDurableTaskResponse, HeartbeatDurableWorkerRequest, HeartbeatDurableWorkerResponse,
-    LoadMessagesRequest, LoadMessagesResponse, RecordCircuitBreakerFailureRequest,
+    GetMcpServerByPrefixRequest, GetMcpServerByPrefixResponse, GetModelWithProviderRequest,
+    GetModelWithProviderResponse, GetSessionRequest, GetSessionResponse, GetTurnContextRequest,
+    GetTurnContextResponse, HeartbeatDurableTaskRequest, HeartbeatDurableTaskResponse,
+    HeartbeatDurableWorkerRequest, HeartbeatDurableWorkerResponse, LoadMessagesRequest,
+    LoadMessagesResponse, McpServerInfo, McpToolDef, RecordCircuitBreakerFailureRequest,
     RecordCircuitBreakerFailureResponse, RecordCircuitBreakerSuccessRequest,
     RecordCircuitBreakerSuccessResponse, RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse, ResolveImageRequest, ResolveImageResponse, ResolveImagesRequest,
@@ -65,6 +67,7 @@ pub struct WorkerServiceImpl {
     session_service: SessionService,
     session_file_service: SessionFileService,
     llm_resolver_service: LlmResolverService,
+    mcp_server_service: McpServerService,
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
     /// Task notification broadcaster for push-based notifications
     task_broadcaster: Option<Arc<TaskNotificationBroadcaster>>,
@@ -81,7 +84,8 @@ impl WorkerServiceImpl {
         let agent_service = AgentService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let session_file_service = SessionFileService::new(db.clone());
-        let llm_resolver_service = LlmResolverService::new(db.clone(), encryption);
+        let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
+        let mcp_server_service = McpServerService::new(db.clone(), encryption);
 
         // Create durable store using the pool if available (PostgreSQL mode only)
         // In dev mode (in-memory), durable execution is handled differently
@@ -95,6 +99,7 @@ impl WorkerServiceImpl {
             session_service,
             session_file_service,
             llm_resolver_service,
+            mcp_server_service,
             durable_store,
             task_broadcaster: None, // Set via set_task_broadcaster() after async initialization
             db,
@@ -139,6 +144,67 @@ impl WorkerServiceImpl {
             api_key: resolved.api_key,
             base_url: resolved.base_url,
         }
+    }
+
+    /// Build MCP tool definitions from agent's MCP capabilities.
+    ///
+    /// Extracts MCP server UUIDs from capability IDs (format: "mcp:{uuid}"),
+    /// fetches cached tools for each server, and converts to proto McpToolDef.
+    async fn build_mcp_tool_definitions(&self, agent: &everruns_core::Agent) -> Vec<McpToolDef> {
+        use everruns_core::capabilities::mcp::parse_mcp_capability_id;
+        use everruns_core::mcp_server::mcp_tool_name;
+
+        let mut mcp_tools = Vec::new();
+
+        for cap in &agent.capabilities {
+            let cap_id = cap.capability_id();
+
+            // Parse MCP server UUID from capability ID
+            let server_id = match parse_mcp_capability_id(cap_id) {
+                Some(id) => id,
+                None => continue, // Not an MCP capability
+            };
+
+            // Fetch MCP server tools (using cache)
+            let tools = match self.mcp_server_service.get_tools(server_id, false).await {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(
+                        server_id = %server_id,
+                        error = %e,
+                        "Failed to get MCP server tools, skipping"
+                    );
+                    continue;
+                }
+            };
+
+            // Get server name for tool prefixing
+            let server_name = match self.mcp_server_service.get(server_id).await {
+                Ok(Some(s)) => s.name,
+                _ => {
+                    tracing::warn!(server_id = %server_id, "MCP server not found, skipping");
+                    continue;
+                }
+            };
+
+            // Convert each MCP tool to proto McpToolDef
+            for tool in tools {
+                let prefixed_name = mcp_tool_name(&server_name, &tool.name);
+                let description = tool
+                    .description
+                    .unwrap_or_else(|| format!("Tool from MCP server: {}", server_name));
+                let parameters =
+                    everruns_internal_protocol::json_to_proto_struct(&tool.input_schema);
+
+                mcp_tools.push(McpToolDef {
+                    name: prefixed_name,
+                    description,
+                    parameters: Some(parameters),
+                });
+            }
+        }
+
+        mcp_tools
     }
 }
 
@@ -307,11 +373,16 @@ impl WorkerService for WorkerServiceImpl {
                 .map(Self::resolved_model_to_proto)
         };
 
+        // Build MCP tool definitions from agent's MCP capabilities
+        // This resolves MCP tools so the worker doesn't need to look them up
+        let mcp_tool_definitions = self.build_mcp_tool_definitions(&agent).await;
+
         Ok(Response::new(GetTurnContextResponse {
             agent: Some(proto_agent),
             session: Some(proto_session),
             messages: proto_messages,
             model,
+            mcp_tool_definitions,
         }))
     }
 
@@ -1773,6 +1844,68 @@ impl WorkerService for WorkerServiceImpl {
         }
 
         Ok(Response::new(ResolveImagesResponse { images }))
+    }
+
+    // ========================================================================
+    // MCP server operations
+    // ========================================================================
+
+    async fn get_mcp_server_by_prefix(
+        &self,
+        request: Request<GetMcpServerByPrefixRequest>,
+    ) -> Result<Response<GetMcpServerByPrefixResponse>, Status> {
+        let req = request.into_inner();
+
+        // List active MCP servers and find one matching the prefix
+        let servers = self
+            .mcp_server_service
+            .list_active_with_tools()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list MCP servers: {}", e);
+                Status::internal("Failed to list MCP servers")
+            })?;
+
+        // Find server matching the prefix (sanitized server name)
+        let server_prefix_lower = req.server_prefix.to_lowercase();
+        let matching_server = servers.into_iter().find(|s| {
+            let sanitized_name = s
+                .server
+                .name
+                .to_lowercase()
+                .chars()
+                .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                .collect::<String>();
+            sanitized_name == server_prefix_lower
+        });
+
+        let server_info = if let Some(server_with_tools) = matching_server {
+            // Get API key if set (already decrypted in the service)
+            let api_key = if server_with_tools.server.api_key_set {
+                // We need to fetch the full server info with decrypted API key
+                // For now, we don't have direct access to the decrypted key in McpServerWithTools
+                // This would need enhancement in the MCP service to include decrypted key
+                None // TODO: Return decrypted API key when available
+            } else {
+                None
+            };
+
+            Some(McpServerInfo {
+                id: Some(proto::Uuid {
+                    value: server_with_tools.server.id.to_string(),
+                }),
+                name: server_with_tools.server.name,
+                url: server_with_tools.server.url,
+                api_key,
+                headers: server_with_tools.server.headers,
+            })
+        } else {
+            None
+        };
+
+        Ok(Response::new(GetMcpServerByPrefixResponse {
+            server: server_info,
+        }))
     }
 }
 

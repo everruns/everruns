@@ -87,13 +87,23 @@ impl AnthropicLlmDriver {
     fn convert_content(content: &LlmMessageContent) -> Vec<AnthropicContentBlock> {
         match content {
             LlmMessageContent::Text(text) => {
-                vec![AnthropicContentBlock::Text { text: text.clone() }]
+                // Skip empty text to avoid Anthropic API error
+                if text.is_empty() {
+                    vec![]
+                } else {
+                    vec![AnthropicContentBlock::Text { text: text.clone() }]
+                }
             }
             LlmMessageContent::Parts(parts) => parts
                 .iter()
-                .map(|part| match part {
+                .filter_map(|part| match part {
                     LlmContentPart::Text { text } => {
-                        AnthropicContentBlock::Text { text: text.clone() }
+                        // Skip empty text to avoid Anthropic API error
+                        if text.is_empty() {
+                            None
+                        } else {
+                            Some(AnthropicContentBlock::Text { text: text.clone() })
+                        }
                     }
                     LlmContentPart::Image { url } => {
                         // Parse data URL or use as-is
@@ -108,21 +118,21 @@ impl AnthropicLlmDriver {
                             } else {
                                 ("image/jpeg".to_string(), url.clone())
                             };
-                            AnthropicContentBlock::Image {
+                            Some(AnthropicContentBlock::Image {
                                 source: AnthropicImageSource::Base64 { media_type, data },
-                            }
+                            })
                         } else {
                             // HTTP URL
-                            AnthropicContentBlock::Image {
+                            Some(AnthropicContentBlock::Image {
                                 source: AnthropicImageSource::Url { url: url.clone() },
-                            }
+                            })
                         }
                     }
                     LlmContentPart::Audio { .. } => {
                         // Anthropic doesn't support audio input yet, convert to text note
-                        AnthropicContentBlock::Text {
+                        Some(AnthropicContentBlock::Text {
                             text: "[Audio content not supported]".to_string(),
-                        }
+                        })
                     }
                 })
                 .collect(),
@@ -621,4 +631,220 @@ struct AnthropicMessageDelta {
 #[derive(Debug, Deserialize)]
 struct AnthropicMessageDeltaData {
     stop_reason: Option<String>,
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // These tests verify that empty text blocks are filtered out to avoid
+    // Anthropic API error: "text content blocks must be non-empty"
+
+    #[test]
+    fn test_convert_content_filters_empty_text() {
+        // Empty text content should produce empty vec
+        let content = LlmMessageContent::Text(String::new());
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert!(blocks.is_empty(), "Empty text should be filtered out");
+    }
+
+    #[test]
+    fn test_convert_content_keeps_non_empty_text() {
+        // Non-empty text should be kept
+        let content = LlmMessageContent::Text("Hello, world!".to_string());
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert_eq!(blocks.len(), 1, "Non-empty text should be kept");
+    }
+
+    #[test]
+    fn test_convert_content_filters_empty_text_in_parts() {
+        // Empty text parts should be filtered out
+        let content = LlmMessageContent::Parts(vec![
+            LlmContentPart::Text {
+                text: String::new(),
+            },
+            LlmContentPart::Text {
+                text: "Hello".to_string(),
+            },
+            LlmContentPart::Text {
+                text: String::new(),
+            },
+        ]);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert_eq!(blocks.len(), 1, "Only non-empty text should be kept");
+    }
+
+    #[test]
+    fn test_convert_content_keeps_images_with_empty_text() {
+        // Images should be kept even when text parts are empty
+        let content = LlmMessageContent::Parts(vec![
+            LlmContentPart::Text {
+                text: String::new(),
+            },
+            LlmContentPart::Image {
+                url: "https://example.com/image.png".to_string(),
+            },
+        ]);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert_eq!(blocks.len(), 1, "Image should be kept, empty text filtered");
+    }
+
+    #[test]
+    fn test_convert_content_all_empty_produces_empty_vec() {
+        // All empty content parts should produce empty vec
+        let content = LlmMessageContent::Parts(vec![
+            LlmContentPart::Text {
+                text: String::new(),
+            },
+            LlmContentPart::Text {
+                text: String::new(),
+            },
+        ]);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert!(blocks.is_empty(), "All empty text should produce empty vec");
+    }
+
+    #[test]
+    fn test_convert_messages_assistant_with_empty_text_and_tool_calls() {
+        // Assistant message with empty text but tool calls should work
+        // This is the specific case that caused the bug
+        let messages = vec![LlmMessage {
+            role: LlmMessageRole::Assistant,
+            content: LlmMessageContent::Text(String::new()),
+            tool_calls: Some(vec![everruns_core::tool_types::ToolCall {
+                id: "call_123".to_string(),
+                name: "get_weather".to_string(),
+                arguments: serde_json::json!({"city": "London"}),
+            }]),
+            tool_call_id: None,
+        }];
+
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);
+
+        assert_eq!(converted.len(), 1);
+        // Content should have tool_use block but no empty text block
+        assert_eq!(
+            converted[0].content.len(),
+            1,
+            "Should only have tool_use block"
+        );
+    }
+
+    #[test]
+    fn test_convert_content_whitespace_is_kept() {
+        // Whitespace-only text is kept (not empty after is_empty() check)
+        let content = LlmMessageContent::Text("   ".to_string());
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert_eq!(blocks.len(), 1, "Whitespace-only text is kept");
+    }
+
+    #[test]
+    fn test_convert_content_base64_image() {
+        // Base64 data URL should be parsed correctly
+        let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
+            url: "data:image/png;base64,iVBORw0KGgo=".to_string(),
+        }]);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert_eq!(blocks.len(), 1, "Base64 image should be converted");
+        match &blocks[0] {
+            AnthropicContentBlock::Image { source } => match source {
+                AnthropicImageSource::Base64 { media_type, .. } => {
+                    assert_eq!(media_type, "image/png");
+                }
+                _ => panic!("Expected Base64 source"),
+            },
+            _ => panic!("Expected Image block"),
+        }
+    }
+
+    #[test]
+    fn test_convert_content_http_image() {
+        // HTTP URL image should work
+        let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
+            url: "https://example.com/photo.jpg".to_string(),
+        }]);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert_eq!(blocks.len(), 1, "HTTP image should be converted");
+        match &blocks[0] {
+            AnthropicContentBlock::Image { source } => match source {
+                AnthropicImageSource::Url { url } => {
+                    assert_eq!(url, "https://example.com/photo.jpg");
+                }
+                _ => panic!("Expected Url source"),
+            },
+            _ => panic!("Expected Image block"),
+        }
+    }
+
+    #[test]
+    fn test_convert_content_audio_fallback() {
+        // Audio should fallback to text note (Anthropic doesn't support audio)
+        let content = LlmMessageContent::Parts(vec![LlmContentPart::Audio {
+            url: "data:audio/wav;base64,AAAA".to_string(),
+        }]);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
+        assert_eq!(blocks.len(), 1, "Audio should fallback to text note");
+        match &blocks[0] {
+            AnthropicContentBlock::Text { text } => {
+                assert!(text.contains("not supported"));
+            }
+            _ => panic!("Expected Text block for audio fallback"),
+        }
+    }
+
+    #[test]
+    fn test_convert_messages_system_prompt() {
+        // System message should be extracted as system prompt
+        let messages = vec![
+            LlmMessage {
+                role: LlmMessageRole::System,
+                content: LlmMessageContent::Text("You are helpful".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::User,
+                content: LlmMessageContent::Text("Hello".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+        ];
+
+        let (system, converted) = AnthropicLlmDriver::convert_messages(&messages);
+
+        assert_eq!(system, Some("You are helpful".to_string()));
+        assert_eq!(converted.len(), 1); // Only user message
+    }
+
+    #[test]
+    fn test_convert_messages_tool_result() {
+        // Tool result should be converted to user message with tool_result block
+        let messages = vec![LlmMessage {
+            role: LlmMessageRole::Tool,
+            content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
+            tool_calls: None,
+            tool_call_id: Some("call_123".to_string()),
+        }];
+
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);
+
+        assert_eq!(converted.len(), 1);
+        assert_eq!(converted[0].role, "user");
+        assert_eq!(converted[0].content.len(), 1);
+        match &converted[0].content[0] {
+            AnthropicContentBlock::ToolResult {
+                tool_use_id,
+                content,
+                ..
+            } => {
+                assert_eq!(tool_use_id, "call_123");
+                assert_eq!(content, "{\"temp\": 20}");
+            }
+            _ => panic!("Expected ToolResult block"),
+        }
+    }
 }

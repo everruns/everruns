@@ -1630,7 +1630,7 @@ impl Database {
             r#"
             INSERT INTO mcp_servers (name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
         .bind(&input.name)
@@ -1647,10 +1647,44 @@ impl Database {
         Ok(row)
     }
 
+    /// Create MCP server with a specific ID (for seeding)
+    /// Returns None if server already exists with this ID
+    pub async fn create_mcp_server_with_id(
+        &self,
+        id: Uuid,
+        input: CreateMcpServerRow,
+    ) -> Result<Option<McpServerRow>> {
+        let headers = input.headers.unwrap_or(serde_json::json!({}));
+        let settings = input.settings.unwrap_or(serde_json::json!({}));
+        let api_key_set = input.api_key_encrypted.is_some();
+
+        let row = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            INSERT INTO mcp_servers (id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.url)
+        .bind(&input.transport_type)
+        .bind(&input.api_key_encrypted)
+        .bind(api_key_set)
+        .bind(&headers)
+        .bind(&settings)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
             WHERE id = $1
             "#,
@@ -1665,7 +1699,7 @@ impl Database {
     pub async fn get_mcp_server_by_name(&self, name: &str) -> Result<Option<McpServerRow>> {
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
             WHERE name = $1
             "#,
@@ -1680,9 +1714,25 @@ impl Database {
     pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
         let rows = sqlx::query_as::<_, McpServerRow>(
             r#"
-            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             FROM mcp_servers
             ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// List only active MCP servers (for capability listing)
+    pub async fn list_active_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+        let rows = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            SELECT id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            FROM mcp_servers
+            WHERE status = 'active'
+            ORDER BY name ASC
             "#,
         )
         .fetch_all(&self.pool)
@@ -1713,7 +1763,7 @@ impl Database {
                 headers = COALESCE($9, headers),
                 settings = COALESCE($10, settings)
             WHERE id = $1
-            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, created_at, updated_at
+            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -1726,6 +1776,30 @@ impl Database {
         .bind(api_key_set)
         .bind(&input.headers)
         .bind(&input.settings)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Update cached tools for an MCP server
+    pub async fn update_mcp_server_tools(
+        &self,
+        id: Uuid,
+        input: UpdateMcpServerTools,
+    ) -> Result<Option<McpServerRow>> {
+        let row = sqlx::query_as::<_, McpServerRow>(
+            r#"
+            UPDATE mcp_servers
+            SET
+                cached_tools = $2,
+                tools_cached_at = NOW()
+            WHERE id = $1
+            RETURNING id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(&input.cached_tools)
         .fetch_optional(&self.pool)
         .await?;
 

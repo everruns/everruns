@@ -20,6 +20,7 @@ import {
   ChevronDown,
   X,
   ChevronRight,
+  Plug,
 } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -262,8 +263,14 @@ export function CapabilitySelector({
                                   />
                                   <IconComponent className="w-4 h-4 mt-0.5 shrink-0" />
                                   <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium">
+                                    <div className="flex items-center gap-2 text-sm font-medium">
                                       {cap.name}
+                                      {cap.is_mcp && (
+                                        <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 gap-1">
+                                          <Plug className="w-3 h-3" />
+                                          MCP
+                                        </Badge>
+                                      )}
                                     </div>
                                     <div className="text-xs text-muted-foreground line-clamp-2">
                                       {cap.description}
@@ -337,7 +344,15 @@ export function CapabilitySelector({
 
                 {/* Icon and name */}
                 <IconComponent className="w-4 h-4 shrink-0" />
-                <span className="flex-1 text-sm truncate">{cap.name}</span>
+                <span className="flex-1 text-sm truncate flex items-center gap-2">
+                  {cap.name}
+                  {cap.is_mcp && (
+                    <Badge variant="outline" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">
+                      <Plug className="w-2.5 h-2.5" />
+                      MCP
+                    </Badge>
+                  )}
+                </span>
 
                 {/* Remove button */}
                 <button

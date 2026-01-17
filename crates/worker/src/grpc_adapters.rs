@@ -94,6 +94,37 @@ impl GrpcClient {
 
         proto_session_to_session(proto_session)
     }
+
+    /// Get MCP server info by name prefix (for MCP tool execution)
+    pub async fn get_mcp_server_by_prefix(
+        &self,
+        server_prefix: &str,
+    ) -> Result<crate::mcp_executor::McpServerInfo> {
+        let request = proto::GetMcpServerByPrefixRequest {
+            server_prefix: server_prefix.to_string(),
+        };
+
+        let mut client = self.inner.lock().await;
+        let response = client
+            .get_mcp_server_by_prefix(request)
+            .await
+            .map_err(|e| grpc_error(format!("Failed to get MCP server: {}", e)))?;
+
+        let proto_server = response.into_inner().server.ok_or_else(|| {
+            grpc_error(format!(
+                "MCP server not found for prefix: {}",
+                server_prefix
+            ))
+        })?;
+
+        Ok(crate::mcp_executor::McpServerInfo {
+            id: proto_uuid_to_uuid(proto_server.id.as_ref())?,
+            name: proto_server.name,
+            url: proto_server.url,
+            api_key: proto_server.api_key,
+            headers: proto_server.headers,
+        })
+    }
 }
 
 // ============================================================================
@@ -793,6 +824,8 @@ pub struct TurnContext {
     pub session: Session,
     pub messages: Vec<Message>,
     pub model: Option<ModelWithProvider>,
+    /// MCP tool definitions pre-resolved from agent's MCP capabilities
+    pub mcp_tool_definitions: Vec<everruns_core::ToolDefinition>,
 }
 
 /// Load turn context in one batched call (optimization)
@@ -833,11 +866,39 @@ pub async fn load_turn_context(client: &GrpcClient, session_id: Uuid) -> Result<
         .map(proto_model_with_provider_to_model)
         .transpose()?;
 
+    // Convert MCP tool definitions from proto to core types
+    let mcp_tool_definitions = inner
+        .mcp_tool_definitions
+        .into_iter()
+        .map(proto_mcp_tool_def_to_tool_definition)
+        .collect();
+
     Ok(TurnContext {
         agent,
         session,
         messages,
         model,
+        mcp_tool_definitions,
+    })
+}
+
+/// Convert proto McpToolDef to core ToolDefinition
+fn proto_mcp_tool_def_to_tool_definition(
+    proto_tool: proto::McpToolDef,
+) -> everruns_core::ToolDefinition {
+    use everruns_core::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+
+    // Convert proto Struct to serde_json::Value
+    let parameters = proto_tool
+        .parameters
+        .map(|s| proto_struct_to_json(&s))
+        .unwrap_or_else(|| serde_json::json!({"type": "object"}));
+
+    ToolDefinition::Builtin(BuiltinTool {
+        name: proto_tool.name,
+        description: proto_tool.description,
+        parameters,
+        policy: ToolPolicy::Auto, // MCP tools are auto-executed
     })
 }
 

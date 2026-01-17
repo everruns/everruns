@@ -7,7 +7,7 @@
 
 use everruns_control_plane::storage::{
     StorageBackend,
-    models::{CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow},
+    models::{CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow},
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,6 +32,10 @@ mod seed_ids {
     // Agents (0x100-0x1FF)
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
     pub const RESEARCH_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000102);
+    pub const MS_LEARN_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000103);
+
+    // MCP Servers (0x500-0x5FF)
+    pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
 
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
@@ -182,6 +186,42 @@ Use this structure for organizing research:
 ```"#,
         tags: &["research", "example", "multi-capability"],
         capabilities: &["stateless_todo_list", "web_fetch", "session_file_system"],
+    },
+    SeedAgent {
+        id: seed_ids::MS_LEARN_AGENT,
+        name: "Microsoft Learn Assistant",
+        description: "An agent that searches and answers questions using Microsoft Learn documentation",
+        system_prompt: r#"You are a Microsoft Learn Documentation Assistant. You help users find and understand
+information from Microsoft Learn documentation (learn.microsoft.com).
+
+## Your Capabilities
+
+You have access to Microsoft Learn MCP tools that allow you to:
+- Search for documentation on Microsoft products and technologies
+- Retrieve specific documentation pages
+- Get detailed information about Azure, .NET, Windows, and other Microsoft technologies
+
+## How to Help Users
+
+1. When a user asks a question about Microsoft technologies, use the available tools
+   to search for relevant documentation.
+
+2. Summarize the key points from the documentation in a clear, helpful way.
+
+3. Provide links to the source documentation so users can learn more.
+
+4. If the documentation doesn't fully answer the question, explain what you found
+   and suggest related topics to explore.
+
+## Guidelines
+
+- Always cite the source documentation
+- Be concise but thorough
+- If you're unsure about something, say so and point to the documentation
+- Help users understand complex topics by breaking them down into simpler parts"#,
+        tags: &["microsoft", "documentation", "mcp", "demo", "seed"],
+        // MCP capability ID format: "mcp:{server_uuid}"
+        capabilities: &["mcp:01933b5a-0000-7000-8000-000000000501"],
     },
 ];
 
@@ -666,6 +706,65 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
 }
 
 // ============================================
+// MCP Server Seeder
+// ============================================
+
+/// Seed MCP server definition
+struct SeedMcpServer {
+    id: Uuid,
+    name: &'static str,
+    description: &'static str,
+    url: &'static str,
+}
+
+/// Built-in seed MCP servers
+const SEED_MCP_SERVERS: &[SeedMcpServer] = &[SeedMcpServer {
+    id: seed_ids::MS_LEARN_MCP,
+    name: "microsoft_learn",
+    description: "Microsoft Learn documentation MCP server - search and retrieve Microsoft documentation",
+    url: "https://learn.microsoft.com/api/mcp",
+}];
+
+/// Seed MCP servers into the database
+async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    for seed in SEED_MCP_SERVERS {
+        let input = CreateMcpServerRow {
+            name: seed.name.to_string(),
+            description: Some(seed.description.to_string()),
+            url: seed.url.to_string(),
+            transport_type: "http".to_string(),
+            api_key_encrypted: None, // No API key needed for public endpoint
+            headers: None,
+            settings: None,
+        };
+
+        match db.create_mcp_server_with_id(seed.id, input).await? {
+            Some(_) => {
+                tracing::info!(
+                    name = seed.name,
+                    id = %seed.id,
+                    url = seed.url,
+                    "Created seed MCP server"
+                );
+                result.created += 1;
+            }
+            None => {
+                tracing::debug!(
+                    name = seed.name,
+                    id = %seed.id,
+                    "MCP server already exists, skipping"
+                );
+                result.skipped += 1;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+// ============================================
 // Seeding Orchestration
 // ============================================
 
@@ -757,6 +856,7 @@ async fn run_seed_with_retry(db: &StorageBackend) -> Result<SeedResult, String> 
 
 /// Run all seeders in order
 /// Providers must be seeded before models (foreign key dependency)
+/// MCP servers must be seeded before agents (agents may reference them)
 async fn seed_all(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -777,6 +877,15 @@ async fn seed_all(db: &StorageBackend) -> anyhow::Result<SeedResult> {
         "Models seeded"
     );
     result.merge(model_result);
+
+    // Seed MCP servers (before agents that may use them)
+    let mcp_result = seed_mcp_servers(db).await?;
+    tracing::debug!(
+        created = mcp_result.created,
+        skipped = mcp_result.skipped,
+        "MCP servers seeded"
+    );
+    result.merge(mcp_result);
 
     // Seed agents
     let agent_result = seed_agents(db).await?;

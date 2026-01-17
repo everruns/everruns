@@ -184,7 +184,10 @@ async fn main() -> Result<()> {
     let llm_providers_state = api::llm_providers::AppState::new(db.clone(), encryption.clone());
     let llm_models_state = api::llm_models::AppState::new(db.clone());
     let mcp_servers_state = api::mcp_servers::AppState::new(db.clone(), encryption.clone());
-    let capability_service = Arc::new(services::CapabilityService::new(db.clone()));
+    let capability_service = Arc::new(services::CapabilityService::new(
+        db.clone(),
+        encryption.clone(),
+    ));
     let capabilities_state = api::capabilities::AppState::new(capability_service);
     let session_files_state = api::session_files::AppState::new(db.clone());
     let users_state = api::users::UsersState {
@@ -384,6 +387,12 @@ async fn main() -> Result<()> {
                 encryption.clone(),
             ));
 
+            // Create MCP server service for the in-process worker
+            let mcp_server_service = Arc::new(services::McpServerService::new(
+                db.clone(),
+                encryption.clone(),
+            ));
+
             // Create in-process worker configuration
             let worker_config = InProcessWorkerConfig::default();
 
@@ -397,6 +406,7 @@ async fn main() -> Result<()> {
                     worker_db,
                     worker_event_service,
                     llm_resolver,
+                    mcp_server_service,
                 );
 
                 if let Err(e) = worker.run().await {

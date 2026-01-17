@@ -425,6 +425,10 @@ pub struct McpServerRow {
     pub api_key_set: bool,
     pub headers: sqlx::types::JsonValue,
     pub settings: sqlx::types::JsonValue,
+    /// Cached tool definitions from MCP server
+    pub cached_tools: sqlx::types::JsonValue,
+    /// When tools were last fetched from MCP server
+    pub tools_cached_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -493,4 +497,10 @@ pub struct CreateImageRow {
     pub thumbnail_data: Option<Vec<u8>>,
     pub thumbnail_content_type: Option<String>,
     pub metadata: serde_json::Value,
+}
+
+/// Input for updating MCP server cached tools
+#[derive(Debug, Clone)]
+pub struct UpdateMcpServerTools {
+    pub cached_tools: serde_json::Value,
 }

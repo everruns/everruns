@@ -98,9 +98,11 @@ pub use capabilities::{
     AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
     CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability,
     DeleteFileTool, DivideTool, FileSystemCapability, GetCurrentTimeTool, GetForecastTool,
-    GetWeatherTool, GrepFilesTool, ListDirectoryTool, MultiplyTool, NoopCapability, ReadFileTool,
-    ResearchCapability, SandboxCapability, StatFileTool, StatelessTodoListCapability, SubtractTool,
-    TestMathCapability, TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities,
+    GetWeatherTool, GrepFilesTool, ListDirectoryTool, MCP_CAPABILITY_PREFIX, McpCapability,
+    MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability, SandboxCapability,
+    StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
+    TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities, is_mcp_capability,
+    mcp_capability_id, parse_mcp_capability_id,
 };
 
 // Atoms re-exports (stateless atomic operations)
@@ -134,7 +136,12 @@ pub use llm_models::{
     LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality, ReasoningEffort,
     ReasoningEffortConfig, ReasoningEffortValue,
 };
-pub use mcp_server::{McpServer, McpServerStatus, McpServerTransportType};
+pub use mcp_server::{
+    McpContent, McpError, McpServer, McpServerStatus, McpServerTransportType, McpToolCallParams,
+    McpToolCallRequest, McpToolCallResponse, McpToolCallResult, McpToolDefinition,
+    McpToolsListRequest, McpToolsListResponse, McpToolsListResult, is_mcp_tool, mcp_tool_name,
+    parse_mcp_tool_name,
+};
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
 

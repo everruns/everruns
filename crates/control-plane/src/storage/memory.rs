@@ -1405,12 +1405,50 @@ impl InMemoryDatabase {
             api_key_set,
             headers: input.headers.unwrap_or(serde_json::json!({})),
             settings: input.settings.unwrap_or(serde_json::json!({})),
+            cached_tools: serde_json::json!([]),
+            tools_cached_at: None,
             created_at: now,
             updated_at: now,
         };
 
         self.mcp_servers.write().insert(id, row.clone());
         Ok(row)
+    }
+
+    /// Create MCP server with a specific ID (for seeding)
+    /// Returns None if server already exists with this ID
+    pub async fn create_mcp_server_with_id(
+        &self,
+        id: Uuid,
+        input: CreateMcpServerRow,
+    ) -> Result<Option<McpServerRow>> {
+        // Check if already exists
+        if self.mcp_servers.read().contains_key(&id) {
+            return Ok(None);
+        }
+
+        let now = Self::now();
+        let api_key_set = input.api_key_encrypted.is_some();
+
+        let row = McpServerRow {
+            id,
+            name: input.name,
+            description: input.description,
+            url: input.url,
+            transport_type: input.transport_type,
+            status: "active".to_string(),
+            api_key_encrypted: input.api_key_encrypted,
+            api_key_set,
+            headers: input.headers.unwrap_or(serde_json::json!({})),
+            settings: input.settings.unwrap_or(serde_json::json!({})),
+            cached_tools: serde_json::json!([]),
+            tools_cached_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        self.mcp_servers.write().insert(id, row.clone());
+        Ok(Some(row))
     }
 
     pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
@@ -1429,6 +1467,18 @@ impl InMemoryDatabase {
     pub async fn list_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
         let mut servers: Vec<_> = self.mcp_servers.read().values().cloned().collect();
         servers.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(servers)
+    }
+
+    pub async fn list_active_mcp_servers(&self) -> Result<Vec<McpServerRow>> {
+        let mut servers: Vec<_> = self
+            .mcp_servers
+            .read()
+            .values()
+            .filter(|s| s.status == "active")
+            .cloned()
+            .collect();
+        servers.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(servers)
     }
 
@@ -1600,6 +1650,21 @@ impl InMemoryDatabase {
             .take(limit as usize)
             .collect();
         Ok(result)
+    }
+
+    pub async fn update_mcp_server_tools(
+        &self,
+        id: Uuid,
+        input: UpdateMcpServerTools,
+    ) -> Result<Option<McpServerRow>> {
+        let mut servers = self.mcp_servers.write();
+        if let Some(server) = servers.get_mut(&id) {
+            server.cached_tools = input.cached_tools;
+            server.tools_cached_at = Some(Self::now());
+            server.updated_at = Self::now();
+            return Ok(Some(server.clone()));
+        }
+        Ok(None)
     }
 }
 

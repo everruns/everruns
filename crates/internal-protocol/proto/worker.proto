@@ -116,6 +116,10 @@ service WorkerService {
 
     // Resolve multiple images in a batch (more efficient for multimodal messages)
     rpc ResolveImages(ResolveImagesRequest) returns (ResolveImagesResponse);
+
+    // === MCP server operations ===
+    // Get MCP server info by name prefix (for tool execution)
+    rpc GetMcpServerByPrefix(GetMcpServerByPrefixRequest) returns (GetMcpServerByPrefixResponse);
 }
 
 // ============================================================================
@@ -144,6 +148,17 @@ message GetTurnContextResponse {
     Session session = 2;
     repeated Message messages = 3;
     ModelWithProvider model = 4;
+    // MCP tool definitions from agent's MCP capabilities
+    // These are pre-resolved to avoid MCP capability lookup in worker
+    repeated McpToolDef mcp_tool_definitions = 5;
+}
+
+// MCP tool definition for passing to worker
+// Contains the prefixed name and schema ready for LLM
+message McpToolDef {
+    string name = 1;  // Prefixed: mcp_{server_name}_{tool_name}
+    string description = 2;
+    google.protobuf.Struct parameters = 3;  // JSON Schema
 }
 
 // ============================================================================
@@ -737,4 +752,26 @@ message TaskNotification {
     optional int32 pending_count = 3;
     // Server timestamp when notification was generated
     Timestamp timestamp = 4;
+}
+
+// ============================================================================
+// MCP server types
+// ============================================================================
+
+// MCP server info needed for tool execution
+message McpServerInfo {
+    Uuid id = 1;
+    string name = 2;
+    string url = 3;
+    optional string api_key = 4;  // Decrypted by control plane
+    map<string, string> headers = 5;
+}
+
+// Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn__search")
+message GetMcpServerByPrefixRequest {
+    string server_prefix = 1;
+}
+
+message GetMcpServerByPrefixResponse {
+    optional McpServerInfo server = 1;
 }

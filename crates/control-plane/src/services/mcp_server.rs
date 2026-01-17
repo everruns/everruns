@@ -1,16 +1,28 @@
 // MCP Server service for business logic
+// Handles MCP server CRUD and tool discovery/caching
 
 use crate::storage::{
     EncryptionService, McpServerRow, StorageBackend,
-    models::{CreateMcpServerRow, UpdateMcpServer},
+    models::{CreateMcpServerRow, UpdateMcpServer, UpdateMcpServerTools},
 };
 use anyhow::{Result, anyhow};
-use everruns_core::{McpServer, McpServerStatus, McpServerTransportType};
+use chrono::{DateTime, Utc};
+use everruns_core::{
+    McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition, McpToolsListRequest,
+    McpToolsListResponse,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::api::mcp_servers::{CreateMcpServerRequest, UpdateMcpServerRequest};
+
+/// How long cached tools are considered fresh (1 hour)
+const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
+
+/// HTTP client timeout for MCP server calls
+const MCP_CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct McpServerService {
     db: Arc<StorageBackend>,
@@ -93,6 +105,88 @@ impl McpServerService {
         self.db.delete_mcp_server(id).await
     }
 
+    /// List active MCP servers (for capability listing)
+    pub async fn list_active(&self) -> Result<Vec<McpServer>> {
+        let rows = self.db.list_active_mcp_servers().await?;
+        Ok(rows.iter().map(Self::row_to_mcp_server).collect())
+    }
+
+    /// List active MCP servers with their cached tools
+    pub async fn list_active_with_tools(&self) -> Result<Vec<McpServerWithTools>> {
+        let rows = self.db.list_active_mcp_servers().await?;
+        Ok(rows
+            .iter()
+            .map(Self::row_to_mcp_server_with_tools)
+            .collect())
+    }
+
+    /// Refresh cached tools for an MCP server by calling tools/list
+    pub async fn refresh_tools(&self, id: Uuid) -> Result<Vec<McpToolDefinition>> {
+        // Get the MCP server
+        let row = self
+            .db
+            .get_mcp_server(id)
+            .await?
+            .ok_or_else(|| anyhow!("MCP server not found"))?;
+
+        // Get decrypted API key if set
+        let api_key = if row.api_key_set {
+            if let Some(encrypted) = &row.api_key_encrypted {
+                let encryption = self
+                    .encryption
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Encryption not configured"))?;
+                Some(encryption.decrypt_to_string(encrypted)?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Parse headers
+        let headers: HashMap<String, String> =
+            serde_json::from_value(row.headers.clone()).unwrap_or_default();
+
+        // Fetch tools from MCP server
+        let tools = fetch_mcp_tools(&row.url, api_key.as_deref(), &headers).await?;
+
+        // Cache tools in database
+        let cached_tools = serde_json::to_value(&tools)?;
+        self.db
+            .update_mcp_server_tools(id, UpdateMcpServerTools { cached_tools })
+            .await?;
+
+        Ok(tools)
+    }
+
+    /// Get cached tools for an MCP server, refreshing if stale
+    pub async fn get_tools(&self, id: Uuid, force_refresh: bool) -> Result<Vec<McpToolDefinition>> {
+        let row = self
+            .db
+            .get_mcp_server(id)
+            .await?
+            .ok_or_else(|| anyhow!("MCP server not found"))?;
+
+        // Check if cache is fresh
+        let cache_fresh = if let Some(cached_at) = row.tools_cached_at {
+            let age = Utc::now().signed_duration_since(cached_at);
+            age < chrono::Duration::from_std(TOOL_CACHE_TTL).unwrap_or(chrono::Duration::hours(1))
+        } else {
+            false
+        };
+
+        if !force_refresh && cache_fresh {
+            // Return cached tools
+            let tools: Vec<McpToolDefinition> =
+                serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
+            return Ok(tools);
+        }
+
+        // Refresh tools
+        self.refresh_tools(id).await
+    }
+
     fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         // Parse headers from JSON
         let headers: HashMap<String, String> =
@@ -111,4 +205,74 @@ impl McpServerService {
             updated_at: row.updated_at,
         }
     }
+
+    fn row_to_mcp_server_with_tools(row: &McpServerRow) -> McpServerWithTools {
+        let server = Self::row_to_mcp_server(row);
+        let cached_tools: Vec<McpToolDefinition> =
+            serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
+
+        McpServerWithTools {
+            server,
+            cached_tools,
+            tools_cached_at: row.tools_cached_at,
+        }
+    }
+}
+
+/// MCP Server with cached tools
+#[derive(Debug, Clone)]
+pub struct McpServerWithTools {
+    pub server: McpServer,
+    pub cached_tools: Vec<McpToolDefinition>,
+    pub tools_cached_at: Option<DateTime<Utc>>,
+}
+
+/// Fetch tools from an MCP server using JSON-RPC over HTTP
+async fn fetch_mcp_tools(
+    url: &str,
+    api_key: Option<&str>,
+    headers: &HashMap<String, String>,
+) -> Result<Vec<McpToolDefinition>> {
+    let client = reqwest::Client::builder()
+        .timeout(MCP_CLIENT_TIMEOUT)
+        .build()?;
+
+    let request = McpToolsListRequest::default();
+
+    let mut req_builder = client.post(url).json(&request);
+
+    // Add API key if provided
+    if let Some(key) = api_key {
+        req_builder = req_builder.header("Authorization", format!("Bearer {}", key));
+    }
+
+    // Add custom headers
+    for (name, value) in headers {
+        req_builder = req_builder.header(name, value);
+    }
+
+    let response = req_builder.send().await?;
+
+    if !response.status().is_success() {
+        return Err(anyhow!(
+            "MCP server returned error status: {}",
+            response.status()
+        ));
+    }
+
+    let mcp_response: McpToolsListResponse = response.json().await?;
+
+    if let Some(error) = mcp_response.error {
+        return Err(anyhow!(
+            "MCP server error: {} ({})",
+            error.message,
+            error.code
+        ));
+    }
+
+    let result = mcp_response
+        .result
+        .ok_or_else(|| anyhow!("MCP server returned empty result"))?;
+
+    Ok(result.tools)
 }
