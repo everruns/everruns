@@ -242,38 +242,29 @@ Message content uses unified `Vec<ContentPart>` across all layers:
 
 ### Pre-PR checklist
 
-Before creating a pull request, run the pre-PR check script:
+Before creating a pull request:
 
-```bash
-./scripts/dev.sh pre-pr
-```
-
-This runs all required checks:
-
-0. **Branch rebased**: Warns if branch is not rebased on latest `main`
-1. **Rust formatting**: `cargo fmt --check`
-2. **Rust linting**: `cargo clippy --all-targets --all-features -- -D warnings`
-3. **Rust tests**: `cargo test --all-features`
-4. **UI lint**: `npm run lint` in `apps/ui/`
-5. **UI build**: `npm run build` in `apps/ui/`
-6. **OpenAPI spec freshness**: Verifies `docs/api/openapi.json` matches current code
-7. **Docs build**: `npm run check && npm run build` in `apps/docs/`
-
-**Additional manual requirements:**
-
-- **Rebase on main**: Branch must be rebased on latest `main` before merging
-  ```bash
-  git fetch origin main && git rebase origin/main
-  ```
-- **Smoke tests**: New functionality must be smoke tested end-to-end
-- **UI screenshots**: If PR includes UI changes, attach screenshot of working UI
-  - Use real backend data (not faked), except for `/dev/*` component showcase pages
-  - Use `.claude/skills/ui-screenshots/` to capture screenshots via Playwright
-- **CI green**: All CI checks must pass before merging
-- **PR comments resolved**: No unaddressed review comments in PR
-- **Examples**: If modifying examples, validate they run against a running API
-- **Update specs**: If changes affect system behavior, update specs in `specs/`
-- **Update docs**: If changes affect usage, update docs in `docs/`
+1. **Run pre-PR script**: `./scripts/dev.sh pre-pr` (runs checks 2-8 automatically)
+2. **Rust formatting**: `cargo fmt --check`
+3. **Rust linting**: `cargo clippy --all-targets --all-features -- -D warnings`
+4. **Rust tests**: `cargo test --all-features`
+5. **UI lint**: `npm run lint` in `apps/ui/`
+6. **UI build**: `npm run build` in `apps/ui/`
+7. **OpenAPI spec freshness**: Verifies `docs/api/openapi.json` matches current code
+8. **Docs build**: `npm run check && npm run build` in `apps/docs/`
+9. **Rebase on main**: Branch must be rebased on latest `main` before merging
+   ```bash
+   git fetch origin main && git rebase origin/main
+   ```
+10. **Smoke tests**: New functionality must be smoke tested end-to-end
+11. **UI screenshots**: If PR includes UI changes, attach screenshot of working UI
+    - Use real backend data (not faked), except for `/dev/*` component showcase pages
+    - Use `.claude/skills/ui-screenshots/` to capture screenshots via Playwright
+12. **CI green**: All CI checks must pass before merging
+13. **PR comments resolved**: No unaddressed review comments in PR
+14. **Examples**: If modifying examples, validate they run against a running API
+15. **Update specs**: If changes affect system behavior, update specs in `specs/`
+16. **Update docs**: If changes affect usage, update docs in `docs/`
 
 CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` before pushing.
 
