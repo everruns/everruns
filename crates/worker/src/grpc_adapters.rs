@@ -75,7 +75,12 @@ impl GrpcClient {
     }
 
     /// Set session status (started, active, idle)
-    pub async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<Session> {
+    pub async fn set_session_status(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        status: &str,
+    ) -> Result<Session> {
         let request = proto::SetSessionStatusRequest {
             session_id: Some(uuid_to_proto(session_id)),
             status: status.to_string(),
@@ -840,7 +845,11 @@ pub struct TurnContext {
 /// Load turn context in one batched call (optimization)
 ///
 /// This is more efficient than making separate calls for agent, session, messages.
-pub async fn load_turn_context(client: &GrpcClient, org_id: i64, session_id: Uuid) -> Result<TurnContext> {
+pub async fn load_turn_context(
+    client: &GrpcClient,
+    org_id: i64,
+    session_id: Uuid,
+) -> Result<TurnContext> {
     let mut grpc_client = client.inner.lock().await;
 
     let request = proto::GetTurnContextRequest {

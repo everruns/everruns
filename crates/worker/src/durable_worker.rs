@@ -487,7 +487,13 @@ impl DurableWorker {
                     agent_id: act_task_input.act_input.agent_id, // Pass through agent_id for follow-up reason
                     input_message_id: act_task_input.act_input.context.input_message_id,
                 };
-                let res = self.execute_act_activity(grpc_client, act_task_input.org_id, act_task_input.act_input).await;
+                let res = self
+                    .execute_act_activity(
+                        grpc_client,
+                        act_task_input.org_id,
+                        act_task_input.act_input,
+                    )
+                    .await;
                 (res, Some(turn_input))
             }
             _ => (

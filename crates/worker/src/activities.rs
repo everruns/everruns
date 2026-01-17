@@ -114,7 +114,11 @@ pub async fn input_activity(
 /// 8. If turn completes (no tool calls), emits turn.completed, sets session status to "idle" and emits session.idled
 ///
 /// Note: API key decryption is handled by the control-plane gRPC service.
-pub async fn reason_activity(grpc_client: GrpcClient, org_id: i64, input: ReasonInput) -> Result<ReasonResult> {
+pub async fn reason_activity(
+    grpc_client: GrpcClient,
+    org_id: i64,
+    input: ReasonInput,
+) -> Result<ReasonResult> {
     use everruns_core::events::{
         EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
     };
@@ -164,7 +168,10 @@ pub async fn reason_activity(grpc_client: GrpcClient, org_id: i64, input: Reason
     let turn_complete = !result.has_tool_calls || !result.success;
     if turn_complete {
         // Set session status to "idle"
-        if let Err(e) = grpc_client.set_session_status(org_id, session_id, "idle").await {
+        if let Err(e) = grpc_client
+            .set_session_status(org_id, session_id, "idle")
+            .await
+        {
             tracing::warn!(error = %e, "Failed to set session status to idle");
         }
 
@@ -233,7 +240,11 @@ pub async fn reason_activity(grpc_client: GrpcClient, org_id: i64, input: Reason
 /// 6. Returns comprehensive results for all tools
 ///
 /// Supports both built-in tools and MCP tools (via remote MCP servers).
-pub async fn act_activity(grpc_client: GrpcClient, org_id: i64, input: ActInput) -> Result<ActResult> {
+pub async fn act_activity(
+    grpc_client: GrpcClient,
+    org_id: i64,
+    input: ActInput,
+) -> Result<ActResult> {
     tracing::info!(
         org_id = org_id,
         session_id = %input.context.session_id,
