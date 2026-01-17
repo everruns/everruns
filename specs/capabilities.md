@@ -314,9 +314,14 @@ When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are au
 - **Icon**: "globe"
 - **Category**: "Network"
 
-##### Design Decision: No System Prompt
+##### Design Decision: System Prompt from fetchkit
 
-This capability intentionally does not contribute to the system prompt. The tool is self-documenting through its parameter schema and description. Agents can discover and use the tool without additional instructions.
+This capability uses the `TOOL_LLMTXT` constant from fetchkit as its system prompt addition. This provides comprehensive LLM-optimized documentation including:
+- Capability overview
+- Input parameters with descriptions
+- Output fields with explanations
+- Usage examples
+- Error handling guidance
 
 ##### Design Decision: Binary Content Metadata
 
@@ -454,20 +459,22 @@ When a session executes:
 
 Capabilities are managed as part of the agent resource. When creating or updating an agent, you can specify the capabilities to enable. The agent response includes the list of enabled capabilities.
 
+All endpoints are organization-scoped.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/capabilities` | List all available capabilities |
-| GET | `/v1/capabilities/{capability_id}` | Get capability details |
+| GET | `/v1/orgs/{org}/capabilities` | List all available capabilities |
+| GET | `/v1/orgs/{org}/capabilities/{capability_id}` | Get capability details |
 
 Agent capabilities are managed through the agents API:
-- `POST /v1/agents` - Create agent with capabilities
-- `PATCH /v1/agents/{id}` - Update agent capabilities
-- `GET /v1/agents/{id}` - Get agent (includes capabilities)
+- `POST /v1/orgs/{org}/agents` - Create agent with capabilities
+- `PATCH /v1/orgs/{org}/agents/{id}` - Update agent capabilities
+- `GET /v1/orgs/{org}/agents/{id}` - Get agent (includes capabilities)
 
 #### List Capabilities
 
 ```http
-GET /v1/capabilities
+GET /v1/orgs/{org}/capabilities
 
 Response:
 {
@@ -512,7 +519,7 @@ Response:
 #### Create Agent with Capabilities
 
 ```http
-POST /v1/agents
+POST /v1/orgs/{org}/agents
 Content-Type: application/json
 
 {
@@ -541,7 +548,7 @@ Response:
 #### Update Agent Capabilities
 
 ```http
-PATCH /v1/agents/{agent_id}
+PATCH /v1/orgs/{org}/agents/{agent_id}
 Content-Type: application/json
 
 {
