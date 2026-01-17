@@ -1,7 +1,3 @@
-# Decision: Use UUID v7 for time-ordered IDs (better for DB indexing, sortable by creation time)
-# Decision: OpenAI as first LLM provider (most common, stable API)
-# Decision: Auth via OAuth will be added later for dashboard login
-
 [workspace]
 resolver = "2"
 
