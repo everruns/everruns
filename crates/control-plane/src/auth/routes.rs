@@ -62,6 +62,13 @@ pub struct TokenResponse {
     pub refresh_token: Option<String>,
 }
 
+/// Organization membership in user response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OrgMembershipResponse {
+    pub public_id: String,
+    pub name: String,
+}
+
 /// User info response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserInfoResponse {
@@ -70,6 +77,9 @@ pub struct UserInfoResponse {
     pub name: String,
     pub roles: Vec<String>,
     pub avatar_url: Option<String>,
+    /// Organizations the user belongs to
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organizations: Option<Vec<OrgMembershipResponse>>,
 }
 
 /// API key response (shown only once at creation)
@@ -402,12 +412,27 @@ pub async fn logout(jar: CookieJar) -> CookieJar {
 
 /// GET /v1/auth/me - Get current user info
 pub async fn get_current_user(user: AuthUser) -> Json<UserInfoResponse> {
+    let organizations = if user.organizations.is_empty() {
+        None
+    } else {
+        Some(
+            user.organizations
+                .iter()
+                .map(|o| OrgMembershipResponse {
+                    public_id: o.public_id.clone(),
+                    name: o.name.clone(),
+                })
+                .collect(),
+        )
+    };
+
     Json(UserInfoResponse {
         id: user.id.to_string(),
         email: user.email,
         name: user.name,
         roles: user.roles,
         avatar_url: None,
+        organizations,
     })
 }
 
