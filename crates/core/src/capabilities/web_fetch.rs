@@ -4,16 +4,15 @@
 //! HTML responses to markdown or plain text for easier processing.
 //!
 //! Design decisions:
-//! - No system prompt addition (capability doesn't need special instructions)
+//! - Uses fetchkit library for HTTP operations, HTML conversion, and tool metadata
 //! - Binary content is not supported but returns metadata (filename, size, content_type)
-//! - Uses fetchkit library for all HTTP operations and HTML conversion
 //! - Timeout for first byte: 1 second (connect + time to first response byte)
 //! - Timeout for body: 30 seconds total, partial content returned if exceeded
 
 use super::{Capability, CapabilityId, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
-use fetchkit::{FetchError, FetchRequest, fetch};
+use fetchkit::{FetchError, FetchRequest, TOOL_DESCRIPTION, TOOL_LLMTXT, fetch};
 use serde_json::Value;
 
 /// WebFetch capability - provides tools to fetch web content
@@ -29,7 +28,8 @@ impl Capability for WebFetchCapability {
     }
 
     fn description(&self) -> &str {
-        "Fetch content from URLs and convert HTML responses to markdown or plain text."
+        // Use the description from fetchkit
+        TOOL_DESCRIPTION
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -44,7 +44,10 @@ impl Capability for WebFetchCapability {
         Some("Network")
     }
 
-    // No system_prompt_addition - this capability doesn't need special instructions
+    fn system_prompt_addition(&self) -> Option<&str> {
+        // Use the LLM-optimized documentation from fetchkit
+        Some(TOOL_LLMTXT)
+    }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(WebFetchTool)]
@@ -65,34 +68,13 @@ impl Tool for WebFetchTool {
     }
 
     fn description(&self) -> &str {
-        "Fetch content from a URL. Can convert HTML responses to markdown or plain text for easier processing. Only supports textual content; binary content (images, PDFs, etc.) will return an error."
+        // Use the description from fetchkit library
+        TOOL_DESCRIPTION
     }
 
     fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "The URL to fetch content from. Must be a valid HTTP or HTTPS URL."
-                },
-                "method": {
-                    "type": "string",
-                    "enum": ["GET", "HEAD"],
-                    "description": "HTTP method to use. Defaults to GET."
-                },
-                "as_markdown": {
-                    "type": "boolean",
-                    "description": "If true, convert HTML response to markdown format. Takes precedence over as_text."
-                },
-                "as_text": {
-                    "type": "boolean",
-                    "description": "If true, convert HTML response to plain text (strips all HTML tags). Ignored if as_markdown is true."
-                }
-            },
-            "required": ["url"],
-            "additionalProperties": false
-        })
+        // Use the schema from fetchkit's Tool
+        fetchkit::Tool::default().input_schema()
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
@@ -202,7 +184,9 @@ mod tests {
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("globe"));
         assert_eq!(cap.category(), Some("Network"));
-        assert!(cap.system_prompt_addition().is_none());
+        // System prompt comes from fetchkit's TOOL_LLMTXT
+        assert!(cap.system_prompt_addition().is_some());
+        assert!(cap.system_prompt_addition().unwrap().contains("FetchKit"));
     }
 
     #[test]

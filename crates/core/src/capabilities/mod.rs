@@ -807,11 +807,14 @@ mod tests {
             &registry,
         );
 
-        // WebFetch has no system prompt addition but has 1 tool
-        assert_eq!(
-            applied.runtime_agent.system_prompt,
-            base_runtime_agent.system_prompt
+        // WebFetch has system prompt from fetchkit's TOOL_LLMTXT and 1 tool
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains(&base_runtime_agent.system_prompt)
         );
+        assert!(applied.runtime_agent.system_prompt.contains("FetchKit"));
         assert!(applied.tool_registry.has("web_fetch"));
         assert_eq!(applied.tool_registry.len(), 1);
     }
