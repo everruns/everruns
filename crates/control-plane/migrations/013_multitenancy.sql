@@ -71,3 +71,17 @@ CREATE INDEX idx_mcp_servers_org_id ON mcp_servers(org_id);
 INSERT INTO organization_members (org_id, user_id)
 SELECT 1, id FROM users
 ON CONFLICT DO NOTHING;
+
+-- Add org_id to llm_generations for per-organization usage tracking
+ALTER TABLE llm_generations ADD COLUMN org_id BIGINT;
+UPDATE llm_generations g
+SET org_id = a.org_id
+FROM sessions s
+JOIN agents a ON s.agent_id = a.id
+WHERE g.session_id = s.id;
+UPDATE llm_generations SET org_id = 1 WHERE org_id IS NULL;
+ALTER TABLE llm_generations ALTER COLUMN org_id SET NOT NULL;
+ALTER TABLE llm_generations ALTER COLUMN org_id SET DEFAULT 1;
+ALTER TABLE llm_generations ADD CONSTRAINT llm_generations_org_id_fk FOREIGN KEY (org_id) REFERENCES organizations(org_id);
+CREATE INDEX idx_llm_generations_org_id ON llm_generations(org_id);
+CREATE INDEX idx_llm_generations_org_created ON llm_generations(org_id, created_at);
