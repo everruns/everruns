@@ -102,6 +102,7 @@ impl GrpcClient {
     ) -> Result<crate::mcp_executor::McpServerInfo> {
         let request = proto::GetMcpServerByPrefixRequest {
             server_prefix: server_prefix.to_string(),
+            org_id: None, // TODO: Pass org_id from context when available
         };
 
         let mut client = self.inner.lock().await;
@@ -329,6 +330,7 @@ impl AgentStore for GrpcAgentStore {
 
         let request = proto::GetAgentRequest {
             agent_id: Some(uuid_to_proto(agent_id)),
+            org_id: None, // TODO: Pass org_id from context when available
         };
 
         let response = client
@@ -401,6 +403,7 @@ impl SessionStore for GrpcSessionStore {
 
         let request = proto::GetSessionRequest {
             session_id: Some(uuid_to_proto(session_id)),
+            org_id: None, // TODO: Pass org_id from context when available
         };
 
         let response = client
@@ -475,6 +478,7 @@ impl LlmProviderStore for GrpcLlmProviderStore {
 
         let request = proto::GetModelWithProviderRequest {
             model_id: Some(uuid_to_proto(model_id)),
+            org_id: None, // TODO: Pass org_id from context when available
         };
 
         let response = client
@@ -836,6 +840,7 @@ pub async fn load_turn_context(client: &GrpcClient, session_id: Uuid) -> Result<
 
     let request = proto::GetTurnContextRequest {
         session_id: Some(uuid_to_proto(session_id)),
+        org_id: None, // TODO: Pass org_id from context when available
     };
 
     let response = grpc_client
