@@ -568,8 +568,8 @@ case "$command" in
       sleep 2
     done
 
-    # Start Worker in background with auto-reload (Temporal mode)
-    echo "6️⃣  Starting Temporal worker with auto-reload..."
+    # Start Worker in background with auto-reload
+    echo "6️⃣  Starting worker with auto-reload..."
     cargo watch -w crates -x 'run -p everruns-worker' &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
