@@ -254,9 +254,16 @@ Anthropic Vision:
 
 **gRPC Transfer:**
 
-Image data is transferred from control-plane to worker via gRPC. The gRPC message size limit is set to 150MB to accommodate base64-encoded images (100MB raw + ~33% encoding overhead + metadata).
+Image data is transferred from control-plane to worker via gRPC. The gRPC message size limit is increased from 4MB (default) to 150MB to accommodate base64-encoded images (100MB raw + ~33% encoding overhead + metadata).
 
-> **Note:** Transferring large images over gRPC is inefficient. Future improvements may include presigned URLs, streaming, or direct S3/blob storage access.
+> **Warning:** The 150MB gRPC limit is a temporary workaround and should be removed in favor of a proper solution. Transferring large images inline via gRPC is inefficient and increases memory pressure on both control-plane and worker.
+>
+> **Recommended future approach:**
+> - Presigned URLs: Worker fetches images directly from S3/blob storage
+> - Streaming: Transfer images in chunks rather than single large messages
+> - Direct storage access: Worker has read access to image storage
+>
+> When implementing one of these solutions, revert gRPC limit to default 4MB.
 
 **Error Handling:**
 
