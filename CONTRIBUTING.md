@@ -1,8 +1,53 @@
 # Contributing to Everruns
 
-## Getting Started
+## Local Development Setup
 
-See [README.md](./README.md) for quick start instructions.
+### Prerequisites
+
+- Docker & Docker Compose (for PostgreSQL and Jaeger)
+- Rust stable toolchain
+- Node.js 18+ (for UI)
+- OpenAI or Anthropic API key (for LLM calls)
+
+### Configuration
+
+Copy `.env.example` to `.env` and configure as needed:
+
+```bash
+cp .env.example .env
+```
+
+### Quick Start (Full Mode)
+
+```bash
+# Install all dependencies (first time only)
+./scripts/dev.sh init
+
+# Start all services (Postgres, API, Worker, UI)
+./scripts/dev.sh start-all
+```
+
+Services available at:
+- **UI**: http://localhost:9100
+- **API**: http://localhost:9000
+- **API Docs**: http://localhost:9000/swagger-ui/
+- **Jaeger**: http://localhost:16686
+
+### Quick Start (DEV_MODE - No Database)
+
+For quick UI development without PostgreSQL:
+
+```bash
+./scripts/dev.sh start-dev
+```
+
+Uses in-memory storage (data lost on restart). Ideal for UI development.
+
+### Stop Services
+
+```bash
+./scripts/dev.sh stop-all
+```
 
 ## Code Quality
 

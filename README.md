@@ -1,8 +1,7 @@
 # Everruns
 
 [![Website](https://img.shields.io/badge/Website-everruns.com-blue)](https://everruns.com)
-
-> **Note:** This repository is in **Heavy Vibecoding PoC Mode**. Expect rapid changes, experimental features, and unconventional approaches as we explore ideas quickly.
+[![Docs](https://img.shields.io/badge/Docs-docs.everruns.com-green)](https://docs.everruns.com)
 
 Headless durable AI agent execution platform. Run long-running LLM agents reliably and scalably.
 
@@ -13,62 +12,63 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 ### Key Features
 
 - **Durable execution**: Agent sessions survive restarts via PostgreSQL-backed workflows
-- **Management UI**: Optional dashboard for agents, sessions, and chat
-- **Indefinite sessions**: Sessions can receive messages continuously without terminating (not yet)
+- **Streaming events**: Real-time SSE streaming of agent responses and tool calls
+- **Management UI**: Dashboard for agents, sessions, and chat
+- **Extensible capabilities**: Add tools and behaviors to agents via modular capabilities
+- **Multi-provider support**: OpenAI, Anthropic, and more
 
-### Data Model
+## Quick Start
 
-- **Agent**: Configuration for an agentic loop (system prompt, model, etc.)
-- **Session**: An instance of conversation with an agent
-- **Message**: User messages and assistant responses within a session
-- **LLM Provider**: External LLM service configuration (OpenAI, Anthropic, etc.)
-- **Capability**: Modular functionality that can be enabled on agents (tools, behaviors)
-
-### Architecture
-
-- **API Service**: HTTP API with SSE streaming
-- **Worker Service**: Durable worker with gRPC client
-- **Management UI**: Next.js dashboard
-- **PostgreSQL**: Metadata, events, and durable execution state
-
-## Quick Start Locally
-
-### Prerequisites
-
-- Docker & Docker Compose (optional, for Postgres)
-- Rust stable toolchain
-- Node.js 18+ (for UI)
-- OpenAI API key (for LLM calls)
-
-### Configuration
-
-Copy `.env.example` to `.env` and configure as needed:
+Deploy Everruns with Docker Compose:
 
 ```bash
-cp .env.example .env
+# Download docker-compose file
+mkdir everruns && cd everruns
+curl -o docker-compose.yaml https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
+
+# Generate encryption key for secrets
+python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())"
+
+# Create .env with your key
+echo "SECRETS_ENCRYPTION_KEY=kek-v1:<your-key>" > .env
+
+# Start services
+docker compose up -d
 ```
 
-### Start Everything
+Access the platform:
+- **Web UI**: http://localhost:8080
+- **API Docs**: http://localhost:8080/swagger-ui/
+
+For detailed setup instructions, see the [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/).
+
+## Documentation
+
+- [Getting Started](https://docs.everruns.com/getting-started/introduction/) - Introduction and key concepts
+- [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/) - Full deployment guide
+- [API Reference](https://docs.everruns.com/api/) - Complete API documentation
+- [Capabilities](https://docs.everruns.com/features/capabilities/) - Extend agent functionality
+
+## API Example
 
 ```bash
-# Install all dependencies (first time only)
-./scripts/dev.sh init
+# Create an agent
+curl -X POST http://localhost:8080/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Assistant", "system_prompt": "You are a helpful assistant."}'
 
-# Start all services
-./scripts/dev.sh start-all
+# Create a session
+curl -X POST http://localhost:8080/api/v1/agents/{agent_id}/sessions
+
+# Send a message
+curl -X POST http://localhost:8080/api/v1/sessions/{session_id}/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": [{"type": "text", "text": "Hello!"}]}'
 ```
 
-Services available at:
-- **UI**: http://localhost:9100
-- **API**: http://localhost:9000
-- **API Docs**: http://localhost:9000/swagger-ui/
+## Contributing
 
-
-### Stop Services
-
-```bash
-./scripts/dev.sh stop-all
-```
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and guidelines.
 
 ## License
 
