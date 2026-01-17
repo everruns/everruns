@@ -147,4 +147,78 @@ impl CapabilityService {
     pub fn db(&self) -> &Arc<StorageBackend> {
         &self.db
     }
+
+    /// Preview the final agent shape by computing the merged system prompt and tools.
+    ///
+    /// This collects contributions from all specified capabilities:
+    /// - System prompt additions are prepended to the base prompt
+    /// - Tool definitions are collected from all capabilities
+    ///
+    /// # Arguments
+    ///
+    /// * `base_system_prompt` - The agent's base system prompt
+    /// * `capability_configs` - The capabilities to apply with their configs
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (final_system_prompt, tool_definitions)
+    pub async fn preview(
+        &self,
+        base_system_prompt: &str,
+        capability_configs: &[everruns_core::AgentCapabilityConfig],
+    ) -> Result<(String, Vec<everruns_core::ToolDefinition>)> {
+        use everruns_core::capabilities::collect_capabilities;
+
+        let mut system_prompt_parts: Vec<String> = Vec::new();
+        let mut tool_definitions: Vec<everruns_core::ToolDefinition> = Vec::new();
+
+        // Separate built-in capabilities from MCP capabilities
+        let mut builtin_cap_ids: Vec<String> = Vec::new();
+        let mut mcp_cap_ids: Vec<uuid::Uuid> = Vec::new();
+
+        for cap_config in capability_configs {
+            let cap_ref = &cap_config.capability_ref;
+            if let Some(server_id) = cap_ref.mcp_server_id() {
+                mcp_cap_ids.push(server_id);
+            } else {
+                builtin_cap_ids.push(cap_ref.to_string());
+            }
+        }
+
+        // Collect from built-in capabilities
+        let collected = collect_capabilities(&builtin_cap_ids, &self.registry);
+        if let Some(prefix) = collected.system_prompt_prefix() {
+            system_prompt_parts.push(prefix);
+        }
+        tool_definitions.extend(collected.tool_definitions);
+
+        // Collect from MCP capabilities
+        for server_id in mcp_cap_ids {
+            let tools = self.mcp_service.get_tools(server_id, false).await?;
+            let server = self.mcp_service.get(server_id).await?;
+
+            if let Some(server) = server {
+                let mcp_cap = McpCapability::new(
+                    server.id,
+                    server.name.clone(),
+                    server.description.clone(),
+                    tools,
+                );
+                tool_definitions.extend(mcp_cap.tool_definitions());
+            }
+        }
+
+        // Build final system prompt
+        let final_system_prompt = if system_prompt_parts.is_empty() {
+            base_system_prompt.to_string()
+        } else {
+            format!(
+                "{}\n\n{}",
+                system_prompt_parts.join("\n\n"),
+                base_system_prompt
+            )
+        };
+
+        Ok((final_system_prompt, tool_definitions))
+    }
 }
