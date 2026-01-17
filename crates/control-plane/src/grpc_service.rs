@@ -115,6 +115,11 @@ impl WorkerServiceImpl {
     }
 
     /// Max gRPC message size (150MB for base64-encoded images + overhead)
+    ///
+    /// TODO: Sending large images over gRPC is inefficient. Future improvements:
+    /// - Use presigned URLs for workers to fetch images directly from storage
+    /// - Stream images in chunks instead of single large messages
+    /// - Move to S3/blob storage with direct worker access
     const MAX_GRPC_MESSAGE_SIZE: usize = 150 * 1024 * 1024;
 
     /// Create a tonic server for this service
