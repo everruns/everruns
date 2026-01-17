@@ -4,7 +4,9 @@
 import { api } from "./client";
 import type {
   Agent,
+  AgentPreviewResponse,
   CreateAgentRequest,
+  PreviewAgentRequest,
   UpdateAgentRequest,
   ListResponse,
 } from "./types";
@@ -69,4 +71,15 @@ export async function importAgent(org: string, markdown: string): Promise<Agent>
     throw new Error(error || `Import failed: ${response.statusText}`);
   }
   return response.json();
+}
+
+export async function previewAgent(
+  org: string,
+  request: PreviewAgentRequest
+): Promise<AgentPreviewResponse> {
+  const response = await api.post<AgentPreviewResponse>(
+    `/v1/orgs/${org}/agents/preview`,
+    request
+  );
+  return response.data;
 }

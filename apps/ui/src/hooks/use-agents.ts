@@ -9,10 +9,11 @@ import {
   getAgent,
   importAgent,
   listAgents,
+  previewAgent,
   updateAgent,
 } from "@/lib/api/agents";
 import { queryKeys } from "@/lib/query-keys";
-import type { CreateAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
+import type { CreateAgentRequest, PreviewAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 export function useAgents() {
@@ -102,5 +103,14 @@ export function useImportAgent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
+  });
+}
+
+export function usePreviewAgent() {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: (request: PreviewAgentRequest) => previewAgent(org!, request),
   });
 }

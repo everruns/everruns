@@ -160,7 +160,6 @@ async fn main() -> Result<()> {
     let auth_state = auth::AuthState::new(auth_config.clone(), db.clone());
 
     // Create module-specific states
-    let agents_state = api::agents::AppState::new(db.clone(), auth_state.clone());
     let sessions_state = api::sessions::AppState::new(db.clone(), auth_state.clone());
     let messages_state =
         api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
@@ -193,7 +192,9 @@ async fn main() -> Result<()> {
         encryption.clone(),
     ));
     let capabilities_state =
-        api::capabilities::AppState::new(capability_service, auth_state.clone());
+        api::capabilities::AppState::new(capability_service.clone(), auth_state.clone());
+    let agents_state =
+        api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
     let session_files_state = api::session_files::AppState::new(db.clone());
     let users_state = api::users::UsersState {
         db: db.clone(),

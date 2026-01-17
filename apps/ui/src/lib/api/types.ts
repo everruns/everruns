@@ -55,6 +55,22 @@ export interface UpdateAgentRequest {
   status?: AgentStatus;
 }
 
+/** Request to preview the final agent shape with capabilities applied */
+export interface PreviewAgentRequest {
+  /** The base system prompt (before capability additions) */
+  system_prompt: string;
+  /** Capabilities to apply with per-agent configuration */
+  capabilities?: AgentCapabilityConfig[];
+}
+
+/** Response showing the final agent shape after applying capabilities */
+export interface AgentPreviewResponse {
+  /** The full system prompt with capability additions prepended */
+  system_prompt: string;
+  /** All tool definitions from capabilities */
+  tools: ToolDefinition[];
+}
+
 // ============================================
 // Session types (M2)
 // ============================================

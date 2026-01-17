@@ -12,7 +12,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus};
+use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, ToolDefinition};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use super::validation::{
@@ -84,6 +84,28 @@ pub struct UpdateAgentRequest {
     pub status: Option<AgentStatus>,
 }
 
+/// Request to preview the final agent shape with capabilities applied
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PreviewAgentRequest {
+    /// The base system prompt (before capability additions)
+    #[schema(example = "You are a helpful customer support agent.")]
+    pub system_prompt: String,
+    /// Capabilities to apply with per-agent configuration.
+    #[serde(default)]
+    #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "test_math", "config": {}}]))]
+    pub capabilities: Vec<AgentCapabilityConfig>,
+}
+
+/// Response showing the final agent shape after applying capabilities
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AgentPreviewResponse {
+    /// The full system prompt with capability additions prepended
+    pub system_prompt: String,
+    /// All tool definitions from capabilities
+    #[schema(value_type = Vec<Object>)]
+    pub tools: Vec<ToolDefinition>,
+}
+
 /// Capability entry in agent file - supports both string and object formats
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -127,19 +149,25 @@ struct AgentFile {
     pub capabilities: Vec<AgentFileCapability>,
 }
 
-use crate::services::AgentService;
+use crate::services::{AgentService, CapabilityService};
 
 /// App state for agents routes
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<AgentService>,
+    pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        capability_service: Arc<CapabilityService>,
+        auth: AuthState,
+    ) -> Self {
         Self {
             service: Arc::new(AgentService::new(db)),
+            capability_service,
             auth,
         }
     }
@@ -156,6 +184,7 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/orgs/:org/agents", post(create_agent).get(list_agents))
         .route("/v1/orgs/:org/agents/import", post(import_agent))
+        .route("/v1/orgs/:org/agents/preview", post(preview_agent))
         .route(
             "/v1/orgs/:org/agents/:agent_id",
             get(get_agent).patch(update_agent).delete(delete_agent),
@@ -563,4 +592,42 @@ fn slugify(s: &str) -> String {
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join("-")
+}
+
+/// POST /v1/orgs/{org}/agents/preview - Preview the final agent shape with capabilities applied
+///
+/// Returns the merged system prompt and all tools that would be available to the agent.
+/// This is useful for previewing what the agent will look like before saving.
+#[utoipa::path(
+    post,
+    path = "/v1/orgs/{org}/agents/preview",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
+    request_body = PreviewAgentRequest,
+    responses(
+        (status = 200, description = "Agent preview generated", body = AgentPreviewResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn preview_agent(
+    _org: OrgContext,
+    State(state): State<AppState>,
+    Json(req): Json<PreviewAgentRequest>,
+) -> Result<Json<AgentPreviewResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let (system_prompt, tools) = state
+        .capability_service
+        .preview(&req.system_prompt, &req.capabilities)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to generate agent preview: {}", e);
+            ErrorResponse::new("Internal server error")
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+
+    Ok(Json(AgentPreviewResponse {
+        system_prompt,
+        tools,
+    }))
 }
