@@ -1472,6 +1472,71 @@ impl InMemoryDatabase {
     pub async fn delete_mcp_server(&self, id: Uuid) -> Result<bool> {
         Ok(self.mcp_servers.write().remove(&id).is_some())
     }
+
+    // ============================================
+    // LLM Generations (Usage Tracking)
+    // ============================================
+    //
+    // In-memory implementations for dev mode.
+    // Note: llm_generations table is not stored in memory since it's only
+    // used for analytics. We just update the denormalized totals.
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_llm_generation(
+        &self,
+        _session_id: Uuid,
+        _turn_id: Option<Uuid>,
+        _event_id: Option<Uuid>,
+        _model: String,
+        _provider: Option<String>,
+        _input_tokens: i64,
+        _output_tokens: i64,
+        _cache_read_tokens: i64,
+        _cache_creation_tokens: i64,
+        _duration_ms: Option<i32>,
+        _finish_reason: Option<String>,
+        _created_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        // In dev mode, we don't store individual generations
+        // Usage totals are updated via increment_session_usage/increment_agent_usage
+        Ok(())
+    }
+
+    pub async fn increment_session_usage(
+        &self,
+        session_id: Uuid,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+    ) -> Result<()> {
+        let mut sessions = self.sessions.write();
+        if let Some(session) = sessions.get_mut(&session_id) {
+            session.total_input_tokens += input_tokens;
+            session.total_output_tokens += output_tokens;
+            session.total_cache_read_tokens += cache_read_tokens;
+            session.total_cache_creation_tokens += cache_creation_tokens;
+        }
+        Ok(())
+    }
+
+    pub async fn increment_agent_usage(
+        &self,
+        agent_id: Uuid,
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+    ) -> Result<()> {
+        let mut agents = self.agents.write();
+        if let Some(agent) = agents.get_mut(&agent_id) {
+            agent.total_input_tokens += input_tokens;
+            agent.total_output_tokens += output_tokens;
+            agent.total_cache_read_tokens += cache_read_tokens;
+            agent.total_cache_creation_tokens += cache_creation_tokens;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ pub mod mcp_server;
 pub mod message;
 pub mod session;
 pub mod session_file;
+pub mod usage_tracking;
 
 pub use agent::AgentService;
 pub use capability::CapabilityService;
@@ -22,3 +23,4 @@ pub use mcp_server::McpServerService;
 pub use message::MessageService;
 pub use session::SessionService;
 pub use session_file::SessionFileService;
+pub use usage_tracking::UsageTrackingListener;

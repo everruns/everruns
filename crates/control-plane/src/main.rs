@@ -164,14 +164,17 @@ async fn main() -> Result<()> {
     let sessions_state = api::sessions::AppState::new(db.clone());
     let messages_state = api::messages::AppState::new(db.clone(), runner.clone());
 
-    // Create event listeners for observability
+    // Create event listeners for observability and tracking
     // OtelEventListener generates gen-ai semantic convention spans from events
     let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
+    // UsageTrackingListener tracks LLM token usage in llm_generations table
+    let usage_listener: Arc<dyn EventListener> =
+        Arc::new(services::UsageTrackingListener::new(db.clone()));
 
     // Create EventService with listeners - shared between HTTP API and gRPC service
     let event_service = Arc::new(services::EventService::with_listeners(
         db.clone(),
-        vec![otel_listener],
+        vec![otel_listener, usage_listener],
     ));
 
     let events_state = api::events::AppState {
