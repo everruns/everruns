@@ -4,11 +4,12 @@
 
 use axum::{
     Json,
-    extract::FromRequestParts,
+    extract::{FromRequestParts, Path},
     http::{StatusCode, header, request::Parts},
     response::{IntoResponse, Response},
 };
 use axum_extra::extract::CookieJar;
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, validate_org_public_id};
 use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -64,6 +65,8 @@ pub struct AuthUser {
     pub roles: Vec<String>,
     /// Authentication method used
     pub auth_method: AuthMethod,
+    /// Organizations the user belongs to
+    pub organizations: Vec<OrgMembership>,
 }
 
 impl AuthUser {
@@ -75,7 +78,28 @@ impl AuthUser {
             name: "Anonymous".to_string(),
             roles: vec!["admin".to_string()], // Full access in no-auth mode
             auth_method: AuthMethod::None,
+            organizations: vec![OrgMembership {
+                org_id: DEFAULT_ORG_ID,
+                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                name: "Default Organization".to_string(),
+            }],
         }
+    }
+
+    /// Check if user is a member of the organization (by internal id)
+    #[allow(dead_code)]
+    pub fn is_member_of(&self, org_id: i64) -> bool {
+        self.organizations.iter().any(|o| o.org_id == org_id)
+    }
+
+    /// Check if user is a member of the organization (by public id)
+    pub fn is_member_of_public(&self, public_id: &str) -> bool {
+        self.organizations.iter().any(|o| o.public_id == public_id)
+    }
+
+    /// Get organization by public id
+    pub fn get_org(&self, public_id: &str) -> Option<&OrgMembership> {
+        self.organizations.iter().find(|o| o.public_id == public_id)
     }
 
     /// Check if user has a specific role
@@ -199,12 +223,16 @@ async fn validate_jwt_token(token: &str, auth_state: &AuthState) -> Result<AuthU
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| AuthError::unauthorized("Invalid user ID in token"))?;
 
+    // Fetch organization memberships for the user
+    let organizations = fetch_user_organizations(&auth_state.db, user_id).await?;
+
     Ok(AuthUser {
         id: user_id,
         email: claims.email,
         name: claims.name,
         roles: claims.roles,
         auth_method: AuthMethod::Jwt,
+        organizations,
     })
 }
 
@@ -259,13 +287,37 @@ async fn validate_api_key(key: &str, auth_state: &AuthState) -> Result<AuthUser,
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
+    // Fetch organization memberships for the user
+    let organizations = fetch_user_organizations(&auth_state.db, user.id).await?;
+
     Ok(AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles,
         auth_method: AuthMethod::ApiKey,
+        organizations,
     })
+}
+
+/// Fetch organization memberships for a user
+async fn fetch_user_organizations(
+    db: &StorageBackend,
+    user_id: Uuid,
+) -> Result<Vec<OrgMembership>, AuthError> {
+    let org_rows = db.list_user_organizations(user_id).await.map_err(|e| {
+        tracing::error!("Failed to fetch user organizations: {}", e);
+        AuthError::unauthorized("Failed to fetch organizations")
+    })?;
+
+    Ok(org_rows
+        .into_iter()
+        .map(|row| OrgMembership {
+            org_id: row.org_id,
+            public_id: row.public_id,
+            name: row.name,
+        })
+        .collect())
 }
 
 /// Optional auth extractor - returns None if not authenticated (in auth mode)
@@ -322,6 +374,83 @@ where
     }
 }
 
+// ============================================================================
+// OrgContext - Organization context extractor
+// ============================================================================
+
+/// Organization context extracted from the URL path
+///
+/// Extracts the org_public_id from the URL path and validates that the
+/// authenticated user has access to that organization.
+///
+/// Usage:
+/// ```rust,ignore
+/// async fn handler(
+///     OrgContext { org_id, public_id, .. }: OrgContext,
+///     user: AuthUser,
+/// ) -> impl IntoResponse {
+///     // org_id is the internal i64 ID for database queries
+///     // public_id is the external ID from the URL
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct OrgContext {
+    /// Internal organization ID (for database queries)
+    pub org_id: i64,
+    /// External organization public ID (from URL path)
+    pub public_id: String,
+    /// Organization name
+    pub name: String,
+}
+
+/// Path parameter for org routes
+#[derive(Debug, serde::Deserialize)]
+pub struct OrgPathParams {
+    pub org: String,
+}
+
+#[axum::async_trait]
+impl<S> FromRequestParts<S> for OrgContext
+where
+    S: Send + Sync,
+    AuthState: FromRef<S>,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // First extract the authenticated user
+        let user = AuthUser::from_request_parts(parts, state).await?;
+
+        // Extract org_public_id from URL path
+        // The path pattern is: /v1/orgs/{org}/...
+        let Path(params): Path<OrgPathParams> = Path::from_request_parts(parts, state)
+            .await
+            .map_err(|_| AuthError::unauthorized("Missing organization in path"))?;
+
+        let org_public_id = &params.org;
+
+        // Validate the org_public_id format
+        if !validate_org_public_id(org_public_id) {
+            return Err(AuthError::unauthorized("Invalid organization ID format"));
+        }
+
+        // Check if user is a member of this organization
+        let org = user.get_org(org_public_id).ok_or_else(|| {
+            // Return 404 to prevent enumeration (spec requirement)
+            AuthError {
+                error: "Organization not found".to_string(),
+                status: StatusCode::NOT_FOUND,
+            }
+        })?;
+
+        Ok(OrgContext {
+            org_id: org.org_id,
+            public_id: org.public_id.clone(),
+            name: org.name.clone(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,6 +462,10 @@ mod tests {
         assert!(user.is_admin());
         assert!(user.has_role("admin"));
         assert_eq!(user.auth_method, AuthMethod::None);
+        // Anonymous user should belong to default org
+        assert_eq!(user.organizations.len(), 1);
+        assert_eq!(user.organizations[0].org_id, DEFAULT_ORG_ID);
+        assert_eq!(user.organizations[0].public_id, DEFAULT_ORG_PUBLIC_ID);
     }
 
     #[test]
@@ -343,6 +476,7 @@ mod tests {
             name: "Test".to_string(),
             roles: vec!["user".to_string(), "editor".to_string()],
             auth_method: AuthMethod::Jwt,
+            organizations: vec![],
         };
 
         assert!(user.has_role("user"));
@@ -359,11 +493,47 @@ mod tests {
             name: "Admin".to_string(),
             roles: vec!["admin".to_string()],
             auth_method: AuthMethod::Jwt,
+            organizations: vec![],
         };
 
         assert!(admin.is_admin());
         assert!(admin.has_role("admin"));
         assert!(admin.has_role("user")); // Admin has all roles
+    }
+
+    #[test]
+    fn test_auth_user_org_membership() {
+        let user = AuthUser {
+            id: Uuid::nil(),
+            email: "test@example.com".to_string(),
+            name: "Test".to_string(),
+            roles: vec!["user".to_string()],
+            auth_method: AuthMethod::Jwt,
+            organizations: vec![
+                OrgMembership {
+                    org_id: 1,
+                    public_id: "org_00000000000000000000000000000001".to_string(),
+                    name: "Org 1".to_string(),
+                },
+                OrgMembership {
+                    org_id: 2,
+                    public_id: "org_00000000000000000000000000000002".to_string(),
+                    name: "Org 2".to_string(),
+                },
+            ],
+        };
+
+        assert!(user.is_member_of(1));
+        assert!(user.is_member_of(2));
+        assert!(!user.is_member_of(3));
+
+        assert!(user.is_member_of_public("org_00000000000000000000000000000001"));
+        assert!(user.is_member_of_public("org_00000000000000000000000000000002"));
+        assert!(!user.is_member_of_public("org_00000000000000000000000000000003"));
+
+        let org = user.get_org("org_00000000000000000000000000000001");
+        assert!(org.is_some());
+        assert_eq!(org.unwrap().name, "Org 1");
     }
 
     #[test]

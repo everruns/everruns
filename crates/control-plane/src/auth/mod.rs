@@ -10,5 +10,5 @@ pub mod oauth;
 pub mod routes;
 
 pub use config::AuthConfig;
-pub use middleware::AuthState;
+pub use middleware::{AuthState, AuthUser, OrgContext};
 pub use routes::routes;

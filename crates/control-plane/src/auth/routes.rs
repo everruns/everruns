@@ -11,7 +11,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{Duration, Utc};
-use everruns_core::DEFAULT_ORG_ID;
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -230,12 +230,16 @@ pub async fn login(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
+    // Fetch organization memberships
+    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+
     let auth_user = AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles,
         auth_method: super::middleware::AuthMethod::Jwt,
+        organizations,
     };
 
     generate_token_response(&state, jar, &auth_user).await
@@ -292,12 +296,35 @@ pub async fn register(
             AuthError::unauthorized("Registration failed")
         })?;
 
+    // Add user to default organization
+    let _ = state
+        .db
+        .add_organization_member(DEFAULT_ORG_ID, user.id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to add user to default org: {}", e);
+            // Continue anyway - user is created, they just might not have org membership
+        });
+
+    // Fetch organization memberships (should include default org now)
+    let organizations = fetch_user_organizations(&state.db, user.id)
+        .await
+        .unwrap_or_else(|_| {
+            // Fallback to default org if fetch fails
+            vec![OrgMembership {
+                org_id: DEFAULT_ORG_ID,
+                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                name: "Default Organization".to_string(),
+            }]
+        });
+
     let auth_user = AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles: vec!["user".to_string()],
         auth_method: super::middleware::AuthMethod::Jwt,
+        organizations,
     };
 
     let (jar, json) = generate_token_response(&state, jar, &auth_user).await?;
@@ -352,12 +379,16 @@ pub async fn refresh_token(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
+    // Fetch organization memberships
+    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+
     let auth_user = AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles,
         auth_method: super::middleware::AuthMethod::Jwt,
+        organizations,
     };
 
     generate_token_response(&state, jar, &auth_user).await
@@ -493,7 +524,7 @@ pub async fn oauth_callback(
         }
 
         // Create new user
-        state
+        let created_user = state
             .db
             .create_user(CreateUserRow {
                 email: user_info.email.clone(),
@@ -509,10 +540,34 @@ pub async fn oauth_callback(
             .map_err(|e| {
                 tracing::error!("User creation error during OAuth: {}", e);
                 AuthError::unauthorized("OAuth authentication failed")
-            })?
+            })?;
+
+        // Add newly created user to default organization
+        let _ = state
+            .db
+            .add_organization_member(DEFAULT_ORG_ID, created_user.id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to add OAuth user to default org: {}", e);
+                // Continue anyway
+            });
+
+        created_user
     };
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
+
+    // Fetch organization memberships
+    let organizations = fetch_user_organizations(&state.db, user.id)
+        .await
+        .unwrap_or_else(|_| {
+            // Fallback to default org if fetch fails
+            vec![OrgMembership {
+                org_id: DEFAULT_ORG_ID,
+                public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                name: "Default Organization".to_string(),
+            }]
+        });
 
     let auth_user = AuthUser {
         id: user.id,
@@ -520,6 +575,7 @@ pub async fn oauth_callback(
         name: user.name,
         roles,
         auth_method: super::middleware::AuthMethod::Jwt,
+        organizations,
     };
 
     // Generate tokens and set cookies
@@ -742,11 +798,35 @@ async fn get_or_create_admin_user(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
+    // Fetch organization memberships
+    let organizations = fetch_user_organizations(&state.db, user.id).await?;
+
     Ok(AuthUser {
         id: user.id,
         email: user.email,
         name: user.name,
         roles,
         auth_method: super::middleware::AuthMethod::Jwt,
+        organizations,
     })
+}
+
+/// Fetch organization memberships for a user
+async fn fetch_user_organizations(
+    db: &crate::storage::StorageBackend,
+    user_id: Uuid,
+) -> Result<Vec<OrgMembership>, AuthError> {
+    let org_rows = db.list_user_organizations(user_id).await.map_err(|e| {
+        tracing::error!("Failed to fetch user organizations: {}", e);
+        AuthError::unauthorized("Failed to fetch organizations")
+    })?;
+
+    Ok(org_rows
+        .into_iter()
+        .map(|row| OrgMembership {
+            org_id: row.org_id,
+            public_id: row.public_id,
+            name: row.name,
+        })
+        .collect())
 }
