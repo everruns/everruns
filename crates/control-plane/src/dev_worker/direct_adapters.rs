@@ -14,8 +14,8 @@ use everruns_core::traits::{
     AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
 };
 use everruns_core::{
-    Agent, AgentStatus, ContentPart, LlmProviderType, Message, MessageRole, Session, SessionStatus,
-    ToolResultContentPart,
+    Agent, AgentStatus, ContentPart, DEFAULT_ORG_ID, LlmProviderType, Message, MessageRole,
+    Session, SessionStatus, ToolResultContentPart,
 };
 use everruns_core::{InputMessage, MessageRetriever};
 use std::sync::Arc;
@@ -60,10 +60,15 @@ impl DirectAgentStore {
 #[async_trait]
 impl AgentStore for DirectAgentStore {
     async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
-        let row = self.db.get_agent(agent_id).await.map_err(|e| {
-            tracing::error!("Failed to get agent: {}", e);
-            store_error("Failed to get agent")
-        })?;
+        // TODO: Get org_id from context after Phase 3
+        let row = self
+            .db
+            .get_agent(DEFAULT_ORG_ID, agent_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get agent: {}", e);
+                store_error("Failed to get agent")
+            })?;
 
         // Also get capabilities for the agent
         let capabilities = if let Some(ref _r) = row {
@@ -116,10 +121,15 @@ impl DirectSessionStore {
 #[async_trait]
 impl SessionStore for DirectSessionStore {
     async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>> {
-        let row = self.db.get_session(session_id).await.map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            store_error("Failed to get session")
-        })?;
+        // TODO: Get org_id from context after Phase 3
+        let row = self
+            .db
+            .get_session(DEFAULT_ORG_ID, session_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get session: {}", e);
+                store_error("Failed to get session")
+            })?;
 
         Ok(row.map(|r| Session {
             id: r.id,
@@ -626,8 +636,9 @@ impl SessionStatusUpdater {
             ..Default::default()
         };
 
+        // TODO: Get org_id from context after Phase 3
         self.db
-            .update_session(session_id, update)
+            .update_session(DEFAULT_ORG_ID, session_id, update)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update session status: {}", e);

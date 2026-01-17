@@ -171,24 +171,29 @@ impl StorageBackend {
         dispatch!(self, create_agent_with_id, org_id, id, input)
     }
 
-    pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
-        dispatch!(self, get_agent, id)
+    pub async fn get_agent(&self, org_id: i64, id: Uuid) -> Result<Option<AgentRow>> {
+        dispatch!(self, get_agent, org_id, id)
     }
 
-    pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
-        dispatch!(self, list_agents)
+    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
+        dispatch!(self, list_agents, org_id)
     }
 
-    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
-        dispatch!(self, get_agent_by_name, name)
+    pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
+        dispatch!(self, get_agent_by_name, org_id, name)
     }
 
-    pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
-        dispatch!(self, update_agent, id, input)
+    pub async fn update_agent(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateAgent,
+    ) -> Result<Option<AgentRow>> {
+        dispatch!(self, update_agent, org_id, id, input)
     }
 
-    pub async fn delete_agent(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_agent, id)
+    pub async fn delete_agent(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_agent, org_id, id)
     }
 
     // ============================================
@@ -199,30 +204,32 @@ impl StorageBackend {
         dispatch!(self, create_session, input)
     }
 
-    pub async fn get_session(&self, id: Uuid) -> Result<Option<SessionRow>> {
-        dispatch!(self, get_session, id)
+    pub async fn get_session(&self, org_id: i64, id: Uuid) -> Result<Option<SessionRow>> {
+        dispatch!(self, get_session, org_id, id)
     }
 
-    /// List sessions for an agent with pagination.
+    /// List sessions for an agent with pagination, validating org ownership.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(
         &self,
+        org_id: i64,
         agent_id: Uuid,
         pagination: Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        dispatch!(self, list_sessions, agent_id, pagination)
+        dispatch!(self, list_sessions, org_id, agent_id, pagination)
     }
 
     pub async fn update_session(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
-        dispatch!(self, update_session, id, input)
+        dispatch!(self, update_session, org_id, id, input)
     }
 
-    pub async fn delete_session(&self, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_session, id)
+    pub async fn delete_session(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_session, org_id, id)
     }
 
     // ============================================
@@ -671,5 +678,74 @@ impl StorageBackend {
 
     pub async fn list_images(&self, limit: i64, offset: i64) -> Result<Vec<ImageInfoRow>> {
         dispatch!(self, list_images, limit, offset)
+    }
+
+    // ============================================
+    // Organizations
+    // ============================================
+
+    pub async fn create_organization(
+        &self,
+        input: CreateOrganizationRow,
+    ) -> Result<OrganizationRow> {
+        dispatch!(self, create_organization, input)
+    }
+
+    pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, get_organization, org_id)
+    }
+
+    pub async fn get_organization_by_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, get_organization_by_public_id, public_id)
+    }
+
+    pub async fn list_organizations(&self) -> Result<Vec<OrganizationRow>> {
+        dispatch!(self, list_organizations)
+    }
+
+    pub async fn update_organization(
+        &self,
+        org_id: i64,
+        input: UpdateOrganization,
+    ) -> Result<Option<OrganizationRow>> {
+        dispatch!(self, update_organization, org_id, input)
+    }
+
+    pub async fn delete_organization(&self, org_id: i64) -> Result<bool> {
+        dispatch!(self, delete_organization, org_id)
+    }
+
+    // ============================================
+    // Organization Members
+    // ============================================
+
+    pub async fn add_organization_member(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<OrganizationMemberRow> {
+        dispatch!(self, add_organization_member, org_id, user_id)
+    }
+
+    pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
+        dispatch!(self, remove_organization_member, org_id, user_id)
+    }
+
+    pub async fn list_organization_members(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrganizationMemberRow>> {
+        dispatch!(self, list_organization_members, org_id)
+    }
+
+    pub async fn list_user_organizations(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
+        dispatch!(self, list_user_organizations, user_id)
+    }
+
+    pub async fn is_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
+        dispatch!(self, is_organization_member, org_id, user_id)
     }
 }

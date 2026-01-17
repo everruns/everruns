@@ -367,15 +367,16 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
+    pub async fn get_agent(&self, org_id: i64, id: Uuid) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
             SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -383,31 +384,33 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
+    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
         let rows = sqlx::query_as::<_, AgentRow>(
             r#"
             SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
-            WHERE status = 'active'
+            WHERE org_id = $1 AND status = 'active'
             ORDER BY created_at DESC
             "#,
         )
+        .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
 
         Ok(rows)
     }
 
-    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
+    pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
             SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
-            WHERE name = $1 AND status = 'active'
+            WHERE org_id = $1 AND name = $2 AND status = 'active'
             "#,
         )
+        .bind(org_id)
         .bind(name)
         .fetch_optional(&self.pool)
         .await?;
@@ -415,23 +418,29 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
+    pub async fn update_agent(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateAgent,
+    ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
             UPDATE agents
             SET
-                name = COALESCE($2, name),
-                description = COALESCE($3, description),
-                system_prompt = COALESCE($4, system_prompt),
-                default_model_id = COALESCE($5, default_model_id),
-                tags = COALESCE($6, tags),
-                status = COALESCE($7, status),
+                name = COALESCE($3, name),
+                description = COALESCE($4, description),
+                system_prompt = COALESCE($5, system_prompt),
+                default_model_id = COALESCE($6, default_model_id),
+                tags = COALESCE($7, tags),
+                status = COALESCE($8, status),
                 updated_at = NOW()
-            WHERE id = $1
+            WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .bind(&input.name)
         .bind(&input.description)
@@ -445,15 +454,16 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_agent(&self, id: Uuid) -> Result<bool> {
+    pub async fn delete_agent(&self, org_id: i64, id: Uuid) -> Result<bool> {
         // Archive instead of hard delete
         let result = sqlx::query(
             r#"
             UPDATE agents
             SET status = 'archived', updated_at = NOW()
-            WHERE id = $1 AND status = 'active'
+            WHERE org_id = $1 AND id = $2 AND status = 'active'
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .execute(&self.pool)
         .await?;
@@ -484,15 +494,18 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_session(&self, id: Uuid) -> Result<Option<SessionRow>> {
+    /// Get session, validating org ownership via agent join
+    pub async fn get_session(&self, org_id: i64, id: Uuid) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-            FROM sessions
-            WHERE id = $1
+            SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.started_at, s.finished_at,
+                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
+            FROM sessions s
+            JOIN agents a ON s.agent_id = a.id
+            WHERE a.org_id = $1 AND s.id = $2
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -500,21 +513,24 @@ impl Database {
         Ok(row)
     }
 
-    /// List sessions for an agent with pagination.
+    /// List sessions for an agent with pagination, validating org ownership.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(
         &self,
+        org_id: i64,
         agent_id: Uuid,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        // Get total count
+        // Get total count (validates agent belongs to org)
         let total: (i64,) = sqlx::query_as(
             r#"
             SELECT COUNT(*) as count
-            FROM sessions
-            WHERE agent_id = $1
+            FROM sessions s
+            JOIN agents a ON s.agent_id = a.id
+            WHERE a.org_id = $1 AND s.agent_id = $2
             "#,
         )
+        .bind(org_id)
         .bind(agent_id)
         .fetch_one(&self.pool)
         .await?;
@@ -522,14 +538,16 @@ impl Database {
         // Get paginated results
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
-            FROM sessions
-            WHERE agent_id = $1
-            ORDER BY created_at DESC
-            LIMIT $2 OFFSET $3
+            SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.started_at, s.finished_at,
+                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
+            FROM sessions s
+            JOIN agents a ON s.agent_id = a.id
+            WHERE a.org_id = $1 AND s.agent_id = $2
+            ORDER BY s.created_at DESC
+            LIMIT $3 OFFSET $4
             "#,
         )
+        .bind(org_id)
         .bind(agent_id)
         .bind(pagination.limit as i64)
         .bind(pagination.offset as i64)
@@ -539,26 +557,31 @@ impl Database {
         Ok((rows, total.0 as u32))
     }
 
+    /// Update session, validating org ownership via agent join
     pub async fn update_session(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
+        // Update only if session belongs to an agent in the org
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            UPDATE sessions
+            UPDATE sessions s
             SET
-                title = COALESCE($2, title),
-                tags = COALESCE($3, tags),
-                model_id = COALESCE($4, model_id),
-                status = COALESCE($5, status),
-                started_at = COALESCE($6, started_at),
-                finished_at = COALESCE($7, finished_at)
-            WHERE id = $1
-            RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+                title = COALESCE($3, s.title),
+                tags = COALESCE($4, s.tags),
+                model_id = COALESCE($5, s.model_id),
+                status = COALESCE($6, s.status),
+                started_at = COALESCE($7, s.started_at),
+                finished_at = COALESCE($8, s.finished_at)
+            FROM agents a
+            WHERE s.agent_id = a.id AND a.org_id = $1 AND s.id = $2
+            RETURNING s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.started_at, s.finished_at,
+                      s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
             "#,
         )
+        .bind(org_id)
         .bind(id)
         .bind(&input.title)
         .bind(&input.tags)
@@ -572,11 +595,19 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_session(&self, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM sessions WHERE id = $1")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+    /// Delete session, validating org ownership via agent join
+    pub async fn delete_session(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM sessions s
+            USING agents a
+            WHERE s.agent_id = a.id AND a.org_id = $1 AND s.id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -2035,5 +2066,195 @@ impl Database {
         .await?;
 
         Ok(rows)
+    }
+
+    // ============================================
+    // Organizations
+    // ============================================
+
+    pub async fn create_organization(
+        &self,
+        input: CreateOrganizationRow,
+    ) -> Result<OrganizationRow> {
+        let row = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            INSERT INTO organizations (public_id, name)
+            VALUES ($1, $2)
+            RETURNING org_id, public_id, name, created_at, updated_at
+            "#,
+        )
+        .bind(&input.public_id)
+        .bind(&input.name)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
+        let row = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            SELECT org_id, public_id, name, created_at, updated_at
+            FROM organizations
+            WHERE org_id = $1
+            "#,
+        )
+        .bind(org_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_organization_by_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<OrganizationRow>> {
+        let row = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            SELECT org_id, public_id, name, created_at, updated_at
+            FROM organizations
+            WHERE public_id = $1
+            "#,
+        )
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_organizations(&self) -> Result<Vec<OrganizationRow>> {
+        let rows = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            SELECT org_id, public_id, name, created_at, updated_at
+            FROM organizations
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn update_organization(
+        &self,
+        org_id: i64,
+        input: UpdateOrganization,
+    ) -> Result<Option<OrganizationRow>> {
+        let row = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            UPDATE organizations
+            SET
+                name = COALESCE($2, name),
+                updated_at = NOW()
+            WHERE org_id = $1
+            RETURNING org_id, public_id, name, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(&input.name)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_organization(&self, org_id: i64) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM organizations WHERE org_id = $1")
+            .bind(org_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    // ============================================
+    // Organization Members
+    // ============================================
+
+    pub async fn add_organization_member(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<OrganizationMemberRow> {
+        let row = sqlx::query_as::<_, OrganizationMemberRow>(
+            r#"
+            INSERT INTO organization_members (org_id, user_id)
+            VALUES ($1, $2)
+            ON CONFLICT (org_id, user_id) DO UPDATE SET org_id = EXCLUDED.org_id
+            RETURNING org_id, user_id, created_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
+        let result =
+            sqlx::query("DELETE FROM organization_members WHERE org_id = $1 AND user_id = $2")
+                .bind(org_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn list_organization_members(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrganizationMemberRow>> {
+        let rows = sqlx::query_as::<_, OrganizationMemberRow>(
+            r#"
+            SELECT org_id, user_id, created_at
+            FROM organization_members
+            WHERE org_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn list_user_organizations(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
+        let rows = sqlx::query_as::<_, OrganizationRow>(
+            r#"
+            SELECT o.org_id, o.public_id, o.name, o.created_at, o.updated_at
+            FROM organizations o
+            JOIN organization_members om ON o.org_id = om.org_id
+            WHERE om.user_id = $1
+            ORDER BY o.name
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn is_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
+        let row: Option<(i32,)> = sqlx::query_as(
+            r#"
+            SELECT 1 as exists_flag
+            FROM organization_members
+            WHERE org_id = $1 AND user_id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.is_some())
     }
 }

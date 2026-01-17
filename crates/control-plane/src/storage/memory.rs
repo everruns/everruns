@@ -367,29 +367,43 @@ impl InMemoryDatabase {
         Ok(Some(row))
     }
 
-    pub async fn get_agent(&self, id: Uuid) -> Result<Option<AgentRow>> {
-        Ok(self.agents.read().get(&id).cloned())
+    pub async fn get_agent(&self, org_id: i64, id: Uuid) -> Result<Option<AgentRow>> {
+        Ok(self
+            .agents
+            .read()
+            .get(&id)
+            .filter(|a| a.org_id == org_id)
+            .cloned())
     }
 
-    pub async fn list_agents(&self) -> Result<Vec<AgentRow>> {
+    pub async fn list_agents(&self, org_id: i64) -> Result<Vec<AgentRow>> {
         let agents = self.agents.read();
-        let mut result: Vec<_> = agents.values().cloned().collect();
+        let mut result: Vec<_> = agents
+            .values()
+            .filter(|a| a.org_id == org_id && a.status == "active")
+            .cloned()
+            .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(result)
     }
 
-    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentRow>> {
+    pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         Ok(self
             .agents
             .read()
             .values()
-            .find(|a| a.name == name && a.status == "active")
+            .find(|a| a.org_id == org_id && a.name == name && a.status == "active")
             .cloned())
     }
 
-    pub async fn update_agent(&self, id: Uuid, input: UpdateAgent) -> Result<Option<AgentRow>> {
+    pub async fn update_agent(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateAgent,
+    ) -> Result<Option<AgentRow>> {
         let mut agents = self.agents.write();
-        if let Some(agent) = agents.get_mut(&id) {
+        if let Some(agent) = agents.get_mut(&id).filter(|a| a.org_id == org_id) {
             if let Some(name) = input.name {
                 agent.name = name;
             }
@@ -414,7 +428,7 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn delete_agent(&self, id: Uuid) -> Result<bool> {
+    pub async fn delete_agent(&self, org_id: i64, id: Uuid) -> Result<bool> {
         // Delete capabilities first
         {
             let mut caps = self.agent_capabilities.write();
@@ -423,7 +437,12 @@ impl InMemoryDatabase {
                 caps.remove(&key);
             }
         }
-        Ok(self.agents.write().remove(&id).is_some())
+        // Only delete if org_id matches
+        let mut agents = self.agents.write();
+        if agents.get(&id).map(|a| a.org_id) == Some(org_id) {
+            return Ok(agents.remove(&id).is_some());
+        }
+        Ok(false)
     }
 
     // ============================================
@@ -452,17 +471,41 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
-    pub async fn get_session(&self, id: Uuid) -> Result<Option<SessionRow>> {
-        Ok(self.sessions.read().get(&id).cloned())
+    /// Get session, validating org ownership via agent lookup
+    pub async fn get_session(&self, org_id: i64, id: Uuid) -> Result<Option<SessionRow>> {
+        let sessions = self.sessions.read();
+        let agents = self.agents.read();
+        if let Some(session) = sessions.get(&id) {
+            // Validate that the agent belongs to the org
+            if let Some(agent) = agents.get(&session.agent_id)
+                && agent.org_id == org_id
+            {
+                return Ok(Some(session.clone()));
+            }
+        }
+        Ok(None)
     }
 
-    /// List sessions for an agent with pagination.
+    /// List sessions for an agent with pagination, validating org ownership.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(
         &self,
+        org_id: i64,
         agent_id: Uuid,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
+        // First validate the agent belongs to the org
+        {
+            let agents = self.agents.read();
+            if !agents
+                .get(&agent_id)
+                .map(|a| a.org_id == org_id)
+                .unwrap_or(false)
+            {
+                return Ok((vec![], 0));
+            }
+        }
+
         let sessions = self.sessions.read();
         let mut result: Vec<_> = sessions
             .values()
@@ -481,11 +524,30 @@ impl InMemoryDatabase {
         Ok((paginated, total))
     }
 
+    /// Update session, validating org ownership via agent lookup
     pub async fn update_session(
         &self,
+        org_id: i64,
         id: Uuid,
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
+        // First validate org ownership
+        {
+            let sessions = self.sessions.read();
+            let agents = self.agents.read();
+            if let Some(session) = sessions.get(&id) {
+                if !agents
+                    .get(&session.agent_id)
+                    .map(|a| a.org_id == org_id)
+                    .unwrap_or(false)
+                {
+                    return Ok(None);
+                }
+            } else {
+                return Ok(None);
+            }
+        }
+
         let mut sessions = self.sessions.write();
         if let Some(session) = sessions.get_mut(&id) {
             if let Some(title) = input.title {
@@ -508,7 +570,25 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn delete_session(&self, id: Uuid) -> Result<bool> {
+    /// Delete session, validating org ownership via agent lookup
+    pub async fn delete_session(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        // First validate org ownership
+        {
+            let sessions = self.sessions.read();
+            let agents = self.agents.read();
+            if let Some(session) = sessions.get(&id) {
+                if !agents
+                    .get(&session.agent_id)
+                    .map(|a| a.org_id == org_id)
+                    .unwrap_or(false)
+                {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(false);
+            }
+        }
+
         // Delete events first
         {
             let mut events = self.events.write();
@@ -1746,6 +1826,138 @@ impl InMemoryDatabase {
         }
         Ok(None)
     }
+
+    // ============================================
+    // Organizations
+    // ============================================
+
+    pub async fn create_organization(
+        &self,
+        input: CreateOrganizationRow,
+    ) -> Result<OrganizationRow> {
+        let now = Self::now();
+        let mut orgs = self.organizations.write();
+        let org_id = orgs.keys().max().unwrap_or(&0) + 1;
+        let row = OrganizationRow {
+            org_id,
+            public_id: input.public_id,
+            name: input.name,
+            created_at: now,
+            updated_at: now,
+        };
+        orgs.insert(org_id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
+        Ok(self.organizations.read().get(&org_id).cloned())
+    }
+
+    pub async fn get_organization_by_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<OrganizationRow>> {
+        Ok(self
+            .organizations
+            .read()
+            .values()
+            .find(|o| o.public_id == public_id)
+            .cloned())
+    }
+
+    pub async fn list_organizations(&self) -> Result<Vec<OrganizationRow>> {
+        let orgs = self.organizations.read();
+        let mut result: Vec<_> = orgs.values().cloned().collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
+    }
+
+    pub async fn update_organization(
+        &self,
+        org_id: i64,
+        input: UpdateOrganization,
+    ) -> Result<Option<OrganizationRow>> {
+        let mut orgs = self.organizations.write();
+        if let Some(org) = orgs.get_mut(&org_id) {
+            if let Some(name) = input.name {
+                org.name = name;
+            }
+            org.updated_at = Self::now();
+            return Ok(Some(org.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn delete_organization(&self, org_id: i64) -> Result<bool> {
+        Ok(self.organizations.write().remove(&org_id).is_some())
+    }
+
+    // ============================================
+    // Organization Members
+    // ============================================
+
+    pub async fn add_organization_member(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<OrganizationMemberRow> {
+        let now = Self::now();
+        let row = OrganizationMemberRow {
+            org_id,
+            user_id,
+            created_at: now,
+        };
+        self.organization_members
+            .write()
+            .insert((org_id, user_id), row.clone());
+        Ok(row)
+    }
+
+    pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
+        Ok(self
+            .organization_members
+            .write()
+            .remove(&(org_id, user_id))
+            .is_some())
+    }
+
+    pub async fn list_organization_members(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrganizationMemberRow>> {
+        let members = self.organization_members.read();
+        let mut result: Vec<_> = members
+            .values()
+            .filter(|m| m.org_id == org_id)
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
+    }
+
+    pub async fn list_user_organizations(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
+        let members = self.organization_members.read();
+        let orgs = self.organizations.read();
+        let org_ids: Vec<i64> = members
+            .values()
+            .filter(|m| m.user_id == user_id)
+            .map(|m| m.org_id)
+            .collect();
+        let mut result: Vec<_> = orgs
+            .values()
+            .filter(|o| org_ids.contains(&o.org_id))
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(result)
+    }
+
+    pub async fn is_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
+        Ok(self
+            .organization_members
+            .read()
+            .contains_key(&(org_id, user_id)))
+    }
 }
 
 #[cfg(test)]
@@ -1758,19 +1970,22 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
-                name: "Test Agent".to_string(),
-                description: Some("A test agent".to_string()),
-                system_prompt: "You are helpful".to_string(),
-                default_model_id: None,
-                tags: vec!["test".to_string()],
-            })
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    name: "Test Agent".to_string(),
+                    description: Some("A test agent".to_string()),
+                    system_prompt: "You are helpful".to_string(),
+                    default_model_id: None,
+                    tags: vec!["test".to_string()],
+                },
+            )
             .await
             .unwrap();
 
         assert_eq!(agent.name, "Test Agent");
 
-        let fetched = db.get_agent(agent.id).await.unwrap();
+        let fetched = db.get_agent(DEFAULT_ORG_ID, agent.id).await.unwrap();
         assert!(fetched.is_some());
         assert_eq!(fetched.unwrap().name, "Test Agent");
     }
@@ -1780,13 +1995,16 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
-                name: "Test Agent".to_string(),
-                description: None,
-                system_prompt: String::new(),
-                default_model_id: None,
-                tags: vec![],
-            })
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    name: "Test Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                },
+            )
             .await
             .unwrap();
 
@@ -1801,7 +2019,10 @@ mod tests {
             .unwrap();
 
         let pagination = crate::api::common::Pagination::new(0, 20);
-        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        let (sessions, total) = db
+            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .await
+            .unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(total, 1);
         assert_eq!(sessions[0].id, session.id);
@@ -1814,13 +2035,16 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
-                name: "Test Agent".to_string(),
-                description: None,
-                system_prompt: String::new(),
-                default_model_id: None,
-                tags: vec![],
-            })
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    name: "Test Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                },
+            )
             .await
             .unwrap();
 
@@ -1861,13 +2085,16 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
-                name: "Test Agent".to_string(),
-                description: None,
-                system_prompt: String::new(),
-                default_model_id: None,
-                tags: vec![],
-            })
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    name: "Test Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                },
+            )
             .await
             .unwrap();
 
@@ -1885,31 +2112,46 @@ mod tests {
 
         // Test default pagination (all sessions fit within limit)
         let pagination = crate::api::common::Pagination::new(0, 20);
-        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        let (sessions, total) = db
+            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .await
+            .unwrap();
         assert_eq!(total, 15);
         assert_eq!(sessions.len(), 15);
 
         // Test with limit=5
         let pagination = crate::api::common::Pagination::new(0, 5);
-        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        let (sessions, total) = db
+            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .await
+            .unwrap();
         assert_eq!(total, 15);
         assert_eq!(sessions.len(), 5);
 
         // Test with offset=5, limit=5
         let pagination = crate::api::common::Pagination::new(5, 5);
-        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        let (sessions, total) = db
+            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .await
+            .unwrap();
         assert_eq!(total, 15);
         assert_eq!(sessions.len(), 5);
 
         // Test last partial page (offset=10, limit=10 should return 5)
         let pagination = crate::api::common::Pagination::new(10, 10);
-        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        let (sessions, total) = db
+            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .await
+            .unwrap();
         assert_eq!(total, 15);
         assert_eq!(sessions.len(), 5);
 
         // Test beyond range (offset=20)
         let pagination = crate::api::common::Pagination::new(20, 10);
-        let (sessions, total) = db.list_sessions(agent.id, pagination).await.unwrap();
+        let (sessions, total) = db
+            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .await
+            .unwrap();
         assert_eq!(total, 15);
         assert_eq!(sessions.len(), 0);
     }
@@ -1919,13 +2161,16 @@ mod tests {
         let db = InMemoryDatabase::new();
 
         let agent = db
-            .create_agent(DEFAULT_ORG_ID, CreateAgentRow {
-                name: "Test Agent".to_string(),
-                description: None,
-                system_prompt: String::new(),
-                default_model_id: None,
-                tags: vec![],
-            })
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    name: "Test Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                },
+            )
             .await
             .unwrap();
 
@@ -1945,7 +2190,10 @@ mod tests {
 
         // Sessions should be ordered by created_at DESC (newest first)
         let pagination = crate::api::common::Pagination::new(0, 10);
-        let (sessions, _) = db.list_sessions(agent.id, pagination).await.unwrap();
+        let (sessions, _) = db
+            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .await
+            .unwrap();
 
         assert_eq!(sessions.len(), 5);
         // Most recent session should be first

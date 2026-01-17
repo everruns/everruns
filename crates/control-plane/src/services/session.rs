@@ -6,7 +6,7 @@ use crate::storage::{
     models::{CreateSessionRow, UpdateSession},
 };
 use anyhow::Result;
-use everruns_core::{Session, SessionStatus, TokenUsage};
+use everruns_core::{DEFAULT_ORG_ID, Session, SessionStatus, TokenUsage};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -27,7 +27,8 @@ impl SessionService {
             Some(id) => Some(id),
             None => {
                 // Look up the agent to get its default_model_id
-                let agent = self.db.get_agent(agent_id).await?;
+                // TODO: Get org_id from context after Phase 3
+                let agent = self.db.get_agent(DEFAULT_ORG_ID, agent_id).await?;
                 agent.and_then(|a| a.default_model_id)
             }
         };
@@ -43,7 +44,8 @@ impl SessionService {
     }
 
     pub async fn get(&self, id: Uuid) -> Result<Option<Session>> {
-        let row = self.db.get_session(id).await?;
+        // TODO: Get org_id from context after Phase 3
+        let row = self.db.get_session(DEFAULT_ORG_ID, id).await?;
         Ok(row.map(Self::row_to_session))
     }
 
@@ -55,7 +57,11 @@ impl SessionService {
         agent_id: Uuid,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
-        let (rows, total) = self.db.list_sessions(agent_id, pagination).await?;
+        // TODO: Get org_id from context after Phase 3
+        let (rows, total) = self
+            .db
+            .list_sessions(DEFAULT_ORG_ID, agent_id, pagination)
+            .await?;
         let mut sessions: Vec<Session> = rows.into_iter().map(Self::row_to_session).collect();
 
         // Fetch previews for all sessions in batch queries
@@ -82,7 +88,8 @@ impl SessionService {
             tags: req.tags,
             ..Default::default()
         };
-        let row = self.db.update_session(id, input).await?;
+        // TODO: Get org_id from context after Phase 3
+        let row = self.db.update_session(DEFAULT_ORG_ID, id, input).await?;
         Ok(row.map(Self::row_to_session))
     }
 
@@ -92,12 +99,14 @@ impl SessionService {
             status: Some(status),
             ..Default::default()
         };
-        let row = self.db.update_session(id, input).await?;
+        // TODO: Get org_id from context after Phase 3
+        let row = self.db.update_session(DEFAULT_ORG_ID, id, input).await?;
         Ok(row.map(Self::row_to_session))
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
-        self.db.delete_session(id).await
+        // TODO: Get org_id from context after Phase 3
+        self.db.delete_session(DEFAULT_ORG_ID, id).await
     }
 
     fn row_to_session(row: crate::storage::SessionRow) -> Session {

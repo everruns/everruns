@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, Result, TokenUsage,
+    AgentLoopError, DEFAULT_ORG_ID, Result, TokenUsage,
     session::{Session, SessionStatus},
     traits::SessionStore,
 };
@@ -35,9 +35,10 @@ impl DbSessionStore {
 #[async_trait]
 impl SessionStore for DbSessionStore {
     async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>> {
+        // TODO: Get org_id from context after Phase 3
         let session_row = self
             .db
-            .get_session(session_id)
+            .get_session(DEFAULT_ORG_ID, session_id)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 

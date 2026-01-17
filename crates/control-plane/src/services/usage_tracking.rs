@@ -8,7 +8,7 @@
 // (see specs/architecture.md for rationale on no-trigger policy).
 
 use async_trait::async_trait;
-use everruns_core::{Event, EventData, EventListener, LLM_GENERATION};
+use everruns_core::{DEFAULT_ORG_ID, Event, EventData, EventListener, LLM_GENERATION};
 use std::sync::Arc;
 use tracing::{error, instrument};
 
@@ -95,7 +95,8 @@ impl EventListener for UsageTrackingListener {
         }
 
         // Update agent totals (need to get agent_id from session)
-        if let Ok(Some(session)) = self.db.get_session(event.session_id).await
+        // TODO: Get org_id from context after Phase 3
+        if let Ok(Some(session)) = self.db.get_session(DEFAULT_ORG_ID, event.session_id).await
             && let Err(e) = self
                 .db
                 .increment_agent_usage(

@@ -61,7 +61,8 @@ impl AgentService {
     }
 
     pub async fn get(&self, id: Uuid) -> Result<Option<Agent>> {
-        let row = self.db.get_agent(id).await?;
+        // TODO: Get org_id from context after Phase 3
+        let row = self.db.get_agent(DEFAULT_ORG_ID, id).await?;
         match row {
             Some(row) => {
                 let capabilities = self.get_capabilities(id).await?;
@@ -72,7 +73,8 @@ impl AgentService {
     }
 
     pub async fn list(&self) -> Result<Vec<Agent>> {
-        let rows = self.db.list_agents().await?;
+        // TODO: Get org_id from context after Phase 3
+        let rows = self.db.list_agents(DEFAULT_ORG_ID).await?;
 
         // Fetch capabilities for each agent
         let mut agents = Vec::with_capacity(rows.len());
@@ -93,7 +95,8 @@ impl AgentService {
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
         };
-        let row = self.db.update_agent(id, input).await?;
+        // TODO: Get org_id from context after Phase 3
+        let row = self.db.update_agent(DEFAULT_ORG_ID, id, input).await?;
 
         match row {
             Some(row) => {
@@ -123,7 +126,8 @@ impl AgentService {
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
-        self.db.delete_agent(id).await
+        // TODO: Get org_id from context after Phase 3
+        self.db.delete_agent(DEFAULT_ORG_ID, id).await
     }
 
     async fn get_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityConfig>> {
