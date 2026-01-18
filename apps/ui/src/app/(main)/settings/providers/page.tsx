@@ -33,6 +33,7 @@ import {
   useCreateLlmProvider,
   useUpdateLlmProvider,
   useDeleteLlmProvider,
+  useSyncProviderModels,
   useCreateLlmModel,
   useDeleteLlmModel,
 } from "@/hooks/use-llm-providers";
@@ -51,6 +52,7 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 // Note: Star is still used in ModelRow for default model indicator
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
@@ -86,11 +88,18 @@ function ProviderCard({
   provider,
   onDelete,
   onSetApiKey,
+  onSyncModels,
+  isSyncing,
 }: {
   provider: LlmProvider;
   onDelete: (id: string) => void;
   onSetApiKey: (provider: LlmProvider) => void;
+  onSyncModels: (id: string) => void;
+  isSyncing: boolean;
 }) {
+  // Only show sync button for providers without custom base URL (standard providers)
+  const canSync = !provider.base_url && provider.api_key_set;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -129,6 +138,18 @@ function ProviderCard({
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
+          {canSync && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onSyncModels(provider.id)}
+              disabled={isSyncing}
+              title="Discover available models from provider API"
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? "Syncing..." : "Sync Models"}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
             <Key className="h-4 w-4 mr-1" />
             {provider.api_key_set ? "Update Key" : "Set Key"}
@@ -663,10 +684,13 @@ export default function ProvidersPage() {
   const { data: models = [], isLoading: modelsLoading, error: modelsError } = useLlmModels();
   const deleteProvider = useDeleteLlmProvider();
   const deleteModel = useDeleteLlmModel();
+  const syncModels = useSyncProviderModels();
 
   const [addProviderOpen, setAddProviderOpen] = useState(false);
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [apiKeyProvider, setApiKeyProvider] = useState<LlmProvider | null>(null);
+  const [syncingProviderId, setSyncingProviderId] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const handleDeleteProvider = async (id: string) => {
     if (confirm("Are you sure you want to delete this provider? All associated models will also be deleted.")) {
@@ -677,6 +701,34 @@ export default function ProvidersPage() {
   const handleDeleteModel = async (id: string) => {
     if (confirm("Are you sure you want to delete this model?")) {
       await deleteModel.mutateAsync(id);
+    }
+  };
+
+  const handleSyncModels = async (providerId: string) => {
+    setSyncingProviderId(providerId);
+    setSyncMessage(null);
+    try {
+      const result = await syncModels.mutateAsync(providerId);
+      if (result.status === "success") {
+        setSyncMessage({
+          type: "success",
+          text: `Sync complete: ${result.created} new, ${result.updated} updated, ${result.stale} stale`,
+        });
+      } else {
+        setSyncMessage({
+          type: "error",
+          text: "Model sync not supported for this provider",
+        });
+      }
+    } catch {
+      setSyncMessage({
+        type: "error",
+        text: "Failed to sync models",
+      });
+    } finally {
+      setSyncingProviderId(null);
+      // Clear message after 5 seconds
+      setTimeout(() => setSyncMessage(null), 5000);
     }
   };
 
@@ -700,6 +752,18 @@ export default function ProvidersPage() {
         {providersError && (
           <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
             Failed to load providers: {providersError.message}
+          </div>
+        )}
+
+        {syncMessage && (
+          <div
+            className={`p-4 rounded-lg mb-4 ${
+              syncMessage.type === "success"
+                ? "bg-green-100 text-green-800"
+                : "bg-destructive/10 text-destructive"
+            }`}
+          >
+            {syncMessage.text}
           </div>
         )}
 
@@ -729,6 +793,8 @@ export default function ProvidersPage() {
                 provider={provider}
                 onDelete={handleDeleteProvider}
                 onSetApiKey={setApiKeyProvider}
+                onSyncModels={handleSyncModels}
+                isSyncing={syncingProviderId === provider.id}
               />
             ))}
           </div>

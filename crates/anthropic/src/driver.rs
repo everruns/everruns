@@ -8,6 +8,7 @@
 // creates the appropriate gen-ai spans. No direct tracing in drivers.
 
 use async_trait::async_trait;
+use chrono::DateTime;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::Client;
@@ -17,13 +18,14 @@ use std::sync::{Arc, Mutex};
 
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
-    BoxedLlmDriver, DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmContentPart,
-    LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
-    ProviderType,
+    BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
+    LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream,
+    LlmStreamEvent, ProviderType,
 };
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 /// Anthropic Claude LLM Driver
@@ -47,6 +49,8 @@ pub struct AnthropicLlmDriver {
     client: Client,
     api_key: String,
     api_url: String,
+    /// Whether using a custom base URL (not Anthropic's API)
+    uses_custom_url: bool,
 }
 
 impl AnthropicLlmDriver {
@@ -56,6 +60,7 @@ impl AnthropicLlmDriver {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
+            uses_custom_url: false,
         }
     }
 
@@ -72,7 +77,13 @@ impl AnthropicLlmDriver {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: api_url.into(),
+            uses_custom_url: true,
         }
+    }
+
+    /// Check if using a custom base URL
+    pub fn uses_custom_url(&self) -> bool {
+        self.uses_custom_url
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -434,6 +445,53 @@ impl LlmDriver for AnthropicLlmDriver {
 
         Ok(converted_stream)
     }
+
+    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+        // Skip discovery for custom URLs (proxies, self-hosted)
+        if self.uses_custom_url {
+            return Ok(None);
+        }
+
+        let response = self
+            .client
+            .get(ANTHROPIC_MODELS_URL)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", ANTHROPIC_VERSION)
+            .send()
+            .await
+            .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AgentLoopError::llm(format!(
+                "Models API returned {}: {}",
+                status, body
+            )));
+        }
+
+        let models_response: AnthropicModelsResponse = response
+            .json()
+            .await
+            .map_err(|e| AgentLoopError::llm(format!("Failed to parse models response: {}", e)))?;
+
+        // All Anthropic models are chat models, no filtering needed
+        let discovered: Vec<DiscoveredModel> = models_response
+            .data
+            .into_iter()
+            .map(|m| DiscoveredModel {
+                model_id: m.id,
+                display_name: Some(m.display_name),
+                created_at: m
+                    .created_at
+                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                    .map(|dt| dt.with_timezone(&chrono::Utc)),
+                owned_by: Some("anthropic".to_string()),
+            })
+            .collect();
+
+        Ok(Some(discovered))
+    }
 }
 
 impl std::fmt::Debug for AnthropicLlmDriver {
@@ -680,6 +738,28 @@ struct AnthropicMessageDelta {
 #[derive(Debug, Deserialize)]
 struct AnthropicMessageDeltaData {
     stop_reason: Option<String>,
+}
+
+// ============================================================================
+// Models API Types
+// ============================================================================
+
+/// Response from Anthropic's /v1/models endpoint
+#[derive(Debug, Deserialize)]
+struct AnthropicModelsResponse {
+    data: Vec<AnthropicModelInfo>,
+}
+
+/// Individual model info from Anthropic's models API
+#[derive(Debug, Deserialize)]
+struct AnthropicModelInfo {
+    /// Model identifier (e.g., "claude-opus-4-5-20251101")
+    id: String,
+    /// Human-readable display name (e.g., "Claude Opus 4.5")
+    display_name: String,
+    /// ISO 8601 timestamp when the model was created
+    #[serde(default)]
+    created_at: Option<String>,
 }
 
 // ============================================================================

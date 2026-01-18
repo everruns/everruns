@@ -295,6 +295,8 @@ pub struct LlmProviderRow {
     pub api_key_set: bool,
     pub status: String,
     pub settings: sqlx::types::JsonValue,
+    /// When models were last synced from provider API
+    pub last_synced_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -310,6 +312,12 @@ pub struct LlmModelRow {
     pub is_default: bool,
     pub is_favorite: bool,
     pub status: String,
+    /// How the model was added: manual, discovered, or predefined
+    pub source: String,
+    /// Last time model was seen in provider API response
+    pub last_seen_at: Option<DateTime<Utc>>,
+    /// Raw metadata from provider API response
+    pub provider_metadata: Option<sqlx::types::JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -326,6 +334,12 @@ pub struct LlmModelWithProviderRow {
     pub is_default: bool,
     pub is_favorite: bool,
     pub status: String,
+    /// How the model was added: manual, discovered, or predefined
+    pub source: String,
+    /// Last time model was seen in provider API response
+    pub last_seen_at: Option<DateTime<Utc>>,
+    /// Raw metadata from provider API response
+    pub provider_metadata: Option<sqlx::types::JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub provider_name: String,
@@ -371,9 +385,13 @@ pub struct CreateLlmModelRow {
     pub capabilities: Vec<String>,
     pub is_default: bool,
     pub is_favorite: bool,
+    /// How the model was added: manual, discovered, or predefined
+    pub source: String,
+    /// Raw metadata from provider API response
+    pub provider_metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct UpdateLlmModel {
     pub model_id: Option<String>,
     pub display_name: Option<String>,
@@ -381,6 +399,10 @@ pub struct UpdateLlmModel {
     pub is_default: Option<bool>,
     pub is_favorite: Option<bool>,
     pub status: Option<String>,
+    /// Update last_seen_at timestamp (for sync tracking)
+    pub last_seen_at: Option<DateTime<Utc>>,
+    /// Update provider metadata
+    pub provider_metadata: Option<serde_json::Value>,
 }
 
 // ============================================

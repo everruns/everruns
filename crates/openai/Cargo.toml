@@ -28,6 +28,9 @@ eventsource-stream.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+# Date/time
+chrono.workspace = true
+
 # Tracing
 tracing.workspace = true
 

@@ -187,3 +187,60 @@ impl LlmConfig {
             .collect()
     }
 }
+
+// ============================================================================
+// OpenAI Models API Types
+// ============================================================================
+
+/// Response from OpenAI's /v1/models endpoint
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAiModelsResponse {
+    pub data: Vec<OpenAiModelInfo>,
+}
+
+/// Individual model info from OpenAI's models API
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAiModelInfo {
+    /// Model identifier (e.g., "gpt-5.2", "gpt-4o")
+    pub id: String,
+    /// Unix timestamp of model creation
+    pub created: i64,
+    /// Owner organization (e.g., "openai", "system")
+    pub owned_by: String,
+}
+
+impl OpenAiModelInfo {
+    /// Check if this model is a chat/completion model (not embedding, TTS, etc.)
+    ///
+    /// Includes: gpt-*, o1*, o3*, o4*, chatgpt-*
+    /// Excludes: text-embedding-*, dall-e-*, tts-*, whisper-*, davinci-*, babbage-*, omni-moderation-*, sora-*, codex-*, gpt-image-*
+    pub fn is_chat_model(&self) -> bool {
+        let id = self.id.as_str();
+
+        // Exclude patterns (check these first)
+        if id.starts_with("text-embedding")
+            || id.starts_with("dall-e")
+            || id.starts_with("tts-")
+            || id.starts_with("whisper")
+            || id.starts_with("davinci")
+            || id.starts_with("babbage")
+            || id.starts_with("omni-moderation")
+            || id.starts_with("sora-")
+            || id.starts_with("gpt-image")
+            || id.starts_with("codex-")
+            || id.contains("-transcribe")
+            || id.contains("-realtime")
+            || id.contains("-audio")
+            || id.contains("-tts")
+        {
+            return false;
+        }
+
+        // Include patterns
+        id.starts_with("gpt-")
+            || id.starts_with("o1")
+            || id.starts_with("o3")
+            || id.starts_with("o4")
+            || id.starts_with("chatgpt-")
+    }
+}

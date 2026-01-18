@@ -2,6 +2,7 @@
 // Routes are org-scoped: /v1/orgs/:org/llm-providers/...
 
 use crate::auth::{AuthState, OrgContext, middleware::FromRef};
+use crate::services::{LlmProviderService, ModelSyncService, SyncResult};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -10,18 +11,18 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::llm_models::LlmProvider;
-use everruns_core::{LlmProviderStatus, LlmProviderType};
-use serde::Deserialize;
+use everruns_core::{DriverRegistry, LlmProviderStatus, LlmProviderType};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::common::{ErrorResponse, ListResponse};
-use crate::services::LlmProviderService;
 
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<LlmProviderService>,
+    pub sync_service: Arc<ModelSyncService>,
     pub auth: AuthState,
 }
 
@@ -29,10 +30,12 @@ impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
+        driver_registry: Arc<DriverRegistry>,
         auth: AuthState,
     ) -> Self {
         Self {
-            service: Arc::new(LlmProviderService::new(db, encryption)),
+            service: Arc::new(LlmProviderService::new(db.clone(), encryption)),
+            sync_service: Arc::new(ModelSyncService::new(db, driver_registry)),
             auth,
         }
     }
@@ -61,6 +64,23 @@ pub struct CreateLlmProviderRequest {
     /// Will be encrypted at rest if encryption is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+}
+
+/// Response from syncing models from a provider
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum SyncModelsResponse {
+    /// Sync completed successfully
+    Success {
+        /// Number of new models discovered
+        created: usize,
+        /// Number of existing models updated
+        updated: usize,
+        /// Number of models marked as stale (not seen in this sync)
+        stale: usize,
+    },
+    /// Provider doesn't support model discovery
+    NotSupported,
 }
 
 /// Request to update an LLM provider. Only provided fields will be updated.
@@ -295,6 +315,74 @@ pub async fn delete_provider(
     }
 }
 
+/// Sync models from an LLM provider
+///
+/// Fetches the list of available models from the provider's API and updates
+/// the database. Only works for providers with standard base URLs (not custom).
+#[utoipa::path(
+    post,
+    path = "/v1/orgs/{org}/llm-providers/{id}/sync-models",
+    params(
+        ("org" = String, Path, description = "Organization public ID"),
+        ("id" = Uuid, Path, description = "Provider ID")
+    ),
+    responses(
+        (status = 200, description = "Models synced", body = SyncModelsResponse),
+        (status = 404, description = "Provider not found"),
+        (status = 500, description = "Sync failed")
+    ),
+    tag = "llm-providers"
+)]
+pub async fn sync_models(
+    _org: OrgContext,
+    State(state): State<AppState>,
+    Path((_org_path, id)): Path<(String, Uuid)>,
+) -> Result<Json<SyncModelsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let result = state.sync_service.sync_provider(id).await.map_err(|e| {
+        let error_msg = e.to_string();
+        if error_msg.contains("Provider not found") {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Provider not found".to_string(),
+                }),
+            )
+        } else {
+            tracing::error!("Failed to sync models for provider {}: {}", id, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        }
+    })?;
+
+    let response = match result {
+        SyncResult::Success {
+            created,
+            updated,
+            stale,
+        } => SyncModelsResponse::Success {
+            created,
+            updated,
+            stale,
+        },
+        SyncResult::NotSupported => SyncModelsResponse::NotSupported,
+        SyncResult::Failed { error } => {
+            tracing::error!("Model sync failed for provider {}: {}", id, error);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to sync models".to_string(),
+                }),
+            ));
+        }
+    };
+
+    Ok(Json(response))
+}
+
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
@@ -306,6 +394,10 @@ pub fn routes(state: AppState) -> Router {
             get(get_provider)
                 .patch(update_provider)
                 .delete(delete_provider),
+        )
+        .route(
+            "/v1/orgs/:org/llm-providers/:id/sync-models",
+            post(sync_models),
         )
         .with_state(state)
 }

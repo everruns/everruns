@@ -11,6 +11,7 @@ import type {
   CreateLlmModelRequest,
   UpdateLlmModelRequest,
   ListResponse,
+  SyncModelsResponse,
 } from "./types";
 
 // Provider CRUD
@@ -43,6 +44,16 @@ export async function updateLlmProvider(
 
 export async function deleteLlmProvider(org: string, providerId: string): Promise<void> {
   await api.delete(`/v1/orgs/${org}/llm-providers/${providerId}`);
+}
+
+export async function syncProviderModels(
+  org: string,
+  providerId: string
+): Promise<SyncModelsResponse> {
+  const response = await api.post<SyncModelsResponse>(
+    `/v1/orgs/${org}/llm-providers/${providerId}/sync-models`
+  );
+  return response.data;
 }
 
 // Model CRUD

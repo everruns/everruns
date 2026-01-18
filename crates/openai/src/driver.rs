@@ -4,13 +4,18 @@
 // Wraps OpenAIProtocolLlmDriver from core and can add OpenAI-specific features in the future.
 
 use async_trait::async_trait;
+use chrono::TimeZone;
 
 use everruns_core::OpenAIProtocolLlmDriver;
-use everruns_core::error::Result;
+use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
-    BoxedLlmDriver, DriverRegistry, LlmCallConfig, LlmDriver, LlmMessage, LlmResponseStream,
-    ProviderType,
+    BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmDriver, LlmMessage,
+    LlmResponseStream, ProviderType,
 };
+
+use crate::types::OpenAiModelsResponse;
+
+const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
 
 /// OpenAI LLM Driver
 ///
@@ -31,6 +36,8 @@ use everruns_core::llm_driver_registry::{
 #[derive(Clone)]
 pub struct OpenAILlmDriver {
     inner: OpenAIProtocolLlmDriver,
+    /// Whether using a custom base URL (not OpenAI's API)
+    uses_custom_url: bool,
 }
 
 impl OpenAILlmDriver {
@@ -38,6 +45,7 @@ impl OpenAILlmDriver {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             inner: OpenAIProtocolLlmDriver::new(api_key),
+            uses_custom_url: false,
         }
     }
 
@@ -45,6 +53,7 @@ impl OpenAILlmDriver {
     pub fn from_env() -> Result<Self> {
         Ok(Self {
             inner: OpenAIProtocolLlmDriver::from_env()?,
+            uses_custom_url: false,
         })
     }
 
@@ -52,12 +61,18 @@ impl OpenAILlmDriver {
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         Self {
             inner: OpenAIProtocolLlmDriver::with_base_url(api_key, api_url),
+            uses_custom_url: true,
         }
     }
 
     /// Get the API URL
     pub fn api_url(&self) -> &str {
         self.inner.api_url()
+    }
+
+    /// Check if using a custom base URL
+    pub fn uses_custom_url(&self) -> bool {
+        self.uses_custom_url
     }
 }
 
@@ -71,6 +86,51 @@ impl LlmDriver for OpenAILlmDriver {
         // Delegate to the base protocol implementation
         // Future: Add OpenAI-specific preprocessing here
         self.inner.chat_completion_stream(messages, config).await
+    }
+
+    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+        // Skip discovery for custom URLs (proxies, self-hosted)
+        if self.uses_custom_url {
+            return Ok(None);
+        }
+
+        let response = self
+            .inner
+            .client()
+            .get(OPENAI_MODELS_URL)
+            .bearer_auth(self.inner.api_key())
+            .send()
+            .await
+            .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AgentLoopError::llm(format!(
+                "Models API returned {}: {}",
+                status, body
+            )));
+        }
+
+        let models_response: OpenAiModelsResponse = response
+            .json()
+            .await
+            .map_err(|e| AgentLoopError::llm(format!("Failed to parse models response: {}", e)))?;
+
+        // Filter to chat models only and convert to DiscoveredModel
+        let discovered: Vec<DiscoveredModel> = models_response
+            .data
+            .into_iter()
+            .filter(|m| m.is_chat_model())
+            .map(|m| DiscoveredModel {
+                model_id: m.id,
+                display_name: None, // OpenAI doesn't provide display names
+                created_at: chrono::Utc.timestamp_opt(m.created, 0).single(),
+                owned_by: Some(m.owned_by),
+            })
+            .collect();
+
+        Ok(Some(discovered))
     }
 }
 

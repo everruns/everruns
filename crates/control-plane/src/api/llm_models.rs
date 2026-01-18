@@ -6,14 +6,14 @@ use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::{LlmModel, LlmModelStatus, LlmModelWithProvider};
+use everruns_core::{LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider};
 use serde::Deserialize;
 use std::sync::Arc;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::services::LlmModelService;
@@ -61,6 +61,23 @@ pub struct CreateLlmModelRequest {
     #[serde(default)]
     #[schema(example = false)]
     pub is_favorite: bool,
+}
+
+/// Query parameters for filtering models list
+#[derive(Debug, Default, Deserialize, IntoParams)]
+pub struct ListModelsQuery {
+    /// Filter by model source (manual, discovered, predefined)
+    pub source: Option<LlmModelSource>,
+    /// Include models that are stale (not seen in recent sync). Default: true
+    #[serde(default = "default_true")]
+    pub include_stale: bool,
+    /// Only return favorite models. Default: false
+    #[serde(default)]
+    pub favorites_only: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Request to update an LLM model. Only provided fields will be updated.
@@ -166,7 +183,8 @@ pub async fn list_provider_models(
     get,
     path = "/v1/orgs/{org}/llm-models",
     params(
-        ("org" = String, Path, description = "Organization public ID")
+        ("org" = String, Path, description = "Organization public ID"),
+        ListModelsQuery
     ),
     responses(
         (status = 200, description = "List of all models", body = ListResponse<LlmModelWithProvider>)
@@ -176,16 +194,21 @@ pub async fn list_provider_models(
 pub async fn list_all_models(
     _org: OrgContext,
     State(state): State<AppState>,
+    Query(query): Query<ListModelsQuery>,
 ) -> Result<Json<ListResponse<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
-    let models = state.service.list_all().await.map_err(|e| {
-        tracing::error!("Failed to list all LLM models: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
-    })?;
+    let models = state
+        .service
+        .list_all_with_filters(query.source, query.include_stale, query.favorites_only)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list all LLM models: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(ListResponse::new(models)))
 }

@@ -791,6 +791,7 @@ impl InMemoryDatabase {
             api_key_set,
             status: "active".to_string(), // Default status for new providers
             settings: input.settings.unwrap_or(serde_json::json!({})),
+            last_synced_at: None,
             created_at: now,
             updated_at: now,
         };
@@ -822,6 +823,7 @@ impl InMemoryDatabase {
             api_key_set,
             status: "active".to_string(),
             settings: input.settings.unwrap_or(serde_json::json!({})),
+            last_synced_at: None,
             created_at: now,
             updated_at: now,
         };
@@ -885,6 +887,19 @@ impl InMemoryDatabase {
         Ok(self.llm_providers.write().remove(&id).is_some())
     }
 
+    /// Update provider's last_synced_at timestamp
+    pub async fn update_provider_last_synced(
+        &self,
+        id: Uuid,
+        last_synced_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        if let Some(provider) = self.llm_providers.write().get_mut(&id) {
+            provider.last_synced_at = Some(last_synced_at);
+            provider.updated_at = Self::now();
+        }
+        Ok(())
+    }
+
     /// Get a provider with its decrypted API key
     pub fn get_provider_with_api_key(
         &self,
@@ -937,6 +952,9 @@ impl InMemoryDatabase {
                     is_default: model.is_default,
                     is_favorite: model.is_favorite,
                     status: model.status.clone(),
+                    source: model.source.clone(),
+                    last_seen_at: model.last_seen_at,
+                    provider_metadata: model.provider_metadata.clone(),
                     created_at: model.created_at,
                     updated_at: model.updated_at,
                     provider_name: provider.name.clone(),
@@ -973,6 +991,9 @@ impl InMemoryDatabase {
             is_default: input.is_default,
             is_favorite: input.is_favorite,
             status: "active".to_string(), // Default status for new models
+            source: input.source,
+            last_seen_at: None,
+            provider_metadata: input.provider_metadata,
             created_at: now,
             updated_at: now,
         };
@@ -1003,6 +1024,9 @@ impl InMemoryDatabase {
             is_default: input.is_default,
             is_favorite: input.is_favorite,
             status: "active".to_string(),
+            source: input.source,
+            last_seen_at: None,
+            provider_metadata: input.provider_metadata,
             created_at: now,
             updated_at: now,
         };
@@ -1034,6 +1058,9 @@ impl InMemoryDatabase {
                 is_default: model.is_default,
                 is_favorite: model.is_favorite,
                 status: model.status.clone(),
+                source: model.source.clone(),
+                last_seen_at: model.last_seen_at,
+                provider_metadata: model.provider_metadata.clone(),
                 created_at: model.created_at,
                 updated_at: model.updated_at,
                 provider_name: provider.name.clone(),
@@ -1077,6 +1104,9 @@ impl InMemoryDatabase {
                         is_default: model.is_default,
                         is_favorite: model.is_favorite,
                         status: model.status.clone(),
+                        source: model.source.clone(),
+                        last_seen_at: model.last_seen_at,
+                        provider_metadata: model.provider_metadata.clone(),
                         created_at: model.created_at,
                         updated_at: model.updated_at,
                         provider_name: provider.name.clone(),
@@ -1148,6 +1178,9 @@ impl InMemoryDatabase {
                     is_default: model.is_default,
                     is_favorite: model.is_favorite,
                     status: model.status.clone(),
+                    source: model.source.clone(),
+                    last_seen_at: model.last_seen_at,
+                    provider_metadata: model.provider_metadata.clone(),
                     created_at: model.created_at,
                     updated_at: model.updated_at,
                     provider_name: provider.name.clone(),

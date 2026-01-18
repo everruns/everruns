@@ -109,6 +109,7 @@ impl LlmProviderService {
                 "active" => LlmProviderStatus::Active,
                 _ => LlmProviderStatus::Disabled,
             },
+            last_synced_at: row.last_synced_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }

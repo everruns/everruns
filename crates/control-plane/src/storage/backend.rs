@@ -312,6 +312,15 @@ impl StorageBackend {
         dispatch!(self, delete_llm_provider, id)
     }
 
+    /// Update provider's last_synced_at timestamp
+    pub async fn update_provider_last_synced(
+        &self,
+        id: Uuid,
+        last_synced_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        dispatch!(self, update_provider_last_synced, id, last_synced_at)
+    }
+
     /// Get a provider with its decrypted API key
     /// Note: This is not async, so cannot use dispatch! macro
     pub fn get_provider_with_api_key(
