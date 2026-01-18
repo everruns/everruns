@@ -11,7 +11,8 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::events::{
-    EventContext, EventRequest, MessageAgentData, SessionIdledData, TurnCancelledData,
+    EventContext, EventRequest, MessageAgentData, MessageUserData, SessionIdledData,
+    TurnCancelledData,
 };
 use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
@@ -346,15 +347,26 @@ pub async fn cancel_turn(
         tracing::warn!(session_id = %session_id, error = %e, "Failed to emit turn.cancelled event");
     }
 
-    // Insert agent message indicating cancellation
-    let cancel_message = Message::assistant("Work was cancelled by user.");
-    let message_event = EventRequest::new(
+    // Insert user message indicating cancellation request
+    let user_cancel_message = Message::user("User requested to cancel the work.");
+    let user_message_event = EventRequest::new(
         session_id,
         EventContext::turn(turn_id, input_message_id),
-        MessageAgentData::new(cancel_message),
+        MessageUserData::new(user_cancel_message),
     );
-    if let Err(e) = state.event_service.emit(message_event).await {
-        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit cancellation message");
+    if let Err(e) = state.event_service.emit(user_message_event).await {
+        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit user cancellation message");
+    }
+
+    // Insert agent message indicating cancellation completed
+    let agent_cancel_message = Message::assistant("Work was cancelled by user.");
+    let agent_message_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        MessageAgentData::new(agent_cancel_message),
+    );
+    if let Err(e) = state.event_service.emit(agent_message_event).await {
+        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit agent cancellation message");
     }
 
     // Emit session.idled event
