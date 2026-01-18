@@ -416,6 +416,21 @@ export interface SessionIdledData {
   usage?: TokenUsage;
 }
 
+/** Data for agent.thinking event (LLM generation started) */
+export interface AgentThinkingData {
+  turn_id: string;
+  model?: string;
+}
+
+/** Data for text.delta event (streaming text update) */
+export interface TextDeltaData {
+  turn_id: string;
+  /** The new text since last delta */
+  delta: string;
+  /** Accumulated text so far */
+  accumulated: string;
+}
+
 /** Union type for all event data types */
 export type EventData =
   | MessageUserData
@@ -434,6 +449,8 @@ export type EventData =
   | SessionStartedData
   | SessionActivatedData
   | SessionIdledData
+  | AgentThinkingData
+  | TextDeltaData
   | Record<string, unknown>; // Raw/unknown event data
 
 export interface CreateEventRequest {

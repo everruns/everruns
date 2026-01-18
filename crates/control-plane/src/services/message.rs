@@ -44,6 +44,12 @@ impl MessageService {
         session_id: Uuid,
         req: CreateMessageRequest,
     ) -> Result<Message> {
+        tracing::info!(
+            session_id = %session_id,
+            agent_id = %agent_id,
+            "Creating user message"
+        );
+
         // Convert InputContentPart array to ContentPart array
         let content: Vec<ContentPart> = req
             .message

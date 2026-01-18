@@ -34,9 +34,12 @@ async fn main() -> Result<()> {
     );
 
     // Create and run the Durable worker (connects to control-plane via gRPC)
-    let mut worker = DurableWorker::new(config)
+    let worker = DurableWorker::new(config)
         .await
         .context("Failed to create Durable worker")?;
+
+    // Get shutdown handle before running (run consumes the worker)
+    let shutdown_handle = worker.shutdown_handle();
 
     // Run the worker (blocks until shutdown)
     tokio::select! {
@@ -48,7 +51,7 @@ async fn main() -> Result<()> {
         }
         _ = tokio::signal::ctrl_c() => {
             tracing::info!("Received shutdown signal");
-            worker.shutdown();
+            shutdown_handle.shutdown();
         }
     }
 

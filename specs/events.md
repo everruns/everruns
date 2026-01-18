@@ -359,6 +359,7 @@ Emitted after each LLM API call to provide full visibility into the messages sen
 - `provider` - LLM provider (openai, anthropic, etc.)
 - `usage` - Token usage (input_tokens, output_tokens)
 - `duration_ms` - Request duration in milliseconds
+- `time_to_first_token_ms` - Time to first token (streaming latency)
 - `success` - Whether the generation succeeded
 - `error` - Error message if failed
 - `finish_reasons` - Array of finish reasons (e.g., `["stop"]`, `["tool_calls"]`)
@@ -402,6 +403,7 @@ Emitted after each LLM API call to provide full visibility into the messages sen
         "output_tokens": 45
       },
       "duration_ms": 1200,
+      "time_to_first_token_ms": 180,
       "success": true,
       "finish_reasons": ["stop"],
       "response_id": "chatcmpl-abc123"
@@ -499,6 +501,71 @@ Session became idle (turn completed). Contains cumulative session usage for real
 
 **Usage Field:** Contains cumulative session token usage at this point.
 
+### Streaming Events
+
+Streaming events provide real-time feedback during LLM generation. These events enable the UI to show a "thinking" indicator and incrementally display text as it's generated.
+
+#### `agent.thinking`
+
+Emitted when the LLM starts generating a response. UI can show a "thinking" indicator until `text.delta` or `message.agent` events arrive.
+
+```json
+{
+  "type": "agent.thinking",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "model": "gpt-4o"
+  }
+}
+```
+
+#### `text.delta`
+
+Streaming text update during LLM generation. Events are batched (~100ms) to reduce volume while providing real-time feedback. UI should accumulate deltas or use the `accumulated` field until `message.agent` arrives with the final text.
+
+```json
+{
+  "type": "text.delta",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "delta": "Hello, ",
+    "accumulated": "Hello, "
+  }
+}
+```
+
+**Streaming Timeline Example:**
+
+```
+User sends message
+       │
+       ▼
+┌─────────────────┐
+│ agent.thinking  │  ← UI shows thinking indicator
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+text.delta  text.delta  ← UI shows streaming text (batched ~100ms)
+    │         │
+    └────┬────┘
+         │
+         ▼
+┌─────────────────┐
+│ message.agent   │  ← UI shows final message, stops streaming
+└─────────────────┘
+```
+
 **Real-time Usage Tracking Pattern:**
 
 The UI uses a combination of events for real-time usage display:
@@ -536,6 +603,8 @@ This approach provides real-time feedback as tokens are consumed during LLM call
 | `tool.call_started` | Atom | Individual tool started |
 | `tool.call_completed` | Atom | Individual tool completed (includes result) |
 | `llm.generation` | LLM | Full LLM API call with messages and response |
+| `agent.thinking` | Streaming | LLM generation started (thinking indicator) |
+| `text.delta` | Streaming | Incremental text update during streaming |
 | `session.started` | Session | Session execution started |
 | `session.activated` | Session | Session became active (turn started) |
 | `session.idled` | Session | Session became idle (turn completed, includes usage) |

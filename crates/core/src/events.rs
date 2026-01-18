@@ -37,6 +37,10 @@ pub const TOOL_CALL_COMPLETED: &str = "tool.call_completed";
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
 
+// Streaming events (for real-time UI updates)
+pub const AGENT_THINKING: &str = "agent.thinking";
+pub const TEXT_DELTA: &str = "text.delta";
+
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
 pub const SESSION_ACTIVATED: &str = "session.activated";
@@ -615,6 +619,10 @@ pub struct LlmGenerationMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
 
+    /// Time to first token in milliseconds (streaming latency)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_first_token_ms: Option<u64>,
+
     /// Whether the generation was successful
     pub success: bool,
 
@@ -683,6 +691,7 @@ impl LlmGenerationData {
                 provider,
                 usage,
                 duration_ms,
+                time_to_first_token_ms: None,
                 success: true,
                 error: None,
                 finish_reasons,
@@ -702,6 +711,7 @@ impl LlmGenerationData {
         provider: Option<String>,
         usage: Option<TokenUsage>,
         duration_ms: Option<u64>,
+        time_to_first_token_ms: Option<u64>,
         finish_reasons: Option<Vec<String>>,
         response_id: Option<String>,
     ) -> Self {
@@ -714,6 +724,7 @@ impl LlmGenerationData {
                 provider,
                 usage,
                 duration_ms,
+                time_to_first_token_ms,
                 success: true,
                 error: None,
                 finish_reasons,
@@ -743,6 +754,7 @@ impl LlmGenerationData {
                 provider,
                 usage: None,
                 duration_ms,
+                time_to_first_token_ms: None,
                 success: false,
                 error: Some(error),
                 finish_reasons: Some(vec!["error".to_string()]),
@@ -750,6 +762,43 @@ impl LlmGenerationData {
             },
         }
     }
+}
+
+// ============================================================================
+// Streaming Event Data Types
+// ============================================================================
+
+/// Data for agent.thinking event
+///
+/// Emitted when the LLM starts generating a response. UI can show a
+/// "thinking" indicator until text.delta or message.agent events arrive.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AgentThinkingData {
+    /// Turn ID this thinking indicator belongs to
+    pub turn_id: Uuid,
+
+    /// Optional model name being used
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+/// Data for text.delta event
+///
+/// Emitted during LLM streaming to provide incremental text updates.
+/// These events are batched (typically ~100ms) to reduce event volume.
+/// UI should accumulate deltas until message.agent arrives with final text.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TextDeltaData {
+    /// Turn ID this delta belongs to (for correlation)
+    pub turn_id: Uuid,
+
+    /// The text delta (new text since last delta)
+    pub delta: String,
+
+    /// Accumulated text so far (convenience for UI)
+    pub accumulated: String,
 }
 
 // ============================================================================
@@ -869,6 +918,8 @@ pub struct SessionIdledData {
 /// - `tool.call_started` → ToolCallStartedData
 /// - `tool.call_completed` → ToolCallCompletedData
 /// - `llm.generation` → LlmGenerationData
+/// - `text.delta` → TextDeltaData
+/// - `agent.thinking` → AgentThinkingData
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
@@ -902,6 +953,14 @@ pub enum EventData {
     // LLM events
     LlmGeneration(LlmGenerationData),
 
+    // Streaming events
+    // NOTE: TextDelta must come BEFORE AgentThinking for untagged enum deserialization.
+    // TextDelta has more required fields (turn_id, delta, accumulated) while
+    // AgentThinking only requires turn_id (model is optional). If AgentThinking
+    // comes first, it will match TextDelta JSON and discard delta/accumulated fields.
+    TextDelta(TextDeltaData),
+    AgentThinking(AgentThinkingData),
+
     // Session events
     SessionStarted(SessionStartedData),
     SessionActivated(SessionActivatedData),
@@ -932,6 +991,8 @@ impl EventData {
             EventData::ToolCallStarted(_) => TOOL_CALL_STARTED,
             EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
+            EventData::TextDelta(_) => TEXT_DELTA,
+            EventData::AgentThinking(_) => AGENT_THINKING,
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
             EventData::SessionIdled(_) => SESSION_IDLED,
@@ -975,6 +1036,8 @@ impl_from_event_data! {
     ToolCallStartedData => ToolCallStarted,
     ToolCallCompletedData => ToolCallCompleted,
     LlmGenerationData => LlmGeneration,
+    AgentThinkingData => AgentThinking,
+    TextDeltaData => TextDelta,
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
@@ -1268,6 +1331,7 @@ mod tests {
                 cache_creation_tokens: None,
             }),
             Some(50),
+            Some(25), // time_to_first_token_ms
             Some(vec!["end_turn".to_string()]),
             Some("msg_12345".to_string()),
         );
@@ -1275,6 +1339,7 @@ mod tests {
         assert!(data.metadata.success);
         assert_eq!(data.metadata.model, "claude-3-opus");
         assert_eq!(data.metadata.provider, Some("anthropic".to_string()));
+        assert_eq!(data.metadata.time_to_first_token_ms, Some(25));
         assert_eq!(
             data.metadata.finish_reasons,
             Some(vec!["end_turn".to_string()])
@@ -1315,5 +1380,183 @@ mod tests {
 
         let event_data: EventData = data.into();
         assert_eq!(event_data.event_type(), LLM_GENERATION);
+    }
+
+    #[test]
+    fn test_streaming_event_types() {
+        assert_eq!(AGENT_THINKING, "agent.thinking");
+        assert_eq!(TEXT_DELTA, "text.delta");
+    }
+
+    #[test]
+    fn test_agent_thinking_data() {
+        let turn_id = Uuid::now_v7();
+        let data = AgentThinkingData {
+            turn_id,
+            model: Some("gpt-4o".to_string()),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), AGENT_THINKING);
+
+        // Test serialization
+        let json = serde_json::to_string(&event_data).unwrap();
+        assert!(json.contains("turn_id"));
+        assert!(json.contains("gpt-4o"));
+    }
+
+    #[test]
+    fn test_agent_thinking_data_without_model() {
+        let turn_id = Uuid::now_v7();
+        let data = AgentThinkingData {
+            turn_id,
+            model: None,
+        };
+
+        // Model should be skipped when None
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("model"));
+    }
+
+    #[test]
+    fn test_text_delta_data() {
+        let turn_id = Uuid::now_v7();
+        let data = TextDeltaData {
+            turn_id,
+            delta: "Hello".to_string(),
+            accumulated: "Hello".to_string(),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), TEXT_DELTA);
+
+        // Test serialization
+        let json = serde_json::to_string(&event_data).unwrap();
+        assert!(json.contains("turn_id"));
+        assert!(json.contains("delta"));
+        assert!(json.contains("accumulated"));
+    }
+
+    #[test]
+    fn test_text_delta_deserialization_preserves_fields() {
+        // This test verifies that TextDelta deserializes correctly with all fields
+        // (regression test for the untagged enum ordering fix)
+        let turn_id = Uuid::now_v7();
+        let data = TextDeltaData {
+            turn_id,
+            delta: "Hello world".to_string(),
+            accumulated: "Hello world".to_string(),
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_value(EventData::TextDelta(data.clone())).unwrap();
+
+        // Deserialize back
+        let deserialized: EventData = serde_json::from_value(json).unwrap();
+
+        // Verify it's TextDelta and fields are preserved
+        match deserialized {
+            EventData::TextDelta(td) => {
+                assert_eq!(td.turn_id, turn_id);
+                assert_eq!(td.delta, "Hello world");
+                assert_eq!(td.accumulated, "Hello world");
+            }
+            _ => panic!("Expected TextDelta, got different variant"),
+        }
+    }
+
+    #[test]
+    fn test_agent_thinking_deserialization() {
+        let turn_id = Uuid::now_v7();
+        let data = AgentThinkingData {
+            turn_id,
+            model: Some("claude-3".to_string()),
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_value(EventData::AgentThinking(data.clone())).unwrap();
+
+        // Deserialize back
+        let deserialized: EventData = serde_json::from_value(json).unwrap();
+
+        // Verify it's AgentThinking and fields are preserved
+        match deserialized {
+            EventData::AgentThinking(at) => {
+                assert_eq!(at.turn_id, turn_id);
+                assert_eq!(at.model, Some("claude-3".to_string()));
+            }
+            _ => panic!("Expected AgentThinking, got different variant"),
+        }
+    }
+
+    #[test]
+    fn test_llm_generation_with_ttft() {
+        let messages = vec![Message::user("Hello")];
+        let data = LlmGenerationData::success_with_metadata(
+            messages,
+            vec![],
+            Some("Hi!".to_string()),
+            vec![],
+            "gpt-4o".to_string(),
+            Some("openai".to_string()),
+            Some(TokenUsage {
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+            }),
+            Some(500), // duration_ms
+            Some(120), // time_to_first_token_ms
+            Some(vec!["stop".to_string()]),
+            None,
+        );
+
+        assert!(data.metadata.success);
+        assert_eq!(data.metadata.duration_ms, Some(500));
+        assert_eq!(data.metadata.time_to_first_token_ms, Some(120));
+    }
+
+    #[test]
+    fn test_llm_generation_ttft_serialization() {
+        let messages = vec![Message::user("test")];
+        let data = LlmGenerationData::success_with_metadata(
+            messages,
+            vec![],
+            Some("response".to_string()),
+            vec![],
+            "model".to_string(),
+            None,
+            None,
+            Some(1000),
+            Some(150), // TTFT
+            None,
+            None,
+        );
+
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("time_to_first_token_ms"));
+        assert!(json.contains("150"));
+    }
+
+    #[test]
+    fn test_llm_generation_ttft_omitted_when_none() {
+        let messages = vec![Message::user("test")];
+        let data = LlmGenerationData::success(
+            messages,
+            vec![],
+            Some("response".to_string()),
+            vec![],
+            "model".to_string(),
+            None,
+            None,
+            None,
+        );
+
+        // TTFT should be None by default in success()
+        assert!(data.metadata.time_to_first_token_ms.is_none());
+
+        // Should not appear in JSON when None
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("time_to_first_token_ms"));
     }
 }

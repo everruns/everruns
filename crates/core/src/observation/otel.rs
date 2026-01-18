@@ -388,6 +388,7 @@ mod tests {
                     cache_creation_tokens: None,
                 }),
                 duration_ms: Some(100),
+                time_to_first_token_ms: Some(25),
                 success: true,
                 error: None,
                 finish_reasons: Some(vec!["stop".to_string()]),
@@ -432,6 +433,7 @@ mod tests {
                     cache_creation_tokens: None,
                 }),
                 duration_ms: Some(200),
+                time_to_first_token_ms: Some(50),
                 success: true,
                 error: None,
                 finish_reasons: Some(vec!["tool_calls".to_string()]),
@@ -464,6 +466,7 @@ mod tests {
                 provider: None, // No provider
                 usage: None,    // No usage
                 duration_ms: None,
+                time_to_first_token_ms: None,
                 success: true,
                 error: None,
                 finish_reasons: None, // No finish reasons

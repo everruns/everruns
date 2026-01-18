@@ -230,6 +230,9 @@ export function useEvents(
         "session.started",
         "session.activated",
         "session.idled",
+        // Streaming events for real-time text updates
+        "agent.thinking",
+        "text.delta",
       ];
 
       for (const eventType of eventTypes) {

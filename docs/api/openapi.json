@@ -2590,6 +2590,27 @@
           "archived"
         ]
       },
+      "AgentThinkingData": {
+        "type": "object",
+        "description": "Data for agent.thinking event\n\nEmitted when the LLM starts generating a response. UI can show a\n\"thinking\" indicator until text.delta or message.agent events arrive.",
+        "required": [
+          "turn_id"
+        ],
+        "properties": {
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional model name being used"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn ID this thinking indicator belongs to"
+          }
+        }
+      },
       "CapabilityInfo": {
         "type": "object",
         "description": "Public capability information (without internal details)\nThis is what gets returned from the API\nNamed CapabilityInfo to distinguish from the Capability trait",
@@ -3284,6 +3305,12 @@
           },
           {
             "$ref": "#/components/schemas/LlmGenerationData"
+          },
+          {
+            "$ref": "#/components/schemas/TextDeltaData"
+          },
+          {
+            "$ref": "#/components/schemas/AgentThinkingData"
           },
           {
             "$ref": "#/components/schemas/SessionStartedData"
@@ -4498,6 +4525,15 @@
             "type": "boolean",
             "description": "Whether the generation was successful"
           },
+          "time_to_first_token_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Time to first token in milliseconds (streaming latency)",
+            "minimum": 0
+          },
           "usage": {
             "oneOf": [
               {
@@ -5686,6 +5722,30 @@
         "properties": {
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "TextDeltaData": {
+        "type": "object",
+        "description": "Data for text.delta event\n\nEmitted during LLM streaming to provide incremental text updates.\nThese events are batched (typically ~100ms) to reduce event volume.\nUI should accumulate deltas until message.agent arrives with final text.",
+        "required": [
+          "turn_id",
+          "delta",
+          "accumulated"
+        ],
+        "properties": {
+          "accumulated": {
+            "type": "string",
+            "description": "Accumulated text so far (convenience for UI)"
+          },
+          "delta": {
+            "type": "string",
+            "description": "The text delta (new text since last delta)"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn ID this delta belongs to (for correlation)"
           }
         }
       },
