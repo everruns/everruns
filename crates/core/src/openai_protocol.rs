@@ -218,10 +218,14 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AgentLoopError::llm(format!(
-                "OpenAI API error ({}): {}",
-                status, error_text
-            )));
+            let error_msg = format!("OpenAI API error ({}): {}", status, error_text);
+
+            // Check if this is a request-too-large error
+            if is_openai_request_too_large(status, &error_text) {
+                return Err(AgentLoopError::request_too_large(error_msg));
+            }
+
+            return Err(AgentLoopError::llm(error_msg));
         }
 
         let byte_stream = response.bytes_stream();
@@ -376,6 +380,54 @@ impl std::fmt::Debug for OpenAIProtocolLlmDriver {
             .field("api_key", &"[REDACTED]")
             .finish()
     }
+}
+
+// ============================================================================
+// Error Detection Helpers
+// ============================================================================
+
+/// Check if an OpenAI API error indicates the request is too large.
+///
+/// Detects:
+/// - 429 with "Request too large" or token limit messages
+/// - 400 with "context_length_exceeded" code
+/// - Any message about maximum context length being exceeded
+pub fn is_openai_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
+    let error_lower = error_text.to_lowercase();
+
+    // HTTP 429 with token-related errors
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        // "Request too large for gpt-4" pattern
+        if error_lower.contains("request too large") {
+            return true;
+        }
+        // Token limit errors: "tokens per min (TPM): Limit X, Requested Y"
+        if error_lower.contains("tokens") && error_lower.contains("limit") {
+            return true;
+        }
+    }
+
+    // HTTP 400 with context length errors
+    if status == reqwest::StatusCode::BAD_REQUEST {
+        // "context_length_exceeded" error code
+        if error_lower.contains("context_length_exceeded") {
+            return true;
+        }
+        // "maximum context length" message
+        if error_lower.contains("maximum context length") {
+            return true;
+        }
+    }
+
+    // Generic patterns that could appear with various status codes
+    if error_lower.contains("tokens must be reduced")
+        || error_lower.contains("reduce the length")
+        || error_lower.contains("input is too long")
+    {
+        return true;
+    }
+
+    false
 }
 
 // ============================================================================
@@ -652,5 +704,80 @@ mod tests {
         assert!(chunk.usage.is_none()); // No usage in finish_reason chunk
         assert_eq!(chunk.choices.len(), 1);
         assert_eq!(chunk.choices[0].finish_reason, Some("stop".to_string()));
+    }
+
+    // ========================================================================
+    // Request-too-large detection tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_openai_request_too_large_429_request_too_large() {
+        let error = r#"{"error":{"message":"Request too large for gpt-4o in organization org-xxx on tokens per min (TPM): Limit 500000, Requested 538772."}}"#;
+        assert!(is_openai_request_too_large(
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_request_too_large_429_token_limit() {
+        let error =
+            r#"{"error":{"message":"tokens per min (TPM): Limit 500000, Requested 600000"}}"#;
+        assert!(is_openai_request_too_large(
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_request_too_large_400_context_length() {
+        let error = r#"{"error":{"code":"context_length_exceeded","message":"This model's maximum context length is 128000 tokens."}}"#;
+        assert!(is_openai_request_too_large(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_request_too_large_400_max_context() {
+        let error =
+            r#"{"error":{"message":"This model's maximum context length is 128000 tokens"}}"#;
+        assert!(is_openai_request_too_large(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_request_too_large_tokens_must_be_reduced() {
+        let error = r#"{"error":{"message":"The input or output tokens must be reduced"}}"#;
+        assert!(is_openai_request_too_large(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_request_too_large_false_for_other_errors() {
+        // Regular rate limit (not token-related)
+        let error = r#"{"error":{"message":"Rate limit exceeded: too many requests per minute"}}"#;
+        assert!(!is_openai_request_too_large(
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            error
+        ));
+
+        // Internal server error
+        let error = r#"{"error":{"message":"Internal server error"}}"#;
+        assert!(!is_openai_request_too_large(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            error
+        ));
+
+        // Generic 400 error
+        let error = r#"{"error":{"message":"Invalid request"}}"#;
+        assert!(!is_openai_request_too_large(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
     }
 }
