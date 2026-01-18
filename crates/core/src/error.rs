@@ -13,6 +13,11 @@ pub enum AgentLoopError {
     #[error("LLM error: {0}")]
     Llm(String),
 
+    /// Request too large error (context length exceeded, token limits, etc.)
+    /// Contains the original error message for logging
+    #[error("Request too large: {0}")]
+    RequestTooLarge(String),
+
     /// Tool execution error
     #[error("Tool execution error: {0}")]
     ToolExecution(String),
@@ -99,5 +104,51 @@ impl AgentLoopError {
     /// Create a driver not registered error
     pub fn driver_not_registered(provider_type: impl Into<String>) -> Self {
         AgentLoopError::DriverNotRegistered(provider_type.into())
+    }
+
+    /// Create a request too large error
+    pub fn request_too_large(msg: impl Into<String>) -> Self {
+        AgentLoopError::RequestTooLarge(msg.into())
+    }
+
+    /// Check if this is a request-too-large error
+    pub fn is_request_too_large(&self) -> bool {
+        matches!(self, AgentLoopError::RequestTooLarge(_))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_request_too_large_returns_true_for_typed_error() {
+        let err = AgentLoopError::request_too_large("context length exceeded");
+        assert!(err.is_request_too_large());
+    }
+
+    #[test]
+    fn test_is_request_too_large_returns_false_for_llm_error() {
+        let err = AgentLoopError::llm("OpenAI API error (500): Internal server error");
+        assert!(!err.is_request_too_large());
+    }
+
+    #[test]
+    fn test_is_request_too_large_returns_false_for_other_errors() {
+        let err = AgentLoopError::ToolExecution("some error".to_string());
+        assert!(!err.is_request_too_large());
+
+        let err = AgentLoopError::Cancelled;
+        assert!(!err.is_request_too_large());
+    }
+
+    #[test]
+    fn test_request_too_large_error_preserves_message() {
+        let original_msg = "OpenAI API error (429): Request too large for gpt-4";
+        let err = AgentLoopError::request_too_large(original_msg);
+        assert_eq!(
+            err.to_string(),
+            format!("Request too large: {}", original_msg)
+        );
     }
 }

@@ -259,10 +259,14 @@ impl LlmDriver for AnthropicLlmDriver {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AgentLoopError::llm(format!(
-                "Anthropic API error ({}): {}",
-                status, error_text
-            )));
+            let error_msg = format!("Anthropic API error ({}): {}", status, error_text);
+
+            // Check if this is a request-too-large error
+            if is_anthropic_request_too_large(status, &error_text) {
+                return Err(AgentLoopError::request_too_large(error_msg));
+            }
+
+            return Err(AgentLoopError::llm(error_msg));
         }
 
         let byte_stream = response.bytes_stream();
@@ -466,6 +470,51 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         };
         Box::new(driver) as BoxedLlmDriver
     });
+}
+
+// ============================================================================
+// Error Detection Helpers
+// ============================================================================
+
+/// Check if an Anthropic API error indicates the request is too large.
+///
+/// Detects:
+/// - 413 Request Entity Too Large
+/// - 400 with "prompt is too long" message
+/// - "request size exceeded" message
+fn is_anthropic_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
+    let error_lower = error_text.to_lowercase();
+
+    // HTTP 413 Request Entity Too Large
+    if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
+        return true;
+    }
+
+    // HTTP 400 with prompt/context length errors
+    if status == reqwest::StatusCode::BAD_REQUEST {
+        // "prompt is too long: X tokens > Y maximum"
+        if error_lower.contains("prompt is too long") {
+            return true;
+        }
+        // "request size exceeded maximum"
+        if error_lower.contains("request size exceeded") {
+            return true;
+        }
+        // Generic context length error
+        if error_lower.contains("context length") || error_lower.contains("too many tokens") {
+            return true;
+        }
+    }
+
+    // Generic patterns that could appear with various status codes
+    if error_lower.contains("input is too long")
+        || error_lower.contains("exceeds the maximum")
+        || error_lower.contains("maximum context")
+    {
+        return true;
+    }
+
+    false
 }
 
 // ============================================================================
@@ -846,5 +895,69 @@ mod tests {
             }
             _ => panic!("Expected ToolResult block"),
         }
+    }
+
+    // ========================================================================
+    // Request-too-large detection tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_anthropic_request_too_large_413() {
+        let error = r#"{"error":{"message":"Request too large"}}"#;
+        assert!(is_anthropic_request_too_large(
+            reqwest::StatusCode::PAYLOAD_TOO_LARGE,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_anthropic_request_too_large_prompt_too_long() {
+        let error = r#"{"error":{"message":"prompt is too long: 250000 tokens > 200000 maximum"}}"#;
+        assert!(is_anthropic_request_too_large(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_anthropic_request_too_large_request_size_exceeded() {
+        let error = r#"{"error":{"message":"request size exceeded maximum"}}"#;
+        assert!(is_anthropic_request_too_large(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_anthropic_request_too_large_too_many_tokens() {
+        let error = r#"{"error":{"message":"too many tokens in request"}}"#;
+        assert!(is_anthropic_request_too_large(
+            reqwest::StatusCode::BAD_REQUEST,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_anthropic_request_too_large_false_for_other_errors() {
+        // Authentication error
+        let error = r#"{"error":{"message":"Invalid API key"}}"#;
+        assert!(!is_anthropic_request_too_large(
+            reqwest::StatusCode::UNAUTHORIZED,
+            error
+        ));
+
+        // Rate limit (not token-related)
+        let error = r#"{"error":{"message":"Rate limit exceeded"}}"#;
+        assert!(!is_anthropic_request_too_large(
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            error
+        ));
+
+        // Internal server error
+        let error = r#"{"error":{"message":"Internal server error"}}"#;
+        assert!(!is_anthropic_request_too_large(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            error
+        ));
     }
 }

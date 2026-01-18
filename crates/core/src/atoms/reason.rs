@@ -316,10 +316,16 @@ where
 
                 let error_msg = e.to_string();
 
-                // User-facing error message (don't expose internal details)
-                let user_error_text =
+                // User-facing error message
+                // For request-too-large errors, provide specific guidance
+                let user_error_text = if e.is_request_too_large() {
+                    "The conversation has become too long for the model to process. \
+                     Please start a new session or reduce the context size."
+                        .to_string()
+                } else {
                     "I encountered an error while processing your request. Please try again later."
-                        .to_string();
+                        .to_string()
+                };
 
                 // Create error message for the user to see
                 let error_message = Message::assistant(&user_error_text);
