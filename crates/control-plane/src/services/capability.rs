@@ -78,10 +78,15 @@ impl CapabilityService {
     }
 
     /// Get a specific capability by ID
+    ///
+    /// For MCP capabilities, uses cached tools only (no external refresh).
+    /// This ensures viewing a capability doesn't fail if the MCP server is unreachable.
+    /// Use the refresh tools endpoint to explicitly update cached tools.
     pub async fn get(&self, id: &CapabilityId) -> Result<Option<CapabilityInfo>> {
         // Check if it's an MCP capability
         if let Some(server_id) = id.mcp_server_id() {
-            let tools = self.mcp_service.get_tools(server_id, false).await?;
+            // Use cached tools only - no external refresh on read
+            let tools = self.mcp_service.get_cached_tools(server_id).await;
             let server = self.mcp_service.get(server_id).await?;
 
             if let Some(server) = server {
