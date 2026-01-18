@@ -31,7 +31,7 @@ function CopyButton({ data }: { data: unknown }) {
   };
 
   return (
-    <Button variant="outline" size="sm" onClick={handleCopy}>
+    <Button variant="ghost" size="sm" onClick={handleCopy} className="h-6 px-2 text-xs">
       {copied ? (
         <>
           <Check className="w-3 h-3 mr-1" />
@@ -74,7 +74,6 @@ export default function EventsPage() {
                 <TableHead className="w-[80px]">Seq</TableHead>
                 <TableHead className="w-[180px]">Type</TableHead>
                 <TableHead className="w-[200px]">Timestamp</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
                 <TableHead>Data</TableHead>
               </TableRow>
             </TableHeader>
@@ -90,24 +89,24 @@ export default function EventsPage() {
                   <TableCell className="text-xs text-muted-foreground">
                     {new Date(event.ts).toLocaleString()}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      {event.type === "llm.generation" && (
-                        <Link
-                          href={`${basePath}/llm-history/${event.id}`}
-                          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full justify-center")}
-                        >
-                          <Eye className="w-3 h-3 mr-1" />
-                          View
-                        </Link>
-                      )}
-                      <CopyButton data={event.data} />
+                  <TableCell className="font-mono text-xs">
+                    <div className="relative">
+                      <div className="flex items-center gap-1 mb-1">
+                        {event.type === "llm.generation" && (
+                          <Link
+                            href={`${basePath}/llm-history/${event.id}`}
+                            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-6 px-2 text-xs")}
+                          >
+                            <Eye className="w-3 h-3 mr-1" />
+                            View
+                          </Link>
+                        )}
+                        <CopyButton data={event.data} />
+                      </div>
+                      <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
+                        {JSON.stringify(event.data, null, 2)}
+                      </pre>
                     </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs max-w-[500px]">
-                    <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
-                      {JSON.stringify(event.data, null, 2)}
-                    </pre>
                   </TableCell>
                 </TableRow>
               ))}
