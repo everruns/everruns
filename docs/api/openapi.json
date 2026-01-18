@@ -2631,7 +2631,7 @@
               "null"
             ],
             "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
-            "example": "mod_01933b5a00007000800000000000001"
+            "example": "model_01933b5a00007000800000000000001"
           },
           "description": {
             "type": [
@@ -2642,8 +2642,8 @@
           },
           "id": {
             "type": "string",
-            "description": "Unique identifier for the agent (format: agt_{32-hex}).",
-            "example": "agt_01933b5a00007000800000000000001"
+            "description": "Unique identifier for the agent (format: agent_{32-hex}).",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "name": {
             "type": "string",
@@ -2950,8 +2950,8 @@
               "string",
               "null"
             ],
-            "description": "Model ID to use for this message (format: mod_{32-hex}).\nOverrides session and agent model settings.",
-            "example": "mod_01933b5a00007000800000000000001"
+            "description": "Model ID to use for this message (format: model_{32-hex}).\nOverrides session and agent model settings.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "reasoning": {
             "oneOf": [
@@ -3849,7 +3849,7 @@
                     "null"
                   ],
                   "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
-                  "example": "mod_01933b5a00007000800000000000001"
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "description": {
                   "type": [
@@ -3860,8 +3860,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Unique identifier for the agent (format: agt_{32-hex}).",
-                  "example": "agt_01933b5a00007000800000000000001"
+                  "description": "Unique identifier for the agent (format: agent_{32-hex}).",
+                  "example": "agent_01933b5a00007000800000000000001"
                 },
                 "name": {
                   "type": "string",
@@ -4194,7 +4194,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "example": "mod_01933b5a00007000800000000000001"
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "is_default": {
                   "type": "boolean"
@@ -4207,7 +4207,7 @@
                 },
                 "provider_id": {
                   "type": "string",
-                  "example": "prov_01933b5a00007000800000000000001"
+                  "example": "provider_01933b5a00007000800000000000001"
                 },
                 "source": {
                   "$ref": "#/components/schemas/LlmModelSource",
@@ -4269,7 +4269,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "example": "mod_01933b5a00007000800000000000001"
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "is_default": {
                   "type": "boolean"
@@ -4293,7 +4293,7 @@
                 },
                 "provider_id": {
                   "type": "string",
-                  "example": "prov_01933b5a00007000800000000000001"
+                  "example": "provider_01933b5a00007000800000000000001"
                 },
                 "provider_name": {
                   "type": "string"
@@ -4356,7 +4356,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "example": "prov_01933b5a00007000800000000000001"
+                  "example": "provider_01933b5a00007000800000000000001"
                 },
                 "last_synced_at": {
                   "type": [
@@ -4777,7 +4777,7 @@
           },
           "id": {
             "type": "string",
-            "example": "mod_01933b5a00007000800000000000001"
+            "example": "model_01933b5a00007000800000000000001"
           },
           "is_default": {
             "type": "boolean"
@@ -4790,7 +4790,7 @@
           },
           "provider_id": {
             "type": "string",
-            "example": "prov_01933b5a00007000800000000000001"
+            "example": "provider_01933b5a00007000800000000000001"
           },
           "source": {
             "$ref": "#/components/schemas/LlmModelSource",
@@ -5041,7 +5041,7 @@
           },
           "id": {
             "type": "string",
-            "example": "mod_01933b5a00007000800000000000001"
+            "example": "model_01933b5a00007000800000000000001"
           },
           "is_default": {
             "type": "boolean"
@@ -5065,7 +5065,7 @@
           },
           "provider_id": {
             "type": "string",
-            "example": "prov_01933b5a00007000800000000000001"
+            "example": "provider_01933b5a00007000800000000000001"
           },
           "provider_name": {
             "type": "string"
@@ -5115,7 +5115,7 @@
           },
           "id": {
             "type": "string",
-            "example": "prov_01933b5a00007000800000000000001"
+            "example": "provider_01933b5a00007000800000000000001"
           },
           "last_synced_at": {
             "type": [
@@ -5279,8 +5279,8 @@
           },
           "id": {
             "type": "string",
-            "description": "Unique message ID (format: msg_{32-hex})",
-            "example": "msg_01933b5a00007000800000000000001"
+            "description": "Unique message ID (format: message_{32-hex})",
+            "example": "message_01933b5a00007000800000000000001"
           },
           "metadata": {
             "type": [
@@ -5434,8 +5434,8 @@
               "properties": {
                 "agent_id": {
                   "type": "string",
-                  "description": "ID of the agent this session belongs to (format: agt_{32-hex}).",
-                  "example": "agt_01933b5a00007000800000000000001"
+                  "description": "ID of the agent this session belongs to (format: agent_{32-hex}).",
+                  "example": "agent_01933b5a00007000800000000000001"
                 },
                 "created_at": {
                   "type": "string",
@@ -5452,16 +5452,16 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Unique identifier for the session (format: sess_{32-hex}).",
-                  "example": "sess_01933b5a00007000800000000000001"
+                  "description": "Unique identifier for the session (format: session_{32-hex}).",
+                  "example": "session_01933b5a00007000800000000000001"
                 },
                 "model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "LLM model ID to use for this session (format: mod_{32-hex}).\nOverrides the agent's default model if set.",
-                  "example": "mod_01933b5a00007000800000000000001"
+                  "description": "LLM model ID to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if set.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "output_preview": {
                   "type": [
@@ -5678,8 +5678,8 @@
         "properties": {
           "agent_id": {
             "type": "string",
-            "description": "ID of the agent this session belongs to (format: agt_{32-hex}).",
-            "example": "agt_01933b5a00007000800000000000001"
+            "description": "ID of the agent this session belongs to (format: agent_{32-hex}).",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "created_at": {
             "type": "string",
@@ -5696,16 +5696,16 @@
           },
           "id": {
             "type": "string",
-            "description": "Unique identifier for the session (format: sess_{32-hex}).",
-            "example": "sess_01933b5a00007000800000000000001"
+            "description": "Unique identifier for the session (format: session_{32-hex}).",
+            "example": "session_01933b5a00007000800000000000001"
           },
           "model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "LLM model ID to use for this session (format: mod_{32-hex}).\nOverrides the agent's default model if set.",
-            "example": "mod_01933b5a00007000800000000000001"
+            "description": "LLM model ID to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if set.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "output_preview": {
             "type": [

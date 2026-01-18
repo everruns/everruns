@@ -15,23 +15,23 @@ All entity identifiers follow a consistent prefixed format:
 ```
 
 Where:
-- `{prefix}` - A short, lowercase string identifying the entity type (2-4 chars)
+- `{prefix}` - A descriptive lowercase string identifying the entity type
 - `_` - Underscore separator
 - `{32-hex-chars}` - UUIDv7 in simple format (lowercase hex, no dashes)
 
-**Example:** `agt_01933b5a00007000800000000000001`
+**Example:** `agent_01933b5a00007000800000000000001`
 
 ### Entity Prefixes
 
 | Entity | Prefix | Example |
 |--------|--------|---------|
 | Organization | `org_` | `org_01933b5a00007000800000000000001` |
-| Agent | `agt_` | `agt_01933b5a00007000800000000000002` |
-| Session | `sess_` | `sess_01933b5a00007000800000000000003` |
-| Message | `msg_` | `msg_01933b5a00007000800000000000004` |
-| Event | `evt_` | `evt_01933b5a00007000800000000000005` |
-| LLM Provider | `prov_` | `prov_01933b5a00007000800000000000006` |
-| LLM Model | `mod_` | `mod_01933b5a00007000800000000000007` |
+| Agent | `agent_` | `agent_01933b5a00007000800000000000002` |
+| Session | `session_` | `session_01933b5a00007000800000000000003` |
+| Message | `message_` | `message_01933b5a00007000800000000000004` |
+| Event | `event_` | `event_01933b5a00007000800000000000005` |
+| LLM Provider | `provider_` | `provider_01933b5a00007000800000000000006` |
+| LLM Model | `model_` | `model_01933b5a00007000800000000000007` |
 | Image | `img_` | `img_01933b5a00007000800000000000008` |
 | MCP Server | `mcp_` | `mcp_01933b5a00007000800000000000009` |
 
@@ -44,7 +44,7 @@ Where:
 ```rust
 // Example generation
 let uuid = Uuid::now_v7();
-let id = format!("agt_{}", uuid.simple()); // agt_0193...
+let id = format!("agent_{}", uuid.simple()); // agent_0193...
 ```
 
 ### ID Validation
@@ -57,7 +57,7 @@ IDs must pass validation:
 
 ```rust
 // Validation pattern (example for agent_id)
-// ^agt_[0-9a-f]{32}$
+// ^agent_[0-9a-f]{32}$
 ```
 
 ### Database Storage
@@ -77,8 +77,8 @@ IDs are serialized as strings in JSON:
 
 ```json
 {
-  "id": "agt_01933b5a00007000800000000000001",
-  "session_id": "sess_01933b5a00007000800000000000003"
+  "id": "agent_01933b5a00007000800000000000001",
+  "session_id": "session_01933b5a00007000800000000000003"
 }
 ```
 
@@ -94,8 +94,8 @@ org_00000000000000000000000000000001
 **Seeded Providers:**
 | Provider | ID |
 |----------|-----|
-| OpenAI | `prov_01933b5a00007000800000000001` |
-| Anthropic | `prov_01933b5a00007000800000000002` |
+| OpenAI | `provider_01933b5a00007000800000000001` |
+| Anthropic | `provider_01933b5a00007000800000000002` |
 
 **Seeded Models (range allocation):**
 - `0x001-0x0FF`: LLM Providers

@@ -112,7 +112,7 @@ impl std::str::FromStr for LlmModelSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmProvider {
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "prov_01933b5a00007000800000000000001"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub id: ProviderId,
     pub name: String,
     pub provider_type: LlmProviderType,
@@ -132,9 +132,9 @@ pub struct LlmProvider {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmModel {
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "mod_01933b5a00007000800000000000001"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000001"))]
     pub id: ModelId,
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "prov_01933b5a00007000800000000000001"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
     pub model_id: String,
     pub display_name: String,
@@ -152,9 +152,9 @@ pub struct LlmModel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmModelWithProvider {
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "mod_01933b5a00007000800000000000001"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000001"))]
     pub id: ModelId,
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "prov_01933b5a00007000800000000000001"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
     pub model_id: String,
     pub display_name: String,

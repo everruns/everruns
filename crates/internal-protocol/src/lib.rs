@@ -329,12 +329,12 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
     let id_str = value
         .id
         .as_ref()
-        .map(|u| format!("agt_{}", u.value.replace("-", "")))
+        .map(|u| format!("agent_{}", u.value.replace("-", "")))
         .unwrap_or_default();
     let model_id_str = value
         .default_model_id
         .as_ref()
-        .map(|u| format!("mod_{}", u.value.replace("-", "")));
+        .map(|u| format!("model_{}", u.value.replace("-", "")));
 
     let json = serde_json::json!({
         "id": id_str,
@@ -387,17 +387,17 @@ pub fn proto_session_to_schema(
     let id_str = value
         .id
         .as_ref()
-        .map(|u| format!("sess_{}", u.value.replace("-", "")))
+        .map(|u| format!("session_{}", u.value.replace("-", "")))
         .unwrap_or_default();
     let agent_id_str = value
         .agent_id
         .as_ref()
-        .map(|u| format!("agt_{}", u.value.replace("-", "")))
+        .map(|u| format!("agent_{}", u.value.replace("-", "")))
         .unwrap_or_default();
     let model_id_str = value
         .default_model_id
         .as_ref()
-        .map(|u| format!("mod_{}", u.value.replace("-", "")));
+        .map(|u| format!("model_{}", u.value.replace("-", "")));
 
     let json = serde_json::json!({
         "id": id_str,

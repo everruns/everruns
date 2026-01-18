@@ -72,10 +72,10 @@ pub struct ReasoningConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Controls {
-    /// Model ID to use for this message (format: mod_{32-hex}).
+    /// Model ID to use for this message (format: model_{32-hex}).
     /// Overrides session and agent model settings.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "mod_01933b5a00007000800000000000001"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub model_id: Option<ModelId>,
 
     /// Reasoning configuration
@@ -87,8 +87,8 @@ pub struct Controls {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Message {
-    /// Unique message ID (format: msg_{32-hex})
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "msg_01933b5a00007000800000000000001"))]
+    /// Unique message ID (format: message_{32-hex})
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_01933b5a00007000800000000000001"))]
     pub id: MessageId,
 
     /// Message role

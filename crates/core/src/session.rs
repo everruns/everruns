@@ -56,11 +56,11 @@ impl From<&str> for SessionStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Session {
-    /// Unique identifier for the session (format: sess_{32-hex}).
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "sess_01933b5a00007000800000000000001"))]
+    /// Unique identifier for the session (format: session_{32-hex}).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "session_01933b5a00007000800000000000001"))]
     pub id: SessionId,
-    /// ID of the agent this session belongs to (format: agt_{32-hex}).
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agt_01933b5a00007000800000000000001"))]
+    /// ID of the agent this session belongs to (format: agent_{32-hex}).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a00007000800000000000001"))]
     pub agent_id: AgentId,
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -74,10 +74,10 @@ pub struct Session {
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
     pub tags: Vec<String>,
-    /// LLM model ID to use for this session (format: mod_{32-hex}).
+    /// LLM model ID to use for this session (format: model_{32-hex}).
     /// Overrides the agent's default model if set.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "mod_01933b5a00007000800000000000001"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub model_id: Option<ModelId>,
     /// Current execution status of the session.
     pub status: SessionStatus,

@@ -3,7 +3,7 @@
 //
 // Design decisions:
 // - Uses marker traits to differentiate ID types at compile time
-// - Stores IDs as prefixed strings (e.g., "agt_01933b5a...")
+// - Stores IDs as prefixed strings (e.g., "agent_01933b5a...")
 // - Uses UUIDv7 for time-ordering benefits
 // - Supports serde, sqlx, and utoipa for full integration
 
@@ -121,7 +121,7 @@ impl<T: IdMarker> TypedId<T> {
     }
 
     /// Create an ID from a well-known integer value (for seeding)
-    /// Produces IDs like "agt_00000000000000000000000000000001"
+    /// Produces IDs like "agent_00000000000000000000000000000001"
     pub fn from_seed(value: u128) -> Self {
         let uuid = Uuid::from_u128(value);
         Self {
@@ -266,42 +266,42 @@ impl IdMarker for OrgIdMarker {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AgentIdMarker;
 impl IdMarker for AgentIdMarker {
-    const PREFIX: &'static str = "agt";
+    const PREFIX: &'static str = "agent";
 }
 
 /// Marker for Session IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionIdMarker;
 impl IdMarker for SessionIdMarker {
-    const PREFIX: &'static str = "sess";
+    const PREFIX: &'static str = "session";
 }
 
 /// Marker for Message IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MessageIdMarker;
 impl IdMarker for MessageIdMarker {
-    const PREFIX: &'static str = "msg";
+    const PREFIX: &'static str = "message";
 }
 
 /// Marker for Event IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EventIdMarker;
 impl IdMarker for EventIdMarker {
-    const PREFIX: &'static str = "evt";
+    const PREFIX: &'static str = "event";
 }
 
 /// Marker for LLM Provider IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ProviderIdMarker;
 impl IdMarker for ProviderIdMarker {
-    const PREFIX: &'static str = "prov";
+    const PREFIX: &'static str = "provider";
 }
 
 /// Marker for LLM Model IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ModelIdMarker;
 impl IdMarker for ModelIdMarker {
-    const PREFIX: &'static str = "mod";
+    const PREFIX: &'static str = "model";
 }
 
 /// Marker for Image IDs
@@ -394,8 +394,8 @@ mod tests {
     fn test_new_agent_id() {
         let id = AgentId::new();
         let s = id.to_string();
-        assert!(s.starts_with("agt_"));
-        assert_eq!(s.len(), 36); // "agt_" + 32 hex chars
+        assert!(s.starts_with("agent_"));
+        assert_eq!(s.len(), 38); // "agent_" + 32 hex chars
     }
 
     #[test]
@@ -408,26 +408,26 @@ mod tests {
 
     #[test]
     fn test_parse_invalid_prefix() {
-        let result = AgentId::parse("sess_01933b5a00007000800000000000001");
+        let result = AgentId::parse("session_01933b5a00007000800000000000001");
         assert!(matches!(result, Err(IdParseError::InvalidPrefix { .. })));
     }
 
     #[test]
     fn test_parse_invalid_length() {
-        let result = AgentId::parse("agt_123");
+        let result = AgentId::parse("agent_123");
         assert!(matches!(result, Err(IdParseError::InvalidLength { .. })));
     }
 
     #[test]
     fn test_parse_invalid_hex() {
-        let result = AgentId::parse("agt_GHIJKLMNOPQRSTUVWXYZ123456789012");
+        let result = AgentId::parse("agent_GHIJKLMNOPQRSTUVWXYZ123456789012");
         assert!(matches!(result, Err(IdParseError::InvalidHex(_))));
     }
 
     #[test]
     fn test_from_seed() {
         let id = AgentId::from_seed(1);
-        assert_eq!(id.to_string(), "agt_00000000000000000000000000000001");
+        assert_eq!(id.to_string(), "agent_00000000000000000000000000000001");
     }
 
     #[test]
@@ -468,11 +468,11 @@ mod tests {
     fn test_well_known_provider_ids() {
         assert_eq!(
             well_known::OPENAI_PROVIDER_ID.to_string(),
-            "prov_01933b5a000070008000000000000001"
+            "provider_01933b5a000070008000000000000001"
         );
         assert_eq!(
             well_known::ANTHROPIC_PROVIDER_ID.to_string(),
-            "prov_01933b5a000070008000000000000002"
+            "provider_01933b5a000070008000000000000002"
         );
     }
 
@@ -501,6 +501,6 @@ mod tests {
         let id = AgentId::from_seed(42);
         let debug = format!("{:?}", id);
         assert!(debug.contains("AgentIdMarker"));
-        assert!(debug.contains("agt_"));
+        assert!(debug.contains("agent_"));
     }
 }

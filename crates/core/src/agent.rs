@@ -49,8 +49,8 @@ impl From<&str> for AgentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Agent {
-    /// Unique identifier for the agent (format: agt_{32-hex}).
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agt_01933b5a00007000800000000000001"))]
+    /// Unique identifier for the agent (format: agent_{32-hex}).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a00007000800000000000001"))]
     pub id: AgentId,
     /// Display name of the agent.
     pub name: String,
@@ -63,7 +63,7 @@ pub struct Agent {
     /// Default LLM model ID for this agent.
     /// Can be overridden at the session level.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "mod_01933b5a00007000800000000000001"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub default_model_id: Option<ModelId>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
