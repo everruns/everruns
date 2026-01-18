@@ -268,3 +268,131 @@ impl ModelSyncService {
         Ok(std::env::var(env_var).ok().filter(|s| !s.is_empty()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sync_result_success_serialization() {
+        let result = SyncResult::Success {
+            created: 5,
+            updated: 10,
+            stale: 2,
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains(r#""status":"success""#));
+        assert!(json.contains(r#""created":5"#));
+        assert!(json.contains(r#""updated":10"#));
+        assert!(json.contains(r#""stale":2"#));
+
+        let deserialized: SyncResult = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            SyncResult::Success {
+                created,
+                updated,
+                stale,
+            } => {
+                assert_eq!(created, 5);
+                assert_eq!(updated, 10);
+                assert_eq!(stale, 2);
+            }
+            _ => panic!("Expected Success variant"),
+        }
+    }
+
+    #[test]
+    fn test_sync_result_not_supported_serialization() {
+        let result = SyncResult::NotSupported;
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert_eq!(json, r#"{"status":"not_supported"}"#);
+
+        let deserialized: SyncResult = serde_json::from_str(&json).unwrap();
+        assert!(matches!(deserialized, SyncResult::NotSupported));
+    }
+
+    #[test]
+    fn test_sync_result_failed_serialization() {
+        let result = SyncResult::Failed {
+            error: "API error".to_string(),
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains(r#""status":"failed""#));
+        assert!(json.contains(r#""error":"API error""#));
+
+        let deserialized: SyncResult = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            SyncResult::Failed { error } => {
+                assert_eq!(error, "API error");
+            }
+            _ => panic!("Expected Failed variant"),
+        }
+    }
+
+    /// Testable version with injectable env lookup (test-only).
+    fn resolve_api_key_with_lookup<F>(provider_type: &str, env_lookup: F) -> Option<String>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let env_var = match provider_type {
+            "openai" => "DEFAULT_OPENAI_API_KEY",
+            "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
+            _ => return None,
+        };
+
+        env_lookup(env_var).filter(|s| !s.is_empty())
+    }
+
+    fn mock_env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |name| {
+            vars.iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| v.to_string())
+        }
+    }
+
+    #[test]
+    fn test_resolve_api_key_openai() {
+        // Not set
+        assert!(resolve_api_key_with_lookup("openai", mock_env(&[])).is_none());
+
+        // Set
+        let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "sk-test-key")]);
+        assert_eq!(
+            resolve_api_key_with_lookup("openai", &env),
+            Some("sk-test-key".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_api_key_anthropic() {
+        // Not set
+        assert!(resolve_api_key_with_lookup("anthropic", mock_env(&[])).is_none());
+
+        // Set
+        let env = mock_env(&[("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test")]);
+        assert_eq!(
+            resolve_api_key_with_lookup("anthropic", &env),
+            Some("sk-ant-test".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_api_key_unknown_provider() {
+        let env = mock_env(&[
+            ("DEFAULT_OPENAI_API_KEY", "sk-test"),
+            ("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test"),
+        ]);
+        assert!(resolve_api_key_with_lookup("azure_openai", &env).is_none());
+        assert!(resolve_api_key_with_lookup("unknown", &env).is_none());
+    }
+
+    #[test]
+    fn test_resolve_api_key_empty_value() {
+        let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "")]);
+        assert!(resolve_api_key_with_lookup("openai", &env).is_none());
+    }
+}

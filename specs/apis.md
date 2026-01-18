@@ -195,11 +195,53 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/llm-providers` | List providers |
-| GET | `/v1/llm-providers/{id}` | Get provider |
-| PATCH | `/v1/llm-providers/{id}` | Update provider (API key, base URL) |
-| GET | `/v1/llm-models` | List models |
-| GET | `/v1/llm-models/{id}` | Get model |
+| GET | `/v1/orgs/{org}/llm-providers` | List providers |
+| POST | `/v1/orgs/{org}/llm-providers` | Create provider |
+| GET | `/v1/orgs/{org}/llm-providers/{id}` | Get provider |
+| PATCH | `/v1/orgs/{org}/llm-providers/{id}` | Update provider (API key, base URL) |
+| DELETE | `/v1/orgs/{org}/llm-providers/{id}` | Delete provider |
+| POST | `/v1/orgs/{org}/llm-providers/{id}/sync-models` | Sync models from provider API |
+| GET | `/v1/orgs/{org}/llm-providers/{id}/models` | List models for provider |
+| POST | `/v1/orgs/{org}/llm-providers/{id}/models` | Create model for provider |
+| GET | `/v1/orgs/{org}/llm-models` | List all models |
+| GET | `/v1/orgs/{org}/llm-models/{id}` | Get model |
+| PATCH | `/v1/orgs/{org}/llm-models/{id}` | Update model |
+| DELETE | `/v1/orgs/{org}/llm-models/{id}` | Delete model |
+
+#### Model Sync
+
+The sync endpoint discovers available models from a provider's API:
+
+**Request:**
+```
+POST /v1/orgs/{org}/llm-providers/{id}/sync-models
+```
+
+**Response (success):**
+```json
+{
+  "status": "success",
+  "created": 5,
+  "updated": 10,
+  "stale": 2
+}
+```
+
+**Response (not supported):**
+```json
+{
+  "status": "not_supported"
+}
+```
+
+Providers with custom base URLs or providers that don't support model listing return `not_supported`.
+
+#### List Models Query Parameters
+
+`GET /v1/orgs/{org}/llm-models` supports:
+- `source` - Filter by source: `manual`, `discovered`, `predefined`
+- `include_stale` - Include stale models (default: `true`)
+- `favorites_only` - Only return favorites (default: `false`)
 
 ### Agent Capabilities
 
