@@ -2,7 +2,9 @@
 
 ## Abstract
 
-This document defines the standardized identifier schema for all entity types in Everruns. All external-facing identifiers use a prefixed format for type safety, debuggability, and consistency.
+This document defines the standardized identifier schema for all entity types in Everruns. All external-facing identifiers use **Stripe-style prefixed IDs with UUIDv7** for type safety, debuggability, and consistency.
+
+This pattern was popularized by Stripe (`cus_`, `sub_`, `pi_`) and formalized by the [TypeID spec](https://github.com/jetpack-io/typeid). Our implementation uses hex encoding (32 chars) rather than TypeID's base32 (26 chars) for simpler debugging and UUID compatibility.
 
 ## Requirements
 
