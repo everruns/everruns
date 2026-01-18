@@ -50,6 +50,7 @@ pub mod llm_driver_registry;
 pub mod message;
 pub mod message_retriever;
 pub mod openai_protocol;
+pub mod openai_responses_protocol;
 pub mod runtime_agent;
 pub mod tools;
 pub mod traits;
@@ -89,8 +90,9 @@ pub use llm_driver_registry::{
     ProviderConfig, ProviderType,
 };
 
-// OpenAI Protocol driver (base implementation for OpenAI-compatible APIs)
+// OpenAI Protocol drivers (base implementations for OpenAI-compatible APIs)
 pub use openai_protocol::OpenAIProtocolLlmDriver;
+pub use openai_responses_protocol::OpenAIResponsesProtocolLlmDriver;
 
 // Tool abstraction re-exports
 pub use tools::{

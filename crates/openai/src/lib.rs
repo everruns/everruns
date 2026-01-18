@@ -17,9 +17,10 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub use driver::{OpenAILlmDriver, register_driver};
+pub use driver::{OpenAILlmDriver, register_driver, register_driver_with_mode};
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
+    OpenAIApiMode,
 };
 
 // Re-export core types for convenience
