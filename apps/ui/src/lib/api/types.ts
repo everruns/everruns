@@ -752,6 +752,11 @@ export interface UpdateLlmModelRequest {
   status?: LlmModelStatus;
 }
 
+// Response from syncing models from a provider
+export type SyncModelsResponse =
+  | { status: "success"; created: number; updated: number; stale: number }
+  | { status: "not_supported" };
+
 // ============================================
 // Capability types
 // ============================================

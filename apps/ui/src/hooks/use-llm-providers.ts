@@ -7,6 +7,7 @@ import {
   createLlmProvider,
   updateLlmProvider,
   deleteLlmProvider,
+  syncProviderModels,
   getLlmModels,
   getLlmProviderModels,
   getLlmModel,
@@ -85,6 +86,21 @@ export function useDeleteLlmProvider() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
+    },
+  });
+}
+
+export function useSyncProviderModels() {
+  const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: (providerId: string) => syncProviderModels(org!, providerId),
+    onSuccess: () => {
+      // Refresh models list after sync
+      queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
     },
   });
 }
