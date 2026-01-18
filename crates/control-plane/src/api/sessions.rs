@@ -10,10 +10,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::events::{
-    EventContext, EventRequest, MessageAgentData, MessageUserData, SessionIdledData,
-    TurnCancelledData,
-};
+use everruns_core::events::{EventContext, EventRequest, MessageUserData, TurnCancelledData};
 use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
 
@@ -358,39 +355,9 @@ pub async fn cancel_turn(
         tracing::warn!(session_id = %session_id, error = %e, "Failed to emit user cancellation message");
     }
 
-    // Insert agent message indicating cancellation completed
-    let agent_cancel_message = Message::assistant("Work was cancelled by user.");
-    let agent_message_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        MessageAgentData::new(agent_cancel_message),
-    );
-    if let Err(e) = state.event_service.emit(agent_message_event).await {
-        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit agent cancellation message");
-    }
-
-    // Emit session.idled event
-    let idled_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        SessionIdledData {
-            turn_id,
-            iterations: None,
-            usage: None,
-        },
-    );
-    if let Err(e) = state.event_service.emit(idled_event).await {
-        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit session.idled event");
-    }
-
-    // Update session status to idle
-    if let Err(e) = state
-        .session_service
-        .update_status(org.org_id, session_id, "idle".to_string())
-        .await
-    {
-        tracing::warn!(session_id = %session_id, error = %e, "Failed to update session status to idle");
-    }
+    // Note: Agent message "Work was cancelled by user." and session.idled event
+    // are emitted by the worker when it detects the cancellation and stops.
+    // This ensures the agent message appears AFTER any in-flight events.
 
     Ok(StatusCode::OK)
 }
