@@ -201,8 +201,8 @@ function OutputSection({ output }: { output: LlmGenerationOutput }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {output.text && (
-          <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-3">
-            <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">Text Response</p>
+          <div className="border rounded-lg p-3 bg-muted/30">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Text Response</p>
             <p className="text-sm whitespace-pre-wrap">{output.text}</p>
           </div>
         )}
