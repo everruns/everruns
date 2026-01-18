@@ -7,6 +7,9 @@ import {
   createMcpServer,
   updateMcpServer,
   deleteMcpServer,
+  getMcpServerOAuthStatus,
+  startMcpServerOAuth,
+  revokeMcpServerOAuth,
 } from "@/lib/api/mcp-servers";
 import { queryKeys } from "@/lib/query-keys";
 import type { CreateMcpServerRequest, UpdateMcpServerRequest } from "@/lib/api/types";
@@ -81,6 +84,43 @@ export function useDeleteMcpServer() {
     mutationFn: (serverId: string) => deleteMcpServer(serverId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
+    },
+  });
+}
+
+// MCP Server OAuth hooks
+
+export function useMcpServerOAuthStatus(serverId: string) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useQuery({
+    queryKey: [...queryKeys.mcpServers.oauthStatus(serverId), org],
+    queryFn: () => getMcpServerOAuthStatus(org!, serverId),
+    enabled: !!org && !!serverId,
+    staleTime: 60000, // OAuth status can be cached for a minute
+  });
+}
+
+export function useStartMcpServerOAuth(serverId: string) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: (returnUrl?: string) => startMcpServerOAuth(org!, serverId, returnUrl),
+  });
+}
+
+export function useRevokeMcpServerOAuth(serverId: string) {
+  const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: () => revokeMcpServerOAuth(org!, serverId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.oauthStatus(serverId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.detail(serverId) });
     },
   });
 }

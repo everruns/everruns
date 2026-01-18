@@ -1258,6 +1258,9 @@ export type McpServerTransportType = "http";
 /** MCP Server status */
 export type McpServerStatus = "active" | "disabled";
 
+/** MCP Server authentication type */
+export type McpServerAuthType = "none" | "api_key" | "oauth";
+
 /** MCP Server configuration */
 export interface McpServer {
   id: string;
@@ -1266,10 +1269,41 @@ export interface McpServer {
   url: string;
   transport_type: McpServerTransportType;
   status: McpServerStatus;
+  auth_type: McpServerAuthType;
   api_key_set: boolean;
   headers: Record<string, string>;
+  /** OAuth scopes (only for auth_type="oauth") */
+  oauth_scopes?: string[];
   created_at: string;
   updated_at: string;
+}
+
+/** OAuth status for an MCP server */
+export interface McpOAuthStatus {
+  /** Authentication type of the MCP server */
+  auth_type: McpServerAuthType;
+  /** Whether the user is authorized (has valid tokens) */
+  authorized: boolean;
+  /** When the current access token expires */
+  expires_at?: string;
+  /** OAuth scopes granted */
+  scopes?: string[];
+}
+
+/** OAuth configuration for creating/updating MCP servers */
+export interface McpServerOAuthConfig {
+  /** OAuth authorization endpoint URL */
+  authorization_url?: string;
+  /** OAuth token endpoint URL */
+  token_url?: string;
+  /** OAuth client ID */
+  client_id?: string;
+  /** OAuth client secret (only for create/update, not returned) */
+  client_secret?: string;
+  /** Required OAuth scopes */
+  scopes?: string[];
+  /** RFC 9728 Protected Resource Metadata URL (for auto-discovery) */
+  resource_metadata_url?: string;
 }
 
 /** Request to create an MCP server */
@@ -1278,7 +1312,9 @@ export interface CreateMcpServerRequest {
   description?: string;
   url: string;
   transport_type?: McpServerTransportType;
+  auth_type?: McpServerAuthType;
   api_key?: string;
+  oauth_config?: McpServerOAuthConfig;
   headers?: Record<string, string>;
 }
 
@@ -1289,8 +1325,16 @@ export interface UpdateMcpServerRequest {
   url?: string;
   transport_type?: McpServerTransportType;
   status?: McpServerStatus;
+  auth_type?: McpServerAuthType;
   api_key?: string;
+  oauth_config?: McpServerOAuthConfig;
   headers?: Record<string, string>;
+}
+
+/** Response from starting OAuth authorization flow */
+export interface McpOAuthAuthorizationResponse {
+  /** URL to redirect the user to for OAuth authorization */
+  authorization_url: string;
 }
 
 // ============================================

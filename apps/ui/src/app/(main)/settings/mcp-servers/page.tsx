@@ -21,9 +21,109 @@ import {
   useCreateMcpServer,
   useUpdateMcpServer,
   useDeleteMcpServer,
+  useMcpServerOAuthStatus,
+  useStartMcpServerOAuth,
+  useRevokeMcpServerOAuth,
 } from "@/hooks/use-mcp-servers";
-import { Plus, Plug, Trash2, Key, Globe } from "lucide-react";
+import { Plus, Plug, Trash2, Key, Globe, Shield, LogIn, LogOut, ExternalLink } from "lucide-react";
 import type { McpServer, CreateMcpServerRequest } from "@/lib/api/types";
+
+function OAuthStatusBadge({ server }: { server: McpServer }) {
+  const { data: oauthStatus, isLoading } = useMcpServerOAuthStatus(server.id);
+
+  if (server.auth_type !== "oauth") {
+    return null;
+  }
+
+  if (isLoading) {
+    return <Skeleton className="h-5 w-20" />;
+  }
+
+  if (oauthStatus?.authorized) {
+    return (
+      <Badge variant="outline" className="bg-blue-100 text-blue-800">
+        <Shield className="h-3 w-3 mr-1" />
+        Connected
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge variant="outline" className="bg-orange-100 text-orange-800">
+      <Shield className="h-3 w-3 mr-1" />
+      Authorization Required
+    </Badge>
+  );
+}
+
+function OAuthActions({ server }: { server: McpServer }) {
+  const { data: oauthStatus, isLoading } = useMcpServerOAuthStatus(server.id);
+  const startOAuth = useStartMcpServerOAuth(server.id);
+  const revokeOAuth = useRevokeMcpServerOAuth(server.id);
+
+  if (server.auth_type !== "oauth") {
+    return null;
+  }
+
+  const handleAuthorize = async () => {
+    try {
+      // Get the return URL (current page)
+      const returnUrl = window.location.href;
+      const response = await startOAuth.mutateAsync(returnUrl);
+      // Redirect to OAuth provider
+      window.location.href = response.authorization_url;
+    } catch (error) {
+      console.error("Failed to start OAuth flow:", error);
+    }
+  };
+
+  const handleRevoke = async () => {
+    if (confirm("Are you sure you want to revoke OAuth access for this MCP server?")) {
+      await revokeOAuth.mutateAsync();
+    }
+  };
+
+  if (isLoading) {
+    return <Skeleton className="h-8 w-24" />;
+  }
+
+  if (oauthStatus?.authorized) {
+    return (
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAuthorize}
+          disabled={startOAuth.isPending}
+        >
+          <ExternalLink className="h-4 w-4 mr-1" />
+          Re-authorize
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive"
+          onClick={handleRevoke}
+          disabled={revokeOAuth.isPending}
+        >
+          <LogOut className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      variant="default"
+      size="sm"
+      onClick={handleAuthorize}
+      disabled={startOAuth.isPending}
+    >
+      <LogIn className="h-4 w-4 mr-1" />
+      {startOAuth.isPending ? "Starting..." : "Authorize"}
+    </Button>
+  );
+}
 
 function McpServerCard({
   server,
@@ -34,6 +134,8 @@ function McpServerCard({
   onDelete: (id: string) => void;
   onSetApiKey: (server: McpServer) => void;
 }) {
+  const authType = server.auth_type || "none";
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -48,14 +150,17 @@ function McpServerCard({
             </CardDescription>
           </div>
         </div>
-        <Badge
-          variant="outline"
-          className={
-            server.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
-          }
-        >
-          {server.status}
-        </Badge>
+        <div className="flex flex-col items-end gap-1">
+          <Badge
+            variant="outline"
+            className={
+              server.status === "active" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
+            }
+          >
+            {server.status}
+          </Badge>
+          <OAuthStatusBadge server={server} />
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-2 text-sm">
@@ -64,11 +169,26 @@ function McpServerCard({
             <span className="text-muted-foreground truncate">{server.url}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Key className="h-4 w-4 text-muted-foreground" />
+            <Shield className="h-4 w-4 text-muted-foreground" />
             <span className="text-muted-foreground">
-              API Key: {server.api_key_set ? "Configured" : "Not set"}
+              Auth: {authType === "api_key" ? "API Key" : authType === "oauth" ? "OAuth" : "None"}
+              {authType === "api_key" && (
+                <span className="ml-1">
+                  ({server.api_key_set ? "Configured" : "Not set"})
+                </span>
+              )}
             </span>
           </div>
+          {server.oauth_scopes && server.oauth_scopes.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-muted-foreground text-xs">Scopes:</span>
+              {server.oauth_scopes.map((scope) => (
+                <Badge key={scope} variant="secondary" className="text-xs">
+                  {scope}
+                </Badge>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-xs">
               {server.transport_type.toUpperCase()}
@@ -76,10 +196,13 @@ function McpServerCard({
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
-          <Button variant="outline" size="sm" onClick={() => onSetApiKey(server)}>
-            <Key className="h-4 w-4 mr-1" />
-            {server.api_key_set ? "Update Key" : "Set Key"}
-          </Button>
+          {authType === "oauth" && <OAuthActions server={server} />}
+          {authType === "api_key" && (
+            <Button variant="outline" size="sm" onClick={() => onSetApiKey(server)}>
+              <Key className="h-4 w-4 mr-1" />
+              {server.api_key_set ? "Update Key" : "Set Key"}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -104,7 +227,13 @@ function AddMcpServerDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
+  const [authType, setAuthType] = useState<"none" | "api_key" | "oauth">("none");
   const [apiKey, setApiKey] = useState("");
+  // OAuth config fields
+  const [oauthClientId, setOauthClientId] = useState("");
+  const [oauthClientSecret, setOauthClientSecret] = useState("");
+  const [oauthScopes, setOauthScopes] = useState("");
+  const [oauthResourceMetadataUrl, setOauthResourceMetadataUrl] = useState("");
 
   const createServer = useCreateMcpServer();
 
@@ -115,19 +244,32 @@ function AddMcpServerDialog({
       description: description || undefined,
       url,
       transport_type: "http",
-      api_key: apiKey || undefined,
+      auth_type: authType,
+      api_key: authType === "api_key" && apiKey ? apiKey : undefined,
+      oauth_config: authType === "oauth" ? {
+        client_id: oauthClientId || undefined,
+        client_secret: oauthClientSecret || undefined,
+        scopes: oauthScopes ? oauthScopes.split(",").map(s => s.trim()) : undefined,
+        resource_metadata_url: oauthResourceMetadataUrl || undefined,
+      } : undefined,
     };
     await createServer.mutateAsync(data);
     onOpenChange(false);
+    // Reset form
     setName("");
     setDescription("");
     setUrl("");
+    setAuthType("none");
     setApiKey("");
+    setOauthClientId("");
+    setOauthClientSecret("");
+    setOauthScopes("");
+    setOauthResourceMetadataUrl("");
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add MCP Server</DialogTitle>
           <DialogDescription>
@@ -142,7 +284,7 @@ function AddMcpServerDialog({
               id="name"
               value={name}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-              placeholder="atlassian-mcp-server"
+              placeholder="github-mcp-server"
               required
             />
           </div>
@@ -164,20 +306,85 @@ function AddMcpServerDialog({
               id="url"
               value={url}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)}
-              placeholder="https://mcp.atlassian.com/v1/mcp"
+              placeholder="https://api.githubcopilot.com/mcp/"
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="api-key">API Key (optional)</Label>
-            <Input
-              id="api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
-              placeholder="your-api-key"
-            />
+            <Label htmlFor="auth-type">Authentication Type</Label>
+            <select
+              id="auth-type"
+              value={authType}
+              onChange={(e) => setAuthType(e.target.value as "none" | "api_key" | "oauth")}
+              className="w-full h-10 px-3 py-2 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="none">None</option>
+              <option value="api_key">API Key</option>
+              <option value="oauth">OAuth 2.1</option>
+            </select>
           </div>
+
+          {authType === "api_key" && (
+            <div className="space-y-2">
+              <Label htmlFor="api-key">API Key</Label>
+              <Input
+                id="api-key"
+                type="password"
+                value={apiKey}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
+                placeholder="your-api-key"
+              />
+            </div>
+          )}
+
+          {authType === "oauth" && (
+            <div className="space-y-4 pt-2 border-t">
+              <p className="text-sm text-muted-foreground">
+                OAuth servers use RFC 9728 Protected Resource Metadata for auto-discovery.
+                You can optionally provide manual configuration.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="oauth-resource-url">
+                  Resource Metadata URL (for auto-discovery)
+                </Label>
+                <Input
+                  id="oauth-resource-url"
+                  value={oauthResourceMetadataUrl}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOauthResourceMetadataUrl(e.target.value)}
+                  placeholder="/.well-known/oauth-protected-resource"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="oauth-client-id">Client ID (optional)</Label>
+                <Input
+                  id="oauth-client-id"
+                  value={oauthClientId}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOauthClientId(e.target.value)}
+                  placeholder="your-client-id"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="oauth-client-secret">Client Secret (optional)</Label>
+                <Input
+                  id="oauth-client-secret"
+                  type="password"
+                  value={oauthClientSecret}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOauthClientSecret(e.target.value)}
+                  placeholder="your-client-secret"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="oauth-scopes">Scopes (comma-separated, optional)</Label>
+                <Input
+                  id="oauth-scopes"
+                  value={oauthScopes}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOauthScopes(e.target.value)}
+                  placeholder="read,write,admin"
+                />
+              </div>
+            </div>
+          )}
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

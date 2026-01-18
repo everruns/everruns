@@ -92,6 +92,7 @@ pub enum McpServerAuthType {
     /// Static API key authentication (uses api_key_encrypted field).
     ApiKey,
     /// OAuth 2.1 authentication (per-user tokens).
+    #[serde(rename = "oauth")]
     OAuth,
 }
 
@@ -597,6 +598,189 @@ mod tests {
         assert_eq!(
             parsed,
             Some(("microsoft_learn".to_string(), "docs_search".to_string()))
+        );
+    }
+
+    // ============================================================================
+    // OAuth Types Tests
+    // ============================================================================
+
+    #[test]
+    fn test_auth_type_from_str() {
+        assert_eq!(McpServerAuthType::from("none"), McpServerAuthType::None);
+        assert_eq!(
+            McpServerAuthType::from("api_key"),
+            McpServerAuthType::ApiKey
+        );
+        assert_eq!(McpServerAuthType::from("oauth"), McpServerAuthType::OAuth);
+        assert_eq!(McpServerAuthType::from("unknown"), McpServerAuthType::None);
+    }
+
+    #[test]
+    fn test_auth_type_display() {
+        assert_eq!(McpServerAuthType::None.to_string(), "none");
+        assert_eq!(McpServerAuthType::ApiKey.to_string(), "api_key");
+        assert_eq!(McpServerAuthType::OAuth.to_string(), "oauth");
+    }
+
+    #[test]
+    fn test_auth_type_serialization() {
+        assert_eq!(
+            serde_json::to_string(&McpServerAuthType::None).unwrap(),
+            "\"none\""
+        );
+        assert_eq!(
+            serde_json::to_string(&McpServerAuthType::ApiKey).unwrap(),
+            "\"api_key\""
+        );
+        // OAuth has explicit serde(rename = "oauth") to avoid "o_auth"
+        assert_eq!(
+            serde_json::to_string(&McpServerAuthType::OAuth).unwrap(),
+            "\"oauth\""
+        );
+    }
+
+    #[test]
+    fn test_auth_type_deserialization() {
+        let none: McpServerAuthType = serde_json::from_str("\"none\"").unwrap();
+        assert_eq!(none, McpServerAuthType::None);
+
+        let api_key: McpServerAuthType = serde_json::from_str("\"api_key\"").unwrap();
+        assert_eq!(api_key, McpServerAuthType::ApiKey);
+
+        let oauth: McpServerAuthType = serde_json::from_str("\"oauth\"").unwrap();
+        assert_eq!(oauth, McpServerAuthType::OAuth);
+    }
+
+    #[test]
+    fn test_oauth_status_serialization() {
+        let status = McpOAuthStatus {
+            auth_type: McpServerAuthType::OAuth,
+            authorized: true,
+            expires_at: None,
+            scopes: vec!["read".to_string(), "write".to_string()],
+            authorization_url: None,
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("\"auth_type\":\"oauth\""));
+        assert!(json.contains("\"authorized\":true"));
+        assert!(json.contains("\"scopes\":[\"read\",\"write\"]"));
+        // authorization_url should be omitted when None
+        assert!(!json.contains("authorization_url"));
+    }
+
+    #[test]
+    fn test_oauth_status_deserialization() {
+        let json = r#"{
+            "auth_type": "oauth",
+            "authorized": false,
+            "scopes": [],
+            "authorization_url": "https://auth.example.com/authorize"
+        }"#;
+
+        let status: McpOAuthStatus = serde_json::from_str(json).unwrap();
+        assert_eq!(status.auth_type, McpServerAuthType::OAuth);
+        assert!(!status.authorized);
+        assert!(status.scopes.is_empty());
+        assert_eq!(
+            status.authorization_url,
+            Some("https://auth.example.com/authorize".to_string())
+        );
+    }
+
+    #[test]
+    fn test_oauth_token_response_serialization() {
+        let response = OAuthTokenResponse {
+            access_token: "access123".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: Some(3600),
+            refresh_token: Some("refresh456".to_string()),
+            scope: Some("read write".to_string()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"access_token\":\"access123\""));
+        assert!(json.contains("\"token_type\":\"Bearer\""));
+        assert!(json.contains("\"expires_in\":3600"));
+        assert!(json.contains("\"refresh_token\":\"refresh456\""));
+        assert!(json.contains("\"scope\":\"read write\""));
+    }
+
+    #[test]
+    fn test_oauth_token_response_deserialization_minimal() {
+        let json = r#"{
+            "access_token": "token123",
+            "token_type": "Bearer"
+        }"#;
+
+        let response: OAuthTokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.access_token, "token123");
+        assert_eq!(response.token_type, "Bearer");
+        assert!(response.expires_in.is_none());
+        assert!(response.refresh_token.is_none());
+        assert!(response.scope.is_none());
+    }
+
+    #[test]
+    fn test_protected_resource_metadata_serialization() {
+        let metadata = ProtectedResourceMetadata {
+            resource: "https://mcp.example.com".to_string(),
+            authorization_servers: vec!["https://auth.example.com".to_string()],
+            bearer_methods_supported: vec!["header".to_string()],
+            resource_documentation: None,
+            resource_policy_uri: None,
+            resource_tos_uri: None,
+            scopes_supported: vec!["read".to_string()],
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        assert!(json.contains("\"resource\":\"https://mcp.example.com\""));
+        assert!(json.contains("\"authorization_servers\":[\"https://auth.example.com\"]"));
+    }
+
+    #[test]
+    fn test_authorization_server_metadata_deserialization() {
+        let json = r#"{
+            "issuer": "https://auth.example.com",
+            "authorization_endpoint": "https://auth.example.com/authorize",
+            "token_endpoint": "https://auth.example.com/token",
+            "code_challenge_methods_supported": ["S256"]
+        }"#;
+
+        let metadata: AuthorizationServerMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(metadata.issuer, "https://auth.example.com");
+        assert_eq!(
+            metadata.authorization_endpoint,
+            "https://auth.example.com/authorize"
+        );
+        assert_eq!(metadata.token_endpoint, "https://auth.example.com/token");
+        assert_eq!(metadata.code_challenge_methods_supported, vec!["S256"]);
+    }
+
+    #[test]
+    fn test_mcp_server_oauth_config_default() {
+        let config = McpServerOAuthConfig::default();
+        assert!(config.authorization_url.is_none());
+        assert!(config.token_url.is_none());
+        assert!(config.client_id.is_none());
+        assert!(!config.client_secret_set);
+        assert!(config.scopes.is_empty());
+        assert!(config.resource_metadata_url.is_none());
+    }
+
+    #[test]
+    fn test_oauth_error_response() {
+        let json = r#"{
+            "error": "invalid_grant",
+            "error_description": "The authorization code has expired"
+        }"#;
+
+        let error: OAuthErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(error.error, "invalid_grant");
+        assert_eq!(
+            error.error_description,
+            Some("The authorization code has expired".to_string())
         );
     }
 }

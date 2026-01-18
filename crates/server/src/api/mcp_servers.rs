@@ -698,4 +698,110 @@ mod tests {
     fn test_default_transport_type() {
         assert_eq!(default_transport_type(), McpServerTransportType::Http);
     }
+
+    #[test]
+    fn test_create_request_with_oauth() {
+        let json = r#"{
+            "name": "oauth-server",
+            "url": "https://mcp.example.com/v1/mcp",
+            "auth_type": "oauth",
+            "oauth_config": {
+                "authorization_url": "https://auth.example.com/authorize",
+                "token_url": "https://auth.example.com/token",
+                "client_id": "client123",
+                "client_secret": "secret456",
+                "scopes": ["read", "write"]
+            }
+        }"#;
+
+        let req: CreateMcpServerRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.name, "oauth-server");
+        assert_eq!(req.auth_type, Some(McpServerAuthType::OAuth));
+
+        let oauth = req.oauth_config.unwrap();
+        assert_eq!(
+            oauth.authorization_url,
+            Some("https://auth.example.com/authorize".to_string())
+        );
+        assert_eq!(
+            oauth.token_url,
+            Some("https://auth.example.com/token".to_string())
+        );
+        assert_eq!(oauth.client_id, Some("client123".to_string()));
+        assert_eq!(oauth.client_secret, Some("secret456".to_string()));
+        assert_eq!(oauth.scopes, vec!["read", "write"]);
+    }
+
+    #[test]
+    fn test_create_request_with_api_key_auth() {
+        let json = r#"{
+            "name": "apikey-server",
+            "url": "https://mcp.example.com/v1/mcp",
+            "auth_type": "api_key",
+            "api_key": "my-secret-key"
+        }"#;
+
+        let req: CreateMcpServerRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.auth_type, Some(McpServerAuthType::ApiKey));
+        assert_eq!(req.api_key, Some("my-secret-key".to_string()));
+    }
+
+    #[test]
+    fn test_oauth_config_optional_fields() {
+        let json = r#"{
+            "name": "discovery-oauth-server",
+            "url": "https://mcp.example.com/v1/mcp",
+            "auth_type": "oauth",
+            "oauth_config": {
+                "client_id": "client123",
+                "resource_metadata_url": "https://mcp.example.com/.well-known/oauth-protected-resource"
+            }
+        }"#;
+
+        let req: CreateMcpServerRequest = serde_json::from_str(json).unwrap();
+        let oauth = req.oauth_config.unwrap();
+        assert_eq!(oauth.client_id, Some("client123".to_string()));
+        assert_eq!(
+            oauth.resource_metadata_url,
+            Some("https://mcp.example.com/.well-known/oauth-protected-resource".to_string())
+        );
+        assert!(oauth.authorization_url.is_none());
+        assert!(oauth.token_url.is_none());
+        assert!(oauth.client_secret.is_none());
+        assert!(oauth.scopes.is_empty());
+    }
+
+    #[test]
+    fn test_update_request_with_oauth_config() {
+        let json = r#"{
+            "auth_type": "oauth",
+            "oauth_config": {
+                "scopes": ["read", "write", "admin"]
+            }
+        }"#;
+
+        let req: UpdateMcpServerRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.auth_type, Some(McpServerAuthType::OAuth));
+        let oauth = req.oauth_config.unwrap();
+        assert_eq!(oauth.scopes, vec!["read", "write", "admin"]);
+    }
+
+    #[test]
+    fn test_oauth_config_serialization() {
+        let config = OAuthConfigInput {
+            authorization_url: Some("https://auth.example.com/authorize".to_string()),
+            token_url: Some("https://auth.example.com/token".to_string()),
+            client_id: Some("client123".to_string()),
+            client_secret: None, // Should be skipped in serialization
+            scopes: vec!["read".to_string()],
+            resource_metadata_url: None,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        // Verify client_secret is not in the output (skip_serializing_if = "Option::is_none")
+        assert!(json.contains("authorization_url"));
+        assert!(json.contains("client_id"));
+        assert!(!json.contains("client_secret"));
+        assert!(!json.contains("resource_metadata_url"));
+    }
 }

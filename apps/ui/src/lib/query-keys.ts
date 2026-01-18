@@ -107,6 +107,7 @@ export const queryKeys = {
     all: ["mcp-servers"] as const,
     list: () => ["mcp-servers"] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
+    oauthStatus: (serverId: string) => ["mcp-server", serverId, "oauth-status"] as const,
   },
 
   // Organization queries
