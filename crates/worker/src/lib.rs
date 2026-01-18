@@ -12,7 +12,7 @@ pub use durable_runner::{
     DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTurnInput, DurableTurnOutput,
     InMemoryDurableStore,
 };
-pub use durable_worker::{DurableWorker, DurableWorkerConfig};
+pub use durable_worker::{DurableWorker, DurableWorkerConfig, ShutdownHandle};
 pub use grpc_durable_store::{
     ClaimedTask as GrpcClaimedTask, GrpcDurableStore, HeartbeatResponse as GrpcHeartbeatResponse,
     WorkflowStatus as GrpcWorkflowStatus,

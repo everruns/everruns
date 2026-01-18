@@ -5,6 +5,7 @@
 use anyhow::Result;
 use everruns_core::atoms::AtomContext;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::{Mutex, watch};
 use tracing::{debug, error, info, warn};
@@ -108,6 +109,8 @@ pub struct DurableWorker {
     grpc_address: String,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
+    /// Count of tasks currently being executed
+    in_flight: Arc<AtomicUsize>,
 }
 
 impl DurableWorker {
@@ -133,6 +136,7 @@ impl DurableWorker {
             grpc_address,
             shutdown_tx,
             shutdown_rx,
+            in_flight: Arc::new(AtomicUsize::new(0)),
         })
     }
 
@@ -143,11 +147,21 @@ impl DurableWorker {
     }
 
     /// Run the worker (blocking until shutdown)
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
+        // Wrap self in Arc for concurrent task execution
+        let worker = Arc::new(self);
+        worker.run_inner().await
+    }
+
+    /// Internal run implementation using Arc<Self>
+    async fn run_inner(self: &Arc<Self>) -> Result<()> {
         info!(
             worker_id = %self.config.worker_id,
             "Starting durable worker"
         );
+
+        // Clone shutdown receiver for use in the loop (changed() requires &mut)
+        let mut shutdown_rx = self.shutdown_rx.clone();
 
         // Register with control-plane
         {
@@ -210,7 +224,7 @@ impl DurableWorker {
         // Main event loop with push notifications and polling fallback
         loop {
             // Check for shutdown
-            if *self.shutdown_rx.borrow() {
+            if *shutdown_rx.borrow() {
                 info!("Shutdown signal received, stopping worker");
                 break;
             }
@@ -266,7 +280,7 @@ impl DurableWorker {
                         }
 
                         // Shutdown signal
-                        _ = self.shutdown_rx.changed() => {
+                        _ = shutdown_rx.changed() => {
                             info!("Shutdown during notification wait");
                             break;
                         }
@@ -307,7 +321,7 @@ impl DurableWorker {
                         }
 
                         // Shutdown signal
-                        _ = self.shutdown_rx.changed() => {
+                        _ = shutdown_rx.changed() => {
                             info!("Shutdown during poll wait");
                             break;
                         }
@@ -364,21 +378,52 @@ impl DurableWorker {
         Ok(())
     }
 
-    /// Signal the worker to shutdown
-    pub fn shutdown(&self) {
-        let _ = self.shutdown_tx.send(true);
+    /// Get a handle that can be used to trigger shutdown
+    /// This must be called before `run()` since run consumes self
+    pub fn shutdown_handle(&self) -> ShutdownHandle {
+        ShutdownHandle {
+            tx: self.shutdown_tx.clone(),
+        }
     }
+}
 
-    /// Poll for tasks and execute them
-    async fn poll_and_execute(&self) -> Result<usize> {
-        // Claim tasks
+/// Handle for triggering worker shutdown
+#[derive(Clone)]
+pub struct ShutdownHandle {
+    tx: watch::Sender<bool>,
+}
+
+impl ShutdownHandle {
+    /// Trigger shutdown of the worker
+    pub fn shutdown(&self) {
+        let _ = self.tx.send(true);
+    }
+}
+
+impl DurableWorker {
+    /// Poll for tasks and execute them concurrently
+    async fn poll_and_execute(self: &Arc<Self>) -> Result<usize> {
+        // Calculate available slots
+        let current_in_flight = self.in_flight.load(Ordering::SeqCst);
+        let available_slots = self.config.max_concurrent_tasks.saturating_sub(current_in_flight);
+
+        if available_slots == 0 {
+            debug!(
+                current_in_flight = current_in_flight,
+                max = self.config.max_concurrent_tasks,
+                "No available slots, skipping claim"
+            );
+            return Ok(0);
+        }
+
+        // Claim only as many tasks as we have slots for
         let tasks = {
             let mut store = self.store.lock().await;
             store
                 .claim_tasks(
                     &self.config.worker_id,
                     &self.config.activity_types,
-                    self.config.max_concurrent_tasks,
+                    available_slots,
                 )
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to claim tasks: {}", e))?
@@ -391,26 +436,40 @@ impl DurableWorker {
         debug!(
             worker_id = %self.config.worker_id,
             task_count = tasks.len(),
+            available_slots = available_slots,
             "Claimed tasks"
         );
 
-        // Execute tasks
-        for task in &tasks {
-            if let Err(e) = self.execute_task(task).await {
-                error!(
-                    task_id = %task.id,
-                    activity_type = %task.activity_type,
-                    error = %e,
-                    "Task execution failed"
-                );
+        // Spawn tasks concurrently (don't await)
+        for task in tasks {
+            // Reserve slot before spawning
+            self.in_flight.fetch_add(1, Ordering::SeqCst);
 
-                // Report failure to store
-                let mut store = self.store.lock().await;
-                let _ = store.fail_task(task.id, &e.to_string()).await;
-            }
+            // Clone Arc<Self> for the spawned task
+            let worker = Arc::clone(self);
+
+            tokio::spawn(async move {
+                let result = worker.execute_task(&task).await;
+
+                if let Err(e) = result {
+                    error!(
+                        task_id = %task.id,
+                        activity_type = %task.activity_type,
+                        error = %e,
+                        "Task execution failed"
+                    );
+
+                    // Report failure to store
+                    let mut store = worker.store.lock().await;
+                    let _ = store.fail_task(task.id, &e.to_string()).await;
+                }
+
+                // Release slot when done (success or failure)
+                worker.in_flight.fetch_sub(1, Ordering::SeqCst);
+            });
         }
 
-        Ok(tasks.len())
+        Ok(0) // Return 0 since we don't wait for completion
     }
 
     /// Execute a single task
