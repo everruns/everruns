@@ -9,7 +9,6 @@ import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
-import { Markdown, InlineMarkdown } from "@/components/ui/markdown";
 import type { Message, Event, TokenUsage } from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 
@@ -501,83 +500,6 @@ const sampleEvents = {
 };
 
 // ============================================
-// Markdown Content Samples
-// ============================================
-
-const sampleMarkdownContent = {
-  basicFormatting: `**Bold text**, *italic text*, and \`inline code\`.
-
-Here's a [link to GitHub](https://github.com).`,
-
-  codeBlock: `Here's a code example:
-
-\`\`\`typescript
-function greet(name: string): string {
-  return \`Hello, \${name}!\`;
-}
-\`\`\``,
-
-  lists: `Ordered list:
-1. First item
-2. Second item
-3. Third item
-
-Unordered list:
-- Item A
-- Item B
-- Item C`,
-
-  table: `| Feature | Status | Notes |
-|---------|--------|-------|
-| Markdown | ✅ Done | Full GFM support |
-| Alerts | ✅ Done | All 5 types |
-| Tables | ✅ Done | With styling |`,
-
-  noteAlert: `> [!NOTE]
-> Highlights information that users should take into account, even when skimming.`,
-
-  tipAlert: `> [!TIP]
-> Optional information to help a user be more successful.`,
-
-  importantAlert: `> [!IMPORTANT]
-> Crucial information necessary for users to succeed.`,
-
-  warningAlert: `> [!WARNING]
-> Critical content demanding immediate user attention due to potential risks.`,
-
-  cautionAlert: `> [!CAUTION]
-> Negative potential consequences of an action.`,
-
-  allAlerts: `> [!NOTE]
-> This is a note with helpful information.
-
-> [!TIP]
-> This is a tip to help you succeed.
-
-> [!IMPORTANT]
-> This is important information you must know.
-
-> [!WARNING]
-> This is a warning about potential risks.
-
-> [!CAUTION]
-> This describes negative consequences of an action.`,
-
-  capabilityDescription: `Fetch content from URLs and convert HTML to markdown.
-
-> [!TIP]
-> Use \`as_markdown: true\` for better readability when fetching HTML pages.
-
-> [!WARNING]
-> Binary content (images, PDFs) cannot be fetched as text. Only metadata is returned.
-
-**Features:**
-- HTTP/HTTPS support
-- HTML to Markdown conversion
-- Configurable timeouts`,
-};
-
-// ============================================
 // Main Page Component
 // ============================================
 
@@ -901,79 +823,6 @@ export default function DevComponentsPage() {
                     </div>
                   </div>
                 </div>
-              </ShowcaseItem>
-            </ShowcaseSection>
-
-            {/* Markdown Component Section */}
-            <ShowcaseSection
-              title="Markdown Component"
-              description="GitHub Flavored Markdown renderer with alert support (components/ui/markdown.tsx)"
-            >
-              <ShowcaseItem label="Basic Formatting">
-                <InlineMarkdown content={sampleMarkdownContent.basicFormatting} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Code Block">
-                <InlineMarkdown content={sampleMarkdownContent.codeBlock} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Lists">
-                <InlineMarkdown content={sampleMarkdownContent.lists} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Table">
-                <InlineMarkdown content={sampleMarkdownContent.table} />
-              </ShowcaseItem>
-            </ShowcaseSection>
-
-            {/* GitHub-Style Alerts Section */}
-            <ShowcaseSection
-              title="GitHub-Style Alerts"
-              description="GitHub Flavored Markdown alerts: NOTE, TIP, IMPORTANT, WARNING, CAUTION"
-            >
-              <ShowcaseItem label="[!NOTE] Alert">
-                <InlineMarkdown content={sampleMarkdownContent.noteAlert} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="[!TIP] Alert">
-                <InlineMarkdown content={sampleMarkdownContent.tipAlert} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="[!IMPORTANT] Alert">
-                <InlineMarkdown content={sampleMarkdownContent.importantAlert} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="[!WARNING] Alert">
-                <InlineMarkdown content={sampleMarkdownContent.warningAlert} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="[!CAUTION] Alert">
-                <InlineMarkdown content={sampleMarkdownContent.cautionAlert} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="All Alerts Together">
-                <InlineMarkdown content={sampleMarkdownContent.allAlerts} />
-              </ShowcaseItem>
-            </ShowcaseSection>
-
-            {/* Markdown Variants Section */}
-            <ShowcaseSection
-              title="Markdown Variants"
-              description="Different display variants for various contexts"
-            >
-              <ShowcaseItem label="Default Variant (with background)">
-                <Markdown content={sampleMarkdownContent.capabilityDescription} />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Compact Variant (no background)">
-                <Markdown content={sampleMarkdownContent.capabilityDescription} variant="compact" />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="InlineMarkdown (for descriptions)">
-                <InlineMarkdown
-                  content={sampleMarkdownContent.capabilityDescription}
-                  className="text-muted-foreground"
-                />
               </ShowcaseItem>
             </ShowcaseSection>
           </div>

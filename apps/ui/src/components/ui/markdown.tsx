@@ -19,8 +19,10 @@ interface AlertConfig {
   icon: typeof Info;
   bgClass: string;
   borderClass: string;
-  textClass: string;
-  titleClass: string;
+  textColor: string;
+  titleColor: string;
+  darkTextColor: string;
+  darkTitleColor: string;
 }
 
 const alertConfigs: Record<AlertType, AlertConfig> = {
@@ -28,36 +30,46 @@ const alertConfigs: Record<AlertType, AlertConfig> = {
     icon: Info,
     bgClass: "bg-blue-50 dark:bg-blue-950/30",
     borderClass: "border-blue-400 dark:border-blue-600",
-    textClass: "!text-blue-800 dark:!text-blue-200",
-    titleClass: "!text-blue-700 dark:!text-blue-300",
+    textColor: "#1e40af",      // blue-800
+    titleColor: "#1d4ed8",     // blue-700
+    darkTextColor: "#bfdbfe",  // blue-200
+    darkTitleColor: "#93c5fd", // blue-300
   },
   tip: {
     icon: Lightbulb,
     bgClass: "bg-green-50 dark:bg-green-950/30",
     borderClass: "border-green-400 dark:border-green-600",
-    textClass: "!text-green-800 dark:!text-green-200",
-    titleClass: "!text-green-700 dark:!text-green-300",
+    textColor: "#166534",      // green-800
+    titleColor: "#15803d",     // green-700
+    darkTextColor: "#bbf7d0",  // green-200
+    darkTitleColor: "#86efac", // green-300
   },
   important: {
     icon: AlertCircle,
     bgClass: "bg-purple-50 dark:bg-purple-950/30",
     borderClass: "border-purple-400 dark:border-purple-600",
-    textClass: "!text-purple-800 dark:!text-purple-200",
-    titleClass: "!text-purple-700 dark:!text-purple-300",
+    textColor: "#6b21a8",      // purple-800
+    titleColor: "#7e22ce",     // purple-700
+    darkTextColor: "#e9d5ff",  // purple-200
+    darkTitleColor: "#d8b4fe", // purple-300
   },
   warning: {
     icon: AlertTriangle,
     bgClass: "bg-yellow-50 dark:bg-yellow-950/30",
     borderClass: "border-yellow-400 dark:border-yellow-600",
-    textClass: "!text-yellow-800 dark:!text-yellow-200",
-    titleClass: "!text-yellow-700 dark:!text-yellow-300",
+    textColor: "#854d0e",      // yellow-800
+    titleColor: "#a16207",     // yellow-700
+    darkTextColor: "#fef08a",  // yellow-200
+    darkTitleColor: "#fde047", // yellow-300
   },
   caution: {
     icon: ShieldAlert,
     bgClass: "bg-red-50 dark:bg-red-950/30",
     borderClass: "border-red-400 dark:border-red-600",
-    textClass: "!text-red-800 dark:!text-red-200",
-    titleClass: "!text-red-700 dark:!text-red-300",
+    textColor: "#991b1b",      // red-800
+    titleColor: "#b91c1c",     // red-700
+    darkTextColor: "#fecaca",  // red-200
+    darkTitleColor: "#fca5a5", // red-300
   },
 };
 
@@ -80,6 +92,10 @@ const markdownStyles = `
   .markdown-body table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
   .markdown-body th, .markdown-body td { border: 1px solid var(--color-border); padding: 0.5em; text-align: left; }
   .markdown-body th { background: var(--color-muted); font-weight: 600; }
+
+  /* GitHub alert dark mode overrides */
+  .dark .github-alert-title { color: var(--alert-title-color-dark) !important; }
+  .dark .github-alert-content { color: var(--alert-text-color-dark) !important; }
 `;
 
 interface NodeWithChildren {
@@ -162,6 +178,7 @@ function parseGitHubAlert(children: ReactNode): {
 
 /**
  * GitHub-style alert component
+ * Uses CSS custom properties for dark mode support with inline style overrides
  */
 function GitHubAlert({
   type,
@@ -177,16 +194,32 @@ function GitHubAlert({
   return (
     <div
       className={cn(
-        "my-4 rounded-md border-l-4 p-4",
+        "my-4 rounded-md border-l-4 p-4 github-alert",
+        `github-alert-${type}`,
         config.bgClass,
         config.borderClass
       )}
+      style={{
+        // CSS custom properties for colors, used by child elements
+        "--alert-title-color": config.titleColor,
+        "--alert-text-color": config.textColor,
+        "--alert-title-color-dark": config.darkTitleColor,
+        "--alert-text-color-dark": config.darkTextColor,
+      } as React.CSSProperties}
     >
-      <div className={cn("flex items-center gap-2 font-semibold mb-1", config.titleClass)}>
+      <div
+        className="flex items-center gap-2 font-semibold mb-1 github-alert-title"
+        style={{ color: config.titleColor }}
+      >
         <Icon className="h-4 w-4" />
         <span>{title}</span>
       </div>
-      <div className={cn("text-sm", config.textClass)}>{children}</div>
+      <div
+        className="text-sm github-alert-content"
+        style={{ color: config.textColor }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
