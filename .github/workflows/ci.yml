@@ -13,6 +13,41 @@ env:
   CACHE_VERSION: v1
 
 jobs:
+  lockfiles:
+    name: Lockfile Freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Cargo.lock is up to date
+        run: |
+          cargo update --locked 2>&1 || {
+            echo "❌ Cargo.lock is out of date!"
+            echo ""
+            echo "Run 'cargo update' locally and commit the updated Cargo.lock"
+            exit 1
+          }
+          echo "✅ Cargo.lock is up to date"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check UI package-lock.json is up to date
+        working-directory: apps/ui
+        run: |
+          npm ci 2>&1 || {
+            echo "❌ apps/ui/package-lock.json is out of date!"
+            echo ""
+            echo "Run 'npm install' in apps/ui and commit the updated package-lock.json"
+            exit 1
+          }
+          echo "✅ apps/ui/package-lock.json is up to date"
+
   format:
     name: Format Check
     runs-on: ubuntu-latest

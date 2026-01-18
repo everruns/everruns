@@ -41,6 +41,8 @@ Lock files must be updated when preparing a release:
 
 This ensures lock files reflect the current version and any dependency updates.
 
+CI enforces lock file freshness via the "Lockfile Freshness" check, which fails if lock files are out of sync with their manifests.
+
 ### Commit Convention
 
 Release commits use: `chore(release): prepare vX.Y.Z`
