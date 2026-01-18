@@ -73,12 +73,8 @@ impl Tool for WebFetchTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        // Use schema from fetchkit's Tool, but disable as_markdown option
-        // since fetchkit returns markdown by default for HTML content
-        fetchkit::Tool::builder()
-            .enable_markdown(false)
-            .build()
-            .input_schema()
+        // Use schema from fetchkit's Tool
+        fetchkit::Tool::default().input_schema()
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
@@ -109,17 +105,22 @@ impl Tool for WebFetchTool {
         };
 
         // Determine response format
-        // Note: as_markdown removed - fetchkit returns markdown by default for HTML
+        let as_markdown = arguments
+            .get("as_markdown")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         let as_text = arguments
             .get("as_text")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
         // Build the fetch request
+        // Only set options to Some(true) when enabled, otherwise leave as None
         let request = FetchRequest {
             url,
             method: Some(method),
-            as_markdown: None, // fetchkit defaults to markdown for HTML
+            as_markdown: if as_markdown { Some(true) } else { None },
             as_text: if as_text { Some(true) } else { None },
         };
 
@@ -148,6 +149,7 @@ impl Tool for WebFetchTool {
                     }
                     FetchError::ConnectError(_) => "Failed to connect to server".to_string(),
                     FetchError::RequestError(msg) => format!("Request failed: {}", msg),
+                    FetchError::FetcherError(msg) => format!("Fetch error: {}", msg),
                 };
                 ToolExecutionResult::tool_error(error_message)
             }
@@ -169,11 +171,7 @@ mod tests {
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["url"].is_object());
         assert!(schema["properties"]["method"].is_object());
-        // as_markdown is removed - fetchkit returns markdown by default
-        assert!(
-            schema["properties"]["as_markdown"].is_null(),
-            "as_markdown should not be in schema"
-        );
+        assert!(schema["properties"]["as_markdown"].is_object());
         assert!(schema["properties"]["as_text"].is_object());
         assert_eq!(schema["required"], serde_json::json!(["url"]));
     }
@@ -874,7 +872,7 @@ mod tests {
             // HEAD should return metadata but not content
             assert!(
                 value["content"].is_null()
-                    || value["content"].as_str().map_or(true, |s| s.is_empty()),
+                    || value["content"].as_str().is_none_or(|s| s.is_empty()),
                 "HEAD request should not return content body"
             );
             // Should have content-type header info
