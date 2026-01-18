@@ -487,17 +487,10 @@ where
             "ReasonAtom: calling LLM"
         );
 
-        // Track LLM call timing
-        let llm_start = Instant::now();
-
-        let mut stream = llm_driver
-            .chat_completion_stream(llm_messages, &llm_config)
-            .await?;
-
-        // 13. Emit agent.thinking event to indicate LLM generation started
+        // 13. Emit agent.thinking event BEFORE starting LLM call
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
-        tracing::debug!(
+        tracing::info!(
             session_id = %session_id,
             turn_id = %context.turn_id,
             "ReasonAtom: emitting agent.thinking event"
@@ -520,11 +513,18 @@ where
                 "ReasonAtom: failed to emit agent.thinking event"
             );
         } else {
-            tracing::debug!(
+            tracing::info!(
                 session_id = %session_id,
                 "ReasonAtom: agent.thinking event emitted successfully"
             );
         }
+
+        // Track LLM call timing
+        let llm_start = Instant::now();
+
+        let mut stream = llm_driver
+            .chat_completion_stream(llm_messages, &llm_config)
+            .await?;
 
         // 14. Process stream with batched text.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback

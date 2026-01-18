@@ -95,11 +95,14 @@ impl EventService {
         // Validate event type consistency
         Self::validate_event_type_consistency(&request)?;
 
-        tracing::debug!(
-            session_id = %request.session_id,
-            event_type = %request.event_type,
-            "EventService: storing event"
-        );
+        // Log streaming events at info level to confirm they're being stored
+        if request.event_type == "agent.thinking" || request.event_type == "text.delta" {
+            tracing::info!(
+                session_id = %request.session_id,
+                event_type = %request.event_type,
+                "EventService: storing streaming event"
+            );
+        }
 
         let create_row = CreateEventRow {
             session_id: request.session_id,
