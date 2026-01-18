@@ -18,6 +18,7 @@
 //! - `docker_exec`: Execute a command inside the container
 //! - `docker_read_file`: Read a file from the container
 //! - `docker_write_file`: Write a file to the container
+//! - `docker_stop`: Stop and remove the container
 
 use super::{Capability, CapabilityId, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
@@ -108,6 +109,7 @@ Available tools:
 - `docker_exec`: Execute a shell command inside the container. Returns stdout, stderr, and exit code.
 - `docker_read_file`: Read a file from the container filesystem.
 - `docker_write_file`: Write content to a file in the container filesystem.
+- `docker_stop`: Stop and remove the container (for cleanup or to reset state).
 
 The container is lazily started on first tool use. Subsequent calls reuse the same container.
 
@@ -115,7 +117,8 @@ Best practices:
 - Use `docker_exec` with `bash -c "..."` for complex commands
 - Check exit codes to verify command success
 - The working directory defaults to /workspace
-- Files written persist for the session duration"#,
+- Files written persist for the session duration
+- Use `docker_stop` to clean up when done or to reset container state"#,
         )
     }
 
@@ -124,6 +127,7 @@ Best practices:
             Box::new(DockerExecTool),
             Box::new(DockerReadFileTool),
             Box::new(DockerWriteFileTool),
+            Box::new(DockerStopTool),
         ]
     }
 }
@@ -621,6 +625,137 @@ impl Tool for DockerWriteFileTool {
 }
 
 // ============================================================================
+// DockerStopTool
+// ============================================================================
+
+/// Tool to stop and remove the Docker container
+pub struct DockerStopTool;
+
+#[async_trait]
+impl Tool for DockerStopTool {
+    fn name(&self) -> &str {
+        "docker_stop"
+    }
+
+    fn description(&self) -> &str {
+        "Stop and remove the Docker container associated with this session. \
+         Use this to clean up resources or reset the container state. \
+         A new container will be created on the next docker_exec/read/write call."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "force": {
+                    "type": "boolean",
+                    "description": "Force stop (kill) the container if it doesn't stop gracefully (default: false)"
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "docker_stop requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let force = arguments
+            .get("force")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let name = container_name(&context.session_id);
+
+        // Check if container exists
+        if !container_exists(&name).await {
+            return ToolExecutionResult::success(json!({
+                "stopped": false,
+                "removed": false,
+                "message": "Container does not exist",
+                "container_name": name
+            }));
+        }
+
+        debug!("Stopping container: {}", name);
+
+        // Stop the container
+        let stop_args = if force {
+            vec!["kill", &name]
+        } else {
+            vec!["stop", &name]
+        };
+
+        let stop_output = match Command::new("docker").args(&stop_args).output().await {
+            Ok(o) => o,
+            Err(e) => {
+                error!("Failed to stop container: {}", e);
+                return ToolExecutionResult::internal_error_msg(format!(
+                    "Failed to stop container: {}",
+                    e
+                ));
+            }
+        };
+
+        let stopped = stop_output.status.success();
+        if !stopped {
+            let stderr = String::from_utf8_lossy(&stop_output.stderr);
+            warn!("Failed to stop container {}: {}", name, stderr);
+        }
+
+        // Remove the container
+        debug!("Removing container: {}", name);
+
+        let rm_output = match Command::new("docker")
+            .args(["rm", "-f", &name])
+            .output()
+            .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                error!("Failed to remove container: {}", e);
+                return ToolExecutionResult::internal_error_msg(format!(
+                    "Failed to remove container: {}",
+                    e
+                ));
+            }
+        };
+
+        let removed = rm_output.status.success();
+        if !removed {
+            let stderr = String::from_utf8_lossy(&rm_output.stderr);
+            warn!("Failed to remove container {}: {}", name, stderr);
+        }
+
+        info!("Container {} stopped and removed", name);
+
+        ToolExecutionResult::success(json!({
+            "stopped": stopped,
+            "removed": removed,
+            "container_name": name,
+            "message": if stopped && removed {
+                "Container stopped and removed successfully"
+            } else if removed {
+                "Container removed (was not running)"
+            } else {
+                "Failed to fully clean up container"
+            }
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -643,12 +778,13 @@ mod tests {
         let cap = DockerContainerCapability;
         let tools = cap.tools();
 
-        assert_eq!(tools.len(), 3);
+        assert_eq!(tools.len(), 4);
 
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"docker_exec"));
         assert!(tool_names.contains(&"docker_read_file"));
         assert!(tool_names.contains(&"docker_write_file"));
+        assert!(tool_names.contains(&"docker_stop"));
     }
 
     #[test]
@@ -658,6 +794,7 @@ mod tests {
         assert!(prompt.contains("docker_exec"));
         assert!(prompt.contains("docker_read_file"));
         assert!(prompt.contains("docker_write_file"));
+        assert!(prompt.contains("docker_stop"));
         assert!(prompt.contains("EXPERIMENTAL"));
     }
 
@@ -666,6 +803,7 @@ mod tests {
         assert!(DockerExecTool.requires_context());
         assert!(DockerReadFileTool.requires_context());
         assert!(DockerWriteFileTool.requires_context());
+        assert!(DockerStopTool.requires_context());
     }
 
     #[test]
@@ -792,6 +930,18 @@ mod tests {
             assert!(msg.contains("Missing required parameter"));
         } else {
             panic!("Expected tool error for missing content");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_docker_stop_without_context() {
+        let tool = DockerStopTool;
+        let result = tool.execute(json!({})).await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("requires context"));
+        } else {
+            panic!("Expected tool error");
         }
     }
 }

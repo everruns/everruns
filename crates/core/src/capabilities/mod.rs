@@ -51,7 +51,7 @@ mod web_fetch;
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use docker_container::{
     DockerContainerCapability, DockerContainerConfig, DockerExecTool, DockerReadFileTool,
-    DockerWriteFileTool,
+    DockerStopTool, DockerWriteFileTool,
 };
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
