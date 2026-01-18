@@ -405,7 +405,10 @@ impl DurableWorker {
     async fn poll_and_execute(self: &Arc<Self>) -> Result<usize> {
         // Calculate available slots
         let current_in_flight = self.in_flight.load(Ordering::SeqCst);
-        let available_slots = self.config.max_concurrent_tasks.saturating_sub(current_in_flight);
+        let available_slots = self
+            .config
+            .max_concurrent_tasks
+            .saturating_sub(current_in_flight);
 
         if available_slots == 0 {
             debug!(

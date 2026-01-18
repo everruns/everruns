@@ -1331,6 +1331,7 @@ mod tests {
                 cache_creation_tokens: None,
             }),
             Some(50),
+            Some(25), // time_to_first_token_ms
             Some(vec!["end_turn".to_string()]),
             Some("msg_12345".to_string()),
         );
@@ -1338,6 +1339,7 @@ mod tests {
         assert!(data.metadata.success);
         assert_eq!(data.metadata.model, "claude-3-opus");
         assert_eq!(data.metadata.provider, Some("anthropic".to_string()));
+        assert_eq!(data.metadata.time_to_first_token_ms, Some(25));
         assert_eq!(
             data.metadata.finish_reasons,
             Some(vec!["end_turn".to_string()])
@@ -1378,5 +1380,183 @@ mod tests {
 
         let event_data: EventData = data.into();
         assert_eq!(event_data.event_type(), LLM_GENERATION);
+    }
+
+    #[test]
+    fn test_streaming_event_types() {
+        assert_eq!(AGENT_THINKING, "agent.thinking");
+        assert_eq!(TEXT_DELTA, "text.delta");
+    }
+
+    #[test]
+    fn test_agent_thinking_data() {
+        let turn_id = Uuid::now_v7();
+        let data = AgentThinkingData {
+            turn_id,
+            model: Some("gpt-4o".to_string()),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), AGENT_THINKING);
+
+        // Test serialization
+        let json = serde_json::to_string(&event_data).unwrap();
+        assert!(json.contains("turn_id"));
+        assert!(json.contains("gpt-4o"));
+    }
+
+    #[test]
+    fn test_agent_thinking_data_without_model() {
+        let turn_id = Uuid::now_v7();
+        let data = AgentThinkingData {
+            turn_id,
+            model: None,
+        };
+
+        // Model should be skipped when None
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("model"));
+    }
+
+    #[test]
+    fn test_text_delta_data() {
+        let turn_id = Uuid::now_v7();
+        let data = TextDeltaData {
+            turn_id,
+            delta: "Hello".to_string(),
+            accumulated: "Hello".to_string(),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), TEXT_DELTA);
+
+        // Test serialization
+        let json = serde_json::to_string(&event_data).unwrap();
+        assert!(json.contains("turn_id"));
+        assert!(json.contains("delta"));
+        assert!(json.contains("accumulated"));
+    }
+
+    #[test]
+    fn test_text_delta_deserialization_preserves_fields() {
+        // This test verifies that TextDelta deserializes correctly with all fields
+        // (regression test for the untagged enum ordering fix)
+        let turn_id = Uuid::now_v7();
+        let data = TextDeltaData {
+            turn_id,
+            delta: "Hello world".to_string(),
+            accumulated: "Hello world".to_string(),
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_value(EventData::TextDelta(data.clone())).unwrap();
+
+        // Deserialize back
+        let deserialized: EventData = serde_json::from_value(json).unwrap();
+
+        // Verify it's TextDelta and fields are preserved
+        match deserialized {
+            EventData::TextDelta(td) => {
+                assert_eq!(td.turn_id, turn_id);
+                assert_eq!(td.delta, "Hello world");
+                assert_eq!(td.accumulated, "Hello world");
+            }
+            _ => panic!("Expected TextDelta, got different variant"),
+        }
+    }
+
+    #[test]
+    fn test_agent_thinking_deserialization() {
+        let turn_id = Uuid::now_v7();
+        let data = AgentThinkingData {
+            turn_id,
+            model: Some("claude-3".to_string()),
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_value(EventData::AgentThinking(data.clone())).unwrap();
+
+        // Deserialize back
+        let deserialized: EventData = serde_json::from_value(json).unwrap();
+
+        // Verify it's AgentThinking and fields are preserved
+        match deserialized {
+            EventData::AgentThinking(at) => {
+                assert_eq!(at.turn_id, turn_id);
+                assert_eq!(at.model, Some("claude-3".to_string()));
+            }
+            _ => panic!("Expected AgentThinking, got different variant"),
+        }
+    }
+
+    #[test]
+    fn test_llm_generation_with_ttft() {
+        let messages = vec![Message::user("Hello")];
+        let data = LlmGenerationData::success_with_metadata(
+            messages,
+            vec![],
+            Some("Hi!".to_string()),
+            vec![],
+            "gpt-4o".to_string(),
+            Some("openai".to_string()),
+            Some(TokenUsage {
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+            }),
+            Some(500), // duration_ms
+            Some(120), // time_to_first_token_ms
+            Some(vec!["stop".to_string()]),
+            None,
+        );
+
+        assert!(data.metadata.success);
+        assert_eq!(data.metadata.duration_ms, Some(500));
+        assert_eq!(data.metadata.time_to_first_token_ms, Some(120));
+    }
+
+    #[test]
+    fn test_llm_generation_ttft_serialization() {
+        let messages = vec![Message::user("test")];
+        let data = LlmGenerationData::success_with_metadata(
+            messages,
+            vec![],
+            Some("response".to_string()),
+            vec![],
+            "model".to_string(),
+            None,
+            None,
+            Some(1000),
+            Some(150), // TTFT
+            None,
+            None,
+        );
+
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("time_to_first_token_ms"));
+        assert!(json.contains("150"));
+    }
+
+    #[test]
+    fn test_llm_generation_ttft_omitted_when_none() {
+        let messages = vec![Message::user("test")];
+        let data = LlmGenerationData::success(
+            messages,
+            vec![],
+            Some("response".to_string()),
+            vec![],
+            "model".to_string(),
+            None,
+            None,
+            None,
+        );
+
+        // TTFT should be None by default in success()
+        assert!(data.metadata.time_to_first_token_ms.is_none());
+
+        // Should not appear in JSON when None
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("time_to_first_token_ms"));
     }
 }

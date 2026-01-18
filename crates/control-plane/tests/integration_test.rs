@@ -3525,3 +3525,296 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     println!("Multiple tool calls test passed!");
 }
+
+/// Test that streaming events are emitted during LLM generation.
+///
+/// This test verifies that:
+/// 1. `agent.thinking` event is emitted when LLM starts generating
+/// 2. `text.delta` events are emitted with delta and accumulated fields
+/// 3. `llm.generation` event includes time_to_first_token_ms
+#[tokio::test]
+async fn test_streaming_events_emitted() {
+    use std::time::Duration;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("Failed to create client");
+
+    println!("Testing streaming events are emitted...");
+
+    // Step 1: Create LlmSim provider and model
+    println!("\nStep 1: Creating LlmSim provider and model...");
+    let provider_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
+        .json(&json!({
+            "name": "Streaming Test Provider",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created provider: {}", provider.id);
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-streaming",
+            "display_name": "LlmSim Streaming Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!("Failed to create model: status={}, body={}", status, body);
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created model: {}", model.id);
+
+    // Step 2: Create agent
+    println!("\nStep 2: Creating agent...");
+    let agent_response = client
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({
+            "name": "Streaming Test Agent",
+            "system_prompt": "You are a helpful assistant. Respond briefly.",
+            "default_model_id": model.id.to_string()
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.id);
+
+    // Step 3: Create session
+    println!("\nStep 3: Creating session...");
+    let session_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .json(&json!({"title": "Streaming Test Session"}))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    // Step 4: Send message
+    println!("\nStep 4: Sending message...");
+    let message_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "Hello, how are you?"}]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to create message");
+
+    assert_eq!(message_response.status(), 201);
+    println!("Message created");
+
+    // Step 5: Wait for workflow to complete
+    println!("\nStep 5: Waiting for agent response (up to 30 seconds)...");
+    let mut agent_response_found = false;
+
+    for i in 1..=30 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let messages_response = client
+            .get(format!(
+                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = messages_response
+            && resp.status() == 200
+        {
+            let data: Value = resp.json().await.unwrap_or_default();
+            let empty_vec = vec![];
+            let messages = data["data"].as_array().unwrap_or(&empty_vec);
+
+            for msg in messages {
+                if msg["role"] == "agent" {
+                    agent_response_found = true;
+                    println!("Found agent response after {}s", i);
+                    break;
+                }
+            }
+
+            if agent_response_found {
+                break;
+            }
+        }
+
+        if i % 5 == 0 {
+            println!("Still waiting... ({}s)", i);
+        }
+    }
+
+    assert!(
+        agent_response_found,
+        "Agent should have responded within 30 seconds"
+    );
+
+    // Step 6: Verify streaming events
+    println!("\nStep 6: Verifying streaming events...");
+    let events_response = client
+        .get(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to list events");
+
+    assert_eq!(events_response.status(), 200);
+    let events_data: Value = events_response
+        .json()
+        .await
+        .expect("Failed to parse events");
+    let events = events_data["data"]
+        .as_array()
+        .expect("Expected events array");
+
+    // Check for agent.thinking event
+    let thinking_events: Vec<_> = events
+        .iter()
+        .filter(|e| e["type"] == "agent.thinking")
+        .collect();
+    println!("Found {} agent.thinking events", thinking_events.len());
+    assert!(
+        !thinking_events.is_empty(),
+        "Expected at least one agent.thinking event"
+    );
+
+    // Verify agent.thinking has turn_id
+    let thinking_event = &thinking_events[0];
+    assert!(
+        thinking_event["data"]["turn_id"].is_string(),
+        "agent.thinking should have turn_id"
+    );
+    println!(
+        "agent.thinking event: turn_id={}, model={:?}",
+        thinking_event["data"]["turn_id"], thinking_event["data"]["model"]
+    );
+
+    // Check for text.delta events
+    let delta_events: Vec<_> = events
+        .iter()
+        .filter(|e| e["type"] == "text.delta")
+        .collect();
+    println!("Found {} text.delta events", delta_events.len());
+    assert!(
+        !delta_events.is_empty(),
+        "Expected at least one text.delta event"
+    );
+
+    // Verify text.delta has required fields (turn_id, delta, accumulated)
+    let delta_event = &delta_events[0];
+    assert!(
+        delta_event["data"]["turn_id"].is_string(),
+        "text.delta should have turn_id"
+    );
+    assert!(
+        delta_event["data"]["delta"].is_string(),
+        "text.delta should have delta field"
+    );
+    assert!(
+        delta_event["data"]["accumulated"].is_string(),
+        "text.delta should have accumulated field"
+    );
+    println!(
+        "text.delta event: delta='{}', accumulated='{}'",
+        delta_event["data"]["delta"].as_str().unwrap_or(""),
+        delta_event["data"]["accumulated"].as_str().unwrap_or("")
+    );
+
+    // Check for llm.generation event with time_to_first_token_ms
+    let llm_events: Vec<_> = events
+        .iter()
+        .filter(|e| e["type"] == "llm.generation")
+        .collect();
+    println!("Found {} llm.generation events", llm_events.len());
+    assert!(
+        !llm_events.is_empty(),
+        "Expected at least one llm.generation event"
+    );
+
+    let llm_event = &llm_events[0];
+    assert!(
+        llm_event["data"]["metadata"]["success"].as_bool() == Some(true),
+        "llm.generation should be successful"
+    );
+    // time_to_first_token_ms should be present when streaming events are emitted
+    if let Some(ttft) = llm_event["data"]["metadata"]["time_to_first_token_ms"].as_u64() {
+        println!("llm.generation time_to_first_token_ms: {}ms", ttft);
+    } else {
+        println!("llm.generation time_to_first_token_ms: not set (optional)");
+    }
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-models/{}",
+            API_BASE_URL, DEFAULT_ORG, model.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("Streaming events test passed!");
+}

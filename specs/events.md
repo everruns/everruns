@@ -359,6 +359,7 @@ Emitted after each LLM API call to provide full visibility into the messages sen
 - `provider` - LLM provider (openai, anthropic, etc.)
 - `usage` - Token usage (input_tokens, output_tokens)
 - `duration_ms` - Request duration in milliseconds
+- `time_to_first_token_ms` - Time to first token (streaming latency)
 - `success` - Whether the generation succeeded
 - `error` - Error message if failed
 - `finish_reasons` - Array of finish reasons (e.g., `["stop"]`, `["tool_calls"]`)
@@ -402,6 +403,7 @@ Emitted after each LLM API call to provide full visibility into the messages sen
         "output_tokens": 45
       },
       "duration_ms": 1200,
+      "time_to_first_token_ms": 180,
       "success": true,
       "finish_reasons": ["stop"],
       "response_id": "chatcmpl-abc123"
