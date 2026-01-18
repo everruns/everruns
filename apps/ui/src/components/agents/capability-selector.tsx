@@ -14,6 +14,11 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Plus,
   Search,
   ChevronUp,
@@ -21,6 +26,8 @@ import {
   X,
   ChevronRight,
   Plug,
+  Link,
+  Lock,
 } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -43,6 +50,7 @@ interface CapabilitySelectorProps {
 /**
  * A searchable, category-grouped capability selector designed for hundreds of capabilities.
  * Selected capabilities can be reordered. Uses a dialog for selection.
+ * Automatically handles capability dependencies.
  */
 export function CapabilitySelector({
   capabilities,
@@ -57,11 +65,70 @@ export function CapabilitySelector({
     new Set()
   );
 
+  // Create a map of capability ID to capability for fast lookup
+  const capabilityMap = useMemo(() => {
+    const map = new Map<CapabilityId, Capability>();
+    for (const cap of capabilities) {
+      map.set(cap.id, cap);
+    }
+    return map;
+  }, [capabilities]);
+
   // Get capability info by ID
   const getCapability = useCallback(
-    (id: CapabilityId): Capability | undefined =>
-      capabilities.find((c) => c.id === id),
-    [capabilities]
+    (id: CapabilityId): Capability | undefined => capabilityMap.get(id),
+    [capabilityMap]
+  );
+
+  // Get all dependencies for a capability (recursively)
+  const getAllDependencies = useCallback(
+    (capId: CapabilityId, visited: Set<CapabilityId> = new Set()): CapabilityId[] => {
+      if (visited.has(capId)) return []; // Prevent cycles
+      visited.add(capId);
+
+      const cap = getCapability(capId);
+      if (!cap?.dependencies?.length) return [];
+
+      const deps: CapabilityId[] = [];
+      for (const depId of cap.dependencies) {
+        // Add direct dependency
+        if (!deps.includes(depId)) {
+          deps.push(depId);
+        }
+        // Add transitive dependencies
+        for (const transitiveDep of getAllDependencies(depId, visited)) {
+          if (!deps.includes(transitiveDep)) {
+            deps.push(transitiveDep);
+          }
+        }
+      }
+      return deps;
+    },
+    [getCapability]
+  );
+
+  // Check which selected capabilities depend on a given capability
+  const getDependents = useCallback(
+    (capId: CapabilityId): CapabilityId[] => {
+      const dependents: CapabilityId[] = [];
+      for (const selectedId of selected) {
+        if (selectedId === capId) continue;
+        const deps = getAllDependencies(selectedId);
+        if (deps.includes(capId)) {
+          dependents.push(selectedId);
+        }
+      }
+      return dependents;
+    },
+    [selected, getAllDependencies]
+  );
+
+  // Check if a capability can be removed (no dependents require it)
+  const canRemove = useCallback(
+    (capId: CapabilityId): boolean => {
+      return getDependents(capId).length === 0;
+    },
+    [getDependents]
   );
 
   // Filter and group capabilities
@@ -104,23 +171,31 @@ export function CapabilitySelector({
     };
   }, [capabilities, searchQuery]);
 
-  // Handlers
+  // Handle toggling a capability (with automatic dependency handling)
   const handleToggle = useCallback(
     (capabilityId: CapabilityId, checked: boolean) => {
       if (checked) {
-        onChange([...selected, capabilityId]);
+        // Add capability and its dependencies
+        const deps = getAllDependencies(capabilityId);
+        const toAdd = [...deps.filter((d) => !selected.includes(d)), capabilityId];
+        onChange([...selected, ...toAdd.filter((id) => !selected.includes(id))]);
       } else {
-        onChange(selected.filter((id) => id !== capabilityId));
+        // Remove capability if no dependents require it
+        if (canRemove(capabilityId)) {
+          onChange(selected.filter((id) => id !== capabilityId));
+        }
       }
     },
-    [selected, onChange]
+    [selected, onChange, getAllDependencies, canRemove]
   );
 
   const handleRemove = useCallback(
     (capabilityId: CapabilityId) => {
-      onChange(selected.filter((id) => id !== capabilityId));
+      if (canRemove(capabilityId)) {
+        onChange(selected.filter((id) => id !== capabilityId));
+      }
     },
-    [selected, onChange]
+    [selected, onChange, canRemove]
   );
 
   const moveUp = useCallback(
@@ -244,6 +319,9 @@ export function CapabilitySelector({
                             {caps.map((cap) => {
                               const IconComponent = getCapabilityIcon(cap.icon);
                               const isSelected = selected.includes(cap.id);
+                              const dependents = getDependents(cap.id);
+                              const isRequired = dependents.length > 0;
+                              const hasDependencies = (cap.dependencies?.length ?? 0) > 0;
 
                               return (
                                 <label
@@ -260,6 +338,7 @@ export function CapabilitySelector({
                                     onCheckedChange={(checked) =>
                                       handleToggle(cap.id, checked as boolean)
                                     }
+                                    disabled={isSelected && isRequired}
                                     className="mt-0.5"
                                   />
                                   <IconComponent className="w-4 h-4 mt-0.5 shrink-0" />
@@ -271,6 +350,32 @@ export function CapabilitySelector({
                                           <Plug className="w-3 h-3" />
                                           MCP
                                         </Badge>
+                                      )}
+                                      {hasDependencies && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 gap-1">
+                                              <Link className="w-3 h-3" />
+                                              Requires
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Depends on: {cap.dependencies?.map(d => getCapability(d)?.name ?? d).join(", ")}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                      {isRequired && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                                              <Lock className="w-3 h-3" />
+                                              Required
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Required by: {dependents.map(d => getCapability(d)?.name ?? d).join(", ")}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
                                       )}
                                     </div>
                                     <div className="text-xs text-muted-foreground line-clamp-2">
@@ -310,11 +415,16 @@ export function CapabilitySelector({
             const cap = getCapability(capId);
             if (!cap) return null;
             const IconComponent = getCapabilityIcon(cap.icon);
+            const dependents = getDependents(capId);
+            const isRequired = dependents.length > 0;
 
             return (
               <div
                 key={capId}
-                className="flex items-center gap-2 p-2 rounded-md border bg-muted/30 group"
+                className={cn(
+                  "flex items-center gap-2 p-2 rounded-md border group",
+                  isRequired ? "bg-amber-50/50 dark:bg-amber-950/30" : "bg-muted/30"
+                )}
               >
                 {/* Reorder controls */}
                 <div className="flex flex-col gap-0.5">
@@ -353,18 +463,44 @@ export function CapabilitySelector({
                       MCP
                     </Badge>
                   )}
+                  {isRequired && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="secondary" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                          <Lock className="w-2.5 h-2.5" />
+                          Required
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Required by: {dependents.map(d => getCapability(d)?.name ?? d).join(", ")}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </span>
 
                 {/* Remove button */}
-                <button
-                  type="button"
-                  onClick={() => handleRemove(capId)}
-                  disabled={disabled}
-                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive p-1 transition-opacity"
-                  aria-label="Remove capability"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+                {isRequired ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-muted-foreground/50 p-1 cursor-not-allowed">
+                        <Lock className="w-3 h-3" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Cannot remove: required by {dependents.map(d => getCapability(d)?.name ?? d).join(", ")}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(capId)}
+                    disabled={disabled}
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive p-1 transition-opacity"
+                    aria-label="Remove capability"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             );
           })}

@@ -43,6 +43,10 @@ pub struct CapabilityInfo {
     /// Whether this is an MCP server capability (for UI badge)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_mcp: bool,
+    /// IDs of capabilities that this capability depends on.
+    /// When this capability is selected, its dependencies are automatically included.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub dependencies: Vec<String>,
 }
 
 impl CapabilityInfo {
@@ -62,6 +66,7 @@ impl CapabilityInfo {
             system_prompt: cap.system_prompt_addition().map(|s| s.to_string()),
             tool_definitions: cap.tool_definitions(),
             is_mcp,
+            dependencies: cap.dependencies().iter().map(|s| s.to_string()).collect(),
         }
     }
 }
@@ -93,6 +98,7 @@ mod tests {
             system_prompt: Some("You have research capabilities.".to_string()),
             tool_definitions: vec![],
             is_mcp: false,
+            dependencies: vec![],
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -101,6 +107,8 @@ mod tests {
         assert!(json.contains("\"system_prompt\":\"You have research capabilities.\""));
         // is_mcp: false should be skipped in serialization
         assert!(!json.contains("\"is_mcp\""));
+        // Empty dependencies should be skipped in serialization
+        assert!(!json.contains("\"dependencies\""));
     }
 
     #[test]
@@ -115,10 +123,30 @@ mod tests {
             system_prompt: None,
             tool_definitions: vec![],
             is_mcp: true,
+            dependencies: vec![],
         };
 
         let json = serde_json::to_string(&cap).unwrap();
         assert!(json.contains("\"is_mcp\":true"));
+    }
+
+    #[test]
+    fn test_capability_with_dependencies_serialization() {
+        let cap = CapabilityInfo {
+            id: CapabilityId::new("sample_data"),
+            name: "Sample Data".to_string(),
+            description: "Sample data for testing".to_string(),
+            status: CapabilityStatus::Available,
+            icon: None,
+            category: None,
+            system_prompt: None,
+            tool_definitions: vec![],
+            is_mcp: false,
+            dependencies: vec!["session_file_system".to_string()],
+        };
+
+        let json = serde_json::to_string(&cap).unwrap();
+        assert!(json.contains("\"dependencies\":[\"session_file_system\"]"));
     }
 
     #[test]

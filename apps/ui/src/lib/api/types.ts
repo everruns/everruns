@@ -779,6 +779,8 @@ export interface Capability {
   tool_definitions?: ToolDefinition[];
   /** Whether this is an MCP server capability */
   is_mcp?: boolean;
+  /** IDs of capabilities that this capability depends on */
+  dependencies?: CapabilityId[];
 }
 
 // ============================================

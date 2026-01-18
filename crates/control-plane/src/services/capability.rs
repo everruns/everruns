@@ -71,6 +71,7 @@ impl CapabilityService {
                 system_prompt: None,
                 tool_definitions: mcp_cap.tool_definitions(),
                 is_mcp: true,
+                dependencies: vec![], // MCP capabilities have no dependencies
             });
         }
 
@@ -113,6 +114,7 @@ impl CapabilityService {
                     system_prompt: None,
                     tool_definitions: mcp_cap.tool_definitions(),
                     is_mcp: true,
+                    dependencies: vec![], // MCP capabilities have no dependencies
                 }));
             }
             return Ok(None);
@@ -155,9 +157,10 @@ impl CapabilityService {
 
     /// Preview the final agent shape by computing the merged system prompt and tools.
     ///
-    /// This collects contributions from all specified capabilities:
+    /// This collects contributions from all specified capabilities and their dependencies:
     /// - System prompt additions are prepended to the base prompt
     /// - Tool definitions are collected from all capabilities
+    /// - Dependencies are automatically resolved (dependencies before dependents)
     ///
     /// For MCP capabilities, uses cached tools (even if stale) to avoid blocking
     /// on external MCP server calls during preview.
@@ -175,7 +178,7 @@ impl CapabilityService {
         base_system_prompt: &str,
         capability_configs: &[everruns_core::AgentCapabilityConfig],
     ) -> Result<(String, Vec<everruns_core::ToolDefinition>)> {
-        use everruns_core::capabilities::collect_capabilities;
+        use everruns_core::capabilities::{collect_capabilities, resolve_dependencies};
 
         let mut system_prompt_parts: Vec<String> = Vec::new();
         let mut tool_definitions: Vec<everruns_core::ToolDefinition> = Vec::new();
@@ -193,14 +196,19 @@ impl CapabilityService {
             }
         }
 
-        // Collect from built-in capabilities
-        let collected = collect_capabilities(&builtin_cap_ids, &self.registry);
+        // Resolve dependencies for built-in capabilities
+        let resolved = resolve_dependencies(&builtin_cap_ids, &self.registry)
+            .map_err(|e| anyhow::anyhow!("Failed to resolve capability dependencies: {}", e))?;
+
+        // Collect from resolved capabilities (includes dependencies in correct order)
+        let collected = collect_capabilities(&resolved.resolved_ids, &self.registry);
         if let Some(prefix) = collected.system_prompt_prefix() {
             system_prompt_parts.push(prefix);
         }
         tool_definitions.extend(collected.tool_definitions);
 
         // Collect from MCP capabilities using cached tools only (no refresh)
+        // Note: MCP capabilities don't have dependencies
         for server_id in mcp_cap_ids {
             let tools = self.mcp_service.get_cached_tools(server_id).await;
             let server = self.mcp_service.get(server_id).await?;
