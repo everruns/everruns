@@ -202,8 +202,8 @@ pub async fn stream_sse(
             tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
             match event_service.list(session_id, None, state.last_id).await {
                 Ok(events) if !events.is_empty() => {
-                    // Get the last event ID for next iteration
-                    let new_last_id = Some(events.last().unwrap().id);
+                    // Get the last event ID for next iteration (extract UUID for db query)
+                    let new_last_id = Some(events.last().unwrap().id.uuid());
 
                     tracing::debug!(
                         session_id = %session_id,

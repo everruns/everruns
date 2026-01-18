@@ -17,7 +17,7 @@ use axum::{
     routing::post,
 };
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::SessionId;
+use everruns_core::typed_id::{MessageId, SessionId};
 
 use super::common::{ErrorResponse, ListResponse};
 use everruns_worker::AgentRunner;
@@ -75,8 +75,12 @@ impl From<&str> for MessageRole {
 /// Message - primary conversation data (API response)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Message {
-    pub id: Uuid,
-    pub session_id: Uuid,
+    /// Unique message ID (format: message_{32-hex})
+    #[schema(value_type = String, example = "message_01933b5a00007000800000000000001")]
+    pub id: MessageId,
+    /// Session ID this message belongs to (format: session_{32-hex})
+    #[schema(value_type = String, example = "session_01933b5a00007000800000000000001")]
+    pub session_id: SessionId,
     pub sequence: i32,
     pub role: MessageRole,
     /// Array of content parts

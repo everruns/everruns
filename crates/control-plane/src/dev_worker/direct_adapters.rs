@@ -13,6 +13,7 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
 };
+use everruns_core::typed_id::MessageId;
 use everruns_core::{
     Agent, AgentStatus, ContentPart, DEFAULT_ORG_ID, LlmProviderType, Message, MessageRole,
     Session, SessionStatus, ToolResultContentPart,
@@ -270,7 +271,7 @@ fn event_to_message(event: Event) -> Option<Message> {
                 error: data.error.clone(),
             })];
             Some(Message {
-                id: event.id.into(),
+                id: MessageId::from_uuid(event.id.uuid()),
                 role: MessageRole::ToolResult,
                 content,
                 controls: None,

@@ -22,7 +22,9 @@ fn test_event_serialization() {
 
     assert!(json.is_object());
     assert_eq!(json["type"], "input.received");
-    assert_eq!(json["session_id"], session_id.to_string());
+    // session_id now uses prefixed format (session_{hex})
+    let expected_session_id = format!("session_{}", session_id.simple());
+    assert_eq!(json["session_id"], expected_session_id);
     assert!(json["context"].is_object());
 }
 
@@ -49,7 +51,7 @@ fn test_event_session_id() {
         InputReceivedData::new(Message::user("test")),
     );
 
-    assert_eq!(event.session_id(), session_id);
+    assert_eq!(event.session_uuid(), session_id);
 }
 
 #[test]
@@ -71,7 +73,9 @@ fn test_tool_call_completed_event_serialization() {
 
     // Verify top-level structure
     assert_eq!(json["type"], "tool.call_completed");
-    assert_eq!(json["session_id"], session_id.to_string());
+    // session_id now uses prefixed format (session_{hex})
+    let expected_session_id = format!("session_{}", session_id.simple());
+    assert_eq!(json["session_id"], expected_session_id);
 
     // Verify data field contains the payload directly (untagged)
     let data = &json["data"];

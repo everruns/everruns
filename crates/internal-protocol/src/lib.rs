@@ -5,6 +5,7 @@
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
 use chrono::{DateTime, TimeZone, Utc};
+use everruns_core::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 use prost_types::{ListValue, Struct, Value, value::Kind};
 
 // Generated protobuf code
@@ -531,17 +532,20 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
             .turn_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(TurnId::from_uuid),
         input_message_id: proto_context
             .input_message_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(MessageId::from_uuid),
         exec_id: proto_context
             .exec_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(ExecId::from_uuid),
     };
 
     // Convert Struct data to EventData based on event_type
@@ -556,10 +560,10 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
     let metadata: Option<serde_json::Value> = value.metadata.as_ref().map(proto_struct_to_json);
 
     Ok(everruns_core::Event {
-        id,
+        id: EventId::from_uuid(id),
         event_type: value.event_type,
         ts,
-        session_id,
+        session_id: SessionId::from_uuid(session_id),
         context,
         data,
         metadata,
@@ -579,14 +583,26 @@ pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
     let data_struct = json_to_proto_struct(&data_json);
 
     proto::Event {
-        id: Some(uuid_to_proto_uuid(value.id)),
+        id: Some(uuid_to_proto_uuid(value.id.uuid())),
         event_type: value.event_type.clone(),
         ts: Some(datetime_to_proto_timestamp(value.ts)),
         context: Some(proto::EventContext {
-            session_id: Some(uuid_to_proto_uuid(value.session_id)),
-            turn_id: value.context.turn_id.map(uuid_to_proto_uuid),
-            input_message_id: value.context.input_message_id.map(uuid_to_proto_uuid),
-            exec_id: value.context.exec_id.map(uuid_to_proto_uuid),
+            session_id: Some(uuid_to_proto_uuid(value.session_id.uuid())),
+            turn_id: value
+                .context
+                .turn_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
+            input_message_id: value
+                .context
+                .input_message_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
+            exec_id: value
+                .context
+                .exec_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
         }),
         data: Some(data_struct),
         metadata: value.metadata.as_ref().map(json_to_proto_struct),
@@ -620,17 +636,20 @@ pub fn proto_event_request_to_schema(
             .turn_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(TurnId::from_uuid),
         input_message_id: proto_context
             .input_message_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(MessageId::from_uuid),
         exec_id: proto_context
             .exec_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(ExecId::from_uuid),
     };
 
     // Convert Struct data to EventData based on event_type
@@ -670,9 +689,21 @@ pub fn schema_event_request_to_proto(value: &everruns_core::EventRequest) -> pro
         ts: Some(datetime_to_proto_timestamp(value.ts)),
         context: Some(proto::EventContext {
             session_id: Some(uuid_to_proto_uuid(value.session_id)),
-            turn_id: value.context.turn_id.map(uuid_to_proto_uuid),
-            input_message_id: value.context.input_message_id.map(uuid_to_proto_uuid),
-            exec_id: value.context.exec_id.map(uuid_to_proto_uuid),
+            turn_id: value
+                .context
+                .turn_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
+            input_message_id: value
+                .context
+                .input_message_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
+            exec_id: value
+                .context
+                .exec_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
         }),
         data: Some(data_struct),
         metadata: value.metadata.as_ref().map(json_to_proto_struct),

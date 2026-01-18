@@ -653,7 +653,7 @@ impl InMemoryEventEmitter {
             .read()
             .await
             .iter()
-            .filter(|e| e.session_id() == session_id)
+            .filter(|e| e.session_uuid() == session_id)
             .cloned()
             .collect()
     }

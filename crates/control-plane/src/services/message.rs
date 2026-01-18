@@ -12,6 +12,7 @@ use anyhow::Result;
 use chrono::Utc;
 use everruns_core::Event;
 use everruns_core::events::{EventContext, EventRequest, MessageUserData};
+use everruns_core::typed_id::{MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -84,8 +85,8 @@ impl MessageService {
 
         // Construct API Message
         let message = Message {
-            id: message_id,
-            session_id,
+            id: MessageId::from_uuid(message_id),
+            session_id: SessionId::from_uuid(session_id),
             sequence: stored_event.sequence.unwrap_or(0),
             role: MessageRole::User,
             content,
@@ -174,8 +175,8 @@ impl MessageService {
                             data.error.clone(),
                         );
                         return Ok(Message {
-                            id: msg.id.uuid(),
-                            session_id,
+                            id: msg.id,
+                            session_id: SessionId::from_uuid(session_id),
                             sequence,
                             role: MessageRole::from(msg.role.to_string().as_str()),
                             content: msg.content,
@@ -188,8 +189,8 @@ impl MessageService {
                 };
 
                 Ok(Message {
-                    id: core_message.id.uuid(),
-                    session_id,
+                    id: core_message.id.clone(),
+                    session_id: SessionId::from_uuid(session_id),
                     sequence,
                     role: MessageRole::from(core_message.role.to_string().as_str()),
                     content: core_message.content.clone(),

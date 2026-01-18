@@ -217,7 +217,7 @@ impl OtelEventListener {
         spans.insert(
             data.turn_id,
             TurnSpanInfo {
-                session_id: event.session_id,
+                session_id: event.session_id.uuid(),
                 agent_id: None, // Will be filled from context if available
                 started_at: std::time::Instant::now(),
             },

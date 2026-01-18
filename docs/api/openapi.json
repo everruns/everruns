@@ -3325,7 +3325,7 @@
       },
       "Event": {
         "type": "object",
-        "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique UUID v7 identifier (monotonically increasing)\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
+        "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
         "required": [
           "id",
           "type",
@@ -3345,8 +3345,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique event identifier (UUID v7, monotonically increasing)"
+            "description": "Unique event identifier (format: event_{32-hex})",
+            "example": "event_01933b5a00007000800000000000001"
           },
           "metadata": {
             "description": "Arbitrary metadata for the event"
@@ -3361,8 +3361,8 @@
           },
           "session_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Session this event belongs to"
+            "description": "Session this event belongs to (format: session_{32-hex})",
+            "example": "session_01933b5a00007000800000000000001"
           },
           "tags": {
             "type": [
@@ -3394,24 +3394,24 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Atom execution identifier"
+            "description": "Atom execution identifier",
+            "example": "exec_01933b5a00007000800000000000001"
           },
           "input_message_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "User message that triggered this turn"
+            "description": "User message that triggered this turn",
+            "example": "message_01933b5a00007000800000000000001"
           },
           "turn_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Turn identifier (for turn-scoped events)"
+            "description": "Turn identifier (for turn-scoped events)",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -3995,7 +3995,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique UUID v7 identifier (monotonically increasing)\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
+              "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
               "required": [
                 "id",
                 "type",
@@ -4015,8 +4015,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Unique event identifier (UUID v7, monotonically increasing)"
+                  "description": "Unique event identifier (format: event_{32-hex})",
+                  "example": "event_01933b5a00007000800000000000001"
                 },
                 "metadata": {
                   "description": "Arbitrary metadata for the event"
@@ -4031,8 +4031,8 @@
                 },
                 "session_id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Session this event belongs to"
+                  "description": "Session this event belongs to (format: session_{32-hex})",
+                  "example": "session_01933b5a00007000800000000000001"
                 },
                 "tags": {
                   "type": [
@@ -4514,7 +4514,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "description": "Unique message ID (format: message_{32-hex})",
+                  "example": "message_01933b5a00007000800000000000001"
                 },
                 "metadata": {
                   "type": [
@@ -4536,7 +4537,8 @@
                 },
                 "session_id": {
                   "type": "string",
-                  "format": "uuid"
+                  "description": "Session ID this message belongs to (format: session_{32-hex})",
+                  "example": "session_01933b5a00007000800000000000001"
                 }
               }
             },
