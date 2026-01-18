@@ -464,7 +464,8 @@ where
         let mut llm_messages = Vec::new();
 
         // Add system prompt
-        if !runtime_agent.system_prompt.is_empty() {
+        let has_system_prompt = !runtime_agent.system_prompt.is_empty();
+        if has_system_prompt {
             llm_messages.push(LlmMessage {
                 role: LlmMessageRole::System,
                 content: LlmMessageContent::Text(runtime_agent.system_prompt.clone()),
@@ -472,6 +473,15 @@ where
                 tool_call_id: None,
             });
         }
+
+        // Build messages for llm.generation event (includes system message)
+        let messages_for_event: Vec<Message> = if has_system_prompt {
+            std::iter::once(Message::system(&runtime_agent.system_prompt))
+                .chain(patched_messages.iter().cloned())
+                .collect()
+        } else {
+            patched_messages.clone()
+        };
 
         // Add conversation messages with resolved images
         for msg in &patched_messages {
@@ -625,7 +635,7 @@ where
                             session_id,
                             event_context,
                             LlmGenerationData::failure(
-                                patched_messages.clone(),
+                                messages_for_event.clone(),
                                 tools_summary,
                                 runtime_agent.model.clone(),
                                 Some(model_with_provider.provider_type.to_string()),
@@ -670,7 +680,7 @@ where
                 session_id,
                 event_context,
                 LlmGenerationData::success_with_metadata(
-                    patched_messages.clone(),
+                    messages_for_event.clone(),
                     tools_summary,
                     Some(text.clone()).filter(|s| !s.is_empty()),
                     tool_calls.clone(),
