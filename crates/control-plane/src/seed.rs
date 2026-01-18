@@ -941,7 +941,10 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>) {
 }
 
 /// Run seeding with retry logic for transient errors
-async fn run_seed_with_retry(db: &StorageBackend, grade: DeploymentGrade) -> Result<SeedResult, String> {
+async fn run_seed_with_retry(
+    db: &StorageBackend,
+    grade: DeploymentGrade,
+) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
 

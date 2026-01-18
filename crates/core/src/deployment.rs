@@ -99,19 +99,46 @@ mod tests {
 
     #[test]
     fn test_parse_grades() {
-        assert_eq!("dev".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Dev);
-        assert_eq!("development".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Dev);
-        assert_eq!("poc".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Poc);
-        assert_eq!("preview".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Preview);
-        assert_eq!("staging".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Preview);
-        assert_eq!("prod".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Prod);
-        assert_eq!("production".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Prod);
+        assert_eq!(
+            "dev".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Dev
+        );
+        assert_eq!(
+            "development".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Dev
+        );
+        assert_eq!(
+            "poc".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Poc
+        );
+        assert_eq!(
+            "preview".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Preview
+        );
+        assert_eq!(
+            "staging".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Preview
+        );
+        assert_eq!(
+            "prod".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Prod
+        );
+        assert_eq!(
+            "production".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Prod
+        );
     }
 
     #[test]
     fn test_case_insensitive() {
-        assert_eq!("DEV".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Dev);
-        assert_eq!("PROD".parse::<DeploymentGrade>().unwrap(), DeploymentGrade::Prod);
+        assert_eq!(
+            "DEV".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Dev
+        );
+        assert_eq!(
+            "PROD".parse::<DeploymentGrade>().unwrap(),
+            DeploymentGrade::Prod
+        );
     }
 
     #[test]
