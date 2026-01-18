@@ -19,6 +19,7 @@ use everruns_control_plane::task_notifications::TaskNotificationBroadcaster;
 use anyhow::{Context, Result};
 use axum::http::{HeaderValue, Method, header};
 use axum::{Json, Router, extract::State, routing::get};
+use everruns_core::CapabilityRegistry;
 use everruns_core::telemetry::{TelemetryConfig, init_telemetry};
 use everruns_core::{EventListener, OtelEventListener};
 use everruns_durable::{
@@ -404,6 +405,9 @@ async fn main() -> Result<()> {
             // Create in-process worker configuration
             let worker_config = InProcessWorkerConfig::default();
 
+            // Create capability registry for tool execution
+            let capability_registry = CapabilityRegistry::with_builtins();
+
             // Create and spawn the in-process worker
             let worker_db = db.clone();
             let worker_event_service = event_service.clone();
@@ -415,6 +419,7 @@ async fn main() -> Result<()> {
                     worker_event_service,
                     llm_resolver,
                     mcp_server_service,
+                    capability_registry,
                 );
 
                 if let Err(e) = worker.run().await {
