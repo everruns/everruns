@@ -1001,8 +1001,8 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
-    /// Create a model with a specific ID (for seeding)
-    /// Returns None if model already exists (idempotent)
+    /// Create or update a model with a specific ID (for seeding)
+    /// Uses upsert to update display_name, is_default, is_favorite if model exists
     pub async fn create_llm_model_with_id(
         &self,
         org_id: i64,
@@ -1010,26 +1010,46 @@ impl InMemoryDatabase {
         input: CreateLlmModelRow,
     ) -> Result<Option<LlmModelRow>> {
         let mut models = self.llm_models.write();
-        if models.contains_key(&id) {
-            return Ok(None); // Already exists
-        }
         let now = Self::now();
-        let row = LlmModelRow {
-            id,
-            org_id,
-            provider_id: input.provider_id,
-            model_id: input.model_id,
-            display_name: input.display_name,
-            capabilities: serde_json::to_value(&input.capabilities)?,
-            is_default: input.is_default,
-            is_favorite: input.is_favorite,
-            status: "active".to_string(),
-            source: input.source,
-            last_seen_at: None,
-            provider_metadata: input.provider_metadata,
-            created_at: now,
-            updated_at: now,
+
+        let row = if let Some(existing) = models.get(&id) {
+            // Update existing model
+            LlmModelRow {
+                id,
+                org_id: existing.org_id,
+                provider_id: existing.provider_id,
+                model_id: existing.model_id.clone(),
+                display_name: input.display_name,
+                capabilities: existing.capabilities.clone(),
+                is_default: input.is_default,
+                is_favorite: input.is_favorite,
+                status: existing.status.clone(),
+                source: existing.source.clone(),
+                last_seen_at: existing.last_seen_at,
+                provider_metadata: existing.provider_metadata.clone(),
+                created_at: existing.created_at,
+                updated_at: now,
+            }
+        } else {
+            // Create new model
+            LlmModelRow {
+                id,
+                org_id,
+                provider_id: input.provider_id,
+                model_id: input.model_id,
+                display_name: input.display_name,
+                capabilities: serde_json::to_value(&input.capabilities)?,
+                is_default: input.is_default,
+                is_favorite: input.is_favorite,
+                status: "active".to_string(),
+                source: input.source,
+                last_seen_at: None,
+                provider_metadata: input.provider_metadata,
+                created_at: now,
+                updated_at: now,
+            }
         };
+
         models.insert(id, row.clone());
         Ok(Some(row))
     }

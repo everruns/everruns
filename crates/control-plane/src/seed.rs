@@ -716,7 +716,7 @@ const SEED_MODELS: &[SeedModel] = &[
     },
 ];
 
-/// Seed LLM models into the database
+/// Seed LLM models into the database (upserts to update existing models)
 async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -732,27 +732,15 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             provider_metadata: None,
         };
 
-        match db
-            .create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
-            .await?
-        {
-            Some(_) => {
-                tracing::info!(
-                    model_id = seed.model_id,
-                    id = %seed.id,
-                    "Created seed model"
-                );
-                result.created += 1;
-            }
-            None => {
-                tracing::debug!(
-                    model_id = seed.model_id,
-                    id = %seed.id,
-                    "Model already exists, skipping"
-                );
-                result.skipped += 1;
-            }
-        }
+        db.create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .await?;
+
+        tracing::debug!(
+            model_id = seed.model_id,
+            id = %seed.id,
+            "Seeded model"
+        );
+        result.created += 1;
     }
 
     Ok(result)
