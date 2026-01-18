@@ -2,7 +2,7 @@
 // Routes are org-scoped: /v1/orgs/:org/agents/:agent_id/sessions/...
 
 use crate::auth::{AuthState, OrgContext, middleware::FromRef};
-use crate::services::SessionService;
+use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -10,7 +10,11 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::Session;
+use everruns_core::events::{
+    EventContext, EventRequest, MessageAgentData, SessionIdledData, TurnCancelledData,
+};
+use everruns_core::{Message, Session};
+use everruns_worker::AgentRunner;
 
 use super::common::{ApiOptionExt, ApiResultExt, PaginatedResponse, Pagination};
 use serde::Deserialize;
@@ -67,14 +71,20 @@ const MAX_LIMIT: u32 = 100;
 /// App state for sessions routes
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
+    pub event_service: EventService,
+    pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
         Self {
-            session_service: Arc::new(SessionService::new(db)),
+            session_service: Arc::new(SessionService::new(db.clone())),
+            event_service: EventService::new(db.clone()),
+            db,
+            runner,
             auth,
         }
     }
@@ -99,6 +109,11 @@ pub fn routes(state: AppState) -> Router {
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
+        )
+        // Cancel turn endpoint
+        .route(
+            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/cancel",
+            post(cancel_turn),
         )
         .with_state(state)
 }
@@ -263,6 +278,109 @@ pub async fn delete_session(
     } else {
         Err(StatusCode::NOT_FOUND)
     }
+}
+
+/// POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel - Cancel current turn
+///
+/// Cancels the currently running turn in the session. This will:
+/// 1. Cancel the underlying workflow execution
+/// 2. Emit a turn.cancelled event
+/// 3. Insert an agent message indicating the turn was cancelled
+/// 4. Set the session status back to idle
+#[utoipa::path(
+    post,
+    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel",
+    params(
+        ("org" = String, Path, description = "Organization public ID"),
+        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("session_id" = Uuid, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Turn cancelled successfully"),
+        (status = 404, description = "Session not found"),
+        (status = 409, description = "No turn currently running"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn cancel_turn(
+    org: OrgContext,
+    State(state): State<AppState>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+) -> Result<StatusCode, StatusCode> {
+    // Verify session exists
+    let session = state
+        .session_service
+        .get(org.org_id, session_id)
+        .await
+        .log_internal_error("get session for cancel")?
+        .ok_or_not_found()?;
+
+    // Check if session is active (turn running)
+    if session.status != everruns_core::SessionStatus::Active {
+        return Err(StatusCode::CONFLICT);
+    }
+
+    // Cancel the workflow
+    if let Err(e) = state.runner.cancel_run(session_id).await {
+        tracing::error!(session_id = %session_id, error = %e, "Failed to cancel workflow");
+        // Continue anyway - workflow may have already completed
+    }
+
+    // Generate IDs for the turn context
+    // Use session_id as turn_id since workflow_id = session_id in durable runner
+    let turn_id = session_id;
+    let input_message_id = Uuid::now_v7(); // Placeholder since we don't have the original
+
+    // Emit turn.cancelled event
+    let cancelled_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        TurnCancelledData {
+            turn_id,
+            reason: Some("User requested cancellation".to_string()),
+            usage: None, // Usage not available at cancellation time
+        },
+    );
+    if let Err(e) = state.event_service.emit(cancelled_event).await {
+        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit turn.cancelled event");
+    }
+
+    // Insert agent message indicating cancellation
+    let cancel_message = Message::assistant("Turn cancelled by user.");
+    let message_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        MessageAgentData::new(cancel_message),
+    );
+    if let Err(e) = state.event_service.emit(message_event).await {
+        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit cancellation message");
+    }
+
+    // Emit session.idled event
+    let idled_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        SessionIdledData {
+            turn_id,
+            iterations: None,
+            usage: None,
+        },
+    );
+    if let Err(e) = state.event_service.emit(idled_event).await {
+        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit session.idled event");
+    }
+
+    // Update session status to idle
+    if let Err(e) = state
+        .session_service
+        .update_status(org.org_id, session_id, "idle".to_string())
+        .await
+    {
+        tracing::warn!(session_id = %session_id, error = %e, "Failed to update session status to idle");
+    }
+
+    Ok(StatusCode::OK)
 }
 
 #[cfg(test)]
