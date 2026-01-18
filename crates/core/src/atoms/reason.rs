@@ -497,6 +497,11 @@ where
         // 13. Emit agent.thinking event to indicate LLM generation started
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
+        tracing::debug!(
+            session_id = %session_id,
+            turn_id = %context.turn_id,
+            "ReasonAtom: emitting agent.thinking event"
+        );
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
@@ -513,6 +518,11 @@ where
                 session_id = %session_id,
                 error = %e,
                 "ReasonAtom: failed to emit agent.thinking event"
+            );
+        } else {
+            tracing::debug!(
+                session_id = %session_id,
+                "ReasonAtom: agent.thinking event emitted successfully"
             );
         }
 

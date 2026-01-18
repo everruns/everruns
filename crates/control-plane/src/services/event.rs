@@ -95,6 +95,12 @@ impl EventService {
         // Validate event type consistency
         Self::validate_event_type_consistency(&request)?;
 
+        tracing::debug!(
+            session_id = %request.session_id,
+            event_type = %request.event_type,
+            "EventService: storing event"
+        );
+
         let create_row = CreateEventRow {
             session_id: request.session_id,
             event_type: request.event_type,
