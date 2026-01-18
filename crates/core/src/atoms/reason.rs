@@ -534,10 +534,21 @@ where
         let mut completion_metadata: Option<LlmCompletionMetadata> = None;
         let mut pending_delta = String::new();
         let mut last_delta_emit = Instant::now();
+        let mut time_to_first_token_ms: Option<u64> = None;
 
         while let Some(event) = stream.next().await {
             match event? {
                 LlmStreamEvent::TextDelta(delta) => {
+                    // Track time-to-first-token on first delta
+                    if time_to_first_token_ms.is_none() {
+                        let ttft = llm_start.elapsed().as_millis() as u64;
+                        time_to_first_token_ms = Some(ttft);
+                        tracing::info!(
+                            session_id = %session_id,
+                            time_to_first_token_ms = ttft,
+                            "ReasonAtom: received first token from LLM"
+                        );
+                    }
                     text.push_str(&delta);
                     pending_delta.push_str(&delta);
 
@@ -641,12 +652,18 @@ where
         let event_context = EventContext::from_atom_context(context);
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
+        // Infer finish reasons from content
+        let finish_reasons = if !tool_calls.is_empty() {
+            Some(vec!["tool_calls".to_string()])
+        } else {
+            Some(vec!["stop".to_string()])
+        };
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
                 session_id,
                 event_context,
-                LlmGenerationData::success(
+                LlmGenerationData::success_with_metadata(
                     patched_messages.clone(),
                     tools_summary,
                     Some(text.clone()).filter(|s| !s.is_empty()),
@@ -655,6 +672,9 @@ where
                     Some(model_with_provider.provider_type.to_string()),
                     usage.clone(),
                     Some(llm_duration_ms),
+                    time_to_first_token_ms,
+                    finish_reasons,
+                    None, // response_id
                 ),
             ))
             .await

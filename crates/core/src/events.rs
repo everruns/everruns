@@ -619,6 +619,10 @@ pub struct LlmGenerationMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
 
+    /// Time to first token in milliseconds (streaming latency)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_first_token_ms: Option<u64>,
+
     /// Whether the generation was successful
     pub success: bool,
 
@@ -687,6 +691,7 @@ impl LlmGenerationData {
                 provider,
                 usage,
                 duration_ms,
+                time_to_first_token_ms: None,
                 success: true,
                 error: None,
                 finish_reasons,
@@ -706,6 +711,7 @@ impl LlmGenerationData {
         provider: Option<String>,
         usage: Option<TokenUsage>,
         duration_ms: Option<u64>,
+        time_to_first_token_ms: Option<u64>,
         finish_reasons: Option<Vec<String>>,
         response_id: Option<String>,
     ) -> Self {
@@ -718,6 +724,7 @@ impl LlmGenerationData {
                 provider,
                 usage,
                 duration_ms,
+                time_to_first_token_ms,
                 success: true,
                 error: None,
                 finish_reasons,
@@ -747,6 +754,7 @@ impl LlmGenerationData {
                 provider,
                 usage: None,
                 duration_ms,
+                time_to_first_token_ms: None,
                 success: false,
                 error: Some(error),
                 finish_reasons: Some(vec!["error".to_string()]),
