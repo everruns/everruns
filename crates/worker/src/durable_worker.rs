@@ -65,7 +65,7 @@ impl Default for DurableWorkerConfig {
                 "reason".to_string(),
                 "act".to_string(),
             ],
-            max_concurrent_tasks: 10,
+            max_concurrent_tasks: 1000, // High default for massive workflow parallelism
             poll_interval: Duration::from_millis(100), // Fallback when push notifications unavailable
             heartbeat_interval: Duration::from_secs(10),
             grpc_address: "127.0.0.1:9001".to_string(),
@@ -890,7 +890,7 @@ mod tests {
     fn test_config_default() {
         let config = DurableWorkerConfig::default();
         assert!(config.worker_id.starts_with("worker-"));
-        assert_eq!(config.max_concurrent_tasks, 10);
+        assert_eq!(config.max_concurrent_tasks, 1000);
         assert_eq!(config.grpc_address, "127.0.0.1:9001");
     }
 }
