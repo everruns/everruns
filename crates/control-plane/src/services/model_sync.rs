@@ -11,6 +11,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use everruns_core::{
     DiscoveredModel, DriverRegistry, LlmProviderType, ProviderConfig, ProviderType,
+    get_model_profile,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -169,6 +170,12 @@ impl ModelSyncService {
         let mut created = 0;
         let mut updated = 0;
 
+        // Parse provider type for profile lookup
+        let provider_type: LlmProviderType = provider
+            .provider_type
+            .parse()
+            .unwrap_or(LlmProviderType::Openai);
+
         // Get existing models for this provider
         let existing = self.db.list_llm_models_for_provider(provider.id).await?;
         let existing_ids: std::collections::HashSet<_> =
@@ -202,9 +209,10 @@ impl ModelSyncService {
                 }
             } else {
                 // Create new model in the same org as the provider
-                let display_name = model
-                    .display_name
-                    .clone()
+                // Try to get display name from model profile first, then API response, then model_id
+                let display_name = get_model_profile(&provider_type, &model.model_id)
+                    .map(|p| p.name)
+                    .or_else(|| model.display_name.clone())
                     .unwrap_or_else(|| model.model_id.clone());
 
                 let input = CreateLlmModelRow {
