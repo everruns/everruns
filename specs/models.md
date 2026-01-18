@@ -14,7 +14,7 @@ Configuration for an agentic loop. An agent can have many concurrent sessions.
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
 | `name` | string | Display name |
-| `description` | string? | Optional description |
+| `description` | string? | Optional description (supports markdown) |
 | `system_prompt` | string | System prompt for the LLM |
 | `default_model_id` | UUID? | Reference to llm_models table |
 | `tags` | string[] | Tags for organization/filtering |

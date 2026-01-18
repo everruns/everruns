@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
+import { InlineMarkdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -304,9 +305,9 @@ export default function AgentDetailPage({
               {agent.description && (
                 <div>
                   <p className="text-sm font-medium">Description</p>
-                  <p className="text-sm text-muted-foreground">
-                    {agent.description}
-                  </p>
+                  <div className="text-sm text-muted-foreground">
+                    <InlineMarkdown content={agent.description} />
+                  </div>
                 </div>
               )}
 
