@@ -675,6 +675,7 @@ impl LlmGenerationData {
         provider: Option<String>,
         usage: Option<TokenUsage>,
         duration_ms: Option<u64>,
+        time_to_first_token_ms: Option<u64>,
     ) -> Self {
         // Infer finish reasons from content
         let finish_reasons = if !tool_calls.is_empty() {
@@ -692,7 +693,7 @@ impl LlmGenerationData {
                 provider,
                 usage,
                 duration_ms,
-                time_to_first_token_ms: None,
+                time_to_first_token_ms,
                 success: true,
                 error: None,
                 finish_reasons,
@@ -742,6 +743,7 @@ impl LlmGenerationData {
         provider: Option<String>,
         error: String,
         duration_ms: Option<u64>,
+        time_to_first_token_ms: Option<u64>,
     ) -> Self {
         Self {
             messages,
@@ -755,7 +757,7 @@ impl LlmGenerationData {
                 provider,
                 usage: None,
                 duration_ms,
-                time_to_first_token_ms: None,
+                time_to_first_token_ms,
                 success: false,
                 error: Some(error),
                 finish_reasons: Some(vec!["error".to_string()]),
@@ -1336,6 +1338,7 @@ mod tests {
                 cache_creation_tokens: None,
             }),
             Some(100),
+            Some(25), // time_to_first_token_ms
         );
 
         assert_eq!(data.messages.len(), 2);
@@ -1395,6 +1398,7 @@ mod tests {
             Some("openai".to_string()),
             "Rate limit exceeded".to_string(),
             Some(50),
+            None, // time_to_first_token_ms
         );
 
         assert!(!data.metadata.success);
@@ -1414,6 +1418,7 @@ mod tests {
             None,
             None,
             None,
+            None, // time_to_first_token_ms
         );
 
         let event_data: EventData = data.into();
@@ -1588,9 +1593,10 @@ mod tests {
             None,
             None,
             None,
+            None, // time_to_first_token_ms
         );
 
-        // TTFT should be None by default in success()
+        // TTFT should be None when passed as None
         assert!(data.metadata.time_to_first_token_ms.is_none());
 
         // Should not appear in JSON when None

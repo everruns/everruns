@@ -385,6 +385,7 @@ export interface LlmGenerationMetadata {
   provider?: string;
   usage?: TokenUsage;
   duration_ms?: number;
+  time_to_first_token_ms?: number;
   success: boolean;
   error?: string;
 }

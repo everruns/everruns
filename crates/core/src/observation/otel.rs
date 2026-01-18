@@ -129,6 +129,8 @@ impl OtelEventListener {
             "gen_ai.conversation.id" = %event.session_id,
             // Duration
             "duration_ms" = data.metadata.duration_ms.unwrap_or(0),
+            // Time to first token (streaming latency)
+            "time_to_first_token_ms" = data.metadata.time_to_first_token_ms.unwrap_or(0),
         );
 
         // Enter and immediately exit the span (event is a point-in-time record)

@@ -555,8 +555,8 @@ where
         while let Some(event) = stream.next().await {
             match event? {
                 LlmStreamEvent::TextDelta(delta) => {
-                    // Track time-to-first-token on first delta
-                    if time_to_first_token_ms.is_none() {
+                    // Track time-to-first-token on first non-empty delta
+                    if time_to_first_token_ms.is_none() && !delta.is_empty() {
                         let ttft = llm_start.elapsed().as_millis() as u64;
                         time_to_first_token_ms = Some(ttft);
                         tracing::info!(
@@ -641,6 +641,7 @@ where
                                 Some(model_with_provider.provider_type.to_string()),
                                 err.clone(),
                                 Some(llm_duration_ms),
+                                time_to_first_token_ms,
                             ),
                         ))
                         .await;
