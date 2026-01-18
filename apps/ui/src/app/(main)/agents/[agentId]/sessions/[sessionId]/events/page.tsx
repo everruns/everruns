@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, Eye } from "lucide-react";
+import { Activity, Eye, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -15,6 +16,36 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSessionContext } from "../session-context";
+
+function CopyButton({ data }: { data: unknown }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={handleCopy}>
+      {copied ? (
+        <>
+          <Check className="w-3 h-3 mr-1" />
+          Copied
+        </>
+      ) : (
+        <>
+          <Copy className="w-3 h-3 mr-1" />
+          Copy
+        </>
+      )}
+    </Button>
+  );
+}
 
 export default function EventsPage() {
   const { events, eventsLoading, agentId, sessionId } = useSessionContext();
@@ -43,13 +74,13 @@ export default function EventsPage() {
                 <TableHead className="w-[80px]">Seq</TableHead>
                 <TableHead className="w-[180px]">Type</TableHead>
                 <TableHead className="w-[200px]">Timestamp</TableHead>
-                <TableHead>Data</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
+                <TableHead>Data</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {events?.map((event) => (
-                <TableRow key={event.id}>
+                <TableRow key={event.id} className="align-top">
                   <TableCell className="font-mono text-xs">{event.sequence}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className="font-mono text-xs">
@@ -59,21 +90,24 @@ export default function EventsPage() {
                   <TableCell className="text-xs text-muted-foreground">
                     {new Date(event.ts).toLocaleString()}
                   </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {event.type === "llm.generation" && (
+                        <Link
+                          href={`${basePath}/llm-history/${event.id}`}
+                          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full justify-center")}
+                        >
+                          <Eye className="w-3 h-3 mr-1" />
+                          View
+                        </Link>
+                      )}
+                      <CopyButton data={event.data} />
+                    </div>
+                  </TableCell>
                   <TableCell className="font-mono text-xs max-w-[500px]">
                     <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
                       {JSON.stringify(event.data, null, 2)}
                     </pre>
-                  </TableCell>
-                  <TableCell>
-                    {event.type === "llm.generation" && (
-                      <Link
-                        href={`${basePath}/llm-history/${event.id}`}
-                        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                      >
-                        <Eye className="w-3 h-3 mr-1" />
-                        View
-                      </Link>
-                    )}
                   </TableCell>
                 </TableRow>
               ))}
