@@ -1,11 +1,17 @@
-// OpenAI Responses API Protocol Driver
+// Open Responses Protocol Driver
 //
-// Implementation of OpenAI's Responses API (https://api.openai.com/v1/responses)
-// This is OpenAI's recommended API for new projects, offering:
-// - Better performance with reasoning models (o1, o3, GPT-5, etc.)
-// - 40-80% better cache utilization
+// Implementation of the Open Responses specification (https://www.openresponses.org/)
+// an open-source, vendor-neutral API standard for multi-provider LLM interfaces.
+//
+// The spec is inspired by and interoperable with the OpenAI Responses API, offering:
+// - One spec, many providers (OpenAI, Anthropic, Gemini, local models)
+// - Agentic loop support with tool calls and state machines
+// - Semantic streaming events (not raw text deltas)
+// - 40-80% better cache utilization vs Chat Completions API
 // - Native stateful conversation support
-// - Built-in tools (web search, file search, code interpreter)
+//
+// Specification: https://www.openresponses.org/specification
+// GitHub: https://github.com/openresponses/openresponses
 //
 // The Chat Completions API remains supported for backward compatibility.
 
@@ -26,31 +32,36 @@ use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
 
-/// OpenAI Responses API Protocol Driver
+/// Open Responses Protocol Driver (OpenAI implementation)
 ///
-/// Implements `LlmDriver` using the OpenAI Responses API.
-/// This API is recommended for new projects and offers better performance
-/// with reasoning models.
+/// Implements `LlmDriver` using the Open Responses specification
+/// (https://www.openresponses.org/). This driver targets OpenAI's API
+/// but follows the vendor-neutral Open Responses standard.
+///
+/// The Open Responses spec is recommended for new projects, offering:
+/// - Better performance with reasoning models (o1, o3, GPT-5)
+/// - Provider-agnostic streaming events
+/// - Native agentic loop support
 ///
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::OpenAIResponsesProtocolLlmDriver;
+/// use everruns_core::OpenResponsesProtocolLlmDriver;
 ///
-/// let driver = OpenAIResponsesProtocolLlmDriver::from_env()?;
+/// let driver = OpenResponsesProtocolLlmDriver::from_env()?;
 /// // or
-/// let driver = OpenAIResponsesProtocolLlmDriver::new("your-api-key");
+/// let driver = OpenResponsesProtocolLlmDriver::new("your-api-key");
 /// // or with custom endpoint
-/// let driver = OpenAIResponsesProtocolLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/responses");
+/// let driver = OpenResponsesProtocolLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/responses");
 /// ```
 #[derive(Clone)]
-pub struct OpenAIResponsesProtocolLlmDriver {
+pub struct OpenResponsesProtocolLlmDriver {
     client: Client,
     api_key: String,
     api_url: String,
 }
 
-impl OpenAIResponsesProtocolLlmDriver {
+impl OpenResponsesProtocolLlmDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -198,7 +209,7 @@ impl OpenAIResponsesProtocolLlmDriver {
 }
 
 #[async_trait]
-impl LlmDriver for OpenAIResponsesProtocolLlmDriver {
+impl LlmDriver for OpenResponsesProtocolLlmDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -403,8 +414,9 @@ impl LlmDriver for OpenAIResponsesProtocolLlmDriver {
                                             }
                                             // Check for cached tokens
                                             if let Some(details) = usage.get("input_tokens_details")
-                                                && let Some(cached) =
-                                                    details.get("cached_tokens").and_then(|t| t.as_u64())
+                                                && let Some(cached) = details
+                                                    .get("cached_tokens")
+                                                    .and_then(|t| t.as_u64())
                                             {
                                                 *cache_read_tokens.lock().unwrap() =
                                                     Some(cached as u32);
@@ -476,9 +488,9 @@ impl LlmDriver for OpenAIResponsesProtocolLlmDriver {
     }
 }
 
-impl std::fmt::Debug for OpenAIResponsesProtocolLlmDriver {
+impl std::fmt::Debug for OpenResponsesProtocolLlmDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAIResponsesProtocolLlmDriver")
+        f.debug_struct("OpenResponsesProtocolLlmDriver")
             .field("api_url", &self.api_url)
             .field("api_key", &"[REDACTED]")
             .finish()
@@ -591,17 +603,17 @@ mod tests {
 
     #[test]
     fn test_driver_with_api_key() {
-        let driver = OpenAIResponsesProtocolLlmDriver::new("test-key");
-        assert!(format!("{:?}", driver).contains("OpenAIResponsesProtocolLlmDriver"));
+        let driver = OpenResponsesProtocolLlmDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenResponsesProtocolLlmDriver"));
     }
 
     #[test]
     fn test_driver_with_base_url() {
-        let driver = OpenAIResponsesProtocolLlmDriver::with_base_url(
+        let driver = OpenResponsesProtocolLlmDriver::with_base_url(
             "test-key",
             "https://custom.api.com/v1/responses",
         );
-        assert!(format!("{:?}", driver).contains("OpenAIResponsesProtocolLlmDriver"));
+        assert!(format!("{:?}", driver).contains("OpenResponsesProtocolLlmDriver"));
         assert_eq!(driver.api_url(), "https://custom.api.com/v1/responses");
     }
 
@@ -713,7 +725,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Hello"),
         ];
 
-        let (instructions, input) = OpenAIResponsesProtocolLlmDriver::build_input(&messages);
+        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
 
         assert_eq!(
             instructions,
@@ -725,19 +737,19 @@ mod tests {
     #[test]
     fn test_convert_role() {
         assert_eq!(
-            OpenAIResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::System),
+            OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::System),
             "developer"
         );
         assert_eq!(
-            OpenAIResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::User),
+            OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::User),
             "user"
         );
         assert_eq!(
-            OpenAIResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::Assistant),
+            OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::Assistant),
             "assistant"
         );
         assert_eq!(
-            OpenAIResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::Tool),
+            OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::Tool),
             "tool"
         );
     }

@@ -21,6 +21,7 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 - **Management UI**: Dashboard for agents, sessions, and chat
 - **Extensible capabilities**: Add tools and behaviors to agents via modular capabilities
 - **Multi-provider support**: OpenAI, Anthropic, and more
+- **[Open Responses](https://www.openresponses.org/)**: Vendor-neutral API for multi-provider LLM interfaces
 
 ## Quick Start
 

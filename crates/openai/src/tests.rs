@@ -12,8 +12,8 @@ mod driver_tests {
         let driver = OpenAILlmDriver::new("test-key");
         // Just verify it can be created
         assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
-        // Default mode should be Completions
-        assert_eq!(driver.api_mode(), OpenAIApiMode::Completions);
+        // Default mode should be Responses (Open Responses API)
+        assert_eq!(driver.api_mode(), OpenAIApiMode::Responses);
     }
 
     #[test]
@@ -95,7 +95,8 @@ mod api_mode_tests {
     #[test]
     fn test_api_mode_default() {
         let mode = OpenAIApiMode::default();
-        assert_eq!(mode, OpenAIApiMode::Completions);
+        // Default is now Responses (Open Responses API)
+        assert_eq!(mode, OpenAIApiMode::Responses);
     }
 
     #[test]
