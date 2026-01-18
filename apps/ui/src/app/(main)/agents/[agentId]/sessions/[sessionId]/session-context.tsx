@@ -189,6 +189,14 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
   useEffect(() => {
     if (!events || events.length === 0) return;
 
+    // Debug: log streaming events (temporary)
+    const streamingEvents = events.filter(
+      (e) => e.type === "agent.thinking" || e.type === "text.delta"
+    );
+    if (streamingEvents.length > 0) {
+      console.log("[streaming] Events received:", streamingEvents.map((e) => e.type));
+    }
+
     // Process events from newest to oldest to find current streaming state
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i];
@@ -219,6 +227,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         const data = event.data as AgentThinkingData;
         // Only set thinking if we don't already have streaming text for this turn
         if (!streamingText || streamingTurnId !== data.turn_id) {
+          console.log("[streaming] Setting isThinking=true for turn:", data.turn_id);
           setIsThinking(true);
           setStreamingText(null);
           setStreamingTurnId(data.turn_id);
