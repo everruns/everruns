@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity } from "lucide-react";
+import { Activity, Eye } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -14,7 +17,9 @@ import {
 import { useSessionContext } from "../session-context";
 
 export default function EventsPage() {
-  const { events, eventsLoading } = useSessionContext();
+  const { events, eventsLoading, agentId, sessionId } = useSessionContext();
+
+  const basePath = `/agents/${agentId}/sessions/${sessionId}`;
 
   return (
     <div className="flex-1 overflow-y-auto p-4">
@@ -39,6 +44,7 @@ export default function EventsPage() {
                 <TableHead className="w-[180px]">Type</TableHead>
                 <TableHead className="w-[200px]">Timestamp</TableHead>
                 <TableHead>Data</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -57,6 +63,17 @@ export default function EventsPage() {
                     <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
                       {JSON.stringify(event.data, null, 2)}
                     </pre>
+                  </TableCell>
+                  <TableCell>
+                    {event.type === "llm.generation" && (
+                      <Link
+                        href={`${basePath}/llm-history/${event.id}`}
+                        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        View
+                      </Link>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
