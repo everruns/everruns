@@ -15,7 +15,8 @@
 use anyhow::{Context, Result};
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
-use everruns_core::capabilities::CapabilityRegistry;
+use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
+use everruns_core::traits::AgentStore;
 use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
@@ -253,8 +254,35 @@ pub async fn act_activity(
         "Executing act_activity"
     );
 
+    // Create tool registry with default built-in tools
+    let mut builtin_executor = ToolRegistry::with_defaults();
+
+    // Load agent capabilities and register their tools
+    let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
+    if let Ok(Some(agent)) = agent_store.get_agent(input.agent_id).await {
+        // Extract capability IDs, filtering out MCP capabilities (handled separately)
+        let builtin_cap_ids: Vec<String> = agent
+            .capabilities
+            .iter()
+            .map(|c| c.capability_id().to_string())
+            .filter(|id| !is_mcp_capability(id))
+            .collect();
+
+        if !builtin_cap_ids.is_empty() {
+            let capability_registry = CapabilityRegistry::with_builtins();
+            let collected = collect_capabilities(&builtin_cap_ids, &capability_registry);
+            for tool in collected.tools {
+                builtin_executor.register_boxed(tool);
+            }
+            tracing::debug!(
+                capability_count = builtin_cap_ids.len(),
+                tool_count = collected.tool_definitions.len(),
+                "Registered capability tools for act_activity"
+            );
+        }
+    }
+
     // Create composite tool executor that handles both built-in and MCP tools
-    let builtin_executor = ToolRegistry::with_defaults();
     let mcp_executor = Arc::new(crate::mcp_executor::McpToolExecutor::new(
         grpc_client.clone(),
         org_id,
