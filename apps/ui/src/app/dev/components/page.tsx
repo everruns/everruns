@@ -9,8 +9,8 @@ import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
-import { LlmHistoryViewer } from "@/components/llm/llm-history-viewer";
-import type { Message, Event, TokenUsage, LlmGenerationData } from "@/lib/api/types";
+import { Markdown, InlineMarkdown } from "@/components/ui/markdown";
+import type { Message, Event, TokenUsage } from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 
 // Check if we're in development mode
@@ -500,137 +500,81 @@ const sampleEvents = {
   } satisfies Event,
 };
 
-// Sample LLM Generation data for LlmHistoryViewer
-const sampleLlmGenerationData: LlmGenerationData = {
-  messages: [
-    {
-      id: "msg-sys-1",
-      session_id: "session-1",
-      sequence: 0,
-      role: "agent" as const, // System messages shown as agent
-      content: [
-        {
-          type: "text" as const,
-          text: "You are a helpful coding assistant. You help users with programming tasks, code review, and software development best practices.",
-        },
-      ],
-      tool_call_id: null,
-      created_at: new Date(Date.now() - 120000).toISOString(),
-    },
-    {
-      id: "msg-user-1",
-      session_id: "session-1",
-      sequence: 1,
-      role: "user" as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Can you help me write a function to find prime numbers?",
-        },
-      ],
-      tool_call_id: null,
-      created_at: new Date(Date.now() - 60000).toISOString(),
-    },
-    {
-      id: "msg-agent-1",
-      session_id: "session-1",
-      sequence: 2,
-      role: "agent" as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "I'll help you write a prime number function. Let me create that for you.",
-        },
-        {
-          type: "tool_call" as const,
-          id: "tc-write-1",
-          name: "write_file",
-          arguments: { path: "/src/primes.ts", content: "export function isPrime(n: number): boolean {\n  if (n <= 1) return false;\n  for (let i = 2; i * i <= n; i++) {\n    if (n % i === 0) return false;\n  }\n  return true;\n}" },
-        },
-      ],
-      tool_call_id: null,
-      created_at: new Date(Date.now() - 55000).toISOString(),
-    },
-    {
-      id: "msg-tool-1",
-      session_id: "session-1",
-      sequence: 3,
-      role: "tool_result" as const,
-      content: [
-        {
-          type: "tool_result" as const,
-          tool_call_id: "tc-write-1",
-          result: { success: true, path: "/src/primes.ts" },
-        },
-      ],
-      tool_call_id: "tc-write-1",
-      created_at: new Date(Date.now() - 50000).toISOString(),
-    },
-    {
-      id: "msg-user-2",
-      session_id: "session-1",
-      sequence: 4,
-      role: "user" as const,
-      content: [
-        {
-          type: "text" as const,
-          text: "Can you also add a function to find all primes up to N?",
-        },
-      ],
-      tool_call_id: null,
-      created_at: new Date(Date.now() - 30000).toISOString(),
-    },
-  ],
-  output: {
-    text: "I'll add a function to find all prime numbers up to N using the Sieve of Eratosthenes algorithm, which is more efficient for finding multiple primes.",
-    tool_calls: [
-      {
-        id: "tc-write-2",
-        name: "write_file",
-        arguments: {
-          path: "/src/primes.ts",
-          content: "export function isPrime(n: number): boolean {\n  if (n <= 1) return false;\n  for (let i = 2; i * i <= n; i++) {\n    if (n % i === 0) return false;\n  }\n  return true;\n}\n\nexport function findPrimesUpTo(n: number): number[] {\n  const sieve = new Array(n + 1).fill(true);\n  sieve[0] = sieve[1] = false;\n  for (let i = 2; i * i <= n; i++) {\n    if (sieve[i]) {\n      for (let j = i * i; j <= n; j += i) {\n        sieve[j] = false;\n      }\n    }\n  }\n  return sieve.map((isPrime, i) => isPrime ? i : -1).filter(i => i !== -1);\n}",
-        },
-      },
-    ],
-  },
-  metadata: {
-    model: "claude-sonnet-4-20250514",
-    provider: "anthropic",
-    usage: {
-      input_tokens: 1847,
-      output_tokens: 312,
-      cache_read_tokens: 1200,
-      cache_creation_tokens: 0,
-    },
-    duration_ms: 2345,
-    success: true,
-  },
-};
+// ============================================
+// Markdown Content Samples
+// ============================================
 
-const sampleLlmGenerationWithError: LlmGenerationData = {
-  messages: [
-    {
-      id: "msg-user-err",
-      session_id: "session-1",
-      sequence: 1,
-      role: "user" as const,
-      content: [{ type: "text" as const, text: "Generate an image of a cat" }],
-      tool_call_id: null,
-      created_at: new Date().toISOString(),
-    },
-  ],
-  output: {
-    text: undefined,
-    tool_calls: [],
-  },
-  metadata: {
-    model: "gpt-4o",
-    provider: "openai",
-    duration_ms: 534,
-    success: false,
-    error: "Model does not support image generation. Please use a model with image generation capabilities.",
-  },
+const sampleMarkdownContent = {
+  basicFormatting: `**Bold text**, *italic text*, and \`inline code\`.
+
+Here's a [link to GitHub](https://github.com).`,
+
+  codeBlock: `Here's a code example:
+
+\`\`\`typescript
+function greet(name: string): string {
+  return \`Hello, \${name}!\`;
+}
+\`\`\``,
+
+  lists: `Ordered list:
+1. First item
+2. Second item
+3. Third item
+
+Unordered list:
+- Item A
+- Item B
+- Item C`,
+
+  table: `| Feature | Status | Notes |
+|---------|--------|-------|
+| Markdown | ✅ Done | Full GFM support |
+| Alerts | ✅ Done | All 5 types |
+| Tables | ✅ Done | With styling |`,
+
+  noteAlert: `> [!NOTE]
+> Highlights information that users should take into account, even when skimming.`,
+
+  tipAlert: `> [!TIP]
+> Optional information to help a user be more successful.`,
+
+  importantAlert: `> [!IMPORTANT]
+> Crucial information necessary for users to succeed.`,
+
+  warningAlert: `> [!WARNING]
+> Critical content demanding immediate user attention due to potential risks.`,
+
+  cautionAlert: `> [!CAUTION]
+> Negative potential consequences of an action.`,
+
+  allAlerts: `> [!NOTE]
+> This is a note with helpful information.
+
+> [!TIP]
+> This is a tip to help you succeed.
+
+> [!IMPORTANT]
+> This is important information you must know.
+
+> [!WARNING]
+> This is a warning about potential risks.
+
+> [!CAUTION]
+> This describes negative consequences of an action.`,
+
+  capabilityDescription: `Fetch content from URLs and convert HTML to markdown.
+
+> [!TIP]
+> Use \`as_markdown: true\` for better readability when fetching HTML pages.
+
+> [!WARNING]
+> Binary content (images, PDFs) cannot be fetched as text. Only metadata is returned.
+
+**Features:**
+- HTTP/HTTPS support
+- HTML to Markdown conversion
+- Configurable timeouts`,
 };
 
 // ============================================
@@ -960,32 +904,75 @@ export default function DevComponentsPage() {
               </ShowcaseItem>
             </ShowcaseSection>
 
-            {/* LLM History Viewer Section */}
+            {/* Markdown Component Section */}
             <ShowcaseSection
-              title="LlmHistoryViewer Component"
-              description="Visualizes the full message history sent to LLM during llm.generation events (components/llm/llm-history-viewer.tsx)"
+              title="Markdown Component"
+              description="GitHub Flavored Markdown renderer with alert support (components/ui/markdown.tsx)"
             >
-              <ShowcaseItem label="Full View (Multi-turn with Tool Calls)">
-                <LlmHistoryViewer
-                  data={sampleLlmGenerationData}
-                  eventId="evt-llm-12345678-abcd-1234-efgh-567890ijklmn"
-                  timestamp={new Date().toISOString()}
-                  maxHeight="400px"
-                />
+              <ShowcaseItem label="Basic Formatting">
+                <InlineMarkdown content={sampleMarkdownContent.basicFormatting} />
               </ShowcaseItem>
 
-              <ShowcaseItem label="Compact View">
-                <LlmHistoryViewer
-                  data={sampleLlmGenerationData}
-                  compact
-                />
+              <ShowcaseItem label="Code Block">
+                <InlineMarkdown content={sampleMarkdownContent.codeBlock} />
               </ShowcaseItem>
 
-              <ShowcaseItem label="Error State">
-                <LlmHistoryViewer
-                  data={sampleLlmGenerationWithError}
-                  eventId="evt-llm-error-99999"
-                  timestamp={new Date().toISOString()}
+              <ShowcaseItem label="Lists">
+                <InlineMarkdown content={sampleMarkdownContent.lists} />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Table">
+                <InlineMarkdown content={sampleMarkdownContent.table} />
+              </ShowcaseItem>
+            </ShowcaseSection>
+
+            {/* GitHub-Style Alerts Section */}
+            <ShowcaseSection
+              title="GitHub-Style Alerts"
+              description="GitHub Flavored Markdown alerts: NOTE, TIP, IMPORTANT, WARNING, CAUTION"
+            >
+              <ShowcaseItem label="[!NOTE] Alert">
+                <InlineMarkdown content={sampleMarkdownContent.noteAlert} />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="[!TIP] Alert">
+                <InlineMarkdown content={sampleMarkdownContent.tipAlert} />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="[!IMPORTANT] Alert">
+                <InlineMarkdown content={sampleMarkdownContent.importantAlert} />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="[!WARNING] Alert">
+                <InlineMarkdown content={sampleMarkdownContent.warningAlert} />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="[!CAUTION] Alert">
+                <InlineMarkdown content={sampleMarkdownContent.cautionAlert} />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="All Alerts Together">
+                <InlineMarkdown content={sampleMarkdownContent.allAlerts} />
+              </ShowcaseItem>
+            </ShowcaseSection>
+
+            {/* Markdown Variants Section */}
+            <ShowcaseSection
+              title="Markdown Variants"
+              description="Different display variants for various contexts"
+            >
+              <ShowcaseItem label="Default Variant (with background)">
+                <Markdown content={sampleMarkdownContent.capabilityDescription} />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="Compact Variant (no background)">
+                <Markdown content={sampleMarkdownContent.capabilityDescription} variant="compact" />
+              </ShowcaseItem>
+
+              <ShowcaseItem label="InlineMarkdown (for descriptions)">
+                <InlineMarkdown
+                  content={sampleMarkdownContent.capabilityDescription}
+                  className="text-muted-foreground"
                 />
               </ShowcaseItem>
             </ShowcaseSection>

@@ -30,7 +30,13 @@ impl Capability for FileSystemCapability {
     }
 
     fn description(&self) -> &str {
-        "Tools to access and manipulate files in the session file system - read, write, list, grep, and more."
+        r#"Tools to access and manipulate files in the session file system - read, write, list, grep, and more.
+
+> [!NOTE]
+> Each session has its own isolated filesystem. Files persist for the session duration.
+
+> [!TIP]
+> Use `list_directory` first to explore the filesystem structure before reading or writing files."#
     }
 
     fn status(&self) -> CapabilityStatus {
