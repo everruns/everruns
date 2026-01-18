@@ -146,20 +146,14 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
     user: {
       icon: User,
       label: "User",
-      bgClass: "bg-gray-100 dark:bg-gray-800",
-      borderClass: "border-gray-200 dark:border-gray-700",
     },
     agent: {
       icon: Bot,
       label: "Assistant",
-      bgClass: "bg-blue-50 dark:bg-blue-950/30",
-      borderClass: "border-blue-200 dark:border-blue-800",
     },
     tool_result: {
       icon: Wrench,
       label: "Tool Result",
-      bgClass: "bg-amber-50 dark:bg-amber-950/30",
-      borderClass: "border-amber-200 dark:border-amber-800",
     },
   };
 
@@ -168,17 +162,13 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
   const config = roleConfig[role] || {
     icon: FileText,
     label: message.role,
-    bgClass: "bg-purple-50 dark:bg-purple-950/30",
-    borderClass: "border-purple-200 dark:border-purple-800",
   };
   const Icon = config.icon;
 
   return (
-    <div className={cn("border rounded-lg p-3", config.bgClass, config.borderClass)}>
+    <div className="border rounded-lg p-3 bg-background">
       <div className="flex items-center gap-2 mb-2">
-        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-background border">
-          <Icon className="w-3.5 h-3.5" />
-        </div>
+        <Icon className="w-4 h-4 text-muted-foreground" />
         <span className="text-sm font-medium">{config.label}</span>
         <span className="text-xs text-muted-foreground">#{index + 1}</span>
         {message.tool_call_id && (
@@ -187,7 +177,7 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
           </span>
         )}
       </div>
-      <div className="space-y-2 pl-8">
+      <div className="space-y-2 pl-6">
         {message.content.map((part, partIndex) => (
           <ContentPartRenderer key={partIndex} part={part} />
         ))}

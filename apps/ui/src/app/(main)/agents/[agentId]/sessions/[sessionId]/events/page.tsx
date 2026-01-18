@@ -91,7 +91,7 @@ export default function EventsPage() {
                   </TableCell>
                   <TableCell className="font-mono text-xs">
                     <div className="relative">
-                      <div className="flex items-center gap-1 mb-1">
+                      <div className="absolute right-0 top-0 z-10 flex items-center gap-1 bg-background/80 backdrop-blur-sm rounded px-1">
                         {event.type === "llm.generation" && (
                           <Link
                             href={`${basePath}/llm-history/${event.id}`}
