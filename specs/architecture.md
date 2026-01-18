@@ -239,11 +239,11 @@ a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
 ```rust
 use everruns_openai::{OpenAILlmDriver, OpenAIApiMode};
 
-// Chat Completions API (default for backward compatibility)
+// Default: uses Open Responses API (recommended)
 let driver = OpenAILlmDriver::new("api-key");
 
-// Open Responses API (recommended for new projects)
-let driver = OpenAILlmDriver::with_mode("api-key", OpenAIApiMode::Responses);
+// Explicit Completions mode (for backward compatibility)
+let driver = OpenAILlmDriver::with_mode("api-key", OpenAIApiMode::Completions);
 ```
 
 **Implementation**:
