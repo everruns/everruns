@@ -117,6 +117,13 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatEvents]);
 
+  // Auto-focus message input when session loads
+  useEffect(() => {
+    if (!eventsLoading) {
+      textareaRef.current?.focus();
+    }
+  }, [eventsLoading]);
+
   // Mutation for sending message with images
   const sendMessageWithImages = useMutation({
     mutationFn: async ({
