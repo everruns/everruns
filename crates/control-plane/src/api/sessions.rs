@@ -347,7 +347,7 @@ pub async fn cancel_turn(
     }
 
     // Insert agent message indicating cancellation
-    let cancel_message = Message::assistant("Turn cancelled by user.");
+    let cancel_message = Message::assistant("Work was cancelled by user.");
     let message_event = EventRequest::new(
         session_id,
         EventContext::turn(turn_id, input_message_id),

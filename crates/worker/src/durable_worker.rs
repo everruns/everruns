@@ -485,6 +485,23 @@ impl DurableWorker {
             "Executing task"
         );
 
+        // Check if workflow is cancelled before executing
+        {
+            let mut store = self.store.lock().await;
+            if let Ok((status, _, _)) = store.get_workflow_status(task.workflow_id).await
+                && status == WorkflowStatus::Cancelled
+            {
+                info!(
+                    task_id = %task.id,
+                    workflow_id = %task.workflow_id,
+                    "Workflow cancelled, skipping task execution"
+                );
+                // Mark task as failed due to cancellation
+                let _ = store.fail_task(task.id, "Workflow cancelled").await;
+                return Ok(());
+            }
+        }
+
         // Create a new gRPC client for this task execution
         let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
 
@@ -794,6 +811,18 @@ impl DurableWorker {
     ) -> Result<()> {
         let input_json = serde_json::to_value(input)?;
         let mut store = self.store.lock().await;
+
+        // Check if workflow is cancelled before scheduling next activity
+        if let Ok((status, _, _)) = store.get_workflow_status(workflow_id).await
+            && status == WorkflowStatus::Cancelled
+        {
+            info!(
+                workflow_id = %workflow_id,
+                completed_activity = %completed_activity,
+                "Workflow cancelled, not scheduling next activity"
+            );
+            return Ok(());
+        }
 
         match completed_activity {
             "process_input" => {
