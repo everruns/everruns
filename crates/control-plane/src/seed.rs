@@ -397,7 +397,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.2",
         display_name: "GPT-5.2",
-        is_default: false,
+        is_default: true,  // Default model
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -471,8 +471,8 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5-mini",
         display_name: "GPT-5 mini",
-        is_default: true,  // Default model
-        is_favorite: true, // Favorite model
+        is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5,
