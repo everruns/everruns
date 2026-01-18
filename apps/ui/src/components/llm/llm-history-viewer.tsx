@@ -61,7 +61,7 @@ function ToolCallContentPart({ toolCall }: { toolCall: { id: string; name: strin
         <span className="text-xs font-medium">{toolCall.name}</span>
         <span className="text-xs text-muted-foreground font-mono">({toolCall.id})</span>
       </div>
-      <pre className="text-xs bg-background rounded p-2 overflow-x-auto max-h-32">
+      <pre className="text-xs bg-background rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
         {JSON.stringify(toolCall.arguments, null, 2)}
       </pre>
     </div>
@@ -69,6 +69,26 @@ function ToolCallContentPart({ toolCall }: { toolCall: { id: string; name: strin
 }
 
 function ToolResultContentPart({ toolCallId, result, error }: { toolCallId: string; result?: unknown; error?: string }) {
+  // Format the result for display
+  const formatResult = (value: unknown): string => {
+    if (value === undefined || value === null) {
+      return "null";
+    }
+    if (typeof value === "string") {
+      // Try to parse and format if it's a JSON string
+      try {
+        const parsed = JSON.parse(value);
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        // Not valid JSON, return as-is but handle long strings
+        return value;
+      }
+    }
+    return JSON.stringify(value, null, 2);
+  };
+
+  const formattedResult = formatResult(result);
+
   return (
     <div className={cn("border rounded-md p-2", error ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900" : "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900")}>
       <div className="flex items-center gap-2 mb-1">
@@ -83,8 +103,8 @@ function ToolResultContentPart({ toolCallId, result, error }: { toolCallId: stri
       {error ? (
         <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
       ) : (
-        <pre className="text-xs bg-background rounded p-2 overflow-x-auto max-h-32">
-          {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+        <pre className="text-xs bg-background rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
+          {formattedResult}
         </pre>
       )}
     </div>
