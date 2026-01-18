@@ -160,8 +160,8 @@ impl LlmModelService {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
         LlmModel {
-            id: row.id,
-            provider_id: row.provider_id,
+            id: row.id.into(),
+            provider_id: row.provider_id.into(),
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,
@@ -187,8 +187,8 @@ impl LlmModelService {
         let profile = get_model_profile(&provider_type, &row.model_id);
 
         LlmModelWithProvider {
-            id: row.id,
-            provider_id: row.provider_id,
+            id: row.id.into(),
+            provider_id: row.provider_id.into(),
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,

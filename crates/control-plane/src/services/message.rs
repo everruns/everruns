@@ -64,7 +64,7 @@ impl MessageService {
 
         // Build the core message
         let core_message = everruns_core::Message {
-            id: message_id,
+            id: message_id.into(),
             role: everruns_core::MessageRole::User,
             content: content.clone(),
             controls: req.controls.clone(),
@@ -174,7 +174,7 @@ impl MessageService {
                             data.error.clone(),
                         );
                         return Ok(Message {
-                            id: msg.id,
+                            id: msg.id.uuid(),
                             session_id,
                             sequence,
                             role: MessageRole::from(msg.role.to_string().as_str()),
@@ -188,7 +188,7 @@ impl MessageService {
                 };
 
                 Ok(Message {
-                    id: core_message.id,
+                    id: core_message.id.uuid(),
                     session_id,
                     sequence,
                     role: MessageRole::from(core_message.role.to_string().as_str()),

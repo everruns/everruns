@@ -70,7 +70,8 @@ impl SessionService {
         let session = Self::row_to_session(row);
 
         // Apply capability mounts to the session filesystem
-        self.apply_capability_mounts(agent_id, session.id).await?;
+        self.apply_capability_mounts(agent_id, session.id.uuid())
+            .await?;
 
         Ok(session)
     }
@@ -81,7 +82,12 @@ impl SessionService {
     /// 1. Gets the agent's enabled capabilities
     /// 2. Collects mount points from those capabilities
     /// 3. Creates the mounted files/directories in the session filesystem
-    async fn apply_capability_mounts(&self, agent_id: Uuid, session_id: Uuid) -> Result<()> {
+    async fn apply_capability_mounts(
+        &self,
+        agent_id: Uuid,
+        session_id: impl Into<uuid::Uuid> + Copy,
+    ) -> Result<()> {
+        let session_id = session_id.into();
         // Get agent's capability IDs
         let capability_rows = self.db.get_agent_capabilities(agent_id).await?;
         let capability_ids: Vec<String> = capability_rows
@@ -145,16 +151,16 @@ impl SessionService {
         let mut sessions: Vec<Session> = rows.into_iter().map(Self::row_to_session).collect();
 
         // Fetch previews for all sessions in batch queries
-        let session_ids: Vec<Uuid> = sessions.iter().map(|s| s.id).collect();
+        let session_ids: Vec<Uuid> = sessions.iter().map(|s| s.id.uuid()).collect();
         let input_previews = self.db.get_session_previews(&session_ids).await?;
         let output_previews = self.db.get_session_output_previews(&session_ids).await?;
 
         // Populate previews for each session
         for session in &mut sessions {
-            if let Some(preview) = input_previews.get(&session.id) {
+            if let Some(preview) = input_previews.get(&session.id.uuid()) {
                 session.preview = Some(preview.clone());
             }
-            if let Some(preview) = output_previews.get(&session.id) {
+            if let Some(preview) = output_previews.get(&session.id.uuid()) {
                 session.output_preview = Some(preview.clone());
             }
         }
@@ -218,13 +224,13 @@ impl SessionService {
         };
 
         Session {
-            id: row.id,
-            agent_id: row.agent_id,
+            id: row.id.into(),
+            agent_id: row.agent_id.into(),
             title: row.title,
             preview: None,        // Populated separately in list()
             output_preview: None, // Populated separately in list()
             tags: row.tags,
-            model_id: row.model_id,
+            model_id: row.model_id.map(|id| id.into()),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             started_at: row.started_at,

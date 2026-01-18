@@ -11,11 +11,11 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::llm_models::LlmProvider;
+use everruns_core::typed_id::ProviderId;
 use everruns_core::{DriverRegistry, LlmProviderStatus, LlmProviderType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use super::common::{ErrorResponse, ListResponse};
 
@@ -182,10 +182,11 @@ pub async fn list_providers(
     path = "/v1/orgs/{org}/llm-providers/{id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("id" = Uuid, Path, description = "Provider ID")
+        ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     responses(
         (status = 200, description = "Provider found", body = LlmProvider),
+        (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
     tag = "llm-providers"
@@ -193,11 +194,20 @@ pub async fn list_providers(
 pub async fn get_provider(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, Uuid)>,
+    Path((_org_path, id)): Path<(String, String)>,
 ) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
+    let provider_id: ProviderId = id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid provider ID: {}", e),
+            }),
+        )
+    })?;
+
     let provider = state
         .service
-        .get(id)
+        .get(provider_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get LLM provider: {}", e);
@@ -226,11 +236,12 @@ pub async fn get_provider(
     path = "/v1/orgs/{org}/llm-providers/{id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("id" = Uuid, Path, description = "Provider ID")
+        ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     request_body = UpdateLlmProviderRequest,
     responses(
         (status = 200, description = "Provider updated", body = LlmProvider),
+        (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
     tag = "llm-providers"
@@ -238,12 +249,21 @@ pub async fn get_provider(
 pub async fn update_provider(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, Uuid)>,
+    Path((_org_path, id)): Path<(String, String)>,
     Json(req): Json<UpdateLlmProviderRequest>,
 ) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
+    let provider_id: ProviderId = id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid provider ID: {}", e),
+            }),
+        )
+    })?;
+
     let provider = state
         .service
-        .update(id, req)
+        .update(provider_id.uuid(), req)
         .await
         .map_err(|e| {
             let error_msg = e.to_string();
@@ -280,10 +300,11 @@ pub async fn update_provider(
     path = "/v1/orgs/{org}/llm-providers/{id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("id" = Uuid, Path, description = "Provider ID")
+        ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     responses(
         (status = 204, description = "Provider deleted"),
+        (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
     tag = "llm-providers"
@@ -291,17 +312,30 @@ pub async fn update_provider(
 pub async fn delete_provider(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, Uuid)>,
+    Path((_org_path, id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let deleted = state.service.delete(id).await.map_err(|e| {
-        tracing::error!("Failed to delete LLM provider: {}", e);
+    let provider_id: ProviderId = id.parse().map_err(|e| {
         (
-            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "Internal server error".to_string(),
+                error: format!("Invalid provider ID: {}", e),
             }),
         )
     })?;
+
+    let deleted = state
+        .service
+        .delete(provider_id.uuid())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete LLM provider: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
@@ -324,10 +358,11 @@ pub async fn delete_provider(
     path = "/v1/orgs/{org}/llm-providers/{id}/sync-models",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("id" = Uuid, Path, description = "Provider ID")
+        ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     responses(
         (status = 200, description = "Models synced", body = SyncModelsResponse),
+        (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found"),
         (status = 500, description = "Sync failed")
     ),
@@ -336,27 +371,40 @@ pub async fn delete_provider(
 pub async fn sync_models(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, Uuid)>,
+    Path((_org_path, id)): Path<(String, String)>,
 ) -> Result<Json<SyncModelsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let result = state.sync_service.sync_provider(id).await.map_err(|e| {
-        let error_msg = e.to_string();
-        if error_msg.contains("Provider not found") {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Provider not found".to_string(),
-                }),
-            )
-        } else {
-            tracing::error!("Failed to sync models for provider {}: {}", id, e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        }
+    let provider_id: ProviderId = id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid provider ID: {}", e),
+            }),
+        )
     })?;
+
+    let result = state
+        .sync_service
+        .sync_provider(provider_id.uuid())
+        .await
+        .map_err(|e| {
+            let error_msg = e.to_string();
+            if error_msg.contains("Provider not found") {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: "Provider not found".to_string(),
+                    }),
+                )
+            } else {
+                tracing::error!("Failed to sync models for provider {}: {}", provider_id, e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Internal server error".to_string(),
+                    }),
+                )
+            }
+        })?;
 
     let response = match result {
         SyncResult::Success {
@@ -370,7 +418,7 @@ pub async fn sync_models(
         },
         SyncResult::NotSupported => SyncModelsResponse::NotSupported,
         SyncResult::Failed { error } => {
-            tracing::error!("Model sync failed for provider {}: {}", id, error);
+            tracing::error!("Model sync failed for provider {}: {}", provider_id, error);
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {

@@ -41,6 +41,7 @@ Available specs:
 - `specs/dismissed-options.md` - Technical options considered but dismissed
 - `specs/multitenancy.md` - Organization-based multitenancy and resource isolation
 - `specs/release-process.md` - Release workflow with CHANGELOG.md as source of truth
+- `specs/id-schema.md` - Standardized prefixed ID format for all entities
 
 Specification format: Abstract and Requirements sections.
 

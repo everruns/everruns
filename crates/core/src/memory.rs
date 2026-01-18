@@ -10,6 +10,7 @@ use crate::llm_models::LlmProviderType;
 use crate::session::Session;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ModelWithProvider;
+use crate::typed_id::{MessageId, SessionId};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -70,9 +71,9 @@ impl InMemoryMessageRetriever {
     ///
     /// Note: In production, messages are stored via EventService.
     /// This method is provided for test setup and in-memory usage.
-    pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+    pub async fn add(&self, session_id: SessionId, input: InputMessage) -> Result<Message> {
         let message = Message {
-            id: Uuid::now_v7(),
+            id: MessageId::new(),
             role: input.role,
             content: input.content,
             controls: input.controls,
@@ -83,7 +84,7 @@ impl InMemoryMessageRetriever {
         self.messages
             .write()
             .await
-            .entry(session_id)
+            .entry(session_id.uuid())
             .or_default()
             .push(message.clone());
 
@@ -160,7 +161,7 @@ impl InMemoryAgentStore {
 
     /// Add an agent to the store
     pub async fn add_agent(&self, agent: Agent) {
-        self.agents.write().await.insert(agent.id, agent);
+        self.agents.write().await.insert(agent.id.uuid(), agent);
     }
 
     /// Get all agent IDs
@@ -204,7 +205,10 @@ impl InMemorySessionStore {
 
     /// Add a session to the store
     pub async fn add_session(&self, session: Session) {
-        self.sessions.write().await.insert(session.id, session);
+        self.sessions
+            .write()
+            .await
+            .insert(session.id.uuid(), session);
     }
 
     /// Get all session IDs
@@ -696,12 +700,12 @@ mod tests {
 
         // Add a message using the add method
         let message = store
-            .add(session_id, InputMessage::user("Hello via add"))
+            .add(session_id.into(), InputMessage::user("Hello via add"))
             .await
             .unwrap();
 
         // Get the message by ID
-        let retrieved = store.get(session_id, message.id).await.unwrap();
+        let retrieved = store.get(session_id, message.id.into()).await.unwrap();
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().text(), Some("Hello via add"));
 
@@ -721,12 +725,12 @@ mod tests {
 
         // Add a message
         let added = store
-            .add(session_id, InputMessage::user("Test consistency"))
+            .add(session_id.into(), InputMessage::user("Test consistency"))
             .await
             .unwrap();
 
         // The returned message ID must be retrievable
-        let retrieved = store.get(session_id, added.id).await.unwrap();
+        let retrieved = store.get(session_id, added.id.into()).await.unwrap();
         assert!(
             retrieved.is_some(),
             "Message must be retrievable by the ID returned from add()"

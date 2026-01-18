@@ -12,6 +12,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
+use everruns_core::typed_id::AgentId;
 use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, ToolDefinition};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
@@ -262,10 +263,11 @@ pub async fn list_agents(
     path = "/v1/orgs/{org}/agents/{agent_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
     ),
     responses(
         (status = 200, description = "Agent found", body = Agent),
+        (status = 400, description = "Invalid agent ID"),
         (status = 404, description = "Agent not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -274,14 +276,23 @@ pub async fn list_agents(
 pub async fn get_agent(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id)): Path<(String, Uuid)>,
-) -> Result<Json<Agent>, StatusCode> {
+    Path((_org_path, agent_id)): Path<(String, String)>,
+) -> Result<Json<Agent>, (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
     let agent = state
         .service
-        .get(org.org_id, agent_id)
+        .get(org.org_id, agent_id.uuid())
         .await
-        .log_internal_error("get agent")?
-        .ok_or_not_found()?;
+        .log_internal_error_json("get agent")?
+        .ok_or_not_found_json("Agent")?;
 
     Ok(Json(agent))
 }
@@ -292,12 +303,12 @@ pub async fn get_agent(
     path = "/v1/orgs/{org}/agents/{agent_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
     ),
     request_body = UpdateAgentRequest,
     responses(
         (status = 200, description = "Agent updated successfully", body = Agent),
-        (status = 400, description = "Input exceeds allowed limits", body = ErrorResponse),
+        (status = 400, description = "Invalid agent ID or input exceeds allowed limits", body = ErrorResponse),
         (status = 404, description = "Agent not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -306,9 +317,18 @@ pub async fn get_agent(
 pub async fn update_agent(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id)): Path<(String, Uuid)>,
+    Path((_org_path, agent_id)): Path<(String, String)>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> Result<Json<Agent>, (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
     // Validate input sizes (last-resort protection against abuse)
     validate_update_agent_input(
         req.name.as_deref(),
@@ -319,7 +339,7 @@ pub async fn update_agent(
 
     let agent = state
         .service
-        .update(org.org_id, agent_id, req)
+        .update(org.org_id, agent_id.uuid(), req)
         .await
         .log_internal_error_json("update agent")?
         .ok_or_not_found_json("Agent")?;
@@ -333,10 +353,11 @@ pub async fn update_agent(
     path = "/v1/orgs/{org}/agents/{agent_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
     ),
     responses(
         (status = 204, description = "Agent archived successfully"),
+        (status = 400, description = "Invalid agent ID"),
         (status = 404, description = "Agent not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -345,18 +366,32 @@ pub async fn update_agent(
 pub async fn delete_agent(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id)): Path<(String, Uuid)>,
-) -> Result<StatusCode, StatusCode> {
+    Path((_org_path, agent_id)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
     let deleted = state
         .service
-        .delete(org.org_id, agent_id)
+        .delete(org.org_id, agent_id.uuid())
         .await
-        .log_internal_error("delete agent")?;
+        .log_internal_error_json("delete agent")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(StatusCode::NOT_FOUND)
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Agent not found".to_string(),
+            }),
+        ))
     }
 }
 
@@ -366,10 +401,11 @@ pub async fn delete_agent(
     path = "/v1/orgs/{org}/agents/{agent_id}/export",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
     ),
     responses(
         (status = 200, description = "Agent exported as Markdown", content_type = "text/markdown"),
+        (status = 400, description = "Invalid agent ID"),
         (status = 404, description = "Agent not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -378,14 +414,23 @@ pub async fn delete_agent(
 pub async fn export_agent(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id)): Path<(String, Uuid)>,
-) -> Result<Response, StatusCode> {
+    Path((_org_path, agent_id)): Path<(String, String)>,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
     let agent = state
         .service
-        .get(org.org_id, agent_id)
+        .get(org.org_id, agent_id.uuid())
         .await
-        .log_internal_error("get agent for export")?
-        .ok_or_not_found()?;
+        .log_internal_error_json("get agent for export")?
+        .ok_or_not_found_json("Agent")?;
 
     let markdown = agent_to_markdown(&agent);
     let filename = format!("{}.md", slugify(&agent.name));

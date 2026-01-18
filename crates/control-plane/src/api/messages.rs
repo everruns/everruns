@@ -17,8 +17,9 @@ use axum::{
     routing::post,
 };
 use chrono::{DateTime, Utc};
+use everruns_core::typed_id::SessionId;
 
-use super::common::ListResponse;
+use super::common::{ErrorResponse, ListResponse};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -186,12 +187,13 @@ pub fn routes(state: AppState) -> Router {
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = CreateMessageRequest,
     responses(
         (status = 201, description = "Message created successfully", body = Message),
+        (status = 400, description = "Invalid ID format"),
         (status = 500, description = "Internal server error")
     ),
     tag = "messages"
@@ -199,19 +201,50 @@ pub fn routes(state: AppState) -> Router {
 pub async fn create_message(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, agent_id, session_id)): Path<(String, String, String)>,
     Json(req): Json<CreateMessageRequest>,
-) -> Result<(StatusCode, Json<Message>), StatusCode> {
+) -> Result<(StatusCode, Json<Message>), (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
+    // Parse agent_id for validation but use the raw UUID for the service
+    let agent_uuid = agent_id_to_uuid(&agent_id)?;
+
     let message = state
         .message_service
-        .create(org.org_id, agent_id, session_id, req)
+        .create(org.org_id, agent_uuid, session_id.uuid(), req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to create message: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
         })?;
 
     Ok((StatusCode::CREATED, Json(message)))
+}
+
+// Helper function to parse agent ID and return UUID
+fn agent_id_to_uuid(id: &str) -> Result<Uuid, (StatusCode, Json<ErrorResponse>)> {
+    use everruns_core::typed_id::AgentId;
+    let agent_id: AgentId = id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+    Ok(agent_id.uuid())
 }
 
 /// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages - List messages (PRIMARY data)
@@ -220,11 +253,12 @@ pub async fn create_message(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     responses(
         (status = 200, description = "List of messages", body = ListResponse<Message>),
+        (status = 400, description = "Invalid ID format"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -233,23 +267,53 @@ pub async fn create_message(
 pub async fn list_messages(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
-) -> Result<Json<ListResponse<Message>>, StatusCode> {
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+) -> Result<Json<ListResponse<Message>>, (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, session_id)
+        .get(org.org_id, session_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
 
-    let messages = state.message_service.list(session_id).await.map_err(|e| {
-        tracing::error!("Failed to list messages: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let messages = state
+        .message_service
+        .list(session_id.uuid())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list messages: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(ListResponse::new(messages)))
 }

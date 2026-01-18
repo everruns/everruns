@@ -17,6 +17,7 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
+use everruns_core::typed_id::ImageId;
 use image::ImageFormat;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
@@ -344,10 +345,11 @@ pub async fn list_images(
     path = "/v1/orgs/{org}/images/{image_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("image_id" = Uuid, Path, description = "Image ID")
+        ("image_id" = String, Path, description = "Image ID (prefixed, e.g., img_...)")
     ),
     responses(
         (status = 200, description = "Image binary data", content_type = "image/*"),
+        (status = 400, description = "Invalid image ID"),
         (status = 404, description = "Image not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -356,17 +358,24 @@ pub async fn list_images(
 pub async fn get_image(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, image_id)): Path<(String, Uuid)>,
-) -> Result<Response, StatusCode> {
+    Path((_org_path, image_id)): Path<(String, String)>,
+) -> Result<Response, (StatusCode, String)> {
+    let image_id: ImageId = image_id
+        .parse()
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid image ID: {}", e)))?;
+
     let row = state
         .db
-        .get_image(image_id)
+        .get_image(image_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get image: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            )
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or((StatusCode::NOT_FOUND, "Image not found".to_string()))?;
 
     let response = Response::builder()
         .status(StatusCode::OK)
@@ -388,10 +397,11 @@ pub async fn get_image(
     path = "/v1/orgs/{org}/images/{image_id}/thumbnail",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("image_id" = Uuid, Path, description = "Image ID")
+        ("image_id" = String, Path, description = "Image ID (prefixed, e.g., img_...)")
     ),
     responses(
         (status = 200, description = "Thumbnail binary data", content_type = "image/jpeg"),
+        (status = 400, description = "Invalid image ID"),
         (status = 404, description = "Image not found or no thumbnail"),
         (status = 500, description = "Internal server error")
     ),
@@ -400,22 +410,29 @@ pub async fn get_image(
 pub async fn get_thumbnail(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, image_id)): Path<(String, Uuid)>,
-) -> Result<Response, StatusCode> {
+    Path((_org_path, image_id)): Path<(String, String)>,
+) -> Result<Response, (StatusCode, String)> {
+    let image_id: ImageId = image_id
+        .parse()
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid image ID: {}", e)))?;
+
     let row = state
         .db
-        .get_image(image_id)
+        .get_image(image_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get image: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            )
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or((StatusCode::NOT_FOUND, "Image not found".to_string()))?;
 
     let (thumbnail_data, thumbnail_content_type) =
         match (row.thumbnail_data, row.thumbnail_content_type) {
             (Some(data), Some(ct)) => (data, ct),
-            _ => return Err(StatusCode::NOT_FOUND),
+            _ => return Err((StatusCode::NOT_FOUND, "No thumbnail available".to_string())),
         };
 
     let response = Response::builder()
@@ -434,10 +451,11 @@ pub async fn get_thumbnail(
     path = "/v1/orgs/{org}/images/{image_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("image_id" = Uuid, Path, description = "Image ID")
+        ("image_id" = String, Path, description = "Image ID (prefixed, e.g., img_...)")
     ),
     responses(
         (status = 204, description = "Image deleted"),
+        (status = 400, description = "Invalid image ID"),
         (status = 404, description = "Image not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -446,17 +464,24 @@ pub async fn get_thumbnail(
 pub async fn delete_image(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, image_id)): Path<(String, Uuid)>,
-) -> Result<StatusCode, StatusCode> {
-    let deleted = state.db.delete_image(image_id).await.map_err(|e| {
+    Path((_org_path, image_id)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let image_id: ImageId = image_id
+        .parse()
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid image ID: {}", e)))?;
+
+    let deleted = state.db.delete_image(image_id.uuid()).await.map_err(|e| {
         tracing::error!("Failed to delete image: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal server error".to_string(),
+        )
     })?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(StatusCode::NOT_FOUND)
+        Err((StatusCode::NOT_FOUND, "Image not found".to_string()))
     }
 }
 

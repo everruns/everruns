@@ -11,10 +11,11 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::events::{EventContext, EventRequest, MessageUserData, TurnCancelledData};
+use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
 
-use super::common::{ApiOptionExt, ApiResultExt, PaginatedResponse, Pagination};
+use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, PaginatedResponse, Pagination};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -143,11 +144,12 @@ pub fn routes(state: AppState) -> Router {
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
     ),
     request_body = CreateSessionRequest,
     responses(
         (status = 201, description = "Session created successfully", body = Session),
+        (status = 400, description = "Invalid agent ID"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -155,14 +157,23 @@ pub fn routes(state: AppState) -> Router {
 pub async fn create_session(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id)): Path<(String, Uuid)>,
+    Path((_org_path, agent_id)): Path<(String, String)>,
     Json(req): Json<CreateSessionRequest>,
-) -> Result<(StatusCode, Json<Session>), StatusCode> {
+) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
     let session = state
         .session_service
-        .create(org.org_id, agent_id, req)
+        .create(org.org_id, agent_id.uuid(), req)
         .await
-        .log_internal_error("create session")?;
+        .log_internal_error_json("create session")?;
 
     Ok((StatusCode::CREATED, Json(session)))
 }
@@ -173,11 +184,12 @@ pub async fn create_session(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
         ListSessionsQuery
     ),
     responses(
         (status = 200, description = "Paginated list of sessions", body = PaginatedResponse<Session>),
+        (status = 400, description = "Invalid agent ID"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -185,18 +197,27 @@ pub async fn create_session(
 pub async fn list_sessions(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id)): Path<(String, Uuid)>,
+    Path((_org_path, agent_id)): Path<(String, String)>,
     Query(query): Query<ListSessionsQuery>,
-) -> Result<Json<PaginatedResponse<Session>>, StatusCode> {
+) -> Result<Json<PaginatedResponse<Session>>, (StatusCode, Json<ErrorResponse>)> {
+    let agent_id: AgentId = agent_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid agent ID: {}", e),
+            }),
+        )
+    })?;
+
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
 
     let (sessions, total) = state
         .session_service
-        .list(org.org_id, agent_id, pagination)
+        .list(org.org_id, agent_id.uuid(), pagination)
         .await
-        .log_internal_error("list sessions")?;
+        .log_internal_error_json("list sessions")?;
 
     Ok(Json(PaginatedResponse::new(sessions, total, offset, limit)))
 }
@@ -207,11 +228,12 @@ pub async fn list_sessions(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     responses(
         (status = 200, description = "Session found", body = Session),
+        (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -220,14 +242,23 @@ pub async fn list_sessions(
 pub async fn get_session(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
-) -> Result<Json<Session>, StatusCode> {
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
     let session = state
         .session_service
-        .get(org.org_id, session_id)
+        .get(org.org_id, session_id.uuid())
         .await
-        .log_internal_error("get session")?
-        .ok_or_not_found()?;
+        .log_internal_error_json("get session")?
+        .ok_or_not_found_json("Session")?;
 
     Ok(Json(session))
 }
@@ -238,12 +269,13 @@ pub async fn get_session(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = UpdateSessionRequest,
     responses(
         (status = 200, description = "Session updated successfully", body = Session),
+        (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -252,15 +284,24 @@ pub async fn get_session(
 pub async fn update_session(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
     Json(req): Json<UpdateSessionRequest>,
-) -> Result<Json<Session>, StatusCode> {
+) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
     let session = state
         .session_service
-        .update(org.org_id, session_id, req)
+        .update(org.org_id, session_id.uuid(), req)
         .await
-        .log_internal_error("update session")?
-        .ok_or_not_found()?;
+        .log_internal_error_json("update session")?
+        .ok_or_not_found_json("Session")?;
 
     Ok(Json(session))
 }
@@ -271,11 +312,12 @@ pub async fn update_session(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     responses(
         (status = 204, description = "Session deleted successfully"),
+        (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -284,18 +326,32 @@ pub async fn update_session(
 pub async fn delete_session(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
-) -> Result<StatusCode, StatusCode> {
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
     let deleted = state
         .session_service
-        .delete(org.org_id, session_id)
+        .delete(org.org_id, session_id.uuid())
         .await
-        .log_internal_error("delete session")?;
+        .log_internal_error_json("delete session")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(StatusCode::NOT_FOUND)
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Session not found".to_string(),
+            }),
+        ))
     }
 }
 

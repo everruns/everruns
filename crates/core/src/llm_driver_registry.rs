@@ -498,7 +498,7 @@ impl LlmMessage {
                 }
                 ContentPart::ImageFile(img_file) => {
                     // Resolve image_file to actual image data
-                    if let Some(resolved) = resolved_images.get(&img_file.image_id) {
+                    if let Some(resolved) = resolved_images.get(&img_file.image_id.uuid()) {
                         parts.push(LlmContentPart::Image {
                             url: resolved.to_data_url(),
                         });
@@ -569,7 +569,7 @@ impl LlmMessage {
         msg.content
             .iter()
             .filter_map(|p| match p {
-                crate::message::ContentPart::ImageFile(f) => Some(f.image_id),
+                crate::message::ContentPart::ImageFile(f) => Some(f.image_id.uuid()),
                 _ => None,
             })
             .collect()
@@ -913,14 +913,14 @@ mod tests {
     #[test]
     fn test_message_has_image_files_with_image_file() {
         let message = Message {
-            id: uuid::Uuid::new_v4(),
+            id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![
                 ContentPart::Text(TextContentPart {
                     text: "Look at this image".to_string(),
                 }),
                 ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: uuid::Uuid::new_v4(),
+                    image_id: uuid::Uuid::new_v4().into(),
                     filename: Some("test.png".to_string()),
                 }),
             ],
@@ -935,7 +935,7 @@ mod tests {
     #[test]
     fn test_message_has_image_files_without_image_file() {
         let message = Message {
-            id: uuid::Uuid::new_v4(),
+            id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![ContentPart::Text(TextContentPart {
                 text: "Just text".to_string(),
@@ -954,18 +954,18 @@ mod tests {
         let id2 = uuid::Uuid::new_v4();
 
         let message = Message {
-            id: uuid::Uuid::new_v4(),
+            id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![
                 ContentPart::Text(TextContentPart {
                     text: "Look at these images".to_string(),
                 }),
                 ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: id1,
+                    image_id: id1.into(),
                     filename: Some("test1.png".to_string()),
                 }),
                 ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: id2,
+                    image_id: id2.into(),
                     filename: Some("test2.png".to_string()),
                 }),
             ],
@@ -983,7 +983,7 @@ mod tests {
     #[test]
     fn test_from_message_with_images_text_only() {
         let message = Message {
-            id: uuid::Uuid::new_v4(),
+            id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![ContentPart::Text(TextContentPart {
                 text: "Hello".to_string(),
@@ -1007,14 +1007,14 @@ mod tests {
     fn test_from_message_with_images_resolved_image() {
         let image_id = uuid::Uuid::new_v4();
         let message = Message {
-            id: uuid::Uuid::new_v4(),
+            id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![
                 ContentPart::Text(TextContentPart {
                     text: "Look at this".to_string(),
                 }),
                 ContentPart::ImageFile(ImageFileContentPart {
-                    image_id,
+                    image_id: image_id.into(),
                     filename: Some("test.png".to_string()),
                 }),
             ],
@@ -1051,10 +1051,10 @@ mod tests {
     fn test_from_message_with_images_unresolved_image() {
         let image_id = uuid::Uuid::new_v4();
         let message = Message {
-            id: uuid::Uuid::new_v4(),
+            id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![ContentPart::ImageFile(ImageFileContentPart {
-                image_id,
+                image_id: image_id.into(),
                 filename: Some("missing.png".to_string()),
             })],
             controls: None,

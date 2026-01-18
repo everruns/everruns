@@ -111,7 +111,7 @@ async fn main() -> anyhow::Result<()> {
     let session_id = Uuid::now_v7();
     let now = Utc::now();
     let agent = Agent {
-        id: agent_id,
+        id: agent_id.into(),
         name: "Weather Assistant".to_string(),
         description: Some("A helpful weather assistant".to_string()),
         system_prompt: "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.".to_string(),
@@ -127,8 +127,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Create a session in the store
     let session = Session {
-        id: session_id,
-        agent_id,
+        id: session_id.into(),
+        agent_id: agent_id.into(),
         title: Some("Weather Query".to_string()),
         preview: None,
         output_preview: None,
@@ -160,14 +160,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Add user message to store (this would be done by the API layer)
     let user_message = message_retriever
-        .add(session_id, InputMessage::user(user_question))
+        .add(session_id.into(), InputMessage::user(user_question))
         .await?;
 
     // =========================================================================
     // Create Turn Context
     // =========================================================================
     let turn_id = Uuid::now_v7();
-    let base_context = AtomContext::new(session_id, turn_id, user_message.id);
+    let base_context = AtomContext::new(session_id, turn_id, user_message.id.into());
 
     println!("Turn ID: {}", turn_id);
     println!("Input Message ID: {}\n", user_message.id);

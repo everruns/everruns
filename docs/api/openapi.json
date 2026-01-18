@@ -194,11 +194,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -212,6 +211,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid agent ID"
           },
           "404": {
             "description": "Agent not found"
@@ -240,17 +242,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Agent archived successfully"
+          },
+          "400": {
+            "description": "Invalid agent ID"
           },
           "404": {
             "description": "Agent not found"
@@ -279,11 +283,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -309,7 +312,7 @@
             }
           },
           "400": {
-            "description": "Input exceeds allowed limits",
+            "description": "Invalid agent ID or input exceeds allowed limits",
             "content": {
               "application/json": {
                 "schema": {
@@ -361,11 +364,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -375,6 +377,9 @@
             "content": {
               "text/markdown": {}
             }
+          },
+          "400": {
+            "description": "Invalid agent ID"
           },
           "404": {
             "description": "Agent not found"
@@ -405,11 +410,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -455,6 +459,9 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid agent ID"
+          },
           "500": {
             "description": "Internal server error"
           }
@@ -479,11 +486,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -507,6 +513,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid agent ID"
           },
           "500": {
             "description": "Internal server error"
@@ -534,21 +543,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -562,6 +569,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -590,27 +600,28 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Session deleted successfully"
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -639,21 +650,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -677,6 +686,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -766,21 +778,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -807,6 +817,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -837,21 +850,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -867,6 +878,9 @@
         "responses": {
           "200": {
             "description": "Directory listing"
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "500": {
             "description": "Internal server error"
@@ -894,21 +908,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -934,7 +946,7 @@
             }
           },
           "400": {
-            "description": "Cannot copy directories"
+            "description": "Invalid session ID or cannot copy directories"
           },
           "404": {
             "description": "Source not found"
@@ -968,21 +980,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1008,7 +1018,7 @@
             }
           },
           "400": {
-            "description": "Invalid regex pattern"
+            "description": "Invalid session ID or regex pattern"
           },
           "500": {
             "description": "Internal server error"
@@ -1036,21 +1046,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1076,7 +1084,7 @@
             }
           },
           "400": {
-            "description": "Invalid path"
+            "description": "Invalid session ID or path"
           },
           "404": {
             "description": "Source not found"
@@ -1110,21 +1118,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1148,6 +1154,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Not found"
@@ -1178,21 +1187,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1217,6 +1224,9 @@
         "responses": {
           "200": {
             "description": "File content or directory listing"
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Not found"
@@ -1245,21 +1255,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1294,7 +1302,7 @@
             }
           },
           "400": {
-            "description": "Cannot modify readonly file or directory"
+            "description": "Invalid session ID or cannot modify readonly file or directory"
           },
           "404": {
             "description": "Not found"
@@ -1323,21 +1331,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1372,7 +1378,7 @@
             }
           },
           "400": {
-            "description": "Invalid request"
+            "description": "Invalid session ID or request"
           },
           "409": {
             "description": "Already exists"
@@ -1401,21 +1407,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1449,7 +1453,7 @@
             }
           },
           "400": {
-            "description": "Directory not empty"
+            "description": "Invalid session ID or directory not empty"
           },
           "500": {
             "description": "Internal server error"
@@ -1477,21 +1481,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1505,6 +1507,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid ID format"
           },
           "404": {
             "description": "Session not found"
@@ -1533,21 +1538,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1571,6 +1574,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid ID format"
           },
           "500": {
             "description": "Internal server error"
@@ -1598,21 +1604,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1635,6 +1639,9 @@
             "content": {
               "text/event-stream": {}
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -1807,11 +1814,10 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Model ID",
+            "description": "Model ID (prefixed, e.g., mod_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1825,6 +1831,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid model ID"
           },
           "404": {
             "description": "Model not found"
@@ -1850,17 +1859,19 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Model ID",
+            "description": "Model ID (prefixed, e.g., mod_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Model deleted"
+          },
+          "400": {
+            "description": "Invalid model ID"
           },
           "404": {
             "description": "Model not found"
@@ -1886,11 +1897,10 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Model ID",
+            "description": "Model ID (prefixed, e.g., mod_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1914,6 +1924,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid model ID"
           },
           "404": {
             "description": "Model not found"
@@ -2019,11 +2032,10 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2037,6 +2049,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid provider ID"
           },
           "404": {
             "description": "Provider not found"
@@ -2062,17 +2077,19 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Provider deleted"
+          },
+          "400": {
+            "description": "Invalid provider ID"
           },
           "404": {
             "description": "Provider not found"
@@ -2098,11 +2115,10 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2126,6 +2142,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid provider ID"
           },
           "404": {
             "description": "Provider not found"
@@ -2153,11 +2172,10 @@
           {
             "name": "provider_id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2171,6 +2189,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid provider ID"
           }
         }
       },
@@ -2193,11 +2214,10 @@
           {
             "name": "provider_id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2223,7 +2243,7 @@
             }
           },
           "400": {
-            "description": "Invalid request"
+            "description": "Invalid provider ID"
           },
           "500": {
             "description": "Internal error"
@@ -2346,11 +2366,10 @@
           {
             "name": "server_id",
             "in": "path",
-            "description": "MCP server ID",
+            "description": "MCP server ID (prefixed, e.g., mcp_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2364,6 +2383,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid server ID"
           },
           "404": {
             "description": "MCP server not found"
@@ -2392,17 +2414,19 @@
           {
             "name": "server_id",
             "in": "path",
-            "description": "MCP server ID",
+            "description": "MCP server ID (prefixed, e.g., mcp_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "MCP server deleted successfully"
+          },
+          "400": {
+            "description": "Invalid server ID"
           },
           "404": {
             "description": "MCP server not found"
@@ -2431,11 +2455,10 @@
           {
             "name": "server_id",
             "in": "path",
-            "description": "MCP server ID",
+            "description": "MCP server ID (prefixed, e.g., mcp_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2461,7 +2484,7 @@
             }
           },
           "400": {
-            "description": "Invalid input",
+            "description": "Invalid server ID or input",
             "content": {
               "application/json": {
                 "schema": {
@@ -2607,8 +2630,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Default LLM model ID for this agent.\nCan be overridden at the session level."
+            "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
+            "example": "mod_01933b5a00007000800000000000001"
           },
           "description": {
             "type": [
@@ -2619,8 +2642,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique identifier for the agent."
+            "description": "Unique identifier for the agent (format: agt_{32-hex}).",
+            "example": "agt_01933b5a00007000800000000000001"
           },
           "name": {
             "type": "string",
@@ -2927,8 +2950,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Model ID (UUID) to use for this message.\nOverrides session and agent model settings."
+            "description": "Model ID to use for this message (format: mod_{32-hex}).\nOverrides session and agent model settings.",
+            "example": "mod_01933b5a00007000800000000000001"
           },
           "reasoning": {
             "oneOf": [
@@ -3675,8 +3698,8 @@
           },
           "image_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "ID of the uploaded image"
+            "description": "ID of the uploaded image (format: img_{32-hex})",
+            "example": "img_01933b5a00007000800000000000001"
           }
         }
       },
@@ -3825,8 +3848,8 @@
                     "string",
                     "null"
                   ],
-                  "format": "uuid",
-                  "description": "Default LLM model ID for this agent.\nCan be overridden at the session level."
+                  "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
+                  "example": "mod_01933b5a00007000800000000000001"
                 },
                 "description": {
                   "type": [
@@ -3837,8 +3860,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Unique identifier for the agent."
+                  "description": "Unique identifier for the agent (format: agt_{32-hex}).",
+                  "example": "agt_01933b5a00007000800000000000001"
                 },
                 "name": {
                   "type": "string",
@@ -4171,7 +4194,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "mod_01933b5a00007000800000000000001"
                 },
                 "is_default": {
                   "type": "boolean"
@@ -4184,7 +4207,7 @@
                 },
                 "provider_id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "prov_01933b5a00007000800000000000001"
                 },
                 "source": {
                   "$ref": "#/components/schemas/LlmModelSource",
@@ -4246,7 +4269,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "mod_01933b5a00007000800000000000001"
                 },
                 "is_default": {
                   "type": "boolean"
@@ -4270,7 +4293,7 @@
                 },
                 "provider_id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "prov_01933b5a00007000800000000000001"
                 },
                 "provider_name": {
                   "type": "string"
@@ -4333,7 +4356,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "prov_01933b5a00007000800000000000001"
                 },
                 "last_synced_at": {
                   "type": [
@@ -4754,7 +4777,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "example": "mod_01933b5a00007000800000000000001"
           },
           "is_default": {
             "type": "boolean"
@@ -4767,7 +4790,7 @@
           },
           "provider_id": {
             "type": "string",
-            "format": "uuid"
+            "example": "prov_01933b5a00007000800000000000001"
           },
           "source": {
             "$ref": "#/components/schemas/LlmModelSource",
@@ -5018,7 +5041,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "example": "mod_01933b5a00007000800000000000001"
           },
           "is_default": {
             "type": "boolean"
@@ -5042,7 +5065,7 @@
           },
           "provider_id": {
             "type": "string",
-            "format": "uuid"
+            "example": "prov_01933b5a00007000800000000000001"
           },
           "provider_name": {
             "type": "string"
@@ -5092,7 +5115,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "example": "prov_01933b5a00007000800000000000001"
           },
           "last_synced_at": {
             "type": [
@@ -5256,8 +5279,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique message ID"
+            "description": "Unique message ID (format: msg_{32-hex})",
+            "example": "msg_01933b5a00007000800000000000001"
           },
           "metadata": {
             "type": [
@@ -5411,8 +5434,8 @@
               "properties": {
                 "agent_id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "ID of the agent this session belongs to."
+                  "description": "ID of the agent this session belongs to (format: agt_{32-hex}).",
+                  "example": "agt_01933b5a00007000800000000000001"
                 },
                 "created_at": {
                   "type": "string",
@@ -5429,16 +5452,16 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Unique identifier for the session."
+                  "description": "Unique identifier for the session (format: sess_{32-hex}).",
+                  "example": "sess_01933b5a00007000800000000000001"
                 },
                 "model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "format": "uuid",
-                  "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+                  "description": "LLM model ID to use for this session (format: mod_{32-hex}).\nOverrides the agent's default model if set.",
+                  "example": "mod_01933b5a00007000800000000000001"
                 },
                 "output_preview": {
                   "type": [
@@ -5655,8 +5678,8 @@
         "properties": {
           "agent_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "ID of the agent this session belongs to."
+            "description": "ID of the agent this session belongs to (format: agt_{32-hex}).",
+            "example": "agt_01933b5a00007000800000000000001"
           },
           "created_at": {
             "type": "string",
@@ -5673,16 +5696,16 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique identifier for the session."
+            "description": "Unique identifier for the session (format: sess_{32-hex}).",
+            "example": "sess_01933b5a00007000800000000000001"
           },
           "model_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+            "description": "LLM model ID to use for this session (format: mod_{32-hex}).\nOverrides the agent's default model if set.",
+            "example": "mod_01933b5a00007000800000000000001"
           },
           "output_preview": {
             "type": [

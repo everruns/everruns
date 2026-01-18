@@ -273,7 +273,7 @@ impl WorkerService for WorkerServiceImpl {
         // Get agent with capabilities via AgentService
         let agent = self
             .agent_service
-            .get(req.org_id, session.agent_id)
+            .get(req.org_id, session.agent_id.uuid())
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get agent: {}", e);
@@ -287,13 +287,13 @@ impl WorkerService for WorkerServiceImpl {
         let proto_agent = schema_agent_to_proto(&agent);
 
         let proto_session = proto::Session {
-            id: Some(uuid_to_proto_uuid(session.id)),
-            agent_id: Some(uuid_to_proto_uuid(session.agent_id)),
+            id: Some(uuid_to_proto_uuid(session.id.uuid())),
+            agent_id: Some(uuid_to_proto_uuid(session.agent_id.uuid())),
             title: session.title.clone().unwrap_or_default(),
             status: session.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(session.created_at)),
             updated_at: Some(datetime_to_proto_timestamp(session.created_at)),
-            default_model_id: session.model_id.map(uuid_to_proto_uuid),
+            default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
         };
 
         // Load messages from events using EventService
@@ -339,7 +339,7 @@ impl WorkerService for WorkerServiceImpl {
             });
 
             proto_messages.push(proto::Message {
-                id: Some(uuid_to_proto_uuid(message.id)),
+                id: Some(uuid_to_proto_uuid(message.id.uuid())),
                 role: message.role.to_string(),
                 content,
                 controls,
@@ -354,7 +354,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let model: Option<proto::ModelWithProvider> = if let Some(mid) = model_id {
             self.llm_resolver_service
-                .resolve_model(mid)
+                .resolve_model(mid.uuid())
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to resolve model: {}", e);
@@ -471,13 +471,13 @@ impl WorkerService for WorkerServiceImpl {
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
         let proto_session = session.map(|s| proto::Session {
-            id: Some(uuid_to_proto_uuid(s.id)),
-            agent_id: Some(uuid_to_proto_uuid(s.agent_id)),
+            id: Some(uuid_to_proto_uuid(s.id.uuid())),
+            agent_id: Some(uuid_to_proto_uuid(s.agent_id.uuid())),
             title: s.title.clone().unwrap_or_default(),
             status: s.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(s.created_at)),
             updated_at: Some(datetime_to_proto_timestamp(s.created_at)),
-            default_model_id: s.model_id.map(uuid_to_proto_uuid),
+            default_model_id: s.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
         });
 
         Ok(Response::new(GetSessionResponse {
@@ -514,13 +514,13 @@ impl WorkerService for WorkerServiceImpl {
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
         let proto_session = proto::Session {
-            id: Some(uuid_to_proto_uuid(session.id)),
-            agent_id: Some(uuid_to_proto_uuid(session.agent_id)),
+            id: Some(uuid_to_proto_uuid(session.id.uuid())),
+            agent_id: Some(uuid_to_proto_uuid(session.agent_id.uuid())),
             title: session.title.clone().unwrap_or_default(),
             status: session.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(session.created_at)),
             updated_at: Some(datetime_to_proto_timestamp(session.created_at)),
-            default_model_id: session.model_id.map(uuid_to_proto_uuid),
+            default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
         };
 
         Ok(Response::new(SetSessionStatusResponse {
@@ -577,7 +577,7 @@ impl WorkerService for WorkerServiceImpl {
             });
 
             proto_messages.push(proto::Message {
-                id: Some(uuid_to_proto_uuid(message.id)),
+                id: Some(uuid_to_proto_uuid(message.id.uuid())),
                 role: message.role.to_string(),
                 content,
                 controls,
@@ -638,7 +638,7 @@ impl WorkerService for WorkerServiceImpl {
 
         // Create the message
         let message = Message {
-            id: uuid::Uuid::now_v7(),
+            id: uuid::Uuid::now_v7().into(),
             role: role.clone(),
             content,
             controls,
@@ -687,7 +687,7 @@ impl WorkerService for WorkerServiceImpl {
         });
 
         let proto_message = proto::Message {
-            id: Some(uuid_to_proto_uuid(message.id)),
+            id: Some(uuid_to_proto_uuid(message.id.uuid())),
             role: message.role.to_string(),
             content,
             controls,

@@ -11,10 +11,11 @@ use axum::{
     response::sse::{Event as SseEvent, KeepAlive, Sse},
     routing::get,
 };
+use everruns_core::typed_id::SessionId;
 use everruns_core::{Event, EventListener};
 use serde::Deserialize;
 
-use super::common::ListResponse;
+use super::common::{ErrorResponse, ListResponse};
 use super::sse::SseStreamConfig;
 use crate::services::EventService;
 use futures::{
@@ -101,12 +102,13 @@ pub fn routes(state: AppState) -> Router {
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         EventsQuery
     ),
     responses(
         (status = 200, description = "Event stream", content_type = "text/event-stream"),
+        (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -115,20 +117,43 @@ pub fn routes(state: AppState) -> Router {
 pub async fn stream_sse(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
     Query(query): Query<EventsQuery>,
-) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
+) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
+{
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, session_id)
+        .get(org.org_id, session_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
 
+    let session_id = session_id.uuid();
     tracing::info!(session_id = %session_id, since_id = ?query.since_id, "Starting event stream");
 
     let event_service = state.event_service.clone();
@@ -247,12 +272,13 @@ pub async fn stream_sse(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         EventsQuery
     ),
     responses(
         (status = 200, description = "Events list", body = ListResponse<Event>),
+        (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -261,29 +287,55 @@ pub async fn stream_sse(
 pub async fn list_events(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
     Query(query): Query<EventsQuery>,
-) -> Result<Json<ListResponse<Event>>, StatusCode> {
+) -> Result<Json<ListResponse<Event>>, (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, session_id)
+        .get(org.org_id, session_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
 
     // Fetch events using EventService (converts rows to core::Event)
     // Optional since_id filter for incremental fetching
     let events = state
         .event_service
-        .list(session_id, None, query.since_id)
+        .list(session_id.uuid(), None, query.since_id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to list events: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
         })?;
 
     Ok(Json(ListResponse { data: events }))

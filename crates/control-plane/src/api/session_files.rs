@@ -20,6 +20,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_core::typed_id::SessionId;
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
 
 use super::common::ListResponse;
@@ -200,22 +201,29 @@ fn is_reserved_path(path: &str) -> bool {
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("recursive" = Option<bool>, Query, description = "List recursively")
     ),
     responses(
         (status = 200, description = "Directory listing"),
+        (status = 400, description = "Invalid session ID"),
         (status = 500, description = "Internal server error")
     ),
     tag = "filesystem"
 )]
 pub async fn get_root(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
     Query(query): Query<GetQuery>,
-) -> Result<Json<GetResponse>, StatusCode> {
-    get_path_impl(state, session_id, "/", query).await
+) -> Result<Json<GetResponse>, (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
+    get_path_impl(state, session_id.uuid(), "/", query).await
 }
 
 /// GET /fs/*path - Get file content or directory listing
@@ -224,13 +232,14 @@ pub async fn get_root(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path"),
         ("recursive" = Option<bool>, Query, description = "List recursively")
     ),
     responses(
         (status = 200, description = "File content or directory listing"),
+        (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -238,11 +247,17 @@ pub async fn get_root(
 )]
 pub async fn get_path(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id, path)): Path<(String, Uuid, Uuid, String)>,
+    Path((_org_path, _agent_id, session_id, path)): Path<(String, String, String, String)>,
     Query(query): Query<GetQuery>,
-) -> Result<Json<GetResponse>, StatusCode> {
+) -> Result<Json<GetResponse>, (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
     let normalized = normalize_path(&path);
-    get_path_impl(state, session_id, &normalized, query).await
+    get_path_impl(state, session_id.uuid(), &normalized, query).await
 }
 
 async fn get_path_impl(
@@ -250,7 +265,7 @@ async fn get_path_impl(
     session_id: Uuid,
     path: &str,
     query: GetQuery,
-) -> Result<Json<GetResponse>, StatusCode> {
+) -> Result<Json<GetResponse>, (StatusCode, String)> {
     // Check if path is a directory or file
     let stat = state
         .file_service
@@ -258,7 +273,10 @@ async fn get_path_impl(
         .await
         .map_err(|e| {
             tracing::error!("Failed to stat: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            )
         })?;
 
     match stat {
@@ -271,7 +289,10 @@ async fn get_path_impl(
             }
             .map_err(|e| {
                 tracing::error!("Failed to list: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             })?;
             Ok(Json(GetResponse::Listing(ListResponse::new(files))))
         }
@@ -283,9 +304,12 @@ async fn get_path_impl(
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to read file: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal server error".to_string(),
+                    )
                 })?
-                .ok_or(StatusCode::NOT_FOUND)?;
+                .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
             Ok(Json(GetResponse::File(file)))
         }
         None => {
@@ -293,7 +317,7 @@ async fn get_path_impl(
             if path == "/" {
                 Ok(Json(GetResponse::Listing(ListResponse::new(vec![]))))
             } else {
-                Err(StatusCode::NOT_FOUND)
+                Err((StatusCode::NOT_FOUND, "Path not found".to_string()))
             }
         }
     }
@@ -313,14 +337,14 @@ pub async fn create_root() -> (StatusCode, String) {
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path")
     ),
     request_body = CreateFileRequest,
     responses(
         (status = 201, description = "Created successfully", body = SessionFile),
-        (status = 400, description = "Invalid request"),
+        (status = 400, description = "Invalid session ID or request"),
         (status = 409, description = "Already exists"),
         (status = 500, description = "Internal server error")
     ),
@@ -328,9 +352,16 @@ pub async fn create_root() -> (StatusCode, String) {
 )]
 pub async fn create_path(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id, path)): Path<(String, Uuid, Uuid, String)>,
+    Path((_org_path, _agent_id, session_id, path)): Path<(String, String, String, String)>,
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
+    let session_id = session_id.uuid();
     let normalized = normalize_path(&path);
 
     // Paths starting with _ are reserved for actions
@@ -416,14 +447,14 @@ pub async fn create_path(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File path")
     ),
     request_body = UpdateFileRequest,
     responses(
         (status = 200, description = "Updated successfully", body = SessionFile),
-        (status = 400, description = "Cannot modify readonly file or directory"),
+        (status = 400, description = "Invalid session ID or cannot modify readonly file or directory"),
         (status = 404, description = "Not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -431,9 +462,16 @@ pub async fn create_path(
 )]
 pub async fn update_path(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id, path)): Path<(String, Uuid, Uuid, String)>,
+    Path((_org_path, _agent_id, session_id, path)): Path<(String, String, String, String)>,
     Json(req): Json<UpdateFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
+    let session_id = session_id.uuid();
     let normalized = normalize_path(&path);
 
     // Paths starting with _ are reserved for actions
@@ -485,23 +523,30 @@ pub async fn delete_root() -> (StatusCode, String) {
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID"),
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path"),
         ("recursive" = Option<bool>, Query, description = "Delete recursively")
     ),
     responses(
         (status = 200, description = "Deleted", body = DeleteResponse),
-        (status = 400, description = "Directory not empty"),
+        (status = 400, description = "Invalid session ID or directory not empty"),
         (status = 500, description = "Internal server error")
     ),
     tag = "filesystem"
 )]
 pub async fn delete_path(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id, path)): Path<(String, Uuid, Uuid, String)>,
+    Path((_org_path, _agent_id, session_id, path)): Path<(String, String, String, String)>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<Json<DeleteResponse>, (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
+    let session_id = session_id.uuid();
     let normalized = normalize_path(&path);
 
     let deleted = state
@@ -530,13 +575,13 @@ pub async fn delete_path(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/move",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = MoveFileRequest,
     responses(
         (status = 200, description = "Moved successfully", body = SessionFile),
-        (status = 400, description = "Invalid path"),
+        (status = 400, description = "Invalid session ID or path"),
         (status = 404, description = "Source not found"),
         (status = 409, description = "Destination exists"),
         (status = 500, description = "Internal server error")
@@ -545,9 +590,16 @@ pub async fn delete_path(
 )]
 pub async fn move_file(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
     Json(req): Json<MoveFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
+    let session_id = session_id.uuid();
     let input = MoveFileInput {
         src_path: req.src_path,
         dst_path: req.dst_path,
@@ -584,13 +636,13 @@ pub async fn move_file(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/copy",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = CopyFileRequest,
     responses(
         (status = 201, description = "Copied successfully", body = SessionFile),
-        (status = 400, description = "Cannot copy directories"),
+        (status = 400, description = "Invalid session ID or cannot copy directories"),
         (status = 404, description = "Source not found"),
         (status = 409, description = "Destination exists"),
         (status = 500, description = "Internal server error")
@@ -599,9 +651,16 @@ pub async fn move_file(
 )]
 pub async fn copy_file(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
     Json(req): Json<CopyFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
+    let session_id = session_id.uuid();
     let input = CopyFileInput {
         src_path: req.src_path,
         dst_path: req.dst_path,
@@ -638,22 +697,29 @@ pub async fn copy_file(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/grep",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = GrepRequest,
     responses(
         (status = 200, description = "Search results", body = ListResponse<GrepResult>),
-        (status = 400, description = "Invalid regex pattern"),
+        (status = 400, description = "Invalid session ID or regex pattern"),
         (status = 500, description = "Internal server error")
     ),
     tag = "filesystem"
 )]
 pub async fn grep_files(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResult>>, (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
+    let session_id = session_id.uuid();
     let input = GrepInput {
         pattern: req.pattern,
         path_pattern: req.path_pattern,
@@ -685,12 +751,13 @@ pub async fn grep_files(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/stat",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = StatRequest,
     responses(
         (status = 200, description = "Stat info", body = FileStat),
+        (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -698,9 +765,16 @@ pub async fn grep_files(
 )]
 pub async fn stat_file(
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
     Json(req): Json<StatRequest>,
 ) -> Result<Json<FileStat>, (StatusCode, String)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session ID: {}", e),
+        )
+    })?;
+    let session_id = session_id.uuid();
     let normalized = normalize_path(&req.path);
 
     let stat = state

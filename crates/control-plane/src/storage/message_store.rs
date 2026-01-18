@@ -54,7 +54,7 @@ impl DbMessageRetriever {
     pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
         // Create the message
         let message = Message {
-            id: Uuid::now_v7(),
+            id: Uuid::now_v7().into(),
             role: input.role,
             content: input.content,
             controls: input.controls,

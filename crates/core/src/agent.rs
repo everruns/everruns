@@ -5,10 +5,10 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
+use crate::typed_id::{AgentId, ModelId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -49,8 +49,9 @@ impl From<&str> for AgentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Agent {
-    /// Unique identifier for the agent.
-    pub id: Uuid,
+    /// Unique identifier for the agent (format: agt_{32-hex}).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agt_01933b5a00007000800000000000001"))]
+    pub id: AgentId,
     /// Display name of the agent.
     pub name: String,
     /// Human-readable description of what the agent does.
@@ -62,7 +63,8 @@ pub struct Agent {
     /// Default LLM model ID for this agent.
     /// Can be overridden at the session level.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_model_id: Option<Uuid>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "mod_01933b5a00007000800000000000001"))]
+    pub default_model_id: Option<ModelId>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     pub tags: Vec<String>,

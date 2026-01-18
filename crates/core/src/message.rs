@@ -8,7 +8,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+
+use crate::typed_id::{ImageId, MessageId, ModelId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -71,10 +72,11 @@ pub struct ReasoningConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Controls {
-    /// Model ID (UUID) to use for this message.
+    /// Model ID to use for this message (format: mod_{32-hex}).
     /// Overrides session and agent model settings.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<Uuid>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "mod_01933b5a00007000800000000000001"))]
+    pub model_id: Option<ModelId>,
 
     /// Reasoning configuration
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,8 +87,9 @@ pub struct Controls {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Message {
-    /// Unique message ID
-    pub id: Uuid,
+    /// Unique message ID (format: msg_{32-hex})
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "msg_01933b5a00007000800000000000001"))]
+    pub id: MessageId,
 
     /// Message role
     pub role: MessageRole,
@@ -202,22 +205,23 @@ impl ImageContentPart {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ImageFileContentPart {
-    /// ID of the uploaded image
-    pub image_id: Uuid,
+    /// ID of the uploaded image (format: img_{32-hex})
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "img_01933b5a00007000800000000000001"))]
+    pub image_id: ImageId,
     /// Original filename (for display)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 }
 
 impl ImageFileContentPart {
-    pub fn new(image_id: Uuid) -> Self {
+    pub fn new(image_id: ImageId) -> Self {
         Self {
             image_id,
             filename: None,
         }
     }
 
-    pub fn with_filename(image_id: Uuid, filename: impl Into<String>) -> Self {
+    pub fn with_filename(image_id: ImageId, filename: impl Into<String>) -> Self {
         Self {
             image_id,
             filename: Some(filename.into()),
@@ -326,7 +330,7 @@ impl ContentPart {
     }
 
     /// Create an image file content part (reference to uploaded image)
-    pub fn image_file(image_id: Uuid) -> Self {
+    pub fn image_file(image_id: ImageId) -> Self {
         ContentPart::ImageFile(ImageFileContentPart::new(image_id))
     }
 
@@ -411,7 +415,7 @@ impl InputContentPart {
     }
 
     /// Create an image file content part (reference to uploaded image)
-    pub fn image_file(image_id: Uuid) -> Self {
+    pub fn image_file(image_id: ImageId) -> Self {
         InputContentPart::ImageFile(ImageFileContentPart::new(image_id))
     }
 
@@ -437,7 +441,7 @@ impl Message {
     /// Create a new user message
     pub fn user(content: impl Into<String>) -> Self {
         Self {
-            id: Uuid::now_v7(),
+            id: MessageId::new(),
             role: MessageRole::User,
             content: vec![ContentPart::text(content)],
             controls: None,
@@ -449,7 +453,7 @@ impl Message {
     /// Create a new assistant message
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
-            id: Uuid::now_v7(),
+            id: MessageId::new(),
             role: MessageRole::Assistant,
             content: vec![ContentPart::text(content)],
             controls: None,
@@ -481,7 +485,7 @@ impl Message {
             }));
         }
         Self {
-            id: Uuid::now_v7(),
+            id: MessageId::new(),
             role: MessageRole::Assistant,
             content: parts,
             controls: None,
@@ -493,7 +497,7 @@ impl Message {
     /// Create a new system message
     pub fn system(content: impl Into<String>) -> Self {
         Self {
-            id: Uuid::now_v7(),
+            id: MessageId::new(),
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
             controls: None,
@@ -510,7 +514,7 @@ impl Message {
     ) -> Self {
         let tool_call_id = tool_call_id.into();
         Self {
-            id: Uuid::now_v7(),
+            id: MessageId::new(),
             role: MessageRole::ToolResult,
             content: vec![ContentPart::ToolResult(ToolResultContentPart::new(
                 tool_call_id,
