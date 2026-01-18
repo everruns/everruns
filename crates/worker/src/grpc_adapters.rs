@@ -114,10 +114,12 @@ impl GrpcClient {
         &self,
         org_id: i64,
         server_prefix: &str,
+        user_id: Option<Uuid>,
     ) -> Result<crate::mcp_executor::McpServerInfo> {
         let request = proto::GetMcpServerByPrefixRequest {
             server_prefix: server_prefix.to_string(),
             org_id,
+            user_id: user_id.map(uuid_to_proto),
         };
 
         let mut client = self.inner.lock().await;
@@ -139,6 +141,9 @@ impl GrpcClient {
             url: proto_server.url,
             api_key: proto_server.api_key,
             headers: proto_server.headers,
+            auth_type: proto_server.auth_type,
+            oauth_access_token: proto_server.oauth_access_token,
+            oauth_required: proto_server.oauth_required,
         })
     }
 }
@@ -558,6 +563,10 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         organization_id: proto_session.organization_id,
         agent_id: agent_id.map(|u| u.into()),
         harness_id: harness_id.into(),
+        user_id: proto_session
+            .user_id
+            .as_ref()
+            .and_then(|u| Uuid::parse_str(&u.value).ok()),
         title: non_empty_string(proto_session.title),
         preview: None,
         output_preview: None,

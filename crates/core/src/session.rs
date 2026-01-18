@@ -10,6 +10,7 @@ use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use uuid::Uuid;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -75,6 +76,9 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
     pub agent_id: Option<AgentId>,
+    /// ID of the user who created this session (for per-user OAuth tokens).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<Uuid>,
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,

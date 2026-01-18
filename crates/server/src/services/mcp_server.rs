@@ -8,8 +8,8 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition, McpToolsListRequest,
-    McpToolsListResponse,
+    McpServer, McpServerAuthType, McpServerOAuthConfig, McpServerStatus,
+    McpServerTransportType, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -46,25 +46,58 @@ impl McpServerService {
             None
         };
 
+        // Encrypt OAuth client secret if provided
+        let oauth_client_secret_encrypted = if let Some(secret) = req
+            .oauth_config
+            .as_ref()
+            .and_then(|c| c.client_secret.as_ref())
+        {
+            let encryption = self
+                .encryption
+                .as_ref()
+                .ok_or_else(|| anyhow!("Encryption not configured. Cannot store client secret."))?;
+            Some(encryption.encrypt_string(secret)?)
+        } else {
+            None
+        };
+
+        let auth_type = req.auth_type.unwrap_or_default();
+
         let input = CreateMcpServerRow {
             name: req.name,
             description: req.description,
             url: req.url,
             transport_type: req.transport_type.to_string(),
+            auth_type: auth_type.to_string(),
             api_key_encrypted,
             headers: req
                 .headers
                 .map(|h| serde_json::to_value(h).unwrap_or_default()),
             settings: None,
+            oauth_authorization_url: req
+                .oauth_config
+                .as_ref()
+                .and_then(|c| c.authorization_url.clone()),
+            oauth_token_url: req.oauth_config.as_ref().and_then(|c| c.token_url.clone()),
+            oauth_client_id: req.oauth_config.as_ref().and_then(|c| c.client_id.clone()),
+            oauth_client_secret_encrypted,
+            oauth_scopes: req
+                .oauth_config
+                .as_ref()
+                .map(|c| serde_json::to_value(&c.scopes).unwrap_or_default()),
+            oauth_resource_metadata_url: req
+                .oauth_config
+                .as_ref()
+                .and_then(|c| c.resource_metadata_url.clone()),
         };
 
         let row = self.db.create_mcp_server(org_id, input).await?;
-        Ok(Self::row_to_mcp_server(&row))
+        Ok(self.row_to_mcp_server(&row))
     }
 
     pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<McpServer>> {
         let row = self.db.get_mcp_server(org_id, id).await?;
-        Ok(row.as_ref().map(Self::row_to_mcp_server))
+        Ok(row.as_ref().map(|r| self.row_to_mcp_server(r)))
     }
 
     /// Batch fetch multiple MCP servers with their cached tools in a single query.
@@ -78,7 +111,7 @@ impl McpServerService {
         Ok(rows
             .iter()
             .map(|row| {
-                let server = Self::row_to_mcp_server(row);
+                let server = self.row_to_mcp_server(row);
                 let tools: Vec<McpToolDefinition> =
                     serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
                 (row.id.uuid(), (server, tools))
@@ -88,7 +121,7 @@ impl McpServerService {
 
     pub async fn list(&self, org_id: i64) -> Result<Vec<McpServer>> {
         let rows = self.db.list_mcp_servers(org_id).await?;
-        Ok(rows.iter().map(Self::row_to_mcp_server).collect())
+        Ok(rows.iter().map(|r| self.row_to_mcp_server(r)).collect())
     }
 
     pub async fn update(
@@ -108,21 +141,52 @@ impl McpServerService {
             None
         };
 
+        // Encrypt OAuth client secret if provided
+        let oauth_client_secret_encrypted = if let Some(secret) = req
+            .oauth_config
+            .as_ref()
+            .and_then(|c| c.client_secret.as_ref())
+        {
+            let encryption = self
+                .encryption
+                .as_ref()
+                .ok_or_else(|| anyhow!("Encryption not configured. Cannot store client secret."))?;
+            Some(encryption.encrypt_string(secret)?)
+        } else {
+            None
+        };
+
         let input = UpdateMcpServer {
             name: req.name,
             description: req.description,
             url: req.url,
             transport_type: req.transport_type.map(|t| t.to_string()),
             status: req.status.map(|s| s.to_string()),
+            auth_type: req.auth_type.map(|a| a.to_string()),
             api_key_encrypted,
             headers: req
                 .headers
                 .map(|h| serde_json::to_value(h).unwrap_or_default()),
             settings: None,
+            oauth_authorization_url: req
+                .oauth_config
+                .as_ref()
+                .and_then(|c| c.authorization_url.clone()),
+            oauth_token_url: req.oauth_config.as_ref().and_then(|c| c.token_url.clone()),
+            oauth_client_id: req.oauth_config.as_ref().and_then(|c| c.client_id.clone()),
+            oauth_client_secret_encrypted,
+            oauth_scopes: req
+                .oauth_config
+                .as_ref()
+                .map(|c| serde_json::to_value(&c.scopes).unwrap_or_default()),
+            oauth_resource_metadata_url: req
+                .oauth_config
+                .as_ref()
+                .and_then(|c| c.resource_metadata_url.clone()),
         };
 
         let row = self.db.update_mcp_server(org_id, id, input).await?;
-        Ok(row.as_ref().map(Self::row_to_mcp_server))
+        Ok(row.as_ref().map(|r| self.row_to_mcp_server(r)))
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
@@ -132,7 +196,7 @@ impl McpServerService {
     /// List active MCP servers (for capability listing)
     pub async fn list_active(&self, org_id: i64) -> Result<Vec<McpServer>> {
         let rows = self.db.list_active_mcp_servers(org_id).await?;
-        Ok(rows.iter().map(Self::row_to_mcp_server).collect())
+        Ok(rows.iter().map(|r| self.row_to_mcp_server(r)).collect())
     }
 
     /// List active MCP servers with their cached tools
@@ -140,7 +204,7 @@ impl McpServerService {
         let rows = self.db.list_active_mcp_servers(org_id).await?;
         Ok(rows
             .iter()
-            .map(Self::row_to_mcp_server_with_tools)
+            .map(|r| self.row_to_mcp_server_with_tools(r))
             .collect())
     }
 
@@ -225,10 +289,30 @@ impl McpServerService {
         }
     }
 
-    fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
+    fn row_to_mcp_server(&self, row: &McpServerRow) -> McpServer {
         // Parse headers from JSON
         let headers: HashMap<String, String> =
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
+
+        // Build OAuth config if auth_type is OAuth
+        let auth_type = McpServerAuthType::from(row.auth_type.as_str());
+        let oauth_config = if auth_type == McpServerAuthType::OAuth {
+            let scopes: Vec<String> = row
+                .oauth_scopes
+                .as_ref()
+                .map(|v| serde_json::from_value(v.clone()).unwrap_or_default())
+                .unwrap_or_default();
+            Some(McpServerOAuthConfig {
+                authorization_url: row.oauth_authorization_url.clone(),
+                token_url: row.oauth_token_url.clone(),
+                client_id: row.oauth_client_id.clone(),
+                client_secret_set: row.oauth_client_secret_encrypted.is_some(),
+                scopes,
+                resource_metadata_url: row.oauth_resource_metadata_url.clone(),
+            })
+        } else {
+            None
+        };
 
         McpServer {
             id: row.id,
@@ -237,15 +321,17 @@ impl McpServerService {
             url: row.url.clone(),
             transport_type: McpServerTransportType::from(row.transport_type.as_str()),
             status: McpServerStatus::from(row.status.as_str()),
+            auth_type,
             api_key_set: row.api_key_set,
             headers,
+            oauth_config,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
     }
 
-    fn row_to_mcp_server_with_tools(row: &McpServerRow) -> McpServerWithTools {
-        let server = Self::row_to_mcp_server(row);
+    fn row_to_mcp_server_with_tools(&self, row: &McpServerRow) -> McpServerWithTools {
+        let server = self.row_to_mcp_server(row);
         let cached_tools: Vec<McpToolDefinition> =
             serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
 

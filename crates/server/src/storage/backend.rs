@@ -787,6 +787,58 @@ impl StorageBackend {
     }
 
     // ============================================
+    // MCP OAuth Tokens
+    // ============================================
+
+    pub async fn upsert_mcp_user_token(
+        &self,
+        input: UpsertMcpUserToken,
+    ) -> Result<McpUserTokenRow> {
+        dispatch!(self, upsert_mcp_user_token, input)
+    }
+
+    pub async fn get_mcp_user_token(
+        &self,
+        mcp_server_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<McpUserTokenRow>> {
+        dispatch!(self, get_mcp_user_token, mcp_server_id, user_id)
+    }
+
+    pub async fn list_mcp_user_tokens_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<McpUserTokenRow>> {
+        dispatch!(self, list_mcp_user_tokens_for_user, user_id)
+    }
+
+    pub async fn delete_mcp_user_token(&self, mcp_server_id: Uuid, user_id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_mcp_user_token, mcp_server_id, user_id)
+    }
+
+    // ============================================
+    // MCP OAuth States
+    // ============================================
+
+    pub async fn create_mcp_oauth_state(
+        &self,
+        input: CreateMcpOAuthState,
+    ) -> Result<McpOAuthStateRow> {
+        dispatch!(self, create_mcp_oauth_state, input)
+    }
+
+    pub async fn consume_mcp_oauth_state(
+        &self,
+        state_id: Uuid,
+    ) -> Result<Option<McpOAuthStateRow>> {
+        dispatch!(self, consume_mcp_oauth_state, state_id)
+    }
+
+    pub async fn delete_expired_mcp_oauth_states(&self) -> Result<u64> {
+        dispatch!(self, delete_expired_mcp_oauth_states)
+    }
+
+    // ============================================
     // LLM Generations (Usage Tracking)
     // ============================================
 

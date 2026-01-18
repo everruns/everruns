@@ -28,21 +28,31 @@ pub struct McpServerInfo {
     pub url: String,
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
+    /// Authentication type: "none", "api_key", "oauth"
+    pub auth_type: String,
+    /// OAuth access token (only set if auth_type="oauth" and user has authorized)
+    pub oauth_access_token: Option<String>,
+    /// True if OAuth auth is required but user hasn't authorized yet
+    pub oauth_required: bool,
 }
 
 /// MCP Tool Executor - executes tools by calling remote MCP servers
 pub struct McpToolExecutor {
     grpc_client: GrpcClient,
     org_id: i64,
+    /// User ID for per-user OAuth token lookup
+    user_id: Option<uuid::Uuid>,
     /// Cache of MCP server info by server name prefix
+    /// Note: Not used for OAuth servers since tokens may change
     server_cache: tokio::sync::RwLock<HashMap<String, McpServerInfo>>,
 }
 
 impl McpToolExecutor {
-    pub fn new(grpc_client: GrpcClient, org_id: i64) -> Self {
+    pub fn new(grpc_client: GrpcClient, org_id: i64, user_id: Option<uuid::Uuid>) -> Self {
         Self {
             grpc_client,
             org_id,
+            user_id,
             server_cache: tokio::sync::RwLock::new(HashMap::new()),
         }
     }
@@ -55,6 +65,14 @@ impl McpToolExecutor {
 
         // Get MCP server info (from cache or gRPC)
         let server_info = self.get_server_info(&server_prefix).await?;
+
+        // Check if OAuth authorization is required but missing
+        if server_info.oauth_required {
+            return Err(anyhow!(
+                "MCP server '{}' requires OAuth authorization. Please authorize access in the UI.",
+                server_info.name
+            ));
+        }
 
         // Call the MCP server
         let (result, images) = call_mcp_tool(
@@ -77,23 +95,27 @@ impl McpToolExecutor {
     }
 
     /// Get MCP server info by name prefix, caching for efficiency
+    /// Note: OAuth servers are not cached since tokens may change
     async fn get_server_info(&self, server_prefix: &str) -> Result<McpServerInfo> {
-        // Check cache first
+        // Check cache first (only for non-OAuth servers)
         {
             let cache = self.server_cache.read().await;
             if let Some(info) = cache.get(server_prefix) {
-                return Ok(info.clone());
+                // Don't use cache for OAuth servers since tokens may change
+                if info.auth_type != "oauth" {
+                    return Ok(info.clone());
+                }
             }
         }
 
-        // Fetch from gRPC
+        // Fetch from gRPC (includes user-specific OAuth token)
         let info = self
             .grpc_client
-            .get_mcp_server_by_prefix(self.org_id, server_prefix)
+            .get_mcp_server_by_prefix(self.org_id, server_prefix, self.user_id)
             .await?;
 
-        // Cache for future use
-        {
+        // Cache for future use (only non-OAuth servers)
+        if info.auth_type != "oauth" {
             let mut cache = self.server_cache.write().await;
             cache.insert(server_prefix.to_string(), info.clone());
         }
@@ -127,9 +149,23 @@ async fn call_mcp_tool(
 
     let mut req_builder = client.post(&server_info.url).json(&request);
 
-    // Add API key if provided
-    if let Some(ref api_key) = server_info.api_key {
-        req_builder = req_builder.header("Authorization", format!("Bearer {}", api_key));
+    // Add authentication based on auth_type
+    match server_info.auth_type.as_str() {
+        "oauth" => {
+            // Use OAuth access token
+            if let Some(ref token) = server_info.oauth_access_token {
+                req_builder = req_builder.header("Authorization", format!("Bearer {}", token));
+            }
+        }
+        "api_key" => {
+            // Use API key
+            if let Some(ref api_key) = server_info.api_key {
+                req_builder = req_builder.header("Authorization", format!("Bearer {}", api_key));
+            }
+        }
+        _ => {
+            // "none" - no authentication needed
+        }
     }
 
     // Add custom headers
@@ -140,6 +176,7 @@ async fn call_mcp_tool(
     tracing::debug!(
         mcp_server = %server_info.name,
         tool_name = %tool_name,
+        auth_type = %server_info.auth_type,
         "Calling MCP server"
     );
 

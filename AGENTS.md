@@ -65,6 +65,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/agent-instructions.md` - AGENTS.md support (dynamic project instructions)
 - `specs/mcp-servers.md` - MCP server registration
+- `specs/mcp-oauth.md` - MCP OAuth 2.1 authentication for external MCP servers
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks for durable engine

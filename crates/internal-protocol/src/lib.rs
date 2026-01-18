@@ -384,10 +384,18 @@ pub fn proto_session_to_schema(
         .as_ref()
         .map(|u| format!("model_{}", u.value.replace("-", "")));
 
+    // Convert user_id UUID
+    let user_id_str = value
+        .user_id
+        .as_ref()
+        .map(|u| u.value.clone());
+
     let json = serde_json::json!({
         "id": id_str,
+        "organization_id": value.organization_id,
         "harness_id": harness_id_str,
         "agent_id": agent_id_str,
+        "user_id": user_id_str,
         "title": if value.title.is_empty() { None } else { Some(&value.title) },
         "tags": tags,
         "model_id": model_id_str,
@@ -416,6 +424,7 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             .filter_map(|c| serde_json::to_string(c).ok())
             .collect(),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
+        user_id: value.user_id.map(uuid_to_proto_uuid),
     }
 }
 

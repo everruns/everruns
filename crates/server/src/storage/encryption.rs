@@ -342,6 +342,24 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "value_encrypted",
         id_column: "id",
     },
+    // MCP Server OAuth client secrets are encrypted at rest
+    EncryptedColumn {
+        table: "mcp_servers",
+        column: "oauth_client_secret_encrypted",
+        id_column: "id",
+    },
+    // MCP User OAuth access tokens are encrypted at rest
+    EncryptedColumn {
+        table: "mcp_user_tokens",
+        column: "access_token_encrypted",
+        id_column: "id",
+    },
+    // MCP User OAuth refresh tokens are encrypted at rest
+    EncryptedColumn {
+        table: "mcp_user_tokens",
+        column: "refresh_token_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]
@@ -558,7 +576,7 @@ mod tests {
     }
 
     /// Simple parser to extract encrypted columns from SQL.
-    /// Looks for column definitions ending with `_encrypted` in CREATE TABLE statements.
+    /// Looks for column definitions ending with `_encrypted` in CREATE TABLE and ALTER TABLE statements.
     fn parse_encrypted_columns(sql: &str, found: &mut HashSet<(String, String)>) {
         let mut current_table: Option<String> = None;
         let mut in_create_table = false;
@@ -576,6 +594,20 @@ mod tests {
                 if parts.len() >= 3 {
                     let table_name = parts[2].trim_end_matches('(').to_string();
                     current_table = Some(table_name);
+                }
+            }
+
+            // Detect ALTER TABLE ... ADD COLUMN ... _encrypted
+            // Pattern: ALTER TABLE table_name ADD COLUMN column_encrypted BYTEA
+            if trimmed.starts_with("alter table") && trimmed.contains("add column") {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                // ["alter", "table", "table_name", "add", "column", "column_name", ...]
+                if parts.len() >= 6 {
+                    let table_name = parts[2].to_string();
+                    let column_name = parts[5].to_string();
+                    if column_name.ends_with("_encrypted") {
+                        found.insert((table_name, column_name));
+                    }
                 }
             }
 

@@ -72,6 +72,7 @@ impl SessionStore for DbSessionStore {
                     organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
                     harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                     agent_id: row.agent_id,
+                    user_id: row.user_id,
                     title: row.title,
                     preview: None, // Preview populated separately when listing sessions
                     output_preview: None, // Output preview populated separately when listing sessions

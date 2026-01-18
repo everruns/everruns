@@ -424,6 +424,7 @@ impl WorkerService for WorkerServiceImpl {
                 .iter()
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
+            user_id: session.user_id.map(uuid_to_proto_uuid),
         };
 
         // Load messages from events using EventService with limit
@@ -665,6 +666,7 @@ impl WorkerService for WorkerServiceImpl {
                 .iter()
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
+            user_id: s.user_id.map(uuid_to_proto_uuid),
         });
 
         Ok(Response::new(GetSessionResponse {
@@ -716,6 +718,7 @@ impl WorkerService for WorkerServiceImpl {
                 .iter()
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
+            user_id: session.user_id.map(uuid_to_proto_uuid),
         };
 
         Ok(Response::new(SetSessionStatusResponse {
@@ -2111,14 +2114,79 @@ impl WorkerService for WorkerServiceImpl {
                 None
             };
 
+            // Determine auth_type string
+            let auth_type = match server_with_tools.server.auth_type {
+                everruns_core::McpServerAuthType::None => "none".to_string(),
+                everruns_core::McpServerAuthType::ApiKey => "api_key".to_string(),
+                everruns_core::McpServerAuthType::OAuth => "oauth".to_string(),
+            };
+
+            // For OAuth servers, check if user has authorized
+            let (oauth_access_token, oauth_required) =
+                if server_with_tools.server.auth_type == everruns_core::McpServerAuthType::OAuth {
+                    // Parse user_id from request
+                    let user_id = req
+                        .user_id
+                        .as_ref()
+                        .and_then(|u| uuid::Uuid::parse_str(&u.value).ok());
+
+                    if let Some(user_id) = user_id {
+                        // Try to get OAuth token for this user
+                        match self
+                            .db
+                            .get_mcp_user_token(server_with_tools.server.id.uuid(), user_id)
+                            .await
+                        {
+                            Ok(Some(_token_row)) => {
+                                // Decrypt the access token
+                                // Note: For now we can't decrypt without EncryptionService
+                                // This will need to be added when full encryption support is implemented
+                                // For now, mark as required since we can't decrypt
+                                tracing::debug!(
+                                    mcp_server = %server_with_tools.server.name,
+                                    user_id = %user_id,
+                                    "Found OAuth token for user"
+                                );
+                                // TODO: Decrypt access_token_encrypted using EncryptionService
+                                // For now, we'll mark as required since we can't return decrypted token
+                                (None, true)
+                            }
+                            Ok(None) => {
+                                tracing::debug!(
+                                    mcp_server = %server_with_tools.server.name,
+                                    user_id = %user_id,
+                                    "No OAuth token found for user"
+                                );
+                                (None, true)
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    mcp_server = %server_with_tools.server.name,
+                                    error = %e,
+                                    "Failed to get OAuth token"
+                                );
+                                (None, true)
+                            }
+                        }
+                    } else {
+                        // No user_id provided, OAuth required
+                        (None, true)
+                    }
+                } else {
+                    (None, false)
+                };
+
             Some(McpServerInfo {
                 id: Some(proto::Uuid {
-                    value: server_with_tools.server.id.to_string(),
+                    value: server_with_tools.server.id.uuid().to_string(),
                 }),
                 name: server_with_tools.server.name,
                 url: server_with_tools.server.url,
                 api_key,
                 headers: server_with_tools.server.headers,
+                auth_type,
+                oauth_access_token,
+                oauth_required,
             })
         } else {
             None

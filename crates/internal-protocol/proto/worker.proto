@@ -270,6 +270,8 @@ message Session {
     repeated string capabilities = 9;
     // Harness ID (required for sessions)
     optional Uuid harness_id = 10;
+    // User who created this session (for per-user OAuth tokens)
+    optional Uuid user_id = 11;
 }
 
 message GetSessionRequest {
@@ -854,6 +856,12 @@ message McpServerInfo {
     string url = 3;
     optional string api_key = 4;  // Decrypted by control plane
     map<string, string> headers = 5;
+    // Authentication type: "none", "api_key", "oauth"
+    string auth_type = 6;
+    // OAuth access token (decrypted, only set if auth_type="oauth" and user has authorized)
+    optional string oauth_access_token = 7;
+    // True if OAuth auth is required but user hasn't authorized yet
+    bool oauth_required = 8;
 }
 
 // Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn__search")
@@ -861,6 +869,8 @@ message GetMcpServerByPrefixRequest {
     string server_prefix = 1;
     // Organization ID for resource validation
     int64 org_id = 2;
+    // User ID for fetching per-user OAuth tokens (optional)
+    optional Uuid user_id = 3;
 }
 
 message GetMcpServerByPrefixResponse {

@@ -286,6 +286,8 @@ pub struct SessionRow {
     #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
+    /// User who created this session (for per-user OAuth tokens)
+    pub user_id: Option<Uuid>,
     pub title: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
@@ -319,6 +321,8 @@ pub struct CreateSessionRow {
     pub org_id: i64,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
+    /// User who created this session (for per-user OAuth tokens)
+    pub user_id: Option<Uuid>,
     pub title: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
@@ -582,6 +586,8 @@ pub struct McpServerRow {
     pub url: String,
     pub transport_type: String,
     pub status: String,
+    /// Authentication type: 'none', 'api_key', 'oauth'
+    pub auth_type: String,
     pub api_key_encrypted: Option<Vec<u8>>,
     pub api_key_set: bool,
     pub headers: sqlx::types::JsonValue,
@@ -590,6 +596,18 @@ pub struct McpServerRow {
     pub cached_tools: sqlx::types::JsonValue,
     /// When tools were last fetched from MCP server
     pub tools_cached_at: Option<DateTime<Utc>>,
+    /// OAuth authorization endpoint URL
+    pub oauth_authorization_url: Option<String>,
+    /// OAuth token endpoint URL
+    pub oauth_token_url: Option<String>,
+    /// OAuth client ID (public)
+    pub oauth_client_id: Option<String>,
+    /// Encrypted OAuth client secret
+    pub oauth_client_secret_encrypted: Option<Vec<u8>>,
+    /// OAuth scopes as JSON array
+    pub oauth_scopes: Option<sqlx::types::JsonValue>,
+    /// RFC 9728 Protected Resource Metadata URL
+    pub oauth_resource_metadata_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -601,9 +619,16 @@ pub struct CreateMcpServerRow {
     pub description: Option<String>,
     pub url: String,
     pub transport_type: String,
+    pub auth_type: String,
     pub api_key_encrypted: Option<Vec<u8>>,
     pub headers: Option<serde_json::Value>,
     pub settings: Option<serde_json::Value>,
+    pub oauth_authorization_url: Option<String>,
+    pub oauth_token_url: Option<String>,
+    pub oauth_client_id: Option<String>,
+    pub oauth_client_secret_encrypted: Option<Vec<u8>>,
+    pub oauth_scopes: Option<serde_json::Value>,
+    pub oauth_resource_metadata_url: Option<String>,
 }
 
 /// Input for updating an MCP server
@@ -614,9 +639,16 @@ pub struct UpdateMcpServer {
     pub url: Option<String>,
     pub transport_type: Option<String>,
     pub status: Option<String>,
+    pub auth_type: Option<String>,
     pub api_key_encrypted: Option<Vec<u8>>,
     pub headers: Option<serde_json::Value>,
     pub settings: Option<serde_json::Value>,
+    pub oauth_authorization_url: Option<String>,
+    pub oauth_token_url: Option<String>,
+    pub oauth_client_id: Option<String>,
+    pub oauth_client_secret_encrypted: Option<Vec<u8>>,
+    pub oauth_scopes: Option<serde_json::Value>,
+    pub oauth_resource_metadata_url: Option<String>,
 }
 
 // ============================================
@@ -810,4 +842,59 @@ pub struct CreateSkillFileRow {
     pub content_binary: Option<Vec<u8>>,
     pub is_binary: bool,
     pub size_bytes: i64,
+}
+
+// ============================================
+// MCP OAuth Token models
+// ============================================
+
+/// MCP User Token row from database (per-user OAuth tokens)
+#[derive(Debug, Clone, FromRow)]
+pub struct McpUserTokenRow {
+    pub id: Uuid,
+    pub mcp_server_id: Uuid,
+    pub user_id: Uuid,
+    pub access_token_encrypted: Vec<u8>,
+    pub refresh_token_encrypted: Option<Vec<u8>>,
+    pub token_type: String,
+    pub scope: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating/updating MCP user token
+#[derive(Debug, Clone)]
+pub struct UpsertMcpUserToken {
+    pub mcp_server_id: Uuid,
+    pub user_id: Uuid,
+    pub access_token_encrypted: Vec<u8>,
+    pub refresh_token_encrypted: Option<Vec<u8>>,
+    pub token_type: String,
+    pub scope: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// MCP OAuth State row from database (PKCE and CSRF protection)
+#[derive(Debug, Clone, FromRow)]
+pub struct McpOAuthStateRow {
+    pub id: Uuid,
+    pub mcp_server_id: Uuid,
+    pub user_id: Uuid,
+    pub code_verifier: String,
+    pub redirect_uri: String,
+    pub return_url: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Input for creating MCP OAuth state
+#[derive(Debug, Clone)]
+pub struct CreateMcpOAuthState {
+    pub mcp_server_id: Uuid,
+    pub user_id: Uuid,
+    pub code_verifier: String,
+    pub redirect_uri: String,
+    pub return_url: Option<String>,
+    pub expires_at: DateTime<Utc>,
 }

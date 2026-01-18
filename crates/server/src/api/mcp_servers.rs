@@ -2,23 +2,51 @@
 // Routes: /v1/mcp-servers/...
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::McpServerService;
+use crate::auth::middleware::AuthUser;
+use crate::services::{McpOAuthService, McpServerService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
+    response::Redirect,
+    routing::{delete, get, post},
 };
 use everruns_core::typed_id::McpServerId;
-use everruns_core::{McpServer, McpServerStatus, McpServerTransportType};
+use everruns_core::{
+    McpOAuthStatus, McpServer, McpServerAuthType, McpServerStatus, McpServerTransportType,
+};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
+use uuid::Uuid;
+
+/// OAuth configuration input for MCP server
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct OAuthConfigInput {
+    /// OAuth authorization endpoint URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_url: Option<String>,
+    /// OAuth token endpoint URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_url: Option<String>,
+    /// OAuth client ID (public).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// OAuth client secret (write-only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+    /// Required OAuth scopes.
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// RFC 9728 Protected Resource Metadata URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_metadata_url: Option<String>,
+}
 
 /// Request to create a new MCP server
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -36,12 +64,18 @@ pub struct CreateMcpServerRequest {
     /// Transport type. Currently only "http" is supported.
     #[serde(default = "default_transport_type")]
     pub transport_type: McpServerTransportType,
-    /// API key for authentication (optional).
+    /// Authentication type: none, api_key, or oauth.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_type: Option<McpServerAuthType>,
+    /// API key for authentication (when auth_type is api_key).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
     /// Additional HTTP headers for authentication.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
+    /// OAuth configuration (when auth_type is oauth).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth_config: Option<OAuthConfigInput>,
 }
 
 fn default_transport_type() -> McpServerTransportType {
@@ -69,12 +103,18 @@ pub struct UpdateMcpServerRequest {
     /// The status of the MCP server. Set to "disabled" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<McpServerStatus>,
+    /// Authentication type: none, api_key, or oauth.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_type: Option<McpServerAuthType>,
     /// API key for authentication. Set to update.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
     /// Additional HTTP headers for authentication.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
+    /// OAuth configuration. Set to update OAuth settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth_config: Option<OAuthConfigInput>,
 }
 
 /// Response for a simple MCP server config (matches Claude Desktop format)
@@ -91,7 +131,9 @@ pub struct McpServerConfigResponse {
 #[derive(Clone)]
 pub struct AppState {
     pub service: Arc<McpServerService>,
+    pub oauth_service: Option<Arc<McpOAuthService>>,
     pub auth: AuthState,
+    pub base_url: String,
 }
 
 impl AppState {
@@ -99,10 +141,21 @@ impl AppState {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         auth: AuthState,
+        base_url: String,
     ) -> Self {
+        let oauth_service = encryption.as_ref().map(|enc| {
+            Arc::new(McpOAuthService::new(
+                db.clone(),
+                enc.clone(),
+                base_url.clone(),
+            ))
+        });
+
         Self {
             service: Arc::new(McpServerService::new(db, encryption)),
+            oauth_service,
             auth,
+            base_url,
         }
     }
 }
@@ -125,6 +178,23 @@ pub fn routes(state: AppState) -> Router {
             get(get_mcp_server)
                 .patch(update_mcp_server)
                 .delete(delete_mcp_server),
+        )
+        // OAuth routes
+        .route(
+            "/v1/mcp-servers/{server_id}/oauth/status",
+            get(get_oauth_status),
+        )
+        .route(
+            "/v1/mcp-servers/{server_id}/oauth/authorize",
+            get(start_oauth_authorization),
+        )
+        .route(
+            "/v1/mcp-servers/{server_id}/oauth/callback",
+            get(handle_oauth_callback),
+        )
+        .route(
+            "/v1/mcp-servers/{server_id}/oauth/token",
+            delete(revoke_oauth_token),
         )
         .with_state(state)
 }
@@ -339,6 +409,215 @@ pub async fn delete_mcp_server(
                 error: "MCP server not found".to_string(),
             }),
         ))
+    }
+}
+
+// ============================================
+// MCP OAuth Endpoints
+// ============================================
+
+/// Query parameters for OAuth authorization
+#[derive(Debug, Clone, Deserialize)]
+pub struct OAuthAuthorizeQuery {
+    /// URL to return to after authorization
+    pub return_url: Option<String>,
+}
+
+/// Query parameters for OAuth callback
+#[derive(Debug, Clone, Deserialize)]
+pub struct OAuthCallbackQuery {
+    /// Authorization code from OAuth provider
+    pub code: String,
+    /// State parameter for CSRF protection
+    pub state: String,
+}
+
+/// GET /v1/mcp-servers/{server_id}/oauth/status - Get OAuth authorization status
+#[utoipa::path(
+    get,
+    path = "/v1/mcp-servers/{server_id}/oauth/status",
+    params(
+        ("server_id" = Uuid, Path, description = "MCP server ID")
+    ),
+    responses(
+        (status = 200, description = "OAuth status", body = McpOAuthStatus),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "MCP server not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "mcp-oauth"
+)]
+pub async fn get_oauth_status(
+    user: AuthUser,
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<Json<McpOAuthStatus>, (StatusCode, Json<ErrorResponse>)> {
+    let oauth_service = state.oauth_service.as_ref().ok_or_else(|| {
+        ErrorResponse::new("OAuth not configured (encryption not enabled)")
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+    })?;
+
+    let status = oauth_service
+        .get_oauth_status(server_id, user.id)
+        .await
+        .map_err(|e| {
+            if e.to_string().contains("not found") {
+                ErrorResponse::new("MCP server not found").into_response(StatusCode::NOT_FOUND)
+            } else {
+                tracing::error!("Failed to get OAuth status: {}", e);
+                ErrorResponse::internal_error()
+            }
+        })?;
+
+    Ok(Json(status))
+}
+
+/// GET /v1/mcp-servers/{server_id}/oauth/authorize - Start OAuth authorization
+#[utoipa::path(
+    get,
+    path = "/v1/mcp-servers/{server_id}/oauth/authorize",
+    params(
+        ("server_id" = Uuid, Path, description = "MCP server ID"),
+        ("return_url" = Option<String>, Query, description = "URL to return to after authorization")
+    ),
+    responses(
+        (status = 302, description = "Redirect to OAuth provider"),
+        (status = 401, description = "Not authenticated"),
+        (status = 400, description = "MCP server doesn't use OAuth"),
+        (status = 404, description = "MCP server not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "mcp-oauth"
+)]
+pub async fn start_oauth_authorization(
+    user: AuthUser,
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+    Query(query): Query<OAuthAuthorizeQuery>,
+) -> Result<Redirect, (StatusCode, Json<ErrorResponse>)> {
+    let oauth_service = state.oauth_service.as_ref().ok_or_else(|| {
+        ErrorResponse::new("OAuth not configured (encryption not enabled)")
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+    })?;
+
+    let auth_url = oauth_service
+        .start_authorization(server_id, user.id, query.return_url)
+        .await
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("not found") {
+                ErrorResponse::new("MCP server not found").into_response(StatusCode::NOT_FOUND)
+            } else if msg.contains("does not use OAuth") {
+                ErrorResponse::new("MCP server does not use OAuth authentication")
+                    .into_response(StatusCode::BAD_REQUEST)
+            } else if msg.contains("not configured") {
+                ErrorResponse::new(msg).into_response(StatusCode::BAD_REQUEST)
+            } else {
+                tracing::error!("Failed to start OAuth authorization: {}", e);
+                ErrorResponse::internal_error()
+            }
+        })?;
+
+    Ok(Redirect::to(&auth_url))
+}
+
+/// GET /v1/mcp-servers/{server_id}/oauth/callback - OAuth callback handler
+#[utoipa::path(
+    get,
+    path = "/v1/mcp-servers/{server_id}/oauth/callback",
+    params(
+        ("server_id" = Uuid, Path, description = "MCP server ID"),
+        ("code" = String, Query, description = "Authorization code from OAuth provider"),
+        ("state" = String, Query, description = "State parameter for CSRF protection")
+    ),
+    responses(
+        (status = 302, description = "Redirect to return URL or default page"),
+        (status = 400, description = "Invalid or expired state"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "mcp-oauth"
+)]
+pub async fn handle_oauth_callback(
+    State(state): State<AppState>,
+    Path(_server_id): Path<Uuid>,
+    Query(query): Query<OAuthCallbackQuery>,
+) -> Result<Redirect, (StatusCode, String)> {
+    let oauth_service = state.oauth_service.as_ref().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "OAuth not configured".to_string(),
+        )
+    })?;
+
+    // Parse state UUID
+    let state_id = Uuid::parse_str(&query.state).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid state parameter".to_string(),
+        )
+    })?;
+
+    // Handle callback
+    let (mcp_server_id, return_url) = oauth_service
+        .handle_callback(state_id, &query.code)
+        .await
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Invalid or expired") {
+                (StatusCode::BAD_REQUEST, msg)
+            } else {
+                tracing::error!("OAuth callback failed: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "OAuth callback failed".to_string(),
+                )
+            }
+        })?;
+
+    // Redirect to return URL or default
+    let redirect_url =
+        return_url.unwrap_or_else(|| format!("/mcp-servers/{}/oauth/success", mcp_server_id));
+
+    Ok(Redirect::to(&redirect_url))
+}
+
+/// DELETE /v1/mcp-servers/{server_id}/oauth/token - Revoke OAuth authorization
+#[utoipa::path(
+    delete,
+    path = "/v1/mcp-servers/{server_id}/oauth/token",
+    params(
+        ("server_id" = Uuid, Path, description = "MCP server ID")
+    ),
+    responses(
+        (status = 204, description = "Token revoked successfully"),
+        (status = 401, description = "Not authenticated"),
+        (status = 404, description = "No token found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "mcp-oauth"
+)]
+pub async fn revoke_oauth_token(
+    user: AuthUser,
+    State(state): State<AppState>,
+    Path(server_id): Path<Uuid>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let oauth_service = state.oauth_service.as_ref().ok_or_else(|| {
+        ErrorResponse::new("OAuth not configured (encryption not enabled)")
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+    })?;
+
+    let deleted = oauth_service
+        .revoke_authorization(server_id, user.id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to revoke OAuth token: {}", e);
+            ErrorResponse::internal_error()
+        })?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ErrorResponse::new("No token found").into_response(StatusCode::NOT_FOUND))
     }
 }
 

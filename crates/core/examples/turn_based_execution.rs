@@ -151,6 +151,7 @@ async fn main() -> anyhow::Result<()> {
         organization_id: "default".to_string(),
         harness_id,
         agent_id: Some(AgentId::from_uuid(agent_id)),
+        user_id: None,
         title: Some("Weather Query".to_string()),
         preview: None,
         output_preview: None,

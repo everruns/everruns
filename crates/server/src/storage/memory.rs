@@ -702,6 +702,7 @@ impl InMemoryDatabase {
             org_id: input.org_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
+            user_id: input.user_id,
             title: input.title,
             tags: input.tags,
             model_id: input.model_id,
@@ -2119,12 +2120,19 @@ impl InMemoryDatabase {
             url: input.url,
             transport_type: input.transport_type,
             status: "active".to_string(),
+            auth_type: input.auth_type,
             api_key_encrypted: input.api_key_encrypted,
             api_key_set,
             headers: input.headers.unwrap_or(serde_json::json!({})),
             settings: input.settings.unwrap_or(serde_json::json!({})),
             cached_tools: serde_json::json!([]),
             tools_cached_at: None,
+            oauth_authorization_url: input.oauth_authorization_url,
+            oauth_token_url: input.oauth_token_url,
+            oauth_client_id: input.oauth_client_id,
+            oauth_client_secret_encrypted: input.oauth_client_secret_encrypted,
+            oauth_scopes: input.oauth_scopes,
+            oauth_resource_metadata_url: input.oauth_resource_metadata_url,
             created_at: now,
             updated_at: now,
         };
@@ -2158,12 +2166,19 @@ impl InMemoryDatabase {
             url: input.url,
             transport_type: input.transport_type,
             status: "active".to_string(),
+            auth_type: input.auth_type,
             api_key_encrypted: input.api_key_encrypted,
             api_key_set,
             headers: input.headers.unwrap_or(serde_json::json!({})),
             settings: input.settings.unwrap_or(serde_json::json!({})),
             cached_tools: serde_json::json!([]),
             tools_cached_at: None,
+            oauth_authorization_url: input.oauth_authorization_url,
+            oauth_token_url: input.oauth_token_url,
+            oauth_client_id: input.oauth_client_id,
+            oauth_client_secret_encrypted: input.oauth_client_secret_encrypted,
+            oauth_scopes: input.oauth_scopes,
+            oauth_resource_metadata_url: input.oauth_resource_metadata_url,
             created_at: now,
             updated_at: now,
         };
@@ -2289,6 +2304,69 @@ impl InMemoryDatabase {
             return Ok(false);
         }
         Ok(servers.remove(&id).is_some())
+    }
+
+    // ============================================
+    // MCP OAuth Tokens (stub implementations for dev mode)
+    // ============================================
+
+    pub async fn upsert_mcp_user_token(
+        &self,
+        _input: UpsertMcpUserToken,
+    ) -> Result<McpUserTokenRow> {
+        // OAuth tokens not supported in dev mode
+        Err(anyhow::anyhow!("OAuth tokens not supported in dev mode"))
+    }
+
+    pub async fn get_mcp_user_token(
+        &self,
+        _mcp_server_id: Uuid,
+        _user_id: Uuid,
+    ) -> Result<Option<McpUserTokenRow>> {
+        // OAuth tokens not supported in dev mode
+        Ok(None)
+    }
+
+    pub async fn list_mcp_user_tokens_for_user(
+        &self,
+        _user_id: Uuid,
+    ) -> Result<Vec<McpUserTokenRow>> {
+        // OAuth tokens not supported in dev mode
+        Ok(vec![])
+    }
+
+    pub async fn delete_mcp_user_token(
+        &self,
+        _mcp_server_id: Uuid,
+        _user_id: Uuid,
+    ) -> Result<bool> {
+        // OAuth tokens not supported in dev mode
+        Ok(false)
+    }
+
+    // ============================================
+    // MCP OAuth States (stub implementations for dev mode)
+    // ============================================
+
+    pub async fn create_mcp_oauth_state(
+        &self,
+        _input: CreateMcpOAuthState,
+    ) -> Result<McpOAuthStateRow> {
+        // OAuth not supported in dev mode
+        Err(anyhow::anyhow!("OAuth not supported in dev mode"))
+    }
+
+    pub async fn consume_mcp_oauth_state(
+        &self,
+        _state_id: Uuid,
+    ) -> Result<Option<McpOAuthStateRow>> {
+        // OAuth not supported in dev mode
+        Ok(None)
+    }
+
+    pub async fn delete_expired_mcp_oauth_states(&self) -> Result<u64> {
+        // OAuth not supported in dev mode
+        Ok(0)
     }
 
     // ============================================
@@ -3117,6 +3195,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                user_id: None,
                 title: Some("Test Session".to_string()),
                 tags: vec![],
                 model_id: None,
@@ -3162,6 +3241,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                user_id: None,
                 title: Some("Test Session".to_string()),
                 tags: vec![],
                 model_id: None,
@@ -3222,6 +3302,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                user_id: None,
                 title: None,
                 tags: vec![],
                 model_id: None,
@@ -3279,6 +3360,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                user_id: None,
                 title: Some(format!("Session {}", i)),
                 tags: vec![],
                 model_id: None,
@@ -3361,6 +3443,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                user_id: None,
                 title: Some(format!("Session {}", i)),
                 tags: vec![],
                 model_id: None,

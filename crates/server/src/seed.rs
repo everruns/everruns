@@ -1151,6 +1151,13 @@ async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             api_key_encrypted: None, // No API key needed for public endpoint
             headers: None,
             settings: None,
+            auth_type: "none".to_string(),
+            oauth_authorization_url: None,
+            oauth_token_url: None,
+            oauth_client_id: None,
+            oauth_client_secret_encrypted: None,
+            oauth_scopes: None,
+            oauth_resource_metadata_url: None,
         };
 
         match db

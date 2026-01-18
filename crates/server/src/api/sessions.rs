@@ -1,7 +1,7 @@
 // Session CRUD HTTP routes
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
-use crate::auth::{AuthState, ResolvedOrg};
+use crate::auth::{AuthState, AuthUser, ResolvedOrg};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
@@ -166,6 +166,7 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn create_session(
     org: ResolvedOrg,
+    user: AuthUser,
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
@@ -196,6 +197,7 @@ pub async fn create_session(
             req.harness_id.uuid(),
             agent_internal_id,
             agent_public_id,
+            Some(user.id),
             req,
         )
         .await

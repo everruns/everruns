@@ -25,6 +25,7 @@ use crate::grpc_adapters::{
     GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore, GrpcSessionStorageStore,
     GrpcSessionStore,
 };
+use everruns_core::traits::SessionStore;
 
 // Re-export atom types for activity callers
 pub use everruns_core::atoms::{
@@ -324,10 +325,20 @@ pub async fn act_activity(
         }
     }
 
+    // Get session to retrieve user_id for per-user OAuth tokens
+    let session_store = GrpcSessionStore::new(grpc_client.clone(), org_id);
+    let user_id = session_store
+        .get_session(input.context.session_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| s.user_id);
+
     // Create composite tool executor that handles both built-in and MCP tools
     let mcp_executor = Arc::new(crate::mcp_executor::McpToolExecutor::new(
         grpc_client.clone(),
         org_id,
+        user_id,
     ));
     let tool_executor =
         crate::mcp_executor::CompositeToolExecutor::new(builtin_executor, mcp_executor);

@@ -5,6 +5,12 @@
 //
 // Currently supports only HTTP (Streamable HTTP) transport.
 // MCP tool types follow the MCP specification for tool discovery and execution.
+//
+// OAuth 2.1 support follows the MCP Authorization specification (2025-06-18):
+// - RFC 9728: Protected Resource Metadata for authorization server discovery
+// - RFC 8414: OAuth Authorization Server Metadata
+// - RFC 8707: Resource Indicators for audience binding
+// - PKCE (S256): Required for all authorization flows
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -74,6 +80,41 @@ impl From<&str> for McpServerStatus {
     }
 }
 
+/// MCP Server authentication type.
+/// Determines how authentication is handled for requests to the MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum McpServerAuthType {
+    /// No authentication required.
+    #[default]
+    None,
+    /// Static API key authentication (uses api_key_encrypted field).
+    ApiKey,
+    /// OAuth 2.1 authentication (per-user tokens).
+    OAuth,
+}
+
+impl std::fmt::Display for McpServerAuthType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            McpServerAuthType::None => write!(f, "none"),
+            McpServerAuthType::ApiKey => write!(f, "api_key"),
+            McpServerAuthType::OAuth => write!(f, "oauth"),
+        }
+    }
+}
+
+impl From<&str> for McpServerAuthType {
+    fn from(s: &str) -> Self {
+        match s {
+            "api_key" => McpServerAuthType::ApiKey,
+            "oauth" => McpServerAuthType::OAuth,
+            _ => McpServerAuthType::None,
+        }
+    }
+}
+
 /// MCP Server configuration.
 /// Represents a remote MCP server that can provide tools and resources.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,16 +143,47 @@ pub struct McpServer {
     pub transport_type: McpServerTransportType,
     /// Current lifecycle status of the MCP server.
     pub status: McpServerStatus,
-    /// Whether an API key has been configured.
+    /// Authentication type for the MCP server.
+    #[serde(default)]
+    pub auth_type: McpServerAuthType,
+    /// Whether an API key has been configured (for api_key auth_type).
     pub api_key_set: bool,
     /// Additional HTTP headers for authentication.
     /// Keys are header names, values are header values.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub headers: HashMap<String, String>,
+    /// OAuth configuration (only set when auth_type is OAuth).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_config: Option<McpServerOAuthConfig>,
     /// Timestamp when the MCP server was created.
     pub created_at: DateTime<Utc>,
     /// Timestamp when the MCP server was last updated.
     pub updated_at: DateTime<Utc>,
+}
+
+/// OAuth configuration for an MCP server.
+/// Contains the OAuth endpoints and client credentials.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct McpServerOAuthConfig {
+    /// OAuth authorization endpoint URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_url: Option<String>,
+    /// OAuth token endpoint URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_url: Option<String>,
+    /// OAuth client ID (public).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Whether a client secret has been configured.
+    #[serde(default)]
+    pub client_secret_set: bool,
+    /// Required OAuth scopes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<String>,
+    /// RFC 9728 Protected Resource Metadata URL (auto-discovered).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_metadata_url: Option<String>,
 }
 
 // ============================================================================
@@ -277,6 +349,143 @@ pub fn parse_mcp_tool_name(tool_name: &str) -> Option<(String, String)> {
         }
     }
     None
+}
+
+// ============================================================================
+// MCP OAuth Types (following MCP Authorization specification 2025-06-18)
+// ============================================================================
+
+/// Per-user OAuth token for an MCP server.
+/// Each user has their own token for each OAuth-protected MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct McpUserToken {
+    /// Unique identifier for the token record.
+    pub id: Uuid,
+    /// MCP server this token is for.
+    pub mcp_server_id: Uuid,
+    /// User who owns this token.
+    pub user_id: Uuid,
+    /// Token type (typically "Bearer").
+    pub token_type: String,
+    /// Granted OAuth scopes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// When the access token expires.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    /// When the token was created.
+    pub created_at: DateTime<Utc>,
+    /// When the token was last updated.
+    pub updated_at: DateTime<Utc>,
+}
+
+/// OAuth authorization status for a user and MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct McpOAuthStatus {
+    /// Authentication type of the MCP server.
+    pub auth_type: McpServerAuthType,
+    /// Whether the user is authorized (has valid tokens).
+    pub authorized: bool,
+    /// When the current access token expires.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    /// Granted OAuth scopes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<String>,
+    /// URL to initiate authorization (if not authorized).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_url: Option<String>,
+}
+
+/// RFC 9728: OAuth Protected Resource Metadata.
+/// Advertises authorization servers for a protected resource.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProtectedResourceMetadata {
+    /// The resource server's identifier (typically the MCP server URL).
+    pub resource: String,
+    /// List of authorization server URLs that can issue tokens for this resource.
+    pub authorization_servers: Vec<String>,
+    /// Bearer token authentication methods supported.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bearer_methods_supported: Vec<String>,
+    /// Resource documentation URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_documentation: Option<String>,
+    /// Resource policy URI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_policy_uri: Option<String>,
+    /// Resource terms of service URI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_tos_uri: Option<String>,
+    /// Scopes supported by this resource.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes_supported: Vec<String>,
+}
+
+/// RFC 8414: OAuth Authorization Server Metadata.
+/// Contains OAuth endpoints and capabilities.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthorizationServerMetadata {
+    /// Authorization server's issuer identifier.
+    pub issuer: String,
+    /// Authorization endpoint URL.
+    pub authorization_endpoint: String,
+    /// Token endpoint URL.
+    pub token_endpoint: String,
+    /// Client registration endpoint URL (RFC 7591).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_endpoint: Option<String>,
+    /// Token revocation endpoint URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revocation_endpoint: Option<String>,
+    /// Supported response types.
+    #[serde(default)]
+    pub response_types_supported: Vec<String>,
+    /// Supported grant types.
+    #[serde(default)]
+    pub grant_types_supported: Vec<String>,
+    /// Supported scopes.
+    #[serde(default)]
+    pub scopes_supported: Vec<String>,
+    /// Supported code challenge methods (PKCE).
+    #[serde(default)]
+    pub code_challenge_methods_supported: Vec<String>,
+    /// Token endpoint authentication methods.
+    #[serde(default)]
+    pub token_endpoint_auth_methods_supported: Vec<String>,
+}
+
+/// OAuth token response from token endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthTokenResponse {
+    /// Access token.
+    pub access_token: String,
+    /// Token type (typically "Bearer").
+    pub token_type: String,
+    /// Token lifetime in seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_in: Option<i64>,
+    /// Refresh token for obtaining new access tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    /// Granted scopes (may differ from requested).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+/// OAuth error response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthErrorResponse {
+    /// Error code.
+    pub error: String,
+    /// Human-readable error description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_description: Option<String>,
+    /// URI for more information.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_uri: Option<String>,
 }
 
 #[cfg(test)]

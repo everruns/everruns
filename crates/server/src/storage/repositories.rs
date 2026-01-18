@@ -799,15 +799,16 @@ impl Database {
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'started')
-            RETURNING id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            INSERT INTO sessions (org_id, harness_id, agent_id, user_id, title, tags, model_id, capabilities, tools, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'started')
+            RETURNING id, org_id, harness_id, agent_id, user_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(input.org_id)
         .bind(input.harness_id.map(|h| h.uuid()))
         .bind(input.agent_id.map(|a| a.uuid()))
+        .bind(input.user_id)
         .bind(&input.title)
         .bind(&input.tags)
         .bind(input.model_id)
@@ -823,7 +824,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, user_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM sessions
             WHERE org_id = $1 AND id = $2
@@ -875,7 +876,7 @@ impl Database {
         let rows = if let Some(aid) = agent_id {
             sqlx::query_as::<_, SessionRow>(
                 r#"
-                SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+                SELECT id, org_id, harness_id, agent_id, user_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM sessions
                 WHERE org_id = $1 AND agent_id = $2
@@ -892,7 +893,7 @@ impl Database {
         } else {
             sqlx::query_as::<_, SessionRow>(
                 r#"
-                SELECT id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+                SELECT id, org_id, harness_id, agent_id, user_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM sessions
                 WHERE org_id = $1
@@ -929,7 +930,7 @@ impl Database {
                 started_at = COALESCE($7, started_at),
                 finished_at = COALESCE($8, finished_at)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, harness_id, agent_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, harness_id, agent_id, user_id, title, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -2324,9 +2325,18 @@ impl Database {
 
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            INSERT INTO mcp_servers (org_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            INSERT INTO mcp_servers (
+                org_id, name, description, url, transport_type, auth_type,
+                api_key_encrypted, api_key_set, headers, settings,
+                oauth_authorization_url, oauth_token_url, oauth_client_id,
+                oauth_client_secret_encrypted, oauth_scopes, oauth_resource_metadata_url
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            RETURNING id, org_id, name, description, url, transport_type, status, auth_type,
+                api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at,
+                oauth_authorization_url, oauth_token_url, oauth_client_id,
+                oauth_client_secret_encrypted, oauth_scopes, oauth_resource_metadata_url,
+                created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -2334,10 +2344,17 @@ impl Database {
         .bind(&input.description)
         .bind(&input.url)
         .bind(&input.transport_type)
+        .bind(&input.auth_type)
         .bind(&input.api_key_encrypted)
         .bind(api_key_set)
         .bind(&headers)
         .bind(&settings)
+        .bind(&input.oauth_authorization_url)
+        .bind(&input.oauth_token_url)
+        .bind(&input.oauth_client_id)
+        .bind(&input.oauth_client_secret_encrypted)
+        .bind(&input.oauth_scopes)
+        .bind(&input.oauth_resource_metadata_url)
         .fetch_one(&self.pool)
         .await?;
 
@@ -2358,10 +2375,19 @@ impl Database {
 
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
-            INSERT INTO mcp_servers (id, org_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO mcp_servers (
+                id, org_id, name, description, url, transport_type, auth_type,
+                api_key_encrypted, api_key_set, headers, settings,
+                oauth_authorization_url, oauth_token_url, oauth_client_id,
+                oauth_client_secret_encrypted, oauth_scopes, oauth_resource_metadata_url
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, auth_type,
+                api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at,
+                oauth_authorization_url, oauth_token_url, oauth_client_id,
+                oauth_client_secret_encrypted, oauth_scopes, oauth_resource_metadata_url,
+                created_at, updated_at
             "#,
         )
         .bind(id)
@@ -2370,28 +2396,41 @@ impl Database {
         .bind(&input.description)
         .bind(&input.url)
         .bind(&input.transport_type)
+        .bind(&input.auth_type)
         .bind(&input.api_key_encrypted)
         .bind(api_key_set)
         .bind(&headers)
         .bind(&settings)
+        .bind(&input.oauth_authorization_url)
+        .bind(&input.oauth_token_url)
+        .bind(&input.oauth_client_id)
+        .bind(&input.oauth_client_secret_encrypted)
+        .bind(&input.oauth_scopes)
+        .bind(&input.oauth_resource_metadata_url)
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
     }
 
+    const MCP_SERVER_SELECT_COLUMNS: &str = r#"
+        id, org_id, name, description, url, transport_type, status, auth_type,
+        api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at,
+        oauth_authorization_url, oauth_token_url, oauth_client_id,
+        oauth_client_secret_encrypted, oauth_scopes, oauth_resource_metadata_url,
+        created_at, updated_at
+    "#;
+
     pub async fn get_mcp_server(&self, org_id: i64, id: Uuid) -> Result<Option<McpServerRow>> {
-        let row = sqlx::query_as::<_, McpServerRow>(
-            r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-            FROM mcp_servers
-            WHERE org_id = $1 AND id = $2
-            "#,
-        )
-        .bind(org_id)
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let query = format!(
+            "SELECT {} FROM mcp_servers WHERE org_id = $1 AND id = $2",
+            Self::MCP_SERVER_SELECT_COLUMNS
+        );
+        let row = sqlx::query_as::<_, McpServerRow>(&query)
+            .bind(org_id)
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row)
     }
@@ -2405,17 +2444,15 @@ impl Database {
         if ids.is_empty() {
             return Ok(vec![]);
         }
-        let rows = sqlx::query_as::<_, McpServerRow>(
-            r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-            FROM mcp_servers
-            WHERE org_id = $1 AND id = ANY($2)
-            "#,
-        )
-        .bind(org_id)
-        .bind(ids)
-        .fetch_all(&self.pool)
-        .await?;
+        let query = format!(
+            "SELECT {} FROM mcp_servers WHERE org_id = $1 AND id = ANY($2)",
+            Self::MCP_SERVER_SELECT_COLUMNS
+        );
+        let rows = sqlx::query_as::<_, McpServerRow>(&query)
+            .bind(org_id)
+            .bind(ids)
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows)
     }
@@ -2425,50 +2462,42 @@ impl Database {
         org_id: i64,
         name: &str,
     ) -> Result<Option<McpServerRow>> {
-        let row = sqlx::query_as::<_, McpServerRow>(
-            r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-            FROM mcp_servers
-            WHERE org_id = $1 AND name = $2
-            "#,
-        )
-        .bind(org_id)
-        .bind(name)
-        .fetch_optional(&self.pool)
-        .await?;
+        let query = format!(
+            "SELECT {} FROM mcp_servers WHERE org_id = $1 AND name = $2",
+            Self::MCP_SERVER_SELECT_COLUMNS
+        );
+        let row = sqlx::query_as::<_, McpServerRow>(&query)
+            .bind(org_id)
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row)
     }
 
     pub async fn list_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
-        let rows = sqlx::query_as::<_, McpServerRow>(
-            r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-            FROM mcp_servers
-            WHERE org_id = $1
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let query = format!(
+            "SELECT {} FROM mcp_servers WHERE org_id = $1 ORDER BY created_at DESC",
+            Self::MCP_SERVER_SELECT_COLUMNS
+        );
+        let rows = sqlx::query_as::<_, McpServerRow>(&query)
+            .bind(org_id)
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows)
     }
 
     /// List only active MCP servers (for capability listing)
     pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
-        let rows = sqlx::query_as::<_, McpServerRow>(
-            r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
-            FROM mcp_servers
-            WHERE org_id = $1 AND status = 'active'
-            ORDER BY name ASC
-            "#,
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let query = format!(
+            "SELECT {} FROM mcp_servers WHERE org_id = $1 AND status = 'active' ORDER BY name ASC",
+            Self::MCP_SERVER_SELECT_COLUMNS
+        );
+        let rows = sqlx::query_as::<_, McpServerRow>(&query)
+            .bind(org_id)
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows)
     }
@@ -2491,12 +2520,23 @@ impl Database {
                 url = COALESCE($5, url),
                 transport_type = COALESCE($6, transport_type),
                 status = COALESCE($7, status),
-                api_key_encrypted = COALESCE($8, api_key_encrypted),
-                api_key_set = COALESCE($9, api_key_set),
-                headers = COALESCE($10, headers),
-                settings = COALESCE($11, settings)
+                auth_type = COALESCE($8, auth_type),
+                api_key_encrypted = COALESCE($9, api_key_encrypted),
+                api_key_set = COALESCE($10, api_key_set),
+                headers = COALESCE($11, headers),
+                settings = COALESCE($12, settings),
+                oauth_authorization_url = COALESCE($13, oauth_authorization_url),
+                oauth_token_url = COALESCE($14, oauth_token_url),
+                oauth_client_id = COALESCE($15, oauth_client_id),
+                oauth_client_secret_encrypted = COALESCE($16, oauth_client_secret_encrypted),
+                oauth_scopes = COALESCE($17, oauth_scopes),
+                oauth_resource_metadata_url = COALESCE($18, oauth_resource_metadata_url)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING id, org_id, name, description, url, transport_type, status, auth_type,
+                api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at,
+                oauth_authorization_url, oauth_token_url, oauth_client_id,
+                oauth_client_secret_encrypted, oauth_scopes, oauth_resource_metadata_url,
+                created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -2506,10 +2546,17 @@ impl Database {
         .bind(&input.url)
         .bind(&input.transport_type)
         .bind(&input.status)
+        .bind(&input.auth_type)
         .bind(&input.api_key_encrypted)
         .bind(api_key_set)
         .bind(&input.headers)
         .bind(&input.settings)
+        .bind(&input.oauth_authorization_url)
+        .bind(&input.oauth_token_url)
+        .bind(&input.oauth_client_id)
+        .bind(&input.oauth_client_secret_encrypted)
+        .bind(&input.oauth_scopes)
+        .bind(&input.oauth_resource_metadata_url)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -2523,21 +2570,21 @@ impl Database {
         id: Uuid,
         input: UpdateMcpServerTools,
     ) -> Result<Option<McpServerRow>> {
-        let row = sqlx::query_as::<_, McpServerRow>(
+        let query = format!(
             r#"
             UPDATE mcp_servers
-            SET
-                cached_tools = $3,
-                tools_cached_at = NOW()
+            SET cached_tools = $3, tools_cached_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at
+            RETURNING {}
             "#,
-        )
-        .bind(org_id)
-        .bind(id)
-        .bind(&input.cached_tools)
-        .fetch_optional(&self.pool)
-        .await?;
+            Self::MCP_SERVER_SELECT_COLUMNS
+        );
+        let row = sqlx::query_as::<_, McpServerRow>(&query)
+            .bind(org_id)
+            .bind(id)
+            .bind(&input.cached_tools)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(row)
     }
@@ -2727,6 +2774,162 @@ impl Database {
     pub async fn delete_skill_files(&self, skill_id: Uuid) -> Result<u64> {
         let result = sqlx::query("DELETE FROM skill_files WHERE skill_id = $1")
             .bind(skill_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    // ============================================
+    // MCP OAuth Tokens (per-user OAuth tokens)
+    // ============================================
+
+    /// Upsert (insert or update) MCP user token
+    pub async fn upsert_mcp_user_token(
+        &self,
+        input: UpsertMcpUserToken,
+    ) -> Result<McpUserTokenRow> {
+        let row = sqlx::query_as::<_, McpUserTokenRow>(
+            r#"
+            INSERT INTO mcp_user_tokens (
+                mcp_server_id, user_id, access_token_encrypted, refresh_token_encrypted,
+                token_type, scope, expires_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (mcp_server_id, user_id)
+            DO UPDATE SET
+                access_token_encrypted = EXCLUDED.access_token_encrypted,
+                refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
+                token_type = EXCLUDED.token_type,
+                scope = EXCLUDED.scope,
+                expires_at = EXCLUDED.expires_at,
+                updated_at = NOW()
+            RETURNING id, mcp_server_id, user_id, access_token_encrypted, refresh_token_encrypted,
+                token_type, scope, expires_at, created_at, updated_at
+            "#,
+        )
+        .bind(input.mcp_server_id)
+        .bind(input.user_id)
+        .bind(&input.access_token_encrypted)
+        .bind(&input.refresh_token_encrypted)
+        .bind(&input.token_type)
+        .bind(&input.scope)
+        .bind(input.expires_at)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Get MCP user token by server and user
+    pub async fn get_mcp_user_token(
+        &self,
+        mcp_server_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<McpUserTokenRow>> {
+        let row = sqlx::query_as::<_, McpUserTokenRow>(
+            r#"
+            SELECT id, mcp_server_id, user_id, access_token_encrypted, refresh_token_encrypted,
+                token_type, scope, expires_at, created_at, updated_at
+            FROM mcp_user_tokens
+            WHERE mcp_server_id = $1 AND user_id = $2
+            "#,
+        )
+        .bind(mcp_server_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// List all tokens for a user
+    pub async fn list_mcp_user_tokens_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<McpUserTokenRow>> {
+        let rows = sqlx::query_as::<_, McpUserTokenRow>(
+            r#"
+            SELECT id, mcp_server_id, user_id, access_token_encrypted, refresh_token_encrypted,
+                token_type, scope, expires_at, created_at, updated_at
+            FROM mcp_user_tokens
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Delete MCP user token
+    pub async fn delete_mcp_user_token(&self, mcp_server_id: Uuid, user_id: Uuid) -> Result<bool> {
+        let result =
+            sqlx::query("DELETE FROM mcp_user_tokens WHERE mcp_server_id = $1 AND user_id = $2")
+                .bind(mcp_server_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    // ============================================
+    // MCP OAuth States (PKCE and CSRF)
+    // ============================================
+
+    /// Create MCP OAuth state for authorization flow
+    pub async fn create_mcp_oauth_state(
+        &self,
+        input: CreateMcpOAuthState,
+    ) -> Result<McpOAuthStateRow> {
+        let row = sqlx::query_as::<_, McpOAuthStateRow>(
+            r#"
+            INSERT INTO mcp_oauth_states (
+                mcp_server_id, user_id, code_verifier, redirect_uri, return_url, expires_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, mcp_server_id, user_id, code_verifier, redirect_uri, return_url,
+                created_at, expires_at
+            "#,
+        )
+        .bind(input.mcp_server_id)
+        .bind(input.user_id)
+        .bind(&input.code_verifier)
+        .bind(&input.redirect_uri)
+        .bind(&input.return_url)
+        .bind(input.expires_at)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Get and delete MCP OAuth state (consume it)
+    pub async fn consume_mcp_oauth_state(
+        &self,
+        state_id: Uuid,
+    ) -> Result<Option<McpOAuthStateRow>> {
+        let row = sqlx::query_as::<_, McpOAuthStateRow>(
+            r#"
+            DELETE FROM mcp_oauth_states
+            WHERE id = $1 AND expires_at > NOW()
+            RETURNING id, mcp_server_id, user_id, code_verifier, redirect_uri, return_url,
+                created_at, expires_at
+            "#,
+        )
+        .bind(state_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Delete expired OAuth states (cleanup job)
+    pub async fn delete_expired_mcp_oauth_states(&self) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM mcp_oauth_states WHERE expires_at <= NOW()")
             .execute(&self.pool)
             .await?;
 

@@ -225,6 +225,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
+                user_id: None,
                 title: r.title,
                 preview: None,
                 output_preview: None,

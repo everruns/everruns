@@ -53,6 +53,7 @@ impl SessionService {
         harness_id: Uuid,
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
+        user_id: Option<Uuid>,
         req: CreateSessionRequest,
     ) -> Result<Session> {
         let harness_id = HarnessId::from_uuid(harness_id);
@@ -87,6 +88,7 @@ impl SessionService {
             org_id,
             harness_id: Some(harness_id),
             agent_id,
+            user_id,
             title: req.title,
             tags: req.tags,
             model_id,
@@ -340,6 +342,7 @@ impl SessionService {
             organization_id: org_public_id.to_string(),
             harness_id: row.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
             agent_id: row.agent_id,
+            user_id: row.user_id,
             title: row.title,
             preview: None,        // Populated separately in list()
             output_preview: None, // Populated separately in list()
