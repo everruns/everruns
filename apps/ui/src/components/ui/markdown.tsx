@@ -19,8 +19,8 @@ interface AlertConfig {
   icon: typeof Info;
   bgClass: string;
   borderClass: string;
-  textClass: string;
-  titleClass: string;
+  textColor: string;
+  titleColor: string;
 }
 
 const alertConfigs: Record<AlertType, AlertConfig> = {
@@ -28,36 +28,36 @@ const alertConfigs: Record<AlertType, AlertConfig> = {
     icon: Info,
     bgClass: "bg-blue-50 dark:bg-blue-950/30",
     borderClass: "border-blue-400 dark:border-blue-600",
-    textClass: "!text-blue-800 dark:!text-blue-200",
-    titleClass: "!text-blue-700 dark:!text-blue-300",
+    textColor: "#1e40af",  // blue-800
+    titleColor: "#1d4ed8", // blue-700
   },
   tip: {
     icon: Lightbulb,
     bgClass: "bg-green-50 dark:bg-green-950/30",
     borderClass: "border-green-400 dark:border-green-600",
-    textClass: "!text-green-800 dark:!text-green-200",
-    titleClass: "!text-green-700 dark:!text-green-300",
+    textColor: "#166534",  // green-800
+    titleColor: "#15803d", // green-700
   },
   important: {
     icon: AlertCircle,
     bgClass: "bg-purple-50 dark:bg-purple-950/30",
     borderClass: "border-purple-400 dark:border-purple-600",
-    textClass: "!text-purple-800 dark:!text-purple-200",
-    titleClass: "!text-purple-700 dark:!text-purple-300",
+    textColor: "#6b21a8",  // purple-800
+    titleColor: "#7e22ce", // purple-700
   },
   warning: {
     icon: AlertTriangle,
     bgClass: "bg-yellow-50 dark:bg-yellow-950/30",
     borderClass: "border-yellow-400 dark:border-yellow-600",
-    textClass: "!text-yellow-800 dark:!text-yellow-200",
-    titleClass: "!text-yellow-700 dark:!text-yellow-300",
+    textColor: "#854d0e",  // yellow-800
+    titleColor: "#a16207", // yellow-700
   },
   caution: {
     icon: ShieldAlert,
     bgClass: "bg-red-50 dark:bg-red-950/30",
     borderClass: "border-red-400 dark:border-red-600",
-    textClass: "!text-red-800 dark:!text-red-200",
-    titleClass: "!text-red-700 dark:!text-red-300",
+    textColor: "#991b1b",  // red-800
+    titleColor: "#b91c1c", // red-700
   },
 };
 
@@ -182,11 +182,16 @@ function GitHubAlert({
         config.borderClass
       )}
     >
-      <div className={cn("flex items-center gap-2 font-semibold mb-1", config.titleClass)}>
+      <div
+        className="flex items-center gap-2 font-semibold mb-1"
+        style={{ color: config.titleColor }}
+      >
         <Icon className="h-4 w-4" />
         <span>{title}</span>
       </div>
-      <div className={cn("text-sm", config.textClass)}>{children}</div>
+      <div className="text-sm" style={{ color: config.textColor }}>
+        {children}
+      </div>
     </div>
   );
 }
