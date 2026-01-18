@@ -4,7 +4,7 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cn } from "@/lib/utils";
 
 function TooltipProvider({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <TooltipPrimitive.Provider>{children}</TooltipPrimitive.Provider>;
 }
 
 function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
