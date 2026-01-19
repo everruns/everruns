@@ -171,9 +171,26 @@ sequenceDiagram
 | LlmDriver trait | `crates/core/src/llm_driver_registry.rs` |
 | AgentLoopError | `crates/core/src/error.rs` |
 | OpenAI driver | `crates/openai/src/driver.rs` |
-| OpenAI protocol | `crates/core/src/openai_protocol.rs` |
+| Open Responses protocol | `crates/core/src/openresponses_protocol.rs` |
+| Chat Completions protocol | `crates/core/src/openai_protocol.rs` |
 | Anthropic driver | `crates/anthropic/src/driver.rs` |
 | Error handling | `crates/core/src/atoms/reason.rs` |
+
+## OpenAI Driver Variants
+
+The OpenAI crate provides two driver implementations:
+
+1. **OpenAILlmDriver** (`ProviderType::OpenAI`)
+   - Uses Open Responses API (https://www.openresponses.org/)
+   - Recommended for new projects
+   - Wraps `OpenResponsesProtocolLlmDriver`
+
+2. **OpenAICompletionsLlmDriver** (`ProviderType::OpenAICompletions`)
+   - Uses Chat Completions API (`/v1/chat/completions`)
+   - For backward compatibility with legacy integrations
+   - Wraps `OpenAIProtocolLlmDriver`
+
+Both drivers share the same base URL handling and can work with OpenAI-compatible endpoints.
 
 ## Testing
 

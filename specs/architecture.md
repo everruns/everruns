@@ -235,20 +235,22 @@ a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
 - **Better caching**: 40-80% better cache utilization vs Chat Completions API
 - **Provider-agnostic**: Events and responses follow a standardized format
 
-**API Mode Selection**:
+**Driver Selection**:
 ```rust
-use everruns_openai::{OpenAILlmDriver, OpenAIApiMode};
+use everruns_openai::{OpenAILlmDriver, OpenAICompletionsLlmDriver};
 
-// Default: uses Open Responses API (recommended)
+// Open Responses API (recommended for new projects)
 let driver = OpenAILlmDriver::new("api-key");
 
-// Explicit Completions mode (for backward compatibility)
-let driver = OpenAILlmDriver::with_mode("api-key", OpenAIApiMode::Completions);
+// Chat Completions API (for backward compatibility)
+let driver = OpenAICompletionsLlmDriver::new("api-key");
 ```
 
 **Implementation**:
-- `OpenResponsesProtocolLlmDriver` in `everruns-core` - Base protocol implementation
-- `OpenAIApiMode::Responses` - Enables Open Responses for OpenAI provider
+- `OpenResponsesProtocolLlmDriver` in `everruns-core` - Open Responses protocol
+- `OpenAIProtocolLlmDriver` in `everruns-core` - Chat Completions protocol
+- `OpenAILlmDriver` - Wraps Open Responses for `ProviderType::OpenAI`
+- `OpenAICompletionsLlmDriver` - Wraps Chat Completions for `ProviderType::OpenAICompletions`
 
 ### LlmSim Driver (Testing)
 
