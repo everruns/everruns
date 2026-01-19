@@ -29,7 +29,7 @@ enum InputContentPart {
 /// Event from API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Event {
-    id: Uuid,
+    id: String,
     #[serde(rename = "type")]
     event_type: String,
     data: serde_json::Value,
@@ -74,7 +74,7 @@ pub async fn run(
 
     let _: serde_json::Value = client
         .post(
-            &format!("/v1/agents/{}/sessions/{}/messages", agent_id, session_id),
+            &format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/messages", agent_id, session_id),
             &request,
         )
         .await?;
@@ -91,7 +91,7 @@ pub async fn run(
     let start = Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
     let poll_interval = Duration::from_millis(500);
-    let mut last_event_id: Option<Uuid> = None;
+    let mut last_event_id: Option<String> = None;
     let mut agent_content = String::new();
 
     loop {
@@ -103,18 +103,18 @@ pub async fn run(
         }
 
         // Build URL with since_id parameter
-        let url = match last_event_id {
+        let url = match &last_event_id {
             Some(id) => format!(
-                "/v1/agents/{}/sessions/{}/events?since_id={}",
+                "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/events?since_id={}",
                 agent_id, session_id, id
             ),
-            None => format!("/v1/agents/{}/sessions/{}/events", agent_id, session_id),
+            None => format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/events", agent_id, session_id),
         };
 
         let response: ListResponse<Event> = client.get(&url).await?;
 
         for event in response.data {
-            last_event_id = Some(event.id);
+            last_event_id = Some(event.id.clone());
 
             if output.is_text() {
                 // Handle message.agent events

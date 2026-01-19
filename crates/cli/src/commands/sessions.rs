@@ -61,14 +61,14 @@ struct CreateSessionRequest {
 /// Session response from API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
-    pub id: Uuid,
-    pub agent_id: Uuid,
+    pub id: String,
+    pub agent_id: String,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub model_id: Option<Uuid>,
+    pub model_id: Option<String>,
     pub status: String,
     pub created_at: String,
     #[serde(default)]
@@ -116,7 +116,7 @@ async fn create(
     };
 
     let session: Session = client
-        .post(&format!("/v1/agents/{}/sessions", agent_id), &request)
+        .post(&format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions", agent_id), &request)
         .await?;
 
     if output.is_text() {
@@ -136,7 +136,7 @@ async fn create(
 
 async fn list(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()> {
     let response: ListResponse<Session> = client
-        .get(&format!("/v1/agents/{}/sessions", agent_id))
+        .get(&format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions", agent_id))
         .await?;
 
     if output.is_text() {
@@ -170,7 +170,7 @@ async fn get(
     session_id: Uuid,
 ) -> Result<()> {
     let session: Session = client
-        .get(&format!("/v1/agents/{}/sessions/{}", agent_id, session_id))
+        .get(&format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}", agent_id, session_id))
         .await
         .map_err(|e| match e {
             ClientError::NotFound => anyhow::anyhow!("Session not found: {}", session_id),
