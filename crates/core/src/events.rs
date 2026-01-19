@@ -957,7 +957,7 @@ pub enum EventData {
     TurnStarted(TurnStartedData),
     TurnCompleted(TurnCompletedData),
     TurnFailed(TurnFailedData),
-    TurnCancelled(TurnCancelledData),
+    // NOTE: TurnCancelled is placed after streaming events (see below)
 
     // Atom lifecycle events
     InputReceived(InputReceivedData),
@@ -978,6 +978,11 @@ pub enum EventData {
     // comes first, it will match TextDelta JSON and discard delta/accumulated fields.
     TextDelta(TextDeltaData),
     AgentThinking(AgentThinkingData),
+
+    // NOTE: TurnCancelled is placed here (after streaming events) because it only
+    // requires turn_id. If placed before TextDelta/AgentThinking, it would greedily
+    // match their JSON and discard their specific fields.
+    TurnCancelled(TurnCancelledData),
 
     // Session events
     SessionStarted(SessionStartedData),
