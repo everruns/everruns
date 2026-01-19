@@ -195,6 +195,18 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         setLocalStatus("idle");
         // When session becomes idle, user is no longer waiting for response
         setIsWaitingForResponse(false);
+        // Also clear thinking/streaming state - session is done
+        setIsThinking(false);
+        setStreamingText(null);
+        setStreamingTurnId(null);
+        break;
+      }
+      if (event.type === "turn.cancelled") {
+        // Turn was cancelled - clear thinking state immediately
+        setIsWaitingForResponse(false);
+        setIsThinking(false);
+        setStreamingText(null);
+        setStreamingTurnId(null);
         break;
       }
     }
