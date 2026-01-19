@@ -353,7 +353,7 @@ export function CapabilitySelector({
                                       )}
                                       {hasDependencies && (
                                         <Tooltip>
-                                          <TooltipTrigger asChild>
+                                          <TooltipTrigger>
                                             <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 gap-1">
                                               <Link className="w-3 h-3" />
                                               Requires
@@ -366,7 +366,7 @@ export function CapabilitySelector({
                                       )}
                                       {isRequired && (
                                         <Tooltip>
-                                          <TooltipTrigger asChild>
+                                          <TooltipTrigger>
                                             <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
                                               <Lock className="w-3 h-3" />
                                               Required
@@ -465,7 +465,7 @@ export function CapabilitySelector({
                   )}
                   {isRequired && (
                     <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <Badge variant="secondary" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
                           <Lock className="w-2.5 h-2.5" />
                           Required
@@ -481,7 +481,7 @@ export function CapabilitySelector({
                 {/* Remove button */}
                 {isRequired ? (
                   <Tooltip>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                       <span className="text-muted-foreground/50 p-1 cursor-not-allowed">
                         <Lock className="w-3 h-3" />
                       </span>
