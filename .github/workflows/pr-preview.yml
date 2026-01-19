@@ -1,0 +1,215 @@
+# PR Preview Environments
+#
+# Automatically deploys isolated preview environments for each pull request.
+# Uses Railway for hosting with automatic cleanup on PR close/merge.
+#
+# Prerequisites:
+# 1. Create a Railway project with services configured
+# 2. Add RAILWAY_TOKEN secret to GitHub repository
+# 3. Configure Railway project environment variables
+#
+# See specs/pr-previews.md for full documentation.
+
+name: PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  # Railway project ID - set this after creating the project
+  RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+
+jobs:
+  # Wait for Docker images to be built before deploying
+  wait-for-images:
+    name: Wait for Docker Images
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Get image tag
+        id: tag
+        run: |
+          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          echo "tag=sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "Image tag: sha-${SHORT_SHA}"
+
+      - name: Wait for Docker publish workflow
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          check-name: 'Build and push control-plane'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 30
+          allowed-conclusions: success
+
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs: wait-for-images
+    if: github.event.action != 'closed'
+    environment:
+      name: pr-${{ github.event.pull_request.number }}
+      url: ${{ steps.deploy.outputs.preview_url }}
+    outputs:
+      preview_url: ${{ steps.deploy.outputs.preview_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.app/install.sh | sh
+          echo "$HOME/.railway/bin" >> $GITHUB_PATH
+
+      - name: Deploy to Railway
+        id: deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          IMAGE_TAG=${{ needs.wait-for-images.outputs.image_tag }}
+          ENV_NAME="pr-${PR_NUMBER}"
+
+          echo "Deploying PR #${PR_NUMBER} with image tag ${IMAGE_TAG}"
+
+          # Check if environment exists, create if not
+          if ! railway environment --json 2>/dev/null | jq -e ".[] | select(.name == \"${ENV_NAME}\")" > /dev/null; then
+            echo "Creating new environment: ${ENV_NAME}"
+            railway environment create "${ENV_NAME}"
+          fi
+
+          # Switch to the PR environment
+          railway environment "${ENV_NAME}"
+
+          # Set environment variables for this deployment
+          railway variables set \
+            IMAGE_TAG="${IMAGE_TAG}" \
+            DEPLOYMENT_GRADE="preview" \
+            AUTH_MODE="none"
+
+          # Trigger deployment (Railway will pull the new image)
+          railway up --detach
+
+          # Get the deployment URL
+          PREVIEW_URL=$(railway domain --json | jq -r '.[0].domain // empty')
+
+          if [ -z "$PREVIEW_URL" ]; then
+            # Generate a domain if none exists
+            railway domain create
+            PREVIEW_URL=$(railway domain --json | jq -r '.[0].domain')
+          fi
+
+          echo "preview_url=https://${PREVIEW_URL}" >> $GITHUB_OUTPUT
+          echo "Preview URL: https://${PREVIEW_URL}"
+
+      - name: Wait for deployment health
+        run: |
+          PREVIEW_URL=${{ steps.deploy.outputs.preview_url }}
+          echo "Waiting for ${PREVIEW_URL}/health to be ready..."
+
+          for i in {1..30}; do
+            if curl -sf "${PREVIEW_URL}/health" > /dev/null 2>&1; then
+              echo "Preview is healthy!"
+              exit 0
+            fi
+            echo "Attempt $i/30: Not ready yet, waiting 10s..."
+            sleep 10
+          done
+
+          echo "Preview did not become healthy within 5 minutes"
+          exit 1
+
+  comment-pr:
+    name: Comment on PR
+    runs-on: ubuntu-latest
+    needs: deploy-preview
+    if: github.event.action != 'closed' && needs.deploy-preview.result == 'success'
+
+    steps:
+      - name: Find existing comment
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '<!-- pr-preview-comment -->'
+
+      - name: Create or update comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body: |
+            <!-- pr-preview-comment -->
+            ## Preview Deployment
+
+            | Service | URL |
+            |---------|-----|
+            | UI | ${{ needs.deploy-preview.outputs.preview_url }} |
+            | API | ${{ needs.deploy-preview.outputs.preview_url }}/api |
+            | Health | ${{ needs.deploy-preview.outputs.preview_url }}/health |
+
+            **Commit:** `${{ github.event.pull_request.head.sha }}`
+
+            ---
+            <sub>This preview will be automatically deleted when the PR is merged or closed.</sub>
+
+  cleanup-preview:
+    name: Cleanup Preview
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+
+    steps:
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.app/install.sh | sh
+          echo "$HOME/.railway/bin" >> $GITHUB_PATH
+
+      - name: Delete Railway environment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          ENV_NAME="pr-${PR_NUMBER}"
+
+          echo "Cleaning up environment: ${ENV_NAME}"
+
+          # Switch to project and delete the environment
+          if railway environment "${ENV_NAME}" 2>/dev/null; then
+            railway environment delete "${ENV_NAME}" --yes
+            echo "Environment ${ENV_NAME} deleted"
+          else
+            echo "Environment ${ENV_NAME} not found, nothing to clean up"
+          fi
+
+      - name: Update PR comment
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '<!-- pr-preview-comment -->'
+
+      - name: Mark preview as deleted
+        if: steps.find-comment.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          edit-mode: replace
+          body: |
+            <!-- pr-preview-comment -->
+            ## Preview Deployment
+
+            ~~Preview environment has been deleted.~~
+
+            ---
+            <sub>PR was ${{ github.event.action }}.</sub>

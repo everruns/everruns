@@ -41,6 +41,7 @@ Available specs:
 - `specs/dismissed-options.md` - Technical options considered but dismissed
 - `specs/multitenancy.md` - Organization-based multitenancy and resource isolation
 - `specs/release-process.md` - Release workflow with CHANGELOG.md as source of truth
+- `specs/pr-previews.md` - PR preview environments (Railway-based automatic deployments)
 
 Specification format: Abstract and Requirements sections.
 
@@ -243,6 +244,7 @@ Message content uses unified `Vec<ContentPart>` across all layers:
 
 - CI is implemented using GitHub Actions, status is available via `gh` tool
 - **NEVER merge when CI is red.** This is a hard requirement with no exceptions. Even if the failure appears unrelated to your changes, do not merge. Fix the issue or get help first.
+- **PR Previews**: Each PR automatically gets a preview deployment via Railway. The preview URL is posted as a PR comment. See `specs/pr-previews.md` for details.
 
 ### Pre-PR checklist
 
