@@ -3317,9 +3317,6 @@
             "$ref": "#/components/schemas/TurnFailedData"
           },
           {
-            "$ref": "#/components/schemas/TurnCancelledData"
-          },
-          {
             "$ref": "#/components/schemas/InputReceivedData"
           },
           {
@@ -3348,6 +3345,9 @@
           },
           {
             "$ref": "#/components/schemas/AgentThinkingData"
+          },
+          {
+            "$ref": "#/components/schemas/TurnCancelledData"
           },
           {
             "$ref": "#/components/schemas/SessionStartedData"
