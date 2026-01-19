@@ -42,6 +42,29 @@ if [ -f .env ]; then
   set +a
 fi
 
+# Check if UI dependencies need to be installed/updated
+# Returns 0 if deps are OK, 1 if npm install needed
+check_ui_deps() {
+  local ui_dir="$PROJECT_ROOT/apps/ui"
+
+  # Check if node_modules exists
+  if [ ! -d "$ui_dir/node_modules" ]; then
+    echo "   ⚠️  UI dependencies not installed. Run: ./scripts/dev.sh init"
+    return 1
+  fi
+
+  # Check if package-lock.json is newer than node_modules
+  # This indicates deps were updated and npm install is needed
+  if [ -f "$ui_dir/package-lock.json" ] && [ -f "$ui_dir/node_modules/.package-lock.json" ]; then
+    if [ "$ui_dir/package-lock.json" -nt "$ui_dir/node_modules/.package-lock.json" ]; then
+      echo "   ⚠️  UI dependencies outdated. Run: ./scripts/dev.sh ui-install"
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
 command="${1:-help}"
 
 case "$command" in
@@ -378,8 +401,12 @@ case "$command" in
     # Note: Worker runs in-process with control-plane in DEV_MODE
     echo "3️⃣  Worker: Running in-process with control-plane (no separate worker needed)"
 
+    # Check UI dependencies
+    echo "4️⃣  Checking UI dependencies..."
+    check_ui_deps || true
+
     # Start UI in background
-    echo "4️⃣  Starting UI server..."
+    echo "5️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
@@ -578,8 +605,12 @@ case "$command" in
     sleep 2
     echo "   ✅ Worker is starting with auto-reload (PID: $WORKER_PID)"
 
+    # Check UI dependencies
+    echo "7️⃣  Checking UI dependencies..."
+    check_ui_deps || true
+
     # Start UI in background
-    echo "7️⃣  Starting UI server..."
+    echo "8️⃣  Starting UI server..."
     cd apps/ui
     npm run dev &
     UI_PID=$!
