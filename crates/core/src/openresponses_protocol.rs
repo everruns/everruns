@@ -181,6 +181,9 @@ impl OpenResponsesProtocolLlmDriver {
     }
 
     /// Build input items from messages, extracting system/developer instructions
+    ///
+    /// Handles the conversion of assistant messages with tool_calls into separate
+    /// FunctionCall items, which is required by the Open Responses API.
     fn build_input(messages: &[LlmMessage]) -> (Option<String>, Vec<ResponsesInputItem>) {
         let mut instructions: Option<String> = None;
         let mut input_items = Vec::new();
@@ -199,6 +202,30 @@ impl OpenResponsesProtocolLlmDriver {
                         .collect::<Vec<_>>()
                         .join(""),
                 });
+            } else if msg.role == LlmMessageRole::Assistant
+                && msg.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty())
+            {
+                // Assistant message with tool calls - emit FunctionCall items
+                // First emit the message content if non-empty
+                let has_content = match &msg.content {
+                    LlmMessageContent::Text(text) => !text.is_empty(),
+                    LlmMessageContent::Parts(parts) => !parts.is_empty(),
+                };
+                if has_content {
+                    input_items.push(Self::convert_message(msg));
+                }
+
+                // Then emit FunctionCall items for each tool call
+                if let Some(tool_calls) = &msg.tool_calls {
+                    for tc in tool_calls {
+                        input_items.push(ResponsesInputItem::FunctionCall {
+                            r#type: "function_call".to_string(),
+                            call_id: tc.id.clone(),
+                            name: tc.name.clone(),
+                            arguments: tc.arguments.to_string(),
+                        });
+                    }
+                }
             } else {
                 input_items.push(Self::convert_message(msg));
             }
@@ -543,6 +570,12 @@ enum ResponsesInputItem {
         role: String,
         content: ResponsesContent,
     },
+    FunctionCall {
+        r#type: String,
+        call_id: String,
+        name: String,
+        arguments: String,
+    },
     FunctionCallOutput {
         r#type: String,
         call_id: String,
@@ -752,5 +785,109 @@ mod tests {
             OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::Tool),
             "tool"
         );
+    }
+
+    #[test]
+    fn test_function_call_serialization() {
+        let item = ResponsesInputItem::FunctionCall {
+            r#type: "function_call".to_string(),
+            call_id: "call_abc123".to_string(),
+            name: "get_current_time".to_string(),
+            arguments: r#"{"timezone":"UTC"}"#.to_string(),
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_abc123");
+        assert_eq!(json["name"], "get_current_time");
+        assert_eq!(json["arguments"], r#"{"timezone":"UTC"}"#);
+    }
+
+    #[test]
+    fn test_build_input_with_tool_calls() {
+        use crate::tool_types::ToolCall;
+
+        // Simulate a conversation with tool calls:
+        // 1. User asks a question
+        // 2. Assistant calls a tool
+        // 3. Tool returns result
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "What time is it?"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text(String::new()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_xyz789".to_string(),
+                    name: "get_current_time".to_string(),
+                    arguments: json!({"timezone": "UTC"}),
+                }]),
+                tool_call_id: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_xyz789".to_string()),
+            },
+        ];
+
+        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        // System message becomes instructions
+        assert_eq!(instructions, Some("You are helpful".to_string()));
+
+        // Should have: user message, function_call, function_call_output
+        assert_eq!(input.len(), 3);
+
+        // Verify the function_call is present (second item, since assistant had empty content)
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_xyz789");
+        assert_eq!(json["name"], "get_current_time");
+
+        // Verify the function_call_output is present
+        let json = serde_json::to_value(&input[2]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+        assert_eq!(json["call_id"], "call_xyz789");
+        assert_eq!(json["output"], "2025-01-19T10:30:00Z");
+    }
+
+    #[test]
+    fn test_build_input_with_tool_calls_and_text() {
+        use crate::tool_types::ToolCall;
+
+        // Assistant message with both text content and tool calls
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "What time is it?"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Let me check the time for you.".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_abc".to_string(),
+                    name: "get_time".to_string(),
+                    arguments: json!({}),
+                }]),
+                tool_call_id: None,
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages);
+
+        // Should have: user message, assistant message, function_call
+        assert_eq!(input.len(), 3);
+
+        // First is user message
+        let json = serde_json::to_value(&input[0]).unwrap();
+        assert_eq!(json["role"], "user");
+
+        // Second is assistant message with text
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["role"], "assistant");
+
+        // Third is function_call
+        let json = serde_json::to_value(&input[2]).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_abc");
     }
 }
