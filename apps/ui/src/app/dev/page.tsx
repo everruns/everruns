@@ -3,12 +3,18 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FlaskConical, MessageSquare, LayoutList, ArrowRight, Star, FileText } from "lucide-react";
+import { FlaskConical, MessageSquare, LayoutList, ArrowRight, Star, FileText, Palette } from "lucide-react";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
 const devPages = [
+  {
+    title: "Chat UI Styles",
+    description: "Compare different chat styling approaches - flat, minimal, Claude-like",
+    href: "/dev/chat-styles",
+    icon: Palette,
+  },
   {
     title: "Session Chat Components",
     description: "Components used in the Session UI for chat messages, tool calls, and todo lists",
