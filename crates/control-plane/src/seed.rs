@@ -469,7 +469,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.2",
         display_name: "GPT-5.2",
-        is_default: false,
+        is_default: true,  // Default model
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -543,8 +543,8 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5-mini",
         display_name: "GPT-5 mini",
-        is_default: true,  // Default model
-        is_favorite: true, // Favorite model
+        is_default: false,
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_5,
@@ -788,7 +788,7 @@ const SEED_MODELS: &[SeedModel] = &[
     },
 ];
 
-/// Seed LLM models into the database
+/// Seed LLM models into the database (upserts to update existing models)
 async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -804,27 +804,15 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             provider_metadata: None,
         };
 
-        match db
-            .create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
-            .await?
-        {
-            Some(_) => {
-                tracing::info!(
-                    model_id = seed.model_id,
-                    id = %seed.id,
-                    "Created seed model"
-                );
-                result.created += 1;
-            }
-            None => {
-                tracing::debug!(
-                    model_id = seed.model_id,
-                    id = %seed.id,
-                    "Model already exists, skipping"
-                );
-                result.skipped += 1;
-            }
-        }
+        db.create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .await?;
+
+        tracing::debug!(
+            model_id = seed.model_id,
+            id = %seed.id,
+            "Seeded model"
+        );
+        result.created += 1;
     }
 
     Ok(result)

@@ -1073,9 +1073,8 @@ impl Database {
         Ok(row)
     }
 
-    /// Create a model with a specific ID (for seeding)
-    /// Uses ON CONFLICT DO NOTHING for idempotency
-    /// Returns None if model already exists
+    /// Create or update a model with a specific ID (for seeding)
+    /// Uses upsert to update display_name, is_default, is_favorite if model exists
     pub async fn create_llm_model_with_id(
         &self,
         org_id: i64,
@@ -1088,7 +1087,11 @@ impl Database {
             r#"
             INSERT INTO llm_models (id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET
+                display_name = EXCLUDED.display_name,
+                is_default = EXCLUDED.is_default,
+                is_favorite = EXCLUDED.is_favorite,
+                updated_at = NOW()
             RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_default, is_favorite, status, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
         )
