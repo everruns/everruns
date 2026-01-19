@@ -25,6 +25,7 @@ import {
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { cn } from "@/lib/utils";
+import { InlineMarkdown } from "@/components/ui/markdown";
 
 interface CapabilitySelectorProps {
   /** All available capabilities */
@@ -273,7 +274,7 @@ export function CapabilitySelector({
                                       )}
                                     </div>
                                     <div className="text-xs text-muted-foreground line-clamp-2">
-                                      {cap.description}
+                                      <InlineMarkdown content={cap.description} />
                                     </div>
                                   </div>
                                 </label>

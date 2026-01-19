@@ -13,6 +13,7 @@ import {
 import { Pencil } from "lucide-react";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import { InlineMarkdown } from "@/components/ui/markdown";
 
 interface AgentCardProps {
   agent: Agent;
@@ -52,9 +53,15 @@ export function AgentCard({
         </Badge>
       </CardHeader>
       <CardContent>
-        <p className={`text-sm text-muted-foreground mb-3 line-clamp-2 ${!agent.description ? "italic" : ""}`}>
-          {agent.description || "No description provided"}
-        </p>
+        {agent.description ? (
+          <div className="text-sm text-muted-foreground mb-3 line-clamp-2">
+            <InlineMarkdown content={agent.description} />
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground mb-3 italic">
+            No description provided
+          </p>
+        )}
 
         {/* Capabilities display */}
         {agentCapabilities.length > 0 && (

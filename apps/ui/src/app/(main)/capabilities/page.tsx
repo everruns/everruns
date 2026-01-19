@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { Capability, CapabilityStatus } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import { InlineMarkdown } from "@/components/ui/markdown";
 
 function getStatusBadgeVariant(
   status: CapabilityStatus
@@ -63,9 +64,9 @@ function CapabilityCard({ capability }: { capability: Capability }) {
           </Badge>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            {capability.description}
-          </p>
+          <div className="text-sm text-muted-foreground mb-4 line-clamp-3">
+            <InlineMarkdown content={capability.description} />
+          </div>
           {capability.category && (
             <Badge variant="outline" className="text-xs">
               {capability.category}
