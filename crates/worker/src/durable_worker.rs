@@ -3,10 +3,10 @@
 // Decision: Uses gRPC adapters for control-plane communication (no direct DB access)
 
 use anyhow::Result;
+use everruns_core::Message;
 use everruns_core::atoms::AtomContext;
 use everruns_core::events::{EventContext, EventRequest, MessageAgentData, SessionIdledData};
 use everruns_core::traits::EventEmitter;
-use everruns_core::Message;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -88,7 +88,10 @@ async fn emit_cancellation_events(
     }
 
     // Set session status to idle
-    if let Err(e) = grpc_client.set_session_status(org_id, session_id, "idle").await {
+    if let Err(e) = grpc_client
+        .set_session_status(org_id, session_id, "idle")
+        .await
+    {
         warn!(session_id = %session_id, error = %e, "Failed to set session status to idle");
     }
 
@@ -558,36 +561,35 @@ impl DurableWorker {
                 );
 
                 // Parse task input to get session context for cancellation events
-                let (org_id, session_id, input_message_id) =
-                    match task.activity_type.as_str() {
-                        "process_input" | "reason" => {
-                            if let Ok(turn_input) =
-                                serde_json::from_value::<DurableTurnInput>(task.input.clone())
-                            {
-                                (
-                                    turn_input.org_id,
-                                    turn_input.session_id,
-                                    turn_input.input_message_id,
-                                )
-                            } else {
-                                (0, task.workflow_id, Uuid::nil())
-                            }
+                let (org_id, session_id, input_message_id) = match task.activity_type.as_str() {
+                    "process_input" | "reason" => {
+                        if let Ok(turn_input) =
+                            serde_json::from_value::<DurableTurnInput>(task.input.clone())
+                        {
+                            (
+                                turn_input.org_id,
+                                turn_input.session_id,
+                                turn_input.input_message_id,
+                            )
+                        } else {
+                            (0, task.workflow_id, Uuid::nil())
                         }
-                        "act" => {
-                            if let Ok(act_input) =
-                                serde_json::from_value::<ActTaskInput>(task.input.clone())
-                            {
-                                (
-                                    act_input.org_id,
-                                    act_input.act_input.context.session_id,
-                                    act_input.act_input.context.input_message_id,
-                                )
-                            } else {
-                                (0, task.workflow_id, Uuid::nil())
-                            }
+                    }
+                    "act" => {
+                        if let Ok(act_input) =
+                            serde_json::from_value::<ActTaskInput>(task.input.clone())
+                        {
+                            (
+                                act_input.org_id,
+                                act_input.act_input.context.session_id,
+                                act_input.act_input.context.input_message_id,
+                            )
+                        } else {
+                            (0, task.workflow_id, Uuid::nil())
                         }
-                        _ => (0, task.workflow_id, Uuid::nil()),
-                    };
+                    }
+                    _ => (0, task.workflow_id, Uuid::nil()),
+                };
 
                 // Emit cancellation events (agent message + session.idled)
                 let turn_id = Uuid::now_v7(); // Generate turn_id for cancellation context

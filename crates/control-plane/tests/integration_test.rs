@@ -3854,7 +3854,10 @@ async fn test_cancel_turn_endpoint() {
         .expect("Failed to create session");
 
     assert_eq!(session_response.status(), 201);
-    let session: Session = session_response.json().await.expect("Failed to parse session");
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
     println!("Created session: {}", session.id);
 
     // Test 1: Cancel on idle session should return 400
