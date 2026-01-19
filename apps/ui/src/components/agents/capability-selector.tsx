@@ -367,7 +367,7 @@ export function CapabilitySelector({
                                       {isRequired && (
                                         <Tooltip>
                                           <TooltipTrigger>
-                                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                                            <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 gap-1">
                                               <Lock className="w-3 h-3" />
                                               Required
                                             </Badge>
@@ -421,10 +421,7 @@ export function CapabilitySelector({
             return (
               <div
                 key={capId}
-                className={cn(
-                  "flex items-center gap-2 p-2 rounded-md border group",
-                  isRequired ? "bg-amber-50/50 dark:bg-amber-950/30" : "bg-muted/30"
-                )}
+                className="flex items-center gap-2 p-2 rounded-md border group bg-muted/30"
               >
                 {/* Reorder controls */}
                 <div className="flex flex-col gap-0.5">
@@ -466,7 +463,7 @@ export function CapabilitySelector({
                   {isRequired && (
                     <Tooltip>
                       <TooltipTrigger>
-                        <Badge variant="secondary" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                        <Badge variant="secondary" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">
                           <Lock className="w-2.5 h-2.5" />
                           Required
                         </Badge>
