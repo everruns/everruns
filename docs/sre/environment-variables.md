@@ -187,6 +187,38 @@ The UI makes all API requests to `/api/*` paths. These are handled differently i
 
 ## Worker Configuration
 
+### OPENAI_API_MODE
+
+Controls which OpenAI API the worker uses for LLM calls.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | `responses` |
+
+**Valid values:**
+
+| Mode | Description |
+|------|-------------|
+| `responses` | Open Responses API (https://www.openresponses.org/) - recommended for new projects |
+| `completions` | Chat Completions API - for backward compatibility |
+
+**Example:**
+
+```bash
+# Use Open Responses API (default, recommended)
+OPENAI_API_MODE=responses
+
+# Use Chat Completions API for backward compatibility
+OPENAI_API_MODE=completions
+```
+
+**Notes:**
+- Open Responses is a vendor-neutral API specification offering better performance with reasoning models
+- The `responses` mode is recommended for new projects
+- Use `completions` mode if you need to maintain compatibility with existing Chat Completions API behavior
+- This only affects OpenAI and Azure OpenAI providers; Anthropic uses its native API
+
 ### GRPC_ADDRESS
 
 Address of the control-plane gRPC server for worker communication.

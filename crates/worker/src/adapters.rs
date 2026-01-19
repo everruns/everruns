@@ -6,16 +6,34 @@
 use everruns_core::{
     AgentLoopError, BoxedLlmDriver, DriverRegistry, ProviderConfig, ProviderType, Result,
 };
+use everruns_openai::OpenAIApiMode;
 
 /// Create and configure the driver registry with all supported LLM providers
 ///
 /// This registers drivers for:
-/// - OpenAI (and Azure OpenAI)
+/// - OpenAI (and Azure OpenAI) - uses OPENAI_API_MODE env var to select API
 /// - Anthropic Claude
 /// - LlmSim (for testing)
+///
+/// # Environment Variables
+///
+/// - `OPENAI_API_MODE`: Controls which OpenAI API to use
+///   - `responses` (default): Open Responses API (https://www.openresponses.org/)
+///   - `completions`: Chat Completions API (for backward compatibility)
 pub fn create_driver_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
-    everruns_openai::register_driver(&mut registry);
+
+    // Check OPENAI_API_MODE env var for API mode selection
+    let openai_mode = match std::env::var("OPENAI_API_MODE")
+        .unwrap_or_default()
+        .to_lowercase()
+        .as_str()
+    {
+        "completions" => OpenAIApiMode::Completions,
+        _ => OpenAIApiMode::Responses, // Default to Responses (Open Responses spec)
+    };
+
+    everruns_openai::register_driver_with_mode(&mut registry, openai_mode);
     everruns_anthropic::register_driver(&mut registry);
     everruns_core::llmsim_driver::register_driver(&mut registry);
     registry
