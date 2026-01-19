@@ -36,6 +36,41 @@ DEV_MODE=1 ./target/debug/everruns-control-plane
 - No distributed tracing of worker activities
 - Single-instance only
 
+## DEPLOYMENT_GRADE
+
+Deployment environment grade. Controls which features and capabilities are available.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `prod` (or `dev` if `DEV_MODE=true`) |
+
+**Valid values:**
+
+| Grade | Description |
+|-------|-------------|
+| `dev` | Development - all experimental features enabled |
+| `poc` | Proof of concept / demo environment |
+| `preview` | Preview/staging environment |
+| `prod` | Production - only stable features |
+
+**Example:**
+
+```bash
+# Run in development mode with experimental features
+DEPLOYMENT_GRADE=dev ./target/debug/everruns-control-plane
+
+# Production mode (default)
+DEPLOYMENT_GRADE=prod ./target/debug/everruns-control-plane
+```
+
+**Notes:**
+- If not set, falls back to `DEV_MODE`: if `DEV_MODE=true`, uses `dev`; otherwise uses `prod`
+- Experimental capabilities (e.g., Docker Container) are only available in `dev` grade
+- Experimental seed agents (e.g., Python Coder) are only created in `dev` grade
+- Use `dev` for local development and testing experimental features
+- Use `prod` for production deployments
+
 ## API_PREFIX
 
 Optional prefix for all API routes.

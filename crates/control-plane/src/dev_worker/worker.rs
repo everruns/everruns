@@ -9,7 +9,7 @@
 use anyhow::Result;
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
-use everruns_core::capabilities::CapabilityRegistry;
+use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
 use everruns_core::{
     ActInput, DEFAULT_ORG_ID, InputAtomInput, ReasonInput, ReasonResult, TokenUsage,
 };
@@ -71,6 +71,7 @@ pub struct InProcessWorker {
     event_service: Arc<EventService>,
     llm_resolver: Arc<LlmResolverService>,
     mcp_server_service: Arc<McpServerService>,
+    capability_registry: CapabilityRegistry,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
 }
@@ -84,6 +85,7 @@ impl InProcessWorker {
         event_service: Arc<EventService>,
         llm_resolver: Arc<LlmResolverService>,
         mcp_server_service: Arc<McpServerService>,
+        capability_registry: CapabilityRegistry,
     ) -> Self {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -99,6 +101,7 @@ impl InProcessWorker {
             event_service,
             llm_resolver,
             mcp_server_service,
+            capability_registry,
             shutdown_tx,
             shutdown_rx,
         }
@@ -446,7 +449,7 @@ impl InProcessWorker {
         let message_retriever =
             DirectMessageRetriever::new(self.db.clone(), self.event_service.clone());
         let provider_store = DirectLlmProviderStore::new(self.llm_resolver.clone());
-        let capability_registry = CapabilityRegistry::with_builtins();
+        let capability_registry = self.capability_registry.clone();
         let driver_registry = create_driver_registry();
         let event_emitter = DirectEventEmitter::new(self.event_service.clone());
 
@@ -569,11 +572,33 @@ impl InProcessWorker {
             "Executing act activity"
         );
 
-        let tool_executor = ToolRegistry::with_defaults();
+        // Build tool registry with defaults and capability tools
+        let mut tool_registry = ToolRegistry::with_defaults();
+
+        // Get agent's capabilities and add their tools to the registry
+        let capability_rows = self.db.get_agent_capabilities(input.agent_id).await?;
+        let builtin_cap_ids: Vec<String> = capability_rows
+            .iter()
+            .map(|r| r.capability_id.clone())
+            .filter(|id| !is_mcp_capability(id))
+            .collect();
+
+        if !builtin_cap_ids.is_empty() {
+            let collected = collect_capabilities(&builtin_cap_ids, &self.capability_registry);
+            for tool in collected.tools {
+                tool_registry.register_boxed(tool);
+            }
+            debug!(
+                capability_count = builtin_cap_ids.len(),
+                tool_count = collected.tool_definitions.len(),
+                "Registered capability tools for act activity"
+            );
+        }
+
         let event_emitter = DirectEventEmitter::new(self.event_service.clone());
         let file_store = Arc::new(DirectSessionFileStore::new(self.db.clone()));
 
-        let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store);
+        let atom = ActAtom::with_file_store(tool_registry, event_emitter, file_store);
 
         let result = atom.execute(input.clone()).await?;
 

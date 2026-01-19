@@ -14,6 +14,7 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
+use crate::deployment::DeploymentGrade;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolRegistry};
@@ -31,6 +32,7 @@ pub use crate::capability_types::{
 // ============================================================================
 
 mod current_time;
+mod docker_container;
 mod fake_aws;
 mod fake_crm;
 mod fake_financial;
@@ -48,6 +50,10 @@ mod web_fetch;
 
 // Re-export capabilities
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
+pub use docker_container::{
+    DockerContainerCapability, DockerContainerConfig, DockerExecTool, DockerReadFileTool,
+    DockerStopTool, DockerWriteFileTool,
+};
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
@@ -215,8 +221,20 @@ impl CapabilityRegistry {
     }
 
     /// Create a registry with all built-in capabilities registered
+    ///
+    /// Uses `DeploymentGrade::from_env()` to determine which capabilities to include.
+    /// For explicit control, use `with_builtins_for_grade()`.
     pub fn with_builtins() -> Self {
+        Self::with_builtins_for_grade(DeploymentGrade::from_env())
+    }
+
+    /// Create a registry with built-in capabilities for a specific deployment grade
+    ///
+    /// Experimental capabilities (like DockerContainer) are only included in dev environments.
+    pub fn with_builtins_for_grade(grade: DeploymentGrade) -> Self {
         let mut registry = Self::new();
+
+        // Core capabilities (all environments)
         registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
         registry.register(ResearchCapability);
@@ -226,13 +244,21 @@ impl CapabilityRegistry {
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
         registry.register(WebFetchCapability);
-        // Demo capability with mount points
+
+        // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);
-        // Fake demo capabilities
+
+        // Fake demo capabilities (all environments)
         registry.register(FakeWarehouseCapability);
         registry.register(FakeAwsCapability);
         registry.register(FakeCrmCapability);
         registry.register(FakeFinancialCapability);
+
+        // Experimental capabilities (dev only)
+        if grade.experimental_features_enabled() {
+            registry.register(DockerContainerCapability);
+        }
+
         registry
     }
 
@@ -522,8 +548,9 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_capability_registry_with_builtins() {
-        let registry = CapabilityRegistry::with_builtins();
+    fn test_capability_registry_with_builtins_dev() {
+        // Dev mode includes all capabilities including experimental
+        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
 
         assert!(registry.has(CapabilityId::NOOP));
         assert!(registry.has(CapabilityId::CURRENT_TIME));
@@ -539,6 +566,32 @@ mod tests {
         assert!(registry.has(CapabilityId::FAKE_AWS));
         assert!(registry.has(CapabilityId::FAKE_CRM));
         assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
+        // Experimental capability included in dev
+        assert!(registry.has(CapabilityId::DOCKER_CONTAINER));
+        assert_eq!(registry.len(), 15);
+    }
+
+    #[test]
+    fn test_capability_registry_with_builtins_prod() {
+        // Prod mode excludes experimental capabilities
+        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+
+        assert!(registry.has(CapabilityId::NOOP));
+        assert!(registry.has(CapabilityId::CURRENT_TIME));
+        assert!(registry.has(CapabilityId::RESEARCH));
+        assert!(registry.has(CapabilityId::SANDBOX));
+        assert!(registry.has(CapabilityId::FILE_SYSTEM));
+        assert!(registry.has(CapabilityId::TEST_MATH));
+        assert!(registry.has(CapabilityId::TEST_WEATHER));
+        assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
+        assert!(registry.has(CapabilityId::WEB_FETCH));
+        assert!(registry.has(CapabilityId::SAMPLE_DATA));
+        assert!(registry.has(CapabilityId::FAKE_WAREHOUSE));
+        assert!(registry.has(CapabilityId::FAKE_AWS));
+        assert!(registry.has(CapabilityId::FAKE_CRM));
+        assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
+        // Experimental capability NOT included in prod
+        assert!(!registry.has(CapabilityId::DOCKER_CONTAINER));
         assert_eq!(registry.len(), 14);
     }
 

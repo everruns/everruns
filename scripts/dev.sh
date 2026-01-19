@@ -326,6 +326,7 @@ case "$command" in
 
     # Enable dev mode
     export DEV_MODE=true
+    export DEPLOYMENT_GRADE=dev
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     export RUST_LOG=${RUST_LOG:-info}
 
@@ -545,6 +546,7 @@ case "$command" in
     echo "4️⃣  Starting API server with auto-reload..."
     # Allow CORS from UI (localhost:9100) for SSE connections
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
+    export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
     cargo watch -w crates -x 'run -p everruns-control-plane' &
     API_PID=$!

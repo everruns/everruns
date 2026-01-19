@@ -55,6 +55,8 @@ impl CapabilityId {
     pub const FAKE_FINANCIAL: &'static str = "fake_financial";
     // Demo capability with mount points
     pub const SAMPLE_DATA: &'static str = "sample_data";
+    // Experimental capability ID constants
+    pub const DOCKER_CONTAINER: &'static str = "docker_container";
 
     /// Create the noop capability ID
     pub fn noop() -> Self {
@@ -124,6 +126,11 @@ impl CapabilityId {
     /// Create the sample_data capability ID
     pub fn sample_data() -> Self {
         Self::new(Self::SAMPLE_DATA)
+    }
+
+    /// Create the docker_container capability ID
+    pub fn docker_container() -> Self {
+        Self::new(Self::DOCKER_CONTAINER)
     }
 }
 

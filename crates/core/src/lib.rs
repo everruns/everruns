@@ -19,6 +19,9 @@
 pub mod capability_types;
 pub mod tool_types;
 
+// Deployment configuration
+pub mod deployment;
+
 // Telemetry (OpenTelemetry with gen-ai semantic conventions)
 pub mod telemetry;
 
@@ -151,6 +154,9 @@ pub use organization::{
 };
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
+
+// Deployment configuration
+pub use deployment::DeploymentGrade;
 
 // OTel event listener (observation backend)
 pub use observation::OtelEventListener;

@@ -12,7 +12,7 @@ use everruns_control_plane::storage::{
         CreateOrganizationRow,
     },
 };
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -37,6 +37,7 @@ mod seed_ids {
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
     pub const RESEARCH_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000102);
     pub const MS_LEARN_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000103);
+    pub const PYTHON_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000104);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -155,6 +156,8 @@ struct SeedAgent {
     system_prompt: &'static str,
     tags: &'static [&'static str],
     capabilities: &'static [&'static str],
+    /// If true, only seed in dev environments (experimental features)
+    dev_only: bool,
 }
 
 /// Built-in seed agents
@@ -179,6 +182,7 @@ Example jokes you might tell:
 - "What do you call a fake noodle? An impasta!""#,
         tags: &["humor", "demo", "seed"],
         capabilities: &["current_time"],
+        dev_only: false,
     },
     SeedAgent {
         id: seed_ids::RESEARCH_AGENT,
@@ -228,6 +232,7 @@ Use this structure for organizing research:
 ```"#,
         tags: &["research", "example", "multi-capability"],
         capabilities: &["stateless_todo_list", "web_fetch", "session_file_system"],
+        dev_only: false,
     },
     SeedAgent {
         id: seed_ids::MS_LEARN_AGENT,
@@ -264,14 +269,81 @@ You have access to Microsoft Learn MCP tools that allow you to:
         tags: &["microsoft", "documentation", "mcp", "demo", "seed"],
         // MCP capability ID format: "mcp:{server_uuid}"
         capabilities: &["mcp:01933b5a-0000-7000-8000-000000000501"],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::PYTHON_CODER_AGENT,
+        name: "[Experimental] Python Coder",
+        description: "A fast coding agent that writes, executes, and debugs Python code in a Docker container",
+        system_prompt: r#"You are a Python Coder Agent with access to a Docker container running Python.
+You can write code, execute it, and iterate quickly to solve programming tasks.
+
+## Your Capabilities
+
+You have access to a Docker container with Python installed. You can:
+- **docker_exec**: Execute shell commands including running Python scripts
+- **docker_write_file**: Create or update files in the container
+- **docker_read_file**: Read files from the container
+
+## Workflow
+
+1. **Understand the Task**: Clarify requirements before coding
+2. **Write Code**: Create Python files using `docker_write_file`
+3. **Execute & Test**: Run your code with `docker_exec`
+4. **Iterate**: Fix errors, refine, and improve until it works
+
+## Best Practices
+
+- Start with a simple solution, then iterate
+- Write clean, readable code with comments
+- Test early and often - run code after each significant change
+- Use print statements or logging for debugging
+- Save your work to files so it persists across executions
+
+## Example Usage
+
+To write and run a Python script:
+1. `docker_write_file` to `/workspace/main.py` with your code
+2. `docker_exec` with `python /workspace/main.py`
+3. Check output, fix issues, repeat
+
+## Container Info
+
+- Working directory: `/workspace`
+- Python is pre-installed
+- You can install packages with `pip install <package>`
+- The container persists for the session - installed packages stay available
+
+## Guidelines
+
+- Be concise in explanations, focus on working code
+- Show your reasoning when debugging
+- Ask clarifying questions if the task is ambiguous
+- Celebrate when things work! 🎉"#,
+        tags: &["python", "coding", "docker", "experimental", "demo", "seed"],
+        capabilities: &["docker_container"],
+        dev_only: true, // Experimental capability, only in dev environments
     },
 ];
 
 /// Seed agents into the database
-async fn seed_agents(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+///
+/// Filters out dev-only agents when not in dev environment.
+async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
+    let include_dev_only = grade.experimental_features_enabled();
 
     for seed in SEED_AGENTS {
+        // Skip dev-only agents in non-dev environments
+        if seed.dev_only && !include_dev_only {
+            tracing::debug!(
+                name = seed.name,
+                id = %seed.id,
+                "Skipping dev-only agent (deployment_grade={})",
+                grade
+            );
+            continue;
+        }
         let input = CreateAgentRow {
             name: seed.name.to_string(),
             description: Some(seed.description.to_string()),
@@ -833,22 +905,29 @@ const INITIAL_RETRY_DELAY: Duration = Duration::from_secs(2);
 /// Spawn seeding as a background task (non-blocking)
 /// This allows the HTTP server to start immediately while seeding runs in background.
 /// Seeding failures are non-fatal - logged as warnings but don't crash the server.
+///
+/// Uses `DeploymentGrade::from_env()` to determine which agents to seed.
 pub fn spawn_seed_task(db: Arc<StorageBackend>) {
+    let grade = DeploymentGrade::from_env();
+    tracing::info!(deployment_grade = %grade, "Starting seeding task");
+
     tokio::spawn(async move {
         // Small delay to let the server start first
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        match run_seed_with_retry(&db).await {
+        match run_seed_with_retry(&db, grade).await {
             Ok(result) => {
                 if result.created > 0 {
                     tracing::info!(
                         created = result.created,
                         skipped = result.skipped,
+                        deployment_grade = %grade,
                         "Seeding complete"
                     );
                 } else {
                     tracing::debug!(
                         skipped = result.skipped,
+                        deployment_grade = %grade,
                         "Seeding complete (all items exist)"
                     );
                 }
@@ -864,12 +943,15 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>) {
 }
 
 /// Run seeding with retry logic for transient errors
-async fn run_seed_with_retry(db: &StorageBackend) -> Result<SeedResult, String> {
+async fn run_seed_with_retry(
+    db: &StorageBackend,
+    grade: DeploymentGrade,
+) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
 
     loop {
-        match seed_all(db).await {
+        match seed_all(db, grade).await {
             Ok(result) => return Ok(result),
             Err(e) => {
                 let error_str = e.to_string();
@@ -913,7 +995,7 @@ async fn run_seed_with_retry(db: &StorageBackend) -> Result<SeedResult, String> 
 /// Run all seeders in order
 /// Order: organization → providers → models → mcp_servers → agents
 /// Organization must be seeded first (all resources have org_id FK)
-async fn seed_all(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+async fn seed_all(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
     // Seed default organization first (all other resources depend on it)
@@ -952,8 +1034,8 @@ async fn seed_all(db: &StorageBackend) -> anyhow::Result<SeedResult> {
     );
     result.merge(mcp_result);
 
-    // Seed agents
-    let agent_result = seed_agents(db).await?;
+    // Seed agents (respects deployment grade for dev-only agents)
+    let agent_result = seed_agents(db, grade).await?;
     tracing::debug!(
         created = agent_result.created,
         skipped = agent_result.skipped,
