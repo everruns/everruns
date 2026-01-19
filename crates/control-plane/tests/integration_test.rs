@@ -3939,7 +3939,10 @@ async fn test_cancel_turn_endpoint() {
         "Expected 200 for cancelling idle session (no-op), got {}",
         cancel_response.status()
     );
-    let cancel_body: Value = cancel_response.json().await.expect("Failed to parse cancel response");
+    let cancel_body: Value = cancel_response
+        .json()
+        .await
+        .expect("Failed to parse cancel response");
     assert_eq!(
         cancel_body["status"], "no_op",
         "Expected no_op status for idle session, got {:?}",
@@ -3986,9 +3989,14 @@ async fn test_cancel_turn_endpoint() {
         "Expected 200 for cancel, got {}",
         cancel_response.status()
     );
-    let cancel_body: Value = cancel_response.json().await.expect("Failed to parse cancel response");
+    let cancel_body: Value = cancel_response
+        .json()
+        .await
+        .expect("Failed to parse cancel response");
     // Status can be "cancelled" (if we caught active turn) or "no_op" (if turn completed)
-    let status = cancel_body["status"].as_str().expect("status should be string");
+    let status = cancel_body["status"]
+        .as_str()
+        .expect("status should be string");
     assert!(
         status == "cancelled" || status == "no_op",
         "Expected cancelled or no_op status, got {}",
@@ -4012,7 +4020,10 @@ async fn test_cancel_turn_endpoint() {
             .await
             .expect("Failed to get session");
 
-        let session: Session = session_response.json().await.expect("Failed to parse session");
+        let session: Session = session_response
+            .json()
+            .await
+            .expect("Failed to parse session");
 
         if session.status == everruns_core::SessionStatus::Idle {
             println!("Session returned to idle after {} attempts", attempts);
