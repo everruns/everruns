@@ -98,6 +98,10 @@ jobs:
           # Trigger deployment (Railway will pull the new image)
           railway up --detach
 
+          # Enable scale-to-zero for cost efficiency (sleep after 5 min idle)
+          # Services wake automatically on incoming requests (~1-2s cold start)
+          railway service update --sleep-after 300 2>/dev/null || true
+
           # Get the deployment URL
           PREVIEW_URL=$(railway domain --json | jq -r '.[0].domain // empty')
 
@@ -161,7 +165,7 @@ jobs:
             **Commit:** `${{ github.event.pull_request.head.sha }}`
 
             ---
-            <sub>This preview will be automatically deleted when the PR is merged or closed.</sub>
+            <sub>Services sleep after 5 min idle to save costs. First request may take ~2s to wake. Preview deleted on PR close.</sub>
 
   cleanup-preview:
     name: Cleanup Preview

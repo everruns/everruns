@@ -16,7 +16,7 @@ This specification defines the PR preview environment system that automatically 
 
 ### Non-Functional Requirements
 
-1. **Cost Efficiency**: Only pay for resources while PR is open
+1. **Cost Efficiency**: Scale-to-zero when idle, only pay for active usage
 2. **Fast Deployment**: Preview should be available within 5 minutes of push
 3. **Minimal Maintenance**: No manual intervention required for standard operation
 
@@ -30,6 +30,7 @@ This specification defines the PR preview environment system that automatically 
 - Automatic cleanup on PR close/merge
 - Docker image support (use existing ghcr.io images)
 - GitHub Actions integration via [Railway Preview Deploy Action](https://github.com/marketplace/actions/railway-preview-deploy-action)
+- Scale-to-zero: services sleep when idle, ~$0 for inactive PRs
 - $5/month credit on free tier
 
 **Cons:**
@@ -72,6 +73,7 @@ This specification defines the PR preview environment system that automatically 
 |---------|---------|--------|--------|
 | Native PR Previews | Yes | Yes (Pro+) | No |
 | Auto Cleanup | Yes | Yes | Manual |
+| Scale-to-Zero | Yes | Yes | Yes (Machines) |
 | PostgreSQL | Built-in | Built-in | Manual setup |
 | Docker Images | Yes | Yes | Yes |
 | GitHub Integration | Native + Actions | Native | Actions only |
@@ -190,17 +192,28 @@ jobs:
 
 ## Cost Estimation
 
-### Railway (per PR, typical usage)
+### Scale-to-Zero (Default)
 
-| Service | Estimated Cost |
-|---------|---------------|
-| Control-plane | ~$2-5/PR/day |
-| Worker | ~$1-3/PR/day |
-| UI | ~$1-2/PR/day |
-| PostgreSQL | ~$1-2/PR/day |
-| **Total** | **~$5-12/PR/day** |
+Services sleep after 5 minutes of inactivity and wake on incoming requests (~1-2s cold start).
 
-With $5 monthly credit and typical PR lifetimes of 1-3 days, cost is minimal for small teams.
+| Resource | Cost |
+|----------|------|
+| Sleeping services | $0 (no compute) |
+| PostgreSQL storage | ~$0.25/GB/month |
+| Wake-up compute | Pay only when accessed |
+
+**Dozens of idle PRs**: ~$1-5/month total (storage only)
+
+### Active Usage (when accessed)
+
+| Service | Cost/hour active |
+|---------|-----------------|
+| Control-plane (0.5 vCPU, 512MB) | ~$0.04 |
+| Worker (0.5 vCPU, 512MB) | ~$0.04 |
+| UI (0.25 vCPU, 256MB) | ~$0.02 |
+| **Total** | **~$0.10/hour** |
+
+With scale-to-zero and $5 monthly credit, cost is minimal even with many concurrent PRs.
 
 ## Cleanup Policy
 
