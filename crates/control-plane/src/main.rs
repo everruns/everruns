@@ -161,7 +161,8 @@ async fn main() -> Result<()> {
     let auth_state = auth::AuthState::new(auth_config.clone(), db.clone());
 
     // Create module-specific states
-    let sessions_state = api::sessions::AppState::new(db.clone(), auth_state.clone());
+    let sessions_state =
+        api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
     let messages_state =
         api::messages::AppState::new(db.clone(), runner.clone(), auth_state.clone());
 

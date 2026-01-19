@@ -79,3 +79,22 @@ export async function deleteSession(
 ): Promise<void> {
   await api.delete(`/v1/orgs/${org}/agents/${agentId}/sessions/${sessionId}`);
 }
+
+/**
+ * Cancel the currently running turn in a session.
+ *
+ * This will:
+ * 1. Cancel the underlying workflow execution
+ * 2. Emit a turn.cancelled event
+ * 3. Insert an agent message indicating the turn was cancelled
+ * 4. Set the session status back to idle
+ *
+ * @throws Error if no turn is currently running (409 Conflict)
+ */
+export async function cancelTurn(
+  org: string,
+  agentId: string,
+  sessionId: string
+): Promise<void> {
+  await api.post(`/v1/orgs/${org}/agents/${agentId}/sessions/${sessionId}/cancel`);
+}

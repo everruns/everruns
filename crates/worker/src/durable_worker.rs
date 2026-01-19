@@ -3,7 +3,10 @@
 // Decision: Uses gRPC adapters for control-plane communication (no direct DB access)
 
 use anyhow::Result;
+use everruns_core::Message;
 use everruns_core::atoms::AtomContext;
+use everruns_core::events::{EventContext, EventRequest, MessageAgentData, SessionIdledData};
+use everruns_core::traits::EventEmitter;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -16,7 +19,7 @@ use crate::activities::{
     reason_activity,
 };
 use crate::durable_runner::DurableTurnInput;
-use crate::grpc_adapters::{GrpcClient, load_turn_context};
+use crate::grpc_adapters::{GrpcClient, GrpcEventEmitter, load_turn_context};
 use crate::grpc_durable_store::{
     ClaimedTask, GrpcDurableStore, TaskNotificationEvent, TaskNotificationStream, WorkflowStatus,
 };
@@ -33,6 +36,66 @@ struct ActTaskInput {
     org_id: i64,
     #[serde(flatten)]
     act_input: ActInput,
+}
+
+// =============================================================================
+// Cancellation Helper
+// =============================================================================
+
+/// Emit cancellation events when workflow is cancelled
+/// This emits the agent message and session.idled event
+async fn emit_cancellation_events(
+    grpc_address: &str,
+    org_id: i64,
+    session_id: Uuid,
+    turn_id: Uuid,
+    input_message_id: Uuid,
+) {
+    // Connect to gRPC for event emission
+    let grpc_client = match GrpcClient::connect(grpc_address).await {
+        Ok(client) => client,
+        Err(e) => {
+            warn!(error = %e, "Failed to connect to gRPC for cancellation events");
+            return;
+        }
+    };
+
+    let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
+
+    // Emit agent message indicating cancellation completed
+    let cancel_message = Message::assistant("Work was cancelled by user.");
+    let message_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        MessageAgentData::new(cancel_message),
+    );
+    if let Err(e) = event_emitter.emit(message_event).await {
+        warn!(session_id = %session_id, error = %e, "Failed to emit cancellation message");
+    }
+
+    // Emit session.idled event
+    let idled_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        SessionIdledData {
+            turn_id,
+            iterations: None,
+            usage: None,
+        },
+    );
+    if let Err(e) = event_emitter.emit(idled_event).await {
+        warn!(session_id = %session_id, error = %e, "Failed to emit session.idled event");
+    }
+
+    // Set session status to idle
+    if let Err(e) = grpc_client
+        .set_session_status(org_id, session_id, "idle")
+        .await
+    {
+        warn!(session_id = %session_id, error = %e, "Failed to set session status to idle");
+    }
+
+    info!(session_id = %session_id, "Cancellation events emitted");
 }
 
 // =============================================================================
@@ -485,6 +548,68 @@ impl DurableWorker {
             "Executing task"
         );
 
+        // Check if workflow is cancelled before executing
+        {
+            let mut store = self.store.lock().await;
+            if let Ok((status, _, _)) = store.get_workflow_status(task.workflow_id).await
+                && status == WorkflowStatus::Cancelled
+            {
+                info!(
+                    task_id = %task.id,
+                    workflow_id = %task.workflow_id,
+                    "Workflow cancelled, skipping task execution"
+                );
+
+                // Parse task input to get session context for cancellation events
+                let (org_id, session_id, input_message_id) = match task.activity_type.as_str() {
+                    "process_input" | "reason" => {
+                        if let Ok(turn_input) =
+                            serde_json::from_value::<DurableTurnInput>(task.input.clone())
+                        {
+                            (
+                                turn_input.org_id,
+                                turn_input.session_id,
+                                turn_input.input_message_id,
+                            )
+                        } else {
+                            (0, task.workflow_id, Uuid::nil())
+                        }
+                    }
+                    "act" => {
+                        if let Ok(act_input) =
+                            serde_json::from_value::<ActTaskInput>(task.input.clone())
+                        {
+                            (
+                                act_input.org_id,
+                                act_input.act_input.context.session_id,
+                                act_input.act_input.context.input_message_id,
+                            )
+                        } else {
+                            (0, task.workflow_id, Uuid::nil())
+                        }
+                    }
+                    _ => (0, task.workflow_id, Uuid::nil()),
+                };
+
+                // Emit cancellation events (agent message + session.idled)
+                let turn_id = Uuid::now_v7(); // Generate turn_id for cancellation context
+                drop(store); // Release lock before async call
+                emit_cancellation_events(
+                    &self.grpc_address,
+                    org_id,
+                    session_id,
+                    turn_id,
+                    input_message_id,
+                )
+                .await;
+
+                // Mark task as failed due to cancellation
+                let mut store = self.store.lock().await;
+                let _ = store.fail_task(task.id, "Workflow cancelled").await;
+                return Ok(());
+            }
+        }
+
         // Create a new gRPC client for this task execution
         let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
 
@@ -794,6 +919,31 @@ impl DurableWorker {
     ) -> Result<()> {
         let input_json = serde_json::to_value(input)?;
         let mut store = self.store.lock().await;
+
+        // Check if workflow is cancelled before scheduling next activity
+        if let Ok((status, _, _)) = store.get_workflow_status(workflow_id).await
+            && status == WorkflowStatus::Cancelled
+        {
+            info!(
+                workflow_id = %workflow_id,
+                completed_activity = %completed_activity,
+                "Workflow cancelled, not scheduling next activity"
+            );
+
+            // Emit cancellation events (agent message + session.idled)
+            let turn_id = Uuid::now_v7(); // Generate turn_id for cancellation context
+            drop(store); // Release lock before async call
+            emit_cancellation_events(
+                &self.grpc_address,
+                input.org_id,
+                input.session_id,
+                turn_id,
+                input.input_message_id,
+            )
+            .await;
+
+            return Ok(());
+        }
 
         match completed_activity {
             "process_input" => {

@@ -189,6 +189,43 @@ When a turn fails, a `message.agent` event with a user-friendly error message is
 | `llm_error` | LLM call failed (API key missing, rate limit, network error) |
 | `max_iterations` | Maximum iterations exceeded |
 
+#### `turn.cancelled`
+
+Turn execution was cancelled by user request. This event is emitted immediately when the cancel endpoint is called.
+
+```json
+{
+  "type": "turn.cancelled",
+  "session_id": "...",
+  "context": {
+    "turn_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "reason": "User requested cancellation",
+    "usage": {
+      "input_tokens": 150,
+      "output_tokens": 30
+    }
+  }
+}
+```
+
+**Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `turn_id` | UUID | The cancelled turn identifier |
+| `reason` | string | Optional reason for cancellation |
+| `usage` | TokenUsage | Optional token usage up to cancellation point |
+
+**Cancellation Flow:**
+1. User clicks cancel in UI
+2. API emits `turn.cancelled` event immediately
+3. API emits `message.user` with "User requested to cancel the work."
+4. Worker detects cancellation and stops execution
+5. Worker emits `message.agent` with "Work was cancelled by user."
+6. Worker emits `session.idled` event
+
 ### Atom Lifecycle Events
 
 Atom events provide observability into the execution pipeline.
@@ -595,6 +632,7 @@ This approach provides real-time feedback as tokens are consumed during LLM call
 | `turn.started` | Turn | Turn execution started |
 | `turn.completed` | Turn | Turn completed |
 | `turn.failed` | Turn | Turn failed |
+| `turn.cancelled` | Turn | Turn cancelled by user |
 | `input.received` | Atom | User input received |
 | `reason.started` | Atom | ReasonAtom started |
 | `reason.completed` | Atom | ReasonAtom completed |

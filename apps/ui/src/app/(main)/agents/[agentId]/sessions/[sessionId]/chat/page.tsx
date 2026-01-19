@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, Bot, Loader2, Brain, ImagePlus } from "lucide-react";
+import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle } from "lucide-react";
 import type { Controls, MessageUserData, MessageAgentData, ContentPart } from "@/lib/api/types";
 import { isImageFilePart } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
@@ -37,12 +37,14 @@ export default function ChatPage() {
     chatEvents,
     toolResultsMap,
     eventsLoading,
+    isActive,
     reasoningEffort,
     setReasoningEffort,
     setIsWaitingForResponse,
     isThinking,
     streamingText,
     sendMessage,
+    cancelCurrentTurn,
     getMessageText,
     getToolCalls,
   } = useSessionContext();
@@ -437,21 +439,40 @@ export default function ChatPage() {
             />
           </div>
 
-          <Button
-            type="submit"
-            size="icon"
-            className="h-[60px] w-[60px]"
-            disabled={!canSubmit}
-            title={isUploading ? "Uploading images..." : undefined}
-          >
-            {sendMessage.isPending || sendMessageWithImages.isPending ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : isUploading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Send className="h-5 w-5" />
-            )}
-          </Button>
+          {/* Show cancel button when turn is active and no input typed */}
+          {isActive && !inputValue.trim() && !hasImages ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="destructive"
+              className="h-[60px] w-[60px]"
+              disabled={cancelCurrentTurn.isPending}
+              onClick={() => cancelCurrentTurn.mutate()}
+              title="Cancel current turn"
+            >
+              {cancelCurrentTurn.isPending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <StopCircle className="h-5 w-5" />
+              )}
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon"
+              className="h-[60px] w-[60px]"
+              disabled={!canSubmit}
+              title={isUploading ? "Uploading images..." : undefined}
+            >
+              {sendMessage.isPending || sendMessageWithImages.isPending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : isUploading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </Button>
+          )}
         </form>
         <div className="flex flex-wrap items-center gap-4 mt-2">
           <div className="flex items-center gap-2">

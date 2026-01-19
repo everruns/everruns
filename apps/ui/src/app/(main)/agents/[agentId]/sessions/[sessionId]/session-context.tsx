@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useMemo, useEffect, type ReactNode } from "react";
 import { useAgent, useSession, useEvents, useLlmModel } from "@/hooks";
-import { sendUserMessage } from "@/lib/api/sessions";
+import { sendUserMessage, cancelTurn } from "@/lib/api/sessions";
 import { useMutation } from "@tanstack/react-query";
 import { useOrg } from "@/providers/org-provider";
 import type {
@@ -65,6 +65,8 @@ interface SessionContextValue {
     { agentId: string; sessionId: string; content: string; controls?: Controls },
     { optimisticId: string; content: string }
   >;
+  // Turn cancellation
+  cancelCurrentTurn: UseMutationResult<void, Error, void, unknown>;
   // Utility functions
   getMessageText: (data: MessageUserData | MessageAgentData) => string;
   getToolCalls: (data: MessageAgentData) => Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
@@ -157,6 +159,20 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     },
   });
 
+  // Cancel turn mutation
+  const cancelCurrentTurn = useMutation({
+    mutationFn: async () => {
+      if (!org) throw new Error("Organization not found");
+      await cancelTurn(org, agentId, sessionId);
+    },
+    onSuccess: () => {
+      // Reset waiting state since turn is cancelled
+      setIsWaitingForResponse(false);
+      // Update local status to idle immediately
+      setLocalStatus("idle");
+    },
+  });
+
   // Fetch LLM model info if session has a model_id
   const { data: llmModel } = useLlmModel(session?.model_id ?? "");
 
@@ -179,6 +195,18 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         setLocalStatus("idle");
         // When session becomes idle, user is no longer waiting for response
         setIsWaitingForResponse(false);
+        // Also clear thinking/streaming state - session is done
+        setIsThinking(false);
+        setStreamingText(null);
+        setStreamingTurnId(null);
+        break;
+      }
+      if (event.type === "turn.cancelled") {
+        // Turn was cancelled - clear thinking state immediately
+        setIsWaitingForResponse(false);
+        setIsThinking(false);
+        setStreamingText(null);
+        setStreamingTurnId(null);
         break;
       }
     }
@@ -435,6 +463,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     streamingText,
     streamingTurnId,
     sendMessage,
+    cancelCurrentTurn,
     getMessageText,
     getToolCalls,
   };

@@ -24,6 +24,7 @@ pub const MESSAGE_AGENT: &str = "message.agent";
 pub const TURN_STARTED: &str = "turn.started";
 pub const TURN_COMPLETED: &str = "turn.completed";
 pub const TURN_FAILED: &str = "turn.failed";
+pub const TURN_CANCELLED: &str = "turn.cancelled";
 
 // Atom lifecycle events
 pub const INPUT_RECEIVED: &str = "input.received";
@@ -850,6 +851,22 @@ pub struct TurnFailedData {
     pub error_code: Option<String>,
 }
 
+/// Data for turn.cancelled event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TurnCancelledData {
+    /// Turn identifier
+    pub turn_id: Uuid,
+
+    /// Reason for cancellation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+
+    /// Token usage before cancellation (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
+}
+
 // ============================================================================
 // Session Event Data Types
 // ============================================================================
@@ -940,6 +957,7 @@ pub enum EventData {
     TurnStarted(TurnStartedData),
     TurnCompleted(TurnCompletedData),
     TurnFailed(TurnFailedData),
+    // NOTE: TurnCancelled is placed after streaming events (see below)
 
     // Atom lifecycle events
     InputReceived(InputReceivedData),
@@ -960,6 +978,11 @@ pub enum EventData {
     // comes first, it will match TextDelta JSON and discard delta/accumulated fields.
     TextDelta(TextDeltaData),
     AgentThinking(AgentThinkingData),
+
+    // NOTE: TurnCancelled is placed here (after streaming events) because it only
+    // requires turn_id. If placed before TextDelta/AgentThinking, it would greedily
+    // match their JSON and discard their specific fields.
+    TurnCancelled(TurnCancelledData),
 
     // Session events
     SessionStarted(SessionStartedData),
@@ -983,6 +1006,7 @@ impl EventData {
             EventData::TurnStarted(_) => TURN_STARTED,
             EventData::TurnCompleted(_) => TURN_COMPLETED,
             EventData::TurnFailed(_) => TURN_FAILED,
+            EventData::TurnCancelled(_) => TURN_CANCELLED,
             EventData::InputReceived(_) => INPUT_RECEIVED,
             EventData::ReasonStarted(_) => REASON_STARTED,
             EventData::ReasonCompleted(_) => REASON_COMPLETED,
@@ -1028,6 +1052,7 @@ impl_from_event_data! {
     TurnStartedData => TurnStarted,
     TurnCompletedData => TurnCompleted,
     TurnFailedData => TurnFailed,
+    TurnCancelledData => TurnCancelled,
     InputReceivedData => InputReceived,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
@@ -1264,6 +1289,19 @@ mod tests {
         assert_eq!(TURN_STARTED, "turn.started");
         assert_eq!(TURN_COMPLETED, "turn.completed");
         assert_eq!(TURN_FAILED, "turn.failed");
+        assert_eq!(TURN_CANCELLED, "turn.cancelled");
+    }
+
+    #[test]
+    fn test_turn_cancelled_data() {
+        let data = TurnCancelledData {
+            turn_id: Uuid::now_v7(),
+            reason: Some("User requested cancellation".to_string()),
+            usage: Some(TokenUsage::new(100, 50)),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), TURN_CANCELLED);
     }
 
     #[test]
