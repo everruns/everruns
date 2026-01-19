@@ -1,13 +1,14 @@
 // OpenAI Driver Implementation
 //
-// This crate provides an OpenAI-compatible LLM driver implementation.
-// It implements the LlmDriver trait from everruns-core, enabling
-// the agent loop to communicate with OpenAI's chat completion API.
+// This crate provides OpenAI LLM driver implementations:
 //
-// The OpenAI protocol is used as the base for LLM drivers in the system,
-// meaning other providers can adapt their APIs to this format.
+// - OpenAILlmDriver: Uses Open Responses API (https://www.openresponses.org/)
+//   Recommended for new projects with better performance.
 //
-// Design: This crate depends on everruns-core and registers its driver
+// - OpenAICompletionsLlmDriver: Uses Chat Completions API
+//   For backward compatibility with /v1/chat/completions endpoint.
+//
+// Design: This crate depends on everruns-core and registers its drivers
 // at application startup via register_driver(). This enables dependency
 // inversion - core has no knowledge of specific provider implementations.
 
@@ -17,10 +18,9 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub use driver::{OpenAILlmDriver, register_driver, register_driver_with_mode};
+pub use driver::{OpenAICompletionsLlmDriver, OpenAILlmDriver, register_driver};
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
-    OpenAIApiMode,
 };
 
 // Re-export core types for convenience

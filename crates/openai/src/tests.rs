@@ -2,9 +2,7 @@
 
 #[cfg(test)]
 mod driver_tests {
-    use crate::{
-        DriverRegistry, OpenAIApiMode, OpenAILlmDriver, register_driver, register_driver_with_mode,
-    };
+    use crate::{DriverRegistry, OpenAICompletionsLlmDriver, OpenAILlmDriver, register_driver};
     use everruns_core::llm_driver_registry::{ProviderConfig, ProviderType};
 
     #[test]
@@ -12,140 +10,71 @@ mod driver_tests {
         let driver = OpenAILlmDriver::new("test-key");
         // Just verify it can be created
         assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
-        // Default mode should be Responses (Open Responses API)
-        assert_eq!(driver.api_mode(), OpenAIApiMode::Responses);
-    }
-
-    #[test]
-    fn test_driver_with_mode_completions() {
-        let driver = OpenAILlmDriver::with_mode("test-key", OpenAIApiMode::Completions);
-        assert_eq!(driver.api_mode(), OpenAIApiMode::Completions);
-        assert!(driver.api_url().contains("chat/completions"));
-    }
-
-    #[test]
-    fn test_driver_with_mode_responses() {
-        let driver = OpenAILlmDriver::with_mode("test-key", OpenAIApiMode::Responses);
-        assert_eq!(driver.api_mode(), OpenAIApiMode::Responses);
+        assert!(format!("{:?}", driver).contains("Open Responses"));
+        // URL should be for Open Responses API
         assert!(driver.api_url().contains("responses"));
     }
 
     #[test]
     fn test_driver_with_base_url() {
         let driver =
-            OpenAILlmDriver::with_base_url("test-key", "https://custom.api.com/v1/completions");
+            OpenAILlmDriver::with_base_url("test-key", "https://custom.api.com/v1/responses");
         assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
-        assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
-        assert_eq!(driver.api_mode(), OpenAIApiMode::Completions);
+        assert_eq!(driver.api_url(), "https://custom.api.com/v1/responses");
+        assert!(driver.uses_custom_url());
     }
 
     #[test]
-    fn test_driver_with_base_url_and_mode() {
-        let driver = OpenAILlmDriver::with_base_url_and_mode(
+    fn test_completions_driver_with_api_key() {
+        let driver = OpenAICompletionsLlmDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenAICompletionsLlmDriver"));
+        assert!(format!("{:?}", driver).contains("Chat Completions"));
+        // URL should be for Chat Completions API
+        assert!(driver.api_url().contains("chat/completions"));
+    }
+
+    #[test]
+    fn test_completions_driver_with_base_url() {
+        let driver = OpenAICompletionsLlmDriver::with_base_url(
             "test-key",
-            "https://custom.api.com/v1/responses",
-            OpenAIApiMode::Responses,
+            "https://custom.api.com/v1/chat/completions",
         );
-        assert_eq!(driver.api_url(), "https://custom.api.com/v1/responses");
-        assert_eq!(driver.api_mode(), OpenAIApiMode::Responses);
+        assert!(format!("{:?}", driver).contains("OpenAICompletionsLlmDriver"));
+        assert_eq!(
+            driver.api_url(),
+            "https://custom.api.com/v1/chat/completions"
+        );
+        assert!(driver.uses_custom_url());
     }
 
     #[test]
     fn test_register_driver() {
         let mut registry = DriverRegistry::new();
         assert!(!registry.has_driver(&ProviderType::OpenAI));
+        assert!(!registry.has_driver(&ProviderType::OpenAICompletions));
         assert!(!registry.has_driver(&ProviderType::AzureOpenAI));
 
         register_driver(&mut registry);
 
         assert!(registry.has_driver(&ProviderType::OpenAI));
+        assert!(registry.has_driver(&ProviderType::OpenAICompletions));
         assert!(registry.has_driver(&ProviderType::AzureOpenAI));
 
-        // Verify drivers can be created via registry
+        // Verify OpenAI driver can be created
         let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
         let driver = registry.create_driver(&config);
         assert!(driver.is_ok());
 
+        // Verify OpenAI Completions driver can be created
+        let completions_config =
+            ProviderConfig::new(ProviderType::OpenAICompletions).with_api_key("test-key");
+        let completions_driver = registry.create_driver(&completions_config);
+        assert!(completions_driver.is_ok());
+
+        // Verify Azure driver can be created
         let azure_config = ProviderConfig::new(ProviderType::AzureOpenAI).with_api_key("test-key");
         let azure_driver = registry.create_driver(&azure_config);
         assert!(azure_driver.is_ok());
-    }
-
-    #[test]
-    fn test_register_driver_with_mode() {
-        let mut registry = DriverRegistry::new();
-
-        // Register with Responses mode
-        register_driver_with_mode(&mut registry, OpenAIApiMode::Responses);
-
-        assert!(registry.has_driver(&ProviderType::OpenAI));
-        assert!(registry.has_driver(&ProviderType::AzureOpenAI));
-
-        // Drivers can be created
-        let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
-        let driver = registry.create_driver(&config);
-        assert!(driver.is_ok());
-    }
-}
-
-#[cfg(test)]
-mod api_mode_tests {
-    use crate::OpenAIApiMode;
-
-    #[test]
-    fn test_api_mode_default() {
-        let mode = OpenAIApiMode::default();
-        // Default is now Responses (Open Responses API)
-        assert_eq!(mode, OpenAIApiMode::Responses);
-    }
-
-    #[test]
-    fn test_api_mode_display() {
-        assert_eq!(OpenAIApiMode::Completions.to_string(), "completions");
-        assert_eq!(OpenAIApiMode::Responses.to_string(), "responses");
-    }
-
-    #[test]
-    fn test_api_mode_from_str() {
-        // Completions variants
-        assert_eq!(
-            "completions".parse::<OpenAIApiMode>().unwrap(),
-            OpenAIApiMode::Completions
-        );
-        assert_eq!(
-            "chat".parse::<OpenAIApiMode>().unwrap(),
-            OpenAIApiMode::Completions
-        );
-        assert_eq!(
-            "chat_completions".parse::<OpenAIApiMode>().unwrap(),
-            OpenAIApiMode::Completions
-        );
-        assert_eq!(
-            "COMPLETIONS".parse::<OpenAIApiMode>().unwrap(),
-            OpenAIApiMode::Completions
-        );
-
-        // Responses variants
-        assert_eq!(
-            "responses".parse::<OpenAIApiMode>().unwrap(),
-            OpenAIApiMode::Responses
-        );
-        assert_eq!(
-            "RESPONSES".parse::<OpenAIApiMode>().unwrap(),
-            OpenAIApiMode::Responses
-        );
-
-        // Invalid
-        assert!("invalid".parse::<OpenAIApiMode>().is_err());
-    }
-
-    #[test]
-    fn test_api_mode_copy() {
-        let mode = OpenAIApiMode::Responses;
-        let copied = mode;
-        // Mode implements Copy, so both should be equal
-        assert_eq!(mode, copied);
-        assert_eq!(mode, OpenAIApiMode::Responses);
     }
 }
 

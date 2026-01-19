@@ -6,54 +6,6 @@
 use everruns_core::{ToolCall, ToolDefinition};
 use serde::{Deserialize, Serialize};
 
-/// OpenAI API mode - determines which API endpoint to use
-///
-/// OpenAI offers two API options:
-/// - **Completions**: The traditional Chat Completions API (`/v1/chat/completions`)
-/// - **Responses**: The Open Responses API (`/v1/responses`), recommended for new projects
-///
-/// Open Responses (https://www.openresponses.org/) is a vendor-neutral API specification
-/// that standardizes LLM interfaces across providers (OpenAI, Anthropic, Gemini, etc.).
-///
-/// Benefits of Open Responses:
-/// - One spec, many providers - same API works across vendors
-/// - Agentic loop support with semantic streaming events
-/// - Better performance with reasoning models (o1, o3, GPT-5)
-/// - 40-80% better cache utilization
-/// - Native stateful conversation support
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum OpenAIApiMode {
-    /// Chat Completions API (for backward compatibility)
-    Completions,
-    /// Open Responses API (default, recommended for new projects)
-    #[default]
-    Responses,
-}
-
-impl std::fmt::Display for OpenAIApiMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OpenAIApiMode::Completions => write!(f, "completions"),
-            OpenAIApiMode::Responses => write!(f, "responses"),
-        }
-    }
-}
-
-impl std::str::FromStr for OpenAIApiMode {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "completions" | "chat" | "chat_completions" => Ok(OpenAIApiMode::Completions),
-            "responses" => Ok(OpenAIApiMode::Responses),
-            _ => Err(format!(
-                "Unknown API mode: {}. Use 'completions' or 'responses'",
-                s
-            )),
-        }
-    }
-}
-
 /// Provider-agnostic chat message following OpenAI's format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
