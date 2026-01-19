@@ -280,7 +280,8 @@ pub async fn delete_session(
 
 /// POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel - Cancel current turn
 ///
-/// Cancels the currently running turn in the session. This will:
+/// Cancels the currently running turn in the session. If no turn is running,
+/// this is a no-op and returns success (idempotent). When a turn is active:
 /// 1. Cancel the underlying workflow execution
 /// 2. Emit a turn.cancelled event
 /// 3. Insert an agent message indicating the turn was cancelled
@@ -294,9 +295,8 @@ pub async fn delete_session(
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
     responses(
-        (status = 200, description = "Turn cancelled successfully"),
+        (status = 200, description = "Turn cancelled successfully (or no-op if idle)"),
         (status = 404, description = "Session not found"),
-        (status = 409, description = "No turn currently running"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -314,9 +314,9 @@ pub async fn cancel_turn(
         .log_internal_error("get session for cancel")?
         .ok_or_not_found()?;
 
-    // Check if session is active (turn running)
+    // If session is not active, cancel is a no-op (idempotent)
     if session.status != everruns_core::SessionStatus::Active {
-        return Err(StatusCode::CONFLICT);
+        return Ok(StatusCode::OK);
     }
 
     // Cancel the workflow
