@@ -575,3 +575,65 @@ pub struct CreateImageRow {
 pub struct UpdateMcpServerTools {
     pub cached_tools: serde_json::Value,
 }
+
+// ============================================
+// Session Key/Value Storage models
+// ============================================
+
+/// Session key/value row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionKeyValueRow {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub key: String,
+    pub value: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating/updating a session key/value
+#[derive(Debug, Clone)]
+pub struct UpsertSessionKeyValue {
+    pub session_id: Uuid,
+    pub key: String,
+    pub value: String,
+}
+
+/// Lightweight key info for listing (without value)
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionKeyInfoRow {
+    pub key: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ============================================
+// Session Secret Storage models (encrypted)
+// ============================================
+
+/// Session secret row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionSecretRow {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub name: String,
+    pub value_encrypted: Vec<u8>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating/updating a session secret
+#[derive(Debug, Clone)]
+pub struct UpsertSessionSecret {
+    pub session_id: Uuid,
+    pub name: String,
+    pub value_encrypted: Vec<u8>,
+}
+
+/// Lightweight secret info for listing (without encrypted value)
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionSecretInfoRow {
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

@@ -227,6 +227,66 @@ pub trait SessionFileStore: Send + Sync {
 }
 
 // ============================================================================
+// SessionStorageStore - For session key/value and secret storage
+// ============================================================================
+
+/// Info about a stored key (without its value)
+#[derive(Debug, Clone)]
+pub struct KeyInfo {
+    pub key: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Info about a stored secret (without its value)
+#[derive(Debug, Clone)]
+pub struct SecretInfo {
+    pub name: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Trait for session key/value and secret storage operations
+///
+/// This trait abstracts storage operations for tools that need to persist
+/// data within a session. Implementations can:
+/// - Store data in a database (production)
+/// - Use in-memory storage for testing
+///
+/// Key/value storage is for general data that doesn't need encryption.
+/// Secret storage is for sensitive data that is encrypted at rest.
+#[async_trait]
+pub trait SessionStorageStore: Send + Sync {
+    // Key/Value operations (plain text)
+
+    /// Set a key/value pair (creates or updates)
+    async fn set_value(&self, session_id: Uuid, key: &str, value: &str) -> Result<()>;
+
+    /// Get a value by key
+    async fn get_value(&self, session_id: Uuid, key: &str) -> Result<Option<String>>;
+
+    /// Delete a key/value pair
+    async fn delete_value(&self, session_id: Uuid, key: &str) -> Result<bool>;
+
+    /// List all keys in a session
+    async fn list_keys(&self, session_id: Uuid) -> Result<Vec<KeyInfo>>;
+
+    // Secret operations (encrypted)
+
+    /// Set a secret (creates or updates, value is encrypted before storage)
+    async fn set_secret(&self, session_id: Uuid, name: &str, value: &str) -> Result<()>;
+
+    /// Get a secret by name (value is decrypted before returning)
+    async fn get_secret(&self, session_id: Uuid, name: &str) -> Result<Option<String>>;
+
+    /// Delete a secret
+    async fn delete_secret(&self, session_id: Uuid, name: &str) -> Result<bool>;
+
+    /// List all secret names in a session (without values)
+    async fn list_secrets(&self, session_id: Uuid) -> Result<Vec<SecretInfo>>;
+}
+
+// ============================================================================
 // ToolContext - Runtime context for tool execution
 // ============================================================================
 
@@ -245,6 +305,9 @@ pub struct ToolContext {
 
     /// Optional file store for filesystem operations
     pub file_store: Option<Arc<dyn SessionFileStore>>,
+
+    /// Optional storage store for key/value and secret storage
+    pub storage_store: Option<Arc<dyn SessionStorageStore>>,
 }
 
 impl ToolContext {
@@ -253,6 +316,7 @@ impl ToolContext {
         Self {
             session_id,
             file_store: None,
+            storage_store: None,
         }
     }
 
@@ -261,6 +325,32 @@ impl ToolContext {
         Self {
             session_id,
             file_store: Some(file_store),
+            storage_store: None,
+        }
+    }
+
+    /// Create a context with a storage store
+    pub fn with_storage_store(
+        session_id: Uuid,
+        storage_store: Arc<dyn SessionStorageStore>,
+    ) -> Self {
+        Self {
+            session_id,
+            file_store: None,
+            storage_store: Some(storage_store),
+        }
+    }
+
+    /// Create a context with both file store and storage store
+    pub fn with_stores(
+        session_id: Uuid,
+        file_store: Arc<dyn SessionFileStore>,
+        storage_store: Arc<dyn SessionStorageStore>,
+    ) -> Self {
+        Self {
+            session_id,
+            file_store: Some(file_store),
+            storage_store: Some(storage_store),
         }
     }
 }
@@ -270,6 +360,7 @@ impl std::fmt::Debug for ToolContext {
         f.debug_struct("ToolContext")
             .field("session_id", &self.session_id)
             .field("file_store", &self.file_store.is_some())
+            .field("storage_store", &self.storage_store.is_some())
             .finish()
     }
 }

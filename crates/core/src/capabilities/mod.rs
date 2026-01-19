@@ -43,6 +43,7 @@ mod noop;
 mod research;
 mod sample_data;
 mod sandbox;
+mod session_storage;
 mod stateless_todo_list;
 mod test_math;
 mod test_weather;
@@ -88,6 +89,10 @@ pub use noop::NoopCapability;
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use sandbox::SandboxCapability;
+pub use session_storage::{
+    DeleteSecretTool, DeleteValueTool, GetSecretTool, GetValueTool, ListKeysTool, ListSecretsTool,
+    SessionStorageCapability, SetSecretTool, SetValueTool,
+};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
@@ -252,6 +257,7 @@ impl CapabilityRegistry {
         registry.register(ResearchCapability);
         registry.register(SandboxCapability);
         registry.register(FileSystemCapability);
+        registry.register(SessionStorageCapability);
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
@@ -768,6 +774,7 @@ mod tests {
         assert!(registry.has(CapabilityId::RESEARCH));
         assert!(registry.has(CapabilityId::SANDBOX));
         assert!(registry.has(CapabilityId::FILE_SYSTEM));
+        assert!(registry.has(CapabilityId::SESSION_STORAGE));
         assert!(registry.has(CapabilityId::TEST_MATH));
         assert!(registry.has(CapabilityId::TEST_WEATHER));
         assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
@@ -779,7 +786,7 @@ mod tests {
         assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
         // Experimental capability included in dev
         assert!(registry.has(CapabilityId::DOCKER_CONTAINER));
-        assert_eq!(registry.len(), 15);
+        assert_eq!(registry.len(), 16);
     }
 
     #[test]
@@ -792,6 +799,7 @@ mod tests {
         assert!(registry.has(CapabilityId::RESEARCH));
         assert!(registry.has(CapabilityId::SANDBOX));
         assert!(registry.has(CapabilityId::FILE_SYSTEM));
+        assert!(registry.has(CapabilityId::SESSION_STORAGE));
         assert!(registry.has(CapabilityId::TEST_MATH));
         assert!(registry.has(CapabilityId::TEST_WEATHER));
         assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
@@ -803,7 +811,7 @@ mod tests {
         assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
         // Experimental capability NOT included in prod
         assert!(!registry.has(CapabilityId::DOCKER_CONTAINER));
-        assert_eq!(registry.len(), 14);
+        assert_eq!(registry.len(), 15);
     }
 
     #[test]
