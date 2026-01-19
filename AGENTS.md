@@ -242,6 +242,7 @@ Message content uses unified `Vec<ContentPart>` across all layers:
 ### CI expectations
 
 - CI is implemented using GitHub Actions, status is available via `gh` tool
+- **NEVER merge when CI is red.** This is a hard requirement with no exceptions. Even if the failure appears unrelated to your changes, do not merge. Fix the issue or get help first.
 
 ### Pre-PR checklist
 

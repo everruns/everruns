@@ -3819,18 +3819,79 @@ async fn test_streaming_events_emitted() {
     println!("Streaming events test passed!");
 }
 
+/// Test cancel turn endpoint behavior.
+///
+/// Requirements: API + Worker running (uses LlmSim, no real API keys needed)
 #[tokio::test]
 async fn test_cancel_turn_endpoint() {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(tokio::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to create client");
 
     println!("Testing cancel turn endpoint...");
 
-    // Create an agent
+    // Step 1: Create LlmSim provider and model
+    println!("\nStep 1: Creating LlmSim provider and model...");
+    let provider_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
+        .json(&json!({
+            "name": "Cancel Test Provider",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created LlmSim provider: {}", provider.id);
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-cancel-test",
+            "display_name": "LlmSim Cancel Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim model: status={}, body={}",
+            status, body
+        );
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created LlmSim model: {}", model.id);
+
+    // Step 2: Create agent with LlmSim model
+    println!("\nStep 2: Creating agent...");
     let agent_response = client
         .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Cancel Test Agent",
-            "system_prompt": "You are a helpful assistant"
+            "system_prompt": "You are a helpful assistant. Write a very long response.",
+            "default_model_id": model.id.to_string()
         }))
         .send()
         .await
@@ -3840,7 +3901,8 @@ async fn test_cancel_turn_endpoint() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
     println!("Created agent: {}", agent.id);
 
-    // Create a session
+    // Step 3: Create session
+    println!("\nStep 3: Creating session...");
     let session_response = client
         .post(format!(
             "{}/v1/orgs/{}/agents/{}/sessions",
@@ -3860,8 +3922,8 @@ async fn test_cancel_turn_endpoint() {
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
 
-    // Test 1: Cancel on idle session should return 400
-    println!("\nTest 1: Cancel on idle session (should return 400)...");
+    // Test 1: Cancel on idle session should return 200 with no_op status
+    println!("\nTest 1: Cancel on idle session (should return 200, no-op)...");
     let cancel_response = client
         .post(format!(
             "{}/v1/orgs/{}/agents/{}/sessions/{}/cancel",
@@ -3873,11 +3935,105 @@ async fn test_cancel_turn_endpoint() {
 
     assert_eq!(
         cancel_response.status(),
-        400,
-        "Expected 400 for cancelling idle session, got {}",
+        200,
+        "Expected 200 for cancelling idle session (no-op), got {}",
         cancel_response.status()
     );
-    println!("Correctly returned 400 for idle session");
+    let cancel_body: Value = cancel_response
+        .json()
+        .await
+        .expect("Failed to parse cancel response");
+    assert_eq!(
+        cancel_body["status"], "no_op",
+        "Expected no_op status for idle session, got {:?}",
+        cancel_body["status"]
+    );
+    println!("Correctly returned no_op: {}", cancel_body["message"]);
+
+    // Test 2: Start a turn and cancel it
+    println!("\nTest 2: Start a turn and cancel it...");
+
+    // Send a message to start the turn
+    let message_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .json(&json!({
+            "role": "user",
+            "content": "Write a very detailed 1000-word essay about the history of computing."
+        }))
+        .send()
+        .await
+        .expect("Failed to send message");
+
+    assert_eq!(message_response.status(), 201, "Failed to create message");
+    println!("Message sent, turn should be starting...");
+
+    // Small delay to let the turn start
+    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+    // Try to cancel - may succeed (cancelled) or be no-op if turn already completed
+    let cancel_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/cancel",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to call cancel endpoint");
+
+    assert_eq!(
+        cancel_response.status(),
+        200,
+        "Expected 200 for cancel, got {}",
+        cancel_response.status()
+    );
+    let cancel_body: Value = cancel_response
+        .json()
+        .await
+        .expect("Failed to parse cancel response");
+    // Status can be "cancelled" (if we caught active turn) or "no_op" (if turn completed)
+    let status = cancel_body["status"]
+        .as_str()
+        .expect("status should be string");
+    assert!(
+        status == "cancelled" || status == "no_op",
+        "Expected cancelled or no_op status, got {}",
+        status
+    );
+    println!("Cancel returned {}: {}", status, cancel_body["message"]);
+
+    // Wait for session to return to idle
+    println!("Waiting for session to return to idle...");
+    let mut attempts = 0;
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        attempts += 1;
+
+        let session_response = client
+            .get(format!(
+                "{}/v1/orgs/{}/agents/{}/sessions/{}",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            ))
+            .send()
+            .await
+            .expect("Failed to get session");
+
+        let session: Session = session_response
+            .json()
+            .await
+            .expect("Failed to parse session");
+
+        if session.status == everruns_core::SessionStatus::Idle {
+            println!("Session returned to idle after {} attempts", attempts);
+            break;
+        }
+
+        if attempts > 50 {
+            panic!("Session did not return to idle after cancel");
+        }
+    }
 
     // Cleanup
     println!("\nCleaning up...");

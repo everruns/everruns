@@ -15,7 +15,7 @@ use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
 
 use super::common::{ApiOptionExt, ApiResultExt, PaginatedResponse, Pagination};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -35,6 +35,27 @@ pub struct CreateSessionRequest {
     /// Overrides the agent's default model if specified.
     #[serde(default)]
     pub model_id: Option<Uuid>,
+}
+
+/// Response from cancel turn endpoint
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CancelTurnResponse {
+    /// Whether the cancellation was performed or was a no-op
+    #[schema(example = "cancelled")]
+    pub status: CancelStatus,
+    /// Human-readable message
+    #[schema(example = "Turn cancelled successfully")]
+    pub message: String,
+}
+
+/// Status of the cancel operation
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CancelStatus {
+    /// Turn was actively cancelled
+    Cancelled,
+    /// No turn was running, cancel was a no-op
+    NoOp,
 }
 
 /// Request to update a session. Only provided fields will be updated.
@@ -280,7 +301,8 @@ pub async fn delete_session(
 
 /// POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel - Cancel current turn
 ///
-/// Cancels the currently running turn in the session. This will:
+/// Cancels the currently running turn in the session. If no turn is running,
+/// this is a no-op and returns success (idempotent). When a turn is active:
 /// 1. Cancel the underlying workflow execution
 /// 2. Emit a turn.cancelled event
 /// 3. Insert an agent message indicating the turn was cancelled
@@ -294,9 +316,8 @@ pub async fn delete_session(
         ("session_id" = Uuid, Path, description = "Session ID")
     ),
     responses(
-        (status = 200, description = "Turn cancelled successfully"),
+        (status = 200, description = "Turn cancelled successfully (or no-op if idle)", body = CancelTurnResponse),
         (status = 404, description = "Session not found"),
-        (status = 409, description = "No turn currently running"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -305,7 +326,7 @@ pub async fn cancel_turn(
     org: OrgContext,
     State(state): State<AppState>,
     Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<Json<CancelTurnResponse>, StatusCode> {
     // Verify session exists
     let session = state
         .session_service
@@ -314,9 +335,12 @@ pub async fn cancel_turn(
         .log_internal_error("get session for cancel")?
         .ok_or_not_found()?;
 
-    // Check if session is active (turn running)
+    // If session is not active, cancel is a no-op (idempotent)
     if session.status != everruns_core::SessionStatus::Active {
-        return Err(StatusCode::CONFLICT);
+        return Ok(Json(CancelTurnResponse {
+            status: CancelStatus::NoOp,
+            message: "No turn currently running".to_string(),
+        }));
     }
 
     // Cancel the workflow
@@ -359,7 +383,10 @@ pub async fn cancel_turn(
     // are emitted by the worker when it detects the cancellation and stops.
     // This ensures the agent message appears AFTER any in-flight events.
 
-    Ok(StatusCode::OK)
+    Ok(Json(CancelTurnResponse {
+        status: CancelStatus::Cancelled,
+        message: "Turn cancelled successfully".to_string(),
+    }))
 }
 
 #[cfg(test)]
