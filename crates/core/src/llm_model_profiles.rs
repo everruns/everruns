@@ -105,9 +105,10 @@ pub fn get_model_profile(
     model_id: &str,
 ) -> Option<LlmModelProfile> {
     match provider_type {
-        LlmProviderType::Openai => get_openai_profile(model_id),
+        LlmProviderType::Openai | LlmProviderType::OpenaiCompletions => {
+            get_openai_profile(model_id)
+        }
         LlmProviderType::Anthropic => get_anthropic_profile(model_id),
-        LlmProviderType::AzureOpenAI => get_openai_profile(model_id), // Azure uses same model IDs
         LlmProviderType::LlmSim => get_llmsim_profile(model_id),
     }
 }
@@ -1522,8 +1523,8 @@ mod tests {
     }
 
     #[test]
-    fn test_azure_uses_openai_profiles() {
-        let profile = get_model_profile(&LlmProviderType::AzureOpenAI, "gpt-4o");
+    fn test_openai_completions_uses_openai_profiles() {
+        let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, "gpt-4o");
         assert!(profile.is_some());
         assert_eq!(profile.unwrap().name, "GPT-4o");
     }

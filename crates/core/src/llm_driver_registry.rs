@@ -590,7 +590,6 @@ pub enum ProviderType {
     /// Use this if you need the legacy /v1/chat/completions endpoint.
     OpenAICompletions,
     Anthropic,
-    AzureOpenAI,
     /// LLM simulator for testing (uses llmsim crate)
     LlmSim,
 }
@@ -603,7 +602,6 @@ impl std::str::FromStr for ProviderType {
             "openai" => Ok(ProviderType::OpenAI),
             "openai_completions" => Ok(ProviderType::OpenAICompletions),
             "anthropic" => Ok(ProviderType::Anthropic),
-            "azure_openai" => Ok(ProviderType::AzureOpenAI),
             "llmsim" => Ok(ProviderType::LlmSim),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
@@ -616,7 +614,6 @@ impl std::fmt::Display for ProviderType {
             ProviderType::OpenAI => write!(f, "openai"),
             ProviderType::OpenAICompletions => write!(f, "openai_completions"),
             ProviderType::Anthropic => write!(f, "anthropic"),
-            ProviderType::AzureOpenAI => write!(f, "azure_openai"),
             ProviderType::LlmSim => write!(f, "llmsim"),
         }
     }
@@ -808,11 +805,8 @@ mod tests {
             "anthropic".parse::<ProviderType>().unwrap(),
             ProviderType::Anthropic
         );
-        assert_eq!(
-            "azure_openai".parse::<ProviderType>().unwrap(),
-            ProviderType::AzureOpenAI
-        );
-        // Ollama and Custom are no longer supported
+        // Azure, Ollama and Custom are no longer supported
+        assert!("azure_openai".parse::<ProviderType>().is_err());
         assert!("ollama".parse::<ProviderType>().is_err());
         assert!("custom".parse::<ProviderType>().is_err());
     }
@@ -825,7 +819,6 @@ mod tests {
             "openai_completions"
         );
         assert_eq!(ProviderType::Anthropic.to_string(), "anthropic");
-        assert_eq!(ProviderType::AzureOpenAI.to_string(), "azure_openai");
     }
 
     #[test]

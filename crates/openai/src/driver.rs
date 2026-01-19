@@ -280,7 +280,6 @@ async fn list_openai_models(
 /// This registers:
 /// - `ProviderType::OpenAI` - Open Responses API (recommended)
 /// - `ProviderType::OpenAICompletions` - Chat Completions API (backward compatibility)
-/// - `ProviderType::AzureOpenAI` - Azure OpenAI (uses Open Responses API)
 ///
 /// # Example
 ///
@@ -306,15 +305,6 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         let driver = match base_url {
             Some(url) => OpenAICompletionsLlmDriver::with_base_url(api_key, url),
             None => OpenAICompletionsLlmDriver::new(api_key),
-        };
-        Box::new(driver) as BoxedLlmDriver
-    });
-
-    // Register Azure OpenAI with Open Responses API
-    registry.register(ProviderType::AzureOpenAI, |api_key, base_url| {
-        let driver = match base_url {
-            Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
-            None => OpenAILlmDriver::new(api_key),
         };
         Box::new(driver) as BoxedLlmDriver
     });

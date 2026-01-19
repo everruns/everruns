@@ -185,12 +185,12 @@ CREATE TABLE llm_providers (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
     name TEXT NOT NULL,
-    provider_type TEXT NOT NULL CHECK (provider_type IN ('openai', 'anthropic', 'azure_openai', 'llmsim')),
+    provider_type TEXT NOT NULL CHECK (provider_type IN ('openai', 'openai_completions', 'anthropic', 'llmsim')),
     base_url TEXT,
     -- Encrypted API key (AES-256-GCM): 12-byte nonce || ciphertext || 16-byte tag
     api_key_encrypted BYTEA,
     api_key_set BOOLEAN NOT NULL DEFAULT FALSE,
-    -- Provider-specific settings (e.g., Azure deployment_name, api_version)
+    -- Provider-specific settings
     settings JSONB NOT NULL DEFAULT '{}'::jsonb,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -204,7 +204,7 @@ CREATE INDEX idx_llm_providers_org_id ON llm_providers(org_id);
 CREATE TRIGGER update_llm_providers_updated_at BEFORE UPDATE ON llm_providers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON COLUMN llm_providers.settings IS 'Provider-specific settings as JSON. E.g., Azure deployment_name, api_version, etc.';
+COMMENT ON COLUMN llm_providers.settings IS 'Provider-specific settings as JSON.';
 
 -- ============================================
 -- LLM Models

@@ -5,14 +5,14 @@ import { cn } from "@/lib/utils";
 
 const PROVIDER_ICONS: Record<LlmProviderType, string> = {
   openai: "/providers/openai.svg",
+  openai_completions: "/providers/openai.svg",
   anthropic: "/providers/anthropic.svg",
-  azure_openai: "/providers/azure.svg",
 };
 
 const PROVIDER_LABELS: Record<LlmProviderType, string> = {
-  openai: "OpenAI",
+  openai: "OpenAI (Responses)",
+  openai_completions: "OpenAI (Completions)",
   anthropic: "Anthropic",
-  azure_openai: "Azure OpenAI",
 };
 
 interface ProviderIconProps {

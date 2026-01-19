@@ -224,8 +224,12 @@ mod tests {
             ("DEFAULT_OPENAI_API_KEY", "sk-test"),
             ("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test"),
         ]);
-        assert_eq!(get_default_api_key_with_lookup("azure_openai", &env), None);
+        // Unknown providers and providers without defaults return None
         assert_eq!(get_default_api_key_with_lookup("unknown", &env), None);
+        assert_eq!(
+            get_default_api_key_with_lookup("openai_completions", &env),
+            None
+        );
     }
 
     #[test]

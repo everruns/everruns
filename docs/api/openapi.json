@@ -5116,8 +5116,8 @@
         "description": "LLM provider type",
         "enum": [
           "openai",
+          "openai_completions",
           "anthropic",
-          "azure_openai",
           "llmsim"
         ]
       },

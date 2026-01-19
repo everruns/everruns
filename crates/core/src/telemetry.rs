@@ -133,9 +133,6 @@ pub mod gen_ai {
     pub mod provider {
         pub const OPENAI: &str = "openai";
         pub const ANTHROPIC: &str = "anthropic";
-        pub const AZURE_OPENAI: &str = "azure.ai.openai";
-        pub const AWS_BEDROCK: &str = "aws.bedrock";
-        pub const GCP_VERTEX_AI: &str = "gcp.vertex_ai";
     }
 
     /// Tool types as per semantic conventions

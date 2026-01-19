@@ -120,13 +120,13 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 
 ## LLM Provider API Keys
 
-LLM provider API keys (OpenAI, Anthropic, Azure OpenAI) are primarily stored encrypted in the database and managed via the Settings > Providers UI.
+LLM provider API keys (OpenAI, Anthropic) are primarily stored encrypted in the database and managed via the Settings > Providers UI.
 
 | Property | Value |
 |----------|-------|
 | **Storage** | Database (encrypted with AES-256-GCM) |
 | **Configuration** | Settings > Providers UI or `/v1/llm-providers` API |
-| **Supported Providers** | OpenAI, Anthropic, Azure OpenAI |
+| **Supported Providers** | OpenAI, Anthropic |
 
 **Required for encryption:**
 

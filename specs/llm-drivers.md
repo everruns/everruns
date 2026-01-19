@@ -54,9 +54,9 @@ graph TD
    - `Error(String)` - Error during streaming
 
 3. **Provider Types**: Supported provider types are defined in `ProviderType` enum:
-   - `OpenAI` - OpenAI API
+   - `OpenAI` - OpenAI API using Open Responses API (recommended)
+   - `OpenAICompletions` - OpenAI API using Chat Completions API (legacy)
    - `Anthropic` - Anthropic Claude API
-   - `AzureOpenAI` - Azure OpenAI Service
    - `LlmSim` - Testing simulator (llmsim crate)
 
 ### Error Types (Contract)

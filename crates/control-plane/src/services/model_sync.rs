@@ -84,8 +84,8 @@ impl ModelSyncService {
         // Create driver for the provider
         let driver_type = match provider_type {
             LlmProviderType::Openai => ProviderType::OpenAI,
+            LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
             LlmProviderType::Anthropic => ProviderType::Anthropic,
-            LlmProviderType::AzureOpenAI => ProviderType::AzureOpenAI,
             LlmProviderType::LlmSim => {
                 // LlmSim doesn't support model discovery
                 return Ok(SyncResult::NotSupported);
@@ -386,8 +386,10 @@ mod tests {
             ("DEFAULT_OPENAI_API_KEY", "sk-test"),
             ("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test"),
         ]);
-        assert!(resolve_api_key_with_lookup("azure_openai", &env).is_none());
+        // Unknown providers return None (no default key)
         assert!(resolve_api_key_with_lookup("unknown", &env).is_none());
+        // openai_completions also has no default - shares with OpenAI
+        assert!(resolve_api_key_with_lookup("openai_completions", &env).is_none());
     }
 
     #[test]

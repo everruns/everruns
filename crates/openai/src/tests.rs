@@ -52,13 +52,11 @@ mod driver_tests {
         let mut registry = DriverRegistry::new();
         assert!(!registry.has_driver(&ProviderType::OpenAI));
         assert!(!registry.has_driver(&ProviderType::OpenAICompletions));
-        assert!(!registry.has_driver(&ProviderType::AzureOpenAI));
 
         register_driver(&mut registry);
 
         assert!(registry.has_driver(&ProviderType::OpenAI));
         assert!(registry.has_driver(&ProviderType::OpenAICompletions));
-        assert!(registry.has_driver(&ProviderType::AzureOpenAI));
 
         // Verify OpenAI driver can be created
         let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
@@ -70,11 +68,6 @@ mod driver_tests {
             ProviderConfig::new(ProviderType::OpenAICompletions).with_api_key("test-key");
         let completions_driver = registry.create_driver(&completions_config);
         assert!(completions_driver.is_ok());
-
-        // Verify Azure driver can be created
-        let azure_config = ProviderConfig::new(ProviderType::AzureOpenAI).with_api_key("test-key");
-        let azure_driver = registry.create_driver(&azure_config);
-        assert!(azure_driver.is_ok());
     }
 }
 

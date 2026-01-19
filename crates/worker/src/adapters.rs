@@ -12,7 +12,6 @@ use everruns_core::{
 /// This registers drivers for:
 /// - OpenAI (Open Responses API - recommended)
 /// - OpenAI Completions (Chat Completions API - backward compatibility)
-/// - Azure OpenAI (uses Open Responses API)
 /// - Anthropic Claude
 /// - LlmSim (for testing)
 pub fn create_driver_registry() -> DriverRegistry {
@@ -25,7 +24,7 @@ pub fn create_driver_registry() -> DriverRegistry {
 
 /// Create an LLM driver based on configuration
 ///
-/// This factory supports all provider types: OpenAI, Anthropic, Azure.
+/// This factory supports all provider types: OpenAI, OpenAI Completions, Anthropic.
 pub fn create_llm_driver(
     provider_type: &str,
     api_key: Option<&str>,

@@ -65,20 +65,19 @@ import type {
 } from "@/lib/api/types";
 
 const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
-  { value: "openai", label: "OpenAI" },
+  { value: "openai", label: "OpenAI (Responses API)" },
+  { value: "openai_completions", label: "OpenAI (Completions API)" },
   { value: "anthropic", label: "Anthropic" },
-  { value: "azure_openai", label: "Azure OpenAI" },
 ];
 
 // Get API key placeholder based on provider type
 function getApiKeyPlaceholder(providerType: LlmProviderType): string {
   switch (providerType) {
     case "openai":
+    case "openai_completions":
       return "sk-...";
     case "anthropic":
       return "sk-ant-api03-...";
-    case "azure_openai":
-      return "your-azure-api-key";
     default:
       return "your-api-key";
   }
