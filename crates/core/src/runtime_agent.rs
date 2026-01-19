@@ -5,7 +5,7 @@
 // - Built from an Agent entity via the `with_agent` builder method
 
 use crate::agent::Agent;
-use crate::capabilities::{CapabilityRegistry, collect_capabilities};
+use crate::capabilities::{CapabilityRegistry, collect_capabilities, resolve_dependencies};
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
@@ -118,7 +118,8 @@ impl RuntimeAgentBuilder {
 
     /// Apply capabilities to this builder.
     ///
-    /// This collects contributions from the given capabilities and applies them:
+    /// This resolves dependencies, then collects contributions from capabilities:
+    /// - Dependencies are automatically included (topologically sorted)
     /// - System prompt additions are prepended to the current system prompt
     /// - Tool definitions are added to the tools list
     ///
@@ -131,7 +132,17 @@ impl RuntimeAgentBuilder {
         capability_ids: &[String],
         registry: &CapabilityRegistry,
     ) -> Self {
-        let collected = collect_capabilities(capability_ids, registry);
+        // Resolve dependencies first (dependencies come before dependents)
+        let resolved_ids = match resolve_dependencies(capability_ids, registry) {
+            Ok(resolved) => resolved.resolved_ids,
+            Err(e) => {
+                // Log error but continue with original IDs to avoid breaking
+                tracing::warn!("Failed to resolve capability dependencies: {}", e);
+                capability_ids.to_vec()
+            }
+        };
+
+        let collected = collect_capabilities(&resolved_ids, registry);
 
         // Apply system prompt additions (prepend to existing)
         if let Some(prefix) = collected.system_prompt_prefix() {
@@ -370,5 +381,36 @@ mod tests {
 
         assert_eq!(runtime_agent.system_prompt, "You are a helpful assistant.");
         assert_eq!(runtime_agent.model, "gpt-5.2");
+    }
+
+    #[test]
+    fn test_builder_with_capabilities_resolves_dependencies() {
+        // Sample Data depends on Session File System
+        // When we request only Sample Data, we should get system prompt from both
+        let registry = CapabilityRegistry::with_builtins();
+        let runtime_agent = RuntimeAgentBuilder::new()
+            .system_prompt("Base prompt.")
+            .with_capabilities(&[CapabilityId::SAMPLE_DATA.to_string()], &registry)
+            .build();
+
+        // System prompt should include File System's contribution (the dependency)
+        assert!(
+            runtime_agent.system_prompt.contains("read_file"),
+            "Should include File System system prompt (mentions read_file tool)"
+        );
+        assert!(
+            runtime_agent.system_prompt.contains("write_file"),
+            "Should include File System system prompt (mentions write_file tool)"
+        );
+        // Should also include Sample Data's contribution
+        assert!(
+            runtime_agent.system_prompt.contains("/samples"),
+            "Should include Sample Data system prompt (mentions /samples path)"
+        );
+        // Base prompt should still be there
+        assert!(
+            runtime_agent.system_prompt.contains("Base prompt."),
+            "Should preserve base prompt"
+        );
     }
 }
