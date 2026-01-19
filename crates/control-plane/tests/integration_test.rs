@@ -3860,8 +3860,8 @@ async fn test_cancel_turn_endpoint() {
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
 
-    // Test 1: Cancel on idle session should return 400
-    println!("\nTest 1: Cancel on idle session (should return 400)...");
+    // Test 1: Cancel on idle session should return 409 Conflict (no turn running)
+    println!("\nTest 1: Cancel on idle session (should return 409 Conflict)...");
     let cancel_response = client
         .post(format!(
             "{}/v1/orgs/{}/agents/{}/sessions/{}/cancel",
@@ -3873,11 +3873,11 @@ async fn test_cancel_turn_endpoint() {
 
     assert_eq!(
         cancel_response.status(),
-        400,
-        "Expected 400 for cancelling idle session, got {}",
+        409,
+        "Expected 409 Conflict for cancelling idle session, got {}",
         cancel_response.status()
     );
-    println!("Correctly returned 400 for idle session");
+    println!("Correctly returned 409 Conflict for idle session");
 
     // Cleanup
     println!("\nCleaning up...");
