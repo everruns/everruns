@@ -3317,6 +3317,9 @@
             "$ref": "#/components/schemas/TurnFailedData"
           },
           {
+            "$ref": "#/components/schemas/TurnCancelledData"
+          },
+          {
             "$ref": "#/components/schemas/InputReceivedData"
           },
           {
@@ -6018,6 +6021,38 @@
           "tool_call_id": {
             "type": "string",
             "description": "ID of the tool call this result corresponds to"
+          }
+        }
+      },
+      "TurnCancelledData": {
+        "type": "object",
+        "description": "Data for turn.cancelled event",
+        "required": [
+          "turn_id"
+        ],
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reason for cancellation"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Turn identifier"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Token usage before cancellation (if available)"
+              }
+            ]
           }
         }
       },
