@@ -3818,3 +3818,74 @@ async fn test_streaming_events_emitted() {
 
     println!("Streaming events test passed!");
 }
+
+#[tokio::test]
+async fn test_cancel_turn_endpoint() {
+    let client = reqwest::Client::new();
+
+    println!("Testing cancel turn endpoint...");
+
+    // Create an agent
+    let agent_response = client
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({
+            "name": "Cancel Test Agent",
+            "system_prompt": "You are a helpful assistant"
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.id);
+
+    // Create a session
+    let session_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .json(&json!({
+            "title": "Cancel Test Session"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response.json().await.expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    // Test 1: Cancel on idle session should return 400
+    println!("\nTest 1: Cancel on idle session (should return 400)...");
+    let cancel_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/cancel",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to call cancel endpoint");
+
+    assert_eq!(
+        cancel_response.status(),
+        400,
+        "Expected 400 for cancelling idle session, got {}",
+        cancel_response.status()
+    );
+    println!("Correctly returned 400 for idle session");
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    println!("Cancel turn endpoint test passed!");
+}

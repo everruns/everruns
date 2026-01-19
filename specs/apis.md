@@ -96,6 +96,23 @@ Sessions are instances of agentic loop execution tied to an agent.
 | GET | `/v1/agents/{agent_id}/sessions/{session_id}` | Get session |
 | PATCH | `/v1/agents/{agent_id}/sessions/{session_id}` | Update session |
 | DELETE | `/v1/agents/{agent_id}/sessions/{session_id}` | Delete session |
+| POST | `/v1/agents/{agent_id}/sessions/{session_id}/cancel` | Cancel current turn |
+
+#### Cancel Turn
+
+Cancels the currently executing turn in a session. This stops the workflow execution and emits appropriate events.
+
+**Request:** No body required.
+
+**Response:** `200 OK` on success, `400 Bad Request` if session is not active.
+
+**Events emitted:**
+1. `turn.cancelled` - Immediately when cancel is requested
+2. `message.user` - "User requested to cancel the work."
+3. `message.agent` - "Work was cancelled by user." (emitted by worker when it stops)
+4. `session.idled` - When the session transitions to idle (emitted by worker)
+
+The user message is emitted immediately by the API, while the agent message and session.idled events are emitted by the worker after it detects the cancellation and stops execution. This ensures the agent message appears after any in-flight events.
 
 ### Messages
 
