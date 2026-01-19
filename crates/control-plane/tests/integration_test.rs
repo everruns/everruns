@@ -3922,7 +3922,7 @@ async fn test_cancel_turn_endpoint() {
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
 
-    // Test 1: Cancel on idle session should return 200 (no-op, idempotent)
+    // Test 1: Cancel on idle session should return 200 with no_op status
     println!("\nTest 1: Cancel on idle session (should return 200, no-op)...");
     let cancel_response = client
         .post(format!(
@@ -3939,7 +3939,13 @@ async fn test_cancel_turn_endpoint() {
         "Expected 200 for cancelling idle session (no-op), got {}",
         cancel_response.status()
     );
-    println!("Correctly returned 200 for idle session (no-op)");
+    let cancel_body: Value = cancel_response.json().await.expect("Failed to parse cancel response");
+    assert_eq!(
+        cancel_body["status"], "no_op",
+        "Expected no_op status for idle session, got {:?}",
+        cancel_body["status"]
+    );
+    println!("Correctly returned no_op: {}", cancel_body["message"]);
 
     // Test 2: Start a turn and cancel it
     println!("\nTest 2: Start a turn and cancel it...");
@@ -3964,7 +3970,7 @@ async fn test_cancel_turn_endpoint() {
     // Small delay to let the turn start
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-    // Try to cancel - may succeed (200) or be no-op if turn already completed
+    // Try to cancel - may succeed (cancelled) or be no-op if turn already completed
     let cancel_response = client
         .post(format!(
             "{}/v1/orgs/{}/agents/{}/sessions/{}/cancel",
@@ -3980,7 +3986,15 @@ async fn test_cancel_turn_endpoint() {
         "Expected 200 for cancel, got {}",
         cancel_response.status()
     );
-    println!("Cancel returned 200");
+    let cancel_body: Value = cancel_response.json().await.expect("Failed to parse cancel response");
+    // Status can be "cancelled" (if we caught active turn) or "no_op" (if turn completed)
+    let status = cancel_body["status"].as_str().expect("status should be string");
+    assert!(
+        status == "cancelled" || status == "no_op",
+        "Expected cancelled or no_op status, got {}",
+        status
+    );
+    println!("Cancel returned {}: {}", status, cancel_body["message"]);
 
     // Wait for session to return to idle
     println!("Waiting for session to return to idle...");

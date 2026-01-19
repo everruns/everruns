@@ -687,6 +687,65 @@
         }
       }
     },
+    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel - Cancel current turn",
+        "description": "Cancels the currently running turn in the session. If no turn is running,\nthis is a no-op and returns success (idempotent). When a turn is active:\n1. Cancel the underlying workflow execution\n2. Emit a turn.cancelled event\n3. Insert an agent message indicating the turn was cancelled\n4. Set the session status back to idle",
+        "operationId": "cancel_turn",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Turn cancelled successfully (or no-op if idle)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelTurnResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events": {
       "get": {
         "tags": [
@@ -2642,6 +2701,33 @@
             "type": "string",
             "format": "uuid",
             "description": "Turn ID this thinking indicator belongs to"
+          }
+        }
+      },
+      "CancelStatus": {
+        "type": "string",
+        "description": "Status of the cancel operation",
+        "enum": [
+          "cancelled",
+          "no_op"
+        ]
+      },
+      "CancelTurnResponse": {
+        "type": "object",
+        "description": "Response from cancel turn endpoint",
+        "required": [
+          "status",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Human-readable message",
+            "example": "Turn cancelled successfully"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CancelStatus",
+            "description": "Whether the cancellation was performed or was a no-op"
           }
         }
       },

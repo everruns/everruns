@@ -41,6 +41,7 @@ use utoipa::OpenApi;
         api::sessions::get_session,
         api::sessions::update_session,
         api::sessions::delete_session,
+        api::sessions::cancel_turn,
         api::messages::create_message,
         api::messages::list_messages,
         api::events::stream_sse,
@@ -89,6 +90,7 @@ use utoipa::OpenApi;
             // Agent/Session types
             api::agents::CreateAgentRequest, api::agents::UpdateAgentRequest,
             api::sessions::CreateSessionRequest, api::sessions::UpdateSessionRequest,
+            api::sessions::CancelTurnResponse, api::sessions::CancelStatus,
             api::messages::Message, api::messages::MessageRole, api::messages::ContentPart, api::messages::InputContentPart,
             api::messages::CreateMessageRequest, api::messages::InputMessage,
             api::messages::Controls, api::messages::ReasoningConfig,
