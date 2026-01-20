@@ -204,6 +204,7 @@ async fn main() -> Result<()> {
     let agents_state =
         api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
     let session_files_state = api::session_files::AppState::new(db.clone());
+    let session_storage_state = api::session_storage::AppState::new(db.clone(), auth_state.clone());
     let users_state = api::users::UsersState {
         db: db.clone(),
         auth: auth_state.clone(),
@@ -263,6 +264,7 @@ async fn main() -> Result<()> {
         .merge(api::mcp_servers::routes(mcp_servers_state))
         .merge(api::capabilities::routes(capabilities_state))
         .merge(api::session_files::routes(session_files_state))
+        .merge(api::session_storage::routes(session_storage_state))
         .merge(api::users::routes(users_state))
         .merge(api::durable::routes(durable_state))
         .merge(api::images::routes(images_state))

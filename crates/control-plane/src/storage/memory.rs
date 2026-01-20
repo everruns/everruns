@@ -36,6 +36,9 @@ pub struct InMemoryDatabase {
     images: RwLock<HashMap<Uuid, ImageRow>>,
     // Event sequence counter per session
     event_sequences: RwLock<HashMap<Uuid, i32>>,
+    // Session storage
+    session_key_values: RwLock<HashMap<(Uuid, String), SessionKeyValueRow>>,
+    session_secrets: RwLock<HashMap<(Uuid, String), SessionSecretRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -71,6 +74,8 @@ impl Default for InMemoryDatabase {
             mcp_servers: RwLock::new(HashMap::new()),
             images: RwLock::new(HashMap::new()),
             event_sequences: RwLock::new(HashMap::new()),
+            session_key_values: RwLock::new(HashMap::new()),
+            session_secrets: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -2034,6 +2039,55 @@ impl InMemoryDatabase {
             .organization_members
             .read()
             .contains_key(&(org_id, user_id)))
+    }
+
+    // ============================================
+    // Session Storage (Key-Value & Secrets)
+    // ============================================
+
+    pub async fn list_session_keys(&self, session_id: Uuid) -> Result<Vec<SessionKeyInfoRow>> {
+        let storage = self.session_key_values.read();
+        let mut keys: Vec<_> = storage
+            .iter()
+            .filter(|((sid, _), _)| *sid == session_id)
+            .map(|((_, _), row)| SessionKeyInfoRow {
+                key: row.key.clone(),
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })
+            .collect();
+        keys.sort_by(|a, b| a.key.cmp(&b.key));
+        Ok(keys)
+    }
+
+    pub async fn get_session_key_value(
+        &self,
+        session_id: Uuid,
+        key: &str,
+    ) -> Result<Option<SessionKeyValueRow>> {
+        Ok(self
+            .session_key_values
+            .read()
+            .get(&(session_id, key.to_string()))
+            .cloned())
+    }
+
+    pub async fn list_session_secrets(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<SessionSecretInfoRow>> {
+        let storage = self.session_secrets.read();
+        let mut secrets: Vec<_> = storage
+            .iter()
+            .filter(|((sid, _), _)| *sid == session_id)
+            .map(|((_, _), row)| SessionSecretInfoRow {
+                name: row.name.clone(),
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })
+            .collect();
+        secrets.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(secrets)
     }
 }
 

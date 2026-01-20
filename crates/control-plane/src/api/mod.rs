@@ -15,6 +15,7 @@ pub mod mcp_servers;
 pub mod messages;
 pub mod organizations;
 pub mod session_files;
+pub mod session_storage;
 pub mod sessions;
 pub mod sse;
 pub mod users;

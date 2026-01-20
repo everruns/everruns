@@ -769,4 +769,27 @@ impl StorageBackend {
     pub async fn is_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
         dispatch!(self, is_organization_member, org_id, user_id)
     }
+
+    // ============================================
+    // Session Storage (Key-Value & Secrets)
+    // ============================================
+
+    pub async fn list_session_keys(&self, session_id: Uuid) -> Result<Vec<SessionKeyInfoRow>> {
+        dispatch!(self, list_session_keys, session_id)
+    }
+
+    pub async fn get_session_key_value(
+        &self,
+        session_id: Uuid,
+        key: &str,
+    ) -> Result<Option<SessionKeyValueRow>> {
+        dispatch!(self, get_session_key_value, session_id, key)
+    }
+
+    pub async fn list_session_secrets(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<SessionSecretInfoRow>> {
+        dispatch!(self, list_session_secrets, session_id)
+    }
 }
