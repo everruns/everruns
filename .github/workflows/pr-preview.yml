@@ -80,6 +80,7 @@ jobs:
         id: deploy
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
           IMAGE_TAG=${{ needs.wait-for-images.outputs.image_tag }}
@@ -87,10 +88,13 @@ jobs:
 
           echo "Deploying PR #${PR_NUMBER} with image tag ${IMAGE_TAG}"
 
+          # Link to the project
+          railway link --project "${RAILWAY_PROJECT_ID}"
+
           # Check if environment exists, create if not
           if ! railway environment --json 2>/dev/null | jq -e ".[] | select(.name == \"${ENV_NAME}\")" > /dev/null; then
             echo "Creating new environment: ${ENV_NAME}"
-            railway environment create "${ENV_NAME}"
+            railway environment new "${ENV_NAME}"
           fi
 
           # Switch to the PR environment
@@ -194,13 +198,17 @@ jobs:
       - name: Delete Railway environment
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
           ENV_NAME="pr-${PR_NUMBER}"
 
           echo "Cleaning up environment: ${ENV_NAME}"
 
-          # Switch to project and delete the environment
+          # Link to the project
+          railway link --project "${RAILWAY_PROJECT_ID}"
+
+          # Delete the environment if it exists
           if railway environment "${ENV_NAME}" 2>/dev/null; then
             railway environment delete "${ENV_NAME}" --yes
             echo "Environment ${ENV_NAME} deleted"
