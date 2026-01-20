@@ -16,14 +16,14 @@ REST API server for managing AI agents, threads, and runs.
 ### 1. Start Services
 
 ```bash
-./scripts/dev.sh start    # Start PostgreSQL
-./scripts/dev.sh migrate  # Run database migrations
+just start    # Start PostgreSQL
+just migrate  # Run database migrations
 ```
 
 ### 2. Start API Server
 
 ```bash
-./scripts/dev.sh api
+just api
 ```
 
 The API will be available at `http://localhost:9000`
@@ -73,7 +73,7 @@ This will:
 
 ### Prerequisites
 
-1. Start the API server: `./scripts/dev.sh api`
+1. Start the API server: `just api`
 2. Ensure the database is clean (or use a test database)
 
 ### Run Tests
@@ -196,15 +196,15 @@ curl "http://localhost:9000/v1/agents?tenant_id=$TENANT_ID" | jq
 
 Make sure PostgreSQL is running:
 ```bash
-./scripts/dev.sh start
+just start
 ```
 
 ### Migration Errors
 
 Reset the database:
 ```bash
-./scripts/dev.sh reset
-./scripts/dev.sh migrate
+just reset
+just migrate
 ```
 
 ### Port Already in Use

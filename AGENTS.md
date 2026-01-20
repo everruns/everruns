@@ -112,13 +112,21 @@ When making changes that affect user-facing behavior or operations, update the r
 
 ### Local dev expectations
 
+**Command runner:** [just](https://github.com/casey/just)
+```bash
+just <command>       # Run a command
+just --list          # List all commands
+```
+
+Install: `cargo install just` or `./scripts/init-cloud-env.sh` (pre-built binary)
+
 **Full mode (with PostgreSQL):**
 - A `local/docker-compose.yml` brings up Postgres + Jaeger
 
 **DEV_MODE (no database required):**
 ```bash
 # Quick start - no Docker/PostgreSQL needed
-./scripts/dev.sh start-dev
+just start-dev
 ```
 - Uses in-memory storage (data lost on restart)
 - Execution happens in-process (no separate worker)
@@ -144,15 +152,21 @@ Before running smoke tests, ensure these tools are installed:
 
 ### Cloud Agent environments
 
-When running in cloud-hosted agent environments (e.g., Claude Code on the web), the following secrets are available:
+**FIRST STEP in cloud environments (Claude Code on web, CI, etc.):**
+```bash
+./scripts/init-cloud-env.sh
+```
 
-- `OPENAI_API_KEY`: Available for LLM-related operations (OpenAI models)
-- `ANTHROPIC_API_KEY`: Available for LLM-related operations (Claude models)
-- `GITHUB_TOKEN`: Available for GitHub API operations (PRs, issues, repository access)
+This installs pre-built binaries (~5 seconds total):
+- `just` - command runner
+- `gh` - GitHub CLI (for PR/issue operations)
 
-These secrets are pre-configured in the environment and do not require manual setup.
+After running, use `just <command>` for all development tasks.
 
-If `gh` tool is not available, use GitHub API with `GITHUB_TOKEN`.
+**Available secrets** (pre-configured, no setup needed):
+- `OPENAI_API_KEY` - OpenAI models
+- `ANTHROPIC_API_KEY` - Claude models
+- `GITHUB_TOKEN` - GitHub API (PRs, issues)
 
 ### Rust conventions
 
@@ -248,7 +262,7 @@ Message content uses unified `Vec<ContentPart>` across all layers:
 
 Before creating a pull request:
 
-1. **Run pre-PR script**: `./scripts/dev.sh pre-pr` (runs checks 2-8 automatically)
+1. **Run pre-PR script**: `just pre-pr` (runs checks 2-8 automatically)
 2. **Rust formatting**: `cargo fmt --check`
 3. **Rust linting**: `cargo clippy --all-targets --all-features -- -D warnings`
 4. **Rust tests**: `cargo test --all-features`
@@ -270,7 +284,7 @@ Before creating a pull request:
 15. **Update specs**: If changes affect system behavior, update specs in `specs/`
 16. **Update docs**: If changes affect usage, update docs in `docs/`
 
-CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` before pushing.
+CI will fail if any automated checks fail. Always run `just pre-pr` before pushing.
 
 ### UI conventions
 
@@ -281,8 +295,8 @@ CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` 
 
 **E2E Testing (Playwright):**
 - Tests located in `apps/ui/e2e/`
-- Run with `./scripts/dev.sh e2e` or `npm run e2e` in apps/ui
-- Screenshot tests: `./scripts/dev.sh e2e-screenshots`
+- Run with `just ui e2e` or `npm run e2e` in apps/ui
+- Screenshot tests: `just ui screenshots`
 - Dev pages (`/dev/*`) provide component showcases for visual testing
 
 ### Testing conventions
@@ -388,17 +402,13 @@ The best way to verify the system is working is to run the **smoke test script**
 
 ```bash
 # First-time setup (installs Rust tools + UI dependencies)
-./scripts/dev.sh init
+just init
 
-# Option 1: Start everything at once
-./scripts/dev.sh start-all
+# Start everything (Docker, API, Worker, UI with auto-reload)
+just start-all
 
-# Option 2: Start services individually
-./scripts/dev.sh start      # Start Docker services
-./scripts/dev.sh migrate    # Run migrations
-./scripts/dev.sh api        # Start API (in one terminal)
-./scripts/dev.sh worker     # Start worker (in another terminal)
-./scripts/dev.sh ui         # Start UI (in another terminal)
+# Or: DEV MODE (no Docker needed, in-memory storage)
+just start-dev
 
 # Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
 ```

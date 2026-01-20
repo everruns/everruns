@@ -2,10 +2,10 @@
 // Run with: cargo run --example dad_joke_agent
 //
 // Prerequisites:
-// 1. Start the services: ./scripts/dev.sh start
-// 2. Run migrations: ./scripts/dev.sh migrate
-// 3. Start the API: ./scripts/dev.sh api (in another terminal)
-// 4. Start the Worker: ./scripts/dev.sh worker (in another terminal)
+// 1. Start the services: just start
+// 2. Run migrations: just migrate
+// 3. Start the API: just api (in another terminal)
+// 4. Start the Worker: just worker (in another terminal)
 //
 // This example demonstrates:
 // - Creating an agent with capabilities (current_time)

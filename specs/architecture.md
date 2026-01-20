@@ -308,8 +308,8 @@ For rapid local development without infrastructure dependencies:
 # Start in dev mode (no Docker/PostgreSQL required)
 DEV_MODE=true cargo run -p everruns-control-plane
 
-# Or use the convenience script
-./scripts/dev.sh start-dev
+# Or use the convenience command
+just start-dev
 ```
 
 **DEV_MODE behavior:**
