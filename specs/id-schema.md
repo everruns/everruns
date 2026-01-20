@@ -32,10 +32,12 @@ Where:
 | Session | `session_` | `session_01933b5a00007000800000000000003` |
 | Message | `message_` | `message_01933b5a00007000800000000000004` |
 | Event | `event_` | `event_01933b5a00007000800000000000005` |
-| LLM Provider | `provider_` | `provider_01933b5a00007000800000000000006` |
-| LLM Model | `model_` | `model_01933b5a00007000800000000000007` |
-| Image | `img_` | `img_01933b5a00007000800000000000008` |
-| MCP Server | `mcp_` | `mcp_01933b5a00007000800000000000009` |
+| Turn | `turn_` | `turn_01933b5a00007000800000000000006` |
+| Execution | `exec_` | `exec_01933b5a00007000800000000000007` |
+| LLM Provider | `provider_` | `provider_01933b5a00007000800000000000008` |
+| LLM Model | `model_` | `model_01933b5a00007000800000000000009` |
+| Image | `img_` | `img_01933b5a0000700080000000000000a` |
+| MCP Server | `mcp_` | `mcp_01933b5a0000700080000000000000b` |
 
 ### ID Generation
 

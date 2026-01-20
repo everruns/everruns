@@ -2722,8 +2722,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn ID this thinking indicator belongs to"
+            "description": "Turn ID this thinking indicator belongs to",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -5772,13 +5772,13 @@
         "properties": {
           "input_message_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Input message ID that triggered the turn"
+            "description": "Input message ID that triggered the turn",
+            "example": "message_01933b5a00007000800000000000001"
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn ID that activated the session"
+            "description": "Turn ID that activated the session",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -5860,8 +5860,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn ID that just completed"
+            "description": "Turn ID that just completed",
+            "example": "turn_01933b5a00007000800000000000001"
           },
           "usage": {
             "oneOf": [
@@ -5885,16 +5885,16 @@
         "properties": {
           "agent_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Agent ID"
+            "description": "Agent ID",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "model_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Model ID if specified"
+            "description": "Model ID if specified",
+            "example": "model_01933b5a00007000800000000000001"
           }
         }
       },
@@ -5951,8 +5951,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn ID this delta belongs to (for correlation)"
+            "description": "Turn ID this delta belongs to (for correlation)",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -6165,8 +6165,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn identifier"
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
           },
           "usage": {
             "oneOf": [
@@ -6206,8 +6206,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn identifier"
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
           },
           "usage": {
             "oneOf": [
@@ -6243,8 +6243,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn identifier"
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -6258,13 +6258,13 @@
         "properties": {
           "input_message_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Input message ID that triggered this turn"
+            "description": "Input message ID that triggered this turn",
+            "example": "message_01933b5a00007000800000000000001"
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn identifier"
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
