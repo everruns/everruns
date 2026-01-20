@@ -22,7 +22,8 @@ interface ToolCallData {
 type UserItem = { role: "user"; content: string };
 type AgentItem = { role: "agent"; content: string };
 type ToolItem = { role: "tool"; calls: ToolCallData[] };
-type ConversationItem = UserItem | AgentItem | ToolItem;
+type ThinkingItem = { role: "thinking"; model?: string };
+type ConversationItem = UserItem | AgentItem | ToolItem | ThinkingItem;
 
 // Sample conversation data
 const sampleConversation: ConversationItem[] = [
@@ -81,6 +82,12 @@ const executingConversation: ConversationItem[] = [
       },
     ],
   },
+];
+
+// Thinking state
+const thinkingConversation: ConversationItem[] = [
+  { role: "user", content: "What's the best approach to refactor this function?" },
+  { role: "thinking", model: "claude-3-5-sonnet" },
 ];
 
 // ============================================
@@ -161,6 +168,27 @@ function CurrentToolCall({ call }: { call: ToolCallData }) {
   );
 }
 
+function CurrentThinking({ model }: { model?: string }) {
+  return (
+    <div className="flex justify-start">
+      <div className="w-full bg-muted/60 rounded-lg p-3">
+        <div className="flex items-start gap-2">
+          <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm text-muted-foreground">Thinking</span>
+            {model && <span className="text-xs text-muted-foreground/60">with {model}</span>}
+            <span className="flex gap-0.5 ml-1">
+              <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================
 // Option B: Flat Agent, Boxed User
 // ============================================
@@ -236,6 +264,18 @@ function FlatToolCall({ call }: { call: ToolCallData }) {
   );
 }
 
+function FlatThinking({ model }: { model?: string }) {
+  return (
+    <div className="flex justify-start">
+      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <span>Thinking</span>
+        {model && <span className="text-xs opacity-60">with {model}</span>}
+      </div>
+    </div>
+  );
+}
+
 // ============================================
 // Option C: Minimal - subtle everything
 // ============================================
@@ -295,6 +335,16 @@ function MinimalToolCall({ call }: { call: ToolCallData }) {
       {expanded && call.result && (
         <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight">{call.result}</pre>
       )}
+    </div>
+  );
+}
+
+function MinimalThinking({ model }: { model?: string }) {
+  return (
+    <div className="flex justify-start pl-1">
+      <span className="text-xs text-muted-foreground/60">
+        thinking{model && ` (${model})`}...
+      </span>
     </div>
   );
 }
@@ -380,6 +430,25 @@ function ClaudeToolCall({ call }: { call: ToolCallData }) {
   );
 }
 
+function ClaudeThinking({ model }: { model?: string }) {
+  return (
+    <div className="flex justify-start gap-2">
+      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Bot className="w-3.5 h-3.5 text-white" />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Thinking</span>
+        {model && <span className="text-xs text-muted-foreground/60">with {model}</span>}
+        <span className="flex gap-0.5">
+          <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ============================================
 // Render helpers
 // ============================================
@@ -388,13 +457,13 @@ type StyleOption = "current" | "flat" | "minimal" | "claude";
 
 function renderConversation(conversation: ConversationItem[], style: StyleOption) {
   const components = {
-    current: { User: CurrentUserMessage, Agent: CurrentAgentMessage, Tool: CurrentToolCall },
-    flat: { User: FlatUserMessage, Agent: FlatAgentMessage, Tool: FlatToolCall },
-    minimal: { User: MinimalUserMessage, Agent: MinimalAgentMessage, Tool: MinimalToolCall },
-    claude: { User: ClaudeUserMessage, Agent: ClaudeAgentMessage, Tool: ClaudeToolCall },
+    current: { User: CurrentUserMessage, Agent: CurrentAgentMessage, Tool: CurrentToolCall, Thinking: CurrentThinking },
+    flat: { User: FlatUserMessage, Agent: FlatAgentMessage, Tool: FlatToolCall, Thinking: FlatThinking },
+    minimal: { User: MinimalUserMessage, Agent: MinimalAgentMessage, Tool: MinimalToolCall, Thinking: MinimalThinking },
+    claude: { User: ClaudeUserMessage, Agent: ClaudeAgentMessage, Tool: ClaudeToolCall, Thinking: ClaudeThinking },
   };
 
-  const { User, Agent, Tool } = components[style];
+  const { User, Agent, Tool, Thinking } = components[style];
 
   return conversation.map((item, i) => {
     switch (item.role) {
@@ -410,6 +479,8 @@ function renderConversation(conversation: ConversationItem[], style: StyleOption
             ))}
           </div>
         );
+      case "thinking":
+        return <Thinking key={i} model={item.model} />;
     }
   });
 }
@@ -493,6 +564,12 @@ export default function ChatStylesPage() {
             <div className="border-t p-4 space-y-4">
               <div className="text-xs text-muted-foreground text-center mb-4">Executing State</div>
               {renderConversation(executingConversation, selectedStyle)}
+            </div>
+
+            {/* Thinking state */}
+            <div className="border-t p-4 space-y-4">
+              <div className="text-xs text-muted-foreground text-center mb-4">Thinking State</div>
+              {renderConversation(thinkingConversation, selectedStyle)}
             </div>
           </div>
         </ScrollArea>
