@@ -112,13 +112,19 @@ When making changes that affect user-facing behavior or operations, update the r
 
 ### Local dev expectations
 
+**Command runner options:**
+- `./scripts/dev.sh <command>` - Bash script (always available)
+- `just <command>` - [just](https://github.com/casey/just) command runner (optional, install: `cargo install just`)
+
+Both are equivalent; `just` wraps `dev.sh`. Use whichever you prefer.
+
 **Full mode (with PostgreSQL):**
 - A `local/docker-compose.yml` brings up Postgres + Jaeger
 
 **DEV_MODE (no database required):**
 ```bash
 # Quick start - no Docker/PostgreSQL needed
-./scripts/dev.sh start-dev
+./scripts/dev.sh start-dev  # or: just start-dev
 ```
 - Uses in-memory storage (data lost on restart)
 - Execution happens in-process (no separate worker)
@@ -248,7 +254,7 @@ Message content uses unified `Vec<ContentPart>` across all layers:
 
 Before creating a pull request:
 
-1. **Run pre-PR script**: `./scripts/dev.sh pre-pr` (runs checks 2-8 automatically)
+1. **Run pre-PR script**: `./scripts/dev.sh pre-pr` or `just pre-pr` (runs checks 2-8 automatically)
 2. **Rust formatting**: `cargo fmt --check`
 3. **Rust linting**: `cargo clippy --all-targets --all-features -- -D warnings`
 4. **Rust tests**: `cargo test --all-features`
@@ -270,7 +276,7 @@ Before creating a pull request:
 15. **Update specs**: If changes affect system behavior, update specs in `specs/`
 16. **Update docs**: If changes affect usage, update docs in `docs/`
 
-CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` before pushing.
+CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` (or `just pre-pr`) before pushing.
 
 ### UI conventions
 
@@ -388,17 +394,17 @@ The best way to verify the system is working is to run the **smoke test script**
 
 ```bash
 # First-time setup (installs Rust tools + UI dependencies)
-./scripts/dev.sh init
+./scripts/dev.sh init       # or: just init
 
 # Option 1: Start everything at once
-./scripts/dev.sh start-all
+./scripts/dev.sh start-all  # or: just start-all
 
 # Option 2: Start services individually
-./scripts/dev.sh start      # Start Docker services
-./scripts/dev.sh migrate    # Run migrations
-./scripts/dev.sh api        # Start API (in one terminal)
-./scripts/dev.sh worker     # Start worker (in another terminal)
-./scripts/dev.sh ui         # Start UI (in another terminal)
+./scripts/dev.sh start      # Start Docker services (or: just start)
+./scripts/dev.sh migrate    # Run migrations (or: just migrate)
+./scripts/dev.sh api        # Start API (or: just api)
+./scripts/dev.sh worker     # Start worker (or: just worker)
+./scripts/dev.sh ui         # Start UI (or: just ui)
 
 # Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
 ```
