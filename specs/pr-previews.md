@@ -23,71 +23,94 @@ This specification defines the PR preview environment system that automatically 
 
 Uses Railway's native GitHub integration with PR environments. Railway builds from source on each push - no Docker image coordination needed.
 
-### Service Configuration
+Based on `examples/docker-compose-full.yaml` but simplified for previews (1 worker instead of 3).
 
-Configure these services in Railway dashboard:
+### Service Architecture
 
 ```
-PR Preview Environment
-├── control-plane
-│   ├── Dockerfile: docker/Dockerfile.unified
-│   ├── Target: control-plane
-│   └── Port 9000 (REST API)
-├── worker
-│   ├── Dockerfile: docker/Dockerfile.unified
-│   ├── Target: worker
-│   └── Connects to control-plane via gRPC
-├── ui
-│   ├── Root Directory: apps/ui
-│   ├── Dockerfile: apps/ui/Dockerfile
-│   └── Port 9100
-└── postgres (Railway PostgreSQL template)
+PR Preview Environment (mirrors docker-compose-full.yaml)
+├── postgres      → Railway PostgreSQL template
+├── api           → control-plane (HTTP :9000 + gRPC :9001)
+├── worker        → 1 worker instance (connects to api:9001)
+└── ui            → Next.js dashboard
 ```
 
 ### Setup Steps
 
-1. **Create Railway Project**
-   - New Project → Empty Project
-   - Add services as described above
+#### Step 1: Create Railway Project
+1. Go to https://railway.app/new
+2. Select **Empty Project**
+3. Name it `everruns-previews`
 
-2. **Connect GitHub**
-   - Project Settings → Integrations → Connect GitHub
-   - Select the repository
+#### Step 2: Add PostgreSQL
+1. Click **+ New** → **Database** → **Add PostgreSQL**
+2. Railway auto-creates `DATABASE_URL` variable
 
-3. **Enable PR Environments**
-   - Project Settings → Environments
-   - Enable "PR Environments"
-   - Railway auto-creates environment per PR
+#### Step 3: Add API Service (control-plane)
+1. Click **+ New** → **GitHub Repo**
+2. Select your repo, click **Add Service**
+3. Click the service → **Settings** tab:
+   - **Service Name**: `api`
+   - **Source** section:
+     - Dockerfile Path: `docker/Dockerfile.unified`
+   - **Build** section:
+     - Docker Build Target: `control-plane`
+4. **Variables** tab → **Raw Editor** → paste:
+   ```
+   DATABASE_URL=${{Postgres.DATABASE_URL}}
+   SECRETS_ENCRYPTION_KEY=kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+   AUTH_MODE=none
+   DEPLOYMENT_GRADE=preview
+   HOST=0.0.0.0
+   PORT=9000
+   RUST_LOG=info
+   ```
+5. **Networking** tab → **Generate Domain** (for public access)
 
-4. **Configure Services**
-
-   For each service, set in Railway dashboard:
-
-   **control-plane:**
-   - Dockerfile Path: `docker/Dockerfile.unified`
-   - Docker Build Target: `control-plane`
-   - Variables:
-     ```
-     DATABASE_URL=${{Postgres.DATABASE_URL}}
-     SECRETS_ENCRYPTION_KEY=kek-v1:<generate-key>
-     AUTH_MODE=none
-     DEPLOYMENT_GRADE=preview
-     ```
-
-   **worker:**
+#### Step 4: Add Worker Service
+1. Click **+ New** → **GitHub Repo** → Select same repo
+2. **Settings**:
+   - **Service Name**: `worker`
    - Dockerfile Path: `docker/Dockerfile.unified`
    - Docker Build Target: `worker`
-   - Variables:
-     ```
-     GRPC_ADDRESS=${{control-plane.RAILWAY_PRIVATE_DOMAIN}}:9001
-     ```
+3. **Variables**:
+   ```
+   GRPC_ADDRESS=${{api.RAILWAY_PRIVATE_DOMAIN}}:9001
+   RUST_LOG=info
+   ```
 
-   **ui:**
+#### Step 5: Add UI Service
+1. Click **+ New** → **GitHub Repo** → Select same repo
+2. **Settings**:
+   - **Service Name**: `ui`
    - Root Directory: `apps/ui`
-   - Variables:
-     ```
-     API_URL=http://${{control-plane.RAILWAY_PRIVATE_DOMAIN}}:9000
-     ```
+   - *(Dockerfile auto-detected from apps/ui/Dockerfile)*
+3. **Variables**:
+   ```
+   PORT=9100
+   HOSTNAME=0.0.0.0
+   ```
+4. **Networking** → **Generate Domain**
+
+#### Step 6: Enable PR Environments
+1. Click **Project Settings** (gear icon top-right)
+2. Go to **Environments** section
+3. Toggle **Enable PR Environments** ON
+
+### Variable Reference
+
+Maps to `docker-compose-full.yaml` environment variables:
+
+| Service | Variable | Value |
+|---------|----------|-------|
+| api | DATABASE_URL | `${{Postgres.DATABASE_URL}}` |
+| api | SECRETS_ENCRYPTION_KEY | `kek-v1:<your-key>` |
+| api | AUTH_MODE | `none` |
+| api | HOST | `0.0.0.0` |
+| api | PORT | `9000` |
+| worker | GRPC_ADDRESS | `${{api.RAILWAY_PRIVATE_DOMAIN}}:9001` |
+| ui | PORT | `9100` |
+| ui | HOSTNAME | `0.0.0.0` |
 
 ### Config File
 
