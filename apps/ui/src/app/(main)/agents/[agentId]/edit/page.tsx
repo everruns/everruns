@@ -21,7 +21,7 @@ import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2 } from "lucide-react";
-import type { CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
+import type { AgentCapabilityConfig } from "@/lib/api/types";
 
 interface FormData {
   name: string;
@@ -82,28 +82,20 @@ export default function EditAgentPage({
   );
 
   // Capabilities state - now included directly in agent response
-  // Extract just the capability IDs for the selector
+  // Use full AgentCapabilityConfig objects to preserve per-agent config
   const initialCapabilities = useMemo(() => {
-    return (agent?.capabilities ?? []).map((c) => c.ref);
+    return agent?.capabilities ?? [];
   }, [agent?.capabilities]);
 
   const [localCapabilities, setLocalCapabilities] = useState<
-    CapabilityId[] | null
+    AgentCapabilityConfig[] | null
   >(null);
   const selectedCapabilities = localCapabilities ?? initialCapabilities;
 
   // Capabilities change handler
-  const handleCapabilitiesChange = useCallback((newCapabilities: CapabilityId[]) => {
+  const handleCapabilitiesChange = useCallback((newCapabilities: AgentCapabilityConfig[]) => {
     setLocalCapabilities(newCapabilities);
   }, []);
-
-  // Convert selected capability IDs to AgentCapabilityConfig format for preview
-  const capabilityConfigs: AgentCapabilityConfig[] = useMemo(() => {
-    return selectedCapabilities.map(id => ({
-      ref: id,
-      config: {},
-    }));
-  }, [selectedCapabilities]);
 
   // Submit handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -116,16 +108,10 @@ export default function EditAgentPage({
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
 
-      // Get capabilities to save (convert IDs to AgentCapabilityConfig format)
-      const capabilityIdsToSave = localCapabilities ?? initialCapabilities;
+      // Get capabilities to save (already full AgentCapabilityConfig format)
+      const capabilitiesToSave = localCapabilities ?? initialCapabilities;
       const capabilitiesChanged =
-        JSON.stringify(capabilityIdsToSave) !== JSON.stringify(initialCapabilities);
-
-      // Convert capability IDs to AgentCapabilityConfig format
-      const capabilityConfigsToSave: AgentCapabilityConfig[] = capabilityIdsToSave.map(id => ({
-        ref: id,
-        config: {},
-      }));
+        JSON.stringify(capabilitiesToSave) !== JSON.stringify(initialCapabilities);
 
       // Update agent (capabilities are now part of the agent resource)
       await updateAgent.mutateAsync({
@@ -137,7 +123,7 @@ export default function EditAgentPage({
           tags,
           default_model_id: formData.default_model_id || undefined,
           // Only include capabilities if they changed
-          ...(capabilitiesChanged && { capabilities: capabilityConfigsToSave }),
+          ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
         },
       });
 
@@ -373,7 +359,7 @@ export default function EditAgentPage({
             <div className="lg:col-span-2">
               <AgentPreview
                 systemPrompt={formData.system_prompt}
-                capabilities={capabilityConfigs}
+                capabilities={selectedCapabilities}
               />
             </div>
 
@@ -398,7 +384,7 @@ export default function EditAgentPage({
                   <div>
                     <p className="text-sm font-medium">Capabilities</p>
                     <p className="text-sm text-muted-foreground">
-                      {selectedCapabilities.length} capability{selectedCapabilities.length !== 1 ? "ies" : ""} enabled
+                      {selectedCapabilities.length} capabilit{selectedCapabilities.length !== 1 ? "ies" : "y"} enabled
                     </p>
                   </div>
                 </CardContent>
