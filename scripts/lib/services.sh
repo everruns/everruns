@@ -75,6 +75,12 @@ case "$cmd" in
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     export RUST_LOG=${RUST_LOG:-info}
 
+    # Set encryption key if not provided (standard dev key from .env.example)
+    if [ -z "${SECRETS_ENCRYPTION_KEY:-}" ]; then
+      export SECRETS_ENCRYPTION_KEY="kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY="
+      echo "   ✅ Using default encryption key"
+    fi
+
     # Configure LLM API keys
     if [ -n "${OPENAI_API_KEY:-}" ]; then
       export DEFAULT_OPENAI_API_KEY="$OPENAI_API_KEY"

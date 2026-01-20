@@ -5,7 +5,12 @@ description: Run smoke tests without Docker using deterministic PostgreSQL setup
 
 # No-Docker Setup
 
-Deterministic environment setup for systems without Docker. Uses fixed PostgreSQL paths and always creates a fresh database cluster.
+**NOTE:** For most cloud agent tasks, use `just start-dev` instead - it's simpler and requires no setup:
+```bash
+just start-dev  # In-memory storage, no Docker/PostgreSQL needed
+```
+
+This skill is for cases where you need **persistent PostgreSQL storage** without Docker. Uses fixed PostgreSQL paths and always creates a fresh database cluster.
 
 ## Prerequisites
 

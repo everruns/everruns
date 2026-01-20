@@ -29,20 +29,20 @@ Comprehensive smoke testing for API, UI, database, and system integration.
 
 ## Quick Start
 
-### Docker Mode (Recommended)
+### DEV MODE (Recommended for cloud agents)
 
 ```bash
-# From repo root
-just start-all
+# No Docker/PostgreSQL needed - works out of the box
+just start-dev
 ```
 
-### No-Docker Mode
+In-memory storage, no external dependencies. Ideal for cloud agent environments.
 
-For environments without Docker (cloud agents, CI systems), use the dedicated skill:
+### Full Mode (with PostgreSQL)
 
 ```bash
-# See .claude/skills/no-docker-setup/SKILL.md
-sudo -E .claude/skills/no-docker-setup/scripts/start.sh
+# Requires Docker or local PostgreSQL
+just start-all
 ```
 
 ## Prerequisites
@@ -50,7 +50,10 @@ sudo -E .claude/skills/no-docker-setup/scripts/start.sh
 Start the development environment before running tests:
 
 ```bash
-# From repo root - uses Docker
+# Simplest: DEV MODE (in-memory, no Docker)
+just start-dev
+
+# Full: with persistence (requires Docker/PostgreSQL)
 just start-all
 ```
 
