@@ -73,15 +73,10 @@ pub struct DockerContainerConfig {
     #[serde(default = "default_working_dir")]
     pub working_dir: String,
 
-    /// Mount session filesystem into container (experimental)
-    /// Deprecated: Use `session_mount_mode` instead
-    #[serde(default)]
-    pub mount_session_filesystem: bool,
-
     /// Session filesystem mount mode
     /// - "disabled": No mounting (default)
     /// - "bind_mount": Use Docker bind mount (requires shared filesystem)
-    /// - "copy": Use docker cp (works anywhere, no shared filesystem needed)
+    /// - "copy": Use docker exec to copy files (works anywhere, no shared filesystem needed)
     #[serde(default)]
     pub session_mount_mode: SessionMountMode,
 
@@ -116,26 +111,9 @@ impl Default for DockerContainerConfig {
         Self {
             image: default_image(),
             working_dir: default_working_dir(),
-            mount_session_filesystem: false,
             session_mount_mode: SessionMountMode::default(),
             session_mount_path: default_session_mount_path(),
             host_base_path: default_host_base_path(),
-        }
-    }
-}
-
-impl DockerContainerConfig {
-    /// Get the effective mount mode, considering both old and new config fields
-    fn effective_mount_mode(&self) -> SessionMountMode {
-        // New field takes precedence if set to non-default
-        if self.session_mount_mode != SessionMountMode::Disabled {
-            return self.session_mount_mode.clone();
-        }
-        // Fall back to legacy field for backwards compatibility
-        if self.mount_session_filesystem {
-            SessionMountMode::BindMount
-        } else {
-            SessionMountMode::Disabled
         }
     }
 }
@@ -377,9 +355,7 @@ async fn ensure_container_with_session_mount(
     config: &DockerContainerConfig,
     file_store: Option<&Arc<dyn SessionFileStore>>,
 ) -> Result<(), String> {
-    let mount_mode = config.effective_mount_mode();
-
-    match mount_mode {
+    match &config.session_mount_mode {
         SessionMountMode::Disabled => {
             // No mounting, just ensure container is running
             ensure_container_running(name, config, None).await
@@ -1256,7 +1232,6 @@ mod tests {
         let config = DockerContainerConfig::default();
         assert_eq!(config.image, DEFAULT_IMAGE);
         assert_eq!(config.working_dir, DEFAULT_WORKING_DIR);
-        assert!(!config.mount_session_filesystem);
         assert_eq!(config.session_mount_mode, SessionMountMode::Disabled);
         assert_eq!(config.session_mount_path, DEFAULT_SESSION_MOUNT_PATH);
         assert_eq!(config.host_base_path, DEFAULT_HOST_BASE_PATH);
@@ -1271,7 +1246,6 @@ mod tests {
         let config = parse_config(&json);
         assert_eq!(config.image, "ubuntu:22.04");
         assert_eq!(config.working_dir, "/app");
-        assert!(!config.mount_session_filesystem);
         assert_eq!(config.session_mount_mode, SessionMountMode::Disabled);
     }
 
@@ -1286,24 +1260,6 @@ mod tests {
     }
 
     #[test]
-    fn test_config_parse_with_mount_legacy() {
-        // Test legacy mount_session_filesystem field
-        let json = json!({
-            "image": "python:3.11",
-            "mount_session_filesystem": true,
-            "session_mount_path": "/data",
-            "host_base_path": "/var/sessions"
-        });
-        let config = parse_config(&json);
-        assert_eq!(config.image, "python:3.11");
-        assert!(config.mount_session_filesystem);
-        assert_eq!(config.session_mount_path, "/data");
-        assert_eq!(config.host_base_path, "/var/sessions");
-        // Legacy field should result in BindMount mode
-        assert_eq!(config.effective_mount_mode(), SessionMountMode::BindMount);
-    }
-
-    #[test]
     fn test_config_parse_with_copy_mode() {
         let json = json!({
             "image": "python:3.11",
@@ -1314,7 +1270,6 @@ mod tests {
         assert_eq!(config.image, "python:3.11");
         assert_eq!(config.session_mount_mode, SessionMountMode::Copy);
         assert_eq!(config.session_mount_path, "/data");
-        assert_eq!(config.effective_mount_mode(), SessionMountMode::Copy);
     }
 
     #[test]
@@ -1327,37 +1282,6 @@ mod tests {
         let config = parse_config(&json);
         assert_eq!(config.session_mount_mode, SessionMountMode::BindMount);
         assert_eq!(config.host_base_path, "/var/sessions");
-        assert_eq!(config.effective_mount_mode(), SessionMountMode::BindMount);
-    }
-
-    #[test]
-    fn test_effective_mount_mode_new_takes_precedence() {
-        // New field should take precedence over legacy
-        let json = json!({
-            "mount_session_filesystem": true,
-            "session_mount_mode": "copy"
-        });
-        let config = parse_config(&json);
-        assert!(config.mount_session_filesystem);
-        assert_eq!(config.session_mount_mode, SessionMountMode::Copy);
-        // New field takes precedence
-        assert_eq!(config.effective_mount_mode(), SessionMountMode::Copy);
-    }
-
-    #[test]
-    fn test_effective_mount_mode_disabled_fallback() {
-        // When new field is Disabled, fall back to legacy
-        let json = json!({
-            "mount_session_filesystem": true,
-            "session_mount_mode": "disabled"
-        });
-        let config = parse_config(&json);
-        // Explicitly set to disabled should stay disabled (new field takes precedence)
-        // Actually, when session_mount_mode is explicitly "disabled", it's still Disabled
-        // which equals the default, so we fall back to legacy
-        // Wait, the logic is: if session_mount_mode != Disabled, use it; else fall back
-        // So if it's explicitly "disabled", we still check if legacy is true
-        assert_eq!(config.effective_mount_mode(), SessionMountMode::BindMount);
     }
 
     #[test]
