@@ -140,6 +140,12 @@ configure_gh_repo() {
             info "Adding 'github' remote: $github_url"
             git remote add github "$github_url"
         fi
+        # Fetch main branch so github/main ref exists (needed for gh pr merge)
+        # Always fetch in case remote exists but was never fetched
+        if ! git rev-parse --verify github/main &>/dev/null; then
+            info "Fetching main branch from github remote..."
+            git fetch github main 2>/dev/null || warn "Failed to fetch github/main"
+        fi
         # Use the github remote for set-default
         gh repo set-default github 2>/dev/null && info "gh default repo set: $repo" || warn "Failed to set default repo"
     else
