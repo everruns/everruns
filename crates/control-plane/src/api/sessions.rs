@@ -387,9 +387,7 @@ pub async fn cancel_turn(
 ) -> Result<Json<CancelTurnResponse>, StatusCode> {
     use everruns_core::typed_id::SessionId;
 
-    let session_id: SessionId = session_id
-        .parse()
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Verify session exists
     let session = state
