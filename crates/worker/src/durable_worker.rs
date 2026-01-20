@@ -7,6 +7,7 @@ use everruns_core::Message;
 use everruns_core::atoms::AtomContext;
 use everruns_core::events::{EventContext, EventRequest, MessageAgentData, SessionIdledData};
 use everruns_core::traits::EventEmitter;
+use everruns_core::typed_id::TurnId;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -78,7 +79,7 @@ async fn emit_cancellation_events(
         session_id,
         EventContext::turn(turn_id, input_message_id),
         SessionIdledData {
-            turn_id,
+            turn_id: TurnId::from_uuid(turn_id),
             iterations: None,
             usage: None,
         },

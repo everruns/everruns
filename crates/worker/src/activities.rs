@@ -17,6 +17,7 @@ use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
 use everruns_core::traits::AgentStore;
+use everruns_core::typed_id::{MessageId, TurnId};
 use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
@@ -73,8 +74,8 @@ pub async fn input_activity(
         input.context.session_id,
         EventContext::turn(input.context.turn_id, input.context.input_message_id),
         SessionActivatedData {
-            turn_id: input.context.turn_id,
-            input_message_id: input.context.input_message_id,
+            turn_id: TurnId::from_uuid(input.context.turn_id),
+            input_message_id: MessageId::from_uuid(input.context.input_message_id),
         },
     );
     if let Err(e) = event_emitter.emit(activated_event).await {
@@ -86,8 +87,8 @@ pub async fn input_activity(
         input.context.session_id,
         EventContext::turn(input.context.turn_id, input.context.input_message_id),
         TurnStartedData {
-            turn_id: input.context.turn_id,
-            input_message_id: input.context.input_message_id,
+            turn_id: TurnId::from_uuid(input.context.turn_id),
+            input_message_id: MessageId::from_uuid(input.context.input_message_id),
         },
     );
     if let Err(e) = event_emitter.emit(turn_started_event).await {
@@ -185,7 +186,7 @@ pub async fn reason_activity(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
                 TurnFailedData {
-                    turn_id,
+                    turn_id: TurnId::from_uuid(turn_id),
                     error: "An error occurred while processing your request.".to_string(),
                     error_code: Some("llm_error".to_string()),
                 },
@@ -199,7 +200,7 @@ pub async fn reason_activity(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
                 TurnCompletedData {
-                    turn_id,
+                    turn_id: TurnId::from_uuid(turn_id),
                     iterations: 1, // TODO: Track actual iterations when workflow supports it
                     duration_ms: None,
                     usage: result.usage.clone(),
@@ -217,7 +218,7 @@ pub async fn reason_activity(
             session_id,
             EventContext::turn(turn_id, input_message_id),
             SessionIdledData {
-                turn_id,
+                turn_id: TurnId::from_uuid(turn_id),
                 iterations: None, // We don't track iterations in the activity
                 usage: result.usage.clone(),
             },

@@ -31,6 +31,7 @@ use crate::events::{
     AgentThinkingData, EventContext, EventRequest, LlmGenerationData, MessageAgentData,
     ReasonCompletedData, ReasonStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
 };
+use crate::typed_id::TurnId;
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmStreamEvent, ProviderConfig, ProviderType,
@@ -517,7 +518,7 @@ where
                 session_id,
                 streaming_event_context.clone(),
                 AgentThinkingData {
-                    turn_id: context.turn_id,
+                    turn_id: TurnId::from_uuid(context.turn_id),
                     model: Some(runtime_agent.model.clone()),
                 },
             ))
@@ -578,7 +579,7 @@ where
                                 session_id,
                                 streaming_event_context.clone(),
                                 TextDeltaData {
-                                    turn_id: context.turn_id,
+                                    turn_id: TurnId::from_uuid(context.turn_id),
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
                                 },
@@ -607,7 +608,7 @@ where
                                 session_id,
                                 streaming_event_context.clone(),
                                 TextDeltaData {
-                                    turn_id: context.turn_id,
+                                    turn_id: TurnId::from_uuid(context.turn_id),
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
                                 },

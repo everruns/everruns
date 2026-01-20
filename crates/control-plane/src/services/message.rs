@@ -189,7 +189,7 @@ impl MessageService {
                 };
 
                 Ok(Message {
-                    id: core_message.id.clone(),
+                    id: core_message.id,
                     session_id: SessionId::from_uuid(session_id),
                     sequence,
                     role: MessageRole::from(core_message.role.to_string().as_str()),

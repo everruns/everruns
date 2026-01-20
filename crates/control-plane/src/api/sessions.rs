@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::events::{EventContext, EventRequest, MessageUserData, TurnCancelledData};
-use everruns_core::typed_id::{AgentId, SessionId};
+use everruns_core::typed_id::{AgentId, SessionId, TurnId};
 use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
 
@@ -415,7 +415,7 @@ pub async fn cancel_turn(
         session_id,
         EventContext::turn(turn_id, input_message_id),
         TurnCancelledData {
-            turn_id,
+            turn_id: TurnId::from_uuid(turn_id),
             reason: Some("User requested cancellation".to_string()),
             usage: None, // Usage not available at cancellation time
         },

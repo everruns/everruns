@@ -10,6 +10,7 @@ use anyhow::Result;
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
+use everruns_core::typed_id::{MessageId, TurnId};
 use everruns_core::{
     ActInput, DEFAULT_ORG_ID, InputAtomInput, ReasonInput, ReasonResult, TokenUsage,
 };
@@ -387,8 +388,8 @@ impl InProcessWorker {
             input.session_id,
             EventContext::turn(context.turn_id, input.input_message_id),
             SessionActivatedData {
-                turn_id: context.turn_id,
-                input_message_id: input.input_message_id,
+                turn_id: TurnId::from_uuid(context.turn_id),
+                input_message_id: MessageId::from_uuid(input.input_message_id),
             },
         );
         if let Err(e) = event_emitter.emit(activated_event).await {
@@ -400,8 +401,8 @@ impl InProcessWorker {
             input.session_id,
             EventContext::turn(context.turn_id, input.input_message_id),
             TurnStartedData {
-                turn_id: context.turn_id,
-                input_message_id: input.input_message_id,
+                turn_id: TurnId::from_uuid(context.turn_id),
+                input_message_id: MessageId::from_uuid(input.input_message_id),
             },
         );
         if let Err(e) = event_emitter.emit(turn_started_event).await {
@@ -495,7 +496,7 @@ impl InProcessWorker {
                     session_id,
                     EventContext::turn(turn_id, input_message_id),
                     TurnFailedData {
-                        turn_id,
+                        turn_id: TurnId::from_uuid(turn_id),
                         error: "An error occurred while processing your request.".to_string(),
                         error_code: Some("llm_error".to_string()),
                     },
@@ -508,7 +509,7 @@ impl InProcessWorker {
                     session_id,
                     EventContext::turn(turn_id, input_message_id),
                     TurnCompletedData {
-                        turn_id,
+                        turn_id: TurnId::from_uuid(turn_id),
                         iterations: 1,
                         duration_ms: None,
                         usage: result.usage.clone(),
@@ -551,7 +552,7 @@ impl InProcessWorker {
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
                 SessionIdledData {
-                    turn_id,
+                    turn_id: TurnId::from_uuid(turn_id),
                     iterations: None,
                     usage: session_usage,
                 },
