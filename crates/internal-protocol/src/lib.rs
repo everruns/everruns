@@ -5,6 +5,7 @@
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
 use chrono::{DateTime, TimeZone, Utc};
+use everruns_core::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 use prost_types::{ListValue, Struct, Value, value::Kind};
 
 // Generated protobuf code
@@ -324,12 +325,24 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         .iter()
         .map(|id| serde_json::json!({"ref": id, "config": {}}))
         .collect();
+
+    // Convert UUID string to prefixed format for typed IDs
+    let id_str = value
+        .id
+        .as_ref()
+        .map(|u| format!("agent_{}", u.value.replace("-", "")))
+        .unwrap_or_default();
+    let model_id_str = value
+        .default_model_id
+        .as_ref()
+        .map(|u| format!("model_{}", u.value.replace("-", "")));
+
     let json = serde_json::json!({
-        "id": value.id.as_ref().map(|u| &u.value).unwrap_or(&String::new()),
+        "id": id_str,
         "name": value.name,
         "description": if value.description.is_empty() { None } else { Some(&value.description) },
         "system_prompt": value.system_prompt,
-        "default_model_id": value.default_model_id.as_ref().map(|u| &u.value),
+        "default_model_id": model_id_str,
         "tags": tags,
         "capabilities": capabilities,
         "status": value.status,
@@ -342,11 +355,13 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
 /// Convert schemas Agent to proto Agent
 pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
     proto::Agent {
-        id: Some(uuid_to_proto_uuid(value.id)),
+        id: Some(uuid_to_proto_uuid(value.id.uuid())),
         name: value.name.clone(),
         description: value.description.clone().unwrap_or_default(),
         system_prompt: value.system_prompt.clone(),
-        default_model_id: value.default_model_id.map(uuid_to_proto_uuid),
+        default_model_id: value
+            .default_model_id
+            .map(|id| uuid_to_proto_uuid(id.uuid())),
         temperature: None,
         max_tokens: None,
         status: value.status.to_string(),
@@ -368,12 +383,29 @@ pub fn proto_session_to_schema(
     let tags: Vec<String> = vec![];
     let started_at: Option<String> = None;
     let finished_at: Option<String> = None;
+
+    // Convert UUID string to prefixed format for typed IDs
+    let id_str = value
+        .id
+        .as_ref()
+        .map(|u| format!("session_{}", u.value.replace("-", "")))
+        .unwrap_or_default();
+    let agent_id_str = value
+        .agent_id
+        .as_ref()
+        .map(|u| format!("agent_{}", u.value.replace("-", "")))
+        .unwrap_or_default();
+    let model_id_str = value
+        .default_model_id
+        .as_ref()
+        .map(|u| format!("model_{}", u.value.replace("-", "")));
+
     let json = serde_json::json!({
-        "id": value.id.as_ref().map(|u| &u.value).unwrap_or(&String::new()),
-        "agent_id": value.agent_id.as_ref().map(|u| &u.value).unwrap_or(&String::new()),
+        "id": id_str,
+        "agent_id": agent_id_str,
         "title": if value.title.is_empty() { None } else { Some(&value.title) },
         "tags": tags,
-        "model_id": value.default_model_id.as_ref().map(|u| &u.value),
+        "model_id": model_id_str,
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "started_at": started_at,
@@ -385,13 +417,13 @@ pub fn proto_session_to_schema(
 /// Convert schemas Session to proto Session
 pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session {
     proto::Session {
-        id: Some(uuid_to_proto_uuid(value.id)),
-        agent_id: Some(uuid_to_proto_uuid(value.agent_id)),
+        id: Some(uuid_to_proto_uuid(value.id.uuid())),
+        agent_id: Some(uuid_to_proto_uuid(value.agent_id.uuid())),
         title: value.title.clone().unwrap_or_default(),
         status: value.status.to_string(),
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(value.created_at)), // Use created_at as fallback
-        default_model_id: value.model_id.map(uuid_to_proto_uuid),
+        default_model_id: value.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
     }
 }
 
@@ -435,7 +467,7 @@ pub fn proto_message_to_schema(
     let role = parse_message_role(&value.role);
 
     Ok(everruns_core::Message {
-        id,
+        id: id.into(),
         role,
         content,
         controls,
@@ -463,7 +495,7 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
     });
 
     proto::Message {
-        id: Some(uuid_to_proto_uuid(value.id)),
+        id: Some(uuid_to_proto_uuid(value.id.uuid())),
         role: value.role.to_string(),
         content,
         controls,
@@ -500,17 +532,20 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
             .turn_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(TurnId::from_uuid),
         input_message_id: proto_context
             .input_message_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(MessageId::from_uuid),
         exec_id: proto_context
             .exec_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(ExecId::from_uuid),
     };
 
     // Convert Struct data to EventData based on event_type
@@ -525,10 +560,10 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
     let metadata: Option<serde_json::Value> = value.metadata.as_ref().map(proto_struct_to_json);
 
     Ok(everruns_core::Event {
-        id,
+        id: EventId::from_uuid(id),
         event_type: value.event_type,
         ts,
-        session_id,
+        session_id: SessionId::from_uuid(session_id),
         context,
         data,
         metadata,
@@ -548,14 +583,26 @@ pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
     let data_struct = json_to_proto_struct(&data_json);
 
     proto::Event {
-        id: Some(uuid_to_proto_uuid(value.id)),
+        id: Some(uuid_to_proto_uuid(value.id.uuid())),
         event_type: value.event_type.clone(),
         ts: Some(datetime_to_proto_timestamp(value.ts)),
         context: Some(proto::EventContext {
-            session_id: Some(uuid_to_proto_uuid(value.session_id)),
-            turn_id: value.context.turn_id.map(uuid_to_proto_uuid),
-            input_message_id: value.context.input_message_id.map(uuid_to_proto_uuid),
-            exec_id: value.context.exec_id.map(uuid_to_proto_uuid),
+            session_id: Some(uuid_to_proto_uuid(value.session_id.uuid())),
+            turn_id: value
+                .context
+                .turn_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
+            input_message_id: value
+                .context
+                .input_message_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
+            exec_id: value
+                .context
+                .exec_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
         }),
         data: Some(data_struct),
         metadata: value.metadata.as_ref().map(json_to_proto_struct),
@@ -589,17 +636,20 @@ pub fn proto_event_request_to_schema(
             .turn_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(TurnId::from_uuid),
         input_message_id: proto_context
             .input_message_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(MessageId::from_uuid),
         exec_id: proto_context
             .exec_id
             .as_ref()
             .map(proto_uuid_to_uuid)
-            .transpose()?,
+            .transpose()?
+            .map(ExecId::from_uuid),
     };
 
     // Convert Struct data to EventData based on event_type
@@ -639,9 +689,21 @@ pub fn schema_event_request_to_proto(value: &everruns_core::EventRequest) -> pro
         ts: Some(datetime_to_proto_timestamp(value.ts)),
         context: Some(proto::EventContext {
             session_id: Some(uuid_to_proto_uuid(value.session_id)),
-            turn_id: value.context.turn_id.map(uuid_to_proto_uuid),
-            input_message_id: value.context.input_message_id.map(uuid_to_proto_uuid),
-            exec_id: value.context.exec_id.map(uuid_to_proto_uuid),
+            turn_id: value
+                .context
+                .turn_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
+            input_message_id: value
+                .context
+                .input_message_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
+            exec_id: value
+                .context
+                .exec_id
+                .as_ref()
+                .map(|id| uuid_to_proto_uuid(id.uuid())),
         }),
         data: Some(data_struct),
         metadata: value.metadata.as_ref().map(json_to_proto_struct),
@@ -958,7 +1020,7 @@ mod tests {
 
         // Create an Agent with capabilities
         let agent = everruns_core::Agent {
-            id: Uuid::now_v7(),
+            id: Uuid::now_v7().into(),
             name: "Test Agent".to_string(),
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
@@ -1012,7 +1074,7 @@ mod tests {
 
         // Create an Agent without capabilities
         let agent = everruns_core::Agent {
-            id: Uuid::now_v7(),
+            id: Uuid::now_v7().into(),
             name: "Test Agent".to_string(),
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),

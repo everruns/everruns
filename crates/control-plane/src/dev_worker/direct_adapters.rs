@@ -13,6 +13,7 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
 };
+use everruns_core::typed_id::MessageId;
 use everruns_core::{
     Agent, AgentStatus, ContentPart, DEFAULT_ORG_ID, LlmProviderType, Message, MessageRole,
     Session, SessionStatus, ToolResultContentPart,
@@ -81,11 +82,11 @@ impl AgentStore for DirectAgentStore {
         };
 
         Ok(row.map(|r| Agent {
-            id: r.id,
+            id: r.id.into(),
             name: r.name,
             description: r.description,
             system_prompt: r.system_prompt,
-            default_model_id: r.default_model_id,
+            default_model_id: r.default_model_id.map(|id| id.into()),
             tags: r.tags,
             capabilities: capabilities
                 .into_iter()
@@ -132,13 +133,13 @@ impl SessionStore for DirectSessionStore {
             })?;
 
         Ok(row.map(|r| Session {
-            id: r.id,
-            agent_id: r.agent_id,
+            id: r.id.into(),
+            agent_id: r.agent_id.into(),
             title: r.title,
             preview: None,
             output_preview: None,
             tags: r.tags,
-            model_id: r.model_id,
+            model_id: r.model_id.map(|id| id.into()),
             status: match r.status.as_str() {
                 "started" => SessionStatus::Started,
                 "active" => SessionStatus::Active,
@@ -181,7 +182,7 @@ impl DirectMessageRetriever {
 
         // Create a Message from the input
         let message = Message {
-            id: Uuid::now_v7(),
+            id: Uuid::now_v7().into(),
             role: input.role.clone(),
             content: input.content.clone(),
             controls: input.controls.clone(),
@@ -270,7 +271,7 @@ fn event_to_message(event: Event) -> Option<Message> {
                 error: data.error.clone(),
             })];
             Some(Message {
-                id: event.id,
+                id: MessageId::from_uuid(event.id.uuid()),
                 role: MessageRole::ToolResult,
                 content,
                 controls: None,

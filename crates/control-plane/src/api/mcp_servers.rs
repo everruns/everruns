@@ -10,6 +10,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_core::typed_id::McpServerId;
 use everruns_core::{McpServer, McpServerStatus, McpServerTransportType};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
@@ -17,7 +18,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 /// Request to create a new MCP server
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -208,10 +208,11 @@ pub async fn list_mcp_servers(
     path = "/v1/orgs/{org}/mcp-servers/{server_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("server_id" = Uuid, Path, description = "MCP server ID")
+        ("server_id" = String, Path, description = "MCP server ID (prefixed, e.g., mcp_...)")
     ),
     responses(
         (status = 200, description = "MCP server found", body = McpServer),
+        (status = 400, description = "Invalid server ID"),
         (status = 404, description = "MCP server not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -220,14 +221,23 @@ pub async fn list_mcp_servers(
 pub async fn get_mcp_server(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, server_id)): Path<(String, Uuid)>,
-) -> Result<Json<McpServer>, StatusCode> {
+    Path((_org_path, server_id)): Path<(String, String)>,
+) -> Result<Json<McpServer>, (StatusCode, Json<ErrorResponse>)> {
+    let server_id: McpServerId = server_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid server ID: {}", e),
+            }),
+        )
+    })?;
+
     let server = state
         .service
-        .get(server_id)
+        .get(server_id.uuid())
         .await
-        .log_internal_error("get MCP server")?
-        .ok_or_not_found()?;
+        .log_internal_error_json("get MCP server")?
+        .ok_or_not_found_json("MCP server")?;
 
     Ok(Json(server))
 }
@@ -238,12 +248,12 @@ pub async fn get_mcp_server(
     path = "/v1/orgs/{org}/mcp-servers/{server_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("server_id" = Uuid, Path, description = "MCP server ID")
+        ("server_id" = String, Path, description = "MCP server ID (prefixed, e.g., mcp_...)")
     ),
     request_body = UpdateMcpServerRequest,
     responses(
         (status = 200, description = "MCP server updated successfully", body = McpServer),
-        (status = 400, description = "Invalid input", body = ErrorResponse),
+        (status = 400, description = "Invalid server ID or input", body = ErrorResponse),
         (status = 404, description = "MCP server not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -252,9 +262,18 @@ pub async fn get_mcp_server(
 pub async fn update_mcp_server(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, server_id)): Path<(String, Uuid)>,
+    Path((_org_path, server_id)): Path<(String, String)>,
     Json(req): Json<UpdateMcpServerRequest>,
 ) -> Result<Json<McpServer>, (StatusCode, Json<ErrorResponse>)> {
+    let server_id: McpServerId = server_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid server ID: {}", e),
+            }),
+        )
+    })?;
+
     // Validate name if provided
     if let Some(ref name) = req.name
         && name.trim().is_empty()
@@ -275,7 +294,7 @@ pub async fn update_mcp_server(
 
     let server = state
         .service
-        .update(server_id, req)
+        .update(server_id.uuid(), req)
         .await
         .log_internal_error_json("update MCP server")?
         .ok_or_not_found_json("MCP server")?;
@@ -289,10 +308,11 @@ pub async fn update_mcp_server(
     path = "/v1/orgs/{org}/mcp-servers/{server_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("server_id" = Uuid, Path, description = "MCP server ID")
+        ("server_id" = String, Path, description = "MCP server ID (prefixed, e.g., mcp_...)")
     ),
     responses(
         (status = 204, description = "MCP server deleted successfully"),
+        (status = 400, description = "Invalid server ID"),
         (status = 404, description = "MCP server not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -301,18 +321,32 @@ pub async fn update_mcp_server(
 pub async fn delete_mcp_server(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, server_id)): Path<(String, Uuid)>,
-) -> Result<StatusCode, StatusCode> {
+    Path((_org_path, server_id)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let server_id: McpServerId = server_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid server ID: {}", e),
+            }),
+        )
+    })?;
+
     let deleted = state
         .service
-        .delete(server_id)
+        .delete(server_id.uuid())
         .await
-        .log_internal_error("delete MCP server")?;
+        .log_internal_error_json("delete MCP server")?;
 
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(StatusCode::NOT_FOUND)
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "MCP server not found".to_string(),
+            }),
+        ))
     }
 }
 

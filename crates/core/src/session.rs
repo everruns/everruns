@@ -5,9 +5,9 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::events::TokenUsage;
+use crate::typed_id::{AgentId, ModelId, SessionId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -56,10 +56,12 @@ impl From<&str> for SessionStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Session {
-    /// Unique identifier for the session.
-    pub id: Uuid,
-    /// ID of the agent this session belongs to.
-    pub agent_id: Uuid,
+    /// Unique identifier for the session (format: session_{32-hex}).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "session_01933b5a00007000800000000000001"))]
+    pub id: SessionId,
+    /// ID of the agent this session belongs to (format: agent_{32-hex}).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a00007000800000000000001"))]
+    pub agent_id: AgentId,
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -72,10 +74,11 @@ pub struct Session {
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
     pub tags: Vec<String>,
-    /// LLM model ID to use for this session.
+    /// LLM model ID to use for this session (format: model_{32-hex}).
     /// Overrides the agent's default model if set.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<Uuid>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
+    pub model_id: Option<ModelId>,
     /// Current execution status of the session.
     pub status: SessionStatus,
     /// Timestamp when the session was created.

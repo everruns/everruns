@@ -31,6 +31,10 @@ pub mod event_listeners;
 // Observation backends (OTel, etc.)
 pub mod observation;
 
+// Typed ID system (type-safe prefixed identifiers)
+// See specs/id-schema.md for specification
+pub mod typed_id;
+
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
@@ -160,6 +164,10 @@ pub use organization::{
 };
 pub use session::{Session, SessionStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, SessionFile};
+pub use typed_id::{
+    AgentId, EventId, ExecId, IdMarker, IdParseError, ImageId, McpServerId, MessageId, ModelId,
+    OrgId, ProviderId, SessionId, TurnId, TypedId,
+};
 
 // Deployment configuration
 pub use deployment::DeploymentGrade;

@@ -57,11 +57,11 @@ impl AgentStore for DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
-                    id: row.id,
+                    id: row.id.into(),
                     name: row.name,
                     description: row.description,
                     system_prompt: row.system_prompt,
-                    default_model_id: row.default_model_id,
+                    default_model_id: row.default_model_id.map(|id| id.into()),
                     tags: row.tags,
                     capabilities,
                     status: AgentStatus::from(row.status.as_str()),

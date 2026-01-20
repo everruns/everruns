@@ -15,6 +15,7 @@
 
 use crate::storage::{EventRow, StorageBackend, models::CreateEventRow};
 use anyhow::{Result, bail};
+use everruns_core::typed_id::{EventId, SessionId};
 use everruns_core::{Event, EventData, EventListener, EventRequest, UNKNOWN};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -201,10 +202,10 @@ impl EventService {
         let data =
             serde_json::from_value(row.data.clone()).unwrap_or_else(|_| EventData::raw(row.data));
         Event {
-            id: row.id,
+            id: EventId::from_uuid(row.id),
             event_type: row.event_type,
             ts: row.ts,
-            session_id: row.session_id,
+            session_id: SessionId::from_uuid(row.session_id),
             context: serde_json::from_value(row.context).unwrap_or_default(),
             data,
             metadata: row.metadata,

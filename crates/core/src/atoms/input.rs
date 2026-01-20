@@ -157,11 +157,11 @@ mod tests {
 
         // Add a user message to the retriever
         let user_message = retriever
-            .add(session_id, InputMessage::user("Hello, world!"))
+            .add(session_id.into(), InputMessage::user("Hello, world!"))
             .await
             .unwrap();
 
-        let context = AtomContext::new(session_id, turn_id, user_message.id);
+        let context = AtomContext::new(session_id, turn_id, user_message.id.into());
         let atom = InputAtom::new(retriever, event_emitter);
 
         let result = atom.execute(InputAtomInput { context }).await.unwrap();

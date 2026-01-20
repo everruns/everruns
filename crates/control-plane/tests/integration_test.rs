@@ -2467,7 +2467,7 @@ async fn test_mcp_server_crud() {
     println!("\nStep 10: Testing 404 for non-existent server...");
     let not_found_response = client
         .get(format!(
-            "{}/v1/orgs/{}/mcp-servers/00000000-0000-0000-0000-000000000000",
+            "{}/v1/orgs/{}/mcp-servers/mcp_00000000000000000000000000000000",
             API_BASE_URL, DEFAULT_ORG
         ))
         .send()

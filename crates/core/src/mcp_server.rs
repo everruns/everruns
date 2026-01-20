@@ -10,7 +10,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use uuid::Uuid;
+
+use crate::typed_id::McpServerId;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -79,7 +80,8 @@ impl From<&str> for McpServerStatus {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct McpServer {
     /// Unique identifier for the MCP server.
-    pub id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "mcp_01933b5a00007000800000000000001"))]
+    pub id: McpServerId,
     /// Display name of the MCP server.
     #[cfg_attr(feature = "openapi", schema(example = "atlassian-mcp-server"))]
     pub name: String,

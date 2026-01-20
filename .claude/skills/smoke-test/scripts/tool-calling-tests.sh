@@ -23,6 +23,9 @@ VERBOSE="${VERBOSE:-false}"
 SKIP_CLEANUP="${SKIP_CLEANUP:-false}"
 WAIT_TIME=15
 
+# Default organization ID (for org-scoped endpoints)
+DEFAULT_ORG="org_00000000000000000000000000000001"
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -88,7 +91,7 @@ cleanup() {
     log_info "Cleaning up test agents..."
     for agent_id in "${AGENTS_TO_CLEANUP[@]}"; do
         log_verbose "Deleting agent: $agent_id"
-        curl -s -X DELETE "$API_URL/v1/agents/$agent_id" > /dev/null 2>&1 || true
+        curl -s -X DELETE "$API_URL/v1/orgs/$DEFAULT_ORG/agents/$agent_id" > /dev/null 2>&1 || true
     done
     log_info "Cleanup complete"
 }
@@ -100,13 +103,13 @@ setup_llm_provider() {
     log_info "Checking LLM provider configuration..."
 
     # Check if there's already a default model
-    local providers=$(curl -s "$API_URL/v1/llm-providers" | jq '.data // []')
+    local providers=$(curl -s "$API_URL/v1/orgs/$DEFAULT_ORG/llm-providers" | jq '.data // []')
     local provider_count=$(echo "$providers" | jq 'length')
 
     if [ "$provider_count" -gt 0 ]; then
         # Check if any provider has a default model
         for provider_id in $(echo "$providers" | jq -r '.[].id'); do
-            local models=$(curl -s "$API_URL/v1/llm-providers/$provider_id/models" | jq '.data // []')
+            local models=$(curl -s "$API_URL/v1/orgs/$DEFAULT_ORG/llm-providers/$provider_id/models" | jq '.data // []')
             local has_default=$(echo "$models" | jq '[.[] | select(.is_default == true)] | length')
             if [ "$has_default" -gt 0 ]; then
                 log_info "Found existing default model, skipping LLM setup"
@@ -140,7 +143,7 @@ setup_llm_provider() {
     fi
 
     # Create provider
-    local provider_response=$(curl -s -X POST "$API_URL/v1/llm-providers" \
+    local provider_response=$(curl -s -X POST "$API_URL/v1/orgs/$DEFAULT_ORG/llm-providers" \
         -H "Content-Type: application/json" \
         -d "{
             \"name\": \"Smoke Test Provider\",
@@ -158,7 +161,7 @@ setup_llm_provider() {
     log_verbose "Created LLM provider: $LLM_PROVIDER_ID"
 
     # Create default model
-    local model_response=$(curl -s -X POST "$API_URL/v1/llm-providers/$LLM_PROVIDER_ID/models" \
+    local model_response=$(curl -s -X POST "$API_URL/v1/orgs/$DEFAULT_ORG/llm-providers/$LLM_PROVIDER_ID/models" \
         -H "Content-Type: application/json" \
         -d "{
             \"model_id\": \"$model_id\",
@@ -207,10 +210,11 @@ create_agent() {
 
     local caps_json="[]"
     if [ ${#capabilities[@]} -gt 0 ]; then
-        caps_json=$(printf '%s\n' "${capabilities[@]}" | jq -R . | jq -s .)
+        # Format capabilities as [{"ref": "cap_id", "config": {}}, ...]
+        caps_json=$(printf '%s\n' "${capabilities[@]}" | jq -R '{ref: ., config: {}}' | jq -s .)
     fi
 
-    local response=$(curl -s -X POST "$API_URL/v1/agents" \
+    local response=$(curl -s -X POST "$API_URL/v1/orgs/$DEFAULT_ORG/agents" \
         -H "Content-Type: application/json" \
         -d "{
             \"name\": \"$name\",
@@ -235,7 +239,7 @@ create_session() {
     local agent_id="$1"
     local title="$2"
 
-    local response=$(curl -s -X POST "$API_URL/v1/agents/$agent_id/sessions" \
+    local response=$(curl -s -X POST "$API_URL/v1/orgs/$DEFAULT_ORG/agents/$agent_id/sessions" \
         -H "Content-Type: application/json" \
         -d "{\"title\": \"$title\"}")
 
@@ -249,7 +253,7 @@ send_message() {
     local message="$3"
     local wait_seconds="${4:-$WAIT_TIME}"
 
-    curl -s -X POST "$API_URL/v1/agents/$agent_id/sessions/$session_id/messages" \
+    curl -s -X POST "$API_URL/v1/orgs/$DEFAULT_ORG/agents/$agent_id/sessions/$session_id/messages" \
         -H "Content-Type: application/json" \
         -d "{\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"$message\"}]}}" > /dev/null
 
@@ -262,7 +266,7 @@ get_messages() {
     local agent_id="$1"
     local session_id="$2"
 
-    curl -s "$API_URL/v1/agents/$agent_id/sessions/$session_id/messages"
+    curl -s "$API_URL/v1/orgs/$DEFAULT_ORG/agents/$agent_id/sessions/$session_id/messages"
 }
 
 # Helper to get events
@@ -270,7 +274,7 @@ get_events() {
     local agent_id="$1"
     local session_id="$2"
 
-    curl -s "$API_URL/v1/agents/$agent_id/sessions/$session_id/events"
+    curl -s "$API_URL/v1/orgs/$DEFAULT_ORG/agents/$agent_id/sessions/$session_id/events"
 }
 
 # ============================================================================
@@ -310,12 +314,12 @@ test_single_tool() {
     local messages=$(get_messages "$agent_id" "$session_id")
 
     # Check for tool calls
-    local tool_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[]] | length')
+    local tool_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call")] | length')
     log_verbose "Tool calls found: $tool_calls"
 
     if [ "$tool_calls" -ge 1 ]; then
         # Check for add tool
-        local add_called=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "add")] | length')
+        local add_called=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "add")] | length')
         if [ "$add_called" -ge 1 ]; then
             return 0
         else
@@ -351,8 +355,8 @@ test_multiple_tools() {
     local messages=$(get_messages "$agent_id" "$session_id")
 
     # Should have called at least 2 different tools
-    local add_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "add")] | length')
-    local multiply_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "multiply")] | length')
+    local add_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "add")] | length')
+    local multiply_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "multiply")] | length')
 
     log_verbose "Add calls: $add_calls, Multiply calls: $multiply_calls"
 
@@ -387,8 +391,8 @@ test_weather_tools() {
     local messages=$(get_messages "$agent_id" "$session_id")
 
     # Should have called both get_weather and get_forecast
-    local weather_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "get_weather")] | length')
-    local forecast_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "get_forecast")] | length')
+    local weather_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "get_weather")] | length')
+    local forecast_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "get_forecast")] | length')
 
     log_verbose "Weather calls: $weather_calls, Forecast calls: $forecast_calls"
 
@@ -423,12 +427,12 @@ test_parallel_tools() {
     local messages=$(get_messages "$agent_id" "$session_id")
 
     # Should have made multiple weather calls
-    local weather_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "get_weather")] | length')
+    local weather_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "get_weather")] | length')
 
     log_verbose "Weather calls: $weather_calls"
 
     # Check if there's an assistant message with multiple tool calls (parallel execution)
-    local parallel_msg=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | select((.tool_calls | length) > 1)] | length')
+    local parallel_msg=$(echo "$messages" | jq '[.data[] | select(([.content[]? | select(.type == "tool_call")] | length) > 1)] | length')
 
     log_verbose "Messages with multiple parallel calls: $parallel_msg"
 
@@ -468,8 +472,8 @@ test_combined_capabilities() {
     local messages=$(get_messages "$agent_id" "$session_id")
 
     # Should have called both weather and math tools
-    local weather_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "get_weather")] | length')
-    local add_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "add")] | length')
+    local weather_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "get_weather")] | length')
+    local add_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "add")] | length')
 
     log_verbose "Weather calls: $weather_calls, Add calls: $add_calls"
 
@@ -504,13 +508,13 @@ test_tool_error_handling() {
     local messages=$(get_messages "$agent_id" "$session_id")
 
     # Check for divide tool call
-    local divide_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "divide")] | length')
+    local divide_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "divide")] | length')
 
     log_verbose "Divide calls: $divide_calls"
 
     if [ "$divide_calls" -ge 1 ]; then
         # Check for error in tool results
-        local errors=$(echo "$messages" | jq '[.data[] | select(.tool_results != null) | .tool_results[] | select(.error != null)] | length')
+        local errors=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_result") | select(.error != null)] | length')
         log_verbose "Tool errors: $errors"
 
         if [ "$errors" -ge 1 ]; then
@@ -531,7 +535,7 @@ test_tool_error_handling() {
 test_webfetch_capability() {
     log_verbose "Checking WebFetch capability is available..."
 
-    local response=$(curl -s "$API_URL/v1/capabilities")
+    local response=$(curl -s "$API_URL/v1/orgs/$DEFAULT_ORG/capabilities")
     local web_fetch=$(echo "$response" | jq '.data[] | select(.id == "web_fetch")')
 
     if [ -z "$web_fetch" ] || [ "$web_fetch" = "null" ]; then
@@ -556,7 +560,7 @@ test_capability_detail() {
     log_verbose "Testing capability detail endpoint..."
 
     # Test with test_math capability which has system_prompt and tools
-    local response=$(curl -s "$API_URL/v1/capabilities/test_math")
+    local response=$(curl -s "$API_URL/v1/orgs/$DEFAULT_ORG/capabilities/test_math")
 
     local id=$(echo "$response" | jq -r '.id')
     if [ "$id" != "test_math" ]; then
@@ -636,7 +640,7 @@ test_webfetch_tool() {
     local messages=$(get_messages "$agent_id" "$session_id")
 
     # Check for tool calls
-    local tool_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "web_fetch")] | length')
+    local tool_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "web_fetch")] | length')
     log_verbose "web_fetch tool calls found: $tool_calls"
 
     if [ "$tool_calls" -ge 1 ]; then
@@ -691,7 +695,7 @@ test_events_sync() {
     fi
 
     # Check for message.user event
-    local user_events=$(echo "$events" | jq '[.data[] | select(.event_type == "message.user")] | length')
+    local user_events=$(echo "$events" | jq '[.data[] | select(.type == "message.user")] | length')
     if [ "$user_events" -lt 1 ]; then
         log_error "Expected at least 1 message.user event"
         return 1
@@ -699,20 +703,20 @@ test_events_sync() {
     log_verbose "User events: $user_events"
 
     # Check for message.agent event
-    local agent_events=$(echo "$events" | jq '[.data[] | select(.event_type == "message.agent")] | length')
+    local agent_events=$(echo "$events" | jq '[.data[] | select(.type == "message.agent")] | length')
     if [ "$agent_events" -lt 1 ]; then
         log_error "Expected at least 1 message.agent event"
         return 1
     fi
     log_verbose "Agent events: $agent_events"
 
-    # Verify event data contains message info
-    local first_user_event=$(echo "$events" | jq '.data[] | select(.event_type == "message.user") | .data')
-    local has_message_id=$(echo "$first_user_event" | jq 'has("message_id")')
+    # Verify event data contains message info (nested under data.message)
+    local first_user_event=$(echo "$events" | jq '.data[] | select(.type == "message.user") | .data.message')
+    local has_message_id=$(echo "$first_user_event" | jq 'has("id")')
     local has_content=$(echo "$first_user_event" | jq 'has("content")')
 
     if [ "$has_message_id" != "true" ] || [ "$has_content" != "true" ]; then
-        log_error "Event data missing required fields (message_id, content)"
+        log_error "Event data missing required fields (message.id, message.content)"
         return 1
     fi
 
@@ -726,7 +730,7 @@ test_events_sync() {
 test_current_time_capability() {
     log_verbose "Checking CurrentTime capability is available..."
 
-    local response=$(curl -s "$API_URL/v1/capabilities")
+    local response=$(curl -s "$API_URL/v1/orgs/$DEFAULT_ORG/capabilities")
     local current_time=$(echo "$response" | jq '.data[] | select(.id == "current_time")')
 
     if [ -z "$current_time" ] || [ "$current_time" = "null" ]; then
@@ -773,22 +777,22 @@ test_dad_joke_agent() {
     local messages=$(get_messages "$agent_id" "$session_id")
 
     # Check for tool calls
-    local tool_calls=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[]] | length')
+    local tool_calls=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call")] | length')
     log_verbose "Tool calls found: $tool_calls"
 
     if [ "$tool_calls" -ge 1 ]; then
         # Check for get_current_time tool
-        local time_called=$(echo "$messages" | jq '[.data[] | select(.tool_calls != null) | .tool_calls[] | select(.name == "get_current_time")] | length')
+        local time_called=$(echo "$messages" | jq '[.data[].content[]? | select(.type == "tool_call") | select(.name == "get_current_time")] | length')
         if [ "$time_called" -ge 1 ]; then
             log_verbose "get_current_time tool was called"
 
-            # Check for assistant response
-            local assistant_msgs=$(echo "$messages" | jq '[.data[] | select(.role == "assistant") | select(.content != null)] | length')
-            if [ "$assistant_msgs" -ge 1 ]; then
-                log_verbose "Assistant responded with message"
+            # Check for agent response (role is "agent" not "assistant" in our system)
+            local agent_msgs=$(echo "$messages" | jq '[.data[] | select(.role == "agent") | select(.content != null) | select(.content | any(.type == "text"))] | length')
+            if [ "$agent_msgs" -ge 1 ]; then
+                log_verbose "Agent responded with message"
                 return 0
             else
-                log_error "Expected assistant response after tool call"
+                log_error "Expected agent response after tool call"
                 return 1
             fi
         else

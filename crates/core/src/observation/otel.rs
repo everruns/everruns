@@ -215,9 +215,9 @@ impl OtelEventListener {
     fn handle_turn_started(&self, event: &Event, data: &TurnStartedData) {
         let mut spans = self.turn_spans.lock().unwrap();
         spans.insert(
-            data.turn_id,
+            data.turn_id.uuid(),
             TurnSpanInfo {
-                session_id: event.session_id,
+                session_id: event.session_id.uuid(),
                 agent_id: None, // Will be filled from context if available
                 started_at: std::time::Instant::now(),
             },
@@ -229,7 +229,7 @@ impl OtelEventListener {
         // Get start info if available
         let start_info = {
             let mut spans = self.turn_spans.lock().unwrap();
-            spans.remove(&data.turn_id)
+            spans.remove(&data.turn_id.uuid())
         };
 
         let duration_ms = data.duration_ms.or_else(|| {
@@ -343,6 +343,7 @@ mod tests {
     use crate::events::{EventContext, LlmGenerationMetadata, LlmGenerationOutput, TokenUsage};
     use crate::message::Message;
     use crate::tool_types::ToolCall;
+    use crate::typed_id::{MessageId, TurnId};
     use serde_json::json;
 
     #[tokio::test]
@@ -555,13 +556,13 @@ mod tests {
     #[tokio::test]
     async fn test_handle_turn_lifecycle() {
         let listener = OtelEventListener::new();
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let session_id = Uuid::now_v7();
 
         // Start a turn
         let started_data = TurnStartedData {
             turn_id,
-            input_message_id: Uuid::now_v7(),
+            input_message_id: MessageId::from_uuid(Uuid::now_v7()),
         };
 
         let start_event = Event::new(
@@ -597,7 +598,7 @@ mod tests {
 
         // Complete a turn that was never started
         let completed_data = TurnCompletedData {
-            turn_id: Uuid::now_v7(),
+            turn_id: TurnId::from_uuid(Uuid::now_v7()),
             iterations: 1,
             duration_ms: None, // No duration provided
             usage: None,

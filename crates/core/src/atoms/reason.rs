@@ -43,6 +43,7 @@ use crate::traits::{
     AgentStore, EventEmitter, ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage,
     SessionStore,
 };
+use crate::typed_id::TurnId;
 
 // ============================================================================
 // Helper Functions
@@ -517,7 +518,7 @@ where
                 session_id,
                 streaming_event_context.clone(),
                 AgentThinkingData {
-                    turn_id: context.turn_id,
+                    turn_id: TurnId::from_uuid(context.turn_id),
                     model: Some(runtime_agent.model.clone()),
                 },
             ))
@@ -578,7 +579,7 @@ where
                                 session_id,
                                 streaming_event_context.clone(),
                                 TextDeltaData {
-                                    turn_id: context.turn_id,
+                                    turn_id: TurnId::from_uuid(context.turn_id),
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
                                 },
@@ -607,7 +608,7 @@ where
                                 session_id,
                                 streaming_event_context.clone(),
                                 TextDeltaData {
-                                    turn_id: context.turn_id,
+                                    turn_id: TurnId::from_uuid(context.turn_id),
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
                                 },
@@ -763,15 +764,15 @@ where
     /// Resolve model using priority chain
     async fn resolve_model(
         &self,
-        controls_model_id: Option<Uuid>,
-        session_model_id: Option<Uuid>,
-        agent_model_id: Option<Uuid>,
+        controls_model_id: Option<crate::typed_id::ModelId>,
+        session_model_id: Option<crate::typed_id::ModelId>,
+        agent_model_id: Option<crate::typed_id::ModelId>,
     ) -> Result<ModelWithProvider> {
         // Try controls.model_id first (highest priority)
         if let Some(model_id) = controls_model_id
             && let Some(model_with_provider) = self
                 .provider_store
-                .get_model_with_provider(model_id)
+                .get_model_with_provider(model_id.uuid())
                 .await?
         {
             return Ok(model_with_provider);
@@ -781,7 +782,7 @@ where
         if let Some(model_id) = session_model_id
             && let Some(model_with_provider) = self
                 .provider_store
-                .get_model_with_provider(model_id)
+                .get_model_with_provider(model_id.uuid())
                 .await?
         {
             return Ok(model_with_provider);
@@ -791,7 +792,7 @@ where
         if let Some(model_id) = agent_model_id
             && let Some(model_with_provider) = self
                 .provider_store
-                .get_model_with_provider(model_id)
+                .get_model_with_provider(model_id.uuid())
                 .await?
         {
             return Ok(model_with_provider);

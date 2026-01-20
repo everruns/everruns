@@ -306,7 +306,7 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
     };
 
     Ok(Message {
-        id,
+        id: id.into(),
         role,
         content,
         controls,
@@ -371,11 +371,11 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
     };
 
     Ok(Agent {
-        id,
+        id: id.into(),
         name: proto_agent.name,
         description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,
-        default_model_id,
+        default_model_id: default_model_id.map(|u| u.into()),
         tags: vec![],
         capabilities: proto_agent
             .capability_ids
@@ -450,13 +450,13 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
     };
 
     Ok(Session {
-        id,
-        agent_id,
+        id: id.into(),
+        agent_id: agent_id.into(),
         title: non_empty_string(proto_session.title),
         preview: None,
         output_preview: None,
         tags: vec![],
-        model_id,
+        model_id: model_id.map(|u| u.into()),
         status,
         created_at: proto_timestamp_or_now(proto_session.created_at.as_ref()),
         started_at: None,

@@ -194,11 +194,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -212,6 +211,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid agent ID"
           },
           "404": {
             "description": "Agent not found"
@@ -240,17 +242,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Agent archived successfully"
+          },
+          "400": {
+            "description": "Invalid agent ID"
           },
           "404": {
             "description": "Agent not found"
@@ -279,11 +283,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -309,7 +312,7 @@
             }
           },
           "400": {
-            "description": "Input exceeds allowed limits",
+            "description": "Invalid agent ID or input exceeds allowed limits",
             "content": {
               "application/json": {
                 "schema": {
@@ -361,11 +364,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -375,6 +377,9 @@
             "content": {
               "text/markdown": {}
             }
+          },
+          "400": {
+            "description": "Invalid agent ID"
           },
           "404": {
             "description": "Agent not found"
@@ -405,11 +410,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -455,6 +459,9 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid agent ID"
+          },
           "500": {
             "description": "Internal server error"
           }
@@ -479,11 +486,10 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -507,6 +513,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid agent ID"
           },
           "500": {
             "description": "Internal server error"
@@ -534,21 +543,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -562,6 +569,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -590,27 +600,28 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Session deleted successfully"
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -639,21 +650,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -677,6 +686,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -708,21 +720,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agent_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., session_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -736,6 +746,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -766,21 +779,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -807,6 +818,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -837,21 +851,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -867,6 +879,9 @@
         "responses": {
           "200": {
             "description": "Directory listing"
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "500": {
             "description": "Internal server error"
@@ -894,21 +909,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -934,7 +947,7 @@
             }
           },
           "400": {
-            "description": "Cannot copy directories"
+            "description": "Invalid session ID or cannot copy directories"
           },
           "404": {
             "description": "Source not found"
@@ -968,21 +981,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1008,7 +1019,7 @@
             }
           },
           "400": {
-            "description": "Invalid regex pattern"
+            "description": "Invalid session ID or regex pattern"
           },
           "500": {
             "description": "Internal server error"
@@ -1036,21 +1047,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1076,7 +1085,7 @@
             }
           },
           "400": {
-            "description": "Invalid path"
+            "description": "Invalid session ID or path"
           },
           "404": {
             "description": "Source not found"
@@ -1110,21 +1119,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1148,6 +1155,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Not found"
@@ -1178,21 +1188,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1217,6 +1225,9 @@
         "responses": {
           "200": {
             "description": "File content or directory listing"
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Not found"
@@ -1245,21 +1256,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1294,7 +1303,7 @@
             }
           },
           "400": {
-            "description": "Cannot modify readonly file or directory"
+            "description": "Invalid session ID or cannot modify readonly file or directory"
           },
           "404": {
             "description": "Not found"
@@ -1323,21 +1332,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1372,7 +1379,7 @@
             }
           },
           "400": {
-            "description": "Invalid request"
+            "description": "Invalid session ID or request"
           },
           "409": {
             "description": "Already exists"
@@ -1401,21 +1408,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1449,7 +1454,7 @@
             }
           },
           "400": {
-            "description": "Directory not empty"
+            "description": "Invalid session ID or directory not empty"
           },
           "500": {
             "description": "Internal server error"
@@ -1477,21 +1482,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1505,6 +1508,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid ID format"
           },
           "404": {
             "description": "Session not found"
@@ -1533,21 +1539,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1571,6 +1575,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid ID format"
           },
           "500": {
             "description": "Internal server error"
@@ -1598,21 +1605,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agt_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., sess_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
@@ -1635,6 +1640,9 @@
             "content": {
               "text/event-stream": {}
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -1807,11 +1815,10 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Model ID",
+            "description": "Model ID (prefixed, e.g., mod_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1825,6 +1832,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid model ID"
           },
           "404": {
             "description": "Model not found"
@@ -1850,17 +1860,19 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Model ID",
+            "description": "Model ID (prefixed, e.g., mod_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Model deleted"
+          },
+          "400": {
+            "description": "Invalid model ID"
           },
           "404": {
             "description": "Model not found"
@@ -1886,11 +1898,10 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Model ID",
+            "description": "Model ID (prefixed, e.g., mod_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -1914,6 +1925,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid model ID"
           },
           "404": {
             "description": "Model not found"
@@ -2019,11 +2033,10 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2037,6 +2050,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid provider ID"
           },
           "404": {
             "description": "Provider not found"
@@ -2062,17 +2078,19 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Provider deleted"
+          },
+          "400": {
+            "description": "Invalid provider ID"
           },
           "404": {
             "description": "Provider not found"
@@ -2098,11 +2116,10 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2126,6 +2143,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid provider ID"
           },
           "404": {
             "description": "Provider not found"
@@ -2153,11 +2173,10 @@
           {
             "name": "provider_id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2171,6 +2190,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid provider ID"
           }
         }
       },
@@ -2193,11 +2215,10 @@
           {
             "name": "provider_id",
             "in": "path",
-            "description": "Provider ID",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2223,7 +2244,7 @@
             }
           },
           "400": {
-            "description": "Invalid request"
+            "description": "Invalid provider ID"
           },
           "500": {
             "description": "Internal error"
@@ -2346,11 +2367,10 @@
           {
             "name": "server_id",
             "in": "path",
-            "description": "MCP server ID",
+            "description": "MCP server ID (prefixed, e.g., mcp_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2364,6 +2384,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid server ID"
           },
           "404": {
             "description": "MCP server not found"
@@ -2392,17 +2415,19 @@
           {
             "name": "server_id",
             "in": "path",
-            "description": "MCP server ID",
+            "description": "MCP server ID (prefixed, e.g., mcp_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "MCP server deleted successfully"
+          },
+          "400": {
+            "description": "Invalid server ID"
           },
           "404": {
             "description": "MCP server not found"
@@ -2431,11 +2456,10 @@
           {
             "name": "server_id",
             "in": "path",
-            "description": "MCP server ID",
+            "description": "MCP server ID (prefixed, e.g., mcp_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -2461,7 +2485,7 @@
             }
           },
           "400": {
-            "description": "Invalid input",
+            "description": "Invalid server ID or input",
             "content": {
               "application/json": {
                 "schema": {
@@ -2607,8 +2631,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Default LLM model ID for this agent.\nCan be overridden at the session level."
+            "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "description": {
             "type": [
@@ -2619,8 +2643,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique identifier for the agent."
+            "description": "Unique identifier for the agent (format: agent_{32-hex}).",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "name": {
             "type": "string",
@@ -2699,8 +2723,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn ID this thinking indicator belongs to"
+            "description": "Turn ID this thinking indicator belongs to",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -2927,8 +2951,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Model ID (UUID) to use for this message.\nOverrides session and agent model settings."
+            "description": "Model ID to use for this message (format: model_{32-hex}).\nOverrides session and agent model settings.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "reasoning": {
             "oneOf": [
@@ -2991,8 +3015,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used."
+            "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "description": {
             "type": [
@@ -3241,8 +3265,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "The ID of the LLM model to use for this session.\nOverrides the agent's default model if specified."
+            "description": "The ID of the LLM model to use for this session.\nOverrides the agent's default model if specified.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "tags": {
             "type": "array",
@@ -3302,7 +3326,7 @@
       },
       "Event": {
         "type": "object",
-        "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique UUID v7 identifier (monotonically increasing)\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
+        "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
         "required": [
           "id",
           "type",
@@ -3322,8 +3346,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique event identifier (UUID v7, monotonically increasing)"
+            "description": "Unique event identifier (format: event_{32-hex})",
+            "example": "event_01933b5a00007000800000000000001"
           },
           "metadata": {
             "description": "Arbitrary metadata for the event"
@@ -3338,8 +3362,8 @@
           },
           "session_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Session this event belongs to"
+            "description": "Session this event belongs to (format: session_{32-hex})",
+            "example": "session_01933b5a00007000800000000000001"
           },
           "tags": {
             "type": [
@@ -3371,24 +3395,24 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Atom execution identifier"
+            "description": "Atom execution identifier",
+            "example": "exec_01933b5a00007000800000000000001"
           },
           "input_message_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "User message that triggered this turn"
+            "description": "User message that triggered this turn",
+            "example": "message_01933b5a00007000800000000000001"
           },
           "turn_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Turn identifier (for turn-scoped events)"
+            "description": "Turn identifier (for turn-scoped events)",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -3675,8 +3699,8 @@
           },
           "image_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "ID of the uploaded image"
+            "description": "ID of the uploaded image (format: img_{32-hex})",
+            "example": "img_01933b5a00007000800000000000001"
           }
         }
       },
@@ -3825,8 +3849,8 @@
                     "string",
                     "null"
                   ],
-                  "format": "uuid",
-                  "description": "Default LLM model ID for this agent.\nCan be overridden at the session level."
+                  "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "description": {
                   "type": [
@@ -3837,8 +3861,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Unique identifier for the agent."
+                  "description": "Unique identifier for the agent (format: agent_{32-hex}).",
+                  "example": "agent_01933b5a00007000800000000000001"
                 },
                 "name": {
                   "type": "string",
@@ -3972,7 +3996,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique UUID v7 identifier (monotonically increasing)\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
+              "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"message.user\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
               "required": [
                 "id",
                 "type",
@@ -3992,8 +4016,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Unique event identifier (UUID v7, monotonically increasing)"
+                  "description": "Unique event identifier (format: event_{32-hex})",
+                  "example": "event_01933b5a00007000800000000000001"
                 },
                 "metadata": {
                   "description": "Arbitrary metadata for the event"
@@ -4008,8 +4032,8 @@
                 },
                 "session_id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Session this event belongs to"
+                  "description": "Session this event belongs to (format: session_{32-hex})",
+                  "example": "session_01933b5a00007000800000000000001"
                 },
                 "tags": {
                   "type": [
@@ -4171,7 +4195,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "is_default": {
                   "type": "boolean"
@@ -4184,7 +4208,7 @@
                 },
                 "provider_id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "provider_01933b5a00007000800000000000001"
                 },
                 "source": {
                   "$ref": "#/components/schemas/LlmModelSource",
@@ -4246,7 +4270,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "is_default": {
                   "type": "boolean"
@@ -4270,7 +4294,7 @@
                 },
                 "provider_id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "provider_01933b5a00007000800000000000001"
                 },
                 "provider_name": {
                   "type": "string"
@@ -4333,7 +4357,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "example": "provider_01933b5a00007000800000000000001"
                 },
                 "last_synced_at": {
                   "type": [
@@ -4414,8 +4438,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Unique identifier for the MCP server."
+                  "description": "Unique identifier for the MCP server.",
+                  "example": "mcp_01933b5a00007000800000000000001"
                 },
                 "name": {
                   "type": "string",
@@ -4491,7 +4515,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "description": "Unique message ID (format: message_{32-hex})",
+                  "example": "message_01933b5a00007000800000000000001"
                 },
                 "metadata": {
                   "type": [
@@ -4513,7 +4538,8 @@
                 },
                 "session_id": {
                   "type": "string",
-                  "format": "uuid"
+                  "description": "Session ID this message belongs to (format: session_{32-hex})",
+                  "example": "session_01933b5a00007000800000000000001"
                 }
               }
             },
@@ -4754,7 +4780,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "example": "model_01933b5a00007000800000000000001"
           },
           "is_default": {
             "type": "boolean"
@@ -4767,7 +4793,7 @@
           },
           "provider_id": {
             "type": "string",
-            "format": "uuid"
+            "example": "provider_01933b5a00007000800000000000001"
           },
           "source": {
             "$ref": "#/components/schemas/LlmModelSource",
@@ -5018,7 +5044,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "example": "model_01933b5a00007000800000000000001"
           },
           "is_default": {
             "type": "boolean"
@@ -5042,7 +5068,7 @@
           },
           "provider_id": {
             "type": "string",
-            "format": "uuid"
+            "example": "provider_01933b5a00007000800000000000001"
           },
           "provider_name": {
             "type": "string"
@@ -5092,7 +5118,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "example": "provider_01933b5a00007000800000000000001"
           },
           "last_synced_at": {
             "type": [
@@ -5178,8 +5204,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique identifier for the MCP server."
+            "description": "Unique identifier for the MCP server.",
+            "example": "mcp_01933b5a00007000800000000000001"
           },
           "name": {
             "type": "string",
@@ -5256,8 +5282,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique message ID"
+            "description": "Unique message ID (format: message_{32-hex})",
+            "example": "message_01933b5a00007000800000000000001"
           },
           "metadata": {
             "type": [
@@ -5411,8 +5437,8 @@
               "properties": {
                 "agent_id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "ID of the agent this session belongs to."
+                  "description": "ID of the agent this session belongs to (format: agent_{32-hex}).",
+                  "example": "agent_01933b5a00007000800000000000001"
                 },
                 "created_at": {
                   "type": "string",
@@ -5429,16 +5455,16 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Unique identifier for the session."
+                  "description": "Unique identifier for the session (format: session_{32-hex}).",
+                  "example": "session_01933b5a00007000800000000000001"
                 },
                 "model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "format": "uuid",
-                  "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+                  "description": "LLM model ID to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if set.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "output_preview": {
                   "type": [
@@ -5655,8 +5681,8 @@
         "properties": {
           "agent_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "ID of the agent this session belongs to."
+            "description": "ID of the agent this session belongs to (format: agent_{32-hex}).",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "created_at": {
             "type": "string",
@@ -5673,16 +5699,16 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique identifier for the session."
+            "description": "Unique identifier for the session (format: session_{32-hex}).",
+            "example": "session_01933b5a00007000800000000000001"
           },
           "model_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "LLM model ID to use for this session.\nOverrides the agent's default model if set."
+            "description": "LLM model ID to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if set.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "output_preview": {
             "type": [
@@ -5747,13 +5773,13 @@
         "properties": {
           "input_message_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Input message ID that triggered the turn"
+            "description": "Input message ID that triggered the turn",
+            "example": "message_01933b5a00007000800000000000001"
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn ID that activated the session"
+            "description": "Turn ID that activated the session",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -5835,8 +5861,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn ID that just completed"
+            "description": "Turn ID that just completed",
+            "example": "turn_01933b5a00007000800000000000001"
           },
           "usage": {
             "oneOf": [
@@ -5860,16 +5886,16 @@
         "properties": {
           "agent_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Agent ID"
+            "description": "Agent ID",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "model_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "Model ID if specified"
+            "description": "Model ID if specified",
+            "example": "model_01933b5a00007000800000000000001"
           }
         }
       },
@@ -5926,8 +5952,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn ID this delta belongs to (for correlation)"
+            "description": "Turn ID this delta belongs to (for correlation)",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -6140,8 +6166,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn identifier"
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
           },
           "usage": {
             "oneOf": [
@@ -6181,8 +6207,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn identifier"
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
           },
           "usage": {
             "oneOf": [
@@ -6218,8 +6244,8 @@
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn identifier"
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -6233,13 +6259,13 @@
         "properties": {
           "input_message_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Input message ID that triggered this turn"
+            "description": "Input message ID that triggered this turn",
+            "example": "message_01933b5a00007000800000000000001"
           },
           "turn_id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Turn identifier"
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -6272,8 +6298,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "The ID of the default LLM model to use for this agent."
+            "description": "The ID of the default LLM model to use for this agent.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "description": {
             "type": [

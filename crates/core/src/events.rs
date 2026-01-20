@@ -12,6 +12,8 @@ use uuid::Uuid;
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+use crate::typed_id::{AgentId, EventId, ExecId, MessageId, ModelId, SessionId, TurnId};
+
 // ============================================================================
 // Event Type Constants
 // ============================================================================
@@ -59,15 +61,18 @@ use crate::atoms::AtomContext;
 pub struct EventContext {
     /// Turn identifier (for turn-scoped events)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub turn_id: Option<Uuid>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: Option<TurnId>,
 
     /// User message that triggered this turn
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub input_message_id: Option<Uuid>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "message_01933b5a00007000800000000000001"))]
+    pub input_message_id: Option<MessageId>,
 
     /// Atom execution identifier
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exec_id: Option<Uuid>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "exec_01933b5a00007000800000000000001"))]
+    pub exec_id: Option<ExecId>,
 }
 
 impl EventContext {
@@ -79,17 +84,17 @@ impl EventContext {
     /// Create a full context from an AtomContext
     pub fn from_atom_context(ctx: &AtomContext) -> Self {
         Self {
-            turn_id: Some(ctx.turn_id),
-            input_message_id: Some(ctx.input_message_id),
-            exec_id: Some(ctx.exec_id),
+            turn_id: Some(TurnId::from_uuid(ctx.turn_id)),
+            input_message_id: Some(MessageId::from_uuid(ctx.input_message_id)),
+            exec_id: Some(ExecId::from_uuid(ctx.exec_id)),
         }
     }
 
     /// Create a context for turn-scoped events (without exec_id)
     pub fn turn(turn_id: Uuid, input_message_id: Uuid) -> Self {
         Self {
-            turn_id: Some(turn_id),
-            input_message_id: Some(input_message_id),
+            turn_id: Some(TurnId::from_uuid(turn_id)),
+            input_message_id: Some(MessageId::from_uuid(input_message_id)),
             exec_id: None,
         }
     }
@@ -102,10 +107,10 @@ impl EventContext {
 /// Standard event following the Everruns event protocol.
 ///
 /// All events have a consistent structure:
-/// - `id`: Unique UUID v7 identifier (monotonically increasing)
+/// - `id`: Unique event identifier (format: event_{32-hex})
 /// - `type`: Event type in dot notation (e.g., "message.user", "reason.started")
 /// - `ts`: ISO 8601 timestamp with millisecond precision
-/// - `session_id`: Session this event belongs to
+/// - `session_id`: Session this event belongs to (format: session_{32-hex})
 /// - `context`: Correlation context for tracing
 /// - `data`: Event-specific payload (typed via EventData enum)
 /// - `metadata`: Optional arbitrary metadata
@@ -113,8 +118,9 @@ impl EventContext {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Event {
-    /// Unique event identifier (UUID v7, monotonically increasing)
-    pub id: Uuid,
+    /// Unique event identifier (format: event_{32-hex})
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "event_01933b5a00007000800000000000001"))]
+    pub id: EventId,
 
     /// Event type in dot notation
     #[serde(rename = "type")]
@@ -123,8 +129,9 @@ pub struct Event {
     /// Event timestamp
     pub ts: DateTime<Utc>,
 
-    /// Session this event belongs to
-    pub session_id: Uuid,
+    /// Session this event belongs to (format: session_{32-hex})
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "session_01933b5a00007000800000000000001"))]
+    pub session_id: SessionId,
 
     /// Correlation context
     pub context: EventContext,
@@ -154,10 +161,10 @@ impl Event {
         let data = data.into();
         let event_type = data.event_type().to_string();
         Self {
-            id: Uuid::now_v7(),
+            id: EventId::new(),
             event_type,
             ts: Utc::now(),
-            session_id,
+            session_id: SessionId::from_uuid(session_id),
             context,
             data,
             metadata: None,
@@ -176,10 +183,10 @@ impl Event {
         let data = data.into();
         let event_type = data.event_type().to_string();
         Self {
-            id,
+            id: EventId::from_uuid(id),
             event_type,
             ts: Utc::now(),
-            session_id,
+            session_id: SessionId::from_uuid(session_id),
             context,
             data,
             metadata: None,
@@ -206,9 +213,9 @@ impl Event {
         self
     }
 
-    /// Get the session_id
-    pub fn session_id(&self) -> Uuid {
-        self.session_id
+    /// Get the session_id as raw UUID
+    pub fn session_uuid(&self) -> Uuid {
+        self.session_id.uuid()
     }
 
     /// Check if this is a message event
@@ -779,7 +786,8 @@ impl LlmGenerationData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AgentThinkingData {
     /// Turn ID this thinking indicator belongs to
-    pub turn_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
 
     /// Optional model name being used
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -795,7 +803,8 @@ pub struct AgentThinkingData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TextDeltaData {
     /// Turn ID this delta belongs to (for correlation)
-    pub turn_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
 
     /// The text delta (new text since last delta)
     pub delta: String,
@@ -813,10 +822,12 @@ pub struct TextDeltaData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnStartedData {
     /// Turn identifier
-    pub turn_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
 
     /// Input message ID that triggered this turn
-    pub input_message_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_01933b5a00007000800000000000001"))]
+    pub input_message_id: MessageId,
 }
 
 /// Data for turn.completed event
@@ -824,7 +835,8 @@ pub struct TurnStartedData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnCompletedData {
     /// Turn identifier
-    pub turn_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
 
     /// Number of iterations in this turn
     pub iterations: u32,
@@ -843,7 +855,8 @@ pub struct TurnCompletedData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnFailedData {
     /// Turn identifier
-    pub turn_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
 
     /// Error message
     pub error: String,
@@ -858,7 +871,8 @@ pub struct TurnFailedData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnCancelledData {
     /// Turn identifier
-    pub turn_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
 
     /// Reason for cancellation
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -878,11 +892,13 @@ pub struct TurnCancelledData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SessionStartedData {
     /// Agent ID
-    pub agent_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a00007000800000000000001"))]
+    pub agent_id: AgentId,
 
     /// Model ID if specified
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<Uuid>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
+    pub model_id: Option<ModelId>,
 }
 
 /// Data for session.activated event (turn started, session now active)
@@ -890,10 +906,12 @@ pub struct SessionStartedData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SessionActivatedData {
     /// Turn ID that activated the session
-    pub turn_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
 
     /// Input message ID that triggered the turn
-    pub input_message_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_01933b5a00007000800000000000001"))]
+    pub input_message_id: MessageId,
 }
 
 /// Data for session.idled event (turn completed, session now idle)
@@ -901,7 +919,8 @@ pub struct SessionActivatedData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SessionIdledData {
     /// Turn ID that just completed
-    pub turn_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
 
     /// Number of iterations in the completed turn
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1141,10 +1160,10 @@ impl EventRequest {
     /// Convert to an Event with the given id and sequence
     pub fn into_event(self, id: Uuid, sequence: i32) -> Event {
         Event {
-            id,
+            id: EventId::from_uuid(id),
             event_type: self.event_type,
             ts: self.ts,
-            session_id: self.session_id,
+            session_id: SessionId::from_uuid(self.session_id),
             context: self.context,
             data: self.data,
             metadata: self.metadata,
@@ -1173,13 +1192,13 @@ impl EventBuilder {
     }
 
     pub fn with_turn(mut self, turn_id: Uuid, input_message_id: Uuid) -> Self {
-        self.context.turn_id = Some(turn_id);
-        self.context.input_message_id = Some(input_message_id);
+        self.context.turn_id = Some(TurnId::from_uuid(turn_id));
+        self.context.input_message_id = Some(MessageId::from_uuid(input_message_id));
         self
     }
 
     pub fn with_exec(mut self, exec_id: Uuid) -> Self {
-        self.context.exec_id = Some(exec_id);
+        self.context.exec_id = Some(ExecId::from_uuid(exec_id));
         self
     }
 
@@ -1205,7 +1224,7 @@ mod tests {
         let event = Event::new(session_id, context, data);
 
         assert_eq!(event.event_type, "input.received");
-        assert_eq!(event.session_id(), session_id);
+        assert_eq!(event.session_uuid(), session_id);
         assert!(event.is_atom_event());
         assert!(!event.is_message_event());
     }
@@ -1219,9 +1238,12 @@ mod tests {
         let atom_ctx = AtomContext::new(session_id, turn_id, input_message_id);
         let context = EventContext::from_atom_context(&atom_ctx);
 
-        assert_eq!(context.turn_id, Some(turn_id));
-        assert_eq!(context.input_message_id, Some(input_message_id));
-        assert_eq!(context.exec_id, Some(atom_ctx.exec_id));
+        assert_eq!(context.turn_id, Some(TurnId::from_uuid(turn_id)));
+        assert_eq!(
+            context.input_message_id,
+            Some(MessageId::from_uuid(input_message_id))
+        );
+        assert_eq!(context.exec_id, Some(ExecId::from_uuid(atom_ctx.exec_id)));
     }
 
     #[test]
@@ -1262,9 +1284,9 @@ mod tests {
             });
 
         assert_eq!(event.event_type, "reason.started");
-        assert_eq!(event.session_id, session_id);
-        assert_eq!(event.context.turn_id, Some(turn_id));
-        assert_eq!(event.context.exec_id, Some(exec_id));
+        assert_eq!(event.session_id, SessionId::from_uuid(session_id));
+        assert_eq!(event.context.turn_id, Some(TurnId::from_uuid(turn_id)));
+        assert_eq!(event.context.exec_id, Some(ExecId::from_uuid(exec_id)));
     }
 
     #[test]
@@ -1297,7 +1319,7 @@ mod tests {
     #[test]
     fn test_turn_cancelled_data() {
         let data = TurnCancelledData {
-            turn_id: Uuid::now_v7(),
+            turn_id: TurnId::from_uuid(Uuid::now_v7()),
             reason: Some("User requested cancellation".to_string()),
             usage: Some(TokenUsage::new(100, 50)),
         };
@@ -1433,7 +1455,7 @@ mod tests {
 
     #[test]
     fn test_agent_thinking_data() {
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = AgentThinkingData {
             turn_id,
             model: Some("gpt-4o".to_string()),
@@ -1450,7 +1472,7 @@ mod tests {
 
     #[test]
     fn test_agent_thinking_data_without_model() {
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = AgentThinkingData {
             turn_id,
             model: None,
@@ -1463,7 +1485,7 @@ mod tests {
 
     #[test]
     fn test_text_delta_data() {
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = TextDeltaData {
             turn_id,
             delta: "Hello".to_string(),
@@ -1484,7 +1506,7 @@ mod tests {
     fn test_text_delta_deserialization_preserves_fields() {
         // This test verifies that TextDelta deserializes correctly with all fields
         // (regression test for the untagged enum ordering fix)
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = TextDeltaData {
             turn_id,
             delta: "Hello world".to_string(),
@@ -1510,7 +1532,7 @@ mod tests {
 
     #[test]
     fn test_agent_thinking_deserialization() {
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = AgentThinkingData {
             turn_id,
             model: Some("claude-3".to_string()),

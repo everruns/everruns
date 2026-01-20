@@ -31,7 +31,7 @@ impl AgentService {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
-            default_model_id: req.default_model_id,
+            default_model_id: req.default_model_id.map(|id| id.uuid()),
             tags: req.tags,
         };
         let row = self.db.create_agent(org_id, input).await?;
@@ -94,7 +94,7 @@ impl AgentService {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
-            default_model_id: req.default_model_id,
+            default_model_id: req.default_model_id.map(|id| id.uuid()),
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
         };
@@ -161,11 +161,11 @@ impl AgentService {
         };
 
         Agent {
-            id: row.id,
+            id: row.id.into(),
             name: row.name,
             description: row.description,
             system_prompt: row.system_prompt,
-            default_model_id: row.default_model_id,
+            default_model_id: row.default_model_id.map(|id| id.into()),
             tags: row.tags,
             capabilities,
             status: AgentStatus::from(row.status.as_str()),

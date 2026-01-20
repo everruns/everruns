@@ -38,7 +38,7 @@ async fn setup_test_environment() -> (
     // Create a test agent
     let agent_id = Uuid::now_v7();
     let agent = Agent {
-        id: agent_id,
+        id: agent_id.into(),
         name: "Test Agent".to_string(),
         description: None,
         system_prompt: "You are a helpful assistant.".to_string(),
@@ -55,8 +55,8 @@ async fn setup_test_environment() -> (
     // Create a test session
     let session_id = Uuid::now_v7();
     let session = Session {
-        id: session_id,
-        agent_id,
+        id: session_id.into(),
+        agent_id: agent_id.into(),
         title: Some("Test Session".to_string()),
         preview: None,
         output_preview: None,
@@ -291,8 +291,8 @@ async fn test_reason_atom_with_different_configs() {
     // Second test with a different configuration
     let session_id2 = Uuid::now_v7();
     let session2 = Session {
-        id: session_id2,
-        agent_id,
+        id: session_id2.into(),
+        agent_id: agent_id.into(),
         title: Some("Test Session 2".to_string()),
         preview: None,
         output_preview: None,

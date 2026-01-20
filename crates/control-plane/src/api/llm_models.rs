@@ -10,11 +10,11 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_core::typed_id::{ModelId, ProviderId};
 use everruns_core::{LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 
 use crate::services::LlmModelService;
 
@@ -114,12 +114,12 @@ pub struct UpdateLlmModelRequest {
     path = "/v1/orgs/{org}/llm-providers/{provider_id}/models",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("provider_id" = Uuid, Path, description = "Provider ID")
+        ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     request_body = CreateLlmModelRequest,
     responses(
         (status = 201, description = "Model created", body = LlmModel),
-        (status = 400, description = "Invalid request"),
+        (status = 400, description = "Invalid provider ID"),
         (status = 500, description = "Internal error")
     ),
     tag = "llm-models"
@@ -127,18 +127,31 @@ pub struct UpdateLlmModelRequest {
 pub async fn create_model(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, provider_id)): Path<(String, Uuid)>,
+    Path((_org_path, provider_id)): Path<(String, String)>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<LlmModel>), (StatusCode, Json<ErrorResponse>)> {
-    let model = state.service.create(provider_id, req).await.map_err(|e| {
-        tracing::error!("Failed to create LLM model: {}", e);
+    let provider_id: ProviderId = provider_id.parse().map_err(|e| {
         (
-            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "Internal server error".to_string(),
+                error: format!("Invalid provider ID: {}", e),
             }),
         )
     })?;
+
+    let model = state
+        .service
+        .create(provider_id.uuid(), req)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to create LLM model: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?;
 
     Ok((StatusCode::CREATED, Json(model)))
 }
@@ -149,21 +162,31 @@ pub async fn create_model(
     path = "/v1/orgs/{org}/llm-providers/{provider_id}/models",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("provider_id" = Uuid, Path, description = "Provider ID")
+        ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     responses(
-        (status = 200, description = "List of models", body = ListResponse<LlmModel>)
+        (status = 200, description = "List of models", body = ListResponse<LlmModel>),
+        (status = 400, description = "Invalid provider ID")
     ),
     tag = "llm-models"
 )]
 pub async fn list_provider_models(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, provider_id)): Path<(String, Uuid)>,
+    Path((_org_path, provider_id)): Path<(String, String)>,
 ) -> Result<Json<ListResponse<LlmModel>>, (StatusCode, Json<ErrorResponse>)> {
+    let provider_id: ProviderId = provider_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid provider ID: {}", e),
+            }),
+        )
+    })?;
+
     let models = state
         .service
-        .list_for_provider(provider_id)
+        .list_for_provider(provider_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to list LLM models for provider: {}", e);
@@ -219,10 +242,11 @@ pub async fn list_all_models(
     path = "/v1/orgs/{org}/llm-models/{id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("id" = Uuid, Path, description = "Model ID")
+        ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
     responses(
         (status = 200, description = "Model found", body = LlmModelWithProvider),
+        (status = 400, description = "Invalid model ID"),
         (status = 404, description = "Model not found")
     ),
     tag = "llm-models"
@@ -230,11 +254,20 @@ pub async fn list_all_models(
 pub async fn get_model(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, Uuid)>,
+    Path((_org_path, id)): Path<(String, String)>,
 ) -> Result<Json<LlmModelWithProvider>, (StatusCode, Json<ErrorResponse>)> {
+    let model_id: ModelId = id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid model ID: {}", e),
+            }),
+        )
+    })?;
+
     let model = state
         .service
-        .get_with_provider(id)
+        .get_with_provider(model_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get LLM model: {}", e);
@@ -263,11 +296,12 @@ pub async fn get_model(
     path = "/v1/orgs/{org}/llm-models/{id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("id" = Uuid, Path, description = "Model ID")
+        ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
     request_body = UpdateLlmModelRequest,
     responses(
         (status = 200, description = "Model updated", body = LlmModel),
+        (status = 400, description = "Invalid model ID"),
         (status = 404, description = "Model not found")
     ),
     tag = "llm-models"
@@ -275,12 +309,21 @@ pub async fn get_model(
 pub async fn update_model(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, Uuid)>,
+    Path((_org_path, id)): Path<(String, String)>,
     Json(req): Json<UpdateLlmModelRequest>,
 ) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
+    let model_id: ModelId = id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid model ID: {}", e),
+            }),
+        )
+    })?;
+
     let model = state
         .service
-        .update(id, req)
+        .update(model_id.uuid(), req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to update LLM model: {}", e);
@@ -309,10 +352,11 @@ pub async fn update_model(
     path = "/v1/orgs/{org}/llm-models/{id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("id" = Uuid, Path, description = "Model ID")
+        ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
     responses(
         (status = 204, description = "Model deleted"),
+        (status = 400, description = "Invalid model ID"),
         (status = 404, description = "Model not found")
     ),
     tag = "llm-models"
@@ -320,9 +364,18 @@ pub async fn update_model(
 pub async fn delete_model(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, id)): Path<(String, Uuid)>,
+    Path((_org_path, id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let deleted = state.service.delete(id).await.map_err(|e| {
+    let model_id: ModelId = id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid model ID: {}", e),
+            }),
+        )
+    })?;
+
+    let deleted = state.service.delete(model_id.uuid()).await.map_err(|e| {
         tracing::error!("Failed to delete LLM model: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,

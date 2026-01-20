@@ -5,7 +5,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+
+use crate::typed_id::{ModelId, ProviderId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -111,7 +112,8 @@ impl std::str::FromStr for LlmModelSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmProvider {
-    pub id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
+    pub id: ProviderId,
     pub name: String,
     pub provider_type: LlmProviderType,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -130,8 +132,10 @@ pub struct LlmProvider {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmModel {
-    pub id: Uuid,
-    pub provider_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000001"))]
+    pub id: ModelId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
+    pub provider_id: ProviderId,
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,
@@ -148,8 +152,10 @@ pub struct LlmModel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmModelWithProvider {
-    pub id: Uuid,
-    pub provider_id: Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000001"))]
+    pub id: ModelId,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
+    pub provider_id: ProviderId,
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,

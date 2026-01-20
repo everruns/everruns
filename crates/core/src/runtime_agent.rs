@@ -347,7 +347,7 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let ts = Timestamp::now(NoContext);
         let agent = Agent {
-            id: Uuid::new_v7(ts),
+            id: Uuid::new_v7(ts).into(),
             name: "Test Agent".to_string(),
             description: None,
             system_prompt: "Agent prompt.".to_string(),

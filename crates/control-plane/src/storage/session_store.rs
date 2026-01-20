@@ -65,13 +65,13 @@ impl SessionStore for DbSessionStore {
                 };
 
                 Ok(Some(Session {
-                    id: row.id,
-                    agent_id: row.agent_id,
+                    id: row.id.into(),
+                    agent_id: row.agent_id.into(),
                     title: row.title,
                     preview: None, // Preview populated separately when listing sessions
                     output_preview: None, // Output preview populated separately when listing sessions
                     tags: row.tags,
-                    model_id: row.model_id,
+                    model_id: row.model_id.map(|id| id.into()),
                     status: SessionStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     started_at: row.started_at,
