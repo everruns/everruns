@@ -15,6 +15,7 @@
 //! Each capability is in its own file with collocated tools.
 
 use crate::deployment::DeploymentGrade;
+use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolRegistry};
@@ -192,6 +193,22 @@ pub trait Capability: Send + Sync {
     /// By default, returns an empty vector (no dependencies).
     fn dependencies(&self) -> Vec<&'static str> {
         vec![]
+    }
+
+    /// Returns a message filter provider if this capability modifies message retrieval.
+    ///
+    /// Capabilities can contribute filters that modify how messages are loaded
+    /// from the database. This enables features like:
+    /// - Time-based filtering (recent messages only)
+    /// - Event type filtering
+    /// - Tool result filtering by tool name
+    /// - Ephemeral message injection (summaries, reminders)
+    ///
+    /// Filters are applied in capability priority order (by `MessageFilterProvider::priority()`).
+    ///
+    /// By default, returns None (no message filtering).
+    fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+        None
     }
 }
 
@@ -396,6 +413,8 @@ pub struct CollectedCapabilities {
     pub tool_definitions: Vec<ToolDefinition>,
     /// Mount points from capabilities
     pub mounts: Vec<MountPoint>,
+    /// Message filter providers with their configs (in priority order)
+    pub message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)>,
     /// IDs of capabilities that were collected
     pub applied_ids: Vec<String>,
 }
@@ -409,6 +428,21 @@ impl CollectedCapabilities {
         } else {
             Some(self.system_prompt_parts.join("\n\n"))
         }
+    }
+
+    /// Apply all collected message filter providers to a query.
+    ///
+    /// Providers are applied in priority order (lower priority first).
+    pub fn apply_message_filters(&self, query: &mut crate::message_filter::MessageQuery) {
+        // Providers are already sorted by priority during collection
+        for (provider, config) in &self.message_filter_providers {
+            provider.apply_filters(query, config);
+        }
+    }
+
+    /// Check if any capabilities contribute message filters.
+    pub fn has_message_filters(&self) -> bool {
+        !self.message_filter_providers.is_empty()
     }
 }
 
@@ -617,6 +651,10 @@ pub fn get_dependencies(cap_id: &str, registry: &CapabilityRegistry) -> Vec<Stri
 /// points from the given capabilities. Use this when you need the raw capability
 /// data before applying it to a config or builder.
 ///
+/// Note: This function does not collect message filter providers since it doesn't
+/// have access to per-agent capability configs. Use `collect_capabilities_with_configs`
+/// if you need message filter providers.
+///
 /// # Arguments
 ///
 /// * `capability_ids` - Ordered list of capability IDs to collect
@@ -625,13 +663,41 @@ pub fn collect_capabilities(
     capability_ids: &[String],
     registry: &CapabilityRegistry,
 ) -> CollectedCapabilities {
+    // Convert to AgentCapabilityConfig with empty configs
+    let configs: Vec<AgentCapabilityConfig> = capability_ids
+        .iter()
+        .map(|id| AgentCapabilityConfig {
+            capability_ref: CapabilityId::new(id),
+            config: serde_json::Value::Object(serde_json::Map::new()),
+        })
+        .collect();
+
+    collect_capabilities_with_configs(&configs, registry)
+}
+
+/// Collect contributions from capabilities with their per-agent configurations.
+///
+/// This extracts system prompt additions, tools, tool definitions, mount points,
+/// and message filter providers from the given capabilities.
+///
+/// # Arguments
+///
+/// * `capability_configs` - Ordered list of capability configs (ID + per-agent config)
+/// * `registry` - The capability registry containing implementations
+pub fn collect_capabilities_with_configs(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> CollectedCapabilities {
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
     let mut mounts: Vec<MountPoint> = Vec::new();
+    let mut message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)> =
+        Vec::new();
     let mut applied_ids: Vec<String> = Vec::new();
 
-    for cap_id in capability_ids {
+    for cap_config in capability_configs {
+        let cap_id = cap_config.capability_ref.as_str();
         if let Some(capability) = registry.get(cap_id) {
             // Only collect from available capabilities
             if capability.status() != CapabilityStatus::Available {
@@ -652,15 +718,24 @@ pub fn collect_capabilities(
             // Collect mount points
             mounts.extend(capability.mounts());
 
-            applied_ids.push(cap_id.clone());
+            // Collect message filter provider
+            if let Some(provider) = capability.message_filter_provider() {
+                message_filter_providers.push((provider, cap_config.config.clone()));
+            }
+
+            applied_ids.push(cap_id.to_string());
         }
     }
+
+    // Sort message filter providers by priority (lower = earlier)
+    message_filter_providers.sort_by_key(|(p, _)| p.priority());
 
     CollectedCapabilities {
         system_prompt_parts,
         tools,
         tool_definitions,
         mounts,
+        message_filter_providers,
         applied_ids,
     }
 }

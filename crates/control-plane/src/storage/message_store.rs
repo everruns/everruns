@@ -12,8 +12,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::{
-    AgentLoopError, ContentPart, Event, EventData, InputMessage, Message, MessageRetriever,
-    MessageRole, Result,
+    AgentLoopError, ContentPart, Event, EventData, InputMessage, Message, MessageFilter,
+    MessageQuery, MessageRetriever, MessageRole, Result,
     events::{
         EventContext, EventRequest, MessageAgentData, MessageUserData, ToolCallCompletedData,
     },
@@ -112,6 +112,46 @@ impl MessageRetriever for DbMessageRetriever {
                     tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
                 }
             }
+        }
+
+        Ok(messages)
+    }
+
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+        // Check if we have any custom filters that need in-memory processing
+        let has_custom_filters = query.has_custom_filters();
+
+        // Load events using the filtered query
+        let events = self
+            .db
+            .list_message_events_filtered(&query)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+        // Convert events to messages
+        let mut messages = Vec::with_capacity(events.len());
+        for event_row in events {
+            match event_to_message(&event_row.data, &event_row.event_type) {
+                Ok(message) => messages.push(message),
+                Err(e) => {
+                    tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
+                }
+            }
+        }
+
+        // Apply custom filters in-memory if any
+        if has_custom_filters {
+            messages.retain(|msg| {
+                query.filters.iter().all(|filter| match filter {
+                    MessageFilter::Custom(predicate) => predicate(msg),
+                    _ => true, // DB filters already applied
+                })
+            });
+        }
+
+        // Apply injections
+        if query.has_injections() {
+            query.apply_injections(&mut messages);
         }
 
         Ok(messages)

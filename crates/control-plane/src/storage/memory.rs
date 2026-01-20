@@ -7,6 +7,7 @@
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
+use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -701,6 +702,121 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by_key(|e| e.sequence);
+        Ok(result)
+    }
+
+    /// List message events for a session with filters applied.
+    ///
+    /// This method applies filters in-memory, mirroring the behavior of the
+    /// PostgreSQL implementation but using Rust predicates instead of SQL.
+    ///
+    /// Note: Injections are NOT applied here - they should be applied at the
+    /// MessageRetriever layer after converting events to messages.
+    pub async fn list_message_events_filtered(
+        &self,
+        query: &MessageQuery,
+    ) -> Result<Vec<EventRow>> {
+        // Default event types if not specified
+        let default_types = vec![
+            "message.user".to_string(),
+            "message.agent".to_string(),
+            "tool.call_completed".to_string(),
+        ];
+
+        // Check for EventTypes filter, else use defaults
+        let event_types = query
+            .filters
+            .iter()
+            .find_map(|f| match f {
+                MessageFilter::EventTypes(types) => Some(types.clone()),
+                _ => None,
+            })
+            .unwrap_or(default_types);
+
+        let events = self.events.read();
+        let mut result: Vec<_> = events
+            .values()
+            .filter(|e| {
+                // Session filter
+                if e.session_id != query.session_id {
+                    return false;
+                }
+
+                // Event type filter
+                if !event_types.iter().any(|t| t == &e.event_type) {
+                    return false;
+                }
+
+                // Apply all filters
+                for filter in &query.filters {
+                    match filter {
+                        MessageFilter::EventTypes(_) => {
+                            // Already handled above
+                        }
+                        MessageFilter::TimeRange { from, to } => {
+                            if let Some(f) = from
+                                && e.created_at < *f
+                            {
+                                return false;
+                            }
+                            if let Some(t) = to
+                                && e.created_at > *t
+                            {
+                                return false;
+                            }
+                        }
+                        MessageFilter::ToolName(name) => {
+                            if e.event_type != "tool.call_completed" {
+                                return false;
+                            }
+                            let tool_match = e
+                                .data
+                                .get("tool_name")
+                                .and_then(|v| v.as_str())
+                                .map(|n| n == name)
+                                .unwrap_or(false);
+                            if !tool_match {
+                                return false;
+                            }
+                        }
+                        MessageFilter::Search(search_query) => {
+                            let data_str = e.data.to_string().to_lowercase();
+                            if !data_str.contains(&search_query.to_lowercase()) {
+                                return false;
+                            }
+                        }
+                        MessageFilter::ExcludeIds(ids) => {
+                            if ids.contains(&e.id) {
+                                return false;
+                            }
+                        }
+                        MessageFilter::IncludeIds(ids) => {
+                            if !ids.contains(&e.id) {
+                                return false;
+                            }
+                        }
+                        MessageFilter::Custom(_) => {
+                            // Custom filters are applied at the Message level,
+                            // not the EventRow level. Skip here.
+                        }
+                    }
+                }
+
+                true
+            })
+            .cloned()
+            .collect();
+
+        result.sort_by_key(|e| e.sequence);
+
+        // Apply offset and limit
+        if let Some(offset) = query.offset {
+            result = result.into_iter().skip(offset as usize).collect();
+        }
+        if let Some(limit) = query.limit {
+            result.truncate(limit as usize);
+        }
+
         Ok(result)
     }
 
