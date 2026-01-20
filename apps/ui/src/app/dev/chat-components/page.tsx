@@ -4,12 +4,12 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, ArrowLeft, Zap } from "lucide-react";
+import { Bot, ArrowLeft } from "lucide-react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
-import type { Message, Event, TokenUsage } from "@/lib/api/types";
+import type { Message, Event } from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 
 // Check if we're in development mode
@@ -55,14 +55,14 @@ function ShowcaseItem({
 }
 
 // ============================================
-// Message Rendering (from Session UI)
-// These match the inline rendering in sessions/[sessionId]/page.tsx
+// Message Rendering (Minimal + Icon style)
+// These match the new styling in sessions/[sessionId]/chat/page.tsx
 // ============================================
 
 function UserMessage({ content }: { content: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
+      <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
         <p className="text-sm whitespace-pre-wrap">{content}</p>
       </div>
     </div>
@@ -71,13 +71,9 @@ function UserMessage({ content }: { content: string }) {
 
 function AssistantMessage({ content }: { content: string }) {
   return (
-    <div className="flex justify-start">
-      <div className="w-full bg-muted/60 rounded-lg p-3">
-        <div className="flex items-start gap-2">
-          <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-          <p className="text-sm whitespace-pre-wrap">{content}</p>
-        </div>
-      </div>
+    <div className="w-full flex items-start gap-2">
+      <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+      <p className="text-sm whitespace-pre-wrap text-foreground/90">{content}</p>
     </div>
   );
 }
@@ -310,26 +306,6 @@ const sampleTodoData = {
   },
 };
 
-// ============================================
-// Token Usage Display
-// ============================================
-
-// Helper function to format token counts in a compact way
-function formatTokens(tokens: number): string {
-  if (tokens >= 1000000) {
-    return `${(tokens / 1000000).toFixed(1)}M`;
-  }
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}K`;
-  }
-  return tokens.toString();
-}
-
-// Helper function to calculate total tokens
-function totalTokens(usage: TokenUsage): number {
-  return usage.input_tokens + usage.output_tokens;
-}
-
 // Sample image attachment data
 const samplePendingImages: PendingImage[] = [
   {
@@ -361,61 +337,6 @@ const samplePendingImages: PendingImage[] = [
     error: "Upload failed",
   },
 ];
-
-// Sample usage data
-const sampleUsageData = {
-  small: {
-    input_tokens: 128,
-    output_tokens: 45,
-    cache_read_tokens: 0,
-    cache_creation_tokens: 0,
-  } satisfies TokenUsage,
-  medium: {
-    input_tokens: 15234,
-    output_tokens: 8721,
-    cache_read_tokens: 5000,
-    cache_creation_tokens: 0,
-  } satisfies TokenUsage,
-  large: {
-    input_tokens: 1250000,
-    output_tokens: 875000,
-    cache_read_tokens: 500000,
-    cache_creation_tokens: 125000,
-  } satisfies TokenUsage,
-};
-
-// Token Usage Card component (matches agent detail page)
-function TokenUsageCard({ usage, title }: { usage: TokenUsage; title: string }) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
-          <Zap className="w-4 h-4 text-yellow-500" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">{formatTokens(totalTokens(usage))} total</p>
-            <p className="text-xs text-muted-foreground">
-              {formatTokens(usage.input_tokens)} input / {formatTokens(usage.output_tokens)} output
-              {usage.cache_read_tokens ? ` / ${formatTokens(usage.cache_read_tokens)} cached` : ""}
-            </p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Token Usage Badge component (matches session header)
-function TokenUsageBadge({ usage }: { usage: TokenUsage }) {
-  return (
-    <Badge variant="outline" className="gap-1" title="Token usage (input/output)">
-      <Zap className="w-3 h-3" />
-      {formatTokens(usage.input_tokens)} / {formatTokens(usage.output_tokens)}
-    </Badge>
-  );
-}
 
 // Sample event data for MessageInfoIcon
 const sampleEvents = {
@@ -467,43 +388,13 @@ const sampleEvents = {
       reasoning_effort: "medium",
     },
   } satisfies Event,
-  agentMessageWithHighReasoning: {
-    id: "evt-agent-abc12345-6789-def0-1234-567890abcdef",
-    type: "message.agent",
-    ts: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-    session_id: "session-1",
-    context: { turn_id: "turn-2" },
-    data: {
-      message: {
-        id: "msg-agent-2",
-        session_id: "session-1",
-        sequence: 4,
-        role: "agent" as const,
-        content: [{ type: "text" as const, text: "Let me analyze this complex problem..." }],
-        tool_call_id: null,
-        created_at: new Date(Date.now() - 3600000).toISOString(),
-      },
-      metadata: {
-        model: "o1-preview",
-        model_id: "model-uuid-456",
-        provider_id: "provider-openai",
-      },
-      usage: {
-        input_tokens: 2048,
-        output_tokens: 1536,
-      },
-    },
-    metadata: {
-      reasoning_effort: "high",
-    },
-  } satisfies Event,
 };
 
 // ============================================
 // Main Page Component
 // ============================================
 
-export default function DevComponentsPage() {
+export default function DevChatComponentsPage() {
   // Show 404-like message in production
   if (!isDev) {
     return (
@@ -527,9 +418,9 @@ export default function DevComponentsPage() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Developer Tools
           </Link>
-          <h1 className="text-3xl font-bold">Session Chat Components</h1>
+          <h1 className="text-3xl font-bold">Chat Components</h1>
           <p className="text-muted-foreground mt-2">
-            Components used in the Session UI for chat messages and tool interactions
+            Chat-specific components: messages, tool calls, todo lists, and attachments
           </p>
           <Badge variant="outline" className="mt-2">
             Development Mode
@@ -540,15 +431,15 @@ export default function DevComponentsPage() {
           <div className="space-y-8 pr-4">
             {/* Message Rendering Section */}
             <ShowcaseSection
-              title="Message Rendering"
-              description="User and assistant message styles from Session UI (sessions/[sessionId]/page.tsx)"
+              title="Message Rendering (Minimal + Icon Style)"
+              description="Current message styles used in the Chat UI"
             >
               <ShowcaseItem label="User Message">
                 <UserMessage content="Hello! Can you help me analyze this code?" />
               </ShowcaseItem>
 
               <ShowcaseItem label="User Message (Long)">
-                <UserMessage content="I need to refactor the authentication system to support OAuth 2.0 in addition to the existing session-based auth. The new system should maintain backward compatibility while adding support for multiple identity providers like Google, GitHub, and Microsoft." />
+                <UserMessage content="I need to refactor the authentication system to support OAuth 2.0 in addition to the existing session-based auth. The new system should maintain backward compatibility." />
               </ShowcaseItem>
 
               <ShowcaseItem label="Assistant Message">
@@ -556,18 +447,18 @@ export default function DevComponentsPage() {
               </ShowcaseItem>
 
               <ShowcaseItem label="Assistant Message (Multiline)">
-                <AssistantMessage content={"Here's my analysis of the codebase:\n\n1. Current auth uses session cookies\n2. User model has email/password fields\n3. No OAuth support exists yet\n\nI recommend starting with the OAuth provider abstraction."} />
+                <AssistantMessage content={"Here's my analysis:\n\n1. Current auth uses session cookies\n2. User model has email/password fields\n3. No OAuth support exists yet\n\nI recommend starting with the OAuth provider abstraction."} />
               </ShowcaseItem>
             </ShowcaseSection>
 
             {/* MessageInfoIcon Section */}
             <ShowcaseSection
               title="MessageInfoIcon Component"
-              description="Small info icon showing message metadata on hover (components/chat/message-info-icon.tsx)"
+              description="Small info icon showing message metadata on hover"
             >
-              <ShowcaseItem label="User Message (Light Variant)">
+              <ShowcaseItem label="User Message with Info (Light Variant)">
                 <div className="flex justify-end">
-                  <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
+                  <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
                     <div className="flex items-start gap-2">
                       <p className="text-sm whitespace-pre-wrap flex-1">Hello! Can you help me?</p>
                       <MessageInfoIcon event={sampleEvents.userMessage} variant="light" />
@@ -576,35 +467,12 @@ export default function DevComponentsPage() {
                 </div>
               </ShowcaseItem>
 
-              <ShowcaseItem label="Agent Message (Default Variant)">
-                <div className="w-full bg-muted/60 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                    <p className="text-sm whitespace-pre-wrap flex-1">Hi there! How can I help?</p>
+              <ShowcaseItem label="Agent Message with Info">
+                <div className="w-full flex items-start gap-2">
+                  <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+                  <div className="flex-1 flex items-start gap-2">
+                    <p className="text-sm whitespace-pre-wrap flex-1 text-foreground/90">Hi there! How can I help?</p>
                     <MessageInfoIcon event={sampleEvents.agentMessage} />
-                  </div>
-                </div>
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Agent Message with High Reasoning Effort">
-                <div className="w-full bg-muted/60 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                    <p className="text-sm whitespace-pre-wrap flex-1">Let me analyze this complex problem...</p>
-                    <MessageInfoIcon event={sampleEvents.agentMessageWithHighReasoning} />
-                  </div>
-                </div>
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Standalone Icons (hover to see tooltip)">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Default:</span>
-                    <MessageInfoIcon event={sampleEvents.agentMessage} />
-                  </div>
-                  <div className="flex items-center gap-2 bg-gray-500 rounded px-2 py-1">
-                    <span className="text-sm text-white">Light:</span>
-                    <MessageInfoIcon event={sampleEvents.userMessage} variant="light" />
                   </div>
                 </div>
               </ShowcaseItem>
@@ -613,10 +481,10 @@ export default function DevComponentsPage() {
             {/* ToolCallCard Section */}
             <ShowcaseSection
               title="ToolCallCard Component"
-              description="Compact tool call display for message history (components/chat/tool-call-card.tsx)"
+              description="Compact tool call display with status and output toggle"
             >
               <ShowcaseItem label="Completed with Result">
-                <div className="pl-[25px]">
+                <div className="ml-6">
                   <ToolCallCard
                     toolCall={sampleToolCallMessages.listFiles.toolCall}
                     toolResult={sampleToolCallMessages.listFiles.toolResult}
@@ -625,7 +493,7 @@ export default function DevComponentsPage() {
               </ShowcaseItem>
 
               <ShowcaseItem label="Completed with Long Result (Expandable)">
-                <div className="pl-[25px]">
+                <div className="ml-6">
                   <ToolCallCard
                     toolCall={sampleToolCallMessages.bashCommand.toolCall}
                     toolResult={sampleToolCallMessages.bashCommand.toolResult}
@@ -634,7 +502,7 @@ export default function DevComponentsPage() {
               </ShowcaseItem>
 
               <ShowcaseItem label="Executing">
-                <div className="pl-[25px]">
+                <div className="ml-6">
                   <ToolCallCard
                     toolCall={sampleToolCallMessages.executing.toolCall}
                   />
@@ -642,7 +510,7 @@ export default function DevComponentsPage() {
               </ShowcaseItem>
 
               <ShowcaseItem label="Error">
-                <div className="pl-[25px]">
+                <div className="ml-6">
                   <ToolCallCard
                     toolCall={sampleToolCallMessages.error.toolCall}
                     toolResult={sampleToolCallMessages.error.toolResult}
@@ -651,7 +519,7 @@ export default function DevComponentsPage() {
               </ShowcaseItem>
 
               <ShowcaseItem label="write_todos Tool (Special Rendering)">
-                <div className="pl-[25px]">
+                <div className="ml-6">
                   <ToolCallCard
                     toolCall={sampleToolCallMessages.writeTodos.toolCall}
                     toolResult={sampleToolCallMessages.writeTodos.toolResult}
@@ -663,7 +531,7 @@ export default function DevComponentsPage() {
             {/* TodoListRenderer Section */}
             <ShowcaseSection
               title="TodoListRenderer Component"
-              description="Task list renderer for write_todos tool (components/chat/todo-list-renderer.tsx)"
+              description="Compact task list renderer for write_todos tool"
             >
               <ShowcaseItem label="Executing (Updating)">
                 <TodoListRenderer
@@ -700,13 +568,13 @@ export default function DevComponentsPage() {
             {/* Combined Chat View */}
             <ShowcaseSection
               title="Combined Chat View"
-              description="Example conversation showing how components work together in Session UI"
+              description="Example conversation showing how components work together"
             >
               <ShowcaseItem label="Full Conversation">
                 <div className="space-y-4">
                   <UserMessage content="Can you list the files in my project and run the tests?" />
                   <AssistantMessage content="I'll check the project structure and run the test suite for you." />
-                  <div className="pl-[25px] space-y-2">
+                  <div className="ml-6 space-y-2">
                     <ToolCallCard
                       toolCall={sampleToolCallMessages.listFiles.toolCall}
                       toolResult={sampleToolCallMessages.listFiles.toolResult}
@@ -724,32 +592,11 @@ export default function DevComponentsPage() {
             {/* Image Attachments Section */}
             <ShowcaseSection
               title="Image Attachments"
-              description="Components for uploading and displaying image attachments in chat (components/chat/image-attachments.tsx)"
+              description="Components for uploading and displaying image attachments"
             >
               <ShowcaseItem label="Pending Images (Upload Status)">
                 <ImageAttachments
                   images={samplePendingImages}
-                  onRemove={(tempId) => console.log("Remove:", tempId)}
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Uploaded Image Only">
-                <ImageAttachments
-                  images={[samplePendingImages[0]]}
-                  onRemove={(tempId) => console.log("Remove:", tempId)}
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Uploading State">
-                <ImageAttachments
-                  images={[samplePendingImages[1]]}
-                  onRemove={(tempId) => console.log("Remove:", tempId)}
-                />
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Error State">
-                <ImageAttachments
-                  images={[samplePendingImages[2]]}
                   onRemove={(tempId) => console.log("Remove:", tempId)}
                 />
               </ShowcaseItem>
@@ -763,63 +610,14 @@ export default function DevComponentsPage() {
 
               <ShowcaseItem label="User Message with Image">
                 <div className="flex justify-end">
-                  <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 space-y-2">
-                        <p className="text-sm whitespace-pre-wrap">Here is a screenshot of the error I&apos;m seeing.</p>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          <div className="w-20 h-20 rounded-md overflow-hidden bg-white/10 flex items-center justify-center">
-                            <span className="text-[10px] text-white/60">Preview</span>
-                          </div>
+                  <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
+                    <div className="flex-1 space-y-2">
+                      <p className="text-sm whitespace-pre-wrap">Here is a screenshot of the error.</p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <div className="w-20 h-20 rounded-md overflow-hidden bg-muted/50 flex items-center justify-center">
+                          <span className="text-[10px] text-muted-foreground">Preview</span>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </ShowcaseItem>
-            </ShowcaseSection>
-
-            {/* Token Usage Display Section */}
-            <ShowcaseSection
-              title="Token Usage Display"
-              description="Components showing LLM token usage statistics for agents and sessions"
-            >
-              <ShowcaseItem label="Usage Card (Agent Detail Page)">
-                <div className="grid grid-cols-3 gap-4">
-                  <TokenUsageCard usage={sampleUsageData.small} title="Small Usage" />
-                  <TokenUsageCard usage={sampleUsageData.medium} title="Medium Usage" />
-                  <TokenUsageCard usage={sampleUsageData.large} title="Large Usage" />
-                </div>
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Usage Badge (Session Header)">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Small:</span>
-                    <TokenUsageBadge usage={sampleUsageData.small} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Medium:</span>
-                    <TokenUsageBadge usage={sampleUsageData.medium} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Large:</span>
-                    <TokenUsageBadge usage={sampleUsageData.large} />
-                  </div>
-                </div>
-              </ShowcaseItem>
-
-              <ShowcaseItem label="Session Header with Usage">
-                <div className="border rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-bold">Example Session</h2>
-                      <p className="text-sm text-muted-foreground">Started Jan 15, 2026, 10:30 AM</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <TokenUsageBadge usage={sampleUsageData.medium} />
-                      <Badge variant="outline" className="gap-1">claude-sonnet-4</Badge>
-                      <Badge variant="secondary">Ready</Badge>
                     </div>
                   </div>
                 </div>

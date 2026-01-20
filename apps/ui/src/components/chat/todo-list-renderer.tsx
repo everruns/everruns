@@ -1,6 +1,6 @@
 "use client";
 
-import { Circle, CircleDot, CheckCircle2, ListTodo } from "lucide-react";
+import { Circle, CircleDot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Todo item structure from write_todos tool
@@ -35,19 +35,19 @@ interface TodoListRendererProps {
 function getStatusIcon(status: string, isActive: boolean = false) {
   switch (status) {
     case "completed":
-      return <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />;
+      return <span className="text-green-600 text-xs shrink-0">✓</span>;
     case "in_progress":
       return (
         <CircleDot
           className={cn(
-            "h-4 w-4 text-blue-600 shrink-0",
+            "h-3.5 w-3.5 text-blue-600 shrink-0",
             isActive && "animate-pulse"
           )}
         />
       );
     case "pending":
     default:
-      return <Circle className="h-4 w-4 text-muted-foreground shrink-0" />;
+      return <Circle className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />;
   }
 }
 
@@ -59,13 +59,14 @@ function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean })
   const displayText = isInProgress ? todo.activeForm : todo.content;
 
   return (
-    <div className="flex items-start gap-2 py-0.5">
+    <div className="flex items-start gap-1.5 py-0.5">
       {getStatusIcon(todo.status, isActive)}
       <span
         className={cn(
-          "text-sm",
-          isCompleted && "text-muted-foreground line-through",
-          isInProgress && "font-medium text-foreground"
+          "text-xs",
+          isCompleted && "text-muted-foreground/60 line-through",
+          isInProgress && "text-foreground",
+          !isCompleted && !isInProgress && "text-muted-foreground/80"
         )}
       >
         {displayText}
@@ -92,34 +93,6 @@ function TodoListFromItems({ todos, isActive }: { todos: TodoItem[]; isActive?: 
           isActive={isActive && todo.status === "in_progress"}
         />
       ))}
-    </div>
-  );
-}
-
-function TodoSummary({ result }: { result: WriteTodosResult }) {
-  const { pending, in_progress, completed, total_tasks } = result;
-
-  return (
-    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-      <span>{total_tasks} task{total_tasks !== 1 ? "s" : ""}</span>
-      {completed > 0 && (
-        <span className="flex items-center gap-1">
-          <CheckCircle2 className="h-3 w-3 text-green-600" />
-          {completed}
-        </span>
-      )}
-      {in_progress > 0 && (
-        <span className="flex items-center gap-1">
-          <CircleDot className="h-3 w-3 text-blue-600" />
-          {in_progress}
-        </span>
-      )}
-      {pending > 0 && (
-        <span className="flex items-center gap-1">
-          <Circle className="h-3 w-3" />
-          {pending}
-        </span>
-      )}
     </div>
   );
 }
@@ -154,13 +127,7 @@ export function TodoListRenderer({
   // Handle error state
   if (error) {
     return (
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <ListTodo className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Task List</span>
-        </div>
-        <div className="text-sm text-red-600">Error: {error}</div>
-      </div>
+      <div className="text-xs text-red-600">Error: {error}</div>
     );
   }
 
@@ -168,18 +135,10 @@ export function TodoListRenderer({
   const warning = parsedResult?.warning;
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <ListTodo className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Task List</span>
-        {isExecuting && (
-          <span className="text-xs text-muted-foreground">(updating...)</span>
-        )}
-      </div>
+    <div className="space-y-0.5">
       <TodoListFromItems todos={todos} isActive={isExecuting} />
-      {parsedResult && <TodoSummary result={parsedResult} />}
       {warning && (
-        <div className="text-xs text-amber-600 mt-1">{warning}</div>
+        <div className="text-xs text-amber-600 mt-0.5">{warning}</div>
       )}
     </div>
   );
