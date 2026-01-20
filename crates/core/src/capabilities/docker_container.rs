@@ -22,11 +22,13 @@
 
 use super::{Capability, CapabilityId, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use crate::traits::{SessionFileStore, ToolContext};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Arc;
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
@@ -39,6 +41,12 @@ const DEFAULT_WORKING_DIR: &str = "/workspace";
 /// Container name prefix
 const CONTAINER_PREFIX: &str = "everruns";
 
+/// Default mount path inside container for session filesystem
+const DEFAULT_SESSION_MOUNT_PATH: &str = "/session";
+
+/// Default host base path for session file exports
+const DEFAULT_HOST_BASE_PATH: &str = "/tmp/everruns-sessions";
+
 /// Configuration schema for the Docker Container capability
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DockerContainerConfig {
@@ -49,6 +57,18 @@ pub struct DockerContainerConfig {
     /// Working directory inside the container
     #[serde(default = "default_working_dir")]
     pub working_dir: String,
+
+    /// Mount session filesystem into container (experimental)
+    #[serde(default)]
+    pub mount_session_filesystem: bool,
+
+    /// Path inside container where session filesystem is mounted
+    #[serde(default = "default_session_mount_path")]
+    pub session_mount_path: String,
+
+    /// Host base path for session file exports (session_id will be appended)
+    #[serde(default = "default_host_base_path")]
+    pub host_base_path: String,
 }
 
 fn default_image() -> String {
@@ -59,11 +79,22 @@ fn default_working_dir() -> String {
     DEFAULT_WORKING_DIR.to_string()
 }
 
+fn default_session_mount_path() -> String {
+    DEFAULT_SESSION_MOUNT_PATH.to_string()
+}
+
+fn default_host_base_path() -> String {
+    DEFAULT_HOST_BASE_PATH.to_string()
+}
+
 impl Default for DockerContainerConfig {
     fn default() -> Self {
         Self {
             image: default_image(),
             working_dir: default_working_dir(),
+            mount_session_filesystem: false,
+            session_mount_path: default_session_mount_path(),
+            host_base_path: default_host_base_path(),
         }
     }
 }
@@ -113,11 +144,18 @@ Available tools:
 
 The container is lazily started on first tool use. Subsequent calls reuse the same container.
 
+Session Filesystem Mount (if enabled via config):
+- The session's virtual filesystem is mounted at /session (configurable)
+- Files from the session filesystem are available inside the container
+- Modifications to files in /session are persisted on the host
+- This allows agents to work with pre-populated files from capability mounts
+
 Best practices:
 - Use `docker_exec` with `bash -c "..."` for complex commands
 - Check exit codes to verify command success
 - The working directory defaults to /workspace
 - Files written persist for the session duration
+- If session filesystem is mounted, access files at /session
 - Use `docker_stop` to clean up when done or to reset container state"#,
         )
     }
@@ -185,10 +223,19 @@ async fn container_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Volume mount specification for container
+#[derive(Debug, Clone)]
+struct VolumeMount {
+    host_path: PathBuf,
+    container_path: String,
+    readonly: bool,
+}
+
 /// Ensure container is running, starting it if necessary
 async fn ensure_container_running(
     name: &str,
     config: &DockerContainerConfig,
+    mounts: Option<Vec<VolumeMount>>,
 ) -> Result<(), String> {
     // Check if Docker is available
     if !is_docker_available().await {
@@ -225,22 +272,40 @@ async fn ensure_container_running(
         name, config.image
     );
 
+    // Build command arguments
+    let mut args = vec![
+        "run".to_string(),
+        "-d".to_string(), // Detached mode
+        "--name".to_string(),
+        name.to_string(), // Container name
+        "--network".to_string(),
+        "host".to_string(), // Host networking
+        "-w".to_string(),
+        config.working_dir.clone(), // Working directory
+        "--init".to_string(),       // Use init process
+    ];
+
+    // Add volume mounts if specified
+    if let Some(mounts) = mounts {
+        for mount in mounts {
+            let mount_spec = if mount.readonly {
+                format!("{}:{}:ro", mount.host_path.display(), mount.container_path)
+            } else {
+                format!("{}:{}", mount.host_path.display(), mount.container_path)
+            };
+            args.push("-v".to_string());
+            args.push(mount_spec);
+        }
+    }
+
+    // Add image and command
+    args.push(config.image.clone());
+    args.push("tail".to_string());
+    args.push("-f".to_string());
+    args.push("/dev/null".to_string());
+
     let output = Command::new("docker")
-        .args([
-            "run",
-            "-d", // Detached mode
-            "--name",
-            name, // Container name
-            "--network",
-            "host", // Host networking
-            "-w",
-            &config.working_dir, // Working directory
-            "--init",            // Use init process
-            &config.image,       // Image
-            "tail",
-            "-f",
-            "/dev/null", // Keep container running
-        ])
+        .args(&args)
         .output()
         .await
         .map_err(|e| format!("Failed to create container: {}", e))?;
@@ -258,6 +323,164 @@ async fn ensure_container_running(
 /// Parse capability config from JSON value
 fn parse_config(config: &Value) -> DockerContainerConfig {
     serde_json::from_value(config.clone()).unwrap_or_default()
+}
+
+/// Ensure container is running with optional session filesystem mount
+///
+/// If `mount_session_filesystem` is enabled in config and a file_store is provided,
+/// this will export session files to the host filesystem and mount them into the container.
+async fn ensure_container_with_session_mount(
+    name: &str,
+    session_id: &uuid::Uuid,
+    config: &DockerContainerConfig,
+    file_store: Option<&Arc<dyn SessionFileStore>>,
+) -> Result<(), String> {
+    let mounts = if config.mount_session_filesystem {
+        if let Some(store) = file_store {
+            let host_path = session_host_path(config, session_id);
+
+            // Export session files to host before container starts
+            // Only export if container doesn't already exist (to avoid re-exporting on restart)
+            if !container_exists(name).await {
+                export_session_files(store, *session_id, &host_path).await?;
+            }
+
+            Some(vec![VolumeMount {
+                host_path,
+                container_path: config.session_mount_path.clone(),
+                readonly: false, // Allow modifications
+            }])
+        } else {
+            warn!("mount_session_filesystem enabled but no file_store available, skipping mount");
+            None
+        }
+    } else {
+        None
+    };
+
+    ensure_container_running(name, config, mounts).await
+}
+
+/// Get the host path for session files
+fn session_host_path(config: &DockerContainerConfig, session_id: &uuid::Uuid) -> PathBuf {
+    PathBuf::from(&config.host_base_path).join(session_id.to_string())
+}
+
+/// Export session files to the host filesystem for Docker mounting
+///
+/// This function reads all files from the session filesystem and writes them
+/// to a host directory that can be mounted into the Docker container.
+async fn export_session_files(
+    file_store: &Arc<dyn SessionFileStore>,
+    session_id: uuid::Uuid,
+    host_path: &PathBuf,
+) -> Result<usize, String> {
+    // Create the host directory
+    tokio::fs::create_dir_all(host_path)
+        .await
+        .map_err(|e| format!("Failed to create host directory: {}", e))?;
+
+    // List all files recursively starting from root using iterative approach
+    let files = list_all_files_iterative(file_store, session_id).await?;
+
+    let mut exported = 0;
+    for file_info in files {
+        let file_path = host_path.join(file_info.path.trim_start_matches('/'));
+
+        if file_info.is_directory {
+            // Create directory
+            tokio::fs::create_dir_all(&file_path).await.map_err(|e| {
+                format!("Failed to create directory {}: {}", file_path.display(), e)
+            })?;
+        } else {
+            // Read file content and write to host
+            if let Some(session_file) = file_store
+                .read_file(session_id, &file_info.path)
+                .await
+                .map_err(|e| format!("Failed to read file {}: {}", file_info.path, e))?
+            {
+                // Skip if no content (shouldn't happen for files, but be safe)
+                let Some(content) = session_file.content else {
+                    continue;
+                };
+
+                // Ensure parent directory exists
+                if let Some(parent) = file_path.parent() {
+                    tokio::fs::create_dir_all(parent)
+                        .await
+                        .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+                }
+
+                // Decode content if base64 encoded
+                let content_bytes: Vec<u8> = if session_file.encoding == "base64" {
+                    base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        content.as_bytes(),
+                    )
+                    .map_err(|e| format!("Failed to decode base64 content: {}", e))?
+                } else {
+                    content.into_bytes()
+                };
+
+                tokio::fs::write(&file_path, &content_bytes)
+                    .await
+                    .map_err(|e| format!("Failed to write file {}: {}", file_path.display(), e))?;
+
+                // Set readonly if applicable
+                if session_file.is_readonly {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let perms = std::fs::Permissions::from_mode(0o444);
+                        tokio::fs::set_permissions(&file_path, perms)
+                            .await
+                            .map_err(|e| {
+                                format!(
+                                    "Failed to set readonly permissions on {}: {}",
+                                    file_path.display(),
+                                    e
+                                )
+                            })?;
+                    }
+                }
+
+                exported += 1;
+            }
+        }
+    }
+
+    info!(
+        "Exported {} session files to {}",
+        exported,
+        host_path.display()
+    );
+    Ok(exported)
+}
+
+/// Iteratively list all files in the session filesystem (avoids async recursion)
+async fn list_all_files_iterative(
+    file_store: &Arc<dyn SessionFileStore>,
+    session_id: uuid::Uuid,
+) -> Result<Vec<crate::session_file::FileInfo>, String> {
+    let mut all_files = Vec::new();
+    let mut dirs_to_process = vec!["/".to_string()];
+
+    while let Some(dir_path) = dirs_to_process.pop() {
+        let entries = file_store
+            .list_directory(session_id, &dir_path)
+            .await
+            .map_err(|e| format!("Failed to list directory {}: {}", dir_path, e))?;
+
+        for entry in entries {
+            if entry.is_directory {
+                // Queue subdirectory for processing
+                dirs_to_process.push(entry.path.clone());
+            }
+            all_files.push(entry);
+        }
+    }
+
+    Ok(all_files)
 }
 
 // ============================================================================
@@ -332,8 +555,15 @@ impl Tool for DockerExecTool {
 
         let name = container_name(&context.session_id);
 
-        // Ensure container is running
-        if let Err(e) = ensure_container_running(&name, &config).await {
+        // Ensure container is running with optional session filesystem mount
+        if let Err(e) = ensure_container_with_session_mount(
+            &name,
+            &context.session_id,
+            &config,
+            context.file_store.as_ref(),
+        )
+        .await
+        {
             return ToolExecutionResult::tool_error(e);
         }
 
@@ -444,8 +674,15 @@ impl Tool for DockerReadFileTool {
 
         let name = container_name(&context.session_id);
 
-        // Ensure container is running
-        if let Err(e) = ensure_container_running(&name, &config).await {
+        // Ensure container is running with optional session filesystem mount
+        if let Err(e) = ensure_container_with_session_mount(
+            &name,
+            &context.session_id,
+            &config,
+            context.file_store.as_ref(),
+        )
+        .await
+        {
             return ToolExecutionResult::tool_error(e);
         }
 
@@ -559,8 +796,15 @@ impl Tool for DockerWriteFileTool {
 
         let name = container_name(&context.session_id);
 
-        // Ensure container is running
-        if let Err(e) = ensure_container_running(&name, &config).await {
+        // Ensure container is running with optional session filesystem mount
+        if let Err(e) = ensure_container_with_session_mount(
+            &name,
+            &context.session_id,
+            &config,
+            context.file_store.as_ref(),
+        )
+        .await
+        {
             return ToolExecutionResult::tool_error(e);
         }
 
@@ -811,6 +1055,9 @@ mod tests {
         let config = DockerContainerConfig::default();
         assert_eq!(config.image, DEFAULT_IMAGE);
         assert_eq!(config.working_dir, DEFAULT_WORKING_DIR);
+        assert!(!config.mount_session_filesystem);
+        assert_eq!(config.session_mount_path, DEFAULT_SESSION_MOUNT_PATH);
+        assert_eq!(config.host_base_path, DEFAULT_HOST_BASE_PATH);
     }
 
     #[test]
@@ -822,6 +1069,7 @@ mod tests {
         let config = parse_config(&json);
         assert_eq!(config.image, "ubuntu:22.04");
         assert_eq!(config.working_dir, "/app");
+        assert!(!config.mount_session_filesystem);
     }
 
     #[test]
@@ -832,6 +1080,55 @@ mod tests {
         let config = parse_config(&json);
         assert_eq!(config.image, "node:18");
         assert_eq!(config.working_dir, DEFAULT_WORKING_DIR);
+    }
+
+    #[test]
+    fn test_config_parse_with_mount() {
+        let json = json!({
+            "image": "python:3.11",
+            "mount_session_filesystem": true,
+            "session_mount_path": "/data",
+            "host_base_path": "/var/sessions"
+        });
+        let config = parse_config(&json);
+        assert_eq!(config.image, "python:3.11");
+        assert!(config.mount_session_filesystem);
+        assert_eq!(config.session_mount_path, "/data");
+        assert_eq!(config.host_base_path, "/var/sessions");
+    }
+
+    #[test]
+    fn test_session_host_path() {
+        let config = DockerContainerConfig {
+            host_base_path: "/tmp/test-sessions".to_string(),
+            ..Default::default()
+        };
+        let session_id = uuid::Uuid::parse_str("12345678-1234-1234-1234-123456789012").unwrap();
+        let path = session_host_path(&config, &session_id);
+        assert_eq!(
+            path.to_string_lossy(),
+            "/tmp/test-sessions/12345678-1234-1234-1234-123456789012"
+        );
+    }
+
+    #[test]
+    fn test_volume_mount_readonly() {
+        let mount = VolumeMount {
+            host_path: PathBuf::from("/host/path"),
+            container_path: "/container/path".to_string(),
+            readonly: true,
+        };
+        assert!(mount.readonly);
+    }
+
+    #[test]
+    fn test_volume_mount_readwrite() {
+        let mount = VolumeMount {
+            host_path: PathBuf::from("/host/path"),
+            container_path: "/container/path".to_string(),
+            readonly: false,
+        };
+        assert!(!mount.readonly);
     }
 
     #[test]
