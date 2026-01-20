@@ -3014,8 +3014,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used."
+            "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "description": {
             "type": [
@@ -6297,8 +6297,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "The ID of the default LLM model to use for this agent."
+            "description": "The ID of the default LLM model to use for this agent.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "description": {
             "type": [
