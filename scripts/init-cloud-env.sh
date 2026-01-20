@@ -178,9 +178,9 @@ main() {
     echo "  - gh $(gh --version 2>/dev/null | head -1 || echo '(not in PATH)')"
     echo ""
     echo "Next steps:"
-    echo "  just --list     # See available commands"
-    echo "  just init       # Full dev environment setup"
-    echo "  just start-dev  # Quick start (no Docker needed)"
+    echo "  just --list              # See available commands"
+    echo "  just start-dev --no-watch  # Quick start (recommended for cloud)"
+    echo "  just init                # Full dev environment setup (for local dev)"
     echo "================================================"
 }
 

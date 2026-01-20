@@ -144,9 +144,11 @@ just start-dev
 
 **FIRST STEP in cloud environments (Claude Code on web, CI, etc.):**
 ```bash
-./scripts/init-cloud-env.sh  # Install just + gh (~5 seconds)
-just start-dev               # Start in DEV MODE (no Docker needed)
+./scripts/init-cloud-env.sh       # Install just + gh (~5 seconds)
+just start-dev --no-watch         # Start in DEV MODE (no Docker needed)
 ```
+
+Use `--no-watch` in cloud/CI environments - faster startup, no cargo-watch dependency.
 
 DEV MODE uses in-memory storage and works out of the box - no PostgreSQL or Docker required.
 

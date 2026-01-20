@@ -63,12 +63,12 @@ clean:
 # === Services ===
 
 # Start in DEV MODE (in-memory storage, no Docker/PostgreSQL required)
-start-dev:
-    ./scripts/lib/services.sh start-dev
+start-dev *args:
+    ./scripts/lib/services.sh start-dev {{args}}
 
 # Start everything with auto-reload (Docker, API, Worker, UI)
-start-all:
-    ./scripts/lib/services.sh start-all
+start-all *args:
+    ./scripts/lib/services.sh start-all {{args}}
 
 # Stop all services (API, UI, Docker)
 stop-all:

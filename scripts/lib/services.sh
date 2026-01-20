@@ -4,6 +4,15 @@
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 cmd="${1:-}"
+shift || true
+
+# Parse flags
+NO_WATCH=false
+for arg in "$@"; do
+  case "$arg" in
+    --no-watch) NO_WATCH=true ;;
+  esac
+done
 
 require_command() {
   local cmd="$1"
@@ -44,7 +53,9 @@ case "$cmd" in
     echo "🚀 Starting Everruns in DEV MODE (in-memory storage, no database required)..."
     echo ""
 
-    require_command cargo-watch "Run: just init"
+    if [ "$NO_WATCH" = false ]; then
+      require_command cargo-watch "Run: just init (or use --no-watch)"
+    fi
     require_command npm "Install Node.js/npm to start the UI."
 
     # Track child PIDs for cleanup
@@ -102,8 +113,13 @@ case "$cmd" in
     fi
 
     # Start control-plane
-    echo "1️⃣  Starting control-plane (DEV MODE) with auto-reload..."
-    cargo watch -w crates -x 'run -p everruns-control-plane' &
+    if [ "$NO_WATCH" = true ]; then
+      echo "1️⃣  Starting control-plane (DEV MODE)..."
+      cargo run -p everruns-control-plane &
+    else
+      echo "1️⃣  Starting control-plane (DEV MODE) with auto-reload..."
+      cargo watch -w crates -x 'run -p everruns-control-plane' &
+    fi
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
@@ -138,7 +154,11 @@ case "$cmd" in
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "✅ DEV MODE started (fully functional, in-memory storage)!"
     echo ""
-    echo "   🌐 Control-plane: http://localhost:9000 (auto-reload)"
+    if [ "$NO_WATCH" = true ]; then
+      echo "   🌐 Control-plane: http://localhost:9000"
+    else
+      echo "   🌐 Control-plane: http://localhost:9000 (auto-reload)"
+    fi
     echo "   📖 API Docs:      http://localhost:9000/swagger-ui/"
     echo "   ⚙️  Worker:        Running in-process (no separate process)"
     echo "   🖥️  UI:            http://localhost:9100 (hot reload)"
@@ -148,7 +168,9 @@ case "$cmd" in
     echo "   - No PostgreSQL or Docker required"
     echo "   - Worker runs in-process with control-plane"
     echo ""
-    echo "👀 Edit code in crates/ and services will auto-restart"
+    if [ "$NO_WATCH" = false ]; then
+      echo "👀 Edit code in crates/ and services will auto-restart"
+    fi
     echo "💡 Press Ctrl+C to stop services"
     echo ""
 
@@ -159,7 +181,9 @@ case "$cmd" in
     echo "🚀 Starting Everruns development environment..."
     echo ""
 
-    require_command cargo-watch "Run: just init"
+    if [ "$NO_WATCH" = false ]; then
+      require_command cargo-watch "Run: just init (or use --no-watch)"
+    fi
     require_command sqlx "Run: just init"
     require_command npm "Install Node.js/npm to start the UI."
 
@@ -262,11 +286,16 @@ case "$cmd" in
     fi
 
     # Start API
-    echo "4️⃣  Starting API server with auto-reload..."
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
-    cargo watch -w crates -x 'run -p everruns-control-plane' &
+    if [ "$NO_WATCH" = true ]; then
+      echo "4️⃣  Starting API server..."
+      cargo run -p everruns-control-plane &
+    else
+      echo "4️⃣  Starting API server with auto-reload..."
+      cargo watch -w crates -x 'run -p everruns-control-plane' &
+    fi
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
@@ -282,8 +311,13 @@ case "$cmd" in
     done
 
     # Start Worker
-    echo "6️⃣  Starting worker with auto-reload..."
-    cargo watch -w crates -x 'run -p everruns-worker' &
+    if [ "$NO_WATCH" = true ]; then
+      echo "6️⃣  Starting worker..."
+      cargo run -p everruns-worker &
+    else
+      echo "6️⃣  Starting worker with auto-reload..."
+      cargo watch -w crates -x 'run -p everruns-worker' &
+    fi
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
     sleep 2
@@ -305,11 +339,21 @@ case "$cmd" in
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "✅ All services started with auto-reload!"
+    if [ "$NO_WATCH" = true ]; then
+      echo "✅ All services started!"
+    else
+      echo "✅ All services started with auto-reload!"
+    fi
     echo ""
-    echo "   🌐 API:         http://localhost:9000 (auto-reload)"
-    echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-    echo "   ⚙️ Worker:      running (auto-reload)"
+    if [ "$NO_WATCH" = true ]; then
+      echo "   🌐 API:         http://localhost:9000"
+      echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
+      echo "   ⚙️ Worker:      running"
+    else
+      echo "   🌐 API:         http://localhost:9000 (auto-reload)"
+      echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
+      echo "   ⚙️ Worker:      running (auto-reload)"
+    fi
     echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
     if [ "$JAEGER_STARTED" = true ]; then
       echo "   🔍 Jaeger UI:   http://localhost:16686"
@@ -317,7 +361,9 @@ case "$cmd" in
       echo "   🔍 Jaeger:      disabled (no Docker)"
     fi
     echo ""
-    echo "👀 Edit code in crates/ and services will auto-restart"
+    if [ "$NO_WATCH" = false ]; then
+      echo "👀 Edit code in crates/ and services will auto-restart"
+    fi
     echo "💡 Press Ctrl+C to stop services"
     echo ""
 
@@ -341,7 +387,10 @@ case "$cmd" in
     ;;
 
   *)
-    echo "Usage: $0 {control-plane|worker|watch-control-plane|watch-worker|start-dev|start-all|stop-all}"
+    echo "Usage: $0 {control-plane|worker|watch-control-plane|watch-worker|start-dev|start-all|stop-all} [--no-watch]"
+    echo ""
+    echo "Options:"
+    echo "  --no-watch    Don't use cargo-watch (faster startup, no auto-reload)"
     exit 1
     ;;
 esac

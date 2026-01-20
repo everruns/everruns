@@ -10,8 +10,8 @@ Verify the system is working after changes.
 ## Quick Start
 
 ```bash
-# Start server (no Docker needed)
-just start-dev
+# Start server (no Docker needed, --no-watch for faster startup)
+just start-dev --no-watch
 
 # Run tests
 cargo test
@@ -22,8 +22,8 @@ cargo test
 ### 1. Start Server
 
 ```bash
-just start-dev  # In-memory, no Docker
-# or: just start-all  # With PostgreSQL persistence
+just start-dev --no-watch  # In-memory, no Docker, fast startup
+# or: just start-all --no-watch  # With PostgreSQL persistence
 ```
 
 ### 2. Health Check
