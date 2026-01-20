@@ -404,15 +404,11 @@ The best way to verify the system is working is to run the **smoke test script**
 # First-time setup (installs Rust tools + UI dependencies)
 just init
 
-# Option 1: Start everything at once
+# Start everything (Docker, API, Worker, UI with auto-reload)
 just start-all
 
-# Option 2: Start services individually
-just start      # Start Docker services
-just migrate    # Run migrations
-just api        # Start API
-just worker     # Start worker
-just ui         # Start UI
+# Or: DEV MODE (no Docker needed, in-memory storage)
+just start-dev
 
 # Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
 ```

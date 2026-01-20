@@ -23,11 +23,11 @@ seed *args:
 # === Docker Services ===
 
 # Start Docker services (Postgres, Jaeger)
-start:
+start-docker:
     ./scripts/lib/docker.sh start
 
 # Stop Docker services
-stop:
+stop-docker:
     ./scripts/lib/docker.sh stop
 
 # Stop and remove all Docker volumes
@@ -37,10 +37,6 @@ reset:
 # Run database migrations
 migrate:
     ./scripts/lib/docker.sh migrate
-
-# View Docker service logs
-logs:
-    ./scripts/lib/docker.sh logs
 
 # === Rust Build ===
 
@@ -66,28 +62,6 @@ clean:
 
 # === Services ===
 
-# Start the control-plane server
-control-plane:
-    ./scripts/lib/services.sh control-plane
-
-# Alias for control-plane
-api: control-plane
-
-# Start the worker
-worker:
-    ./scripts/lib/services.sh worker
-
-# Start control-plane with auto-reload
-watch-control-plane:
-    ./scripts/lib/services.sh watch-control-plane
-
-# Alias for watch-control-plane
-watch-api: watch-control-plane
-
-# Start worker with auto-reload
-watch-worker:
-    ./scripts/lib/services.sh watch-worker
-
 # Start in DEV MODE (in-memory storage, no Docker/PostgreSQL required)
 start-dev:
     ./scripts/lib/services.sh start-dev
@@ -101,10 +75,6 @@ stop-all:
     ./scripts/lib/services.sh stop-all
 
 # === UI ===
-
-# Start the UI development server
-ui:
-    ./scripts/lib/ui.sh dev
 
 # Build the UI for production
 ui-build:
