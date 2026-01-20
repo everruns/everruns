@@ -52,7 +52,7 @@ impl SessionService {
     ) -> Result<Session> {
         // If model_id not provided, use the agent's default_model_id
         let model_id = match req.model_id {
-            Some(id) => Some(id),
+            Some(id) => Some(id.uuid()),
             None => {
                 // Look up the agent to get its default_model_id
                 let agent = self.db.get_agent(org_id, agent_id).await?;

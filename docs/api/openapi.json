@@ -720,21 +720,19 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID",
+            "description": "Agent ID (prefixed, e.g., agent_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           },
           {
             "name": "session_id",
             "in": "path",
-            "description": "Session ID",
+            "description": "Session ID (prefixed, e.g., session_...)",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -748,6 +746,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
           },
           "404": {
             "description": "Session not found"
@@ -3264,8 +3265,8 @@
               "string",
               "null"
             ],
-            "format": "uuid",
-            "description": "The ID of the LLM model to use for this session.\nOverrides the agent's default model if specified."
+            "description": "The ID of the LLM model to use for this session.\nOverrides the agent's default model if specified.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "tags": {
             "type": "array",

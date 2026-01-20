@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::events::{EventContext, EventRequest, MessageUserData, TurnCancelledData};
-use everruns_core::typed_id::{AgentId, SessionId, TurnId};
+use everruns_core::typed_id::{AgentId, ModelId, SessionId, TurnId};
 use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
 
@@ -35,7 +35,8 @@ pub struct CreateSessionRequest {
     /// The ID of the LLM model to use for this session.
     /// Overrides the agent's default model if specified.
     #[serde(default)]
-    pub model_id: Option<Uuid>,
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
+    pub model_id: Option<ModelId>,
 }
 
 /// Response from cancel turn endpoint
@@ -368,11 +369,12 @@ pub async fn delete_session(
     path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agent_...)"),
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
         (status = 200, description = "Turn cancelled successfully (or no-op if idle)", body = CancelTurnResponse),
+        (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -381,12 +383,18 @@ pub async fn delete_session(
 pub async fn cancel_turn(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
 ) -> Result<Json<CancelTurnResponse>, StatusCode> {
+    use everruns_core::typed_id::SessionId;
+
+    let session_id: SessionId = session_id
+        .parse()
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
     // Verify session exists
     let session = state
         .session_service
-        .get(org.org_id, session_id)
+        .get(org.org_id, session_id.uuid())
         .await
         .log_internal_error("get session for cancel")?
         .ok_or_not_found()?;
@@ -400,19 +408,20 @@ pub async fn cancel_turn(
     }
 
     // Cancel the workflow
-    if let Err(e) = state.runner.cancel_run(session_id).await {
+    let session_uuid = session_id.uuid();
+    if let Err(e) = state.runner.cancel_run(session_uuid).await {
         tracing::error!(session_id = %session_id, error = %e, "Failed to cancel workflow");
         // Continue anyway - workflow may have already completed
     }
 
     // Generate IDs for the turn context
     // Use session_id as turn_id since workflow_id = session_id in durable runner
-    let turn_id = session_id;
+    let turn_id = session_uuid;
     let input_message_id = Uuid::now_v7(); // Placeholder since we don't have the original
 
     // Emit turn.cancelled event
     let cancelled_event = EventRequest::new(
-        session_id,
+        session_uuid,
         EventContext::turn(turn_id, input_message_id),
         TurnCancelledData {
             turn_id: TurnId::from_uuid(turn_id),
@@ -427,7 +436,7 @@ pub async fn cancel_turn(
     // Insert user message indicating cancellation request
     let user_cancel_message = Message::user("User requested to cancel the work.");
     let user_message_event = EventRequest::new(
-        session_id,
+        session_uuid,
         EventContext::turn(turn_id, input_message_id),
         MessageUserData::new(user_cancel_message),
     );
@@ -470,23 +479,23 @@ mod tests {
 
     #[test]
     fn test_create_session_request_with_model_id() {
-        let model_uuid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let json = format!(r#"{{"model_id": "{}"}}"#, model_uuid);
+        let model_id: ModelId = "model_550e8400e29b41d4a716446655440000".parse().unwrap();
+        let json = format!(r#"{{"model_id": "{}"}}"#, model_id);
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(req.model_id, Some(model_uuid));
+        assert_eq!(req.model_id, Some(model_id));
     }
 
     #[test]
     fn test_create_session_request_full() {
-        let model_uuid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap();
+        let model_id: ModelId = "model_550e8400e29b41d4a716446655440001".parse().unwrap();
         let json = format!(
             r#"{{"title": "Full Session", "tags": ["tag1", "tag2"], "model_id": "{}"}}"#,
-            model_uuid
+            model_id
         );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.title, Some("Full Session".to_string()));
         assert_eq!(req.tags, vec!["tag1", "tag2"]);
-        assert_eq!(req.model_id, Some(model_uuid));
+        assert_eq!(req.model_id, Some(model_id));
     }
 
     #[test]
