@@ -96,6 +96,57 @@ install_gh() {
     fi
 }
 
+configure_gh_repo() {
+    # Set default repo for gh CLI (needed when git remote uses local proxy)
+    # Extract repo from git remote URL (handles both github.com and proxy URLs)
+    local remote_url repo
+
+    remote_url=$(git remote get-url origin 2>/dev/null || echo "")
+    if [[ -z "$remote_url" ]]; then
+        warn "No git remote found, skipping gh repo configuration"
+        return 0
+    fi
+
+    # Extract owner/repo from URL patterns:
+    # - https://github.com/owner/repo.git
+    # - git@github.com:owner/repo.git
+    # - http://proxy@127.0.0.1:PORT/git/owner/repo
+    if [[ "$remote_url" =~ github\.com[:/]([^/]+/[^/.]+) ]]; then
+        repo="${BASH_REMATCH[1]}"
+    elif [[ "$remote_url" =~ /git/([^/]+/[^/.]+) ]]; then
+        repo="${BASH_REMATCH[1]}"
+    else
+        warn "Could not extract repo from remote URL: $remote_url"
+        return 0
+    fi
+
+    # Remove .git suffix if present
+    repo="${repo%.git}"
+
+    # Check current default
+    local current_default
+    current_default=$(gh repo set-default --view 2>/dev/null || echo "")
+
+    if [[ "$current_default" == *"$repo"* ]]; then
+        info "gh default repo already set: $repo"
+        return 0
+    fi
+
+    # gh repo set-default requires a remote pointing to GitHub
+    # Add a 'github' remote if origin uses a proxy
+    if [[ ! "$remote_url" =~ github\.com ]]; then
+        local github_url="https://github.com/${repo}.git"
+        if ! git remote get-url github &>/dev/null; then
+            info "Adding 'github' remote: $github_url"
+            git remote add github "$github_url"
+        fi
+        # Use the github remote for set-default
+        gh repo set-default github 2>/dev/null && info "gh default repo set: $repo" || warn "Failed to set default repo"
+    else
+        gh repo set-default "$repo" 2>/dev/null && info "gh default repo set: $repo" || warn "Failed to set default repo"
+    fi
+}
+
 main() {
     echo "================================================"
     echo "  Cloud Environment Initialization"
@@ -107,6 +158,7 @@ main() {
 
     install_just
     install_gh
+    configure_gh_repo
 
     END_TIME=$(date +%s)
     ELAPSED=$((END_TIME - START_TIME))
