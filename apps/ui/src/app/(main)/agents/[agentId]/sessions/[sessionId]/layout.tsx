@@ -103,7 +103,9 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
               {session.title || `Session ${session.id.slice(0, 8)}`}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Started {new Date(session.created_at).toLocaleString()}
+              {activeTab === "files"
+                ? "Session file system"
+                : `Started ${new Date(session.created_at).toLocaleString()}`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -177,7 +179,7 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
             )}
           >
             <Folder className="h-4 w-4" />
-            File System
+            Files
           </Link>
           <Link
             href={`${basePath}/events`}
