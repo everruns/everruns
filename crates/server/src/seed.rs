@@ -28,6 +28,9 @@ use uuid::Uuid;
 ///   - 0x200-0x2FF: OpenAI Models
 ///   - 0x300-0x3FF: Anthropic Models
 ///   - 0x400-0x4FF: LlmSim Models
+///   - 0x500-0x5FF: MCP Servers
+///   - 0x600-0x6FF: Gemini Models
+///   - 0x700-0x7FF: Harnesses
 mod seed_ids {
     use uuid::Uuid;
 
@@ -47,11 +50,14 @@ mod seed_ids {
     pub const CLOUD_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000107);
     pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
 
+    pub const GITHUB_COPILOT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000109);
+
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
+    pub const GITHUB_COPILOT_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000502);
 
-    // Harnesses (0x600-0x6FF)
-    pub const DEFAULT_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
+    // Harnesses (0x700-0x7FF)
+    pub const DEFAULT_HARNESS: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000701);
 
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
@@ -592,6 +598,36 @@ Always delete sandboxes when done."#,
         capabilities: &["daytona", "session_storage", "session_file_system"],
         dev_only: true,
     },
+    SeedAgent {
+        id: seed_ids::GITHUB_COPILOT_AGENT,
+        name: "GitHub Copilot Assistant",
+        description: "An agent that uses GitHub Copilot MCP tools (requires OAuth authorization)",
+        system_prompt: r#"You are a GitHub Copilot Assistant with access to GitHub Copilot's MCP tools.
+
+## Authentication Required
+
+This agent requires OAuth authorization to use GitHub Copilot tools.
+If you receive an "OAuth authorization required" error, the user needs to authorize
+their GitHub account before using these tools.
+
+## Your Capabilities
+
+You can use GitHub Copilot tools through the MCP integration to:
+- Get code suggestions and completions
+- Analyze code and provide insights
+- Help with coding tasks using Copilot's AI capabilities
+
+## Guidelines
+
+- Always explain what tools you're using and why
+- If OAuth authorization is required, inform the user and guide them to the authorization flow
+- Be helpful and provide clear explanations of code and suggestions
+- Respect rate limits and use tools efficiently"#,
+        tags: &["github", "copilot", "oauth", "mcp", "demo", "seed"],
+        // MCP capability ID format: "mcp:{server_uuid}"
+        capabilities: &["mcp:01933b5a-0000-7000-8000-000000000502"],
+        dev_only: true, // Requires OAuth setup
+    },
 ];
 
 /// Seed agents into the database
@@ -1128,15 +1164,31 @@ struct SeedMcpServer {
     name: &'static str,
     description: &'static str,
     url: &'static str,
+    auth_type: &'static str,
+    /// OAuth resource metadata URL for auto-discovery (RFC 9728)
+    oauth_resource_metadata_url: Option<&'static str>,
 }
 
 /// Built-in seed MCP servers
-const SEED_MCP_SERVERS: &[SeedMcpServer] = &[SeedMcpServer {
-    id: seed_ids::MS_LEARN_MCP,
-    name: "microsoft_learn",
-    description: "Microsoft Learn documentation MCP server - search and retrieve Microsoft documentation",
-    url: "https://learn.microsoft.com/api/mcp",
-}];
+const SEED_MCP_SERVERS: &[SeedMcpServer] = &[
+    SeedMcpServer {
+        id: seed_ids::MS_LEARN_MCP,
+        name: "microsoft_learn",
+        description: "Microsoft Learn documentation MCP server - search and retrieve Microsoft documentation",
+        url: "https://learn.microsoft.com/api/mcp",
+        auth_type: "none",
+        oauth_resource_metadata_url: None,
+    },
+    SeedMcpServer {
+        id: seed_ids::GITHUB_COPILOT_MCP,
+        name: "github_copilot",
+        description: "GitHub Copilot MCP Server - access GitHub Copilot tools (requires OAuth authorization)",
+        url: "https://api.githubcopilot.com/mcp/",
+        auth_type: "oauth",
+        // GitHub Copilot MCP uses OAuth with resource metadata discovery
+        oauth_resource_metadata_url: Some("https://api.githubcopilot.com/.well-known/oauth-protected-resource"),
+    },
+];
 
 /// Seed MCP servers into the database
 async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
@@ -1148,16 +1200,16 @@ async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
             description: Some(seed.description.to_string()),
             url: seed.url.to_string(),
             transport_type: "http".to_string(),
-            api_key_encrypted: None, // No API key needed for public endpoint
+            api_key_encrypted: None,
             headers: None,
             settings: None,
-            auth_type: "none".to_string(),
-            oauth_authorization_url: None,
-            oauth_token_url: None,
-            oauth_client_id: None,
+            auth_type: seed.auth_type.to_string(),
+            oauth_authorization_url: None, // Discovered via resource metadata
+            oauth_token_url: None,         // Discovered via resource metadata
+            oauth_client_id: None,         // Must be configured by admin
             oauth_client_secret_encrypted: None,
             oauth_scopes: None,
-            oauth_resource_metadata_url: None,
+            oauth_resource_metadata_url: seed.oauth_resource_metadata_url.map(String::from),
         };
 
         match db
