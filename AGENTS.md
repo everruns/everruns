@@ -136,33 +136,21 @@ just start-dev
 
 ### Smoke test prerequisites
 
-Before running smoke tests, ensure these tools are installed:
+**DEV MODE (recommended):** No prerequisites - `just start-dev` works out of the box with in-memory storage.
 
-1. **PostgreSQL 17** - Database for storing agents, sessions, messages
-   - Debian/Ubuntu: `apt-get install postgresql-17`
-   - macOS: `brew install postgresql@17`
-   - Verify: `psql --version`
-
-2. **jq** - JSON processor for test scripts
-   - Debian/Ubuntu: `apt-get install jq`
-   - macOS: `brew install jq`
-
-**For Docker environments:** Use `.claude/skills/smoke-test/` (Docker handles PostgreSQL)
-
-**For no-Docker environments:** Use `.claude/skills/no-docker-setup/` (deterministic PostgreSQL setup)
+**Full mode (with persistence):** Requires Docker or PostgreSQL 17 + jq.
 
 ### Cloud Agent environments
 
 **FIRST STEP in cloud environments (Claude Code on web, CI, etc.):**
 ```bash
-./scripts/init-cloud-env.sh
+./scripts/init-cloud-env.sh       # Install just + gh (~5 seconds)
+just start-dev --no-watch         # Start in DEV MODE (no Docker needed)
 ```
 
-This installs pre-built binaries (~5 seconds total):
-- `just` - command runner
-- `gh` - GitHub CLI (for PR/issue operations)
+Use `--no-watch` in cloud/CI environments - faster startup, no cargo-watch dependency.
 
-After running, use `just <command>` for all development tasks.
+DEV MODE uses in-memory storage and works out of the box - no PostgreSQL or Docker required.
 
 **Available secrets** (pre-configured, no setup needed):
 - `OPENAI_API_KEY` - OpenAI models
@@ -399,45 +387,20 @@ High-level approach.
 
 ## Testing the system
 
-The best way to verify the system is working is to run the **smoke test script**, which tests the full workflow including agent creation, sessions, messages, workflow execution, and optionally the UI:
-
 ```bash
-# First-time setup (installs Rust tools + UI dependencies)
-just init
-
-# Start everything (Docker, API, Worker, UI with auto-reload)
-just start-all
-
-# Or: DEV MODE (no Docker needed, in-memory storage)
+# Quick start (no Docker/PostgreSQL needed)
 just start-dev
 
-# Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
+# Or: Full mode with persistence
+just start-all
 ```
 
-Expected output:
-- ✅ Health check passes
-- ✅ Agent CRUD operations work
-- ✅ Sessions and messages work
-- ✅ Session status transitions: pending → running → pending (cycles)
-- ✅ OpenAPI spec is available
-- ✅ UI pages load correctly
-
-### Alternative testing methods
-
-**Integration tests** (requires API + Worker running):
-```bash
-cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
-```
-
-**Examples** (requires API running):
-```bash
-cargo run --example create_agent
-```
-
-**Manual testing**:
+Verify:
+- Health: `curl http://localhost:9000/health`
 - API docs: http://localhost:9000/swagger-ui/
 - UI: http://localhost:9100
-- Health check: `curl http://localhost:9000/health`
+
+See `.claude/skills/smoke-test/SKILL.md` for full test checklist.
 
 
 ### Project Structure

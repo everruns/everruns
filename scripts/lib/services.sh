@@ -4,6 +4,19 @@
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 cmd="${1:-}"
+shift || true
+
+# Parse flags
+NO_WATCH=false
+NO_DOCKER=false
+NO_UI=false
+for arg in "$@"; do
+  case "$arg" in
+    --no-watch) NO_WATCH=true ;;
+    --no-docker) NO_DOCKER=true ;;
+    --no-ui) NO_UI=true ;;
+  esac
+done
 
 require_command() {
   local cmd="$1"
@@ -44,7 +57,9 @@ case "$cmd" in
     echo "🚀 Starting Everruns in DEV MODE (in-memory storage, no database required)..."
     echo ""
 
-    require_command cargo-watch "Run: just init"
+    if [ "$NO_WATCH" = false ]; then
+      require_command cargo-watch "Run: just init (or use --no-watch)"
+    fi
     require_command npm "Install Node.js/npm to start the UI."
 
     # Track child PIDs for cleanup
@@ -75,6 +90,12 @@ case "$cmd" in
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     export RUST_LOG=${RUST_LOG:-info}
 
+    # Set encryption key if not provided (standard dev key from .env.example)
+    if [ -z "${SECRETS_ENCRYPTION_KEY:-}" ]; then
+      export SECRETS_ENCRYPTION_KEY="kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY="
+      echo "   ✅ Using default encryption key"
+    fi
+
     # Configure LLM API keys
     if [ -n "${OPENAI_API_KEY:-}" ]; then
       export DEFAULT_OPENAI_API_KEY="$OPENAI_API_KEY"
@@ -96,8 +117,13 @@ case "$cmd" in
     fi
 
     # Start control-plane
-    echo "1️⃣  Starting control-plane (DEV MODE) with auto-reload..."
-    cargo watch -w crates -x 'run -p everruns-control-plane' &
+    if [ "$NO_WATCH" = true ]; then
+      echo "1️⃣  Starting control-plane (DEV MODE)..."
+      cargo run -p everruns-control-plane &
+    else
+      echo "1️⃣  Starting control-plane (DEV MODE) with auto-reload..."
+      cargo watch -w crates -x 'run -p everruns-control-plane' &
+    fi
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
@@ -132,7 +158,11 @@ case "$cmd" in
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "✅ DEV MODE started (fully functional, in-memory storage)!"
     echo ""
-    echo "   🌐 Control-plane: http://localhost:9000 (auto-reload)"
+    if [ "$NO_WATCH" = true ]; then
+      echo "   🌐 Control-plane: http://localhost:9000"
+    else
+      echo "   🌐 Control-plane: http://localhost:9000 (auto-reload)"
+    fi
     echo "   📖 API Docs:      http://localhost:9000/swagger-ui/"
     echo "   ⚙️  Worker:        Running in-process (no separate process)"
     echo "   🖥️  UI:            http://localhost:9100 (hot reload)"
@@ -142,7 +172,9 @@ case "$cmd" in
     echo "   - No PostgreSQL or Docker required"
     echo "   - Worker runs in-process with control-plane"
     echo ""
-    echo "👀 Edit code in crates/ and services will auto-restart"
+    if [ "$NO_WATCH" = false ]; then
+      echo "👀 Edit code in crates/ and services will auto-restart"
+    fi
     echo "💡 Press Ctrl+C to stop services"
     echo ""
 
@@ -153,9 +185,13 @@ case "$cmd" in
     echo "🚀 Starting Everruns development environment..."
     echo ""
 
-    require_command cargo-watch "Run: just init"
+    if [ "$NO_WATCH" = false ]; then
+      require_command cargo-watch "Run: just init (or use --no-watch)"
+    fi
     require_command sqlx "Run: just init"
-    require_command npm "Install Node.js/npm to start the UI."
+    if [ "$NO_UI" = false ]; then
+      require_command npm "Install Node.js/npm to start the UI (or use --no-ui)"
+    fi
 
     CHILD_PIDS=()
     JAEGER_STARTED=false
@@ -182,7 +218,19 @@ case "$cmd" in
 
     # Check PostgreSQL
     echo "1️⃣  Checking PostgreSQL..."
-    if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+    if [ "$NO_DOCKER" = true ]; then
+      # No Docker mode - require local PostgreSQL
+      if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+        echo "   ✅ Local PostgreSQL is ready"
+        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      else
+        echo "   ❌ PostgreSQL not running on localhost:5432"
+        echo "   Start PostgreSQL or remove --no-docker flag"
+        exit 1
+      fi
+      export OTEL_SDK_DISABLED=true
+      echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
+    elif pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
       echo "   ✅ Local PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
       if resolve_docker_compose 2>/dev/null; then
@@ -256,11 +304,16 @@ case "$cmd" in
     fi
 
     # Start API
-    echo "4️⃣  Starting API server with auto-reload..."
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:9100}
     export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
-    cargo watch -w crates -x 'run -p everruns-control-plane' &
+    if [ "$NO_WATCH" = true ]; then
+      echo "4️⃣  Starting API server..."
+      cargo run -p everruns-control-plane &
+    else
+      echo "4️⃣  Starting API server with auto-reload..."
+      cargo watch -w crates -x 'run -p everruns-control-plane' &
+    fi
     API_PID=$!
     CHILD_PIDS+=("$API_PID")
     sleep 3
@@ -276,42 +329,65 @@ case "$cmd" in
     done
 
     # Start Worker
-    echo "6️⃣  Starting worker with auto-reload..."
-    cargo watch -w crates -x 'run -p everruns-worker' &
+    if [ "$NO_WATCH" = true ]; then
+      echo "6️⃣  Starting worker..."
+      cargo run -p everruns-worker &
+    else
+      echo "6️⃣  Starting worker with auto-reload..."
+      cargo watch -w crates -x 'run -p everruns-worker' &
+    fi
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
     sleep 2
     echo "   ✅ Worker is starting (PID: $WORKER_PID)"
 
-    # Check UI dependencies
-    echo "7️⃣  Checking UI dependencies..."
-    check_ui_deps || true
+    if [ "$NO_UI" = false ]; then
+      # Check UI dependencies
+      echo "7️⃣  Checking UI dependencies..."
+      check_ui_deps || true
 
-    # Start UI
-    echo "8️⃣  Starting UI server..."
-    cd "$PROJECT_ROOT/apps/ui"
-    npm run dev &
-    UI_PID=$!
-    CHILD_PIDS+=("$UI_PID")
-    cd "$PROJECT_ROOT"
-    sleep 5
-    echo "   ✅ UI is starting (PID: $UI_PID)"
+      # Start UI
+      echo "8️⃣  Starting UI server..."
+      cd "$PROJECT_ROOT/apps/ui"
+      npm run dev &
+      UI_PID=$!
+      CHILD_PIDS+=("$UI_PID")
+      cd "$PROJECT_ROOT"
+      sleep 5
+      echo "   ✅ UI is starting (PID: $UI_PID)"
+    else
+      echo "7️⃣  Skipping UI (--no-ui)"
+    fi
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "✅ All services started with auto-reload!"
+    if [ "$NO_WATCH" = true ]; then
+      echo "✅ All services started!"
+    else
+      echo "✅ All services started with auto-reload!"
+    fi
     echo ""
-    echo "   🌐 API:         http://localhost:9000 (auto-reload)"
-    echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
-    echo "   ⚙️ Worker:      running (auto-reload)"
-    echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
+    if [ "$NO_WATCH" = true ]; then
+      echo "   🌐 API:         http://localhost:9000"
+      echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
+      echo "   ⚙️ Worker:      running"
+    else
+      echo "   🌐 API:         http://localhost:9000 (auto-reload)"
+      echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
+      echo "   ⚙️ Worker:      running (auto-reload)"
+    fi
+    if [ "$NO_UI" = false ]; then
+      echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
+    fi
     if [ "$JAEGER_STARTED" = true ]; then
       echo "   🔍 Jaeger UI:   http://localhost:16686"
-    else
+    elif [ "$NO_DOCKER" = false ]; then
       echo "   🔍 Jaeger:      disabled (no Docker)"
     fi
     echo ""
-    echo "👀 Edit code in crates/ and services will auto-restart"
+    if [ "$NO_WATCH" = false ]; then
+      echo "👀 Edit code in crates/ and services will auto-restart"
+    fi
     echo "💡 Press Ctrl+C to stop services"
     echo ""
 
@@ -335,7 +411,12 @@ case "$cmd" in
     ;;
 
   *)
-    echo "Usage: $0 {control-plane|worker|watch-control-plane|watch-worker|start-dev|start-all|stop-all}"
+    echo "Usage: $0 {control-plane|worker|watch-control-plane|watch-worker|start-dev|start-all|stop-all} [options]"
+    echo ""
+    echo "Options:"
+    echo "  --no-watch    Don't use cargo-watch (faster startup, no auto-reload)"
+    echo "  --no-docker   Don't use Docker (requires local PostgreSQL for start-all)"
+    echo "  --no-ui       Don't start the UI server"
     exit 1
     ;;
 esac
