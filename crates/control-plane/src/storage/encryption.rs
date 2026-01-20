@@ -336,6 +336,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "api_key_encrypted",
         id_column: "id",
     },
+    // Session secrets are encrypted at rest
+    EncryptedColumn {
+        table: "session_secrets",
+        column: "value_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]

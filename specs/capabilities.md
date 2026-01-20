@@ -385,6 +385,54 @@ Each session has its own isolated filesystem stored in PostgreSQL. Files are ses
 
 When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are automatically created if they don't exist. This follows common filesystem patterns and reduces tool call overhead.
 
+#### SessionStorage
+
+- **Status**: Available
+- **ID**: `session_storage`
+- **Purpose**: Session-scoped key/value storage and encrypted secret storage
+- **System Prompt**: Guidance on using storage tools for persisting data and secrets
+- **Tools**:
+  - `kv_store` - Key/value storage operations (plain text)
+    - Parameters:
+      - `operation`: enum (set, get, delete, list) - The operation to perform
+      - `key`: string (max 255 chars) - Required for set, get, delete
+      - `value`: string - Required for set (can be JSON-encoded)
+    - Returns: Object containing operation, key, and result (success/value/deleted/keys)
+    - Policy: Auto
+  - `secret_store` - Encrypted secret storage operations
+    - Parameters:
+      - `operation`: enum (set, get, delete, list) - The operation to perform
+      - `name`: string (max 255 chars) - Required for set, get, delete
+      - `value`: string - Required for set (will be encrypted)
+    - Returns: Object containing operation, name, and result (success/value/deleted/secrets)
+    - Policy: Auto
+- **Icon**: "database"
+- **Category**: "Storage"
+
+##### Design Decision: Consolidated Tools
+
+Two tools consolidate 8 operations (4 per storage type) to reduce tool count:
+- `kv_store` with `operation` parameter (set/get/delete/list) for key/value storage
+- `secret_store` with `operation` parameter (set/get/delete/list) for encrypted secrets
+
+##### Design Decision: Key/Value vs Secrets
+
+Two storage types are provided:
+- **Key/Value storage**: For general data like state, preferences, or intermediate results. Stored as plain text in the database.
+- **Secret storage**: For sensitive data like API keys, tokens, or credentials. Values are encrypted at rest using AES-256-GCM envelope encryption.
+
+##### Design Decision: Session Isolation
+
+Like the FileSystem capability, storage is session-scoped. Keys and secrets cannot be accessed across sessions.
+
+##### Design Decision: Upsert Semantics
+
+Both set operations use upsert semantics - storing with an existing key/name will overwrite the previous value.
+
+##### Design Decision: Encryption Requirement for Secrets
+
+Secret operations require the `SECRETS_ENCRYPTION_KEY` environment variable to be configured. If encryption is not configured, secret operations will return an error. Key/value operations work without encryption.
+
 #### WebFetch
 
 - **Status**: Available

@@ -55,6 +55,8 @@ impl CapabilityId {
     pub const FAKE_FINANCIAL: &'static str = "fake_financial";
     // Demo capability with mount points
     pub const SAMPLE_DATA: &'static str = "sample_data";
+    // Session storage capability (key/value and secrets)
+    pub const SESSION_STORAGE: &'static str = "session_storage";
     // Experimental capability ID constants
     pub const DOCKER_CONTAINER: &'static str = "docker_container";
 
@@ -126,6 +128,11 @@ impl CapabilityId {
     /// Create the sample_data capability ID
     pub fn sample_data() -> Self {
         Self::new(Self::SAMPLE_DATA)
+    }
+
+    /// Create the session_storage capability ID
+    pub fn session_storage() -> Self {
+        Self::new(Self::SESSION_STORAGE)
     }
 
     /// Create the docker_container capability ID
@@ -437,6 +444,10 @@ mod tests {
             CapabilityId::file_system().to_string(),
             "session_file_system"
         );
+        assert_eq!(
+            CapabilityId::session_storage().to_string(),
+            "session_storage"
+        );
         assert_eq!(CapabilityId::test_math().to_string(), "test_math");
         assert_eq!(CapabilityId::test_weather().to_string(), "test_weather");
         assert_eq!(
@@ -467,6 +478,10 @@ mod tests {
         assert_eq!(
             "session_file_system".parse::<CapabilityId>().unwrap(),
             CapabilityId::file_system()
+        );
+        assert_eq!(
+            "session_storage".parse::<CapabilityId>().unwrap(),
+            CapabilityId::session_storage()
         );
         assert_eq!(
             "test_math".parse::<CapabilityId>().unwrap(),

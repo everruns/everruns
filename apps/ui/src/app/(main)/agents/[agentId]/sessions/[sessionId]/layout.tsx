@@ -12,7 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowLeft, Sparkles, MessageSquare, Folder, Activity, Zap } from "lucide-react";
+import { ArrowLeft, Sparkles, MessageSquare, Folder, Activity, Zap, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SessionProvider, useSessionContext } from "./session-context";
 
@@ -58,6 +58,7 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
   const getActiveTab = () => {
     if (pathname.endsWith("/files")) return "files";
     if (pathname.endsWith("/events")) return "events";
+    if (pathname.endsWith("/storage")) return "storage";
     return "chat"; // Default to chat (includes /chat and base path)
   };
   const activeTab = getActiveTab();
@@ -193,6 +194,19 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
           >
             <Activity className="h-4 w-4" />
             Events
+          </Link>
+          <Link
+            href={`${basePath}/storage`}
+            className={cn(
+              buttonVariants({
+                variant: activeTab === "storage" ? "default" : "ghost",
+                size: "sm",
+              }),
+              "gap-2"
+            )}
+          >
+            <Database className="h-4 w-4" />
+            Storage
           </Link>
         </div>
       </div>

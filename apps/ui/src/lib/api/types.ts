@@ -1171,3 +1171,29 @@ export type AllowedImageType = typeof ALLOWED_IMAGE_TYPES[number];
 
 /** Maximum image size in bytes (100 MB) */
 export const MAX_IMAGE_SIZE = 100 * 1024 * 1024;
+
+// ============================================
+// Session Storage types (Key-Value & Secrets)
+// ============================================
+
+/** Key-value entry info */
+export interface KeyValueInfo {
+  /** The key name */
+  key: string;
+  /** The stored value */
+  value: string;
+  /** When the key was created */
+  created_at: string;
+  /** When the key was last updated */
+  updated_at: string;
+}
+
+/** Secret entry info (no value exposed) */
+export interface SecretInfo {
+  /** The secret name */
+  name: string;
+  /** When the secret was created */
+  created_at: string;
+  /** When the secret was last updated */
+  updated_at: string;
+}

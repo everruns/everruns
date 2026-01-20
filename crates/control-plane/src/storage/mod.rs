@@ -6,6 +6,7 @@
 // - DbSessionStore: implements SessionStore for session retrieval
 // - DbMessageRetriever: implements MessageRetriever for message loading
 // - DbSessionFileStore: implements SessionFileStore for session filesystem
+// - DbSessionStorageStore: implements SessionStorageStore for key/value and secret storage
 // - DbLlmProviderStore: implements LlmProviderStore for LLM provider retrieval
 
 pub mod agent_store;
@@ -18,6 +19,7 @@ pub mod models;
 pub mod password;
 pub mod repositories;
 pub mod session_file_store;
+pub mod session_storage_store;
 pub mod session_store;
 
 #[cfg(test)]
@@ -35,4 +37,8 @@ pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
 pub use repositories::*;
 pub use session_file_store::{DbSessionFileStore, create_db_session_file_store};
+pub use session_storage_store::{
+    DbSessionStorageStore, create_db_session_storage_store,
+    create_db_session_storage_store_without_encryption,
+};
 pub use session_store::{DbSessionStore, create_db_session_store};
