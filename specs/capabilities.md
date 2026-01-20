@@ -392,48 +392,28 @@ When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are au
 - **Purpose**: Session-scoped key/value storage and encrypted secret storage
 - **System Prompt**: Guidance on using storage tools for persisting data and secrets
 - **Tools**:
-  - `set_value` - Store a key/value pair (plain text)
+  - `kv_store` - Key/value storage operations (plain text)
     - Parameters:
-      - `key`: string (required, max 255 chars) - The key to store under
-      - `value`: string (required) - The value to store (can be JSON)
-    - Returns: Object containing key, stored status
+      - `operation`: enum (set, get, delete, list) - The operation to perform
+      - `key`: string (max 255 chars) - Required for set, get, delete
+      - `value`: string - Required for set (can be JSON-encoded)
+    - Returns: Object containing operation, key, and result (success/value/deleted/keys)
     - Policy: Auto
-  - `get_value` - Retrieve a value by key
+  - `secret_store` - Encrypted secret storage operations
     - Parameters:
-      - `key`: string (required) - The key to retrieve
-    - Returns: Object containing key, value (or null), found status
-    - Policy: Auto
-  - `delete_value` - Delete a key/value pair
-    - Parameters:
-      - `key`: string (required) - The key to delete
-    - Returns: Object containing key, deleted status
-    - Policy: Auto
-  - `list_keys` - List all stored keys
-    - Parameters: None
-    - Returns: Object containing keys array (with timestamps), count
-    - Policy: Auto
-  - `set_secret` - Store an encrypted secret
-    - Parameters:
-      - `name`: string (required, max 255 chars) - Secret name/identifier
-      - `value`: string (required) - The secret value (will be encrypted)
-    - Returns: Object containing name, stored status
-    - Policy: Auto
-  - `get_secret` - Retrieve a decrypted secret
-    - Parameters:
-      - `name`: string (required) - The secret name
-    - Returns: Object containing name, value (or null), found status
-    - Policy: Auto
-  - `delete_secret` - Delete a secret
-    - Parameters:
-      - `name`: string (required) - The secret name
-    - Returns: Object containing name, deleted status
-    - Policy: Auto
-  - `list_secrets` - List all secret names (without values)
-    - Parameters: None
-    - Returns: Object containing secrets array (with timestamps), count
+      - `operation`: enum (set, get, delete, list) - The operation to perform
+      - `name`: string (max 255 chars) - Required for set, get, delete
+      - `value`: string - Required for set (will be encrypted)
+    - Returns: Object containing operation, name, and result (success/value/deleted/secrets)
     - Policy: Auto
 - **Icon**: "database"
 - **Category**: "Storage"
+
+##### Design Decision: Consolidated Tools
+
+Two tools consolidate 8 operations (4 per storage type) to reduce tool count:
+- `kv_store` with `operation` parameter (set/get/delete/list) for key/value storage
+- `secret_store` with `operation` parameter (set/get/delete/list) for encrypted secrets
 
 ##### Design Decision: Key/Value vs Secrets
 
@@ -447,7 +427,7 @@ Like the FileSystem capability, storage is session-scoped. Keys and secrets cann
 
 ##### Design Decision: Upsert Semantics
 
-Both `set_value` and `set_secret` use upsert semantics - storing a value with an existing key/name will overwrite the previous value.
+Both set operations use upsert semantics - storing with an existing key/name will overwrite the previous value.
 
 ##### Design Decision: Encryption Requirement for Secrets
 

@@ -89,10 +89,7 @@ pub use noop::NoopCapability;
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use sandbox::SandboxCapability;
-pub use session_storage::{
-    DeleteSecretTool, DeleteValueTool, GetSecretTool, GetValueTool, ListKeysTool, ListSecretsTool,
-    SessionStorageCapability, SetSecretTool, SetValueTool,
-};
+pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};

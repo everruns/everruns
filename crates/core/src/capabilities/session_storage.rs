@@ -4,17 +4,8 @@
 //! Data persists for the session duration.
 //!
 //! Tools provided:
-//! - Key/Value (plain text):
-//!   - `set_value`: Store a key/value pair
-//!   - `get_value`: Retrieve a value by key
-//!   - `delete_value`: Delete a key/value pair
-//!   - `list_keys`: List all stored keys
-//!
-//! - Secrets (encrypted at rest):
-//!   - `set_secret`: Store an encrypted secret
-//!   - `get_secret`: Retrieve a decrypted secret
-//!   - `delete_secret`: Delete a secret
-//!   - `list_secrets`: List all secret names
+//! - `kv_store`: Key/value storage operations (set, get, delete, list)
+//! - `secret_store`: Encrypted secret storage operations (set, get, delete, list)
 
 use super::{Capability, CapabilityId, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
@@ -60,79 +51,73 @@ impl Capability for SessionStorageCapability {
         Some(
             r#"You have access to session storage tools for persisting data within the session.
 
-Key/Value Storage (plain text):
-- `set_value`: Store a key/value pair (creates or updates)
-- `get_value`: Retrieve a value by key
-- `delete_value`: Delete a key/value pair
-- `list_keys`: List all stored keys
+`kv_store` - Key/value storage (plain text):
+- operation: "set" - Store a key/value pair (key, value required)
+- operation: "get" - Retrieve a value (key required)
+- operation: "delete" - Delete a key/value pair (key required)
+- operation: "list" - List all stored keys
 
-Secret Storage (encrypted at rest):
-- `set_secret`: Store a secret securely (creates or updates)
-- `get_secret`: Retrieve a secret (decrypted)
-- `delete_secret`: Delete a secret
-- `list_secrets`: List all secret names (without values)
+`secret_store` - Secret storage (encrypted at rest):
+- operation: "set" - Store a secret (name, value required)
+- operation: "get" - Retrieve a secret (name required)
+- operation: "delete" - Delete a secret (name required)
+- operation: "list" - List all secret names
 
 Best practices:
-- Use key/value storage for general data like state, preferences, or intermediate results
-- Use secret storage for sensitive data like API keys, tokens, or credentials
-- Keys and secret names are unique per session - storing with the same name overwrites"#,
+- Use kv_store for general data like state, preferences, or intermediate results
+- Use secret_store for sensitive data like API keys, tokens, or credentials
+- Keys and names are unique per session - storing with the same key/name overwrites"#,
         )
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![
-            // Key/Value tools
-            Box::new(SetValueTool),
-            Box::new(GetValueTool),
-            Box::new(DeleteValueTool),
-            Box::new(ListKeysTool),
-            // Secret tools
-            Box::new(SetSecretTool),
-            Box::new(GetSecretTool),
-            Box::new(DeleteSecretTool),
-            Box::new(ListSecretsTool),
-        ]
+        vec![Box::new(KvStoreTool), Box::new(SecretStoreTool)]
     }
 }
 
 // ============================================================================
-// Key/Value Tools
+// KvStoreTool - Unified key/value storage tool
 // ============================================================================
 
-/// Tool to set a key/value pair
-pub struct SetValueTool;
+/// Tool for key/value storage operations
+pub struct KvStoreTool;
 
 #[async_trait]
-impl Tool for SetValueTool {
+impl Tool for KvStoreTool {
     fn name(&self) -> &str {
-        "set_value"
+        "kv_store"
     }
 
     fn description(&self) -> &str {
-        "Store a key/value pair. Creates a new entry or updates an existing one."
+        "Key/value storage operations: set, get, delete, or list keys."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["set", "get", "delete", "list"],
+                    "description": "The operation to perform"
+                },
                 "key": {
                     "type": "string",
-                    "description": "The key to store the value under (max 255 chars)"
+                    "description": "The key (required for set, get, delete; max 255 chars)"
                 },
                 "value": {
                     "type": "string",
-                    "description": "The value to store (can be JSON-encoded for structured data)"
+                    "description": "The value to store (required for set; can be JSON-encoded)"
                 }
             },
-            "required": ["key", "value"],
+            "required": ["operation"],
             "additionalProperties": false
         })
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "set_value requires context. This tool must be executed with session context.",
+            "kv_store requires context. This tool must be executed with session context.",
         )
     }
 
@@ -141,19 +126,12 @@ impl Tool for SetValueTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let key = match arguments.get("key").and_then(|v| v.as_str()) {
-            Some(k) => k,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: key"),
+        let operation = match arguments.get("operation").and_then(|v| v.as_str()) {
+            Some(op) => op,
+            None => {
+                return ToolExecutionResult::tool_error("Missing required parameter: operation");
+            }
         };
-
-        let value = match arguments.get("value").and_then(|v| v.as_str()) {
-            Some(v) => v,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: value"),
-        };
-
-        if key.len() > 255 {
-            return ToolExecutionResult::tool_error("Key must be 255 characters or less");
-        }
 
         let storage_store = match &context.storage_store {
             Some(store) => store,
@@ -162,215 +140,106 @@ impl Tool for SetValueTool {
             }
         };
 
-        match storage_store
-            .set_value(context.session_id, key, value)
-            .await
-        {
-            Ok(()) => ToolExecutionResult::success(json!({
-                "key": key,
-                "stored": true
-            })),
-            Err(e) => ToolExecutionResult::internal_error(e),
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-/// Tool to get a value by key
-pub struct GetValueTool;
-
-#[async_trait]
-impl Tool for GetValueTool {
-    fn name(&self) -> &str {
-        "get_value"
-    }
-
-    fn description(&self) -> &str {
-        "Retrieve a stored value by its key. Returns null if the key doesn't exist."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "key": {
-                    "type": "string",
-                    "description": "The key to retrieve the value for"
+        match operation {
+            "set" => {
+                let key = match arguments.get("key").and_then(|v| v.as_str()) {
+                    Some(k) => k,
+                    None => {
+                        return ToolExecutionResult::tool_error(
+                            "Missing required parameter: key (for set operation)",
+                        );
+                    }
+                };
+                let value = match arguments.get("value").and_then(|v| v.as_str()) {
+                    Some(v) => v,
+                    None => {
+                        return ToolExecutionResult::tool_error(
+                            "Missing required parameter: value (for set operation)",
+                        );
+                    }
+                };
+                if key.len() > 255 {
+                    return ToolExecutionResult::tool_error("Key must be 255 characters or less");
                 }
-            },
-            "required": ["key"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "get_value requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let key = match arguments.get("key").and_then(|v| v.as_str()) {
-            Some(k) => k,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: key"),
-        };
-
-        let storage_store = match &context.storage_store {
-            Some(store) => store,
-            None => {
-                return ToolExecutionResult::tool_error("Storage not available in this context");
-            }
-        };
-
-        match storage_store.get_value(context.session_id, key).await {
-            Ok(Some(value)) => ToolExecutionResult::success(json!({
-                "key": key,
-                "value": value,
-                "found": true
-            })),
-            Ok(None) => ToolExecutionResult::success(json!({
-                "key": key,
-                "value": null,
-                "found": false
-            })),
-            Err(e) => ToolExecutionResult::internal_error(e),
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-/// Tool to delete a key/value pair
-pub struct DeleteValueTool;
-
-#[async_trait]
-impl Tool for DeleteValueTool {
-    fn name(&self) -> &str {
-        "delete_value"
-    }
-
-    fn description(&self) -> &str {
-        "Delete a stored key/value pair. Returns whether the key existed."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "key": {
-                    "type": "string",
-                    "description": "The key to delete"
+                match storage_store
+                    .set_value(context.session_id, key, value)
+                    .await
+                {
+                    Ok(()) => ToolExecutionResult::success(json!({
+                        "operation": "set",
+                        "key": key,
+                        "success": true
+                    })),
+                    Err(e) => ToolExecutionResult::internal_error(e),
                 }
-            },
-            "required": ["key"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "delete_value requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let key = match arguments.get("key").and_then(|v| v.as_str()) {
-            Some(k) => k,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: key"),
-        };
-
-        let storage_store = match &context.storage_store {
-            Some(store) => store,
-            None => {
-                return ToolExecutionResult::tool_error("Storage not available in this context");
             }
-        };
-
-        match storage_store.delete_value(context.session_id, key).await {
-            Ok(deleted) => ToolExecutionResult::success(json!({
-                "key": key,
-                "deleted": deleted
-            })),
-            Err(e) => ToolExecutionResult::internal_error(e),
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-/// Tool to list all stored keys
-pub struct ListKeysTool;
-
-#[async_trait]
-impl Tool for ListKeysTool {
-    fn name(&self) -> &str {
-        "list_keys"
-    }
-
-    fn description(&self) -> &str {
-        "List all stored keys in the session (without their values)."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "list_keys requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        _arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let storage_store = match &context.storage_store {
-            Some(store) => store,
-            None => {
-                return ToolExecutionResult::tool_error("Storage not available in this context");
+            "get" => {
+                let key = match arguments.get("key").and_then(|v| v.as_str()) {
+                    Some(k) => k,
+                    None => {
+                        return ToolExecutionResult::tool_error(
+                            "Missing required parameter: key (for get operation)",
+                        );
+                    }
+                };
+                match storage_store.get_value(context.session_id, key).await {
+                    Ok(Some(value)) => ToolExecutionResult::success(json!({
+                        "operation": "get",
+                        "key": key,
+                        "value": value,
+                        "found": true
+                    })),
+                    Ok(None) => ToolExecutionResult::success(json!({
+                        "operation": "get",
+                        "key": key,
+                        "value": null,
+                        "found": false
+                    })),
+                    Err(e) => ToolExecutionResult::internal_error(e),
+                }
             }
-        };
-
-        match storage_store.list_keys(context.session_id).await {
-            Ok(keys) => {
-                let key_list: Vec<Value> = keys
-                    .iter()
-                    .map(|k| {
-                        json!({
-                            "key": k.key,
-                            "created_at": k.created_at.to_rfc3339(),
-                            "updated_at": k.updated_at.to_rfc3339()
+            "delete" => {
+                let key = match arguments.get("key").and_then(|v| v.as_str()) {
+                    Some(k) => k,
+                    None => {
+                        return ToolExecutionResult::tool_error(
+                            "Missing required parameter: key (for delete operation)",
+                        );
+                    }
+                };
+                match storage_store.delete_value(context.session_id, key).await {
+                    Ok(deleted) => ToolExecutionResult::success(json!({
+                        "operation": "delete",
+                        "key": key,
+                        "deleted": deleted
+                    })),
+                    Err(e) => ToolExecutionResult::internal_error(e),
+                }
+            }
+            "list" => match storage_store.list_keys(context.session_id).await {
+                Ok(keys) => {
+                    let key_list: Vec<Value> = keys
+                        .iter()
+                        .map(|k| {
+                            json!({
+                                "key": k.key,
+                                "created_at": k.created_at.to_rfc3339(),
+                                "updated_at": k.updated_at.to_rfc3339()
+                            })
                         })
-                    })
-                    .collect();
-
-                ToolExecutionResult::success(json!({
-                    "keys": key_list,
-                    "count": key_list.len()
-                }))
-            }
-            Err(e) => ToolExecutionResult::internal_error(e),
+                        .collect();
+                    ToolExecutionResult::success(json!({
+                        "operation": "list",
+                        "keys": key_list,
+                        "count": key_list.len()
+                    }))
+                }
+                Err(e) => ToolExecutionResult::internal_error(e),
+            },
+            _ => ToolExecutionResult::tool_error(format!(
+                "Invalid operation: {}. Must be one of: set, get, delete, list",
+                operation
+            )),
         }
     }
 
@@ -380,43 +249,48 @@ impl Tool for ListKeysTool {
 }
 
 // ============================================================================
-// Secret Tools
+// SecretStoreTool - Unified secret storage tool
 // ============================================================================
 
-/// Tool to set a secret
-pub struct SetSecretTool;
+/// Tool for encrypted secret storage operations
+pub struct SecretStoreTool;
 
 #[async_trait]
-impl Tool for SetSecretTool {
+impl Tool for SecretStoreTool {
     fn name(&self) -> &str {
-        "set_secret"
+        "secret_store"
     }
 
     fn description(&self) -> &str {
-        "Store a secret securely. The value is encrypted at rest. Creates or updates."
+        "Encrypted secret storage operations: set, get, delete, or list secrets."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["set", "get", "delete", "list"],
+                    "description": "The operation to perform"
+                },
                 "name": {
                     "type": "string",
-                    "description": "The name/identifier for the secret (max 255 chars)"
+                    "description": "The secret name (required for set, get, delete; max 255 chars)"
                 },
                 "value": {
                     "type": "string",
-                    "description": "The secret value to store (will be encrypted)"
+                    "description": "The secret value to store (required for set; will be encrypted)"
                 }
             },
-            "required": ["name", "value"],
+            "required": ["operation"],
             "additionalProperties": false
         })
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "set_secret requires context. This tool must be executed with session context.",
+            "secret_store requires context. This tool must be executed with session context.",
         )
     }
 
@@ -425,94 +299,11 @@ impl Tool for SetSecretTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let name = match arguments.get("name").and_then(|v| v.as_str()) {
-            Some(n) => n,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: name"),
-        };
-
-        let value = match arguments.get("value").and_then(|v| v.as_str()) {
-            Some(v) => v,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: value"),
-        };
-
-        if name.len() > 255 {
-            return ToolExecutionResult::tool_error("Secret name must be 255 characters or less");
-        }
-
-        let storage_store = match &context.storage_store {
-            Some(store) => store,
+        let operation = match arguments.get("operation").and_then(|v| v.as_str()) {
+            Some(op) => op,
             None => {
-                return ToolExecutionResult::tool_error("Storage not available in this context");
+                return ToolExecutionResult::tool_error("Missing required parameter: operation");
             }
-        };
-
-        match storage_store
-            .set_secret(context.session_id, name, value)
-            .await
-        {
-            Ok(()) => ToolExecutionResult::success(json!({
-                "name": name,
-                "stored": true
-            })),
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("Encryption not configured") {
-                    ToolExecutionResult::tool_error(
-                        "Secret storage is not available. Encryption is not configured.",
-                    )
-                } else {
-                    ToolExecutionResult::internal_error(e)
-                }
-            }
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-/// Tool to get a secret
-pub struct GetSecretTool;
-
-#[async_trait]
-impl Tool for GetSecretTool {
-    fn name(&self) -> &str {
-        "get_secret"
-    }
-
-    fn description(&self) -> &str {
-        "Retrieve a stored secret by name. The value is decrypted before returning."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "The name of the secret to retrieve"
-                }
-            },
-            "required": ["name"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "get_secret requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let name = match arguments.get("name").and_then(|v| v.as_str()) {
-            Some(n) => n,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: name"),
         };
 
         let storage_store = match &context.storage_store {
@@ -522,166 +313,135 @@ impl Tool for GetSecretTool {
             }
         };
 
-        match storage_store.get_secret(context.session_id, name).await {
-            Ok(Some(value)) => ToolExecutionResult::success(json!({
-                "name": name,
-                "value": value,
-                "found": true
-            })),
-            Ok(None) => ToolExecutionResult::success(json!({
-                "name": name,
-                "value": null,
-                "found": false
-            })),
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("Encryption not configured") {
-                    ToolExecutionResult::tool_error(
-                        "Secret storage is not available. Encryption is not configured.",
-                    )
-                } else {
-                    ToolExecutionResult::internal_error(e)
+        match operation {
+            "set" => {
+                let name = match arguments.get("name").and_then(|v| v.as_str()) {
+                    Some(n) => n,
+                    None => {
+                        return ToolExecutionResult::tool_error(
+                            "Missing required parameter: name (for set operation)",
+                        );
+                    }
+                };
+                let value = match arguments.get("value").and_then(|v| v.as_str()) {
+                    Some(v) => v,
+                    None => {
+                        return ToolExecutionResult::tool_error(
+                            "Missing required parameter: value (for set operation)",
+                        );
+                    }
+                };
+                if name.len() > 255 {
+                    return ToolExecutionResult::tool_error(
+                        "Secret name must be 255 characters or less",
+                    );
+                }
+                match storage_store
+                    .set_secret(context.session_id, name, value)
+                    .await
+                {
+                    Ok(()) => ToolExecutionResult::success(json!({
+                        "operation": "set",
+                        "name": name,
+                        "success": true
+                    })),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if msg.contains("Encryption not configured") {
+                            ToolExecutionResult::tool_error(
+                                "Secret storage not available. Encryption is not configured.",
+                            )
+                        } else {
+                            ToolExecutionResult::internal_error(e)
+                        }
+                    }
                 }
             }
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-/// Tool to delete a secret
-pub struct DeleteSecretTool;
-
-#[async_trait]
-impl Tool for DeleteSecretTool {
-    fn name(&self) -> &str {
-        "delete_secret"
-    }
-
-    fn description(&self) -> &str {
-        "Delete a stored secret. Returns whether the secret existed."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "The name of the secret to delete"
+            "get" => {
+                let name = match arguments.get("name").and_then(|v| v.as_str()) {
+                    Some(n) => n,
+                    None => {
+                        return ToolExecutionResult::tool_error(
+                            "Missing required parameter: name (for get operation)",
+                        );
+                    }
+                };
+                match storage_store.get_secret(context.session_id, name).await {
+                    Ok(Some(value)) => ToolExecutionResult::success(json!({
+                        "operation": "get",
+                        "name": name,
+                        "value": value,
+                        "found": true
+                    })),
+                    Ok(None) => ToolExecutionResult::success(json!({
+                        "operation": "get",
+                        "name": name,
+                        "value": null,
+                        "found": false
+                    })),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if msg.contains("Encryption not configured") {
+                            ToolExecutionResult::tool_error(
+                                "Secret storage not available. Encryption is not configured.",
+                            )
+                        } else {
+                            ToolExecutionResult::internal_error(e)
+                        }
+                    }
                 }
-            },
-            "required": ["name"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "delete_secret requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let name = match arguments.get("name").and_then(|v| v.as_str()) {
-            Some(n) => n,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: name"),
-        };
-
-        let storage_store = match &context.storage_store {
-            Some(store) => store,
-            None => {
-                return ToolExecutionResult::tool_error("Storage not available in this context");
             }
-        };
-
-        match storage_store.delete_secret(context.session_id, name).await {
-            Ok(deleted) => ToolExecutionResult::success(json!({
-                "name": name,
-                "deleted": deleted
-            })),
-            Err(e) => ToolExecutionResult::internal_error(e),
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-/// Tool to list all secret names
-pub struct ListSecretsTool;
-
-#[async_trait]
-impl Tool for ListSecretsTool {
-    fn name(&self) -> &str {
-        "list_secrets"
-    }
-
-    fn description(&self) -> &str {
-        "List all stored secret names in the session (without their values)."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "list_secrets requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        _arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let storage_store = match &context.storage_store {
-            Some(store) => store,
-            None => {
-                return ToolExecutionResult::tool_error("Storage not available in this context");
+            "delete" => {
+                let name = match arguments.get("name").and_then(|v| v.as_str()) {
+                    Some(n) => n,
+                    None => {
+                        return ToolExecutionResult::tool_error(
+                            "Missing required parameter: name (for delete operation)",
+                        );
+                    }
+                };
+                match storage_store.delete_secret(context.session_id, name).await {
+                    Ok(deleted) => ToolExecutionResult::success(json!({
+                        "operation": "delete",
+                        "name": name,
+                        "deleted": deleted
+                    })),
+                    Err(e) => ToolExecutionResult::internal_error(e),
+                }
             }
-        };
-
-        match storage_store.list_secrets(context.session_id).await {
-            Ok(secrets) => {
-                let secret_list: Vec<Value> = secrets
-                    .iter()
-                    .map(|s| {
-                        json!({
-                            "name": s.name,
-                            "created_at": s.created_at.to_rfc3339(),
-                            "updated_at": s.updated_at.to_rfc3339()
+            "list" => match storage_store.list_secrets(context.session_id).await {
+                Ok(secrets) => {
+                    let secret_list: Vec<Value> = secrets
+                        .iter()
+                        .map(|s| {
+                            json!({
+                                "name": s.name,
+                                "created_at": s.created_at.to_rfc3339(),
+                                "updated_at": s.updated_at.to_rfc3339()
+                            })
                         })
-                    })
-                    .collect();
-
-                ToolExecutionResult::success(json!({
-                    "secrets": secret_list,
-                    "count": secret_list.len()
-                }))
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("Encryption not configured") {
-                    ToolExecutionResult::tool_error(
-                        "Secret storage is not available. Encryption is not configured.",
-                    )
-                } else {
-                    ToolExecutionResult::internal_error(e)
+                        .collect();
+                    ToolExecutionResult::success(json!({
+                        "operation": "list",
+                        "secrets": secret_list,
+                        "count": secret_list.len()
+                    }))
                 }
-            }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("Encryption not configured") {
+                        ToolExecutionResult::tool_error(
+                            "Secret storage not available. Encryption is not configured.",
+                        )
+                    } else {
+                        ToolExecutionResult::internal_error(e)
+                    }
+                }
+            },
+            _ => ToolExecutionResult::tool_error(format!(
+                "Invalid operation: {}. Must be one of: set, get, delete, list",
+                operation
+            )),
         }
     }
 
@@ -705,51 +465,38 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_has_tools() {
+    fn test_capability_has_two_tools() {
         let cap = SessionStorageCapability;
         let tools = cap.tools();
 
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 2);
 
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        // Key/Value tools
-        assert!(tool_names.contains(&"set_value"));
-        assert!(tool_names.contains(&"get_value"));
-        assert!(tool_names.contains(&"delete_value"));
-        assert!(tool_names.contains(&"list_keys"));
-        // Secret tools
-        assert!(tool_names.contains(&"set_secret"));
-        assert!(tool_names.contains(&"get_secret"));
-        assert!(tool_names.contains(&"delete_secret"));
-        assert!(tool_names.contains(&"list_secrets"));
+        assert!(tool_names.contains(&"kv_store"));
+        assert!(tool_names.contains(&"secret_store"));
     }
 
     #[test]
     fn test_capability_has_system_prompt() {
         let cap = SessionStorageCapability;
         let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("set_value"));
-        assert!(prompt.contains("get_value"));
-        assert!(prompt.contains("set_secret"));
+        assert!(prompt.contains("kv_store"));
+        assert!(prompt.contains("secret_store"));
         assert!(prompt.contains("encrypted at rest"));
     }
 
     #[test]
     fn test_tools_require_context() {
-        assert!(SetValueTool.requires_context());
-        assert!(GetValueTool.requires_context());
-        assert!(DeleteValueTool.requires_context());
-        assert!(ListKeysTool.requires_context());
-        assert!(SetSecretTool.requires_context());
-        assert!(GetSecretTool.requires_context());
-        assert!(DeleteSecretTool.requires_context());
-        assert!(ListSecretsTool.requires_context());
+        assert!(KvStoreTool.requires_context());
+        assert!(SecretStoreTool.requires_context());
     }
 
     #[tokio::test]
-    async fn test_set_value_without_context() {
-        let tool = SetValueTool;
-        let result = tool.execute(json!({"key": "test", "value": "data"})).await;
+    async fn test_kv_store_without_context() {
+        let tool = KvStoreTool;
+        let result = tool
+            .execute(json!({"operation": "set", "key": "test", "value": "data"}))
+            .await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
             assert!(msg.contains("requires context"));
@@ -759,28 +506,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_set_value_missing_key() {
-        let tool = SetValueTool;
+    async fn test_kv_store_missing_operation() {
+        let tool = KvStoreTool;
         let context = ToolContext::new(uuid::Uuid::nil());
 
         let result = tool
-            .execute_with_context(json!({"value": "data"}), &context)
+            .execute_with_context(json!({"key": "test"}), &context)
             .await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Missing required parameter"));
+            assert!(msg.contains("operation"));
         } else {
-            panic!("Expected tool error for missing key");
+            panic!("Expected tool error for missing operation");
         }
     }
 
     #[tokio::test]
-    async fn test_set_value_no_storage_store() {
-        let tool = SetValueTool;
+    async fn test_kv_store_no_storage_store() {
+        let tool = KvStoreTool;
         let context = ToolContext::new(uuid::Uuid::nil());
 
         let result = tool
-            .execute_with_context(json!({"key": "test", "value": "data"}), &context)
+            .execute_with_context(
+                json!({"operation": "set", "key": "test", "value": "data"}),
+                &context,
+            )
             .await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
@@ -791,10 +541,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_set_secret_without_context() {
-        let tool = SetSecretTool;
+    async fn test_secret_store_without_context() {
+        let tool = SecretStoreTool;
         let result = tool
-            .execute(json!({"name": "api_key", "value": "secret123"}))
+            .execute(json!({"operation": "set", "name": "api_key", "value": "secret123"}))
             .await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
