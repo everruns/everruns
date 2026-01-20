@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod driver_tests {
-    use crate::{DriverRegistry, OpenAILlmDriver, register_driver};
+    use crate::{DriverRegistry, OpenAICompletionsLlmDriver, OpenAILlmDriver, register_driver};
     use everruns_core::llm_driver_registry::{ProviderConfig, ProviderType};
 
     #[test]
@@ -10,35 +10,64 @@ mod driver_tests {
         let driver = OpenAILlmDriver::new("test-key");
         // Just verify it can be created
         assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
+        assert!(format!("{:?}", driver).contains("Open Responses"));
+        // URL should be for Open Responses API
+        assert!(driver.api_url().contains("responses"));
     }
 
     #[test]
     fn test_driver_with_base_url() {
         let driver =
-            OpenAILlmDriver::with_base_url("test-key", "https://custom.api.com/v1/completions");
+            OpenAILlmDriver::with_base_url("test-key", "https://custom.api.com/v1/responses");
         assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
-        assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
+        assert_eq!(driver.api_url(), "https://custom.api.com/v1/responses");
+        assert!(driver.uses_custom_url());
+    }
+
+    #[test]
+    fn test_completions_driver_with_api_key() {
+        let driver = OpenAICompletionsLlmDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenAICompletionsLlmDriver"));
+        assert!(format!("{:?}", driver).contains("Chat Completions"));
+        // URL should be for Chat Completions API
+        assert!(driver.api_url().contains("chat/completions"));
+    }
+
+    #[test]
+    fn test_completions_driver_with_base_url() {
+        let driver = OpenAICompletionsLlmDriver::with_base_url(
+            "test-key",
+            "https://custom.api.com/v1/chat/completions",
+        );
+        assert!(format!("{:?}", driver).contains("OpenAICompletionsLlmDriver"));
+        assert_eq!(
+            driver.api_url(),
+            "https://custom.api.com/v1/chat/completions"
+        );
+        assert!(driver.uses_custom_url());
     }
 
     #[test]
     fn test_register_driver() {
         let mut registry = DriverRegistry::new();
         assert!(!registry.has_driver(&ProviderType::OpenAI));
-        assert!(!registry.has_driver(&ProviderType::AzureOpenAI));
+        assert!(!registry.has_driver(&ProviderType::OpenAICompletions));
 
         register_driver(&mut registry);
 
         assert!(registry.has_driver(&ProviderType::OpenAI));
-        assert!(registry.has_driver(&ProviderType::AzureOpenAI));
+        assert!(registry.has_driver(&ProviderType::OpenAICompletions));
 
-        // Verify drivers can be created via registry
+        // Verify OpenAI driver can be created
         let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
         let driver = registry.create_driver(&config);
         assert!(driver.is_ok());
 
-        let azure_config = ProviderConfig::new(ProviderType::AzureOpenAI).with_api_key("test-key");
-        let azure_driver = registry.create_driver(&azure_config);
-        assert!(azure_driver.is_ok());
+        // Verify OpenAI Completions driver can be created
+        let completions_config =
+            ProviderConfig::new(ProviderType::OpenAICompletions).with_api_key("test-key");
+        let completions_driver = registry.create_driver(&completions_config);
+        assert!(completions_driver.is_ok());
     }
 }
 

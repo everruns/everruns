@@ -331,8 +331,8 @@ impl LlmProviderStore for DirectLlmProviderStore {
 fn string_to_provider_type(s: &str) -> LlmProviderType {
     match s.to_lowercase().as_str() {
         "openai" => LlmProviderType::Openai,
+        "openai_completions" => LlmProviderType::OpenaiCompletions,
         "anthropic" => LlmProviderType::Anthropic,
-        "azure" | "azure_openai" => LlmProviderType::AzureOpenAI,
         "llmsim" => LlmProviderType::LlmSim,
         _ => LlmProviderType::Openai, // Default
     }

@@ -418,21 +418,21 @@ Configuration for LLM API providers. Stores encrypted API keys and provider-spec
 |-------|------|-------------|
 | `id` | UUID v7 | Unique identifier |
 | `name` | string | Display name |
-| `provider_type` | enum | `openai`, `anthropic`, `azure_openai` |
-| `base_url` | string? | Custom API endpoint (for Azure or proxies) |
+| `provider_type` | enum | `openai`, `openai_completions`, `anthropic` |
+| `base_url` | string? | Custom API endpoint (for proxies) |
 | `api_key_encrypted` | bytes? | AES-256-GCM encrypted API key |
 | `api_key_set` | boolean | Whether API key is configured (database or DEFAULT_ env var) |
 | `is_default` | boolean | Default provider for new agents |
 | `status` | enum | `active` or `disabled` |
-| `settings` | JSON | Provider-specific settings (e.g., Azure deployment_name) |
+| `settings` | JSON | Provider-specific settings |
 | `last_synced_at` | timestamp? | Last time models were synced from provider API |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
 
 **Supported Provider Types:**
-- `openai` - OpenAI API (GPT-4o, o1, etc.)
+- `openai` - OpenAI API using Open Responses API (recommended)
+- `openai_completions` - OpenAI API using Chat Completions API (legacy)
 - `anthropic` - Anthropic API (Claude models)
-- `azure_openai` - Azure OpenAI Service
 
 **Note:** Ollama and Custom provider types are no longer supported. LLM provider API keys are primarily configured in the database (via Settings > Providers UI), but environment variables can be used as fallbacks for development convenience.
 

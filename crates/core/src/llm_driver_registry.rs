@@ -583,9 +583,13 @@ impl LlmMessage {
 /// Provider type enumeration matching the database/contracts
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProviderType {
+    /// OpenAI using Open Responses API (https://www.openresponses.org/)
+    /// This is the recommended API for new projects.
     OpenAI,
+    /// OpenAI using Chat Completions API (for backward compatibility)
+    /// Use this if you need the legacy /v1/chat/completions endpoint.
+    OpenAICompletions,
     Anthropic,
-    AzureOpenAI,
     /// LLM simulator for testing (uses llmsim crate)
     LlmSim,
 }
@@ -596,8 +600,8 @@ impl std::str::FromStr for ProviderType {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "openai" => Ok(ProviderType::OpenAI),
+            "openai_completions" => Ok(ProviderType::OpenAICompletions),
             "anthropic" => Ok(ProviderType::Anthropic),
-            "azure_openai" => Ok(ProviderType::AzureOpenAI),
             "llmsim" => Ok(ProviderType::LlmSim),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
@@ -608,8 +612,8 @@ impl std::fmt::Display for ProviderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ProviderType::OpenAI => write!(f, "openai"),
+            ProviderType::OpenAICompletions => write!(f, "openai_completions"),
             ProviderType::Anthropic => write!(f, "anthropic"),
-            ProviderType::AzureOpenAI => write!(f, "azure_openai"),
             ProviderType::LlmSim => write!(f, "llmsim"),
         }
     }
@@ -794,14 +798,15 @@ mod tests {
             ProviderType::OpenAI
         );
         assert_eq!(
+            "openai_completions".parse::<ProviderType>().unwrap(),
+            ProviderType::OpenAICompletions
+        );
+        assert_eq!(
             "anthropic".parse::<ProviderType>().unwrap(),
             ProviderType::Anthropic
         );
-        assert_eq!(
-            "azure_openai".parse::<ProviderType>().unwrap(),
-            ProviderType::AzureOpenAI
-        );
-        // Ollama and Custom are no longer supported
+        // Azure, Ollama and Custom are no longer supported
+        assert!("azure_openai".parse::<ProviderType>().is_err());
         assert!("ollama".parse::<ProviderType>().is_err());
         assert!("custom".parse::<ProviderType>().is_err());
     }
@@ -809,8 +814,11 @@ mod tests {
     #[test]
     fn test_provider_type_display() {
         assert_eq!(ProviderType::OpenAI.to_string(), "openai");
+        assert_eq!(
+            ProviderType::OpenAICompletions.to_string(),
+            "openai_completions"
+        );
         assert_eq!(ProviderType::Anthropic.to_string(), "anthropic");
-        assert_eq!(ProviderType::AzureOpenAI.to_string(), "azure_openai");
     }
 
     #[test]

@@ -15,10 +15,12 @@ use utoipa::ToSchema;
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmProviderType {
+    /// OpenAI using Open Responses API (https://www.openresponses.org/)
     Openai,
+    /// OpenAI using Chat Completions API (for backward compatibility)
+    #[serde(rename = "openai_completions")]
+    OpenaiCompletions,
     Anthropic,
-    #[serde(rename = "azure_openai")]
-    AzureOpenAI,
     /// LLM simulator for testing
     #[serde(rename = "llmsim")]
     LlmSim,
@@ -28,8 +30,8 @@ impl std::fmt::Display for LlmProviderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LlmProviderType::Openai => write!(f, "openai"),
+            LlmProviderType::OpenaiCompletions => write!(f, "openai_completions"),
             LlmProviderType::Anthropic => write!(f, "anthropic"),
-            LlmProviderType::AzureOpenAI => write!(f, "azure_openai"),
             LlmProviderType::LlmSim => write!(f, "llmsim"),
         }
     }
@@ -41,8 +43,8 @@ impl std::str::FromStr for LlmProviderType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "openai" => Ok(LlmProviderType::Openai),
+            "openai_completions" => Ok(LlmProviderType::OpenaiCompletions),
             "anthropic" => Ok(LlmProviderType::Anthropic),
-            "azure_openai" => Ok(LlmProviderType::AzureOpenAI),
             "llmsim" => Ok(LlmProviderType::LlmSim),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
@@ -309,12 +311,12 @@ mod tests {
             "\"openai\""
         );
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::Anthropic).unwrap(),
-            "\"anthropic\""
+            serde_json::to_string(&LlmProviderType::OpenaiCompletions).unwrap(),
+            "\"openai_completions\""
         );
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::AzureOpenAI).unwrap(),
-            "\"azure_openai\""
+            serde_json::to_string(&LlmProviderType::Anthropic).unwrap(),
+            "\"anthropic\""
         );
         assert_eq!(
             serde_json::to_string(&LlmProviderType::LlmSim).unwrap(),
@@ -330,12 +332,12 @@ mod tests {
             LlmProviderType::Openai
         ));
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"anthropic\"").unwrap(),
-            LlmProviderType::Anthropic
+            serde_json::from_str::<LlmProviderType>("\"openai_completions\"").unwrap(),
+            LlmProviderType::OpenaiCompletions
         ));
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"azure_openai\"").unwrap(),
-            LlmProviderType::AzureOpenAI
+            serde_json::from_str::<LlmProviderType>("\"anthropic\"").unwrap(),
+            LlmProviderType::Anthropic
         ));
         assert!(matches!(
             serde_json::from_str::<LlmProviderType>("\"llmsim\"").unwrap(),
@@ -351,12 +353,12 @@ mod tests {
             LlmProviderType::Openai
         ));
         assert!(matches!(
-            "anthropic".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::Anthropic
+            "openai_completions".parse::<LlmProviderType>().unwrap(),
+            LlmProviderType::OpenaiCompletions
         ));
         assert!(matches!(
-            "azure_openai".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::AzureOpenAI
+            "anthropic".parse::<LlmProviderType>().unwrap(),
+            LlmProviderType::Anthropic
         ));
         assert!(matches!(
             "llmsim".parse::<LlmProviderType>().unwrap(),
@@ -368,8 +370,11 @@ mod tests {
     fn test_llm_provider_type_display() {
         // Verify Display works correctly
         assert_eq!(LlmProviderType::Openai.to_string(), "openai");
+        assert_eq!(
+            LlmProviderType::OpenaiCompletions.to_string(),
+            "openai_completions"
+        );
         assert_eq!(LlmProviderType::Anthropic.to_string(), "anthropic");
-        assert_eq!(LlmProviderType::AzureOpenAI.to_string(), "azure_openai");
         assert_eq!(LlmProviderType::LlmSim.to_string(), "llmsim");
     }
 }

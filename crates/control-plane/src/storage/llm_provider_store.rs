@@ -127,8 +127,8 @@ impl LlmProviderStore for DbLlmProviderStore {
 fn parse_provider_type(provider_type_str: &str) -> LlmProviderType {
     match provider_type_str.to_lowercase().as_str() {
         "openai" => LlmProviderType::Openai,
+        "openai_completions" => LlmProviderType::OpenaiCompletions,
         "anthropic" => LlmProviderType::Anthropic,
-        "azure_openai" | "azure-openai" | "azureopenai" => LlmProviderType::AzureOpenAI,
         "llmsim" => LlmProviderType::LlmSim,
         _ => LlmProviderType::Openai, // Default to OpenAI
     }

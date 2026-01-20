@@ -216,10 +216,41 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 
 OpenAI-specific LLM provider implementation:
 
-1. **Implements Core Traits**: `LlmProvider` trait from `everruns-core`
-2. **OpenAI Protocol Base**: Core types use OpenAI's message format as the standard
+1. **Implements Core Traits**: `LlmDriver` trait from `everruns-core`
+2. **Dual API Support**: Supports both Chat Completions and Open Responses APIs
 3. **Streaming Support**: Full SSE streaming with tool call support
 4. **Native API Access**: Direct methods for OpenAI-specific functionality
+
+### Open Responses Protocol
+
+Everruns implements the [Open Responses specification](https://www.openresponses.org/) -
+a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
+
+1. **Specification**: https://www.openresponses.org/specification
+2. **GitHub**: https://github.com/openresponses/openresponses
+
+**Key Benefits**:
+- **One spec, many providers**: Same API works with OpenAI, Anthropic, Gemini, and local models
+- **Agentic loop support**: Native tool calls, state machines, and semantic streaming events
+- **Better caching**: 40-80% better cache utilization vs Chat Completions API
+- **Provider-agnostic**: Events and responses follow a standardized format
+
+**Driver Selection**:
+```rust
+use everruns_openai::{OpenAILlmDriver, OpenAICompletionsLlmDriver};
+
+// Open Responses API (recommended for new projects)
+let driver = OpenAILlmDriver::new("api-key");
+
+// Chat Completions API (for backward compatibility)
+let driver = OpenAICompletionsLlmDriver::new("api-key");
+```
+
+**Implementation**:
+- `OpenResponsesProtocolLlmDriver` in `everruns-core` - Open Responses protocol
+- `OpenAIProtocolLlmDriver` in `everruns-core` - Chat Completions protocol
+- `OpenAILlmDriver` - Wraps Open Responses for `ProviderType::OpenAI`
+- `OpenAICompletionsLlmDriver` - Wraps Chat Completions for `ProviderType::OpenAICompletions`
 
 ### LlmSim Driver (Testing)
 
