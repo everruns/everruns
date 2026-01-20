@@ -150,15 +150,21 @@ Before running smoke tests, ensure these tools are installed:
 
 ### Cloud Agent environments
 
-When running in cloud-hosted agent environments (e.g., Claude Code on the web), the following secrets are available:
+**FIRST STEP in cloud environments (Claude Code on web, CI, etc.):**
+```bash
+./scripts/init-cloud-env.sh
+```
 
-- `OPENAI_API_KEY`: Available for LLM-related operations (OpenAI models)
-- `ANTHROPIC_API_KEY`: Available for LLM-related operations (Claude models)
-- `GITHUB_TOKEN`: Available for GitHub API operations (PRs, issues, repository access)
+This installs pre-built binaries (~5 seconds total):
+- `just` - command runner (wraps dev.sh)
+- `gh` - GitHub CLI (for PR/issue operations)
 
-These secrets are pre-configured in the environment and do not require manual setup.
+After running, use `just <command>` instead of `./scripts/dev.sh <command>`.
 
-If `gh` tool is not available, use GitHub API with `GITHUB_TOKEN`.
+**Available secrets** (pre-configured, no setup needed):
+- `OPENAI_API_KEY` - OpenAI models
+- `ANTHROPIC_API_KEY` - Claude models
+- `GITHUB_TOKEN` - GitHub API (PRs, issues)
 
 ### Rust conventions
 
