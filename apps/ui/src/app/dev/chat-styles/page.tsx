@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, ArrowLeft, ChevronDown, ChevronRight, Check, Loader2, Circle, CheckCircle2, CircleDot, ListTodo } from "lucide-react";
+import { Bot, ArrowLeft, ChevronDown, ChevronRight, Check, Loader2, Circle, CheckCircle2, CircleDot, ListTodo, Info, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -18,17 +19,61 @@ interface ToolCallData {
   todos?: Array<{ content: string; status: string }>;
 }
 
+// Message metadata for info tooltip
+interface MessageMeta {
+  id?: string;
+  model?: string;
+  tokens?: { input: number; output: number };
+  time?: string;
+}
+
 // Conversation item types
-type UserItem = { role: "user"; content: string };
-type AgentItem = { role: "agent"; content: string };
+type UserItem = { role: "user"; content: string; images?: string[]; meta?: MessageMeta };
+type AgentItem = { role: "agent"; content: string; meta?: MessageMeta };
 type ToolItem = { role: "tool"; calls: ToolCallData[] };
 type ThinkingItem = { role: "thinking"; model?: string };
 type ConversationItem = UserItem | AgentItem | ToolItem | ThinkingItem;
 
+// Info icon component
+function MessageInfo({ meta, variant = "default" }: { meta?: MessageMeta; variant?: "default" | "light" }) {
+  if (!meta) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        className={cn(
+          "p-0.5 rounded opacity-40 hover:opacity-70 transition-opacity",
+          variant === "light" ? "text-white" : "text-muted-foreground"
+        )}
+      >
+        <Info className="h-3 w-3" />
+      </TooltipTrigger>
+      <TooltipContent className="text-xs space-y-0.5">
+        {meta.id && <div>ID: {meta.id}</div>}
+        {meta.model && <div>Model: {meta.model}</div>}
+        {meta.time && <div>Time: {meta.time}</div>}
+        {meta.tokens && <div>Tokens: {meta.tokens.input} in / {meta.tokens.output} out</div>}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// Image placeholder component
+function ImagePlaceholder({ count = 1 }: { count?: number }) {
+  return (
+    <div className="flex gap-1 mt-1.5">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="w-16 h-12 bg-muted/50 rounded border border-border/50 flex items-center justify-center">
+          <ImageIcon className="h-4 w-4 text-muted-foreground/40" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Sample conversation data
 const sampleConversation: ConversationItem[] = [
-  { role: "user", content: "Can you list the files in my project and run the tests?" },
-  { role: "agent", content: "I'll check the project structure and run the test suite for you." },
+  { role: "user", content: "Can you list the files in my project and run the tests?", meta: { id: "msg_01", time: "2:34 PM" } },
+  { role: "agent", content: "I'll check the project structure and run the test suite for you.", meta: { id: "msg_02", model: "claude-3-5-sonnet", tokens: { input: 156, output: 42 }, time: "2:34 PM" } },
   {
     role: "tool",
     calls: [
@@ -46,9 +91,9 @@ const sampleConversation: ConversationItem[] = [
       },
     ],
   },
-  { role: "agent", content: "Your project has 3 files and all 24 tests passed successfully." },
-  { role: "user", content: "Great! Now create a todo list for the remaining tasks." },
-  { role: "agent", content: "I'll create a task list to track the remaining work." },
+  { role: "agent", content: "Your project has 3 files and all 24 tests passed successfully.", meta: { id: "msg_03", model: "claude-3-5-sonnet", tokens: { input: 892, output: 28 }, time: "2:35 PM" } },
+  { role: "user", content: "Great! Now create a todo list for the remaining tasks.", meta: { id: "msg_04", time: "2:36 PM" } },
+  { role: "agent", content: "I'll create a task list to track the remaining work.", meta: { id: "msg_05", model: "claude-3-5-sonnet", tokens: { input: 1024, output: 35 }, time: "2:36 PM" } },
   {
     role: "tool",
     calls: [
@@ -65,7 +110,13 @@ const sampleConversation: ConversationItem[] = [
       },
     ],
   },
-  { role: "agent", content: "I've created a task list. The code review is done and I'm currently running the tests." },
+  { role: "agent", content: "I've created a task list. The code review is done and I'm currently running the tests.", meta: { id: "msg_06", model: "claude-3-5-sonnet", tokens: { input: 1256, output: 48 }, time: "2:36 PM" } },
+];
+
+// Conversation with images
+const imageConversation: ConversationItem[] = [
+  { role: "user", content: "Here's a screenshot of the error I'm seeing:", images: ["error.png", "console.png"], meta: { id: "msg_img", time: "3:15 PM" } },
+  { role: "agent", content: "I can see the issue - the error shows a null pointer exception. Let me fix that.", meta: { id: "msg_resp", model: "claude-3-5-sonnet", tokens: { input: 2048, output: 156 }, time: "3:15 PM" } },
 ];
 
 // Tool call with executing state
@@ -94,23 +145,30 @@ const thinkingConversation: ConversationItem[] = [
 // Current Style (Option A)
 // ============================================
 
-function CurrentUserMessage({ content }: { content: string }) {
+function CurrentUserMessage({ content, images, meta }: { content: string; images?: string[]; meta?: MessageMeta }) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
-        <p className="text-sm whitespace-pre-wrap">{content}</p>
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <p className="text-sm whitespace-pre-wrap">{content}</p>
+            {images && images.length > 0 && <ImagePlaceholder count={images.length} />}
+          </div>
+          <MessageInfo meta={meta} variant="light" />
+        </div>
       </div>
     </div>
   );
 }
 
-function CurrentAgentMessage({ content }: { content: string }) {
+function CurrentAgentMessage({ content, meta }: { content: string; meta?: MessageMeta }) {
   return (
     <div className="flex justify-start">
       <div className="w-full bg-muted/60 rounded-lg p-3">
         <div className="flex items-start gap-2">
           <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-          <p className="text-sm whitespace-pre-wrap">{content}</p>
+          <p className="flex-1 text-sm whitespace-pre-wrap">{content}</p>
+          <MessageInfo meta={meta} />
         </div>
       </div>
     </div>
@@ -193,21 +251,28 @@ function CurrentThinking({ model }: { model?: string }) {
 // Option B: Flat Agent, Boxed User
 // ============================================
 
-function FlatUserMessage({ content }: { content: string }) {
+function FlatUserMessage({ content, images, meta }: { content: string; images?: string[]; meta?: MessageMeta }) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl px-4 py-2.5">
-        <p className="text-sm">{content}</p>
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <p className="text-sm">{content}</p>
+            {images && images.length > 0 && <ImagePlaceholder count={images.length} />}
+          </div>
+          <MessageInfo meta={meta} variant="light" />
+        </div>
       </div>
     </div>
   );
 }
 
-function FlatAgentMessage({ content }: { content: string }) {
+function FlatAgentMessage({ content, meta }: { content: string; meta?: MessageMeta }) {
   return (
     <div className="flex justify-start">
-      <div className="w-full">
-        <p className="text-sm whitespace-pre-wrap">{content}</p>
+      <div className="w-full flex items-start gap-2">
+        <p className="flex-1 text-sm whitespace-pre-wrap">{content}</p>
+        <MessageInfo meta={meta} />
       </div>
     </div>
   );
@@ -280,20 +345,29 @@ function FlatThinking({ model }: { model?: string }) {
 // Option C: Minimal - subtle everything
 // ============================================
 
-function MinimalUserMessage({ content }: { content: string }) {
+function MinimalUserMessage({ content, images, meta }: { content: string; images?: string[]; meta?: MessageMeta }) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
-        <p className="text-sm">{content}</p>
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <p className="text-sm">{content}</p>
+            {images && images.length > 0 && <ImagePlaceholder count={images.length} />}
+          </div>
+          <MessageInfo meta={meta} />
+        </div>
       </div>
     </div>
   );
 }
 
-function MinimalAgentMessage({ content }: { content: string }) {
+function MinimalAgentMessage({ content, meta }: { content: string; meta?: MessageMeta }) {
   return (
     <div className="flex justify-start pl-1">
-      <p className="text-sm whitespace-pre-wrap text-foreground/90">{content}</p>
+      <div className="flex items-start gap-2 w-full">
+        <p className="flex-1 text-sm whitespace-pre-wrap text-foreground/90">{content}</p>
+        <MessageInfo meta={meta} />
+      </div>
     </div>
   );
 }
@@ -359,21 +433,30 @@ function MinimalThinking({ model }: { model?: string }) {
 // Option D: Minimal + Icon
 // ============================================
 
-function MinimalIconUserMessage({ content }: { content: string }) {
+function MinimalIconUserMessage({ content, images, meta }: { content: string; images?: string[]; meta?: MessageMeta }) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
-        <p className="text-sm">{content}</p>
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <p className="text-sm">{content}</p>
+            {images && images.length > 0 && <ImagePlaceholder count={images.length} />}
+          </div>
+          <MessageInfo meta={meta} />
+        </div>
       </div>
     </div>
   );
 }
 
-function MinimalIconAgentMessage({ content }: { content: string }) {
+function MinimalIconAgentMessage({ content, meta }: { content: string; meta?: MessageMeta }) {
   return (
     <div className="flex justify-start gap-2">
       <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-      <p className="text-sm whitespace-pre-wrap text-foreground/90">{content}</p>
+      <div className="flex items-start gap-2 flex-1">
+        <p className="flex-1 text-sm whitespace-pre-wrap text-foreground/90">{content}</p>
+        <MessageInfo meta={meta} />
+      </div>
     </div>
   );
 }
@@ -461,9 +544,9 @@ function renderConversation(conversation: ConversationItem[], style: StyleOption
   return conversation.map((item, i) => {
     switch (item.role) {
       case "user":
-        return <User key={i} content={item.content} />;
+        return <User key={i} content={item.content} images={item.images} meta={item.meta} />;
       case "agent":
-        return <Agent key={i} content={item.content} />;
+        return <Agent key={i} content={item.content} meta={item.meta} />;
       case "tool":
         return (
           <div key={i} className="space-y-1">
@@ -563,6 +646,12 @@ export default function ChatStylesPage() {
             <div className="border-t p-4 space-y-4">
               <div className="text-xs text-muted-foreground text-center mb-4">Thinking State</div>
               {renderConversation(thinkingConversation, selectedStyle)}
+            </div>
+
+            {/* Images */}
+            <div className="border-t p-4 space-y-4">
+              <div className="text-xs text-muted-foreground text-center mb-4">With Images</div>
+              {renderConversation(imageConversation, selectedStyle)}
             </div>
           </div>
         </ScrollArea>
