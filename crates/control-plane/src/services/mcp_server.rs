@@ -202,7 +202,7 @@ impl McpServerService {
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
 
         McpServer {
-            id: row.id,
+            id: row.id.into(),
             name: row.name.clone(),
             description: row.description.clone(),
             url: row.url.clone(),

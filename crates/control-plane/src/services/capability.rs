@@ -47,7 +47,7 @@ impl CapabilityService {
         let mcp_servers = self.mcp_service.list_active_with_tools().await?;
         for server_with_tools in mcp_servers {
             let mcp_cap = McpCapability::new(
-                server_with_tools.server.id,
+                server_with_tools.server.id.uuid(),
                 server_with_tools.server.name.clone(),
                 server_with_tools.server.description.clone(),
                 server_with_tools.cached_tools.clone(),
@@ -62,7 +62,7 @@ impl CapabilityService {
                 .unwrap_or_else(|| format!("MCP Server with {} tool(s)", tool_count));
 
             capabilities.push(CapabilityInfo {
-                id: CapabilityId::new(mcp_capability_id(server_with_tools.server.id)),
+                id: CapabilityId::new(mcp_capability_id(server_with_tools.server.id.uuid())),
                 name: server_with_tools.server.name.clone(),
                 description,
                 status: CapabilityStatus::Available,
@@ -92,7 +92,7 @@ impl CapabilityService {
 
             if let Some(server) = server {
                 let mcp_cap = McpCapability::new(
-                    server.id,
+                    server.id.uuid(),
                     server.name.clone(),
                     server.description.clone(),
                     tools.clone(),
@@ -105,7 +105,7 @@ impl CapabilityService {
                     .unwrap_or_else(|| format!("MCP Server with {} tool(s)", tool_count));
 
                 return Ok(Some(CapabilityInfo {
-                    id: CapabilityId::new(mcp_capability_id(server.id)),
+                    id: CapabilityId::new(mcp_capability_id(server.id.uuid())),
                     name: server.name,
                     description,
                     status: CapabilityStatus::Available,
@@ -215,7 +215,7 @@ impl CapabilityService {
 
             if let Some(server) = server {
                 let mcp_cap = McpCapability::new(
-                    server.id,
+                    server.id.uuid(),
                     server.name.clone(),
                     server.description.clone(),
                     tools,

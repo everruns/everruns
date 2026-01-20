@@ -4437,8 +4437,8 @@
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid",
-                  "description": "Unique identifier for the MCP server."
+                  "description": "Unique identifier for the MCP server.",
+                  "example": "mcp_01933b5a00007000800000000000001"
                 },
                 "name": {
                   "type": "string",
@@ -5203,8 +5203,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Unique identifier for the MCP server."
+            "description": "Unique identifier for the MCP server.",
+            "example": "mcp_01933b5a00007000800000000000001"
           },
           "name": {
             "type": "string",
