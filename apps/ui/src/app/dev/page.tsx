@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FlaskConical, MessageSquare, LayoutList, ArrowRight, Star, FileText, Palette } from "lucide-react";
+import { FlaskConical, MessageSquare, LayoutList, ArrowRight, Star, FileText, Palette, Gauge } from "lucide-react";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -17,9 +17,15 @@ const devPages = [
   },
   {
     title: "Chat Components",
-    description: "Individual chat components: messages, tool calls, todo lists, thinking indicators",
+    description: "Chat-specific: messages, tool calls, todo lists, image attachments",
     href: "/dev/chat-components",
     icon: MessageSquare,
+  },
+  {
+    title: "Session Components",
+    description: "Session-level: token usage, status badges, session headers",
+    href: "/dev/session-components",
+    icon: Gauge,
   },
   {
     title: "Markdown Component",
