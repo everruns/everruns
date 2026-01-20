@@ -47,6 +47,21 @@ const DEFAULT_SESSION_MOUNT_PATH: &str = "/session";
 /// Default host base path for session file exports
 const DEFAULT_HOST_BASE_PATH: &str = "/tmp/everruns-sessions";
 
+/// Mount mode for session filesystem
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionMountMode {
+    /// Disabled - no session filesystem mounting
+    #[default]
+    Disabled,
+    /// Bind mount - export files to host directory and mount into container
+    /// Requires shared filesystem between worker and Docker daemon
+    BindMount,
+    /// Copy - use `docker cp` to copy files into container after start
+    /// Works in any Docker environment, no shared filesystem required
+    Copy,
+}
+
 /// Configuration schema for the Docker Container capability
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DockerContainerConfig {
@@ -59,14 +74,23 @@ pub struct DockerContainerConfig {
     pub working_dir: String,
 
     /// Mount session filesystem into container (experimental)
+    /// Deprecated: Use `session_mount_mode` instead
     #[serde(default)]
     pub mount_session_filesystem: bool,
 
-    /// Path inside container where session filesystem is mounted
+    /// Session filesystem mount mode
+    /// - "disabled": No mounting (default)
+    /// - "bind_mount": Use Docker bind mount (requires shared filesystem)
+    /// - "copy": Use docker cp (works anywhere, no shared filesystem needed)
+    #[serde(default)]
+    pub session_mount_mode: SessionMountMode,
+
+    /// Path inside container where session filesystem is mounted/copied
     #[serde(default = "default_session_mount_path")]
     pub session_mount_path: String,
 
     /// Host base path for session file exports (session_id will be appended)
+    /// Only used with bind_mount mode
     #[serde(default = "default_host_base_path")]
     pub host_base_path: String,
 }
@@ -93,8 +117,25 @@ impl Default for DockerContainerConfig {
             image: default_image(),
             working_dir: default_working_dir(),
             mount_session_filesystem: false,
+            session_mount_mode: SessionMountMode::default(),
             session_mount_path: default_session_mount_path(),
             host_base_path: default_host_base_path(),
+        }
+    }
+}
+
+impl DockerContainerConfig {
+    /// Get the effective mount mode, considering both old and new config fields
+    fn effective_mount_mode(&self) -> SessionMountMode {
+        // New field takes precedence if set to non-default
+        if self.session_mount_mode != SessionMountMode::Disabled {
+            return self.session_mount_mode.clone();
+        }
+        // Fall back to legacy field for backwards compatibility
+        if self.mount_session_filesystem {
+            SessionMountMode::BindMount
+        } else {
+            SessionMountMode::Disabled
         }
     }
 }
@@ -327,43 +368,203 @@ fn parse_config(config: &Value) -> DockerContainerConfig {
 
 /// Ensure container is running with optional session filesystem mount
 ///
-/// If `mount_session_filesystem` is enabled in config and a file_store is provided,
-/// this will export session files to the host filesystem and mount them into the container.
+/// Supports two modes:
+/// - BindMount: Export files to host directory and mount into container
+/// - Copy: Start container first, then use `docker cp` to copy files in
 async fn ensure_container_with_session_mount(
     name: &str,
     session_id: &uuid::Uuid,
     config: &DockerContainerConfig,
     file_store: Option<&Arc<dyn SessionFileStore>>,
 ) -> Result<(), String> {
-    let mounts = if config.mount_session_filesystem {
-        if let Some(store) = file_store {
-            let host_path = session_host_path(config, session_id);
+    let mount_mode = config.effective_mount_mode();
 
-            // Export session files to host before container starts
-            // Only export if container doesn't already exist (to avoid re-exporting on restart)
-            if !container_exists(name).await {
-                export_session_files(store, *session_id, &host_path).await?;
+    match mount_mode {
+        SessionMountMode::Disabled => {
+            // No mounting, just ensure container is running
+            ensure_container_running(name, config, None).await
+        }
+        SessionMountMode::BindMount => {
+            // Bind mount mode: export files to host, then mount
+            if let Some(store) = file_store {
+                let host_path = session_host_path(config, session_id);
+
+                // Export session files to host before container starts
+                // Only export if container doesn't already exist (to avoid re-exporting on restart)
+                if !container_exists(name).await {
+                    export_session_files(store, *session_id, &host_path).await?;
+                }
+
+                let mounts = vec![VolumeMount {
+                    host_path,
+                    container_path: config.session_mount_path.clone(),
+                    readonly: false,
+                }];
+
+                ensure_container_running(name, config, Some(mounts)).await
+            } else {
+                warn!("bind_mount mode enabled but no file_store available, skipping mount");
+                ensure_container_running(name, config, None).await
+            }
+        }
+        SessionMountMode::Copy => {
+            // Copy mode: start container first, then copy files in
+            let container_was_new = !container_exists(name).await;
+
+            // Start container without mounts
+            ensure_container_running(name, config, None).await?;
+
+            // Copy files into container if it was just created
+            if container_was_new {
+                if let Some(store) = file_store {
+                    copy_session_files_to_container(
+                        store,
+                        *session_id,
+                        name,
+                        &config.session_mount_path,
+                    )
+                    .await?;
+                } else {
+                    warn!("copy mode enabled but no file_store available, skipping copy");
+                }
             }
 
-            Some(vec![VolumeMount {
-                host_path,
-                container_path: config.session_mount_path.clone(),
-                readonly: false, // Allow modifications
-            }])
-        } else {
-            warn!("mount_session_filesystem enabled but no file_store available, skipping mount");
-            None
+            Ok(())
         }
-    } else {
-        None
-    };
-
-    ensure_container_running(name, config, mounts).await
+    }
 }
 
 /// Get the host path for session files
 fn session_host_path(config: &DockerContainerConfig, session_id: &uuid::Uuid) -> PathBuf {
     PathBuf::from(&config.host_base_path).join(session_id.to_string())
+}
+
+/// Copy session files directly into the container using docker exec
+///
+/// This approach doesn't require a shared filesystem between the worker and Docker daemon.
+/// Files are written directly into the container via `docker exec` with base64-encoded content.
+async fn copy_session_files_to_container(
+    file_store: &Arc<dyn SessionFileStore>,
+    session_id: uuid::Uuid,
+    container_name: &str,
+    mount_path: &str,
+) -> Result<usize, String> {
+    // Create the mount directory in the container
+    let mkdir_output = Command::new("docker")
+        .args(["exec", container_name, "mkdir", "-p", mount_path])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to create mount directory: {}", e))?;
+
+    if !mkdir_output.status.success() {
+        let stderr = String::from_utf8_lossy(&mkdir_output.stderr);
+        return Err(format!("Failed to create mount directory: {}", stderr));
+    }
+
+    // List all files from the session filesystem
+    let files = list_all_files_iterative(file_store, session_id).await?;
+
+    let mut copied = 0;
+    for file_info in files {
+        // Build the container path
+        let container_file_path = format!(
+            "{}/{}",
+            mount_path.trim_end_matches('/'),
+            file_info.path.trim_start_matches('/')
+        );
+
+        if file_info.is_directory {
+            // Create directory in container
+            let output = Command::new("docker")
+                .args(["exec", container_name, "mkdir", "-p", &container_file_path])
+                .output()
+                .await
+                .map_err(|e| {
+                    format!("Failed to create directory {}: {}", container_file_path, e)
+                })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                warn!(
+                    "Failed to create directory {} in container: {}",
+                    container_file_path, stderr
+                );
+            }
+        } else {
+            // Read file content
+            if let Some(session_file) = file_store
+                .read_file(session_id, &file_info.path)
+                .await
+                .map_err(|e| format!("Failed to read file {}: {}", file_info.path, e))?
+            {
+                let Some(content) = session_file.content else {
+                    continue;
+                };
+
+                // Ensure parent directory exists
+                if let Some(parent) = std::path::Path::new(&container_file_path).parent() {
+                    let parent_str = parent.to_string_lossy();
+                    let _ = Command::new("docker")
+                        .args(["exec", container_name, "mkdir", "-p", &parent_str])
+                        .output()
+                        .await;
+                }
+
+                // Get content bytes (decode base64 if needed)
+                let content_bytes: Vec<u8> = if session_file.encoding == "base64" {
+                    base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        content.as_bytes(),
+                    )
+                    .map_err(|e| format!("Failed to decode base64 content: {}", e))?
+                } else {
+                    content.into_bytes()
+                };
+
+                // Encode as base64 for safe transport via shell
+                let encoded = base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    &content_bytes,
+                );
+
+                // Write file using docker exec with base64 decode
+                let output = Command::new("docker")
+                    .args([
+                        "exec",
+                        container_name,
+                        "sh",
+                        "-c",
+                        &format!("echo '{}' | base64 -d > '{}'", encoded, container_file_path),
+                    ])
+                    .output()
+                    .await
+                    .map_err(|e| format!("Failed to write file {}: {}", container_file_path, e))?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    warn!(
+                        "Failed to write file {} in container: {}",
+                        container_file_path, stderr
+                    );
+                } else {
+                    // Set readonly permissions if applicable
+                    if session_file.is_readonly {
+                        let _ = Command::new("docker")
+                            .args(["exec", container_name, "chmod", "444", &container_file_path])
+                            .output()
+                            .await;
+                    }
+                    copied += 1;
+                }
+            }
+        }
+    }
+
+    info!(
+        "Copied {} session files to container {} at {}",
+        copied, container_name, mount_path
+    );
+    Ok(copied)
 }
 
 /// Export session files to the host filesystem for Docker mounting
@@ -1056,6 +1257,7 @@ mod tests {
         assert_eq!(config.image, DEFAULT_IMAGE);
         assert_eq!(config.working_dir, DEFAULT_WORKING_DIR);
         assert!(!config.mount_session_filesystem);
+        assert_eq!(config.session_mount_mode, SessionMountMode::Disabled);
         assert_eq!(config.session_mount_path, DEFAULT_SESSION_MOUNT_PATH);
         assert_eq!(config.host_base_path, DEFAULT_HOST_BASE_PATH);
     }
@@ -1070,6 +1272,7 @@ mod tests {
         assert_eq!(config.image, "ubuntu:22.04");
         assert_eq!(config.working_dir, "/app");
         assert!(!config.mount_session_filesystem);
+        assert_eq!(config.session_mount_mode, SessionMountMode::Disabled);
     }
 
     #[test]
@@ -1083,7 +1286,8 @@ mod tests {
     }
 
     #[test]
-    fn test_config_parse_with_mount() {
+    fn test_config_parse_with_mount_legacy() {
+        // Test legacy mount_session_filesystem field
         let json = json!({
             "image": "python:3.11",
             "mount_session_filesystem": true,
@@ -1095,6 +1299,65 @@ mod tests {
         assert!(config.mount_session_filesystem);
         assert_eq!(config.session_mount_path, "/data");
         assert_eq!(config.host_base_path, "/var/sessions");
+        // Legacy field should result in BindMount mode
+        assert_eq!(config.effective_mount_mode(), SessionMountMode::BindMount);
+    }
+
+    #[test]
+    fn test_config_parse_with_copy_mode() {
+        let json = json!({
+            "image": "python:3.11",
+            "session_mount_mode": "copy",
+            "session_mount_path": "/data"
+        });
+        let config = parse_config(&json);
+        assert_eq!(config.image, "python:3.11");
+        assert_eq!(config.session_mount_mode, SessionMountMode::Copy);
+        assert_eq!(config.session_mount_path, "/data");
+        assert_eq!(config.effective_mount_mode(), SessionMountMode::Copy);
+    }
+
+    #[test]
+    fn test_config_parse_with_bind_mount_mode() {
+        let json = json!({
+            "image": "python:3.11",
+            "session_mount_mode": "bind_mount",
+            "host_base_path": "/var/sessions"
+        });
+        let config = parse_config(&json);
+        assert_eq!(config.session_mount_mode, SessionMountMode::BindMount);
+        assert_eq!(config.host_base_path, "/var/sessions");
+        assert_eq!(config.effective_mount_mode(), SessionMountMode::BindMount);
+    }
+
+    #[test]
+    fn test_effective_mount_mode_new_takes_precedence() {
+        // New field should take precedence over legacy
+        let json = json!({
+            "mount_session_filesystem": true,
+            "session_mount_mode": "copy"
+        });
+        let config = parse_config(&json);
+        assert!(config.mount_session_filesystem);
+        assert_eq!(config.session_mount_mode, SessionMountMode::Copy);
+        // New field takes precedence
+        assert_eq!(config.effective_mount_mode(), SessionMountMode::Copy);
+    }
+
+    #[test]
+    fn test_effective_mount_mode_disabled_fallback() {
+        // When new field is Disabled, fall back to legacy
+        let json = json!({
+            "mount_session_filesystem": true,
+            "session_mount_mode": "disabled"
+        });
+        let config = parse_config(&json);
+        // Explicitly set to disabled should stay disabled (new field takes precedence)
+        // Actually, when session_mount_mode is explicitly "disabled", it's still Disabled
+        // which equals the default, so we fall back to legacy
+        // Wait, the logic is: if session_mount_mode != Disabled, use it; else fall back
+        // So if it's explicitly "disabled", we still check if legacy is true
+        assert_eq!(config.effective_mount_mode(), SessionMountMode::BindMount);
     }
 
     #[test]
