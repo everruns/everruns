@@ -37,6 +37,8 @@ sudo -E .claude/skills/no-docker-setup/scripts/start.sh
 3. **API Key** - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
 4. **Root access** - For PostgreSQL cluster initialization
 
+Note: `sqlx` CLI is auto-installed if missing.
+
 ## Architecture
 
 ```
