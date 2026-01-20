@@ -5,7 +5,7 @@
 # Usage: ./scripts/init-cloud-env.sh
 #
 # This script installs:
-# - just: command runner (wraps dev.sh)
+# - just: command runner (see justfile)
 # - gh: GitHub CLI (for PR/issue operations)
 #
 # Run this BEFORE any other commands in a fresh cloud environment.

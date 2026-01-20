@@ -112,11 +112,13 @@ When making changes that affect user-facing behavior or operations, update the r
 
 ### Local dev expectations
 
-**Command runner options:**
-- `./scripts/dev.sh <command>` - Bash script (always available)
-- `just <command>` - [just](https://github.com/casey/just) command runner (optional, install: `cargo install just`)
+**Command runner:** [just](https://github.com/casey/just)
+```bash
+just <command>       # Run a command
+just --list          # List all commands
+```
 
-Both are equivalent; `just` wraps `dev.sh`. Use whichever you prefer.
+Install: `cargo install just` or `./scripts/init-cloud-env.sh` (pre-built binary)
 
 **Full mode (with PostgreSQL):**
 - A `local/docker-compose.yml` brings up Postgres + Jaeger
@@ -124,7 +126,7 @@ Both are equivalent; `just` wraps `dev.sh`. Use whichever you prefer.
 **DEV_MODE (no database required):**
 ```bash
 # Quick start - no Docker/PostgreSQL needed
-./scripts/dev.sh start-dev  # or: just start-dev
+just start-dev
 ```
 - Uses in-memory storage (data lost on restart)
 - Execution happens in-process (no separate worker)
@@ -156,10 +158,10 @@ Before running smoke tests, ensure these tools are installed:
 ```
 
 This installs pre-built binaries (~5 seconds total):
-- `just` - command runner (wraps dev.sh)
+- `just` - command runner
 - `gh` - GitHub CLI (for PR/issue operations)
 
-After running, use `just <command>` instead of `./scripts/dev.sh <command>`.
+After running, use `just <command>` for all development tasks.
 
 **Available secrets** (pre-configured, no setup needed):
 - `OPENAI_API_KEY` - OpenAI models
@@ -260,7 +262,7 @@ Message content uses unified `Vec<ContentPart>` across all layers:
 
 Before creating a pull request:
 
-1. **Run pre-PR script**: `./scripts/dev.sh pre-pr` or `just pre-pr` (runs checks 2-8 automatically)
+1. **Run pre-PR script**: `just pre-pr` (runs checks 2-8 automatically)
 2. **Rust formatting**: `cargo fmt --check`
 3. **Rust linting**: `cargo clippy --all-targets --all-features -- -D warnings`
 4. **Rust tests**: `cargo test --all-features`
@@ -282,7 +284,7 @@ Before creating a pull request:
 15. **Update specs**: If changes affect system behavior, update specs in `specs/`
 16. **Update docs**: If changes affect usage, update docs in `docs/`
 
-CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` (or `just pre-pr`) before pushing.
+CI will fail if any automated checks fail. Always run `just pre-pr` before pushing.
 
 ### UI conventions
 
@@ -293,8 +295,8 @@ CI will fail if any automated checks fail. Always run `./scripts/dev.sh pre-pr` 
 
 **E2E Testing (Playwright):**
 - Tests located in `apps/ui/e2e/`
-- Run with `./scripts/dev.sh e2e` or `npm run e2e` in apps/ui
-- Screenshot tests: `./scripts/dev.sh e2e-screenshots`
+- Run with `just e2e` or `npm run e2e` in apps/ui
+- Screenshot tests: `just e2e-screenshots`
 - Dev pages (`/dev/*`) provide component showcases for visual testing
 
 ### Testing conventions
@@ -400,17 +402,17 @@ The best way to verify the system is working is to run the **smoke test script**
 
 ```bash
 # First-time setup (installs Rust tools + UI dependencies)
-./scripts/dev.sh init       # or: just init
+just init
 
 # Option 1: Start everything at once
-./scripts/dev.sh start-all  # or: just start-all
+just start-all
 
 # Option 2: Start services individually
-./scripts/dev.sh start      # Start Docker services (or: just start)
-./scripts/dev.sh migrate    # Run migrations (or: just migrate)
-./scripts/dev.sh api        # Start API (or: just api)
-./scripts/dev.sh worker     # Start worker (or: just worker)
-./scripts/dev.sh ui         # Start UI (or: just ui)
+just start      # Start Docker services
+just migrate    # Run migrations
+just api        # Start API
+just worker     # Start worker
+just ui         # Start UI
 
 # Run smoke tests - see .claude/skills/smoke-tests/SKILL.md for test checklist
 ```
