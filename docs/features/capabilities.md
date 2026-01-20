@@ -74,6 +74,32 @@ Enables fetching content from URLs and converting HTML to markdown or plain text
   - Returns metadata for binary content (images, PDFs) instead of failing
 - **Use cases**: Agents that need to retrieve information from the web
 
+### Docker Container (Experimental)
+
+**Status**: Available (Development only)
+
+:::caution
+This capability is experimental and only available in development environments. It may change significantly or be removed.
+:::
+
+Provides tools to run commands and manage files in a Docker container tied to the session.
+
+- **Tools**:
+  - `docker_exec` - Execute shell commands in the container
+  - `docker_read_file` - Read files from the container filesystem
+  - `docker_write_file` - Write files to the container filesystem
+  - `docker_logs` - Get logs from the container
+  - `docker_stop` - Stop and remove the container
+- **Features**:
+  - Container is lazily started on first tool use
+  - Persists for session duration
+  - Session-isolated containers
+  - Configurable Docker image and working directory
+- **Configuration**:
+  - `image`: Docker image to use (default: `mcr.microsoft.com/devcontainers/python:3.11`)
+  - `working_dir`: Working directory inside container (default: `/workspace`)
+- **Use cases**: Agents that need to execute code or manage files in an isolated environment
+
 ## Managing Capabilities
 
 ### Via UI

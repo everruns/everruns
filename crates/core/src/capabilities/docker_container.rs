@@ -18,6 +18,7 @@
 //! - `docker_exec`: Execute a command inside the container
 //! - `docker_read_file`: Read a file from the container
 //! - `docker_write_file`: Write a file to the container
+//! - `docker_logs`: Get logs from the container
 //! - `docker_stop`: Stop and remove the container
 
 use super::{Capability, CapabilityId, CapabilityStatus};
@@ -109,6 +110,7 @@ Available tools:
 - `docker_exec`: Execute a shell command inside the container. Returns stdout, stderr, and exit code.
 - `docker_read_file`: Read a file from the container filesystem.
 - `docker_write_file`: Write content to a file in the container filesystem.
+- `docker_logs`: Get logs from the container. Useful for debugging long-running processes.
 - `docker_stop`: Stop and remove the container (for cleanup or to reset state).
 
 The container is lazily started on first tool use. Subsequent calls reuse the same container.
@@ -127,6 +129,7 @@ Best practices:
             Box::new(DockerExecTool),
             Box::new(DockerReadFileTool),
             Box::new(DockerWriteFileTool),
+            Box::new(DockerLogsTool),
             Box::new(DockerStopTool),
         ]
     }
@@ -756,6 +759,136 @@ impl Tool for DockerStopTool {
 }
 
 // ============================================================================
+// DockerLogsTool
+// ============================================================================
+
+/// Tool to get logs from the Docker container
+pub struct DockerLogsTool;
+
+#[async_trait]
+impl Tool for DockerLogsTool {
+    fn name(&self) -> &str {
+        "docker_logs"
+    }
+
+    fn description(&self) -> &str {
+        "Get logs from the Docker container. Returns stdout/stderr output from the container. \
+         Useful for debugging long-running processes or checking application output."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "tail": {
+                    "type": "integer",
+                    "description": "Number of lines to show from the end of the logs (default: 100)"
+                },
+                "since": {
+                    "type": "string",
+                    "description": "Show logs since timestamp (e.g., '2024-01-01T00:00:00Z') or relative time (e.g., '10m', '1h')"
+                },
+                "timestamps": {
+                    "type": "boolean",
+                    "description": "Show timestamps with each log line (default: false)"
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "docker_logs requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let tail = arguments
+            .get("tail")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(100);
+
+        let since = arguments.get("since").and_then(|v| v.as_str());
+
+        let timestamps = arguments
+            .get("timestamps")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let name = container_name(&context.session_id);
+
+        // Check if container exists
+        if !container_exists(&name).await {
+            return ToolExecutionResult::tool_error(format!(
+                "Container '{}' does not exist. Use docker_exec to start it first.",
+                name
+            ));
+        }
+
+        debug!("Getting logs from container: {}", name);
+
+        // Build docker logs command
+        let mut args = vec!["logs".to_string()];
+
+        args.push("--tail".to_string());
+        args.push(tail.to_string());
+
+        if let Some(since_val) = since {
+            args.push("--since".to_string());
+            args.push(since_val.to_string());
+        }
+
+        if timestamps {
+            args.push("--timestamps".to_string());
+        }
+
+        args.push(name.clone());
+
+        // Execute docker logs
+        let output = match Command::new("docker").args(&args).output().await {
+            Ok(o) => o,
+            Err(e) => {
+                error!("Failed to get logs from container: {}", e);
+                return ToolExecutionResult::internal_error_msg(format!(
+                    "Failed to get logs: {}",
+                    e
+                ));
+            }
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        // Docker logs command puts container stderr on command stderr,
+        // so we combine them for the user
+        let combined_logs = if stderr.is_empty() {
+            stdout.clone()
+        } else if stdout.is_empty() {
+            stderr.clone()
+        } else {
+            format!("{}\n{}", stdout, stderr)
+        };
+
+        ToolExecutionResult::success(json!({
+            "logs": combined_logs,
+            "stdout": stdout,
+            "stderr": stderr,
+            "container_name": name,
+            "lines_requested": tail
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -778,12 +911,13 @@ mod tests {
         let cap = DockerContainerCapability;
         let tools = cap.tools();
 
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 5);
 
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"docker_exec"));
         assert!(tool_names.contains(&"docker_read_file"));
         assert!(tool_names.contains(&"docker_write_file"));
+        assert!(tool_names.contains(&"docker_logs"));
         assert!(tool_names.contains(&"docker_stop"));
     }
 
@@ -794,6 +928,7 @@ mod tests {
         assert!(prompt.contains("docker_exec"));
         assert!(prompt.contains("docker_read_file"));
         assert!(prompt.contains("docker_write_file"));
+        assert!(prompt.contains("docker_logs"));
         assert!(prompt.contains("docker_stop"));
         assert!(prompt.contains("EXPERIMENTAL"));
     }
@@ -803,6 +938,7 @@ mod tests {
         assert!(DockerExecTool.requires_context());
         assert!(DockerReadFileTool.requires_context());
         assert!(DockerWriteFileTool.requires_context());
+        assert!(DockerLogsTool.requires_context());
         assert!(DockerStopTool.requires_context());
     }
 
@@ -936,6 +1072,18 @@ mod tests {
     #[tokio::test]
     async fn test_docker_stop_without_context() {
         let tool = DockerStopTool;
+        let result = tool.execute(json!({})).await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(msg.contains("requires context"));
+        } else {
+            panic!("Expected tool error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_docker_logs_without_context() {
+        let tool = DockerLogsTool;
         let result = tool.execute(json!({})).await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
