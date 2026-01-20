@@ -325,7 +325,12 @@ async fn create(
         capabilities: final_capabilities,
     };
 
-    let agent: Agent = client.post("/v1/orgs/org_00000000000000000000000000000001/agents", &request).await?;
+    let agent: Agent = client
+        .post(
+            "/v1/orgs/org_00000000000000000000000000000001/agents",
+            &request,
+        )
+        .await?;
 
     if output.is_text() {
         if quiet {
@@ -350,7 +355,9 @@ async fn create(
 }
 
 async fn list(client: &Client, output: OutputFormat) -> Result<()> {
-    let response: ListResponse<Agent> = client.get("/v1/orgs/org_00000000000000000000000000000001/agents").await?;
+    let response: ListResponse<Agent> = client
+        .get("/v1/orgs/org_00000000000000000000000000000001/agents")
+        .await?;
 
     if output.is_text() {
         if response.data.is_empty() {
@@ -392,7 +399,10 @@ async fn list(client: &Client, output: OutputFormat) -> Result<()> {
 
 async fn get(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()> {
     let agent: Agent = client
-        .get(&format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}", agent_id))
+        .get(&format!(
+            "/v1/orgs/org_00000000000000000000000000000001/agents/{}",
+            agent_id
+        ))
         .await
         .map_err(|e| match e {
             ClientError::NotFound => anyhow::anyhow!("Agent not found: {}", agent_id),
@@ -427,7 +437,10 @@ async fn get(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()
 
 async fn delete(client: &Client, output: OutputFormat, quiet: bool, agent_id: Uuid) -> Result<()> {
     client
-        .delete(&format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}", agent_id))
+        .delete(&format!(
+            "/v1/orgs/org_00000000000000000000000000000001/agents/{}",
+            agent_id
+        ))
         .await
         .map_err(|e| match e {
             ClientError::NotFound => anyhow::anyhow!("Agent not found: {}", agent_id),

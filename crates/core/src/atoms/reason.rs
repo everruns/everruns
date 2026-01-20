@@ -31,7 +31,6 @@ use crate::events::{
     AgentThinkingData, EventContext, EventRequest, LlmGenerationData, MessageAgentData,
     ReasonCompletedData, ReasonStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
 };
-use crate::typed_id::TurnId;
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmStreamEvent, ProviderConfig, ProviderType,
@@ -44,6 +43,7 @@ use crate::traits::{
     AgentStore, EventEmitter, ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage,
     SessionStore,
 };
+use crate::typed_id::TurnId;
 
 // ============================================================================
 // Helper Functions

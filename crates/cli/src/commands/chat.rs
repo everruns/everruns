@@ -74,7 +74,10 @@ pub async fn run(
 
     let _: serde_json::Value = client
         .post(
-            &format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/messages", agent_id, session_id),
+            &format!(
+                "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/messages",
+                agent_id, session_id
+            ),
             &request,
         )
         .await?;
@@ -108,7 +111,10 @@ pub async fn run(
                 "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/events?since_id={}",
                 agent_id, session_id, id
             ),
-            None => format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/events", agent_id, session_id),
+            None => format!(
+                "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/events",
+                agent_id, session_id
+            ),
         };
 
         let response: ListResponse<Event> = client.get(&url).await?;

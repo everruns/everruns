@@ -116,7 +116,13 @@ async fn create(
     };
 
     let session: Session = client
-        .post(&format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions", agent_id), &request)
+        .post(
+            &format!(
+                "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions",
+                agent_id
+            ),
+            &request,
+        )
         .await?;
 
     if output.is_text() {
@@ -136,7 +142,10 @@ async fn create(
 
 async fn list(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()> {
     let response: ListResponse<Session> = client
-        .get(&format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions", agent_id))
+        .get(&format!(
+            "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions",
+            agent_id
+        ))
         .await?;
 
     if output.is_text() {
@@ -170,7 +179,10 @@ async fn get(
     session_id: Uuid,
 ) -> Result<()> {
     let session: Session = client
-        .get(&format!("/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}", agent_id, session_id))
+        .get(&format!(
+            "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}",
+            agent_id, session_id
+        ))
         .await
         .map_err(|e| match e {
             ClientError::NotFound => anyhow::anyhow!("Session not found: {}", session_id),
