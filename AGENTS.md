@@ -244,7 +244,7 @@ Message content uses unified `Vec<ContentPart>` across all layers:
 
 - CI is implemented using GitHub Actions, status is available via `gh` tool
 - **NEVER merge when CI is red.** This is a hard requirement with no exceptions. Even if the failure appears unrelated to your changes, do not merge. Fix the issue or get help first.
-- **PR Previews**: Each PR automatically gets a preview deployment via Railway. The preview URL is posted as a PR comment. See `specs/pr-previews.md` for details.
+- **PR Previews**: Each PR automatically gets a preview deployment via Railway's native GitHub integration. See `specs/pr-previews.md` for setup details.
 
 ### Pre-PR checklist
 

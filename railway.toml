@@ -1,0 +1,33 @@
+# Railway configuration for PR preview environments
+# See: https://docs.railway.com/reference/config-as-code
+#
+# This repo has multiple services. Configure each in Railway dashboard:
+#
+# 1. control-plane service:
+#    - Root Directory: (leave empty)
+#    - Dockerfile Path: docker/Dockerfile.unified
+#    - Docker Build Target: control-plane
+#
+# 2. worker service:
+#    - Root Directory: (leave empty)
+#    - Dockerfile Path: docker/Dockerfile.unified
+#    - Docker Build Target: worker
+#
+# 3. ui service:
+#    - Root Directory: apps/ui
+#    - Dockerfile Path: Dockerfile (auto-detected)
+#
+# 4. postgres:
+#    - Use Railway's PostgreSQL template
+#
+# Enable PR Environments in Project Settings > Environments
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "docker/Dockerfile.unified"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
