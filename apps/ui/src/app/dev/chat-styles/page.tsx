@@ -398,22 +398,28 @@ function MinimalIconToolCall({ call }: { call: ToolCallData }) {
     );
   }
 
-  const status = call.status === "executing" ? "..." : "✓";
+  const statusIcon = call.status === "executing"
+    ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
+    : <Check className="h-3 w-3 text-green-600/80" />;
 
   return (
     <div className="text-xs text-muted-foreground/70 ml-6">
-      <span className="inline-flex items-center gap-1">
-        <span className={call.status === "executing" ? "text-muted-foreground" : "text-green-600"}>{status}</span>
+      <div className="flex items-center gap-1">
+        {statusIcon}
         <span className="font-mono">{call.name}</span>
         {call.args && <span className="opacity-60">{call.args}</span>}
-        {call.result && String(call.result).length > 30 && (
-          <button onClick={() => setExpanded(!expanded)} className="opacity-50 hover:opacity-100">
-            [{expanded ? "−" : "+"}]
-          </button>
-        )}
-      </span>
+      </div>
       {expanded && call.result && (
-        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight">{call.result}</pre>
+        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight ml-4">{call.result}</pre>
+      )}
+      {call.result && String(call.result).length > 30 && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="ml-4 text-[10px] text-muted-foreground/50 hover:text-muted-foreground/80 flex items-center gap-0.5"
+        >
+          {expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+          {expanded ? "hide" : "output"}
+        </button>
       )}
     </div>
   );
