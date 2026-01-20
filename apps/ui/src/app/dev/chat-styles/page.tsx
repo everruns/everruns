@@ -342,9 +342,15 @@ function MinimalToolCall({ call }: { call: ToolCallData }) {
 function MinimalThinking({ model }: { model?: string }) {
   return (
     <div className="flex justify-start pl-1">
-      <span className="text-xs text-muted-foreground/60">
-        thinking{model && ` (${model})`}...
-      </span>
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-muted-foreground/60">thinking</span>
+        {model && <span className="text-xs text-muted-foreground/40">{model}</span>}
+        <span className="flex gap-0.5 ml-0.5">
+          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+        </span>
+      </div>
     </div>
   );
 }
@@ -417,9 +423,15 @@ function MinimalIconThinking({ model }: { model?: string }) {
   return (
     <div className="flex justify-start gap-2">
       <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-      <span className="text-xs text-muted-foreground/60">
-        thinking{model && ` (${model})`}...
-      </span>
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-muted-foreground/60">thinking</span>
+        {model && <span className="text-xs text-muted-foreground/40">{model}</span>}
+        <span className="flex gap-0.5 ml-0.5">
+          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+          <span className="w-1 h-1 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+        </span>
+      </div>
     </div>
   );
 }
