@@ -40,6 +40,10 @@ pub struct LlmSimConfig {
     pub simulate_latency: bool,
     /// Model name to report in metadata
     pub model_name: String,
+    /// Optional delay before responding (TTFT - time to first token).
+    /// This is useful for testing cancellation scenarios where we need a
+    /// predictable time window to cancel an active turn before completion.
+    pub response_delay: Option<std::time::Duration>,
 }
 
 impl Default for LlmSimConfig {
@@ -49,6 +53,7 @@ impl Default for LlmSimConfig {
             tool_calls: None,
             simulate_latency: false,
             model_name: "llmsim-model".to_string(),
+            response_delay: None,
         }
     }
 }
@@ -107,6 +112,13 @@ impl LlmSimConfig {
     /// Set model name for metadata
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model_name = model.into();
+        self
+    }
+
+    /// Set a delay before responding (TTFT - time to first token).
+    /// This creates a predictable time window for testing cancellation scenarios.
+    pub fn with_response_delay(mut self, delay: std::time::Duration) -> Self {
+        self.response_delay = Some(delay);
         self
     }
 
@@ -384,6 +396,18 @@ impl LlmDriver for LlmSimDriver {
             return Err(anyhow::anyhow!("LLM error: {}", error_msg).into());
         }
 
+        // Apply response delay if configured or if model name contains "-ttft-{ms}".
+        // TTFT = Time To First Token. This simulates LLM "thinking" time.
+        // Used for testing cancellation scenarios where we need a predictable
+        // time window to cancel an active turn before the LLM completes.
+        let delay = self
+            .config
+            .response_delay
+            .or_else(|| parse_ttft_from_model_name(&config.model));
+        if let Some(delay) = delay {
+            tokio::time::sleep(delay).await;
+        }
+
         let response_text = self.generate_response(&messages);
         let tool_calls = self.get_tool_calls(&messages);
         let latency_profile = self.get_latency_profile();
@@ -471,6 +495,27 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         // Default driver - tests can create custom drivers directly
         Box::new(LlmSimDriver::default_driver()) as BoxedLlmDriver
     });
+}
+
+/// Parse TTFT (time to first token) delay from model name if it contains "-ttft-{ms}" pattern.
+/// For example: "llmsim-ttft-2000" returns Some(Duration::from_millis(2000))
+///
+/// This allows tests to opt-in to response delays by using specific model names,
+/// which is useful for testing cancellation of active turns.
+fn parse_ttft_from_model_name(model_name: &str) -> Option<std::time::Duration> {
+    if let Some(idx) = model_name.find("-ttft-") {
+        let after_ttft = &model_name[idx + 6..]; // skip "-ttft-"
+        let ms_str: String = after_ttft
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if let Ok(ms) = ms_str.parse::<u64>()
+            && ms > 0
+        {
+            return Some(std::time::Duration::from_millis(ms));
+        }
+    }
+    None
 }
 
 /// Create a LlmSim driver with custom configuration
@@ -700,6 +745,7 @@ mod tests {
             }),
             simulate_latency: false,
             model_name: "test".to_string(),
+            response_delay: None,
         };
 
         let driver = LlmSimDriver::new(config);
@@ -796,6 +842,7 @@ mod tests {
             tool_calls: None,
             simulate_latency: false,
             model_name: "test".to_string(),
+            response_delay: None,
         };
 
         let driver = LlmSimDriver::new(config);
@@ -837,10 +884,35 @@ mod tests {
         let config = LlmSimConfig::fixed("Result")
             .with_tool_calls(vec![tool_call.clone()])
             .with_latency()
-            .with_model("gpt-4");
+            .with_model("gpt-4")
+            .with_response_delay(std::time::Duration::from_secs(2));
 
         assert!(config.tool_calls.is_some());
         assert!(config.simulate_latency);
         assert_eq!(config.model_name, "gpt-4");
+        assert_eq!(
+            config.response_delay,
+            Some(std::time::Duration::from_secs(2))
+        );
+    }
+
+    #[test]
+    fn test_parse_ttft_from_model_name() {
+        use super::parse_ttft_from_model_name;
+
+        // Valid patterns
+        assert_eq!(
+            parse_ttft_from_model_name("llmsim-ttft-2000"),
+            Some(std::time::Duration::from_millis(2000))
+        );
+        assert_eq!(
+            parse_ttft_from_model_name("test-ttft-500-extra"),
+            Some(std::time::Duration::from_millis(500))
+        );
+
+        // No TTFT patterns
+        assert_eq!(parse_ttft_from_model_name("llmsim-model"), None);
+        assert_eq!(parse_ttft_from_model_name("llmsim-ttft-0"), None);
+        assert_eq!(parse_ttft_from_model_name("llmsim-ttft-abc"), None);
     }
 }

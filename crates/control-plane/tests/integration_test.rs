@@ -3819,4 +3819,155 @@ async fn test_streaming_events_emitted() {
     println!("Streaming events test passed!");
 }
 
-// TODO: test_cancel_turn_endpoint temporarily removed - needs investigation
+/// Test cancel turn endpoint behavior.
+///
+/// This test verifies the cancel endpoint returns correct responses
+/// for idle sessions (no active turn to cancel).
+///
+/// Requirements: API + Worker running
+#[tokio::test]
+async fn test_cancel_turn_endpoint() {
+    let client = reqwest::Client::new();
+
+    println!("Testing cancel turn endpoint...");
+
+    // Step 1: Create LlmSim provider
+    println!("\nStep 1: Creating LlmSim provider...");
+    let provider_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
+        .json(&json!({
+            "name": "LlmSim Cancel Test",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created LlmSim provider: {}", provider.id);
+
+    // Step 2: Create model
+    println!("\nStep 2: Creating model...");
+    let model_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-cancel-test",
+            "display_name": "LlmSim Cancel Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!("Failed to create model: status={}, body={}", status, body);
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created model: {}", model.id);
+
+    // Step 3: Create agent with LlmSim model
+    println!("\nStep 3: Creating agent...");
+    let agent_response = client
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({
+            "name": "Cancel Test Agent",
+            "system_prompt": "You are a helpful assistant.",
+            "default_model_id": model.id.to_string()
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201, "Failed to create agent");
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.id);
+
+    // Step 4: Create session
+    println!("\nStep 4: Creating session...");
+    let session_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .json(&json!({
+            "title": "Cancel Test Session"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201, "Failed to create session");
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    // Step 5: Test cancel on idle session (should return 200 with no_op status)
+    println!("\nStep 5: Testing cancel on idle session...");
+    let cancel_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/cancel",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to call cancel endpoint");
+
+    assert_eq!(
+        cancel_response.status(),
+        200,
+        "Expected 200 for cancelling idle session (no-op), got {}",
+        cancel_response.status()
+    );
+    let cancel_body: Value = cancel_response
+        .json()
+        .await
+        .expect("Failed to parse cancel response");
+    assert_eq!(
+        cancel_body["status"], "no_op",
+        "Expected no_op status for idle session, got {:?}",
+        cancel_body["status"]
+    );
+    println!("Correctly returned no_op: {}", cancel_body["message"]);
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("Cancel turn endpoint test passed!");
+}
