@@ -117,6 +117,7 @@ impl CapabilityId {
     pub const TEST_WEATHER: &'static str = "test_weather";
     pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
     pub const WEB_FETCH: &'static str = "web_fetch";
+    pub const DOCKER_CONTAINER: &'static str = "docker_container"; // Experimental
 
     // Factory methods
     pub fn new(id: impl Into<String>) -> Self;
@@ -765,6 +766,78 @@ impl Capability for SampleDataCapability {
   - `/samples/README.md` - Documentation about sample files (readonly)
 - **Icon**: "database"
 - **Category**: "Data"
+
+### Experimental Capabilities
+
+Experimental capabilities are available in development environments only (`DeploymentGrade::Dev`). They may change significantly or be removed.
+
+#### DockerContainer
+
+- **Status**: Available (Dev only)
+- **ID**: `docker_container`
+- **Purpose**: Run commands and manage files in a Docker container tied to the session
+- **System Prompt**: Guidance on using container tools, best practices for command execution
+- **Container Lifecycle**:
+  - Lazily started on first tool use
+  - Persists for session duration
+  - Uses host networking
+  - Container name: `everruns-{session_id}`
+- **Configuration** (via `AgentCapabilityConfig.config`):
+  - `image`: Docker image to use (default: `mcr.microsoft.com/devcontainers/python:3.11`)
+  - `working_dir`: Working directory inside container (default: `/workspace`)
+- **Tools**:
+  - `docker_exec` - Execute shell command in container
+    - Parameters:
+      - `command`: string (required) - Command to execute
+      - `working_dir`: string - Override working directory
+      - `config`: object - Container configuration
+    - Returns: stdout, stderr, exit_code, success
+    - Policy: Auto
+  - `docker_read_file` - Read file from container filesystem
+    - Parameters:
+      - `path`: string (required) - Absolute path to file
+      - `config`: object - Container configuration
+    - Returns: path, content, size_bytes
+    - Policy: Auto
+  - `docker_write_file` - Write file to container filesystem
+    - Parameters:
+      - `path`: string (required) - Absolute path for file
+      - `content`: string (required) - Content to write
+      - `config`: object - Container configuration
+    - Returns: path, size_bytes, success
+    - Policy: Auto
+  - `docker_logs` - Get logs from container
+    - Parameters:
+      - `tail`: integer - Number of lines from end (default: 100)
+      - `since`: string - Timestamp or relative time (e.g., '10m', '1h')
+      - `timestamps`: boolean - Include timestamps (default: false)
+    - Returns: logs, stdout, stderr, container_name, lines_requested
+    - Policy: Auto
+  - `docker_stop` - Stop and remove container
+    - Parameters:
+      - `force`: boolean - Force kill (default: false)
+    - Returns: stopped, removed, container_name, message
+    - Policy: Auto
+- **Icon**: "container"
+- **Category**: "Development"
+
+##### Design Decision: Session-Scoped Containers
+
+Each session gets its own isolated Docker container named `everruns-{session_id}`. This provides:
+- Isolation between sessions
+- Clean state on session creation
+- Automatic cleanup capability via `docker_stop`
+
+##### Design Decision: Lazy Container Start
+
+Containers are not started until the first tool use (`docker_exec`, `docker_read_file`, or `docker_write_file`). This avoids resource waste for sessions that don't use container tools.
+
+##### Design Decision: Dev-Only Availability
+
+This capability is experimental and only available in development environments due to:
+- Security implications of host networking
+- Resource management considerations
+- API stability concerns
 
 ### Extension Points (Future)
 
