@@ -256,8 +256,8 @@ export default function ChatPage() {
                 {(textContent || images.length > 0) && (
                   <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                     {isUser ? (
-                      /* User message - dark box, 90% width */
-                      <div className="max-w-[90%] bg-gray-500 text-white rounded-lg p-3">
+                      /* User message - subtle border, rounded */
+                      <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
                         <div className="flex items-start gap-2">
                           <div className="flex-1 space-y-2">
                             {textContent && (
@@ -275,17 +275,17 @@ export default function ChatPage() {
                               </div>
                             )}
                           </div>
-                          <MessageInfoIcon event={event} variant="light" />
+                          <MessageInfoIcon event={event} />
                         </div>
                       </div>
                     ) : (
-                      /* Agent message - darker background with robot icon */
-                      <div className="w-full bg-muted/60 rounded-lg p-3">
-                        <div className="flex items-start gap-2">
-                          <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+                      /* Agent message - flat with robot icon */
+                      <div className="w-full flex items-start gap-2">
+                        <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+                        <div className="flex-1 flex items-start gap-2">
                           <div className="flex-1 space-y-2">
                             {textContent && (
-                              <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                              <p className="text-sm whitespace-pre-wrap text-foreground/90">{textContent}</p>
                             )}
                             {images.length > 0 && (
                               <div className="flex flex-wrap gap-2 mt-2">
@@ -308,7 +308,7 @@ export default function ChatPage() {
 
                 {/* Render tool calls from agent message */}
                 {toolCalls.length > 0 && (
-                  <div className="pl-[25px] space-y-2">
+                  <div className="ml-6 space-y-1">
                     {toolCalls.map((tc) => {
                       const toolResult = toolResultsMap.get(tc.id);
                       return (
@@ -325,16 +325,14 @@ export default function ChatPage() {
         {/* Streaming content - thinking indicator or streaming text */}
         {(isThinking || streamingText) && (
           <div className="flex justify-start">
-            <div className="w-full bg-muted/60 rounded-lg p-3">
-              <div className="flex items-start gap-2">
-                <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                <div className="flex-1">
-                  {isThinking && !streamingText ? (
-                    <ThinkingIndicator />
-                  ) : streamingText ? (
-                    <StreamingMessage text={streamingText} />
-                  ) : null}
-                </div>
+            <div className="w-full flex items-start gap-2">
+              <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+              <div className="flex-1">
+                {isThinking && !streamingText ? (
+                  <ThinkingIndicator />
+                ) : streamingText ? (
+                  <StreamingMessage text={streamingText} />
+                ) : null}
               </div>
             </div>
           </div>

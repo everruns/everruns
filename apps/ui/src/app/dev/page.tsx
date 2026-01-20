@@ -11,14 +11,14 @@ const isDev = process.env.NODE_ENV === "development";
 const devPages = [
   {
     title: "Chat UI Styles",
-    description: "Compare different chat styling approaches - flat, minimal, Claude-like",
+    description: "Compare chat styling variants: current, flat, minimal, minimal with icon",
     href: "/dev/chat-styles",
     icon: Palette,
   },
   {
-    title: "Session Chat Components",
-    description: "Components used in the Session UI for chat messages, tool calls, and todo lists",
-    href: "/dev/components",
+    title: "Chat Components",
+    description: "Individual chat components: messages, tool calls, todo lists, thinking indicators",
+    href: "/dev/chat-components",
     icon: MessageSquare,
   },
   {

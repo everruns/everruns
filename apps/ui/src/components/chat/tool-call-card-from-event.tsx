@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCallCompletedData, ContentPart } from "@/lib/api/types";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 
@@ -22,30 +23,6 @@ function formatArguments(args: Record<string, unknown>): string {
   }).join(", ");
 
   return formatted.length > 80 ? formatted.substring(0, 80) + "..." : formatted;
-}
-
-// Get first N lines of result text, limited to maxChars
-function getResultPreview(result: ContentPart[] | undefined, maxLines: number = 2, maxChars: number = 360): { preview: string; hasMore: boolean } | null {
-  if (!result || result.length === 0) return null;
-
-  // Extract text from ContentPart array
-  const text = result
-    .filter((part): part is { type: "text"; text: string } => part.type === "text")
-    .map(part => part.text)
-    .join("\n");
-
-  if (!text) return null;
-
-  const lines = text.split("\n");
-  let preview = lines.slice(0, maxLines).join("\n");
-  const truncatedByLines = lines.length > maxLines;
-  const truncatedByChars = preview.length > maxChars;
-
-  if (truncatedByChars) {
-    preview = preview.substring(0, maxChars) + "...";
-  }
-
-  return { preview, hasMore: truncatedByLines || truncatedByChars || text.length > preview.length };
 }
 
 // Get full text from ContentPart array
@@ -73,9 +50,6 @@ export function ToolCallCardFromEvent({ toolCall, toolResult }: ToolCallCardFrom
   const hasError = toolResult?.error !== undefined && toolResult?.error !== null;
 
   const argsPreview = formatArguments(toolCall.arguments);
-  const resultPreview = toolResult?.result
-    ? getResultPreview(toolResult.result)
-    : null;
 
   // Special rendering for write_todos tool
   if (isWriteTodosTool(toolCall.name)) {
@@ -91,44 +65,47 @@ export function ToolCallCardFromEvent({ toolCall, toolResult }: ToolCallCardFrom
     );
   }
 
+  const statusIcon = isComplete
+    ? hasError
+      ? <span className="text-red-600 text-xs">✗</span>
+      : <Check className="h-3 w-3 text-green-600/80" />
+    : <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />;
+
+  const fullText = toolResult?.result ? getFullText(toolResult.result) : "";
+  const hasOutput = fullText.length > 0;
+
   return (
-    <div className="w-full space-y-0.5 text-sm text-muted-foreground">
-      {/* Tool name and arguments */}
-      <div>
-        <span className="font-medium">{toolCall.name}:</span>
-        {argsPreview && <span className="ml-1">{argsPreview}</span>}
+    <div className="text-xs text-muted-foreground/70">
+      {/* Tool name with status icon */}
+      <div className="flex items-center gap-1">
+        {statusIcon}
+        <span className="font-mono">{toolCall.name}</span>
+        {argsPreview && <span className="opacity-60">{argsPreview}</span>}
       </div>
 
-      {/* Result or executing state */}
-      {isComplete ? (
-        hasError ? (
-          <div className="text-red-600">
-            &gt; Error: {toolResult?.error}
-          </div>
-        ) : resultPreview ? (
-          <div className="space-y-0.5">
-            <div className="whitespace-pre-wrap">
-              &gt; {resultPreview.preview}
-            </div>
-            {(resultPreview.hasMore || isExpanded) && (
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                {isExpanded ? "show less" : "> see more..."}
-              </button>
-            )}
-            {isExpanded && toolResult?.result && (
-              <pre className="text-xs bg-muted/50 p-2 rounded mt-1 overflow-x-auto max-h-60">
-                {getFullText(toolResult.result)}
-              </pre>
-            )}
-          </div>
-        ) : null
-      ) : (
-        <div>
-          &gt; ... executing ...
+      {/* Error message */}
+      {hasError && (
+        <div className="text-red-600 ml-4 mt-0.5">
+          Error: {toolResult?.error}
         </div>
+      )}
+
+      {/* Expanded output */}
+      {isExpanded && hasOutput && (
+        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight ml-4 overflow-x-auto max-h-60">
+          {fullText}
+        </pre>
+      )}
+
+      {/* Output toggle */}
+      {hasOutput && !hasError && (
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="ml-4 text-[10px] text-muted-foreground/50 hover:text-muted-foreground/80 flex items-center gap-0.5"
+        >
+          {isExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+          {isExpanded ? "hide" : "output"}
+        </button>
       )}
     </div>
   );
