@@ -12,7 +12,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use everruns_core::typed_id::AgentId;
+use everruns_core::typed_id::{AgentId, ModelId};
 use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, ToolDefinition};
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
@@ -22,7 +22,6 @@ use super::validation::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -41,7 +40,8 @@ pub struct CreateAgentRequest {
     /// The ID of the default LLM model to use for this agent.
     /// If not specified, the system default model will be used.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_model_id: Option<Uuid>,
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
+    pub default_model_id: Option<ModelId>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     #[schema(example = json!(["support", "customer-facing"]))]
@@ -70,7 +70,8 @@ pub struct UpdateAgentRequest {
     pub system_prompt: Option<String>,
     /// The ID of the default LLM model to use for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_model_id: Option<Uuid>,
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
+    pub default_model_id: Option<ModelId>,
     /// Tags for organizing and filtering agents.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!(["updated-tag"]))]
@@ -142,7 +143,7 @@ struct AgentFile {
     pub name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
-    pub default_model_id: Option<Uuid>,
+    pub default_model_id: Option<ModelId>,
     #[serde(default)]
     pub tags: Vec<String>,
     /// Capabilities - supports both string IDs and objects with ref/config
