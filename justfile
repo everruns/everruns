@@ -2,6 +2,10 @@
 # Install just: cargo install just (or ./scripts/init-cloud-env.sh for pre-built binary)
 # Usage: just <recipe>   (or: just --list)
 
+mod ui
+mod docs
+mod durable
+
 # Default recipe: show available commands
 default:
     @just --list
@@ -15,10 +19,6 @@ init:
 # Upload example agents from examples/agents/
 upload-agents:
     ./scripts/lib/setup.sh upload-agents
-
-# Patch API keys for providers
-seed *args:
-    ./scripts/lib/setup.sh seed {{ args }}
 
 # === Docker Services ===
 
@@ -73,37 +73,3 @@ start-all:
 # Stop all services (API, UI, Docker)
 stop-all:
     ./scripts/lib/services.sh stop-all
-
-# === UI ===
-
-# Build the UI for production
-ui-build:
-    ./scripts/lib/ui.sh build
-
-# Run UI e2e tests (Playwright)
-e2e:
-    ./scripts/lib/ui.sh e2e
-
-# Take UI screenshots for visual verification
-e2e-screenshots:
-    ./scripts/lib/ui.sh screenshots
-
-# === Docs ===
-
-# Start the docs development server
-docs:
-    ./scripts/lib/docs.sh dev
-
-# Build the docs for production
-docs-build:
-    ./scripts/lib/docs.sh build
-
-# === Benchmarks ===
-
-# Run durable benchmarks (in-memory)
-durable-bench *args:
-    ./scripts/lib/bench.sh memory {{ args }}
-
-# Run durable benchmarks (PostgreSQL)
-durable-bench-db *args:
-    ./scripts/lib/bench.sh db {{ args }}

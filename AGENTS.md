@@ -295,8 +295,8 @@ CI will fail if any automated checks fail. Always run `just pre-pr` before pushi
 
 **E2E Testing (Playwright):**
 - Tests located in `apps/ui/e2e/`
-- Run with `just e2e` or `npm run e2e` in apps/ui
-- Screenshot tests: `just e2e-screenshots`
+- Run with `just ui e2e` or `npm run e2e` in apps/ui
+- Screenshot tests: `just ui screenshots`
 - Dev pages (`/dev/*`) provide component showcases for visual testing
 
 ### Testing conventions
