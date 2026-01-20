@@ -51,6 +51,7 @@ main() {
     set_encryption_key
     check_jq
     check_postgres_binaries
+    ensure_sqlx
 
     echo ""
     echo "--- PostgreSQL Setup ---"

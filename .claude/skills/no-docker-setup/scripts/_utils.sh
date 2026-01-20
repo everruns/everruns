@@ -104,6 +104,17 @@ check_postgres_binaries() {
     exit 1
 }
 
+# Ensure sqlx CLI is installed (fast install with minimal features)
+ensure_sqlx() {
+    if command -v sqlx &> /dev/null; then
+        check_pass "sqlx - found"
+        return 0
+    fi
+    log_info "Installing sqlx CLI..."
+    cargo install sqlx-cli --no-default-features --features postgres 2>&1 | tail -5
+    check_pass "sqlx - installed"
+}
+
 # Get project root
 get_project_root() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
