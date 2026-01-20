@@ -350,101 +350,76 @@ function MinimalThinking({ model }: { model?: string }) {
 }
 
 // ============================================
-// Option D: Claude-like flat with accent user
+// Option D: Minimal + Icon
 // ============================================
 
-function ClaudeUserMessage({ content }: { content: string }) {
+function MinimalIconUserMessage({ content }: { content: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] bg-orange-50 dark:bg-orange-950/30 rounded-2xl px-4 py-2.5 border border-orange-200/50 dark:border-orange-800/30">
+      <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
         <p className="text-sm">{content}</p>
       </div>
     </div>
   );
 }
 
-function ClaudeAgentMessage({ content }: { content: string }) {
+function MinimalIconAgentMessage({ content }: { content: string }) {
   return (
     <div className="flex justify-start gap-2">
-      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <Bot className="w-3.5 h-3.5 text-white" />
-      </div>
-      <div className="flex-1">
-        <p className="text-sm whitespace-pre-wrap">{content}</p>
-      </div>
+      <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+      <p className="text-sm whitespace-pre-wrap text-foreground/90">{content}</p>
     </div>
   );
 }
 
-function ClaudeToolCall({ call }: { call: ToolCallData }) {
+function MinimalIconToolCall({ call }: { call: ToolCallData }) {
   const [expanded, setExpanded] = useState(false);
 
   if (call.name === "write_todos" && "todos" in call) {
     return (
-      <div className="ml-8 text-sm bg-muted/30 rounded-lg p-2.5">
-        <div className="space-y-1">
-          {call.todos?.map((todo, i) => (
-            <div key={i} className="flex items-center gap-2">
-              {todo.status === "completed" && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-              {todo.status === "in_progress" && <CircleDot className="h-4 w-4 text-orange-500 animate-pulse" />}
-              {todo.status === "pending" && <Circle className="h-4 w-4 text-muted-foreground/40" />}
-              <span className={cn(
-                "text-sm",
-                todo.status === "completed" && "text-muted-foreground line-through",
-                todo.status === "in_progress" && "font-medium text-foreground"
-              )}>{todo.content}</span>
-            </div>
-          ))}
-        </div>
+      <div className="text-xs text-muted-foreground/80 ml-6 space-y-0.5">
+        {call.todos?.map((todo, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            {todo.status === "completed" && <span className="text-green-600">✓</span>}
+            {todo.status === "in_progress" && <span className="text-blue-600">○</span>}
+            {todo.status === "pending" && <span className="text-muted-foreground/40">○</span>}
+            <span className={cn(
+              todo.status === "completed" && "line-through opacity-60"
+            )}>{todo.content}</span>
+          </div>
+        ))}
       </div>
     );
   }
 
+  const status = call.status === "executing" ? "..." : "✓";
+
   return (
-    <div className="ml-8 text-sm">
-      <div
-        className={cn(
-          "inline-flex items-center gap-1.5 px-2 py-1 rounded-md",
-          call.status === "executing" ? "bg-orange-100 dark:bg-orange-950/40" : "bg-muted/40"
+    <div className="text-xs text-muted-foreground/70 ml-6">
+      <span className="inline-flex items-center gap-1">
+        <span className={call.status === "executing" ? "text-muted-foreground" : "text-green-600"}>{status}</span>
+        <span className="font-mono">{call.name}</span>
+        {call.args && <span className="opacity-60">{call.args}</span>}
+        {call.result && String(call.result).length > 30 && (
+          <button onClick={() => setExpanded(!expanded)} className="opacity-50 hover:opacity-100">
+            [{expanded ? "−" : "+"}]
+          </button>
         )}
-      >
-        {call.status === "executing" ? (
-          <Loader2 className="h-3 w-3 animate-spin text-orange-600" />
-        ) : (
-          <Check className="h-3 w-3 text-green-600" />
-        )}
-        <span className="font-mono text-xs font-medium">{call.name}</span>
-      </div>
-      {call.result && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="ml-2 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {expanded ? "Hide output" : "Show output"}
-        </button>
-      )}
+      </span>
       {expanded && call.result && (
-        <pre className="mt-1.5 p-2 bg-muted/30 rounded-md text-xs overflow-x-auto">{call.result}</pre>
+        <pre className="mt-1 p-1.5 bg-muted/20 rounded text-[10px] leading-tight">{call.result}</pre>
       )}
     </div>
   );
 }
 
-function ClaudeThinking({ model }: { model?: string }) {
+function MinimalIconThinking({ model }: { model?: string }) {
   return (
     <div className="flex justify-start gap-2">
-      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <Bot className="w-3.5 h-3.5 text-white" />
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Thinking</span>
-        {model && <span className="text-xs text-muted-foreground/60">with {model}</span>}
-        <span className="flex gap-0.5">
-          <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-        </span>
-      </div>
+      <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+      <span className="text-xs text-muted-foreground/60">
+        thinking{model && ` (${model})`}...
+      </span>
     </div>
   );
 }
@@ -453,14 +428,14 @@ function ClaudeThinking({ model }: { model?: string }) {
 // Render helpers
 // ============================================
 
-type StyleOption = "current" | "flat" | "minimal" | "claude";
+type StyleOption = "current" | "flat" | "minimal" | "minimal-icon";
 
 function renderConversation(conversation: ConversationItem[], style: StyleOption) {
   const components = {
     current: { User: CurrentUserMessage, Agent: CurrentAgentMessage, Tool: CurrentToolCall, Thinking: CurrentThinking },
     flat: { User: FlatUserMessage, Agent: FlatAgentMessage, Tool: FlatToolCall, Thinking: FlatThinking },
     minimal: { User: MinimalUserMessage, Agent: MinimalAgentMessage, Tool: MinimalToolCall, Thinking: MinimalThinking },
-    claude: { User: ClaudeUserMessage, Agent: ClaudeAgentMessage, Tool: ClaudeToolCall, Thinking: ClaudeThinking },
+    "minimal-icon": { User: MinimalIconUserMessage, Agent: MinimalIconAgentMessage, Tool: MinimalIconToolCall, Thinking: MinimalIconThinking },
   };
 
   const { User, Agent, Tool, Thinking } = components[style];
@@ -507,7 +482,7 @@ export default function ChatStylesPage() {
     { id: "current", name: "Current", description: "Existing design with backgrounds for both user and agent" },
     { id: "flat", name: "Flat Agent", description: "User bubble, agent on flat background, compact tools" },
     { id: "minimal", name: "Minimal", description: "Subtle borders, completely flat, inline tools" },
-    { id: "claude", name: "Claude-like", description: "Warm accent for user, avatar for agent, boxed tools" },
+    { id: "minimal-icon", name: "Minimal + Icon", description: "Minimal style with robot icon for agent messages" },
   ];
 
   return (
