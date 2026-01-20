@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { useCapability } from "@/hooks";
+import { useCapability, useCapabilities } from "@/hooks";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import {
   Wrench,
   FileText,
   Code,
+  Link as LinkIcon,
 } from "lucide-react";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -91,6 +92,12 @@ export default function CapabilityDetailPage({
 }) {
   const { capabilityId } = use(params);
   const { data: capability, isLoading, error } = useCapability(capabilityId);
+  const { data: allCapabilities } = useCapabilities();
+
+  // Create a map of capability ID to capability for resolving dependency names
+  const capabilityMap = new Map(
+    (allCapabilities || []).map((c) => [c.id, c])
+  );
 
   if (isLoading) {
     return (
@@ -229,6 +236,29 @@ export default function CapabilityDetailPage({
                   <Badge variant="outline" className="mt-1">
                     {capability.category}
                   </Badge>
+                </div>
+              )}
+
+              {capability.dependencies && capability.dependencies.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-1.5">
+                    <LinkIcon className="w-3.5 h-3.5" />
+                    Dependencies
+                  </p>
+                  <div className="mt-1.5 space-y-1">
+                    {capability.dependencies.map((depId) => {
+                      const depCap = capabilityMap.get(depId);
+                      return (
+                        <Link
+                          key={depId}
+                          href={`/capabilities/${depId}`}
+                          className="block text-sm text-primary hover:underline"
+                        >
+                          {depCap?.name || depId}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

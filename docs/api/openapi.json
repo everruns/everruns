@@ -2748,6 +2748,13 @@
             ],
             "description": "Category for grouping in UI"
           },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included."
+          },
           "description": {
             "type": "string",
             "description": "Description of what this capability provides"
@@ -3899,6 +3906,13 @@
                     "null"
                   ],
                   "description": "Category for grouping in UI"
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included."
                 },
                 "description": {
                   "type": "string",

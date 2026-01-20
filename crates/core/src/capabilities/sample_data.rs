@@ -142,6 +142,11 @@ These files are read-only and can be used for learning, testing, or as templates
 
         vec![MountPoint::readonly("/samples", samples_dir, self.id())]
     }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        // Sample Data depends on Session File System for file operations
+        vec![CapabilityId::FILE_SYSTEM]
+    }
 }
 
 #[cfg(test)]
@@ -212,5 +217,13 @@ mod tests {
         // Just check it's not empty and looks like YAML
         assert!(SampleDataCapability::CONFIG_YAML.contains("application:"));
         assert!(SampleDataCapability::CONFIG_YAML.contains("database:"));
+    }
+
+    #[test]
+    fn test_capability_depends_on_file_system() {
+        let cap = SampleDataCapability;
+        let deps = cap.dependencies();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0], CapabilityId::FILE_SYSTEM);
     }
 }

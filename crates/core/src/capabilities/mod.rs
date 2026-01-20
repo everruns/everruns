@@ -179,6 +179,18 @@ pub trait Capability: Send + Sync {
     fn mounts(&self) -> Vec<MountPoint> {
         vec![]
     }
+
+    /// Returns capability IDs that this capability depends on.
+    ///
+    /// Dependencies are automatically resolved at runtime when applying
+    /// capabilities. If capability A depends on capability B, then B's
+    /// contributions (tools, system prompt, mounts) will be included
+    /// when A is selected, even if B is not explicitly selected.
+    ///
+    /// By default, returns an empty vector (no dependencies).
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec![]
+    }
 }
 
 // ============================================================================
@@ -395,6 +407,205 @@ impl CollectedCapabilities {
             Some(self.system_prompt_parts.join("\n\n"))
         }
     }
+}
+
+// ============================================================================
+// Dependency Resolution
+// ============================================================================
+
+/// Maximum number of capabilities after dependency resolution.
+/// This prevents runaway dependency chains and resource exhaustion.
+pub const MAX_RESOLVED_CAPABILITIES: usize = 100;
+
+/// Error type for dependency resolution failures
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DependencyError {
+    /// Circular dependency detected in the capability graph
+    CircularDependency {
+        /// The capability where the cycle was detected
+        capability_id: String,
+        /// The dependency chain leading to the cycle
+        chain: Vec<String>,
+    },
+    /// Too many capabilities after resolution
+    TooManyCapabilities {
+        /// Number of capabilities requested
+        count: usize,
+        /// Maximum allowed
+        max: usize,
+    },
+}
+
+impl std::fmt::Display for DependencyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DependencyError::CircularDependency {
+                capability_id,
+                chain,
+            } => {
+                write!(
+                    f,
+                    "Circular dependency detected: {} depends on itself via chain: {} -> {}",
+                    capability_id,
+                    chain.join(" -> "),
+                    capability_id
+                )
+            }
+            DependencyError::TooManyCapabilities { count, max } => {
+                write!(
+                    f,
+                    "Too many capabilities after resolution: {} (max: {})",
+                    count, max
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for DependencyError {}
+
+/// Result of resolving capability dependencies
+#[derive(Debug, Clone)]
+pub struct ResolvedCapabilities {
+    /// All capability IDs after resolving dependencies (in topological order)
+    /// Dependencies come before dependents.
+    pub resolved_ids: Vec<String>,
+    /// IDs that were added as dependencies (not in the original selection)
+    pub added_as_dependencies: Vec<String>,
+    /// Original user-selected capability IDs
+    pub user_selected: Vec<String>,
+}
+
+/// Resolve capability dependencies, returning all required capability IDs.
+///
+/// This function:
+/// 1. Takes the user-selected capability IDs
+/// 2. Recursively collects all dependencies
+/// 3. Returns them in topological order (dependencies before dependents)
+/// 4. Detects circular dependencies and returns an error
+/// 5. Enforces a maximum capability limit
+///
+/// # Arguments
+///
+/// * `selected_ids` - User-selected capability IDs
+/// * `registry` - The capability registry to look up dependencies
+///
+/// # Returns
+///
+/// `Ok(ResolvedCapabilities)` with all required capabilities in order,
+/// or `Err(DependencyError)` if circular dependencies are detected or
+/// the limit is exceeded.
+pub fn resolve_dependencies(
+    selected_ids: &[String],
+    registry: &CapabilityRegistry,
+) -> Result<ResolvedCapabilities, DependencyError> {
+    use std::collections::HashSet;
+
+    let user_selected: HashSet<String> = selected_ids.iter().cloned().collect();
+    let mut resolved: Vec<String> = Vec::new();
+    let mut resolved_set: HashSet<String> = HashSet::new();
+    let mut added_as_dependencies: Vec<String> = Vec::new();
+
+    // Process each selected capability and its dependencies using DFS
+    for cap_id in selected_ids {
+        resolve_single_capability(
+            cap_id,
+            registry,
+            &mut resolved,
+            &mut resolved_set,
+            &mut added_as_dependencies,
+            &user_selected,
+            &mut Vec::new(), // visiting chain for cycle detection
+        )?;
+    }
+
+    // Check max limit
+    if resolved.len() > MAX_RESOLVED_CAPABILITIES {
+        return Err(DependencyError::TooManyCapabilities {
+            count: resolved.len(),
+            max: MAX_RESOLVED_CAPABILITIES,
+        });
+    }
+
+    Ok(ResolvedCapabilities {
+        resolved_ids: resolved,
+        added_as_dependencies,
+        user_selected: selected_ids.to_vec(),
+    })
+}
+
+/// Helper function to resolve a single capability and its dependencies recursively.
+fn resolve_single_capability(
+    cap_id: &str,
+    registry: &CapabilityRegistry,
+    resolved: &mut Vec<String>,
+    resolved_set: &mut std::collections::HashSet<String>,
+    added_as_dependencies: &mut Vec<String>,
+    user_selected: &std::collections::HashSet<String>,
+    visiting: &mut Vec<String>,
+) -> Result<(), DependencyError> {
+    // Already resolved
+    if resolved_set.contains(cap_id) {
+        return Ok(());
+    }
+
+    // Check for circular dependency
+    if visiting.contains(&cap_id.to_string()) {
+        return Err(DependencyError::CircularDependency {
+            capability_id: cap_id.to_string(),
+            chain: visiting.clone(),
+        });
+    }
+
+    // Get capability from registry
+    let capability = match registry.get(cap_id) {
+        Some(cap) => cap,
+        None => {
+            // Unknown capability - skip silently (will be caught later)
+            return Ok(());
+        }
+    };
+
+    // Mark as visiting
+    visiting.push(cap_id.to_string());
+
+    // Resolve dependencies first (depth-first)
+    for dep_id in capability.dependencies() {
+        resolve_single_capability(
+            dep_id,
+            registry,
+            resolved,
+            resolved_set,
+            added_as_dependencies,
+            user_selected,
+            visiting,
+        )?;
+    }
+
+    // Remove from visiting
+    visiting.pop();
+
+    // Add to resolved
+    if !resolved_set.contains(cap_id) {
+        resolved.push(cap_id.to_string());
+        resolved_set.insert(cap_id.to_string());
+
+        // Track if this was added as a dependency (not user-selected)
+        if !user_selected.contains(cap_id) {
+            added_as_dependencies.push(cap_id.to_string());
+        }
+    }
+
+    Ok(())
+}
+
+/// Get direct dependencies for a capability ID.
+/// Returns empty vec if capability not found.
+pub fn get_dependencies(cap_id: &str, registry: &CapabilityRegistry) -> Vec<String> {
+    registry
+        .get(cap_id)
+        .map(|cap| cap.dependencies().iter().map(|s| s.to_string()).collect())
+        .unwrap_or_default()
 }
 
 /// Collect contributions from capabilities without applying them.
@@ -930,5 +1141,206 @@ mod tests {
 
         // Has mounts
         assert!(!cap.mounts().is_empty());
+    }
+
+    // =========================================================================
+    // Dependency resolution tests
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_dependencies_empty() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let resolved = resolve_dependencies(&[], &registry).unwrap();
+
+        assert!(resolved.resolved_ids.is_empty());
+        assert!(resolved.added_as_dependencies.is_empty());
+        assert!(resolved.user_selected.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_dependencies_no_deps() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // CurrentTime has no dependencies
+        let resolved =
+            resolve_dependencies(&[CapabilityId::CURRENT_TIME.to_string()], &registry).unwrap();
+
+        assert_eq!(resolved.resolved_ids, vec![CapabilityId::CURRENT_TIME]);
+        assert!(resolved.added_as_dependencies.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_dependencies_with_deps() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // SampleData depends on FileSystem
+        let resolved =
+            resolve_dependencies(&[CapabilityId::SAMPLE_DATA.to_string()], &registry).unwrap();
+
+        // FileSystem should be resolved before SampleData
+        assert_eq!(resolved.resolved_ids.len(), 2);
+        let fs_pos = resolved
+            .resolved_ids
+            .iter()
+            .position(|id| id == CapabilityId::FILE_SYSTEM)
+            .unwrap();
+        let sd_pos = resolved
+            .resolved_ids
+            .iter()
+            .position(|id| id == CapabilityId::SAMPLE_DATA)
+            .unwrap();
+        assert!(fs_pos < sd_pos, "FileSystem should come before SampleData");
+
+        // FileSystem was added as a dependency
+        assert_eq!(
+            resolved.added_as_dependencies,
+            vec![CapabilityId::FILE_SYSTEM]
+        );
+    }
+
+    #[test]
+    fn test_resolve_dependencies_already_selected() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // If dependency is already selected, it shouldn't be duplicated
+        let resolved = resolve_dependencies(
+            &[
+                CapabilityId::FILE_SYSTEM.to_string(),
+                CapabilityId::SAMPLE_DATA.to_string(),
+            ],
+            &registry,
+        )
+        .unwrap();
+
+        assert_eq!(resolved.resolved_ids.len(), 2);
+        // FileSystem was user-selected, not added as dependency
+        assert!(resolved.added_as_dependencies.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_dependencies_preserves_order() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Multiple independent capabilities should maintain their relative order
+        let resolved = resolve_dependencies(
+            &[
+                CapabilityId::CURRENT_TIME.to_string(),
+                CapabilityId::NOOP.to_string(),
+            ],
+            &registry,
+        )
+        .unwrap();
+
+        assert_eq!(
+            resolved.resolved_ids,
+            vec![CapabilityId::CURRENT_TIME, CapabilityId::NOOP]
+        );
+    }
+
+    #[test]
+    fn test_resolve_dependencies_unknown_capability() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Unknown capabilities are silently skipped
+        let resolved =
+            resolve_dependencies(&["unknown_capability".to_string()], &registry).unwrap();
+
+        assert!(resolved.resolved_ids.is_empty());
+    }
+
+    #[test]
+    fn test_get_dependencies() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // SampleData depends on FileSystem
+        let deps = get_dependencies(CapabilityId::SAMPLE_DATA, &registry);
+        assert_eq!(deps, vec![CapabilityId::FILE_SYSTEM]);
+
+        // CurrentTime has no dependencies
+        let deps = get_dependencies(CapabilityId::CURRENT_TIME, &registry);
+        assert!(deps.is_empty());
+
+        // Unknown capability
+        let deps = get_dependencies("unknown", &registry);
+        assert!(deps.is_empty());
+    }
+
+    #[test]
+    fn test_sample_data_has_dependency() {
+        let registry = CapabilityRegistry::with_builtins();
+        let cap = registry.get(CapabilityId::SAMPLE_DATA).unwrap();
+
+        let deps = cap.dependencies();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0], CapabilityId::FILE_SYSTEM);
+    }
+
+    #[test]
+    fn test_noop_has_no_dependencies() {
+        let registry = CapabilityRegistry::with_builtins();
+        let cap = registry.get(CapabilityId::NOOP).unwrap();
+
+        assert!(cap.dependencies().is_empty());
+    }
+
+    // Test for circular dependency detection
+    // Note: We can't easily test this with built-in capabilities since they don't have cycles.
+    // This test uses a custom registry to create a cycle.
+    #[test]
+    fn test_circular_dependency_error() {
+        // Create capabilities that form a cycle: A -> B -> A
+        struct CapA;
+        struct CapB;
+
+        impl Capability for CapA {
+            fn id(&self) -> &str {
+                "test_cap_a"
+            }
+            fn name(&self) -> &str {
+                "Test A"
+            }
+            fn description(&self) -> &str {
+                "Test capability A"
+            }
+            fn dependencies(&self) -> Vec<&'static str> {
+                vec!["test_cap_b"]
+            }
+        }
+
+        impl Capability for CapB {
+            fn id(&self) -> &str {
+                "test_cap_b"
+            }
+            fn name(&self) -> &str {
+                "Test B"
+            }
+            fn description(&self) -> &str {
+                "Test capability B"
+            }
+            fn dependencies(&self) -> Vec<&'static str> {
+                vec!["test_cap_a"]
+            }
+        }
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(CapA);
+        registry.register(CapB);
+
+        let result = resolve_dependencies(&["test_cap_a".to_string()], &registry);
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            DependencyError::CircularDependency { capability_id, .. } => {
+                assert_eq!(capability_id, "test_cap_a");
+            }
+            _ => panic!("Expected CircularDependency error"),
+        }
+    }
+
+    #[test]
+    fn test_max_capabilities_limit() {
+        // This test verifies the constant is set correctly
+        assert_eq!(MAX_RESOLVED_CAPABILITIES, 100);
     }
 }

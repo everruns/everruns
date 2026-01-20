@@ -107,13 +107,14 @@ pub use tools::{
 pub use capabilities::{
     AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
     CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability,
-    DeleteFileTool, DivideTool, FileSystemCapability, GetCurrentTimeTool, GetForecastTool,
-    GetWeatherTool, GrepFilesTool, ListDirectoryTool, MCP_CAPABILITY_PREFIX, McpCapability,
-    MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool,
-    NoopCapability, ReadFileTool, ResearchCapability, SampleDataCapability, SandboxCapability,
-    StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
-    TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities, is_mcp_capability,
-    mcp_capability_id, parse_mcp_capability_id,
+    DeleteFileTool, DependencyError, DivideTool, FileSystemCapability, GetCurrentTimeTool,
+    GetForecastTool, GetWeatherTool, GrepFilesTool, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES,
+    MCP_CAPABILITY_PREFIX, McpCapability, MountAccess, MountDirectoryBuilder, MountEntry,
+    MountPoint, MountSource, MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability,
+    ResolvedCapabilities, SampleDataCapability, SandboxCapability, StatFileTool,
+    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
+    WriteFileTool, WriteTodosTool, apply_capabilities, collect_capabilities, get_dependencies,
+    is_mcp_capability, mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
 };
 
 // Atoms re-exports (stateless atomic operations)

@@ -59,6 +59,7 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 | `icon` | string? | Icon name for UI rendering |
 | `category` | string? | Category for grouping in UI |
 | `is_mcp` | boolean | True if this is an MCP virtual capability |
+| `dependencies` | string[] | IDs of capabilities this capability depends on |
 
 ##### Description Markdown Support
 
@@ -191,10 +192,76 @@ pub trait Capability: Send + Sync {
     fn tools(&self) -> Vec<Box<dyn Tool>> { vec![] }
     fn icon(&self) -> Option<&str> { None }
     fn category(&self) -> Option<&str> { None }
+    fn mounts(&self) -> Vec<MountPoint> { vec![] }
+    fn dependencies(&self) -> Vec<&'static str> { vec![] }
 }
 ```
 
 The `CapabilityRegistry` in core holds all registered capability implementations. The API layer converts trait objects to DTOs using `Capability::from_core()`.
+
+### Capability Dependencies
+
+Capabilities can declare dependencies on other capabilities. When a capability is selected, its dependencies are automatically resolved and applied.
+
+#### How Dependencies Work
+
+1. **Declaration**: Capabilities implement `dependencies()` returning a list of capability IDs they depend on
+2. **Resolution**: When capabilities are applied, dependencies are resolved recursively
+3. **Ordering**: Dependencies are always applied before dependents (topological order)
+4. **Storage**: Only user-selected capabilities are stored in the database; dependencies are resolved at runtime
+5. **UI Enforcement**: Users cannot remove a capability that is required by other selected capabilities
+
+#### Dependency Resolution Rules
+
+- Dependencies are resolved depth-first
+- Circular dependencies are detected and return an error
+- Maximum of 100 resolved capabilities to prevent resource exhaustion
+- Unknown capabilities in dependency chains are silently skipped
+
+#### Example
+
+```rust
+impl Capability for SampleDataCapability {
+    fn id(&self) -> &str { "sample_data" }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        // Sample Data needs file system tools to be useful
+        vec!["session_file_system"]
+    }
+}
+```
+
+When `sample_data` is selected:
+1. `session_file_system` is added as a dependency (if not already selected)
+2. `session_file_system` tools and system prompt are applied first
+3. `sample_data` mounts and system prompt are applied second
+4. User cannot remove `session_file_system` while `sample_data` is selected
+
+#### Dependency Resolution API
+
+```rust
+/// Result of resolving capability dependencies
+pub struct ResolvedCapabilities {
+    /// All capability IDs after resolving dependencies (in topological order)
+    pub resolved_ids: Vec<String>,
+    /// IDs that were added as dependencies (not in the original selection)
+    pub added_as_dependencies: Vec<String>,
+    /// Original user-selected capability IDs
+    pub user_selected: Vec<String>,
+}
+
+/// Resolve capability dependencies
+pub fn resolve_dependencies(
+    selected_ids: &[String],
+    registry: &CapabilityRegistry,
+) -> Result<ResolvedCapabilities, DependencyError>;
+```
+
+#### Built-in Capabilities with Dependencies
+
+| Capability | Depends On |
+|------------|-----------|
+| `sample_data` | `session_file_system` |
 
 ### Built-in Capabilities
 
@@ -769,8 +836,6 @@ impl Capability for SampleDataCapability {
 ### Extension Points (Future)
 
 1. **Custom Capabilities**: User-defined capabilities with custom tools
-2. **Capability Composition**: Capabilities that depend on other capabilities
-3. **Capability Configuration**: Per-agent settings for capabilities
-4. **Conflict Resolution**: Handle tool name conflicts between capabilities
-5. **Capability Versioning**: Track capability API versions for compatibility
-6. **Dynamic Mount Sources**: External file sources (URLs, S3, etc.)
+2. **Conflict Resolution**: Handle tool name conflicts between capabilities
+3. **Capability Versioning**: Track capability API versions for compatibility
+4. **Dynamic Mount Sources**: External file sources (URLs, S3, etc.)
