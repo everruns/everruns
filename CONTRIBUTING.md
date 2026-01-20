@@ -7,6 +7,7 @@
 - Docker & Docker Compose (for PostgreSQL and Jaeger)
 - Rust stable toolchain
 - Node.js 18+ (for UI)
+- [just](https://github.com/casey/just) command runner
 - OpenAI or Anthropic API key (for LLM calls)
 
 ### Configuration
@@ -21,10 +22,10 @@ cp .env.example .env
 
 ```bash
 # Install all dependencies (first time only)
-./scripts/dev.sh init
+just init
 
 # Start all services (Postgres, API, Worker, UI)
-./scripts/dev.sh start-all
+just start-all
 ```
 
 Services available at:
@@ -38,7 +39,7 @@ Services available at:
 For quick UI development without PostgreSQL:
 
 ```bash
-./scripts/dev.sh start-dev
+just start-dev
 ```
 
 Uses in-memory storage (data lost on restart). Ideal for UI development.
@@ -46,7 +47,7 @@ Uses in-memory storage (data lost on restart). Ideal for UI development.
 ### Stop Services
 
 ```bash
-./scripts/dev.sh stop-all
+just stop-all
 ```
 
 ## Code Quality
@@ -54,13 +55,14 @@ Uses in-memory storage (data lost on restart). Ideal for UI development.
 Before committing, run:
 
 ```bash
-./scripts/dev.sh check
+just check
 ```
 
 This runs:
 - `cargo fmt --check` - Code formatting
 - `cargo clippy --all-targets -- -D warnings` - Linting
 - `cargo test` - Tests
+
 
 ## Architecture Principles
 
@@ -69,10 +71,10 @@ This runs:
 3. **Restart-safe**: All state in Postgres, workflows are durable
 
 
-## Development Scripts
+## Development Commands
 
 ```bash
-./scripts/dev.sh <command>
+just <command>
 
 # Lifecycle
 start-all     # Start everything
@@ -90,7 +92,7 @@ reset         # Reset database
 
 # Quality
 check         # Run format, lint, tests
-smoke-test    # Run smoke tests
+pre-pr        # Run all pre-PR checks
 ```
 
 
@@ -119,7 +121,7 @@ smoke-test    # Run smoke tests
 sqlx migrate add -r <migration_name>
 
 # Run migrations
-./scripts/dev.sh migrate
+just migrate
 ```
 
 Rules:
@@ -133,11 +135,8 @@ Rules:
 # Unit tests
 cargo test
 
-# Smoke tests (requires services running)
-./scripts/dev.sh smoke-test
-
-# With UI
-./scripts/dev.sh smoke-test --with-ui
+# Run pre-PR checks
+just pre-pr
 ```
 
 See [SMOKE_TEST.md](./SMOKE_TEST.md) for detailed testing guide.
@@ -160,7 +159,7 @@ open http://localhost:16686
 docker exec -it everruns-postgres psql -U everruns -d everruns
 
 # Verbose logs
-RUST_LOG=debug ./scripts/dev.sh api
+RUST_LOG=debug just api
 ```
 
 ## Getting Help

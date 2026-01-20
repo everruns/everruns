@@ -162,7 +162,7 @@ DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 - Workers receive API keys via gRPC from the control-plane
 - Database-stored keys always take priority over environment variables
 - These are intended for development convenience, not production use
-- The `./scripts/dev.sh start-all` command automatically sets these from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` if present
+- The `just start-all` command automatically sets these from `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` if present
 - If no API key is configured for a provider, LLM calls will fail and users will see an error message in the chat: "I encountered an error while processing your request. Please try again later."
 
 ## UI API Proxy Architecture
@@ -301,7 +301,7 @@ The `local/docker-compose.yml` includes Jaeger for local trace visualization:
 
 ```bash
 # Start all services including Jaeger
-./scripts/dev.sh start
+just start
 
 # Set OTLP endpoint for API and Worker
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317

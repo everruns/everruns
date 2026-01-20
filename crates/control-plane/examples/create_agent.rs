@@ -2,9 +2,9 @@
 // Run with: cargo run --example create_agent
 //
 // Prerequisites:
-// 1. Start the services: ./scripts/dev.sh start
-// 2. Run migrations: ./scripts/dev.sh migrate
-// 3. Start the API: ./scripts/dev.sh api (in another terminal)
+// 1. Start the services: just start
+// 2. Run migrations: just migrate
+// 3. Start the API: just api (in another terminal)
 
 use everruns_core::Agent;
 use serde_json::json;

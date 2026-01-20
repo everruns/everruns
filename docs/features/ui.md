@@ -203,7 +203,7 @@ npm start
 When using the full Docker Compose setup:
 
 ```bash
-./scripts/dev.sh start-all
+just start-all
 ```
 
 The UI is automatically started alongside the API and worker.

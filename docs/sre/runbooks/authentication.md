@@ -189,8 +189,8 @@ Authentication requires migration `003_authentication.sql`:
 # Run migrations
 sqlx migrate run
 
-# Or via the dev script
-./scripts/dev.sh migrate
+# Or via just
+just migrate
 ```
 
 ## Health Check

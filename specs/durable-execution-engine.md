@@ -202,14 +202,14 @@ Real database performance with actual I/O:
 
 ```bash
 # In-memory benchmarks (fast)
-./scripts/dev.sh durable-bench
+just durable-bench
 
 # PostgreSQL benchmarks (auto-starts Docker)
-./scripts/dev.sh durable-bench-db
+just durable-bench-db
 
 # With checkpointing for historical comparison
-./scripts/dev.sh durable-bench --save
-./scripts/dev.sh durable-bench-db --save ci-4cpu-8gb
+just durable-bench --save
+just durable-bench-db --save ci-4cpu-8gb
 ```
 
 ### Benchmark Framework

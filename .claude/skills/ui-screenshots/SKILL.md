@@ -36,7 +36,7 @@ Capture UI screenshots and attach them to pull requests for visual verification.
 Run the e2e screenshot tests:
 
 ```bash
-./scripts/dev.sh e2e-screenshots
+just e2e-screenshots
 ```
 
 This captures screenshots to `apps/ui/e2e/screenshots/` (gitignored, not committed).

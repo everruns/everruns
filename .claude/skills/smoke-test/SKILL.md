@@ -33,7 +33,7 @@ Comprehensive smoke testing for API, UI, database, and system integration.
 
 ```bash
 # From repo root
-./scripts/dev.sh start-all
+just start-all
 ```
 
 ### No-Docker Mode
@@ -51,7 +51,7 @@ Start the development environment before running tests:
 
 ```bash
 # From repo root - uses Docker
-./scripts/dev.sh start-all
+just start-all
 ```
 
 **Service Ports:**
@@ -59,7 +59,7 @@ Start the development environment before running tests:
 - **gRPC Service**: `localhost:9001` - Internal worker communication (not tested directly in smoke tests)
 
 **Note on paths:** This document references two types of scripts:
-- **Repo root scripts** (e.g., `./scripts/dev.sh`) - Run from the repository root directory
+- **Repo root scripts** (e.g., `just`) - Run from the repository root directory
 - **Skill scripts** (e.g., `tool-calling-tests.sh`) - Located in `.claude/skills/smoke-test/scripts/`
 
 ## Test Checklist
@@ -322,7 +322,7 @@ echo "Durable unit tests and clippy passed"
 
 ### UI Tests
 
-Run these after API tests pass. Requires UI running (`./scripts/dev.sh ui`).
+Run these after API tests pass. Requires UI running (`just ui`).
 
 #### 1. UI Availability
 ```bash
@@ -366,7 +366,7 @@ For changes that only impact the UI (no backend/API changes), DEV_MODE provides 
 
 ```bash
 # Start in DEV_MODE - no Docker/PostgreSQL required
-./scripts/dev.sh start-dev
+just start-dev
 ```
 
 **When to use DEV_MODE:**
@@ -392,7 +392,7 @@ For full end-to-end testing including backend changes, use the standard smoke te
 
 | Script | Description |
 |--------|-------------|
-| `./scripts/dev.sh` | Development environment manager (Docker-based) |
+| `just` | Development environment manager (Docker-based) |
 
 **Note:** Seed agents (Dad Jokes Agent, Research Agent) are seeded automatically on API startup.
 
@@ -408,16 +408,16 @@ lsof -i :9000
 docker exec everruns-postgres psql -U everruns -d everruns -c "SELECT 1;"
 
 # View API logs
-./scripts/dev.sh api 2>&1 | tee api.log
+just api 2>&1 | tee api.log
 ```
 
 ### Docker Issues
 
 ```bash
 # Reset and restart
-./scripts/dev.sh clean
-./scripts/dev.sh start
-./scripts/dev.sh migrate
+just clean
+just start
+just migrate
 ```
 
 ### Workflow Verification
