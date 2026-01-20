@@ -80,10 +80,6 @@ stop-all:
 ui-build:
     ./scripts/lib/ui.sh build
 
-# Install UI dependencies
-ui-install:
-    ./scripts/lib/ui.sh install
-
 # Run UI e2e tests (Playwright)
 e2e:
     ./scripts/lib/ui.sh e2e
@@ -101,10 +97,6 @@ docs:
 # Build the docs for production
 docs-build:
     ./scripts/lib/docs.sh build
-
-# Install docs dependencies
-docs-install:
-    ./scripts/lib/docs.sh install
 
 # === Benchmarks ===
 
