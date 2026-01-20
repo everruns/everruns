@@ -8,9 +8,13 @@ shift || true
 
 # Parse flags
 NO_WATCH=false
+NO_DOCKER=false
+NO_UI=false
 for arg in "$@"; do
   case "$arg" in
     --no-watch) NO_WATCH=true ;;
+    --no-docker) NO_DOCKER=true ;;
+    --no-ui) NO_UI=true ;;
   esac
 done
 
@@ -185,7 +189,9 @@ case "$cmd" in
       require_command cargo-watch "Run: just init (or use --no-watch)"
     fi
     require_command sqlx "Run: just init"
-    require_command npm "Install Node.js/npm to start the UI."
+    if [ "$NO_UI" = false ]; then
+      require_command npm "Install Node.js/npm to start the UI (or use --no-ui)"
+    fi
 
     CHILD_PIDS=()
     JAEGER_STARTED=false
@@ -212,7 +218,19 @@ case "$cmd" in
 
     # Check PostgreSQL
     echo "1️⃣  Checking PostgreSQL..."
-    if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+    if [ "$NO_DOCKER" = true ]; then
+      # No Docker mode - require local PostgreSQL
+      if pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+        echo "   ✅ Local PostgreSQL is ready"
+        export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
+      else
+        echo "   ❌ PostgreSQL not running on localhost:5432"
+        echo "   Start PostgreSQL or remove --no-docker flag"
+        exit 1
+      fi
+      export OTEL_SDK_DISABLED=true
+      echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
+    elif pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
       echo "   ✅ Local PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
       if resolve_docker_compose 2>/dev/null; then
@@ -323,19 +341,23 @@ case "$cmd" in
     sleep 2
     echo "   ✅ Worker is starting (PID: $WORKER_PID)"
 
-    # Check UI dependencies
-    echo "7️⃣  Checking UI dependencies..."
-    check_ui_deps || true
+    if [ "$NO_UI" = false ]; then
+      # Check UI dependencies
+      echo "7️⃣  Checking UI dependencies..."
+      check_ui_deps || true
 
-    # Start UI
-    echo "8️⃣  Starting UI server..."
-    cd "$PROJECT_ROOT/apps/ui"
-    npm run dev &
-    UI_PID=$!
-    CHILD_PIDS+=("$UI_PID")
-    cd "$PROJECT_ROOT"
-    sleep 5
-    echo "   ✅ UI is starting (PID: $UI_PID)"
+      # Start UI
+      echo "8️⃣  Starting UI server..."
+      cd "$PROJECT_ROOT/apps/ui"
+      npm run dev &
+      UI_PID=$!
+      CHILD_PIDS+=("$UI_PID")
+      cd "$PROJECT_ROOT"
+      sleep 5
+      echo "   ✅ UI is starting (PID: $UI_PID)"
+    else
+      echo "7️⃣  Skipping UI (--no-ui)"
+    fi
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -354,10 +376,12 @@ case "$cmd" in
       echo "   📖 API Docs:    http://localhost:9000/swagger-ui/"
       echo "   ⚙️ Worker:      running (auto-reload)"
     fi
-    echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
+    if [ "$NO_UI" = false ]; then
+      echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
+    fi
     if [ "$JAEGER_STARTED" = true ]; then
       echo "   🔍 Jaeger UI:   http://localhost:16686"
-    else
+    elif [ "$NO_DOCKER" = false ]; then
       echo "   🔍 Jaeger:      disabled (no Docker)"
     fi
     echo ""
@@ -387,10 +411,12 @@ case "$cmd" in
     ;;
 
   *)
-    echo "Usage: $0 {control-plane|worker|watch-control-plane|watch-worker|start-dev|start-all|stop-all} [--no-watch]"
+    echo "Usage: $0 {control-plane|worker|watch-control-plane|watch-worker|start-dev|start-all|stop-all} [options]"
     echo ""
     echo "Options:"
     echo "  --no-watch    Don't use cargo-watch (faster startup, no auto-reload)"
+    echo "  --no-docker   Don't use Docker (requires local PostgreSQL for start-all)"
+    echo "  --no-ui       Don't start the UI server"
     exit 1
     ;;
 esac

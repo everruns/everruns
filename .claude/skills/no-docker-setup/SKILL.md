@@ -11,19 +11,17 @@ description: Set up full production-like backend (PostgreSQL + API + Worker) wit
 
 | Mode | Use Case |
 |------|----------|
-| `just start-dev` | Quick testing, UI work, in-memory (no persistence) |
+| `just start-dev --no-watch` | Quick testing, UI work, in-memory (no persistence) |
 | **This skill** | Durable workflows, database testing, persistence needed |
 | `just start-all` | Full setup with Docker (easiest if Docker available) |
 
-## What It Starts
+## What It Does
 
-```
-PostgreSQL (port 5432) → API (port 9000) → Worker (port 9001)
-     ↓                       ↓                  ↓
-  Persistent DB         HTTP + gRPC        Durable workflows
-```
-
-All components run as separate processes, just like production.
+1. Sets up fresh PostgreSQL cluster at `/tmp/pgdata`
+2. Runs `just start-all --no-watch --no-docker --no-ui`
+   - Runs database migrations
+   - Starts API server (port 9000)
+   - Starts Worker (port 9001)
 
 ## Quick Start
 
@@ -39,42 +37,26 @@ sudo -E .claude/skills/no-docker-setup/scripts/start.sh
 3. **API Key** - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
 4. **Root access** - For PostgreSQL cluster initialization
 
-## Fixed Configuration
+## Architecture
 
-| Component | Value |
-|-----------|-------|
-| PostgreSQL | `/tmp/pgdata` (fresh each run) |
-| Database URL | `postgres://everruns:everruns@localhost:5432/everruns` |
-| API | `http://localhost:9000` |
-| Worker gRPC | `localhost:9001` |
+```
+PostgreSQL (port 5432) → API (port 9000) → Worker (port 9001)
+     ↓                       ↓                  ↓
+  /tmp/pgdata           HTTP + gRPC        Durable workflows
+```
 
-## Log Files
+## Alternative: Manual Setup
 
-| Service | Location |
-|---------|----------|
-| API | `/tmp/api.log` |
-| Worker | `/tmp/worker.log` |
-| PostgreSQL | `/tmp/pgdata/pg.log` |
+If you already have PostgreSQL running:
+
+```bash
+export DATABASE_URL="postgres://user:pass@localhost:5432/everruns"
+just start-all --no-watch --no-docker --no-ui
+```
 
 ## Testing
 
 ```bash
-# Health check
 curl http://localhost:9000/health
-
-# Run tests
 cargo test
-```
-
-## Troubleshooting
-
-```bash
-# Check logs
-cat /tmp/api.log
-cat /tmp/worker.log
-
-# Check ports
-lsof -i :5432  # PostgreSQL
-lsof -i :9000  # API
-lsof -i :9001  # Worker gRPC
 ```
