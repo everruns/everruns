@@ -12,6 +12,9 @@
 
 set -e
 
+# Add cargo bin to PATH (for just command)
+export PATH="$HOME/.cargo/bin:$PATH"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_utils.sh"
 source "$SCRIPT_DIR/_postgres.sh"
