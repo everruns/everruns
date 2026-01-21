@@ -15,6 +15,7 @@ import {
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatTokens, formatDuration } from "@/lib/formatting";
 import type {
   Message,
   ContentPart,
@@ -23,27 +24,6 @@ import type {
   LlmGenerationMetadata,
   TokenUsage,
 } from "@/lib/api/types";
-
-// ============================================
-// Helper functions
-// ============================================
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1000000) {
-    return `${(tokens / 1000000).toFixed(1)}M`;
-  }
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}K`;
-  }
-  return tokens.toString();
-}
-
-function formatDuration(ms: number): string {
-  if (ms >= 1000) {
-    return `${(ms / 1000).toFixed(2)}s`;
-  }
-  return `${ms}ms`;
-}
 
 // ============================================
 // Content Part Renderers

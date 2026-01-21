@@ -7,11 +7,27 @@ cmd="${1:-}"
 UI_DIR="$PROJECT_ROOT/apps/ui"
 
 # Set chromium path for restricted environments
+# Can be overridden via PLAYWRIGHT_CHROMIUM_PATH environment variable
 setup_playwright() {
-  CHROMIUM_PATH="/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome"
-  if [ -f "$CHROMIUM_PATH" ]; then
-    export PLAYWRIGHT_CHROMIUM_PATH="$CHROMIUM_PATH"
+  # Use environment variable if set, otherwise try common locations
+  if [ -n "${PLAYWRIGHT_CHROMIUM_PATH:-}" ] && [ -f "$PLAYWRIGHT_CHROMIUM_PATH" ]; then
+    export PLAYWRIGHT_CHROMIUM_PATH
+    return
   fi
+
+  # Try common Playwright chromium locations
+  local chromium_paths=(
+    "/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome"
+    "$HOME/.cache/ms-playwright/chromium-1194/chrome-linux/chrome"
+    "/home/user/.cache/ms-playwright/chromium-1194/chrome-linux/chrome"
+  )
+
+  for path in "${chromium_paths[@]}"; do
+    if [ -f "$path" ]; then
+      export PLAYWRIGHT_CHROMIUM_PATH="$path"
+      return
+    fi
+  done
 }
 
 case "$cmd" in

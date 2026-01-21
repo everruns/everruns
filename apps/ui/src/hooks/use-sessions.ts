@@ -10,7 +10,6 @@ import {
   listSessions,
   updateSession,
   sendUserMessage,
-  listEvents,
 } from "@/lib/api/sessions";
 import { getSseUrl } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
@@ -277,24 +276,4 @@ export function useEvents(
     isLoading,
     error,
   };
-}
-
-/**
- * Fetch events for a session using polling (legacy, for comparison)
- * Returns raw Event[] for direct rendering in the UI
- */
-export function useEventsPolling(
-  agentId: string | undefined,
-  sessionId: string | undefined,
-  options?: { refetchInterval?: number | false }
-) {
-  const { currentOrg } = useOrg();
-  const org = currentOrg?.public_id;
-
-  return useQuery({
-    queryKey: [...queryKeys.events.list(agentId!, sessionId!), org],
-    queryFn: () => listEvents(org!, agentId!, sessionId!),
-    enabled: !!org && !!agentId && !!sessionId,
-    refetchInterval: options?.refetchInterval,
-  });
 }
