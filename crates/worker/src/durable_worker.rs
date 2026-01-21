@@ -669,11 +669,13 @@ impl DurableWorker {
                 let act_task_input: ActTaskInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActTaskInput: {}", e))?;
                 // Create DurableTurnInput from ActInput context for scheduling next activity
+                // Include turn_id from act_input context for trace correlation
                 let turn_input = DurableTurnInput {
                     org_id: act_task_input.org_id,
                     session_id: act_task_input.act_input.context.session_id,
                     agent_id: act_task_input.act_input.agent_id, // Pass through agent_id for follow-up reason
                     input_message_id: act_task_input.act_input.context.input_message_id,
+                    turn_id: Some(act_task_input.act_input.context.turn_id),
                 };
                 let res = self
                     .execute_act_activity(
@@ -777,12 +779,22 @@ impl DurableWorker {
             exec_id: Uuid::now_v7(),
         };
 
-        let atom_input = InputAtomInput { context };
+        let atom_input = InputAtomInput {
+            context: context.clone(),
+        };
 
         // Use the existing input_activity function with gRPC adapters
         let result = input_activity(grpc_client, input.org_id, atom_input).await?;
 
-        Ok(serde_json::to_value(&result)?)
+        // Include turn_id in output for propagation to subsequent activities
+        let mut output = serde_json::to_value(&result)?;
+        if let serde_json::Value::Object(ref mut map) = output {
+            map.insert(
+                "turn_id".to_string(),
+                serde_json::json!(context.turn_id.to_string()),
+            );
+        }
+        Ok(output)
     }
 
     /// Execute reasoning activity (LLM call)
@@ -797,6 +809,7 @@ impl DurableWorker {
     ) -> Result<serde_json::Value> {
         debug!(
             session_id = %input.session_id,
+            turn_id = ?input.turn_id,
             "Executing reason activity"
         );
 
@@ -836,10 +849,11 @@ impl DurableWorker {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to load turn context: {}", e))?;
 
-        // Create AtomContext for this execution
+        // Create AtomContext - use turn_id from input if available (from input activity)
+        let turn_id = input.turn_id.unwrap_or_else(Uuid::now_v7);
         let context = AtomContext {
             session_id: input.session_id,
-            turn_id: Uuid::now_v7(),
+            turn_id,
             input_message_id: input.input_message_id,
             exec_id: Uuid::now_v7(),
         };
@@ -949,6 +963,22 @@ impl DurableWorker {
 
         match completed_activity {
             "process_input" => {
+                // Extract turn_id from output (set by execute_input_activity)
+                let turn_id = output
+                    .get("turn_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok());
+
+                // Create input with turn_id for subsequent activities
+                let input_with_turn = DurableTurnInput {
+                    org_id: input.org_id,
+                    session_id: input.session_id,
+                    agent_id: input.agent_id,
+                    input_message_id: input.input_message_id,
+                    turn_id,
+                };
+                let input_json = serde_json::to_value(&input_with_turn)?;
+
                 // After input processing, schedule reason activity
                 store
                     .enqueue_task(
@@ -960,7 +990,7 @@ impl DurableWorker {
                     .await
                     .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
 
-                debug!(workflow_id = %workflow_id, "Scheduled reason activity");
+                debug!(workflow_id = %workflow_id, turn_id = ?turn_id, "Scheduled reason activity");
             }
             "reason" => {
                 // After reasoning, check if there are tool calls
@@ -970,12 +1000,16 @@ impl DurableWorker {
                 if reason_result.has_tool_calls && reason_result.success {
                     // Schedule act activity to execute the tool calls
                     let tool_count = reason_result.tool_calls.len();
+
+                    // Use turn_id from input (propagated from input activity)
+                    let turn_id = input.turn_id.unwrap_or_else(Uuid::now_v7);
+
                     let act_task_input = ActTaskInput {
                         org_id: input.org_id,
                         act_input: ActInput {
                             context: AtomContext {
                                 session_id: input.session_id,
-                                turn_id: Uuid::now_v7(),
+                                turn_id,
                                 input_message_id: input.input_message_id,
                                 exec_id: Uuid::now_v7(),
                             },

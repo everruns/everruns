@@ -546,6 +546,10 @@ pub fn proto_event_to_schema(value: proto::Event) -> Result<everruns_core::Event
             .map(proto_uuid_to_uuid)
             .transpose()?
             .map(ExecId::from_uuid),
+        // OTel-style trace/span fields
+        trace_id: proto_context.trace_id.clone(),
+        span_id: proto_context.span_id.clone(),
+        parent_span_id: proto_context.parent_span_id.clone(),
     };
 
     // Convert Struct data to EventData based on event_type
@@ -603,6 +607,10 @@ pub fn schema_event_to_proto(value: &everruns_core::Event) -> proto::Event {
                 .exec_id
                 .as_ref()
                 .map(|id| uuid_to_proto_uuid(id.uuid())),
+            // OTel-style trace/span fields
+            trace_id: value.context.trace_id.clone(),
+            span_id: value.context.span_id.clone(),
+            parent_span_id: value.context.parent_span_id.clone(),
         }),
         data: Some(data_struct),
         metadata: value.metadata.as_ref().map(json_to_proto_struct),
@@ -650,6 +658,10 @@ pub fn proto_event_request_to_schema(
             .map(proto_uuid_to_uuid)
             .transpose()?
             .map(ExecId::from_uuid),
+        // OTel-style trace/span fields
+        trace_id: proto_context.trace_id.clone(),
+        span_id: proto_context.span_id.clone(),
+        parent_span_id: proto_context.parent_span_id.clone(),
     };
 
     // Convert Struct data to EventData based on event_type
@@ -704,6 +716,10 @@ pub fn schema_event_request_to_proto(value: &everruns_core::EventRequest) -> pro
                 .exec_id
                 .as_ref()
                 .map(|id| uuid_to_proto_uuid(id.uuid())),
+            // OTel-style trace/span fields
+            trace_id: value.context.trace_id.clone(),
+            span_id: value.context.span_id.clone(),
+            parent_span_id: value.context.parent_span_id.clone(),
         }),
         data: Some(data_struct),
         metadata: value.metadata.as_ref().map(json_to_proto_struct),
