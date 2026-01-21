@@ -422,7 +422,7 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
         title: value.title.clone().unwrap_or_default(),
         status: value.status.to_string(),
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
-        updated_at: Some(datetime_to_proto_timestamp(value.created_at)), // Use created_at as fallback
+        updated_at: Some(datetime_to_proto_timestamp(value.updated_at)),
         default_model_id: value.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
     }
 }
