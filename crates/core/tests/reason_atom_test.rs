@@ -604,6 +604,7 @@ async fn test_driver_registry_integration() {
         max_tokens: None,
         tools: vec![],
         reasoning_effort: None,
+        metadata: std::collections::HashMap::new(),
     };
 
     let response = driver

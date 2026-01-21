@@ -305,6 +305,10 @@ pub struct LlmCallConfig {
     pub tools: Vec<ToolDefinition>,
     /// Reasoning effort level (for models that support it: low, medium, high)
     pub reasoning_effort: Option<String>,
+    /// Metadata to send with the API request for tracking and debugging.
+    /// Keys and values are strings. Both OpenAI and Anthropic support metadata fields.
+    /// Typically includes: session_id, agent_id, org_id, turn_id, exec_id.
+    pub metadata: HashMap<String, String>,
 }
 
 impl From<&RuntimeAgent> for LlmCallConfig {
@@ -315,6 +319,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             max_tokens: runtime_agent.max_tokens,
             tools: runtime_agent.tools.clone(),
             reasoning_effort: None, // Set by ReasonAtom from user message controls
+            metadata: HashMap::new(), // Set by ReasonAtom with session/agent context
         }
     }
 }
@@ -384,6 +389,21 @@ impl LlmCallConfigBuilder {
     /// Set tools
     pub fn tools(mut self, tools: Vec<ToolDefinition>) -> Self {
         self.config.tools = tools;
+        self
+    }
+
+    /// Set metadata for API tracking
+    ///
+    /// This metadata is sent to the LLM provider for tracking and debugging.
+    /// Typically includes session_id, agent_id, org_id, turn_id, exec_id.
+    pub fn metadata(mut self, metadata: HashMap<String, String>) -> Self {
+        self.config.metadata = metadata;
+        self
+    }
+
+    /// Add a single metadata key-value pair
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.config.metadata.insert(key.into(), value.into());
         self
     }
 
@@ -763,6 +783,40 @@ mod tests {
         assert!(llm_config.temperature.is_none());
         assert!(llm_config.max_tokens.is_none());
         assert!(llm_config.tools.is_empty());
+        assert!(llm_config.metadata.is_empty());
+    }
+
+    #[test]
+    fn test_llm_call_config_builder_with_metadata() {
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
+            .with_metadata("session_id", "session_abc123")
+            .with_metadata("agent_id", "agent_xyz789")
+            .build();
+
+        assert_eq!(
+            llm_config.metadata.get("session_id"),
+            Some(&"session_abc123".to_string())
+        );
+        assert_eq!(
+            llm_config.metadata.get("agent_id"),
+            Some(&"agent_xyz789".to_string())
+        );
+    }
+
+    #[test]
+    fn test_llm_call_config_builder_with_metadata_hashmap() {
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let mut metadata = HashMap::new();
+        metadata.insert("key1".to_string(), "value1".to_string());
+        metadata.insert("key2".to_string(), "value2".to_string());
+
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
+            .metadata(metadata)
+            .build();
+
+        assert_eq!(llm_config.metadata.get("key1"), Some(&"value1".to_string()));
+        assert_eq!(llm_config.metadata.get("key2"), Some(&"value2".to_string()));
     }
 
     #[test]

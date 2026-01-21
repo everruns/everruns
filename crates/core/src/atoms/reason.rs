@@ -489,11 +489,20 @@ where
             llm_messages.push(LlmMessage::from_message_with_images(msg, &resolved_images));
         }
 
-        // 12. Build LLM call config with reasoning effort
+        // 12. Build LLM call config with reasoning effort and metadata
         let mut llm_config_builder = LlmCallConfigBuilder::from(&runtime_agent);
         if let Some(effort) = reasoning_effort.clone() {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
         }
+
+        // Add metadata for API tracking and debugging
+        // These IDs help correlate API requests with Everruns entities
+        llm_config_builder = llm_config_builder
+            .with_metadata("session_id", format!("session_{}", session_id.as_simple()))
+            .with_metadata("agent_id", format!("agent_{}", agent_id.as_simple()))
+            .with_metadata("turn_id", format!("turn_{}", context.turn_id.as_simple()))
+            .with_metadata("exec_id", format!("exec_{}", context.exec_id.as_simple()));
+
         let llm_config = llm_config_builder.build();
 
         tracing::debug!(
