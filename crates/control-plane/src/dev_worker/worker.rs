@@ -373,7 +373,7 @@ impl InProcessWorker {
         // Create AtomContext
         let context = AtomContext {
             session_id: input.session_id,
-            turn_id: Uuid::now_v7(),
+            turn_id: TurnId::new(),
             input_message_id: input.input_message_id,
             exec_id: Uuid::now_v7(),
         };
@@ -390,7 +390,7 @@ impl InProcessWorker {
             input.session_id,
             EventContext::turn(context.turn_id, input.input_message_id),
             SessionActivatedData {
-                turn_id: TurnId::from_uuid(context.turn_id),
+                turn_id: context.turn_id,
                 input_message_id: MessageId::from_uuid(input.input_message_id),
             },
         );
@@ -403,7 +403,7 @@ impl InProcessWorker {
             input.session_id,
             EventContext::turn(context.turn_id, input.input_message_id),
             TurnStartedData {
-                turn_id: TurnId::from_uuid(context.turn_id),
+                turn_id: context.turn_id,
                 input_message_id: MessageId::from_uuid(input.input_message_id),
             },
         );
@@ -446,7 +446,7 @@ impl InProcessWorker {
         );
 
         // Create AtomContext - use turn_id from input if available (from input activity)
-        let turn_id = input.turn_id.unwrap_or_else(Uuid::now_v7);
+        let turn_id = input.turn_id.unwrap_or_else(TurnId::new);
         let context = AtomContext {
             session_id: input.session_id,
             turn_id,
@@ -511,7 +511,7 @@ impl InProcessWorker {
                     session_id,
                     EventContext::turn(turn_id, input_message_id),
                     TurnFailedData {
-                        turn_id: TurnId::from_uuid(turn_id),
+                        turn_id,
                         error: "An error occurred while processing your request.".to_string(),
                         error_code: Some("llm_error".to_string()),
                     },
@@ -524,7 +524,7 @@ impl InProcessWorker {
                     session_id,
                     EventContext::turn(turn_id, input_message_id),
                     TurnCompletedData {
-                        turn_id: TurnId::from_uuid(turn_id),
+                        turn_id,
                         iterations: 1,
                         duration_ms: None,
                         usage: result.usage.clone(),
@@ -567,7 +567,7 @@ impl InProcessWorker {
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
                 SessionIdledData {
-                    turn_id: TurnId::from_uuid(turn_id),
+                    turn_id,
                     iterations: None,
                     usage: session_usage,
                 },
@@ -634,10 +634,10 @@ impl InProcessWorker {
         match completed_activity {
             "process_input" => {
                 // Extract turn_id from output (set by execute_input_activity)
-                let turn_id = output
+                let turn_id: Option<TurnId> = output
                     .get("turn_id")
                     .and_then(|v| v.as_str())
-                    .and_then(|s| Uuid::parse_str(s).ok());
+                    .and_then(|s| s.parse().ok());
 
                 // Create input with turn_id for subsequent activities
                 let input_with_turn = DurableTurnInput {
@@ -685,7 +685,7 @@ impl InProcessWorker {
                     let tool_count = reason_result.tool_calls.len();
 
                     // Use turn_id from input (propagated from input activity)
-                    let turn_id = input.turn_id.unwrap_or_else(Uuid::now_v7);
+                    let turn_id = input.turn_id.unwrap_or_else(TurnId::new);
 
                     // Schedule act activity
                     let act_input = ActInput {

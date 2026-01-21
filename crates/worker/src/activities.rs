@@ -17,7 +17,7 @@ use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
 use everruns_core::traits::AgentStore;
-use everruns_core::typed_id::{MessageId, TurnId};
+use everruns_core::typed_id::MessageId;
 use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
@@ -74,7 +74,7 @@ pub async fn input_activity(
         input.context.session_id,
         EventContext::turn(input.context.turn_id, input.context.input_message_id),
         SessionActivatedData {
-            turn_id: TurnId::from_uuid(input.context.turn_id),
+            turn_id: input.context.turn_id,
             input_message_id: MessageId::from_uuid(input.context.input_message_id),
         },
     );
@@ -87,7 +87,7 @@ pub async fn input_activity(
         input.context.session_id,
         EventContext::turn(input.context.turn_id, input.context.input_message_id),
         TurnStartedData {
-            turn_id: TurnId::from_uuid(input.context.turn_id),
+            turn_id: input.context.turn_id,
             input_message_id: MessageId::from_uuid(input.context.input_message_id),
         },
     );
@@ -186,7 +186,7 @@ pub async fn reason_activity(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
                 TurnFailedData {
-                    turn_id: TurnId::from_uuid(turn_id),
+                    turn_id,
                     error: "An error occurred while processing your request.".to_string(),
                     error_code: Some("llm_error".to_string()),
                 },
@@ -200,7 +200,7 @@ pub async fn reason_activity(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
                 TurnCompletedData {
-                    turn_id: TurnId::from_uuid(turn_id),
+                    turn_id,
                     iterations: 1, // TODO: Track actual iterations when workflow supports it
                     duration_ms: None,
                     usage: result.usage.clone(),
@@ -218,7 +218,7 @@ pub async fn reason_activity(
             session_id,
             EventContext::turn(turn_id, input_message_id),
             SessionIdledData {
-                turn_id: TurnId::from_uuid(turn_id),
+                turn_id,
                 iterations: None, // We don't track iterations in the activity
                 usage: result.usage.clone(),
             },
@@ -320,6 +320,7 @@ pub mod activity_types {
 mod tests {
     use super::*;
     use everruns_core::atoms::AtomContext;
+    use everruns_core::typed_id::TurnId;
     use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
     use serde_json::json;
     use uuid::Uuid;
@@ -328,7 +329,7 @@ mod tests {
     fn test_input_atom_input_serialization() {
         let context = AtomContext::new(
             Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
-            Uuid::parse_str("660e8400-e29b-41d4-a716-446655440000").unwrap(),
+            TurnId::from_uuid(Uuid::parse_str("660e8400-e29b-41d4-a716-446655440000").unwrap()),
             Uuid::parse_str("770e8400-e29b-41d4-a716-446655440000").unwrap(),
         );
 
@@ -344,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_reason_input_serialization() {
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
 
         let input = ReasonInput {
             context: context.clone(),
@@ -363,7 +364,7 @@ mod tests {
 
     #[test]
     fn test_act_input_serialization() {
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
 
         let input = ActInput {
             context: context.clone(),

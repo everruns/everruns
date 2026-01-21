@@ -36,7 +36,6 @@ use crate::events::{
 use crate::message::ContentPart;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{EventEmitter, SessionFileStore, ToolContext, ToolExecutor};
-use crate::typed_id::TurnId;
 use uuid::Uuid;
 
 // ============================================================================
@@ -179,10 +178,9 @@ where
         // span_id: unique identifier for this act span (shared by started/completed)
         // parent_span_id: links to turn as parent
         //
-        // NOTE: Use TurnId::to_string() to get prefixed format (e.g., "turn_abc123")
+        // NOTE: TurnId::to_string() returns prefixed format (e.g., "turn_abc123")
         // matching the format used by turn.started/completed events in Braintrust.
-        // Raw Uuid::to_string() produces hyphenated format which doesn't match.
-        let trace_id = TurnId::from_uuid(context.turn_id).to_string();
+        let trace_id = context.turn_id.to_string();
         let act_span_id = Uuid::now_v7().to_string();
         let parent_span_id = trace_id.clone(); // Parent is the turn
 
@@ -507,6 +505,7 @@ mod tests {
     use super::*;
     use crate::tools::ToolRegistry;
     use crate::traits::NoopEventEmitter;
+    use crate::typed_id::TurnId;
     use serde_json::json;
     use uuid::Uuid;
 
@@ -516,7 +515,7 @@ mod tests {
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter);
 
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
         let input = ActInput {
             context,
             agent_id: Uuid::now_v7(),
@@ -538,7 +537,7 @@ mod tests {
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter);
 
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
         let input = ActInput {
             context,
             agent_id: Uuid::now_v7(),

@@ -49,7 +49,7 @@ async fn emit_cancellation_events(
     grpc_address: &str,
     org_id: i64,
     session_id: Uuid,
-    turn_id: Uuid,
+    turn_id: TurnId,
     input_message_id: Uuid,
 ) {
     // Connect to gRPC for event emission
@@ -79,7 +79,7 @@ async fn emit_cancellation_events(
         session_id,
         EventContext::turn(turn_id, input_message_id),
         SessionIdledData {
-            turn_id: TurnId::from_uuid(turn_id),
+            turn_id,
             iterations: None,
             usage: None,
         },
@@ -593,7 +593,7 @@ impl DurableWorker {
                 };
 
                 // Emit cancellation events (agent message + session.idled)
-                let turn_id = Uuid::now_v7(); // Generate turn_id for cancellation context
+                let turn_id = TurnId::new(); // Generate turn_id for cancellation context
                 drop(store); // Release lock before async call
                 emit_cancellation_events(
                     &self.grpc_address,
@@ -774,7 +774,7 @@ impl DurableWorker {
         // Create AtomContext for this execution
         let context = AtomContext {
             session_id: input.session_id,
-            turn_id: Uuid::now_v7(),
+            turn_id: TurnId::new(),
             input_message_id: input.input_message_id,
             exec_id: Uuid::now_v7(),
         };
@@ -787,6 +787,7 @@ impl DurableWorker {
         let result = input_activity(grpc_client, input.org_id, atom_input).await?;
 
         // Include turn_id in output for propagation to subsequent activities
+        // TurnId.to_string() returns prefixed format "turn_abc123"
         let mut output = serde_json::to_value(&result)?;
         if let serde_json::Value::Object(ref mut map) = output {
             map.insert(
@@ -850,7 +851,7 @@ impl DurableWorker {
             .map_err(|e| anyhow::anyhow!("Failed to load turn context: {}", e))?;
 
         // Create AtomContext - use turn_id from input if available (from input activity)
-        let turn_id = input.turn_id.unwrap_or_else(Uuid::now_v7);
+        let turn_id = input.turn_id.unwrap_or_else(TurnId::new);
         let context = AtomContext {
             session_id: input.session_id,
             turn_id,
@@ -947,7 +948,7 @@ impl DurableWorker {
             );
 
             // Emit cancellation events (agent message + session.idled)
-            let turn_id = Uuid::now_v7(); // Generate turn_id for cancellation context
+            let turn_id = TurnId::new(); // Generate turn_id for cancellation context
             drop(store); // Release lock before async call
             emit_cancellation_events(
                 &self.grpc_address,
@@ -964,10 +965,11 @@ impl DurableWorker {
         match completed_activity {
             "process_input" => {
                 // Extract turn_id from output (set by execute_input_activity)
-                let turn_id = output
+                // TurnId is serialized as prefixed string "turn_abc123"
+                let turn_id: Option<TurnId> = output
                     .get("turn_id")
                     .and_then(|v| v.as_str())
-                    .and_then(|s| Uuid::parse_str(s).ok());
+                    .and_then(|s| s.parse().ok());
 
                 // Create input with turn_id for subsequent activities
                 let input_with_turn = DurableTurnInput {
@@ -1002,7 +1004,7 @@ impl DurableWorker {
                     let tool_count = reason_result.tool_calls.len();
 
                     // Use turn_id from input (propagated from input activity)
-                    let turn_id = input.turn_id.unwrap_or_else(Uuid::now_v7);
+                    let turn_id = input.turn_id.unwrap_or_else(TurnId::new);
 
                     let act_task_input = ActTaskInput {
                         org_id: input.org_id,

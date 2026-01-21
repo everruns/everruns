@@ -43,7 +43,6 @@ use crate::traits::{
     AgentStore, EventEmitter, ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage,
     SessionStore,
 };
-use crate::typed_id::TurnId;
 
 // ============================================================================
 // Helper Functions
@@ -258,10 +257,9 @@ where
         // span_id: unique identifier for this reason span (shared by started/completed)
         // parent_span_id: links to turn as parent
         //
-        // NOTE: Use TurnId::to_string() to get prefixed format (e.g., "turn_abc123")
+        // NOTE: TurnId::to_string() returns prefixed format (e.g., "turn_abc123")
         // matching the format used by turn.started/completed events in Braintrust.
-        // Raw Uuid::to_string() produces hyphenated format which doesn't match.
-        let trace_id = TurnId::from_uuid(context.turn_id).to_string();
+        let trace_id = context.turn_id.to_string();
         let reason_span_id = Uuid::now_v7().to_string();
         let parent_span_id = trace_id.clone(); // Parent is the turn
 
@@ -543,7 +541,7 @@ where
         llm_config_builder = llm_config_builder
             .with_metadata("session_id", format!("session_{}", session_id.as_simple()))
             .with_metadata("agent_id", format!("agent_{}", agent_id.as_simple()))
-            .with_metadata("turn_id", format!("turn_{}", context.turn_id.as_simple()))
+            .with_metadata("turn_id", context.turn_id.to_string()) // TurnId.to_string() is already prefixed
             .with_metadata("exec_id", format!("exec_{}", context.exec_id.as_simple()))
             .with_metadata("org_id", format!("org_{:032x}", org_id));
 
@@ -576,7 +574,7 @@ where
                 session_id,
                 streaming_event_context.clone(),
                 AgentThinkingData {
-                    turn_id: TurnId::from_uuid(context.turn_id),
+                    turn_id: context.turn_id,
                     model: Some(runtime_agent.model.clone()),
                 },
             ))
@@ -637,7 +635,7 @@ where
                                 session_id,
                                 streaming_event_context.clone(),
                                 TextDeltaData {
-                                    turn_id: TurnId::from_uuid(context.turn_id),
+                                    turn_id: context.turn_id,
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
                                 },
@@ -666,7 +664,7 @@ where
                                 session_id,
                                 streaming_event_context.clone(),
                                 TextDeltaData {
-                                    turn_id: TurnId::from_uuid(context.turn_id),
+                                    turn_id: context.turn_id,
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
                                 },

@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use everruns_core::TurnId;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -35,8 +36,9 @@ pub struct DurableTurnInput {
     pub agent_id: Uuid,
     pub input_message_id: Uuid,
     /// Turn ID for trace correlation. Created by input activity, propagated to reason/act.
+    /// Uses typed TurnId for type safety and consistent prefixed format.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub turn_id: Option<Uuid>,
+    pub turn_id: Option<TurnId>,
 }
 
 /// Output from the turn workflow

@@ -104,7 +104,7 @@ impl EventContext {
     /// Create a full context from an AtomContext
     pub fn from_atom_context(ctx: &AtomContext) -> Self {
         Self {
-            turn_id: Some(TurnId::from_uuid(ctx.turn_id)),
+            turn_id: Some(ctx.turn_id),
             input_message_id: Some(MessageId::from_uuid(ctx.input_message_id)),
             exec_id: Some(ExecId::from_uuid(ctx.exec_id)),
             trace_id: None,
@@ -114,9 +114,9 @@ impl EventContext {
     }
 
     /// Create a context for turn-scoped events (without exec_id)
-    pub fn turn(turn_id: Uuid, input_message_id: Uuid) -> Self {
+    pub fn turn(turn_id: TurnId, input_message_id: Uuid) -> Self {
         Self {
-            turn_id: Some(TurnId::from_uuid(turn_id)),
+            turn_id: Some(turn_id),
             input_message_id: Some(MessageId::from_uuid(input_message_id)),
             exec_id: None,
             trace_id: None,
@@ -1271,13 +1271,13 @@ mod tests {
     #[test]
     fn test_event_context_from_atom_context() {
         let session_id = Uuid::now_v7();
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::new();
         let input_message_id = Uuid::now_v7();
 
         let atom_ctx = AtomContext::new(session_id, turn_id, input_message_id);
         let context = EventContext::from_atom_context(&atom_ctx);
 
-        assert_eq!(context.turn_id, Some(TurnId::from_uuid(turn_id)));
+        assert_eq!(context.turn_id, Some(turn_id));
         assert_eq!(
             context.input_message_id,
             Some(MessageId::from_uuid(input_message_id))

@@ -37,6 +37,7 @@ use everruns_core::{
     },
     session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
+    typed_id::TurnId,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -167,7 +168,7 @@ async fn main() -> anyhow::Result<()> {
     // =========================================================================
     // Create Turn Context
     // =========================================================================
-    let turn_id = Uuid::now_v7();
+    let turn_id = TurnId::new();
     let base_context = AtomContext::new(session_id, turn_id, user_message.id.into());
 
     println!("Turn ID: {}", turn_id);

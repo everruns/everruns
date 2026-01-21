@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::Result;
+use crate::typed_id::TurnId;
 
 // ============================================================================
 // Atom Modules
@@ -53,7 +54,8 @@ pub struct AtomContext {
     pub session_id: Uuid,
 
     /// Turn ID - unique identifier for the current turn (user input → final response)
-    pub turn_id: Uuid,
+    /// Uses typed TurnId for type safety and consistent prefixed format.
+    pub turn_id: TurnId,
 
     /// Input message ID - the user message that triggered this turn
     pub input_message_id: Uuid,
@@ -65,7 +67,7 @@ pub struct AtomContext {
 
 impl AtomContext {
     /// Create a new AtomContext
-    pub fn new(session_id: Uuid, turn_id: Uuid, input_message_id: Uuid) -> Self {
+    pub fn new(session_id: Uuid, turn_id: TurnId, input_message_id: Uuid) -> Self {
         Self {
             session_id,
             turn_id,
@@ -126,7 +128,7 @@ mod tests {
     #[test]
     fn test_atom_context_new() {
         let session_id = Uuid::now_v7();
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::new();
         let input_message_id = Uuid::now_v7();
 
         let context = AtomContext::new(session_id, turn_id, input_message_id);
@@ -141,7 +143,7 @@ mod tests {
     #[test]
     fn test_atom_context_next_exec() {
         let session_id = Uuid::now_v7();
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::new();
         let input_message_id = Uuid::now_v7();
 
         let context1 = AtomContext::new(session_id, turn_id, input_message_id);
@@ -157,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_atom_context_serialization() {
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
 
         let json = serde_json::to_string(&context).unwrap();
         let parsed: AtomContext = serde_json::from_str(&json).unwrap();

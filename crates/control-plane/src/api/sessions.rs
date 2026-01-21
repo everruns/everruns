@@ -414,7 +414,7 @@ pub async fn cancel_turn(
 
     // Generate IDs for the turn context
     // Use session_id as turn_id since workflow_id = session_id in durable runner
-    let turn_id = session_uuid;
+    let turn_id = TurnId::from_uuid(session_uuid);
     let input_message_id = Uuid::now_v7(); // Placeholder since we don't have the original
 
     // Emit turn.cancelled event
@@ -422,7 +422,7 @@ pub async fn cancel_turn(
         session_uuid,
         EventContext::turn(turn_id, input_message_id),
         TurnCancelledData {
-            turn_id: TurnId::from_uuid(turn_id),
+            turn_id,
             reason: Some("User requested cancellation".to_string()),
             usage: None, // Usage not available at cancellation time
         },
