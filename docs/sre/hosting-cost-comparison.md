@@ -223,7 +223,9 @@ Run PostgreSQL + Control-plane + Worker + UI on one instance.
 
 ### Option 5: ECS Fargate
 
-Run containers on AWS Fargate (serverless). **Requires RDS for PostgreSQL** (can't run PG in Fargate practically).
+Run containers on AWS Fargate (serverless). **Requires ALB + RDS** (Fargate tasks get dynamic IPs).
+
+**Why ALB is needed**: Fargate tasks get new IPs on every restart. Cloudflare needs a stable endpoint. ALB provides a stable DNS name (`*.elb.amazonaws.com`) that Cloudflare can proxy to.
 
 **Fargate pricing** (us-east-1, Linux/ARM):
 - vCPU: $0.03238/hour (~$23.64/mo per vCPU)
@@ -231,19 +233,20 @@ Run containers on AWS Fargate (serverless). **Requires RDS for PostgreSQL** (can
 
 | Service | vCPU | Memory | On-Demand/mo | Spot/mo (70% off) |
 |---------|------|--------|--------------|-------------------|
-| Control-plane | 0.5 | 1 GB | ~$14.40 | ~$4.30 |
-| Worker | 0.5 | 1 GB | ~$14.40 | ~$4.30 |
-| UI (Next.js) | 0.25 | 0.5 GB | ~$7.20 | ~$2.20 |
-| **Fargate Total** | 1.25 | 2.5 GB | **~$36/mo** | **~$11/mo** |
+| Control-plane | 0.5 | 1 GB | ~$14 | ~$4 |
+| Worker | 0.5 | 1 GB | ~$14 | ~$4 |
+| UI (Next.js) | 0.25 | 0.5 GB | ~$7 | ~$2 |
+| **Fargate subtotal** | 1.25 | 2.5 GB | **~$35/mo** | **~$10/mo** |
 
 | Full Stack | On-Demand | With Spot |
 |------------|-----------|-----------|
-| Fargate (above) | ~$36/mo | ~$11/mo |
+| Fargate (above) | ~$35/mo | ~$10/mo |
+| ALB (required) | ~$20/mo | ~$20/mo |
 | RDS db.t4g.micro | ~$22/mo | ~$22/mo |
-| **Total** | **~$58/mo** | **~$33/mo** |
+| **Total** | **~$77/mo** | **~$52/mo** |
 
-**Pros**: Fully managed, auto-scaling, no server maintenance
-**Cons**: More expensive than EC2, Spot can be interrupted (2 min warning), need separate RDS
+**Pros**: Fully managed, auto-scaling, zero-downtime deploys
+**Cons**: Expensive (~4x Lightsail), ALB required, Spot can be interrupted
 
 ### Option 6: App Runner
 
@@ -307,15 +310,15 @@ Run containers on AWS Fargate (serverless). **Requires RDS for PostgreSQL** (can
 
 ## Comparison Summary (with HTTPS for app.everruns.com)
 
-| Option | Compute | DB | HTTPS | Total/mo | Complexity |
-|--------|---------|-----|-------|----------|------------|
-| **AWS t4g.small + Cloudflare** | ~$2.40 | self | FREE | **~$2.40/mo** ⭐ | Low |
-| **AWS Lightsail $20 + Cloudflare** | $20 | self | FREE | **~$20/mo** ⭐ | Low |
-| **AWS ECS Fargate Spot + RDS** | ~$11 | ~$22 | FREE | **~$33/mo** | Medium |
-| **AWS EC2 + RDS + Cloudflare** | ~$14 | ~$22 | FREE | **~$36/mo** | Medium |
-| **AWS ECS Fargate + RDS** | ~$36 | ~$22 | FREE | **~$58/mo** | Medium |
-| **Azure B1ms + PostgreSQL** | ~$16 | ~$12 | FREE | **~$28/mo** | Medium |
-| **GCP e2-small + Cloud SQL** | ~$13 | ~$30 | FREE | **~$43/mo** | Medium |
+| Option | Compute | DB | LB | Total/mo | Complexity |
+|--------|---------|-----|-----|----------|------------|
+| **AWS t4g.small + Cloudflare** | ~$2 | self | - | **~$2/mo** ⭐ | Low |
+| **AWS Lightsail $20 + Cloudflare** | $20 | self | - | **~$20/mo** ⭐ | Low |
+| **Azure B1ms + PostgreSQL** | ~$16 | ~$12 | - | **~$28/mo** | Medium |
+| **AWS EC2 + RDS + Cloudflare** | ~$14 | ~$22 | - | **~$36/mo** | Medium |
+| **GCP e2-small + Cloud SQL** | ~$13 | ~$30 | - | **~$43/mo** | Medium |
+| **AWS ECS Fargate Spot + ALB + RDS** | ~$10 | ~$22 | ~$20 | **~$52/mo** | High |
+| **AWS ECS Fargate + ALB + RDS** | ~$35 | ~$22 | ~$20 | **~$77/mo** | High |
 
 **Note**: DNS is already on Cloudflare (free), so no additional DNS costs.
 
