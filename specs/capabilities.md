@@ -102,7 +102,35 @@ Fetch content from URLs and convert HTML to markdown.
 
 #### CapabilityId (String wrapper)
 
-Capability IDs are now string-based for extensibility. New capabilities can be added without database migrations.
+Capability IDs are string-based for extensibility. New capabilities can be added without database migrations.
+
+##### ID Format
+
+| Type | Format | Example |
+|------|--------|---------|
+| Built-in | `snake_case` identifier | `current_time`, `web_fetch` |
+| MCP | `mcp:{server_uuid}` | `mcp:01933b5a-0000-7000-8000-000000000501` |
+
+**Built-in IDs** are static constants defined in code. They use `snake_case` naming and are validated against the `CapabilityRegistry`.
+
+**MCP IDs** use the `mcp:` prefix followed by the MCP server's UUID. These are dynamic—they exist only when the corresponding MCP server exists. See `specs/mcp-servers.md` for details.
+
+##### Quick Reference: Built-in Capabilities
+
+| ID | Name | Category | Status |
+|----|------|----------|--------|
+| `noop` | No-Op | Testing | Available |
+| `current_time` | Current Time | Utilities | Available |
+| `test_math` | Test Math | Testing | Available |
+| `test_weather` | Test Weather | Testing | Available |
+| `session_file_system` | File System | File Operations | Available |
+| `session_storage` | Session Storage | Storage | Available |
+| `web_fetch` | Web Fetch | Network | Available |
+| `stateless_todo_list` | Task Management | Productivity | Available |
+| `sample_data` | Sample Data | Data | Available |
+| `docker_container` | Docker Container | Development | Available (Dev only) |
+| `research` | Research | AI | Coming Soon |
+| `sandbox` | Sandbox | Execution | Coming Soon |
 
 ```rust
 pub struct CapabilityId(String);
@@ -580,23 +608,64 @@ mcp:{server_uuid}
 
 Example: `mcp:01933b5a-0000-7000-8000-000000000501`
 
+The UUID portion is the MCP server's unique identifier (UUID v7).
+
 #### How MCP Capabilities Work
 
 1. **Discovery**: When listing capabilities, active MCP servers are included with their cached tools
 2. **Selection**: Agents can select MCP capabilities just like built-in capabilities
-3. **Tool Execution**: MCP tools are prefixed with `mcp_{server_name}_` to avoid conflicts
+3. **Tool Execution**: MCP tools are prefixed with `mcp_{server_name}__` (double underscore) to avoid conflicts
 4. **UI Badge**: MCP capabilities display an "MCP" badge in the capability selector
+
+#### MCP Tool Name Format
+
+MCP tools use a double-underscore separator to distinguish server name from tool name:
+
+```
+mcp_{server_name}__{tool_name}
+```
+
+**Why double underscore?** Server names can contain underscores (e.g., `microsoft_learn`), so a single underscore would be ambiguous. The double underscore provides unambiguous parsing.
+
+**Examples:**
+| Server | Tool | Full Tool Name |
+|--------|------|----------------|
+| `github` | `search_repos` | `mcp_github__search_repos` |
+| `microsoft_learn` | `search` | `mcp_microsoft_learn__search` |
+| `atlassian_jira` | `create_issue` | `mcp_atlassian_jira__create_issue` |
+
+#### MCP Capability Properties
+
+When an MCP server is converted to a capability:
+
+| Property | Source |
+|----------|--------|
+| `id` | `mcp:{server.id}` |
+| `name` | Server name (display name) |
+| `description` | Server description |
+| `is_mcp` | `true` |
+| `icon` | `plug` (hardcoded) |
+| `category` | `MCP Servers` |
+| `status` | `available` if server active, else excluded |
 
 #### Key Differences from Built-in Capabilities
 
 | Aspect | Built-in | MCP |
 |--------|----------|-----|
 | Source | Rust code | Remote server |
-| Tool discovery | Compile-time | Runtime (cached) |
-| Execution | In-process | HTTP call |
+| ID format | `snake_case` | `mcp:{uuid}` |
+| Tool prefix | None | `mcp_{server}__` |
+| Tool discovery | Compile-time | Runtime (cached, 24h TTL) |
+| Execution | In-process | HTTP JSON-RPC |
 | Availability | Always | Depends on server status |
+| System prompt | Optional per-capability | None |
+| Dependencies | Supported | Not supported |
 
-See `specs/mcp-servers.md` for full MCP integration details.
+See `specs/mcp-servers.md` for full MCP integration details including:
+- Server configuration and authentication
+- Tool discovery protocol
+- Tool execution flow
+- Error handling
 
 ### Capability Application Flow
 

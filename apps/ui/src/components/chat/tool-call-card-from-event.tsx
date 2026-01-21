@@ -2,40 +2,16 @@
 
 import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
-import type { ToolCallCompletedData, ContentPart } from "@/lib/api/types";
+import type { ToolCallCompletedData } from "@/lib/api/types";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
-
-interface ToolCallInfo {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-// Format arguments as "arg1: value, arg2: value..." with truncation
-function formatArguments(args: Record<string, unknown>): string {
-  const entries = Object.entries(args);
-  if (entries.length === 0) return "";
-
-  const formatted = entries.map(([key, value]) => {
-    const strValue = typeof value === "string" ? value : JSON.stringify(value);
-    const truncated = strValue.length > 30 ? strValue.substring(0, 30) + "..." : strValue;
-    return `${key}: ${truncated}`;
-  }).join(", ");
-
-  return formatted.length > 80 ? formatted.substring(0, 80) + "..." : formatted;
-}
-
-// Get full text from ContentPart array
-function getFullText(result: ContentPart[] | undefined): string {
-  if (!result || result.length === 0) return "";
-  return result
-    .filter((part): part is { type: "text"; text: string } => part.type === "text")
-    .map(part => part.text)
-    .join("\n");
-}
+import {
+  formatArguments,
+  getFullText,
+  type ToolCallContent,
+} from "./tool-call-utils";
 
 interface ToolCallCardFromEventProps {
-  toolCall: ToolCallInfo;
+  toolCall: ToolCallContent;
   toolResult?: ToolCallCompletedData;
 }
 
