@@ -124,6 +124,11 @@ impl CompositeEventListener {
 
 #[async_trait]
 impl EventListener for CompositeEventListener {
+    /// Forward event to all inner listeners with error isolation.
+    ///
+    /// Each listener is called in isolation - if a listener panics,
+    /// other listeners are still notified. This ensures misbehaving
+    /// listeners cannot disrupt event processing.
     async fn on_event(&self, event: &Event) {
         for listener in &self.listeners {
             // Check if listener wants this event type
@@ -132,7 +137,24 @@ impl EventListener for CompositeEventListener {
             {
                 continue;
             }
-            listener.on_event(event).await;
+
+            let listener_name = listener.name();
+            let listener = listener.clone();
+            let event = event.clone();
+
+            // Spawn listener in isolated task to catch panics
+            let handle = tokio::spawn(async move {
+                listener.on_event(&event).await;
+            });
+
+            // Wait for completion, log but don't propagate panics
+            if let Err(e) = handle.await {
+                tracing::error!(
+                    listener = listener_name,
+                    error = %e,
+                    "EventListener panicked or was cancelled"
+                );
+            }
         }
     }
 
@@ -321,5 +343,126 @@ mod tests {
                 message: Message::user("Hello"),
             }),
         )
+    }
+
+    #[tokio::test]
+    async fn test_composite_listener_isolates_panics() {
+        // A listener that always panics
+        struct PanickingListener;
+
+        #[async_trait]
+        impl EventListener for PanickingListener {
+            async fn on_event(&self, _event: &Event) {
+                panic!("This listener always panics!");
+            }
+
+            fn name(&self) -> &'static str {
+                "PanickingListener"
+            }
+        }
+
+        // A counter listener to verify it still gets called
+        struct CountingListener {
+            count: Arc<AtomicU32>,
+        }
+
+        #[async_trait]
+        impl EventListener for CountingListener {
+            async fn on_event(&self, _event: &Event) {
+                self.count.fetch_add(1, Ordering::SeqCst);
+            }
+
+            fn name(&self) -> &'static str {
+                "CountingListener"
+            }
+        }
+
+        let count = Arc::new(AtomicU32::new(0));
+
+        // Put panicking listener BEFORE counting listener
+        let panicking = Arc::new(PanickingListener) as Arc<dyn EventListener>;
+        let counting = Arc::new(CountingListener {
+            count: count.clone(),
+        }) as Arc<dyn EventListener>;
+
+        let composite = CompositeEventListener::new(vec![panicking, counting]);
+
+        let event = create_test_event();
+
+        // This should NOT panic - the panicking listener should be isolated
+        composite.on_event(&event).await;
+
+        // The counting listener should still have been called
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            1,
+            "Listener after panicking listener should still execute"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_composite_listener_continues_after_panic() {
+        // Multiple listeners with a panicking one in the middle
+        struct PanickingListener;
+
+        #[async_trait]
+        impl EventListener for PanickingListener {
+            async fn on_event(&self, _event: &Event) {
+                panic!("Middle listener panics!");
+            }
+
+            fn name(&self) -> &'static str {
+                "PanickingListener"
+            }
+        }
+
+        struct CountingListener {
+            count: Arc<AtomicU32>,
+            name: &'static str,
+        }
+
+        #[async_trait]
+        impl EventListener for CountingListener {
+            async fn on_event(&self, _event: &Event) {
+                self.count.fetch_add(1, Ordering::SeqCst);
+            }
+
+            fn name(&self) -> &'static str {
+                self.name
+            }
+        }
+
+        let count_before = Arc::new(AtomicU32::new(0));
+        let count_after = Arc::new(AtomicU32::new(0));
+
+        let listener_before = Arc::new(CountingListener {
+            count: count_before.clone(),
+            name: "BeforeListener",
+        }) as Arc<dyn EventListener>;
+
+        let panicking = Arc::new(PanickingListener) as Arc<dyn EventListener>;
+
+        let listener_after = Arc::new(CountingListener {
+            count: count_after.clone(),
+            name: "AfterListener",
+        }) as Arc<dyn EventListener>;
+
+        let composite =
+            CompositeEventListener::new(vec![listener_before, panicking, listener_after]);
+
+        let event = create_test_event();
+        composite.on_event(&event).await;
+
+        // Both before and after listeners should have been called
+        assert_eq!(
+            count_before.load(Ordering::SeqCst),
+            1,
+            "Listener before panicking listener should execute"
+        );
+        assert_eq!(
+            count_after.load(Ordering::SeqCst),
+            1,
+            "Listener after panicking listener should execute"
+        );
     }
 }
