@@ -1186,7 +1186,9 @@ const SEED_MCP_SERVERS: &[SeedMcpServer] = &[
         url: "https://api.githubcopilot.com/mcp/",
         auth_type: "oauth",
         // GitHub Copilot MCP uses OAuth with resource metadata discovery
-        oauth_resource_metadata_url: Some("https://api.githubcopilot.com/.well-known/oauth-protected-resource"),
+        oauth_resource_metadata_url: Some(
+            "https://api.githubcopilot.com/.well-known/oauth-protected-resource",
+        ),
     },
 ];
 
