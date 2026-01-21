@@ -78,6 +78,13 @@ check_npm_deps() {
   return 0
 }
 
+# Check if something is listening on a port (no external tools needed)
+check_port_open() {
+  local host="${1:-localhost}"
+  local port="${2:-5432}"
+  (echo > "/dev/tcp/$host/$port") 2>/dev/null
+}
+
 # Backward-compatible wrappers
 check_ui_deps() {
   check_npm_deps "UI" "just ui-install"
