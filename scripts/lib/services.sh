@@ -285,20 +285,6 @@ case "$cmd" in
       fi
       export OTEL_SDK_DISABLED=true
       echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
-    elif pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
-      echo "   ✅ Local PostgreSQL is ready"
-      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
-      if resolve_docker_compose 2>/dev/null; then
-        if ! docker ps 2>/dev/null | grep -q jaeger; then
-          echo "   ℹ️  Starting Jaeger for tracing..."
-          ensure_docker_daemon || true
-          cd "$PROJECT_ROOT/local"
-          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
-          cd "$PROJECT_ROOT"
-        else
-          JAEGER_STARTED=true
-        fi
-      fi
     elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
       echo "   ✅ Docker PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
@@ -311,6 +297,20 @@ case "$cmd" in
         fi
       else
         JAEGER_STARTED=true
+      fi
+    elif pg_isready -h localhost -p 5432 > /dev/null 2>&1; then
+      echo "   ✅ Local PostgreSQL is ready"
+      export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:5432/everruns}
+      if resolve_docker_compose 2>/dev/null; then
+        if ! docker ps 2>/dev/null | grep -q jaeger; then
+          echo "   ℹ️  Starting Jaeger for tracing..."
+          ensure_docker_daemon || true
+          cd "$PROJECT_ROOT/local"
+          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
+          cd "$PROJECT_ROOT"
+        else
+          JAEGER_STARTED=true
+        fi
       fi
     else
       echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
