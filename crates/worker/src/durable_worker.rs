@@ -847,6 +847,7 @@ impl DurableWorker {
         let reason_input = ReasonInput {
             context,
             agent_id: input.agent_id,
+            org_id: input.org_id,
             mcp_tool_definitions: turn_context.mcp_tool_definitions,
         };
 

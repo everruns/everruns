@@ -474,6 +474,7 @@ impl InProcessWorker {
         let reason_input = ReasonInput {
             context,
             agent_id: input.agent_id,
+            org_id: DEFAULT_ORG_ID,
             mcp_tool_definitions,
         };
 

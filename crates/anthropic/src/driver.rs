@@ -240,15 +240,6 @@ impl LlmDriver for AnthropicLlmDriver {
             .as_ref()
             .and_then(|e| AnthropicThinking::from_effort(e));
 
-        // Build metadata for request tracking
-        // Use session_id as the user_id for Anthropic's abuse detection
-        let metadata = config
-            .metadata
-            .get("session_id")
-            .map(|session_id| AnthropicMetadata {
-                user_id: Some(session_id.clone()),
-            });
-
         let mut request = AnthropicRequest {
             model: config.model.clone(),
             messages: anthropic_messages,
@@ -258,7 +249,6 @@ impl LlmDriver for AnthropicLlmDriver {
             stream: true,
             tools,
             thinking,
-            metadata,
         };
 
         // Ensure max_tokens is set (required by Anthropic)
@@ -604,19 +594,6 @@ struct AnthropicRequest {
     /// Extended thinking configuration (for Claude models that support it)
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<AnthropicThinking>,
-    /// Metadata for tracking API usage.
-    /// Contains user_id for abuse detection and any additional tracking fields.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<AnthropicMetadata>,
-}
-
-/// Metadata for Anthropic API requests
-#[derive(Debug, Serialize)]
-struct AnthropicMetadata {
-    /// End-user identifier for abuse detection and rate limiting.
-    /// Anthropic recommends setting this to help with monitoring.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    user_id: Option<String>,
 }
 
 /// Extended thinking configuration for Claude
@@ -1062,25 +1039,5 @@ mod tests {
             reqwest::StatusCode::INTERNAL_SERVER_ERROR,
             error
         ));
-    }
-
-    #[test]
-    fn test_request_includes_metadata() {
-        // Test that metadata with user_id is correctly serialized
-        let metadata = AnthropicMetadata {
-            user_id: Some("session_abc123".to_string()),
-        };
-
-        let json = serde_json::to_value(&metadata).unwrap();
-        assert_eq!(json["user_id"], "session_abc123");
-    }
-
-    #[test]
-    fn test_request_metadata_skips_none() {
-        // Test that None user_id is skipped in serialization
-        let metadata = AnthropicMetadata { user_id: None };
-
-        let json = serde_json::to_value(&metadata).unwrap();
-        assert!(json.get("user_id").is_none());
     }
 }

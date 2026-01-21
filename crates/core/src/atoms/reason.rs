@@ -95,6 +95,9 @@ pub struct ReasonInput {
     pub context: AtomContext,
     /// Agent ID for loading configuration
     pub agent_id: Uuid,
+    /// Organization ID for multi-tenancy tracking
+    #[serde(default)]
+    pub org_id: i64,
     /// MCP tool definitions from agent's MCP capabilities (pre-resolved)
     /// These are passed from the control-plane since MCP capabilities
     /// are not in the CapabilityRegistry.
@@ -237,6 +240,7 @@ where
         let ReasonInput {
             context,
             agent_id,
+            org_id,
             mcp_tool_definitions,
         } = input;
 
@@ -277,6 +281,7 @@ where
             .execute_llm_call(
                 context.session_id,
                 agent_id,
+                org_id,
                 &context,
                 &mcp_tool_definitions,
             )
@@ -395,6 +400,7 @@ where
         &self,
         session_id: Uuid,
         agent_id: Uuid,
+        org_id: i64,
         context: &AtomContext,
         mcp_tool_definitions: &[ToolDefinition],
     ) -> Result<ReasonResult> {
@@ -428,7 +434,7 @@ where
             .and_then(|c| c.model_id);
 
         // 5. Resolve model using chain: controls.model_id > session.model_id > agent.default_model_id
-        let model_with_provider = self
+        let (model_with_provider, resolved_model_id) = self
             .resolve_model(controls_model_id, session.model_id, agent.default_model_id)
             .await?;
 
@@ -501,7 +507,13 @@ where
             .with_metadata("session_id", format!("session_{}", session_id.as_simple()))
             .with_metadata("agent_id", format!("agent_{}", agent_id.as_simple()))
             .with_metadata("turn_id", format!("turn_{}", context.turn_id.as_simple()))
-            .with_metadata("exec_id", format!("exec_{}", context.exec_id.as_simple()));
+            .with_metadata("exec_id", format!("exec_{}", context.exec_id.as_simple()))
+            .with_metadata("org_id", format!("org_{:032x}", org_id));
+
+        // Add model_id if we have one (not available for system default model)
+        if let Some(model_id) = &resolved_model_id {
+            llm_config_builder = llm_config_builder.with_metadata("model_id", model_id.to_string());
+        }
 
         let llm_config = llm_config_builder.build();
 
@@ -771,12 +783,13 @@ where
     }
 
     /// Resolve model using priority chain
+    /// Resolve model and return both the ModelWithProvider and the resolved model_id (if known)
     async fn resolve_model(
         &self,
         controls_model_id: Option<crate::typed_id::ModelId>,
         session_model_id: Option<crate::typed_id::ModelId>,
         agent_model_id: Option<crate::typed_id::ModelId>,
-    ) -> Result<ModelWithProvider> {
+    ) -> Result<(ModelWithProvider, Option<crate::typed_id::ModelId>)> {
         // Try controls.model_id first (highest priority)
         if let Some(model_id) = controls_model_id
             && let Some(model_with_provider) = self
@@ -784,7 +797,7 @@ where
                 .get_model_with_provider(model_id.uuid())
                 .await?
         {
-            return Ok(model_with_provider);
+            return Ok((model_with_provider, Some(model_id)));
         }
 
         // Try session.model_id second
@@ -794,7 +807,7 @@ where
                 .get_model_with_provider(model_id.uuid())
                 .await?
         {
-            return Ok(model_with_provider);
+            return Ok((model_with_provider, Some(model_id)));
         }
 
         // Try agent.default_model_id third
@@ -804,18 +817,20 @@ where
                 .get_model_with_provider(model_id.uuid())
                 .await?
         {
-            return Ok(model_with_provider);
+            return Ok((model_with_provider, Some(model_id)));
         }
 
-        // Fall back to system default model
-        self.provider_store
+        // Fall back to system default model (no model_id available)
+        let model = self
+            .provider_store
             .get_default_model()
             .await?
             .ok_or_else(|| {
                 AgentLoopError::llm(
                     "No model configured: no model_id in controls, session, or agent, and no system default model is set"
                 )
-            })
+            })?;
+        Ok((model, None))
     }
 
     /// Create LLM driver using the driver registry

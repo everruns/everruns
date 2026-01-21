@@ -193,13 +193,11 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         };
 
         // Build metadata for request tracking
-        // Use session_id as the user identifier for OpenAI's abuse detection
         let metadata = if config.metadata.is_empty() {
             None
         } else {
             Some(config.metadata.clone())
         };
-        let user = config.metadata.get("session_id").cloned();
 
         let request = OpenAiRequest {
             model: config.model.clone(),
@@ -213,7 +211,6 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
             tools,
             reasoning_effort: config.reasoning_effort.clone(),
             metadata,
-            user,
         };
 
         let response = self
@@ -465,10 +462,6 @@ struct OpenAiRequest {
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<std::collections::HashMap<String, String>>,
-    /// End-user identifier for abuse detection and monitoring.
-    /// OpenAI recommends setting this for per-user tracking.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    user: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -651,7 +644,6 @@ mod tests {
             tools: None,
             reasoning_effort: None,
             metadata: None,
-            user: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
@@ -681,13 +673,11 @@ mod tests {
             tools: None,
             reasoning_effort: None,
             metadata: Some(metadata),
-            user: Some("session_abc123".to_string()),
         };
 
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["metadata"]["session_id"], "session_abc123");
         assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
-        assert_eq!(json["user"], "session_abc123");
     }
 
     #[test]
