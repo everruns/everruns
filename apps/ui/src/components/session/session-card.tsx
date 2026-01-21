@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { Session, SessionStatus, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 
 /**
@@ -150,6 +151,7 @@ export function SessionCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-medium truncate">{displayTitle}</p>
+            <CopyButton value={session.id} />
             <Badge variant={statusInfo.variant} className="flex-shrink-0 text-xs">
               {statusInfo.label}
             </Badge>

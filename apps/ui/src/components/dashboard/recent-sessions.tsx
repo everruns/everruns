@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { formatDate, formatDurationSeconds } from "@/lib/formatting";
 import { shortenId } from "@/lib/utils";
+import { CopyButton } from "@/components/ui/copy-button";
 import type { Session, Agent, LlmModelWithProvider } from "@/lib/api/types";
 
 interface RecentSessionsProps {
@@ -80,12 +81,15 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                 return (
                   <TableRow key={session.id}>
                     <TableCell>
-                      <Link
-                        href={`/agents/${session.agent_id}/sessions/${session.id}`}
-                        className="font-mono text-sm hover:underline"
-                      >
-                        {session.title || shortenId(session.id)}
-                      </Link>
+                      <div className="flex items-center gap-1">
+                        <Link
+                          href={`/agents/${session.agent_id}/sessions/${session.id}`}
+                          className="font-mono text-sm hover:underline"
+                        >
+                          {session.title || shortenId(session.id)}
+                        </Link>
+                        <CopyButton value={session.id} />
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Link
