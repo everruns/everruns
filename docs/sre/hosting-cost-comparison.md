@@ -30,33 +30,72 @@ Based on `specs/architecture.md` and `local/docker-compose.yml`:
 
 To serve `app.everruns.com` over HTTPS, you need TLS termination. Options ranked by cost:
 
-### Option 1: Caddy Reverse Proxy (FREE) ⭐ Recommended
+### Option 1: Cloudflare Proxy (FREE) ⭐ Recommended
 
-Install [Caddy](https://caddyserver.com/) on your instance. It automatically provisions Let's Encrypt certificates.
+Since DNS is on Cloudflare, use their free proxy for SSL termination.
+
+| Component | Cost | Notes |
+|-----------|------|-------|
+| Cloudflare proxy | FREE | Orange cloud enabled |
+| SSL certificate | FREE | Universal SSL, auto-renewed |
+| DDoS protection | FREE | Always-on |
+| CDN caching | FREE | Edge caching for static assets |
+
+**Setup**:
+1. In Cloudflare DNS, set A record with **proxy enabled** (orange cloud):
+   ```
+   app.everruns.com  A  <EC2-IP>  (Proxied ☁️)
+   ```
+2. SSL/TLS settings → Set to "Full" (or "Full (strict)" with origin cert)
+3. On EC2, run nginx/Caddy as local reverse proxy (HTTP only, port 80)
+
+**nginx config** (on EC2):
+```nginx
+server {
+    listen 80;
+    server_name app.everruns.com;
+
+    # API routes
+    location /api/ {
+        proxy_pass http://localhost:9000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # UI (default)
+    location / {
+        proxy_pass http://localhost:9100;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+**Security**: Only allow inbound traffic from [Cloudflare IPs](https://www.cloudflare.com/ips/) on port 80.
+
+### Option 1b: Caddy Reverse Proxy (FREE, no Cloudflare proxy)
+
+If you prefer not to use Cloudflare proxy, install [Caddy](https://caddyserver.com/) for auto Let's Encrypt.
 
 | Component | Cost | Notes |
 |-----------|------|-------|
 | Caddy | FREE | Auto HTTPS, auto-renewal |
 | Let's Encrypt cert | FREE | Trusted by all browsers |
-| Elastic IP | FREE | One per instance included |
 
 **Caddyfile**:
 ```
 app.everruns.com {
-    # UI on root path
+    reverse_proxy /api/* localhost:9000
     reverse_proxy localhost:9100
-
-    # API on /api/* path
-    handle_path /api/* {
-        reverse_proxy localhost:9000
-    }
 }
 ```
 
 **Requirements**:
-- DNS A record: `app.everruns.com` → EC2 Elastic IP
+- Cloudflare DNS set to **DNS only** (gray cloud)
 - Ports 80 and 443 open in security group
-- Caddy handles certificate provisioning automatically
 
 ### Option 2: CloudFront (Free tier or $15/mo)
 
@@ -99,7 +138,7 @@ AWS managed ALB with ACM certificates.
 
 ---
 
-## Recommended Setup: Caddy + EC2
+## Recommended Setup: Cloudflare + EC2/Lightsail
 
 **Total cost: ~$2.40/mo** (EC2 free trial) or **~$20/mo** (Lightsail)
 
@@ -107,18 +146,22 @@ AWS managed ALB with ACM certificates.
                          Internet
                             │
                             ▼
-                   ┌────────────────┐
-                   │   DNS (Route53) │
-                   │ app.everruns.com│
-                   └───────┬────────┘
-                           │
-                           ▼
+                   ┌────────────────────┐
+                   │  Cloudflare (FREE) │
+                   │  ────────────────  │
+                   │  • DNS hosting     │
+                   │  • SSL termination │
+                   │  • DDoS protection │
+                   │  • CDN caching     │
+                   └─────────┬──────────┘
+                             │ (HTTP)
+                             ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                    EC2 t4g.small / Lightsail                 │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │                   Caddy (:443, :80)                   │   │
-│  │         Auto HTTPS via Let's Encrypt                  │   │
+│  │               nginx / Caddy (:80)                     │   │
+│  │         /api/* → :9000    /* → :9100                  │   │
 │  └──────────────────────┬───────────────────────────────┘   │
 │                         │                                    │
 │         ┌───────────────┼───────────────┐                   │
@@ -268,14 +311,14 @@ Run PostgreSQL + Control-plane + Worker + UI on one instance.
 
 | Option | Compute | HTTPS | Total/mo | Complexity |
 |--------|---------|-------|----------|------------|
-| **AWS t4g.small + Caddy** | ~$2.40 | FREE | **~$3/mo** | Low |
-| **AWS Lightsail $20 + Caddy** | $20 | FREE | **~$20/mo** | Low |
+| **AWS t4g.small + Cloudflare** | ~$2.40 | FREE | **~$2.40/mo** ⭐ | Low |
+| **AWS Lightsail $20 + Cloudflare** | $20 | FREE | **~$20/mo** ⭐ | Low |
 | **AWS EC2 + CloudFront** | ~$14 | $0-15 | **~$14-29/mo** | Medium |
-| **AWS EC2 + RDS + Caddy** | ~$36 | FREE | **~$36/mo** | Medium |
+| **AWS EC2 + RDS + Cloudflare** | ~$36 | FREE | **~$36/mo** | Medium |
 | **Azure B1ms + PostgreSQL** | ~$28 | ~$5 | **~$33/mo** | Medium |
 | **GCP e2-small + Cloud SQL** | ~$43 | ~$0 | **~$43/mo** | Medium |
 
-**Note**: DNS hosting via Route 53 adds ~$0.50/mo per hosted zone.
+**Note**: DNS is already on Cloudflare (free), so no additional DNS costs.
 
 ---
 
@@ -355,44 +398,52 @@ cd apps/ui && npm run build && npm start &
                                  │
                                  ▼
                      ┌───────────────────────┐
-                     │  DNS: app.everruns.com │
-                     │  → Elastic IP          │
+                     │   Cloudflare (FREE)   │
+                     │  ───────────────────  │
+                     │  app.everruns.com     │
+                     │  SSL: Universal cert  │
+                     │  Proxy: Enabled ☁️    │
                      └───────────┬───────────┘
-                                 │
-┌────────────────────────────────▼────────────────────────────┐
-│                    AWS VPC (us-east-1)                      │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │           EC2 t4g.small (or Lightsail $20)          │   │
-│  │                                                     │   │
-│  │  ┌─────────────────────────────────────────────┐   │   │
-│  │  │         Caddy (:443 HTTPS, :80 HTTP)        │   │   │
-│  │  │     Auto Let's Encrypt certificate          │   │   │
-│  │  │  app.everruns.com/* → UI (:9100)            │   │   │
-│  │  │  app.everruns.com/api/* → API (:9000)       │   │   │
-│  │  └──────────────────────┬──────────────────────┘   │   │
-│  │                         │                           │   │
-│  │         ┌───────────────┼───────────────┐          │   │
-│  │         ▼               ▼               ▼          │   │
-│  │  ┌───────────┐  ┌─────────────┐  ┌───────────┐    │   │
-│  │  │ Next.js UI│  │Control-plane│  │  Worker   │    │   │
-│  │  │  :9100    │  │:9000 / :9001│  │  (gRPC)   │    │   │
-│  │  └───────────┘  └──────┬──────┘  └───────────┘    │   │
+                                 │ HTTP (:80)
+                                 ▼
+┌────────────────────────────────────────────────────────────┐
+│                    AWS VPC (us-east-1)                     │
+│                                                            │
+│  Security Group: Allow TCP 80 from Cloudflare IPs only     │
+│                                                            │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │           EC2 t4g.small (or Lightsail $20)         │   │
+│  │                                                    │   │
+│  │  ┌────────────────────────────────────────────┐   │   │
+│  │  │              nginx (:80)                    │   │   │
+│  │  │   /api/* → localhost:9000                  │   │   │
+│  │  │   /*     → localhost:9100                  │   │   │
+│  │  └─────────────────────┬──────────────────────┘   │   │
 │  │                        │                           │   │
-│  │                        ▼                           │   │
-│  │                ┌─────────────┐                     │   │
-│  │                │ PostgreSQL  │                     │   │
-│  │                │   :5432     │                     │   │
-│  │                └─────────────┘                     │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+│  │        ┌───────────────┼───────────────┐          │   │
+│  │        ▼               ▼               ▼          │   │
+│  │  ┌───────────┐  ┌─────────────┐  ┌───────────┐   │   │
+│  │  │ Next.js UI│  │Control-plane│  │  Worker   │   │   │
+│  │  │  :9100    │  │:9000 / :9001│  │  (gRPC)   │   │   │
+│  │  └───────────┘  └──────┬──────┘  └───────────┘   │   │
+│  │                        │                          │   │
+│  │                        ▼                          │   │
+│  │                ┌─────────────┐                    │   │
+│  │                │ PostgreSQL  │                    │   │
+│  │                │   :5432     │                    │   │
+│  │                └─────────────┘                    │   │
+│  └────────────────────────────────────────────────────┘   │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
 ```
 
-**DNS Setup** (Route 53 or external DNS):
+**Cloudflare DNS Setup**:
 ```
-app.everruns.com.  A  <Elastic-IP>
+Type  Name  Content       Proxy
+A     app   <EC2-IP>      Proxied (orange cloud)
 ```
+
+**Cloudflare SSL Settings**: SSL/TLS → Overview → Set to "Full"
 
 ---
 
@@ -413,6 +464,8 @@ app.everruns.com.  A  <Elastic-IP>
 - [Supabase Pricing](https://supabase.com/pricing)
 
 ### HTTPS & Load Balancing
+- [Cloudflare Free Plan](https://www.cloudflare.com/plans/free/) - SSL, DDoS, CDN included
+- [Cloudflare IP Ranges](https://www.cloudflare.com/ips/) - For security group rules
 - [AWS CloudFront Pricing](https://aws.amazon.com/cloudfront/pricing/)
 - [AWS ALB Pricing](https://aws.amazon.com/elasticloadbalancing/pricing/)
 - [Lightsail SSL/TLS Certificates](https://docs.aws.amazon.com/lightsail/latest/userguide/understanding-tls-ssl-certificates-in-lightsail-https.html)
