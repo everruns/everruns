@@ -461,9 +461,9 @@ pub enum TaskNotificationEvent {
     /// A task is available for claiming
     TaskAvailable {
         /// The activity type of the available task
-        activity_type: Option<String>,
+        activity_type: String,
         /// Approximate number of pending tasks (hint for batch claiming)
-        pending_count: Option<i32>,
+        pending_count: i32,
     },
     /// Heartbeat to keep the connection alive
     Heartbeat,

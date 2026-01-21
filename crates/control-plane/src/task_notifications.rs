@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 #[derive(Debug, Clone)]
 pub struct TaskNotificationPayload {
     pub activity_type: String,
-    pub pending_count: Option<i32>,
+    pub pending_count: i32,
 }
 
 /// Handle for a worker subscription
@@ -152,7 +152,7 @@ impl TaskNotificationBroadcaster {
                                 // Broadcast to all subscribers
                                 let payload = TaskNotificationPayload {
                                     activity_type,
-                                    pending_count: None, // Could query count, but adds latency
+                                    pending_count: 0, // Could query count, but adds latency
                                 };
 
                                 // Ignore send errors (no receivers is fine)
@@ -190,7 +190,7 @@ mod tests {
     fn test_notification_payload_debug() {
         let payload = TaskNotificationPayload {
             activity_type: "reason".to_string(),
-            pending_count: Some(5),
+            pending_count: 5,
         };
         let debug_str = format!("{:?}", payload);
         assert!(debug_str.contains("reason"));

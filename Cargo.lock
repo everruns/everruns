@@ -1230,6 +1230,7 @@ dependencies = [
  "chrono",
  "everruns-core",
  "prost",
+ "prost-build",
  "prost-types",
  "protox",
  "serde",

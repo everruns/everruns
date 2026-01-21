@@ -689,9 +689,11 @@ message ResolveImageResponse {
     // True if image was found
     bool found = 1;
     // Base64-encoded image data (without data URL prefix)
-    optional string base64 = 2;
+    // Empty string when found=false
+    string base64 = 2;
     // MIME type (e.g., "image/png", "image/jpeg")
-    optional string media_type = 3;
+    // Empty string when found=false
+    string media_type = 3;
 }
 
 // Batch request to resolve multiple images
@@ -756,10 +758,12 @@ enum TaskNotificationType {
 
 message TaskNotification {
     TaskNotificationType notification_type = 1;
-    // Set for TASK_AVAILABLE notifications - the activity type of the available task
-    optional string activity_type = 2;
+    // The activity type of the available task
+    // Empty string for HEARTBEAT notifications
+    string activity_type = 2;
     // Approximate number of pending tasks for this activity type (hint for batch claiming)
-    optional int32 pending_count = 3;
+    // Zero for HEARTBEAT notifications
+    int32 pending_count = 3;
     // Server timestamp when notification was generated
     Timestamp timestamp = 4;
 }
