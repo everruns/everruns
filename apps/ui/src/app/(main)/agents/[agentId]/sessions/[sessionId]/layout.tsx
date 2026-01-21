@@ -185,19 +185,6 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
             Files
           </Link>
           <Link
-            href={`${basePath}/events`}
-            className={cn(
-              buttonVariants({
-                variant: activeTab === "events" ? "default" : "ghost",
-                size: "sm",
-              }),
-              "gap-2"
-            )}
-          >
-            <Activity className="h-4 w-4" />
-            Events
-          </Link>
-          <Link
             href={`${basePath}/storage`}
             className={cn(
               buttonVariants({
@@ -209,6 +196,19 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
           >
             <Database className="h-4 w-4" />
             Storage
+          </Link>
+          <Link
+            href={`${basePath}/events`}
+            className={cn(
+              buttonVariants({
+                variant: activeTab === "events" ? "default" : "ghost",
+                size: "sm",
+              }),
+              "gap-2"
+            )}
+          >
+            <Activity className="h-4 w-4" />
+            Events
           </Link>
         </div>
       </div>
