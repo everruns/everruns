@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::message::{ContentPart, Controls, Message, MessageRole};
+use crate::message_filter::MessageQuery;
 
 // ============================================================================
 // InputMessage - Input structure for message creation
@@ -80,6 +81,20 @@ pub trait MessageRetriever: Send + Sync {
 
     /// Load all messages for a session
     async fn load(&self, session_id: Uuid) -> Result<Vec<Message>>;
+
+    /// Load messages with filters and injections applied.
+    ///
+    /// This method supports the composable filter system where capabilities
+    /// can contribute filters that modify how messages are loaded.
+    ///
+    /// Default implementation calls `load()` and ignores the query filters,
+    /// maintaining backward compatibility for implementations that don't
+    /// support filtering.
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+        // Default: load all messages for the session, ignoring filters
+        // Implementations should override this to support filtering
+        self.load(query.session_id).await
+    }
 
     /// Load messages with pagination
     async fn load_page(

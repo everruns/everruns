@@ -195,10 +195,13 @@ pub trait Capability: Send + Sync {
     fn category(&self) -> Option<&str> { None }
     fn mounts(&self) -> Vec<MountPoint> { vec![] }
     fn dependencies(&self) -> Vec<&'static str> { vec![] }
+    fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> { None }
 }
 ```
 
 The `CapabilityRegistry` in core holds all registered capability implementations. The API layer converts trait objects to DTOs using `Capability::from_core()`.
+
+**Note**: The `message_filter_provider()` method returns an optional filter provider that can modify how messages are retrieved for sessions using this capability. See the [Message Filters](#message-filters) section for details.
 
 ### Capability Dependencies
 
@@ -954,9 +957,143 @@ This capability is experimental and only available in development environments d
 - Resource management considerations
 - API stability concerns
 
+### Message Filters
+
+Capabilities can contribute message filters that modify how messages are retrieved from the database. This enables features like:
+
+- **Time-based filtering**: Load messages from a specific time range
+- **Event type filtering**: Filter by message type (user, agent, tool result)
+- **Tool name filtering**: Filter tool results by specific tool names
+- **Full-text search**: Search message content
+- **Ephemeral message injection**: Add system reminders or summaries without persistence
+
+#### How Message Filters Work
+
+1. **Filter Contribution**: Capabilities implement `message_filter_provider()` returning a `MessageFilterProvider`
+2. **Priority Ordering**: Providers are sorted by priority (lower = earlier)
+3. **Query Building**: Filters are combined into a `MessageQuery` and applied to message retrieval
+4. **DB Mapping**: Most filters map directly to SQL WHERE clauses for efficiency
+5. **In-Memory Fallback**: Custom predicates use Rust closures for complex filtering
+
+#### MessageFilter Types
+
+| Filter | Description | SQL Mapping |
+|--------|-------------|-------------|
+| `TimeRange { from, to }` | Filter by timestamp range | `WHERE created_at >= $from AND created_at <= $to` |
+| `EventTypes(Vec<String>)` | Whitelist event types | `WHERE event_type = ANY($types)` |
+| `ToolName(String)` | Filter tool results by name | `WHERE event_type = 'tool.call_completed' AND data->>'tool_name' = $name` |
+| `Search(String)` | Full-text search in content | `WHERE data::text ILIKE '%' || $query || '%'` |
+| `ExcludeIds(Vec<Uuid>)` | Exclude specific message IDs | `WHERE id != ALL($ids)` |
+| `IncludeIds(Vec<Uuid>)` | Include only specific IDs | `WHERE id = ANY($ids)` |
+| `Custom(Arc<dyn Fn(&Message) -> bool>)` | In-memory predicate | Applied after DB query |
+
+#### MessageFilterProvider Trait
+
+```rust
+pub trait MessageFilterProvider: Send + Sync {
+    /// Modify the message query by adding filters and/or injections.
+    fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value);
+
+    /// Priority for filter application (lower = earlier). Default is 0.
+    fn priority(&self) -> i32 { 0 }
+}
+```
+
+#### Message Injection
+
+Ephemeral messages can be injected into the result set without persistence:
+
+```rust
+pub enum InjectionPosition {
+    Start,           // Before all messages
+    End,             // After all messages
+    BeforeIndex(usize),
+    AfterIndex(usize),
+}
+
+pub struct InjectedMessage {
+    pub position: InjectionPosition,
+    pub message: Message,
+}
+```
+
+Injections are applied after filtering and are useful for:
+- Adding conversation summaries at the start
+- Inserting system reminders before recent context
+- Appending instructions or context
+
+#### MessageQuery Builder
+
+```rust
+let query = MessageQuery::new(session_id)
+    .with_filter(MessageFilter::TimeRange {
+        from: Some(Utc::now() - Duration::hours(24)),
+        to: None,
+    })
+    .with_filter(MessageFilter::EventTypes(vec!["message.user".to_string()]))
+    .with_injection(InjectedMessage::at_start(Message::system("Summary: ...")))
+    .with_limit(100);
+```
+
+#### Example Capability with Message Filter
+
+```rust
+impl Capability for RecentMessagesCapability {
+    fn id(&self) -> &str { "recent_messages" }
+    fn name(&self) -> &str { "Recent Messages" }
+    fn description(&self) -> &str { "Only load messages from the last 24 hours" }
+
+    fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+        Some(Arc::new(RecentMessagesProvider))
+    }
+}
+
+struct RecentMessagesProvider;
+
+impl MessageFilterProvider for RecentMessagesProvider {
+    fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value) {
+        // Check config for custom hours setting
+        let hours = config.get("hours")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(24);
+
+        let cutoff = Utc::now() - Duration::hours(hours as i64);
+        query.filters.push(MessageFilter::TimeRange {
+            from: Some(cutoff),
+            to: None,
+        });
+    }
+
+    fn priority(&self) -> i32 {
+        -10  // Run early to reduce data loaded
+    }
+}
+```
+
+#### Filter Application Flow
+
+1. **Collect Providers**: During capability resolution, filter providers are collected from enabled capabilities
+2. **Sort by Priority**: Providers are sorted (lower priority values first)
+3. **Build Query**: Each provider modifies the `MessageQuery` in priority order
+4. **Execute Query**: The query is executed against the message store
+5. **Apply Custom Filters**: In-memory predicates filter the results
+6. **Apply Injections**: Ephemeral messages are inserted at their specified positions
+
+#### Design Decisions
+
+| Question | Decision |
+|----------|----------|
+| Where are filters defined? | Capabilities implement `message_filter_provider()` |
+| How are they combined? | AND semantics - all filters must match |
+| Order of application? | By `priority()` value (lower = earlier) |
+| Can filters be stacked? | Yes - multiple capabilities can each contribute filters |
+| Database efficiency? | Most filters map to SQL; only `Custom` requires in-memory filtering |
+| DEV_MODE parity? | In-memory storage implements the same filter semantics |
+
 ### Extension Points (Future)
 
 1. **Custom Capabilities**: User-defined capabilities with custom tools
 2. **Conflict Resolution**: Handle tool name conflicts between capabilities
 3. **Capability Versioning**: Track capability API versions for compatibility
 4. **Dynamic Mount Sources**: External file sources (URLs, S3, etc.)
+5. **OR Filter Semantics**: Support for OR combinations of filters

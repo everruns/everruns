@@ -52,6 +52,7 @@ pub mod capabilities;
 pub mod error;
 pub mod llm_driver_registry;
 pub mod message;
+pub mod message_filter;
 pub mod message_retriever;
 pub mod openai_protocol;
 pub mod openresponses_protocol;
@@ -75,6 +76,9 @@ pub use message::{
     ContentPart, ContentType, Controls, ImageContentPart, ImageFileContentPart, InputContentPart,
     Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,
     ToolResultContentPart,
+};
+pub use message_filter::{
+    InjectedMessage, InjectionPosition, MessageFilter, MessageFilterProvider, MessageQuery,
 };
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
@@ -111,15 +115,16 @@ pub use tools::{
 // Capability re-exports
 pub use capabilities::{
     AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
-    CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CurrentTimeCapability,
-    DeleteFileTool, DependencyError, DivideTool, FileSystemCapability, GetCurrentTimeTool,
-    GetForecastTool, GetWeatherTool, GrepFilesTool, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES,
-    MCP_CAPABILITY_PREFIX, McpCapability, MountAccess, MountDirectoryBuilder, MountEntry,
-    MountPoint, MountSource, MultiplyTool, NoopCapability, ReadFileTool, ResearchCapability,
-    ResolvedCapabilities, SampleDataCapability, SandboxCapability, StatFileTool,
-    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
-    WriteFileTool, WriteTodosTool, apply_capabilities, collect_capabilities, get_dependencies,
-    is_mcp_capability, mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
+    CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CollectedCapabilities,
+    CurrentTimeCapability, DeleteFileTool, DependencyError, DivideTool, FileSystemCapability,
+    GetCurrentTimeTool, GetForecastTool, GetWeatherTool, GrepFilesTool, ListDirectoryTool,
+    MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability, MountAccess,
+    MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool, NoopCapability,
+    ReadFileTool, ResearchCapability, ResolvedCapabilities, SampleDataCapability,
+    SandboxCapability, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
+    TestWeatherCapability, WriteFileTool, WriteTodosTool, apply_capabilities,
+    collect_capabilities_with_configs, get_dependencies, is_mcp_capability, mcp_capability_id,
+    parse_mcp_capability_id, resolve_dependencies,
 };
 
 // Atoms re-exports (stateless atomic operations)

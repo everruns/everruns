@@ -5,6 +5,7 @@
 // either PostgreSQL (production) or in-memory (dev mode) storage.
 
 use anyhow::Result;
+use everruns_core::message_filter::MessageQuery;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -251,6 +252,21 @@ impl StorageBackend {
 
     pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
         dispatch!(self, list_message_events, session_id)
+    }
+
+    /// List message events with filters applied
+    ///
+    /// This method applies the filters from the MessageQuery to efficiently
+    /// retrieve messages. DB-mappable filters are pushed to the database,
+    /// while custom filters are applied in-memory.
+    ///
+    /// Note: Injections are NOT applied here - they should be applied at the
+    /// MessageRetriever layer after converting events to messages.
+    pub async fn list_message_events_filtered(
+        &self,
+        query: &MessageQuery,
+    ) -> Result<Vec<EventRow>> {
+        dispatch!(self, list_message_events_filtered, query)
     }
 
     /// Get preview text for multiple sessions (first user message)

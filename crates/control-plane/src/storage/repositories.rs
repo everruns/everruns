@@ -2,6 +2,8 @@
 // M2 Revised: Agent/Session/Messages/Events model
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
+use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -715,6 +717,147 @@ impl Database {
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;
+
+        Ok(rows)
+    }
+
+    /// List message events for a session with filters applied.
+    ///
+    /// This method builds a dynamic SQL query based on the provided filters.
+    /// DB-mappable filters (TimeRange, EventTypes, ToolName, Search, etc.) are
+    /// pushed to the database for efficient filtering. Custom filters are applied
+    /// in-memory after loading.
+    ///
+    /// Note: Injections are NOT applied here - they should be applied at the
+    /// MessageRetriever layer after converting events to messages.
+    pub async fn list_message_events_filtered(
+        &self,
+        query: &MessageQuery,
+    ) -> Result<Vec<EventRow>> {
+        // Build dynamic SQL query
+        let mut sql = String::from(
+            "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at FROM events WHERE session_id = $1",
+        );
+
+        // Collect bound values for later binding
+        // We track types separately since sqlx needs typed bindings
+        let mut time_from: Option<DateTime<Utc>> = None;
+        let mut time_to: Option<DateTime<Utc>> = None;
+        let mut event_types: Option<Vec<String>> = None;
+        let mut tool_name: Option<String> = None;
+        let mut search_query: Option<String> = None;
+        let mut exclude_ids: Option<Vec<Uuid>> = None;
+        let mut include_ids: Option<Vec<Uuid>> = None;
+
+        // Check for EventTypes filter, else use defaults
+        for filter in &query.filters {
+            if let MessageFilter::EventTypes(types) = filter {
+                event_types = Some(types.clone());
+                break;
+            }
+        }
+
+        // Default event types if not specified
+        let types = event_types.unwrap_or_else(|| {
+            vec![
+                "message.user".to_string(),
+                "message.agent".to_string(),
+                "tool.call_completed".to_string(),
+            ]
+        });
+        sql.push_str(" AND event_type = ANY($2)");
+
+        // Build parameter index tracker (starting at 3 since $1=session_id, $2=event_types)
+        let mut param_idx = 3;
+
+        // Process filters
+        for filter in &query.filters {
+            match filter {
+                MessageFilter::EventTypes(_) => {
+                    // Already handled above
+                }
+                MessageFilter::TimeRange { from, to } => {
+                    if let Some(f) = from {
+                        sql.push_str(&format!(" AND created_at >= ${}", param_idx));
+                        time_from = Some(*f);
+                        param_idx += 1;
+                    }
+                    if let Some(t) = to {
+                        sql.push_str(&format!(" AND created_at <= ${}", param_idx));
+                        time_to = Some(*t);
+                        param_idx += 1;
+                    }
+                }
+                MessageFilter::ToolName(name) => {
+                    sql.push_str(&format!(
+                        " AND (event_type = 'tool.call_completed' AND data->>'tool_name' = ${})",
+                        param_idx
+                    ));
+                    tool_name = Some(name.clone());
+                    param_idx += 1;
+                }
+                MessageFilter::Search(q) => {
+                    sql.push_str(&format!(
+                        " AND data::text ILIKE '%' || ${} || '%'",
+                        param_idx
+                    ));
+                    search_query = Some(q.clone());
+                    param_idx += 1;
+                }
+                MessageFilter::ExcludeIds(ids) => {
+                    sql.push_str(&format!(" AND id != ALL(${})", param_idx));
+                    exclude_ids = Some(ids.clone());
+                    param_idx += 1;
+                }
+                MessageFilter::IncludeIds(ids) => {
+                    sql.push_str(&format!(" AND id = ANY(${})", param_idx));
+                    include_ids = Some(ids.clone());
+                    param_idx += 1;
+                }
+                MessageFilter::Custom(_) => {
+                    // Custom filters are applied in-memory, not in SQL
+                }
+            }
+        }
+
+        sql.push_str(" ORDER BY sequence ASC");
+
+        // Apply limit/offset
+        if let Some(limit) = query.limit {
+            sql.push_str(&format!(" LIMIT {}", limit));
+        }
+        if let Some(offset) = query.offset {
+            sql.push_str(&format!(" OFFSET {}", offset));
+        }
+
+        // Build and execute query with dynamic bindings
+        // sqlx doesn't support truly dynamic queries, so we need to use raw SQL
+        // with all possible parameters, binding None for unused ones
+        let mut db_query = sqlx::query_as::<_, EventRow>(&sql)
+            .bind(query.session_id)
+            .bind(&types);
+
+        // Bind parameters in order they were added to SQL
+        if time_from.is_some() {
+            db_query = db_query.bind(time_from);
+        }
+        if time_to.is_some() {
+            db_query = db_query.bind(time_to);
+        }
+        if tool_name.is_some() {
+            db_query = db_query.bind(tool_name);
+        }
+        if search_query.is_some() {
+            db_query = db_query.bind(search_query);
+        }
+        if exclude_ids.is_some() {
+            db_query = db_query.bind(exclude_ids);
+        }
+        if include_ids.is_some() {
+            db_query = db_query.bind(include_ids);
+        }
+
+        let rows = db_query.fetch_all(&self.pool).await?;
 
         Ok(rows)
     }
