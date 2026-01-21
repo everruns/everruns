@@ -29,11 +29,60 @@ pub struct GrpcDurableStore {
 }
 
 impl GrpcDurableStore {
-    /// Connect to the control-plane gRPC service
+    /// Connect to the control-plane gRPC service with retry logic.
+    /// Retries with exponential backoff for up to 5 seconds total.
     pub async fn connect(address: &str) -> Result<Self> {
+        use std::time::Duration;
+        use tokio::time::sleep;
+
         let endpoint = format!("http://{}", address);
-        let client = WorkerServiceClient::connect(endpoint).await?;
-        Ok(Self { client })
+        let max_duration = Duration::from_secs(5);
+        let initial_backoff = Duration::from_millis(100);
+        let max_backoff = Duration::from_secs(1);
+
+        let start = std::time::Instant::now();
+        let mut backoff = initial_backoff;
+        let mut attempt = 0;
+
+        loop {
+            attempt += 1;
+            match WorkerServiceClient::connect(endpoint.clone()).await {
+                Ok(client) => {
+                    if attempt > 1 {
+                        tracing::info!(
+                            address = %address,
+                            attempts = attempt,
+                            elapsed_ms = start.elapsed().as_millis(),
+                            "Connected to control-plane gRPC"
+                        );
+                    }
+                    return Ok(Self { client });
+                }
+                Err(e) => {
+                    let elapsed = start.elapsed();
+                    if elapsed >= max_duration {
+                        return Err(anyhow::anyhow!(
+                            "Failed to connect to control-plane at {} after {:.1}s ({} attempts): {}",
+                            address,
+                            elapsed.as_secs_f32(),
+                            attempt,
+                            e
+                        ));
+                    }
+
+                    tracing::debug!(
+                        address = %address,
+                        attempt = attempt,
+                        backoff_ms = backoff.as_millis(),
+                        error = %e,
+                        "Control-plane not available, retrying..."
+                    );
+
+                    sleep(backoff).await;
+                    backoff = std::cmp::min(backoff * 2, max_backoff);
+                }
+            }
+        }
     }
 
     /// Create a new durable workflow
