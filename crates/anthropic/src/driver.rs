@@ -240,21 +240,26 @@ impl LlmDriver for AnthropicLlmDriver {
             .as_ref()
             .and_then(|e| AnthropicThinking::from_effort(e));
 
-        let mut request = AnthropicRequest {
+        // Calculate max_tokens ensuring it's greater than thinking budget
+        let base_max_tokens = config.max_tokens.unwrap_or(4096).max(4096);
+        let max_tokens = if let Some(ref thinking_config) = thinking {
+            // max_tokens must be > thinking.budget_tokens per Anthropic requirements
+            // Add 8192 to the budget to allow for actual response text
+            base_max_tokens.max(thinking_config.budget_tokens + 8192)
+        } else {
+            base_max_tokens
+        };
+
+        let request = AnthropicRequest {
             model: config.model.clone(),
             messages: anthropic_messages,
-            max_tokens: config.max_tokens.unwrap_or(4096),
+            max_tokens,
             temperature: config.temperature,
             system: system_prompt,
             stream: true,
             tools,
             thinking,
         };
-
-        // Ensure max_tokens is set (required by Anthropic)
-        if request.max_tokens == 0 {
-            request.max_tokens = 4096;
-        }
 
         let response = self
             .client
@@ -360,6 +365,10 @@ impl LlmDriver for AnthropicLlmDriver {
                                                 tc.arguments = json!(combined);
                                             }
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
+                                        }
+                                        AnthropicDelta::ThinkingDelta { thinking } => {
+                                            // Stream thinking content from extended thinking models
+                                            return Ok(LlmStreamEvent::ThinkingDelta(thinking));
                                         }
                                     }
                                 }
@@ -712,6 +721,8 @@ enum AnthropicContentBlockDelta {
     Text { text: String },
     #[serde(rename = "tool_use")]
     ToolUse { id: String, name: String },
+    #[serde(rename = "thinking")]
+    Thinking { thinking: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -721,11 +732,14 @@ struct AnthropicContentBlockDeltaEvent {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
+#[allow(clippy::enum_variant_names)] // Delta suffix matches Anthropic's API naming
 enum AnthropicDelta {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
     #[serde(rename = "input_json_delta")]
     InputJsonDelta { partial_json: String },
+    #[serde(rename = "thinking_delta")]
+    ThinkingDelta { thinking: String },
 }
 
 #[derive(Debug, Deserialize)]

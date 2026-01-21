@@ -627,6 +627,28 @@ Streaming text update during LLM generation. Events are batched (~100ms) to redu
 }
 ```
 
+#### `thinking.delta`
+
+Streaming thinking/reasoning content from extended thinking models (e.g., Claude with thinking enabled). These events contain the model's chain-of-thought reasoning before producing the final response. Events are batched (~100ms) similar to `text.delta`.
+
+```json
+{
+  "type": "thinking.delta",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "delta": "Let me analyze this step by step...",
+    "accumulated": "Let me analyze this step by step..."
+  }
+}
+```
+
+**Note:** `thinking.delta` events are only emitted when using models that support extended thinking mode (e.g., Claude with `reasoning_effort` configured). The thinking content is separate from the main response text and typically shown in a collapsible section in the UI.
+
 **Streaming Timeline Example:**
 
 ```
@@ -637,16 +659,21 @@ User sends message
 │ agent.thinking  │  ← UI shows thinking indicator
 └────────┬────────┘
          │
-    ┌────┴────┐
-    ▼         ▼
-text.delta  text.delta  ← UI shows streaming text (batched ~100ms)
-    │         │
-    └────┬────┘
-         │
-         ▼
-┌─────────────────┐
-│ message.agent   │  ← UI shows final message, stops streaming
-└─────────────────┘
+         ▼ (if extended thinking model)
+  ┌──────────────────┐
+  │ thinking.delta   │  ← UI shows streaming reasoning (optional)
+  └────────┬─────────┘
+           │
+      ┌────┴────┐
+      ▼         ▼
+  text.delta  text.delta  ← UI shows streaming text (batched ~100ms)
+      │         │
+      └────┬────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │ message.agent   │  ← UI shows final message, stops streaming
+  └─────────────────┘
 ```
 
 **Real-time Usage Tracking Pattern:**
@@ -689,6 +716,7 @@ This approach provides real-time feedback as tokens are consumed during LLM call
 | `llm.generation` | LLM | Full LLM API call with messages and response |
 | `agent.thinking` | Streaming | LLM generation started (thinking indicator) |
 | `text.delta` | Streaming | Incremental text update during streaming |
+| `thinking.delta` | Streaming | Incremental reasoning content from extended thinking models |
 | `session.started` | Session | Session execution started |
 | `session.activated` | Session | Session became active (turn started) |
 | `session.idled` | Session | Session became idle (turn completed, includes usage) |

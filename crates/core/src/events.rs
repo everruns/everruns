@@ -43,6 +43,7 @@ pub const LLM_GENERATION: &str = "llm.generation";
 // Streaming events (for real-time UI updates)
 pub const AGENT_THINKING: &str = "agent.thinking";
 pub const TEXT_DELTA: &str = "text.delta";
+pub const THINKING_DELTA: &str = "thinking.delta";
 
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
@@ -891,6 +892,25 @@ pub struct TextDeltaData {
     pub accumulated: String,
 }
 
+/// Data for thinking.delta event (extended thinking content from models like Claude)
+///
+/// This event streams incremental thinking/reasoning content from models that support
+/// extended thinking mode (e.g., Claude with thinking enabled). The thinking content
+/// represents the model's chain-of-thought reasoning before producing the final response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ThinkingDeltaData {
+    /// Turn ID this delta belongs to (for correlation)
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// The thinking delta (new thinking text since last delta)
+    pub delta: String,
+
+    /// Accumulated thinking text so far (convenience for UI)
+    pub accumulated: String,
+}
+
 // ============================================================================
 // Turn Event Data Types
 // ============================================================================
@@ -1079,11 +1099,12 @@ pub enum EventData {
     LlmGeneration(LlmGenerationData),
 
     // Streaming events
-    // NOTE: TextDelta must come BEFORE AgentThinking for untagged enum deserialization.
-    // TextDelta has more required fields (turn_id, delta, accumulated) while
+    // NOTE: TextDelta and ThinkingDelta must come BEFORE AgentThinking for untagged enum deserialization.
+    // TextDelta/ThinkingDelta have more required fields (turn_id, delta, accumulated) while
     // AgentThinking only requires turn_id (model is optional). If AgentThinking
-    // comes first, it will match TextDelta JSON and discard delta/accumulated fields.
+    // comes first, it will match their JSON and discard delta/accumulated fields.
     TextDelta(TextDeltaData),
+    ThinkingDelta(ThinkingDeltaData),
     AgentThinking(AgentThinkingData),
 
     // NOTE: TurnCancelled is placed here (after streaming events) because it only
@@ -1123,6 +1144,7 @@ impl EventData {
             EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::TextDelta(_) => TEXT_DELTA,
+            EventData::ThinkingDelta(_) => THINKING_DELTA,
             EventData::AgentThinking(_) => AGENT_THINKING,
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
@@ -1170,6 +1192,7 @@ impl_from_event_data! {
     LlmGenerationData => LlmGeneration,
     AgentThinkingData => AgentThinking,
     TextDeltaData => TextDelta,
+    ThinkingDeltaData => ThinkingDelta,
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,

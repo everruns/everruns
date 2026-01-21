@@ -29,7 +29,8 @@ use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
     AgentThinkingData, EventContext, EventRequest, LlmGenerationData, MessageAgentData,
-    ReasonCompletedData, ReasonStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
+    ReasonCompletedData, ReasonStartedData, TextDeltaData, ThinkingDeltaData, TokenUsage,
+    ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -616,10 +617,13 @@ where
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let mut text = String::new();
+        let mut thinking = String::new();
         let mut tool_calls = Vec::new();
         let mut completion_metadata: Option<LlmCompletionMetadata> = None;
         let mut pending_delta = String::new();
+        let mut pending_thinking_delta = String::new();
         let mut last_delta_emit = Instant::now();
+        let mut last_thinking_delta_emit = Instant::now();
         let mut time_to_first_token_ms: Option<u64> = None;
 
         while let Some(event) = stream.next().await {
@@ -665,6 +669,39 @@ where
                         last_delta_emit = Instant::now();
                     }
                 }
+                LlmStreamEvent::ThinkingDelta(delta) => {
+                    // Accumulate thinking content from extended thinking models
+                    thinking.push_str(&delta);
+                    pending_thinking_delta.push_str(&delta);
+
+                    // Emit batched thinking delta if interval elapsed
+                    if last_thinking_delta_emit.elapsed().as_millis() as u64
+                        >= DELTA_BATCH_INTERVAL_MS
+                        && !pending_thinking_delta.is_empty()
+                    {
+                        if let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                ThinkingDeltaData {
+                                    turn_id: TurnId::from_uuid(context.turn_id),
+                                    delta: pending_thinking_delta.clone(),
+                                    accumulated: thinking.clone(),
+                                },
+                            ))
+                            .await
+                        {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                error = %e,
+                                "ReasonAtom: failed to emit thinking.delta event"
+                            );
+                        }
+                        pending_thinking_delta.clear();
+                        last_thinking_delta_emit = Instant::now();
+                    }
+                }
                 LlmStreamEvent::ToolCalls(calls) => {
                     tool_calls = calls;
                 }
@@ -688,6 +725,28 @@ where
                             session_id = %session_id,
                             error = %e,
                             "ReasonAtom: failed to emit final text.delta event"
+                        );
+                    }
+
+                    // Emit any remaining pending thinking delta before completing
+                    if !pending_thinking_delta.is_empty()
+                        && let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                ThinkingDeltaData {
+                                    turn_id: TurnId::from_uuid(context.turn_id),
+                                    delta: pending_thinking_delta.clone(),
+                                    accumulated: thinking.clone(),
+                                },
+                            ))
+                            .await
+                    {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            error = %e,
+                            "ReasonAtom: failed to emit final thinking.delta event"
                         );
                     }
                     completion_metadata = Some(metadata);

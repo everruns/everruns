@@ -440,6 +440,15 @@ export interface TextDeltaData {
   accumulated: string;
 }
 
+/** Data for thinking.delta event (streaming reasoning from extended thinking models) */
+export interface ThinkingDeltaData {
+  turn_id: string;
+  /** The new thinking text since last delta */
+  delta: string;
+  /** Accumulated thinking text so far */
+  accumulated: string;
+}
+
 /** Union type for all event data types */
 export type EventData =
   | MessageUserData
@@ -460,6 +469,7 @@ export type EventData =
   | SessionIdledData
   | AgentThinkingData
   | TextDeltaData
+  | ThinkingDeltaData
   | Record<string, unknown>; // Raw/unknown event data
 
 export interface CreateEventRequest {

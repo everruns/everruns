@@ -3491,6 +3491,9 @@
             "$ref": "#/components/schemas/TextDeltaData"
           },
           {
+            "$ref": "#/components/schemas/ThinkingDeltaData"
+          },
+          {
             "$ref": "#/components/schemas/AgentThinkingData"
           },
           {
@@ -6010,6 +6013,30 @@
           "delta": {
             "type": "string",
             "description": "The text delta (new text since last delta)"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID this delta belongs to (for correlation)",
+            "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "ThinkingDeltaData": {
+        "type": "object",
+        "description": "Data for thinking.delta event (extended thinking content from models like Claude)\n\nThis event streams incremental thinking/reasoning content from models that support\nextended thinking mode (e.g., Claude with thinking enabled). The thinking content\nrepresents the model's chain-of-thought reasoning before producing the final response.",
+        "required": [
+          "turn_id",
+          "delta",
+          "accumulated"
+        ],
+        "properties": {
+          "accumulated": {
+            "type": "string",
+            "description": "Accumulated thinking text so far (convenience for UI)"
+          },
+          "delta": {
+            "type": "string",
+            "description": "The thinking delta (new thinking text since last delta)"
           },
           "turn_id": {
             "type": "string",

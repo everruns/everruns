@@ -232,6 +232,7 @@ export function useEvents(
         // Streaming events for real-time text updates
         "agent.thinking",
         "text.delta",
+        "thinking.delta",
       ];
 
       for (const eventType of eventTypes) {
