@@ -71,7 +71,7 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 | `tags` | string[] | Tags for organization/filtering |
 | `created_at` | timestamp | Creation time (from event.created_at) |
 
-**Note:** Messages are stored as events with types `message.user`, `message.agent`, `message.tool_result`. Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. System messages are handled internally and not persisted to events.
+**Note:** Messages are stored as events with types `message.user`, `message.agent`. Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. Tool results are stored as `tool.call_completed` events. System messages are handled internally and not persisted to events.
 
 **ContentPart types (discriminated by `type` field):**
 
@@ -588,7 +588,7 @@ Automatic discovery of available models from provider APIs.
 | What stores conversation? | **Events** table with `event_type` = `message.*` |
 | What are Events for? | Primary data store for messages AND SSE notifications |
 | Where are tool calls stored? | In `message.agent` events as `ContentPart::ToolCall` |
-| Where are tool results stored? | Events with `event_type` = `message.tool_result` |
+| Where are tool results stored? | Events with `event_type` = `tool.call_completed` |
 | Session status? | Explicit status field (pending, running, failed) |
 | Where are capabilities defined? | In-memory registry in API layer |
 | How are capabilities applied? | Resolved at API/service layer, merged into RuntimeAgent |
