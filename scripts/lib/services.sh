@@ -217,7 +217,7 @@ case "$cmd" in
     fi
 
     CHILD_PIDS=()
-    JAEGER_STARTED=false
+    PHOENIX_STARTED=false
     CLEANUP_DONE=false
 
     cleanup() {
@@ -289,35 +289,35 @@ case "$cmd" in
       echo "   ✅ Local PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
       if resolve_docker_compose 2>/dev/null; then
-        if ! docker ps 2>/dev/null | grep -q jaeger; then
-          echo "   ℹ️  Starting Jaeger for tracing..."
+        if ! docker ps 2>/dev/null | grep -q phoenix; then
+          echo "   ℹ️  Starting Phoenix for LLM observability..."
           ensure_docker_daemon || true
           cd "$PROJECT_ROOT/local"
-          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
+          "${DOCKER_COMPOSE[@]}" --profile phoenix up -d 2>/dev/null && PHOENIX_STARTED=true
           cd "$PROJECT_ROOT"
         else
-          JAEGER_STARTED=true
+          PHOENIX_STARTED=true
         fi
       fi
     elif command -v docker &> /dev/null && docker ps 2>/dev/null | grep -q postgres; then
       echo "   ✅ Docker PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-      if ! docker ps 2>/dev/null | grep -q jaeger; then
-        echo "   ℹ️  Starting Jaeger for tracing..."
+      if ! docker ps 2>/dev/null | grep -q phoenix; then
+        echo "   ℹ️  Starting Phoenix for LLM observability..."
         if resolve_docker_compose 2>/dev/null; then
           cd "$PROJECT_ROOT/local"
-          "${DOCKER_COMPOSE[@]}" up -d jaeger 2>/dev/null && JAEGER_STARTED=true
+          "${DOCKER_COMPOSE[@]}" --profile phoenix up -d 2>/dev/null && PHOENIX_STARTED=true
           cd "$PROJECT_ROOT"
         fi
       else
-        JAEGER_STARTED=true
+        PHOENIX_STARTED=true
       fi
     else
       echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
       if resolve_docker_compose; then
         ensure_docker_daemon || exit 1
         cd "$PROJECT_ROOT/local"
-        "${DOCKER_COMPOSE[@]}" up -d postgres jaeger
+        "${DOCKER_COMPOSE[@]}" --profile phoenix up -d postgres phoenix
         cd "$PROJECT_ROOT"
         sleep 3
         until docker exec everruns-postgres pg_isready -U everruns -d everruns > /dev/null 2>&1; do
@@ -325,16 +325,21 @@ case "$cmd" in
           sleep 1
         done
         export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
-        echo "   ✅ Docker PostgreSQL and Jaeger started"
-        JAEGER_STARTED=true
+        echo "   ✅ Docker PostgreSQL and Phoenix started"
+        PHOENIX_STARTED=true
       else
         echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
         exit 1
       fi
     fi
 
-    if [ "$JAEGER_STARTED" = false ]; then
-      echo "   ⚠️  Jaeger not available, disabling OpenTelemetry tracing"
+    # Configure OpenTelemetry for Phoenix
+    if [ "$PHOENIX_STARTED" = true ]; then
+      export OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}
+      export OTEL_SDK_DISABLED=false
+      echo "   ✅ Phoenix ready - traces will be sent to localhost:4317"
+    else
+      echo "   ⚠️  Phoenix not available, disabling OpenTelemetry tracing"
       export OTEL_SDK_DISABLED=true
     fi
 
@@ -434,10 +439,10 @@ case "$cmd" in
     if [ "$NO_UI" = false ]; then
       echo "   🖥️ UI:          http://localhost:9100 (hot reload)"
     fi
-    if [ "$JAEGER_STARTED" = true ]; then
-      echo "   🔍 Jaeger UI:   http://localhost:16686"
+    if [ "$PHOENIX_STARTED" = true ]; then
+      echo "   🔭 Phoenix UI:  http://localhost:6006 (LLM observability)"
     elif [ "$NO_DOCKER" = false ]; then
-      echo "   🔍 Jaeger:      disabled (no Docker)"
+      echo "   🔭 Phoenix:     disabled (no Docker)"
     fi
     echo ""
     if [ "$NO_WATCH" = false ]; then
@@ -458,7 +463,8 @@ case "$cmd" in
 
     if resolve_docker_compose 2>/dev/null; then
       cd "$PROJECT_ROOT/local"
-      "${DOCKER_COMPOSE[@]}" down
+      # Stop all profiles (default for Jaeger, phoenix for Phoenix)
+      "${DOCKER_COMPOSE[@]}" --profile default --profile phoenix down
       cd "$PROJECT_ROOT"
     fi
 

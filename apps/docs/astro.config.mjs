@@ -41,6 +41,10 @@ export default defineConfig({
           autogenerate: { directory: "features" },
         },
         {
+          label: "Observability",
+          autogenerate: { directory: "observability" },
+        },
+        {
           label: "SRE Guide",
           items: [
             { label: "Environment Variables", slug: "sre/environment-variables" },
