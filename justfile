@@ -123,3 +123,29 @@ start-production *args:
 # Stop all services (API, UI, Docker)
 stop-all:
     ./scripts/lib/services.sh stop-all
+
+# === Load Testing ===
+
+# Run load test against running API (requires API + Worker running)
+load-test *args:
+    cargo run --release -p everruns-server --bench load_test -- {{args}}
+
+# Run quick load test (10 sessions, 10 messages each)
+load-test-quick:
+    SESSIONS=10 MESSAGES_PER_SESSION=10 MAX_CONCURRENT=10 cargo run --release -p everruns-server --bench load_test
+
+# Run medium load test (100 sessions, 50 messages each = 5000 total)
+load-test-medium:
+    SESSIONS=100 MESSAGES_PER_SESSION=50 MAX_CONCURRENT=50 cargo run --release -p everruns-server --bench load_test
+
+# Run heavy load test (500 sessions, 100 messages each = 50000 total)
+load-test-heavy:
+    SESSIONS=500 MESSAGES_PER_SESSION=100 MAX_CONCURRENT=100 cargo run --release -p everruns-server --bench load_test
+
+# Run load test with realistic LLM delays
+load-test-realistic:
+    MODEL_ID=llmsim-ttft-500 SESSIONS=100 MESSAGES_PER_SESSION=50 cargo run --release -p everruns-server --bench load_test
+
+# Run load test with slow LLM simulation
+load-test-slow:
+    MODEL_ID=llmsim-ttft-2000 SESSIONS=50 MESSAGES_PER_SESSION=20 cargo run --release -p everruns-server --bench load_test

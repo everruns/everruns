@@ -72,3 +72,10 @@ prost.workspace = true
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-native-certs", "blocking"] }
 http-body-util = "0.1"
+
+[[bench]]
+name = "load_test"
+harness = false
+
+[dev-dependencies.indicatif]
+version = "0.17"
