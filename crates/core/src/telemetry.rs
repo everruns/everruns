@@ -22,6 +22,9 @@ use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::Subscribe
 
 /// Gen-AI semantic convention attribute names
 pub mod gen_ai {
+    // NOTE: Everruns supports both standard OpenTelemetry gen-ai semantic conventions
+    // and OpenInference conventions for Arize Phoenix compatibility.
+    // See the `openinference` module below for Phoenix-specific attributes.
     // Operation and provider attributes
     /// The name of the operation being performed (e.g., "chat", "embeddings")
     pub const OPERATION_NAME: &str = "gen_ai.operation.name";
@@ -149,6 +152,86 @@ pub mod gen_ai {
         pub const JSON: &str = "json";
         pub const SPEECH: &str = "speech";
     }
+}
+
+// ============================================================================
+// OpenInference Semantic Conventions (Arize Phoenix)
+// See: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md
+// ============================================================================
+
+/// OpenInference semantic convention attribute names for Arize Phoenix compatibility.
+///
+/// OpenInference is an extension of OpenTelemetry designed for AI/ML observability.
+/// These attributes enable enhanced visualizations in Phoenix for LLM traces.
+pub mod openinference {
+    /// Span kind attribute - required for all OpenInference spans
+    pub const SPAN_KIND: &str = "openinference.span.kind";
+
+    /// Span kinds as per OpenInference conventions
+    pub mod span_kind {
+        pub const LLM: &str = "LLM";
+        pub const EMBEDDING: &str = "EMBEDDING";
+        pub const CHAIN: &str = "CHAIN";
+        pub const RETRIEVER: &str = "RETRIEVER";
+        pub const RERANKER: &str = "RERANKER";
+        pub const TOOL: &str = "TOOL";
+        pub const AGENT: &str = "AGENT";
+        pub const GUARDRAIL: &str = "GUARDRAIL";
+        pub const EVALUATOR: &str = "EVALUATOR";
+    }
+
+    /// LLM-specific attributes
+    pub mod llm {
+        /// Model name
+        pub const MODEL_NAME: &str = "llm.model_name";
+        /// AI product identifier (openai, anthropic, etc.)
+        pub const SYSTEM: &str = "llm.system";
+        /// Hosting provider (azure, aws, google)
+        pub const PROVIDER: &str = "llm.provider";
+        /// Invocation parameters as JSON
+        pub const INVOCATION_PARAMETERS: &str = "llm.invocation_parameters";
+
+        /// Token counts
+        pub mod token_count {
+            pub const PROMPT: &str = "llm.token_count.prompt";
+            pub const COMPLETION: &str = "llm.token_count.completion";
+            pub const TOTAL: &str = "llm.token_count.total";
+        }
+    }
+
+    /// Input attributes
+    pub mod input {
+        /// Input value (text content)
+        pub const VALUE: &str = "input.value";
+        /// Input MIME type
+        pub const MIME_TYPE: &str = "input.mime_type";
+    }
+
+    /// Output attributes
+    pub mod output {
+        /// Output value (text content)
+        pub const VALUE: &str = "output.value";
+        /// Output MIME type
+        pub const MIME_TYPE: &str = "output.mime_type";
+    }
+
+    /// Session tracking
+    pub mod session {
+        /// Session identifier
+        pub const ID: &str = "session.id";
+    }
+
+    /// User tracking
+    pub mod user {
+        /// User identifier
+        pub const ID: &str = "user.id";
+    }
+
+    /// Metadata attribute (JSON object)
+    pub const METADATA: &str = "metadata";
+
+    /// Tag attributes (for filtering)
+    pub const TAGS: &str = "tag.tags";
 }
 
 // ============================================================================

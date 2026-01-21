@@ -23,7 +23,7 @@ use crate::events::{
     TURN_COMPLETED, TURN_STARTED, ToolCallCompletedData, ToolCallStartedData, TurnCompletedData,
     TurnStartedData,
 };
-use crate::telemetry::gen_ai;
+use crate::telemetry::{gen_ai, openinference};
 
 // ============================================================================
 // Internal Span Tracking
@@ -94,6 +94,9 @@ impl OtelEventListener {
     }
 
     /// Handle llm.generation event - create a chat span
+    ///
+    /// Emits both OpenTelemetry gen-ai and OpenInference attributes for compatibility
+    /// with both standard OTEL backends (Jaeger, Tempo) and Arize Phoenix.
     fn handle_llm_generation(&self, event: &Event, data: &LlmGenerationData) {
         let model = &data.metadata.model;
         let provider = data.metadata.provider.as_deref().unwrap_or("unknown");
@@ -105,12 +108,29 @@ impl OtelEventListener {
             gen_ai::output_type::TEXT
         };
 
-        // Create span with gen-ai semantic conventions
+        // Calculate total tokens for OpenInference
+        let input_tokens = data
+            .metadata
+            .usage
+            .as_ref()
+            .map(|u| u.input_tokens)
+            .unwrap_or(0);
+        let output_tokens = data
+            .metadata
+            .usage
+            .as_ref()
+            .map(|u| u.output_tokens)
+            .unwrap_or(0);
+        let total_tokens = input_tokens + output_tokens;
+
+        // Create span with both gen-ai and OpenInference semantic conventions
         let span_name = format!("chat {}", model);
         let span = tracing::info_span!(
             "gen_ai.chat",
             "otel.name" = %span_name,
             "otel.kind" = "client",
+
+            // === OpenTelemetry gen-ai semantic conventions ===
             // Operation and provider
             "gen_ai.operation.name" = gen_ai::operation::CHAT,
             "gen_ai.system" = %provider,
@@ -121,12 +141,27 @@ impl OtelEventListener {
             "gen_ai.response.id" = data.metadata.response_id.as_deref().unwrap_or(""),
             "gen_ai.response.finish_reasons" = ?data.metadata.finish_reasons,
             // Usage metrics
-            "gen_ai.usage.input_tokens" = data.metadata.usage.as_ref().map(|u| u.input_tokens).unwrap_or(0),
-            "gen_ai.usage.output_tokens" = data.metadata.usage.as_ref().map(|u| u.output_tokens).unwrap_or(0),
+            "gen_ai.usage.input_tokens" = input_tokens,
+            "gen_ai.usage.output_tokens" = output_tokens,
             // Output type
             "gen_ai.output.type" = %output_type,
             // Conversation context
             "gen_ai.conversation.id" = %event.session_id,
+
+            // === OpenInference semantic conventions (Arize Phoenix) ===
+            // Span kind - required for Phoenix to recognize this as an LLM span
+            "openinference.span.kind" = openinference::span_kind::LLM,
+            // LLM attributes
+            "llm.model_name" = %model,
+            "llm.system" = %provider,
+            // Token counts (OpenInference format)
+            "llm.token_count.prompt" = input_tokens,
+            "llm.token_count.completion" = output_tokens,
+            "llm.token_count.total" = total_tokens,
+            // Session tracking
+            "session.id" = %event.session_id,
+
+            // === Custom attributes ===
             // Duration
             "duration_ms" = data.metadata.duration_ms.unwrap_or(0),
             // Time to first token (streaming latency)
@@ -141,8 +176,8 @@ impl OtelEventListener {
             model = %model,
             provider = %provider,
             success = %data.metadata.success,
-            input_tokens = data.metadata.usage.as_ref().map(|u| u.input_tokens),
-            output_tokens = data.metadata.usage.as_ref().map(|u| u.output_tokens),
+            input_tokens = input_tokens,
+            output_tokens = output_tokens,
             tool_calls = %data.output.tool_calls.len(),
             "LLM generation completed"
         );
@@ -161,6 +196,9 @@ impl OtelEventListener {
     }
 
     /// Handle tool.call_completed event - create execute_tool span
+    ///
+    /// Emits both OpenTelemetry gen-ai and OpenInference attributes for compatibility
+    /// with both standard OTEL backends (Jaeger, Tempo) and Arize Phoenix.
     fn handle_tool_call_completed(&self, event: &Event, data: &ToolCallCompletedData) {
         // Get start info if available
         let start_info = {
@@ -172,23 +210,35 @@ impl OtelEventListener {
             .as_ref()
             .map(|info| info.started_at.elapsed().as_millis() as u64);
 
-        // Create span with gen-ai semantic conventions
+        // Create span with both gen-ai and OpenInference semantic conventions
         let span_name = format!("execute_tool {}", data.tool_name);
         let span = tracing::info_span!(
             "gen_ai.execute_tool",
             "otel.name" = %span_name,
             "otel.kind" = "internal",
+
+            // === OpenTelemetry gen-ai semantic conventions ===
             // Operation
             "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
             // Tool attributes
             "gen_ai.tool.name" = %data.tool_name,
             "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
             "gen_ai.tool.call.id" = %data.tool_call_id,
+            // Conversation context
+            "gen_ai.conversation.id" = %event.session_id,
+
+            // === OpenInference semantic conventions (Arize Phoenix) ===
+            // Span kind - required for Phoenix to recognize this as a TOOL span
+            "openinference.span.kind" = openinference::span_kind::TOOL,
+            // Tool name (OpenInference uses same attribute)
+            "tool.name" = %data.tool_name,
+            // Session tracking
+            "session.id" = %event.session_id,
+
+            // === Custom attributes ===
             // Result
             "tool.success" = %data.success,
             "tool.status" = %data.status,
-            // Conversation context
-            "gen_ai.conversation.id" = %event.session_id,
             // Duration
             "duration_ms" = duration_ms.unwrap_or(0),
         );
@@ -225,6 +275,9 @@ impl OtelEventListener {
     }
 
     /// Handle turn.completed event - create invoke_agent span
+    ///
+    /// Emits both OpenTelemetry gen-ai and OpenInference attributes for compatibility
+    /// with both standard OTEL backends (Jaeger, Tempo) and Arize Phoenix.
     fn handle_turn_completed(&self, event: &Event, data: &TurnCompletedData) {
         // Get start info if available
         let start_info = {
@@ -238,19 +291,49 @@ impl OtelEventListener {
                 .map(|info| info.started_at.elapsed().as_millis() as u64)
         });
 
-        // Create span with gen-ai semantic conventions
+        // Calculate total tokens if usage is available
+        let (input_tokens, output_tokens, total_tokens) = data
+            .usage
+            .as_ref()
+            .map(|u| {
+                (
+                    u.input_tokens,
+                    u.output_tokens,
+                    u.input_tokens + u.output_tokens,
+                )
+            })
+            .unwrap_or((0, 0, 0));
+
+        // Create span with both gen-ai and OpenInference semantic conventions
         let span_name = format!("invoke_agent {}", data.turn_id);
         let span = tracing::info_span!(
             "gen_ai.invoke_agent",
             "otel.name" = %span_name,
             "otel.kind" = "internal",
+
+            // === OpenTelemetry gen-ai semantic conventions ===
             // Operation
             "gen_ai.operation.name" = gen_ai::operation::INVOKE_AGENT,
+            // Conversation context
+            "gen_ai.conversation.id" = %event.session_id,
+            // Usage (aggregated for the turn)
+            "gen_ai.usage.input_tokens" = input_tokens,
+            "gen_ai.usage.output_tokens" = output_tokens,
+
+            // === OpenInference semantic conventions (Arize Phoenix) ===
+            // Span kind - required for Phoenix to recognize this as an AGENT span
+            "openinference.span.kind" = openinference::span_kind::AGENT,
+            // Session tracking
+            "session.id" = %event.session_id,
+            // Token counts (OpenInference format - aggregated for turn)
+            "llm.token_count.prompt" = input_tokens,
+            "llm.token_count.completion" = output_tokens,
+            "llm.token_count.total" = total_tokens,
+
+            // === Custom attributes ===
             // Turn context
             "turn.id" = %data.turn_id,
             "turn.iterations" = %data.iterations,
-            // Conversation context
-            "gen_ai.conversation.id" = %event.session_id,
             // Duration
             "duration_ms" = duration_ms.unwrap_or(0),
         );

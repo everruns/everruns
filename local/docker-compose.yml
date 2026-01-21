@@ -16,9 +16,13 @@ services:
       timeout: 5s
       retries: 5
 
+  # Jaeger - default tracing backend
   jaeger:
     image: jaegertracing/jaeger:2.4.0
     container_name: everruns-jaeger
+    profiles:
+      - default
+      - jaeger
     ports:
       # OTLP gRPC receiver
       - "4317:4317"
@@ -27,5 +31,27 @@ services:
       # Jaeger UI
       - "16686:16686"
 
+  # Arize Phoenix - LLM observability platform
+  # Use with: docker compose --profile phoenix up -d
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: everruns-phoenix
+    profiles:
+      - phoenix
+    ports:
+      # Phoenix UI
+      - "6006:6006"
+      # OTLP gRPC receiver (same as Jaeger for easy switching)
+      - "4317:4317"
+      # OTLP HTTP receiver
+      - "4318:4318"
+    environment:
+      # Enable OpenInference semantic conventions
+      PHOENIX_ENABLE_PROMETHEUS: "false"
+      PHOENIX_WORKING_DIR: /phoenix_data
+    volumes:
+      - phoenix_data:/phoenix_data
+
 volumes:
   postgres_data:
+  phoenix_data:

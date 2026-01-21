@@ -301,7 +301,7 @@ The `local/docker-compose.yml` includes Jaeger for local trace visualization:
 
 ```bash
 # Start all services including Jaeger
-just start
+just start-docker
 
 # Set OTLP endpoint for API and Worker
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
@@ -317,6 +317,63 @@ open http://localhost:16686
 | 4317 | OTLP gRPC receiver |
 | 4318 | OTLP HTTP receiver |
 | 16686 | Jaeger UI |
+
+## Local Development with Arize Phoenix
+
+For enhanced LLM observability with features like cost tracking, token analysis, and AI-specific visualizations, you can use [Arize Phoenix](https://phoenix.arize.com/) instead of Jaeger:
+
+```bash
+# Start services with Phoenix instead of Jaeger
+just start-phoenix
+
+# Set OTLP endpoint (same port as Jaeger)
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+
+# View traces at Phoenix UI
+open http://localhost:6006
+```
+
+### Phoenix Ports
+
+| Port | Description |
+|------|-------------|
+| 4317 | OTLP gRPC receiver |
+| 4318 | OTLP HTTP receiver |
+| 6006 | Phoenix UI |
+
+### Phoenix Features
+
+Phoenix provides LLM-specific observability features:
+- **Token usage tracking** - Visualize input/output token consumption
+- **Cost analysis** - Track LLM API costs across sessions
+- **Latency metrics** - Time-to-first-token and generation duration
+- **Conversation view** - See full conversation context for each trace
+- **Tool call analysis** - Inspect tool invocations and results
+
+### Production Phoenix Deployment
+
+For production, you can self-host Phoenix or use Arize's cloud offering:
+
+```bash
+# Self-hosted Phoenix
+OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix.internal:4317
+
+# Arize Cloud (requires API key)
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.arize.com
+OTEL_EXPORTER_OTLP_HEADERS="x-api-key=your-arize-api-key"
+```
+
+### Switching Between Jaeger and Phoenix
+
+Jaeger and Phoenix use the same OTLP ports (4317/4318), so you can only run one at a time:
+
+```bash
+# Switch to Phoenix
+just stop-docker && just start-phoenix
+
+# Switch back to Jaeger
+just stop-docker && just start-docker
+```
 
 ### Gen-AI Trace Attributes
 

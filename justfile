@@ -26,6 +26,10 @@ upload-agents:
 start-docker:
     ./scripts/lib/docker.sh start
 
+# Start Docker services with Phoenix for LLM observability
+start-phoenix:
+    ./scripts/lib/docker.sh start phoenix
+
 # Stop Docker services
 stop-docker:
     ./scripts/lib/docker.sh stop
