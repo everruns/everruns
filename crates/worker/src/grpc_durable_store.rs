@@ -576,4 +576,40 @@ mod tests {
         assert!(WorkflowStatus::Failed.is_terminal());
         assert!(WorkflowStatus::Cancelled.is_terminal());
     }
+
+    #[tokio::test]
+    async fn test_connect_fails_after_timeout_on_unavailable_server() {
+        // Verify connection fails with clear error after retry timeout
+        // when control-plane is unavailable
+        let start = std::time::Instant::now();
+        let result = GrpcDurableStore::connect("127.0.0.1:19999").await;
+
+        assert!(result.is_err());
+        let elapsed = start.elapsed();
+
+        // Should take ~5 seconds (the retry timeout)
+        assert!(
+            elapsed.as_secs() >= 4,
+            "Should retry for at least 4 seconds, got {:?}",
+            elapsed
+        );
+        assert!(
+            elapsed.as_secs() <= 7,
+            "Should not take more than 7 seconds, got {:?}",
+            elapsed
+        );
+
+        // Error message should be helpful
+        let err_msg = result.err().expect("Expected error").to_string();
+        assert!(
+            err_msg.contains("127.0.0.1:19999"),
+            "Error should contain address: {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("5") || err_msg.contains("attempts"),
+            "Error should mention timeout or attempts: {}",
+            err_msg
+        );
+    }
 }
