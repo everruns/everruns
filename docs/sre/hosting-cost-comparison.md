@@ -19,6 +19,123 @@ Based on `specs/architecture.md` and `local/docker-compose.yml`:
 
 **Minimum total**: 2GB RAM for all-in-one deployment
 
+**Additional requirements for production**:
+- HTTPS with TLS termination
+- Custom domain (e.g., `app.everruns.com`)
+- DNS routing
+
+---
+
+## HTTPS & Custom Domain Options
+
+To serve `app.everruns.com` over HTTPS, you need TLS termination. Options ranked by cost:
+
+### Option 1: Caddy Reverse Proxy (FREE) ⭐ Recommended
+
+Install [Caddy](https://caddyserver.com/) on your instance. It automatically provisions Let's Encrypt certificates.
+
+| Component | Cost | Notes |
+|-----------|------|-------|
+| Caddy | FREE | Auto HTTPS, auto-renewal |
+| Let's Encrypt cert | FREE | Trusted by all browsers |
+| Elastic IP | FREE | One per instance included |
+
+**Caddyfile**:
+```
+app.everruns.com {
+    # UI on root path
+    reverse_proxy localhost:9100
+
+    # API on /api/* path
+    handle_path /api/* {
+        reverse_proxy localhost:9000
+    }
+}
+```
+
+**Requirements**:
+- DNS A record: `app.everruns.com` → EC2 Elastic IP
+- Ports 80 and 443 open in security group
+- Caddy handles certificate provisioning automatically
+
+### Option 2: CloudFront (Free tier or $15/mo)
+
+Use CloudFront as CDN + HTTPS terminator in front of EC2.
+
+| Plan | Cost | Allowance |
+|------|------|-----------|
+| **Free tier** | $0/mo | 1TB transfer, 10M requests |
+| **Flat rate** | $15/mo | Unlimited (no overages) |
+
+**Includes**: Free ACM certificate, DDoS protection, global edge caching
+
+**Setup**:
+1. Create CloudFront distribution pointing to EC2 origin
+2. Request ACM certificate for `app.everruns.com`
+3. Add CNAME: `app.everruns.com` → CloudFront distribution
+
+### Option 3: Lightsail Load Balancer ($18/mo)
+
+Managed load balancer with ACM certificate support.
+
+| Component | Cost |
+|-----------|------|
+| Lightsail LB | $18/mo |
+| ACM certificate | FREE |
+
+**Note**: Only needed if using Lightsail and want managed TLS. Otherwise, use Caddy.
+
+### Option 4: Application Load Balancer (~$24/mo)
+
+AWS managed ALB with ACM certificates.
+
+| Component | Cost |
+|-----------|------|
+| ALB hourly | ~$18/mo |
+| LCU usage | ~$6/mo (low traffic) |
+| ACM certificate | FREE |
+
+**Not recommended** for single-instance deployments - overkill and expensive.
+
+---
+
+## Recommended Setup: Caddy + EC2
+
+**Total cost: ~$2.40/mo** (EC2 free trial) or **~$20/mo** (Lightsail)
+
+```
+                         Internet
+                            │
+                            ▼
+                   ┌────────────────┐
+                   │   DNS (Route53) │
+                   │ app.everruns.com│
+                   └───────┬────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│                    EC2 t4g.small / Lightsail                 │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │                   Caddy (:443, :80)                   │   │
+│  │         Auto HTTPS via Let's Encrypt                  │   │
+│  └──────────────────────┬───────────────────────────────┘   │
+│                         │                                    │
+│         ┌───────────────┼───────────────┐                   │
+│         ▼               ▼               ▼                   │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
+│  │  Next.js UI │ │Control-plane│ │   Worker    │           │
+│  │   :9100     │ │ :9000/:9001 │ │  (gRPC)     │           │
+│  └─────────────┘ └──────┬──────┘ └─────────────┘           │
+│                         │                                    │
+│                         ▼                                    │
+│                 ┌─────────────┐                              │
+│                 │ PostgreSQL  │                              │
+│                 │   :5432     │                              │
+│                 └─────────────┘                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## AWS (Preferred)
@@ -147,18 +264,18 @@ Run PostgreSQL + Control-plane + Worker + UI on one instance.
 
 ---
 
-## Comparison Summary
+## Comparison Summary (with HTTPS for app.everruns.com)
 
-| Option | Monthly Cost | Managed DB | Complexity |
-|--------|-------------|------------|------------|
-| **AWS t4g.small (free trial)** | ~$2.40 | No | Low |
-| **AWS Lightsail $10** | $10 | No | Low |
-| **AWS Lightsail $20** | $20 | No | Low |
-| **AWS t4g.small + Neon** | ~$12 | Yes (serverless) | Medium |
-| **AWS EC2 + RDS (free tier)** | ~$2.40 | Yes | Medium |
-| **AWS EC2 + RDS (paid)** | ~$36 | Yes | Medium |
-| **Azure B1ms + PostgreSQL** | ~$28-33 | Yes | Medium |
-| **GCP e2-small + Cloud SQL** | ~$43+ | Yes | Medium |
+| Option | Compute | HTTPS | Total/mo | Complexity |
+|--------|---------|-------|----------|------------|
+| **AWS t4g.small + Caddy** | ~$2.40 | FREE | **~$3/mo** | Low |
+| **AWS Lightsail $20 + Caddy** | $20 | FREE | **~$20/mo** | Low |
+| **AWS EC2 + CloudFront** | ~$14 | $0-15 | **~$14-29/mo** | Medium |
+| **AWS EC2 + RDS + Caddy** | ~$36 | FREE | **~$36/mo** | Medium |
+| **Azure B1ms + PostgreSQL** | ~$28 | ~$5 | **~$33/mo** | Medium |
+| **GCP e2-small + Cloud SQL** | ~$43 | ~$0 | **~$43/mo** | Medium |
+
+**Note**: DNS hosting via Route 53 adds ~$0.50/mo per hosted zone.
 
 ---
 
@@ -231,43 +348,72 @@ cd apps/ui && npm run build && npm start &
 
 ---
 
-## Architecture Diagram (Recommended AWS Setup)
+## Architecture Diagram (Recommended AWS Setup for app.everruns.com)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
+                              Internet
+                                 │
+                                 ▼
+                     ┌───────────────────────┐
+                     │  DNS: app.everruns.com │
+                     │  → Elastic IP          │
+                     └───────────┬───────────┘
+                                 │
+┌────────────────────────────────▼────────────────────────────┐
 │                    AWS VPC (us-east-1)                      │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │           EC2 t4g.small (or Lightsail)              │   │
+│  │           EC2 t4g.small (or Lightsail $20)          │   │
 │  │                                                     │   │
-│  │  ┌───────────────┐  ┌───────────────┐              │   │
-│  │  │ Control-plane │  │    Worker     │              │   │
-│  │  │   :9000 HTTP  │◀─│  (gRPC client)│              │   │
-│  │  │   :9001 gRPC  │  │               │              │   │
-│  │  └───────┬───────┘  └───────────────┘              │   │
-│  │          │                                          │   │
-│  │          ▼                                          │   │
-│  │  ┌───────────────┐  ┌───────────────┐              │   │
-│  │  │ PostgreSQL 17 │  │   Next.js UI  │              │   │
-│  │  │    :5432      │  │    :9100      │              │   │
-│  │  └───────────────┘  └───────────────┘              │   │
+│  │  ┌─────────────────────────────────────────────┐   │   │
+│  │  │         Caddy (:443 HTTPS, :80 HTTP)        │   │   │
+│  │  │     Auto Let's Encrypt certificate          │   │   │
+│  │  │  app.everruns.com/* → UI (:9100)            │   │   │
+│  │  │  app.everruns.com/api/* → API (:9000)       │   │   │
+│  │  └──────────────────────┬──────────────────────┘   │   │
+│  │                         │                           │   │
+│  │         ┌───────────────┼───────────────┐          │   │
+│  │         ▼               ▼               ▼          │   │
+│  │  ┌───────────┐  ┌─────────────┐  ┌───────────┐    │   │
+│  │  │ Next.js UI│  │Control-plane│  │  Worker   │    │   │
+│  │  │  :9100    │  │:9000 / :9001│  │  (gRPC)   │    │   │
+│  │  └───────────┘  └──────┬──────┘  └───────────┘    │   │
+│  │                        │                           │   │
+│  │                        ▼                           │   │
+│  │                ┌─────────────┐                     │   │
+│  │                │ PostgreSQL  │                     │   │
+│  │                │   :5432     │                     │   │
+│  │                └─────────────┘                     │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                    Internet (Elastic IP)
+```
+
+**DNS Setup** (Route 53 or external DNS):
+```
+app.everruns.com.  A  <Elastic-IP>
 ```
 
 ---
 
 ## Sources
 
+### Compute
 - [AWS EC2 Pricing](https://aws.amazon.com/ec2/pricing/on-demand/)
-- [AWS RDS PostgreSQL Pricing](https://aws.amazon.com/rds/postgresql/pricing/)
 - [AWS Lightsail Pricing](https://aws.amazon.com/lightsail/pricing/)
 - [AWS Fargate Pricing](https://aws.amazon.com/fargate/pricing/)
+- [Azure VM Pricing](https://azure.microsoft.com/en-us/pricing/details/virtual-machines/)
+- [GCP Compute Engine Pricing](https://cloud.google.com/compute/pricing)
+
+### Database
+- [AWS RDS PostgreSQL Pricing](https://aws.amazon.com/rds/postgresql/pricing/)
 - [Azure PostgreSQL Flexible Server Pricing](https://azure.microsoft.com/en-us/pricing/details/postgresql/flexible-server/)
 - [GCP Cloud SQL Pricing](https://cloud.google.com/sql/docs/postgres/pricing)
 - [Neon Pricing](https://neon.com/pricing)
 - [Supabase Pricing](https://supabase.com/pricing)
+
+### HTTPS & Load Balancing
+- [AWS CloudFront Pricing](https://aws.amazon.com/cloudfront/pricing/)
+- [AWS ALB Pricing](https://aws.amazon.com/elasticloadbalancing/pricing/)
+- [Lightsail SSL/TLS Certificates](https://docs.aws.amazon.com/lightsail/latest/userguide/understanding-tls-ssl-certificates-in-lightsail-https.html)
+- [Caddy - Automatic HTTPS](https://caddyserver.com/docs/automatic-https)
