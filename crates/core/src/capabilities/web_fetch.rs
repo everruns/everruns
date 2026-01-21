@@ -9,7 +9,7 @@
 //! - Timeout for first byte: 1 second (connect + time to first response byte)
 //! - Timeout for body: 30 seconds total, partial content returned if exceeded
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use fetchkit::{FetchError, FetchRequest, TOOL_DESCRIPTION, TOOL_LLMTXT, fetch};
@@ -20,7 +20,7 @@ pub struct WebFetchCapability;
 
 impl Capability for WebFetchCapability {
     fn id(&self) -> &str {
-        CapabilityId::WEB_FETCH
+        "web_fetch"
     }
 
     fn name(&self) -> &str {

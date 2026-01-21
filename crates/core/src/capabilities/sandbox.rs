@@ -1,13 +1,13 @@
 //! Sandbox Capability - for sandboxed code execution (coming soon)
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 
 /// Sandbox capability - for sandboxed code execution (coming soon)
 pub struct SandboxCapability;
 
 impl Capability for SandboxCapability {
     fn id(&self) -> &str {
-        CapabilityId::SANDBOX
+        "sandbox"
     }
 
     fn name(&self) -> &str {

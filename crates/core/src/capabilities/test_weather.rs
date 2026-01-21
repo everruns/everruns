@@ -1,6 +1,6 @@
 //! TestWeather Capability - mock weather tools for testing tool calling
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -10,7 +10,7 @@ pub struct TestWeatherCapability;
 
 impl Capability for TestWeatherCapability {
     fn id(&self) -> &str {
-        CapabilityId::TEST_WEATHER
+        "test_weather"
     }
 
     fn name(&self) -> &str {

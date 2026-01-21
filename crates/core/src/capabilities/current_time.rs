@@ -1,6 +1,6 @@
 //! CurrentTime Capability - provides tools to get current date and time
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -10,7 +10,7 @@ pub struct CurrentTimeCapability;
 
 impl Capability for CurrentTimeCapability {
     fn id(&self) -> &str {
-        CapabilityId::CURRENT_TIME
+        "current_time"
     }
 
     fn name(&self) -> &str {

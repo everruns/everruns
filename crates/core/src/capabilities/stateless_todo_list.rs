@@ -38,7 +38,7 @@
 //! Consider adding context compaction (prune old write_todos calls) if context
 //! growth becomes an issue in long-running sessions.
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -49,7 +49,7 @@ pub struct StatelessTodoListCapability;
 
 impl Capability for StatelessTodoListCapability {
     fn id(&self) -> &str {
-        CapabilityId::STATELESS_TODO_LIST
+        "stateless_todo_list"
     }
 
     fn name(&self) -> &str {
@@ -304,7 +304,7 @@ mod tests {
     fn test_capability_metadata() {
         let capability = StatelessTodoListCapability;
 
-        assert_eq!(capability.id(), CapabilityId::STATELESS_TODO_LIST);
+        assert_eq!(capability.id(), "stateless_todo_list");
         assert_eq!(capability.name(), "Task Management");
         assert_eq!(capability.icon(), Some("list-checks"));
         assert_eq!(capability.category(), Some("Productivity"));

@@ -1,8 +1,9 @@
 // Capability type definitions
 //
-// Design Decision: Capability IDs are now String-based to allow adding new capabilities
-// without requiring database migrations or code changes to enums.
-// Validation happens at the registry level rather than the type level.
+// Design Decision: Capability IDs are String-based to allow adding new capabilities
+// without requiring database migrations or code changes. Each capability defines its
+// own ID via the Capability trait's id() method - no central registry of IDs needed.
+// Validation happens at the registry level (capability must be registered).
 //
 // Design Decision: AgentCapabilityConfig uses `ref` for the capability ID to avoid
 // confusion with `id` which typically refers to primary keys. The config field stores
@@ -23,6 +24,7 @@ use utoipa::ToSchema;
 ///
 /// This allows new capabilities to be added without database changes.
 /// The ID is validated at runtime against the capability registry.
+/// Capabilities define their own IDs via the Capability trait's id() method.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct CapabilityId(String);
@@ -36,108 +38,6 @@ impl CapabilityId {
     /// Get the ID as a string slice
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-
-    // Built-in capability ID constants for convenience
-    pub const NOOP: &'static str = "noop";
-    pub const CURRENT_TIME: &'static str = "current_time";
-    pub const RESEARCH: &'static str = "research";
-    pub const SANDBOX: &'static str = "sandbox";
-    pub const FILE_SYSTEM: &'static str = "session_file_system";
-    pub const TEST_MATH: &'static str = "test_math";
-    pub const TEST_WEATHER: &'static str = "test_weather";
-    pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
-    pub const WEB_FETCH: &'static str = "web_fetch";
-    // Fake demo capability ID constants
-    pub const FAKE_WAREHOUSE: &'static str = "fake_warehouse";
-    pub const FAKE_AWS: &'static str = "fake_aws";
-    pub const FAKE_CRM: &'static str = "fake_crm";
-    pub const FAKE_FINANCIAL: &'static str = "fake_financial";
-    // Demo capability with mount points
-    pub const SAMPLE_DATA: &'static str = "sample_data";
-    // Session storage capability (key/value and secrets)
-    pub const SESSION_STORAGE: &'static str = "session_storage";
-    // Experimental capability ID constants
-    pub const DOCKER_CONTAINER: &'static str = "docker_container";
-
-    /// Create the noop capability ID
-    pub fn noop() -> Self {
-        Self::new(Self::NOOP)
-    }
-
-    /// Create the current_time capability ID
-    pub fn current_time() -> Self {
-        Self::new(Self::CURRENT_TIME)
-    }
-
-    /// Create the research capability ID
-    pub fn research() -> Self {
-        Self::new(Self::RESEARCH)
-    }
-
-    /// Create the sandbox capability ID
-    pub fn sandbox() -> Self {
-        Self::new(Self::SANDBOX)
-    }
-
-    /// Create the file_system capability ID
-    pub fn file_system() -> Self {
-        Self::new(Self::FILE_SYSTEM)
-    }
-
-    /// Create the test_math capability ID
-    pub fn test_math() -> Self {
-        Self::new(Self::TEST_MATH)
-    }
-
-    /// Create the test_weather capability ID
-    pub fn test_weather() -> Self {
-        Self::new(Self::TEST_WEATHER)
-    }
-
-    /// Create the stateless_todo_list capability ID
-    pub fn stateless_todo_list() -> Self {
-        Self::new(Self::STATELESS_TODO_LIST)
-    }
-
-    /// Create the web_fetch capability ID
-    pub fn web_fetch() -> Self {
-        Self::new(Self::WEB_FETCH)
-    }
-
-    /// Create the fake_warehouse capability ID
-    pub fn fake_warehouse() -> Self {
-        Self::new(Self::FAKE_WAREHOUSE)
-    }
-
-    /// Create the fake_aws capability ID
-    pub fn fake_aws() -> Self {
-        Self::new(Self::FAKE_AWS)
-    }
-
-    /// Create the fake_crm capability ID
-    pub fn fake_crm() -> Self {
-        Self::new(Self::FAKE_CRM)
-    }
-
-    /// Create the fake_financial capability ID
-    pub fn fake_financial() -> Self {
-        Self::new(Self::FAKE_FINANCIAL)
-    }
-
-    /// Create the sample_data capability ID
-    pub fn sample_data() -> Self {
-        Self::new(Self::SAMPLE_DATA)
-    }
-
-    /// Create the session_storage capability ID
-    pub fn session_storage() -> Self {
-        Self::new(Self::SESSION_STORAGE)
-    }
-
-    /// Create the docker_container capability ID
-    pub fn docker_container() -> Self {
-        Self::new(Self::DOCKER_CONTAINER)
     }
 }
 
@@ -436,74 +336,27 @@ mod tests {
 
     #[test]
     fn test_capability_id_display() {
-        assert_eq!(CapabilityId::noop().to_string(), "noop");
-        assert_eq!(CapabilityId::current_time().to_string(), "current_time");
-        assert_eq!(CapabilityId::research().to_string(), "research");
-        assert_eq!(CapabilityId::sandbox().to_string(), "sandbox");
+        assert_eq!(CapabilityId::new("noop").to_string(), "noop");
         assert_eq!(
-            CapabilityId::file_system().to_string(),
-            "session_file_system"
+            CapabilityId::new("current_time").to_string(),
+            "current_time"
         );
-        assert_eq!(
-            CapabilityId::session_storage().to_string(),
-            "session_storage"
-        );
-        assert_eq!(CapabilityId::test_math().to_string(), "test_math");
-        assert_eq!(CapabilityId::test_weather().to_string(), "test_weather");
-        assert_eq!(
-            CapabilityId::stateless_todo_list().to_string(),
-            "stateless_todo_list"
-        );
-        assert_eq!(CapabilityId::web_fetch().to_string(), "web_fetch");
     }
 
     #[test]
     fn test_capability_id_from_str() {
         assert_eq!(
             "noop".parse::<CapabilityId>().unwrap(),
-            CapabilityId::noop()
+            CapabilityId::new("noop")
         );
         assert_eq!(
             "current_time".parse::<CapabilityId>().unwrap(),
-            CapabilityId::current_time()
-        );
-        assert_eq!(
-            "research".parse::<CapabilityId>().unwrap(),
-            CapabilityId::research()
-        );
-        assert_eq!(
-            "sandbox".parse::<CapabilityId>().unwrap(),
-            CapabilityId::sandbox()
-        );
-        assert_eq!(
-            "session_file_system".parse::<CapabilityId>().unwrap(),
-            CapabilityId::file_system()
-        );
-        assert_eq!(
-            "session_storage".parse::<CapabilityId>().unwrap(),
-            CapabilityId::session_storage()
-        );
-        assert_eq!(
-            "test_math".parse::<CapabilityId>().unwrap(),
-            CapabilityId::test_math()
-        );
-        assert_eq!(
-            "test_weather".parse::<CapabilityId>().unwrap(),
-            CapabilityId::test_weather()
-        );
-        assert_eq!(
-            "stateless_todo_list".parse::<CapabilityId>().unwrap(),
-            CapabilityId::stateless_todo_list()
-        );
-        assert_eq!(
-            "web_fetch".parse::<CapabilityId>().unwrap(),
-            CapabilityId::web_fetch()
+            CapabilityId::new("current_time")
         );
     }
 
     #[test]
     fn test_capability_id_from_custom_string() {
-        // Custom capability IDs should work
         let custom = CapabilityId::new("my_custom_capability");
         assert_eq!(custom.to_string(), "my_custom_capability");
         assert_eq!(custom.as_str(), "my_custom_capability");
@@ -511,7 +364,7 @@ mod tests {
 
     #[test]
     fn test_capability_id_serialization() {
-        let id = CapabilityId::current_time();
+        let id = CapabilityId::new("current_time");
         let json = serde_json::to_string(&id).unwrap();
         assert_eq!(json, "\"current_time\"");
 
@@ -523,8 +376,8 @@ mod tests {
     fn test_capability_id_hash() {
         use std::collections::HashSet;
         let mut set = HashSet::new();
-        set.insert(CapabilityId::noop());
-        set.insert(CapabilityId::current_time());
+        set.insert(CapabilityId::new("noop"));
+        set.insert(CapabilityId::new("current_time"));
         set.insert(CapabilityId::new("noop")); // Should not add a duplicate
 
         assert_eq!(set.len(), 2);
@@ -551,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_agent_capability_config_from_capability_id() {
-        let config: AgentCapabilityConfig = CapabilityId::current_time().into();
+        let config: AgentCapabilityConfig = CapabilityId::new("current_time").into();
         assert_eq!(config.capability_id(), "current_time");
         assert_eq!(config.config, serde_json::json!({}));
     }

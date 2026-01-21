@@ -225,7 +225,7 @@ impl Default for RuntimeAgentBuilder {
 mod tests {
     use super::*;
     use crate::agent::AgentStatus;
-    use crate::capabilities::{AgentCapabilityConfig, CapabilityId};
+    use crate::capabilities::AgentCapabilityConfig;
 
     #[test]
     fn test_runtime_agent_new() {
@@ -316,7 +316,7 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&[CapabilityId::CURRENT_TIME.to_string()], &registry)
+            .with_capabilities(&["current_time".to_string()], &registry)
             .build();
 
         assert_eq!(runtime_agent.tools.len(), 1);
@@ -332,7 +332,7 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&[CapabilityId::TEST_MATH.to_string()], &registry)
+            .with_capabilities(&["test_math".to_string()], &registry)
             .build();
 
         assert!(runtime_agent.system_prompt.contains("math tools"));
@@ -351,7 +351,7 @@ mod tests {
             name: "Test Agent".to_string(),
             description: None,
             system_prompt: "Agent prompt.".to_string(),
-            capabilities: vec![AgentCapabilityConfig::new(CapabilityId::CURRENT_TIME)],
+            capabilities: vec![AgentCapabilityConfig::new("current_time")],
             status: AgentStatus::Active,
             default_model_id: None,
             tags: vec![],
@@ -390,7 +390,7 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&[CapabilityId::SAMPLE_DATA.to_string()], &registry)
+            .with_capabilities(&["sample_data".to_string()], &registry)
             .build();
 
         // System prompt should include File System's contribution (the dependency)

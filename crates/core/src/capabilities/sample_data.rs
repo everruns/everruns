@@ -9,7 +9,7 @@
 //! - `/samples/config.yaml` - Sample configuration
 //! - `/samples/README.md` - Documentation about the sample files
 
-use super::{Capability, CapabilityId, CapabilityStatus, MountDirectoryBuilder, MountPoint};
+use super::{Capability, CapabilityStatus, MountDirectoryBuilder, MountPoint};
 
 /// Sample Data capability - demonstrates capability mounting
 pub struct SampleDataCapability;
@@ -99,7 +99,7 @@ data formats commonly used in applications.
 
 impl Capability for SampleDataCapability {
     fn id(&self) -> &str {
-        CapabilityId::SAMPLE_DATA
+        "sample_data"
     }
 
     fn name(&self) -> &str {
@@ -145,7 +145,7 @@ These files are read-only and can be used for learning, testing, or as templates
 
     fn dependencies(&self) -> Vec<&'static str> {
         // Sample Data depends on Session File System for file operations
-        vec![CapabilityId::FILE_SYSTEM]
+        vec!["session_file_system"]
     }
 }
 
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn test_capability_metadata() {
         let cap = SampleDataCapability;
-        assert_eq!(cap.id(), CapabilityId::SAMPLE_DATA);
+        assert_eq!(cap.id(), "sample_data");
         assert_eq!(cap.name(), "Sample Data");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("database"));
@@ -224,6 +224,6 @@ mod tests {
         let cap = SampleDataCapability;
         let deps = cap.dependencies();
         assert_eq!(deps.len(), 1);
-        assert_eq!(deps[0], CapabilityId::FILE_SYSTEM);
+        assert_eq!(deps[0], "session_file_system");
     }
 }

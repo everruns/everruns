@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn test_capability_info_serialization() {
         let cap = CapabilityInfo {
-            id: CapabilityId::research(),
+            id: CapabilityId::new("research"),
             name: "Research".to_string(),
             description: "Deep research capability".to_string(),
             status: CapabilityStatus::Available,
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn test_agent_capability_serialization() {
         let agent_cap = AgentCapability {
-            capability_id: CapabilityId::sandbox(),
+            capability_id: CapabilityId::new("sandbox"),
             position: 1,
         };
 
@@ -164,8 +164,11 @@ mod tests {
     #[test]
     fn test_test_capabilities() {
         // Verify test math and weather capabilities are available
-        assert_eq!(CapabilityId::test_math().to_string(), "test_math");
-        assert_eq!(CapabilityId::test_weather().to_string(), "test_weather");
+        assert_eq!(CapabilityId::new("test_math").to_string(), "test_math");
+        assert_eq!(
+            CapabilityId::new("test_weather").to_string(),
+            "test_weather"
+        );
     }
 
     #[test]

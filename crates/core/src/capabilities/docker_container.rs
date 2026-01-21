@@ -21,7 +21,7 @@
 //! - `docker_logs`: Get logs from the container
 //! - `docker_stop`: Stop and remove the container
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -74,7 +74,7 @@ pub struct DockerContainerCapability;
 
 impl Capability for DockerContainerCapability {
     fn id(&self) -> &str {
-        CapabilityId::DOCKER_CONTAINER
+        "docker_container"
     }
 
     fn name(&self) -> &str {
@@ -899,7 +899,7 @@ mod tests {
     #[test]
     fn test_capability_metadata() {
         let cap = DockerContainerCapability;
-        assert_eq!(cap.id(), CapabilityId::DOCKER_CONTAINER);
+        assert_eq!(cap.id(), "docker_container");
         assert_eq!(cap.name(), "[Experimental] Docker Container");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("container"));

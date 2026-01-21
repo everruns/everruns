@@ -1,13 +1,13 @@
 //! Noop Capability - for testing and demonstration purposes
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 
 /// Noop capability - for testing and demonstration purposes
 pub struct NoopCapability;
 
 impl Capability for NoopCapability {
     fn id(&self) -> &str {
-        CapabilityId::NOOP
+        "noop"
     }
 
     fn name(&self) -> &str {

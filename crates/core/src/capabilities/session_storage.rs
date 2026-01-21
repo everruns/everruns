@@ -7,7 +7,7 @@
 //! - `kv_store`: Key/value storage operations (set, get, delete, list)
 //! - `secret_store`: Encrypted secret storage operations (set, get, delete, list)
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -18,7 +18,7 @@ pub struct SessionStorageCapability;
 
 impl Capability for SessionStorageCapability {
     fn id(&self) -> &str {
-        CapabilityId::SESSION_STORAGE
+        "session_storage"
     }
 
     fn name(&self) -> &str {
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn test_capability_metadata() {
         let cap = SessionStorageCapability;
-        assert_eq!(cap.id(), CapabilityId::SESSION_STORAGE);
+        assert_eq!(cap.id(), "session_storage");
         assert_eq!(cap.name(), "Session Storage");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("database"));

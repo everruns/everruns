@@ -111,7 +111,7 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 | Built-in | `snake_case` identifier | `current_time`, `web_fetch` |
 | MCP | `mcp:{server_uuid}` | `mcp:01933b5a-0000-7000-8000-000000000501` |
 
-**Built-in IDs** are static constants defined in code. They use `snake_case` naming and are validated against the `CapabilityRegistry`.
+**Built-in IDs** use `snake_case` naming and are validated against the `CapabilityRegistry`. Each capability defines its own ID via the `Capability` trait's `id()` method.
 
 **MCP IDs** use the `mcp:` prefix followed by the MCP server's UUID. These are dynamic—they exist only when the corresponding MCP server exists. See `specs/mcp-servers.md` for details.
 
@@ -133,28 +133,15 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 | `sandbox` | Sandbox | Execution | Coming Soon |
 
 ```rust
+/// Simple string wrapper - capabilities define their own IDs via id() method
 pub struct CapabilityId(String);
 
 impl CapabilityId {
-    // Built-in capability ID constants
-    pub const NOOP: &'static str = "noop";
-    pub const CURRENT_TIME: &'static str = "current_time";
-    pub const RESEARCH: &'static str = "research";
-    pub const SANDBOX: &'static str = "sandbox";
-    pub const FILE_SYSTEM: &'static str = "session_file_system";
-    pub const TEST_MATH: &'static str = "test_math";
-    pub const TEST_WEATHER: &'static str = "test_weather";
-    pub const STATELESS_TODO_LIST: &'static str = "stateless_todo_list";
-    pub const WEB_FETCH: &'static str = "web_fetch";
-    pub const DOCKER_CONTAINER: &'static str = "docker_container"; // Experimental
-
-    // Factory methods
+    /// Create a new capability ID from a string
     pub fn new(id: impl Into<String>) -> Self;
-    pub fn noop() -> Self;
-    pub fn current_time() -> Self;
-    pub fn stateless_todo_list() -> Self;
-    pub fn web_fetch() -> Self;
-    // ... etc
+
+    /// Get the ID as a string slice
+    pub fn as_str(&self) -> &str;
 }
 ```
 
@@ -831,7 +818,7 @@ CREATE INDEX idx_agent_capabilities_position ON agent_capabilities(agent_id, pos
 | Order of application? | By `position` field (lower = earlier) |
 | Can capabilities conflict? | Currently no conflict resolution; later capabilities add to earlier ones |
 | Can users create custom capabilities? | Not in current version (built-in only) |
-| How are new capabilities added? | Implement `Capability` trait and register in `CapabilityRegistry` - no database changes needed |
+| How are new capabilities added? | Implement `Capability` trait with unique `id()` and register in `CapabilityRegistry` - no database changes or central ID definitions needed |
 
 ### Adding New Capabilities
 

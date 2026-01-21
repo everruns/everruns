@@ -16,7 +16,7 @@
 //! - `aws_list_security_groups`: List security groups
 //! - `aws_get_cloudwatch_metrics`: Get CloudWatch metrics
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -28,7 +28,7 @@ pub struct FakeAwsCapability;
 
 impl Capability for FakeAwsCapability {
     fn id(&self) -> &str {
-        CapabilityId::FAKE_AWS
+        "fake_aws"
     }
 
     fn name(&self) -> &str {
