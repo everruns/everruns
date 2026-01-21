@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   Folder,
-  File,
   ChevronRight,
   ChevronDown,
   Plus,
@@ -24,9 +23,9 @@ import {
   Trash2,
   RefreshCw,
   Home,
-  FileText,
   Lock,
 } from "lucide-react";
+import { FileIcon } from "./file-icon";
 import { useFiles, useCreateFile, useCreateDirectory, useDeleteFile } from "@/hooks/use-session-files";
 import { formatFileSize, getParentPath, joinPath } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
@@ -370,12 +369,4 @@ function FileItem({ file, isSelected, isExpanded, onClick, onDelete }: FileItemP
   );
 }
 
-function FileIcon({ extension }: { extension: string }) {
-  const isText = ["txt", "md", "json", "js", "ts", "tsx", "jsx", "css", "html", "py", "rs", "go", "yml", "yaml", "toml"].includes(extension.toLowerCase());
-
-  if (isText) {
-    return <FileText className="h-4 w-4 text-gray-500" />;
-  }
-
-  return <File className="h-4 w-4 text-gray-400" />;
-}
+// FileIcon is now imported from ./file-icon.tsx

@@ -12,6 +12,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
+import { formatDate, formatDurationSeconds } from "@/lib/formatting";
 import type { Session, Agent, LlmModelWithProvider } from "@/lib/api/types";
 
 interface RecentSessionsProps {
@@ -25,17 +26,12 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
   const agentMap = new Map(agents.map((a) => [a.id, a]));
   const modelMap = new Map(models.map((m) => [m.id, m]));
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleString();
-  };
-
-  const getDuration = (session: Session) => {
+  const getSessionDuration = (session: Session) => {
     if (!session.started_at || !session.finished_at) return "-";
     const start = new Date(session.started_at).getTime();
     const end = new Date(session.finished_at).getTime();
     const seconds = Math.round((end - start) / 1000);
-    if (seconds < 60) return `${seconds}s`;
-    return `${Math.round(seconds / 60)}m ${seconds % 60}s`;
+    return formatDurationSeconds(seconds);
   };
 
   // Session status: started → active → idle (cycles)
@@ -115,7 +111,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                       {session.started_at ? formatDate(session.started_at) : "-"}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {getDuration(session)}
+                      {getSessionDuration(session)}
                     </TableCell>
                   </TableRow>
                 );

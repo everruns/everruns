@@ -11,15 +11,7 @@ case "$cmd" in
     echo "🔧 Installing all development dependencies..."
     echo ""
 
-    require_command() {
-      local cmd="$1"
-      local hint="$2"
-
-      if ! command -v "$cmd" &> /dev/null; then
-        echo "❌ $cmd not installed. $hint"
-        exit 1
-      fi
-    }
+    # require_command is defined in common.sh (sourced above)
 
     echo "🧪 Preflight checks..."
 

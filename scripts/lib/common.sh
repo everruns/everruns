@@ -16,6 +16,17 @@ if [ -f .env ]; then
   set +a
 fi
 
+# Check if a command is available, exit with hint if not
+require_command() {
+  local cmd="$1"
+  local hint="$2"
+
+  if ! command -v "$cmd" &> /dev/null; then
+    echo "❌ $cmd not installed. $hint"
+    exit 1
+  fi
+}
+
 # Resolve Docker Compose command (plugin or standalone)
 DOCKER_COMPOSE=()
 resolve_docker_compose() {
@@ -44,18 +55,22 @@ ensure_docker_daemon() {
   return 1
 }
 
-# Check if UI dependencies need to be installed/updated
-check_ui_deps() {
-  local ui_dir="$PROJECT_ROOT/apps/ui"
+# Check if npm dependencies need to be installed/updated
+# Usage: check_npm_deps <app_name> <install_command>
+# Example: check_npm_deps "UI" "just ui-install"
+check_npm_deps() {
+  local app_name="$1"
+  local install_cmd="$2"
+  local app_dir="$PROJECT_ROOT/apps/${app_name,,}"  # lowercase
 
-  if [ ! -d "$ui_dir/node_modules" ]; then
-    echo "   ⚠️  UI dependencies not installed. Run: just ui-install"
+  if [ ! -d "$app_dir/node_modules" ]; then
+    echo "   ⚠️  $app_name dependencies not installed. Run: $install_cmd"
     return 1
   fi
 
-  if [ -f "$ui_dir/package-lock.json" ] && [ -f "$ui_dir/node_modules/.package-lock.json" ]; then
-    if [ "$ui_dir/package-lock.json" -nt "$ui_dir/node_modules/.package-lock.json" ]; then
-      echo "   ⚠️  UI dependencies outdated. Run: just ui-install"
+  if [ -f "$app_dir/package-lock.json" ] && [ -f "$app_dir/node_modules/.package-lock.json" ]; then
+    if [ "$app_dir/package-lock.json" -nt "$app_dir/node_modules/.package-lock.json" ]; then
+      echo "   ⚠️  $app_name dependencies outdated. Run: $install_cmd"
       return 1
     fi
   fi
@@ -63,21 +78,11 @@ check_ui_deps() {
   return 0
 }
 
-# Check if docs dependencies need to be installed/updated
+# Backward-compatible wrappers
+check_ui_deps() {
+  check_npm_deps "UI" "just ui-install"
+}
+
 check_docs_deps() {
-  local docs_dir="$PROJECT_ROOT/apps/docs"
-
-  if [ ! -d "$docs_dir/node_modules" ]; then
-    echo "   ⚠️  Docs dependencies not installed. Run: just docs-install"
-    return 1
-  fi
-
-  if [ -f "$docs_dir/package-lock.json" ] && [ -f "$docs_dir/node_modules/.package-lock.json" ]; then
-    if [ "$docs_dir/package-lock.json" -nt "$docs_dir/node_modules/.package-lock.json" ]; then
-      echo "   ⚠️  Docs dependencies outdated. Run: just docs-install"
-      return 1
-    fi
-  fi
-
-  return 0
+  check_npm_deps "Docs" "just docs-install"
 }

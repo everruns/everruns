@@ -20,7 +20,7 @@ description = "Internal gRPC protocol for Everruns worker-control plane communic
 
 [dependencies]
 # gRPC
-tonic = "0.12"
+tonic.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 
@@ -36,5 +36,5 @@ uuid.workspace = true
 chrono.workspace = true
 
 [build-dependencies]
-tonic-build = "0.12"
+tonic-build.workspace = true
 protox = "0.7"

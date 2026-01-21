@@ -83,6 +83,10 @@ regex = "1.11"
 time = "0.3"
 parking_lot = "0.12"
 
+# gRPC (tonic)
+tonic = "0.12"
+tonic-build = "0.12"
+
 # Protocol Buffers (used by tonic/gRPC)
 prost = "0.13"
 prost-types = "0.13"
