@@ -487,4 +487,253 @@ mod tests {
         assert!(debug_str.contains("Custom"));
         assert!(debug_str.contains("<fn>"));
     }
+
+    // ========================================================================
+    // Additional edge case tests
+    // ========================================================================
+
+    #[test]
+    fn test_with_filters_multiple() {
+        let session_id = Uuid::now_v7();
+        let query = MessageQuery::new(session_id).with_filters([
+            MessageFilter::EventTypes(vec!["message.user".to_string()]),
+            MessageFilter::Search("hello".to_string()),
+        ]);
+
+        assert_eq!(query.filters.len(), 2);
+        assert!(query.has_db_filters());
+        assert!(!query.has_custom_filters());
+    }
+
+    #[test]
+    fn test_with_injections_multiple() {
+        let session_id = Uuid::now_v7();
+        let query = MessageQuery::new(session_id).with_injections([
+            InjectedMessage::at_start(Message::system("First")),
+            InjectedMessage::at_end(Message::system("Last")),
+        ]);
+
+        assert_eq!(query.injections.len(), 2);
+        assert!(query.has_injections());
+    }
+
+    #[test]
+    fn test_injection_after_index() {
+        let session_id = Uuid::now_v7();
+        let injected = Message::system("Injected after index 0");
+
+        let query = MessageQuery::new(session_id)
+            .with_injection(InjectedMessage::after_index(0, injected.clone()));
+
+        let mut messages = vec![
+            Message::user("First"),
+            Message::user("Second"),
+            Message::user("Third"),
+        ];
+
+        query.apply_injections(&mut messages);
+
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0].text(), Some("First"));
+        assert_eq!(messages[1].text(), Some("Injected after index 0"));
+        assert_eq!(messages[2].text(), Some("Second"));
+        assert_eq!(messages[3].text(), Some("Third"));
+    }
+
+    #[test]
+    fn test_injection_into_empty_list() {
+        let session_id = Uuid::now_v7();
+
+        let query = MessageQuery::new(session_id)
+            .with_injection(InjectedMessage::at_start(Message::system("Start")))
+            .with_injection(InjectedMessage::at_end(Message::system("End")));
+
+        let mut messages: Vec<Message> = vec![];
+
+        query.apply_injections(&mut messages);
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text(), Some("Start"));
+        assert_eq!(messages[1].text(), Some("End"));
+    }
+
+    #[test]
+    fn test_injection_before_index_out_of_bounds() {
+        let session_id = Uuid::now_v7();
+        let injected = Message::system("Injected before index 10");
+
+        // Index 10 is out of bounds for a 2-element list
+        let query = MessageQuery::new(session_id)
+            .with_injection(InjectedMessage::before_index(10, injected.clone()));
+
+        let mut messages = vec![Message::user("First"), Message::user("Second")];
+
+        query.apply_injections(&mut messages);
+
+        // Should insert at the end (min(10, 2) = 2)
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[2].text(), Some("Injected before index 10"));
+    }
+
+    #[test]
+    fn test_injection_after_index_out_of_bounds() {
+        let session_id = Uuid::now_v7();
+        let injected = Message::system("Injected after index 10");
+
+        // Index 10 is out of bounds for a 2-element list
+        let query = MessageQuery::new(session_id)
+            .with_injection(InjectedMessage::after_index(10, injected.clone()));
+
+        let mut messages = vec![Message::user("First"), Message::user("Second")];
+
+        query.apply_injections(&mut messages);
+
+        // Should insert at the end (min(11, 2) = 2)
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[2].text(), Some("Injected after index 10"));
+    }
+
+    #[test]
+    fn test_multiple_start_injections_preserve_order() {
+        let session_id = Uuid::now_v7();
+
+        // Multiple start injections should maintain their order
+        let query = MessageQuery::new(session_id)
+            .with_injection(InjectedMessage::at_start(Message::system("First injected")))
+            .with_injection(InjectedMessage::at_start(Message::system(
+                "Second injected",
+            )));
+
+        let mut messages = vec![Message::user("Original")];
+
+        query.apply_injections(&mut messages);
+
+        assert_eq!(messages.len(), 3);
+        // Both should be at the start, first one should come first
+        assert_eq!(messages[0].text(), Some("First injected"));
+        assert_eq!(messages[1].text(), Some("Second injected"));
+        assert_eq!(messages[2].text(), Some("Original"));
+    }
+
+    #[test]
+    fn test_combined_db_and_custom_filters() {
+        let session_id = Uuid::now_v7();
+
+        let query = MessageQuery::new(session_id)
+            .with_filter(MessageFilter::Search("hello".to_string()))
+            .with_filter(MessageFilter::Custom(Arc::new(|msg| {
+                msg.role == crate::MessageRole::User
+            })));
+
+        assert!(query.has_db_filters());
+        assert!(query.has_custom_filters());
+        assert_eq!(query.filters.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_exclude_ids() {
+        let id1 = Uuid::now_v7();
+        let id2 = Uuid::now_v7();
+
+        let filter = MessageFilter::ExcludeIds(vec![id1, id2]);
+        let debug_str = format!("{:?}", filter);
+        assert!(debug_str.contains("ExcludeIds"));
+    }
+
+    #[test]
+    fn test_filter_include_ids() {
+        let id1 = Uuid::now_v7();
+        let id2 = Uuid::now_v7();
+
+        let filter = MessageFilter::IncludeIds(vec![id1, id2]);
+        let debug_str = format!("{:?}", filter);
+        assert!(debug_str.contains("IncludeIds"));
+    }
+
+    #[test]
+    fn test_filter_tool_name() {
+        let filter = MessageFilter::ToolName("get_weather".to_string());
+        let debug_str = format!("{:?}", filter);
+        assert!(debug_str.contains("ToolName"));
+        assert!(debug_str.contains("get_weather"));
+    }
+
+    #[test]
+    fn test_query_default() {
+        let query = MessageQuery::default();
+        assert_eq!(query.session_id, Uuid::nil());
+        assert!(query.filters.is_empty());
+        assert!(query.injections.is_empty());
+        assert_eq!(query.limit, None);
+        assert_eq!(query.offset, None);
+    }
+
+    // ========================================================================
+    // MessageFilterProvider tests
+    // ========================================================================
+
+    struct TestFilterProvider {
+        priority: i32,
+    }
+
+    impl MessageFilterProvider for TestFilterProvider {
+        fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value) {
+            // Add a filter based on config
+            if let Some(search) = config.get("search").and_then(|v| v.as_str()) {
+                query
+                    .filters
+                    .push(MessageFilter::Search(search.to_string()));
+            }
+        }
+
+        fn priority(&self) -> i32 {
+            self.priority
+        }
+    }
+
+    #[test]
+    fn test_filter_provider_apply() {
+        let provider = TestFilterProvider { priority: 0 };
+        let session_id = Uuid::now_v7();
+        let mut query = MessageQuery::new(session_id);
+
+        let config = serde_json::json!({ "search": "hello" });
+        provider.apply_filters(&mut query, &config);
+
+        assert_eq!(query.filters.len(), 1);
+        assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "hello"));
+    }
+
+    #[test]
+    fn test_filter_provider_priority() {
+        let low_priority = TestFilterProvider { priority: -10 };
+        let high_priority = TestFilterProvider { priority: 10 };
+        let default_priority = TestFilterProvider { priority: 0 };
+
+        assert_eq!(low_priority.priority(), -10);
+        assert_eq!(high_priority.priority(), 10);
+        assert_eq!(default_priority.priority(), 0);
+    }
+
+    #[test]
+    fn test_injection_position_debug() {
+        // Test debug representation of InjectionPosition variants
+        let start = InjectionPosition::Start;
+        let debug = format!("{:?}", start);
+        assert!(debug.contains("Start"));
+
+        let end = InjectionPosition::End;
+        let debug = format!("{:?}", end);
+        assert!(debug.contains("End"));
+
+        let before = InjectionPosition::BeforeIndex(5);
+        let debug = format!("{:?}", before);
+        assert!(debug.contains("BeforeIndex"));
+        assert!(debug.contains("5"));
+
+        let after = InjectionPosition::AfterIndex(3);
+        let debug = format!("{:?}", after);
+        assert!(debug.contains("AfterIndex"));
+        assert!(debug.contains("3"));
+    }
 }

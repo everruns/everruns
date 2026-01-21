@@ -1423,4 +1423,287 @@ mod tests {
         // This test verifies the constant is set correctly
         assert_eq!(MAX_RESOLVED_CAPABILITIES, 100);
     }
+
+    // =========================================================================
+    // Message filter provider tests
+    // =========================================================================
+
+    use crate::message_filter::{MessageFilter, MessageFilterProvider, MessageQuery};
+
+    /// Test capability that provides a message filter
+    struct FilterTestCapability {
+        priority: i32,
+    }
+
+    impl Capability for FilterTestCapability {
+        fn id(&self) -> &str {
+            "filter_test"
+        }
+        fn name(&self) -> &str {
+            "Filter Test"
+        }
+        fn description(&self) -> &str {
+            "Test capability with message filter"
+        }
+        fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+            Some(Arc::new(FilterTestProvider {
+                priority: self.priority,
+            }))
+        }
+    }
+
+    struct FilterTestProvider {
+        priority: i32,
+    }
+
+    impl MessageFilterProvider for FilterTestProvider {
+        fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value) {
+            // Add a search filter based on config
+            if let Some(search) = config.get("search").and_then(|v| v.as_str()) {
+                query
+                    .filters
+                    .push(MessageFilter::Search(search.to_string()));
+            }
+        }
+
+        fn priority(&self) -> i32 {
+            self.priority
+        }
+    }
+
+    #[test]
+    fn test_collect_capabilities_with_configs_no_filter_providers() {
+        let registry = CapabilityRegistry::with_builtins();
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new(CapabilityId::CURRENT_TIME),
+            config: serde_json::json!({}),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry);
+
+        assert!(collected.message_filter_providers.is_empty());
+        assert!(!collected.has_message_filters());
+    }
+
+    #[test]
+    fn test_collect_capabilities_with_configs_with_filter_provider() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(FilterTestCapability { priority: 0 });
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("filter_test"),
+            config: serde_json::json!({ "search": "hello" }),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry);
+
+        assert_eq!(collected.message_filter_providers.len(), 1);
+        assert!(collected.has_message_filters());
+    }
+
+    #[test]
+    fn test_collect_capabilities_with_configs_filter_priority_order() {
+        // Create capabilities with different priorities
+        struct HighPriorityCapability;
+        struct LowPriorityCapability;
+
+        impl Capability for HighPriorityCapability {
+            fn id(&self) -> &str {
+                "high_priority"
+            }
+            fn name(&self) -> &str {
+                "High Priority"
+            }
+            fn description(&self) -> &str {
+                "Test"
+            }
+            fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+                Some(Arc::new(FilterTestProvider { priority: 10 }))
+            }
+        }
+
+        impl Capability for LowPriorityCapability {
+            fn id(&self) -> &str {
+                "low_priority"
+            }
+            fn name(&self) -> &str {
+                "Low Priority"
+            }
+            fn description(&self) -> &str {
+                "Test"
+            }
+            fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+                Some(Arc::new(FilterTestProvider { priority: -5 }))
+            }
+        }
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(HighPriorityCapability);
+        registry.register(LowPriorityCapability);
+
+        // Add in order: high priority first, low priority second
+        let configs = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("high_priority"),
+                config: serde_json::json!({}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("low_priority"),
+                config: serde_json::json!({}),
+            },
+        ];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry);
+
+        // Should be sorted by priority (lower first)
+        assert_eq!(collected.message_filter_providers.len(), 2);
+        assert_eq!(collected.message_filter_providers[0].0.priority(), -5);
+        assert_eq!(collected.message_filter_providers[1].0.priority(), 10);
+    }
+
+    #[test]
+    fn test_collected_capabilities_apply_message_filters() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(FilterTestCapability { priority: 0 });
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("filter_test"),
+            config: serde_json::json!({ "search": "test_query" }),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry);
+
+        // Apply filters to a query
+        let session_id = uuid::Uuid::now_v7();
+        let mut query = MessageQuery::new(session_id);
+
+        collected.apply_message_filters(&mut query);
+
+        // Should have added the search filter
+        assert_eq!(query.filters.len(), 1);
+        assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "test_query"));
+    }
+
+    #[test]
+    fn test_collected_capabilities_apply_multiple_filters_in_priority_order() {
+        struct SearchCapability {
+            id: &'static str,
+            search_term: &'static str,
+            priority: i32,
+        }
+
+        struct SearchProvider {
+            search_term: &'static str,
+            priority: i32,
+        }
+
+        impl MessageFilterProvider for SearchProvider {
+            fn apply_filters(&self, query: &mut MessageQuery, _config: &serde_json::Value) {
+                query
+                    .filters
+                    .push(MessageFilter::Search(self.search_term.to_string()));
+            }
+
+            fn priority(&self) -> i32 {
+                self.priority
+            }
+        }
+
+        impl Capability for SearchCapability {
+            fn id(&self) -> &str {
+                self.id
+            }
+            fn name(&self) -> &str {
+                "Search"
+            }
+            fn description(&self) -> &str {
+                "Test"
+            }
+            fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+                Some(Arc::new(SearchProvider {
+                    search_term: self.search_term,
+                    priority: self.priority,
+                }))
+            }
+        }
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(SearchCapability {
+            id: "cap_a",
+            search_term: "alpha",
+            priority: 5,
+        });
+        registry.register(SearchCapability {
+            id: "cap_b",
+            search_term: "beta",
+            priority: 1,
+        });
+        registry.register(SearchCapability {
+            id: "cap_c",
+            search_term: "gamma",
+            priority: 10,
+        });
+
+        let configs = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("cap_a"),
+                config: serde_json::json!({}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("cap_b"),
+                config: serde_json::json!({}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("cap_c"),
+                config: serde_json::json!({}),
+            },
+        ];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry);
+
+        let session_id = uuid::Uuid::now_v7();
+        let mut query = MessageQuery::new(session_id);
+
+        collected.apply_message_filters(&mut query);
+
+        // Filters should be applied in priority order: beta (1), alpha (5), gamma (10)
+        assert_eq!(query.filters.len(), 3);
+        assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "beta"));
+        assert!(matches!(&query.filters[1], MessageFilter::Search(s) if s == "alpha"));
+        assert!(matches!(&query.filters[2], MessageFilter::Search(s) if s == "gamma"));
+    }
+
+    #[test]
+    fn test_capability_without_message_filter_returns_none() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let noop = registry.get(CapabilityId::NOOP).unwrap();
+        assert!(noop.message_filter_provider().is_none());
+
+        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
+        assert!(current_time.message_filter_provider().is_none());
+    }
+
+    #[test]
+    fn test_collect_capabilities_preserves_config_for_filter_provider() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(FilterTestCapability { priority: 0 });
+
+        let test_config = serde_json::json!({
+            "search": "custom_search",
+            "extra_field": 42
+        });
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("filter_test"),
+            config: test_config.clone(),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry);
+
+        // Verify the config is preserved
+        assert_eq!(collected.message_filter_providers.len(), 1);
+        let (_, stored_config) = &collected.message_filter_providers[0];
+        assert_eq!(*stored_config, test_config);
+    }
 }
