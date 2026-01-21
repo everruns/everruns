@@ -5432,7 +5432,8 @@
                 "id",
                 "agent_id",
                 "status",
-                "created_at"
+                "created_at",
+                "updated_at"
               ],
               "properties": {
                 "agent_id": {
@@ -5505,6 +5506,11 @@
                     "null"
                   ],
                   "description": "Human-readable title for the session."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the session was last updated."
                 },
                 "usage": {
                   "oneOf": [
@@ -5676,7 +5682,8 @@
           "id",
           "agent_id",
           "status",
-          "created_at"
+          "created_at",
+          "updated_at"
         ],
         "properties": {
           "agent_id": {
@@ -5749,6 +5756,11 @@
               "null"
             ],
             "description": "Human-readable title for the session."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the session was last updated."
           },
           "usage": {
             "oneOf": [

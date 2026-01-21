@@ -292,7 +292,7 @@ impl WorkerService for WorkerServiceImpl {
             title: session.title.clone().unwrap_or_default(),
             status: session.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(session.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(session.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
             default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
         };
 
@@ -476,7 +476,7 @@ impl WorkerService for WorkerServiceImpl {
             title: s.title.clone().unwrap_or_default(),
             status: s.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(s.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(s.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
             default_model_id: s.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
         });
 
@@ -519,7 +519,7 @@ impl WorkerService for WorkerServiceImpl {
             title: session.title.clone().unwrap_or_default(),
             status: session.status.to_string(),
             created_at: Some(datetime_to_proto_timestamp(session.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(session.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
             default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
         };
 

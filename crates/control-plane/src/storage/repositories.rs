@@ -482,7 +482,7 @@ impl Database {
             r#"
             INSERT INTO sessions (agent_id, title, tags, model_id, status)
             VALUES ($1, $2, $3, $4, 'started')
-            RETURNING id, agent_id, title, tags, model_id, status, created_at, started_at, finished_at,
+            RETURNING id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -500,7 +500,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: Uuid) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.started_at, s.finished_at,
+            SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
                    s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
             FROM sessions s
             JOIN agents a ON s.agent_id = a.id
@@ -540,7 +540,7 @@ impl Database {
         // Get paginated results
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.started_at, s.finished_at,
+            SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
                    s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
             FROM sessions s
             JOIN agents a ON s.agent_id = a.id
@@ -567,6 +567,7 @@ impl Database {
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
         // Update only if session belongs to an agent in the org
+        // Note: updated_at is automatically set by the update_sessions_updated_at trigger
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             UPDATE sessions s
@@ -579,7 +580,7 @@ impl Database {
                 finished_at = COALESCE($8, s.finished_at)
             FROM agents a
             WHERE s.agent_id = a.id AND a.org_id = $1 AND s.id = $2
-            RETURNING s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.started_at, s.finished_at,
+            RETURNING s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
                       s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
             "#,
         )

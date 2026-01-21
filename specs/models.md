@@ -46,14 +46,15 @@ An instance of agentic loop execution. Multiple sessions can exist concurrently 
 | `title` | string? | Session title (user-provided or auto-generated) |
 | `tags` | string[] | Tags for organization/filtering |
 | `model_id` | UUID? | Override model (null = use agent default) |
-| `status` | enum | `pending`, `running`, `failed` |
+| `status` | enum | `started`, `active`, `idle` |
 | `created_at` | timestamp | Creation time |
+| `updated_at` | timestamp | Last modification time (auto-updated on any change) |
 | `started_at` | timestamp? | Execution start time |
-| `finished_at` | timestamp? | Completion time (only set on failure) |
+| `finished_at` | timestamp? | Completion time |
 
-Status transitions: `pending` → `running` → `pending` (cycles indefinitely) | `failed`
+Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
 
-Sessions work indefinitely - after processing a message, status returns to `pending` (ready for more messages). Only `failed` is a terminal state.
+Sessions work indefinitely - after processing a message, status returns to `idle` (ready for more messages).
 
 ### Message
 

@@ -466,6 +466,7 @@ impl InMemoryDatabase {
             model_id: input.model_id,
             status: "pending".to_string(), // Default status for new sessions
             created_at: now,
+            updated_at: now,
             started_at: None,
             finished_at: None,
             total_input_tokens: 0,
@@ -571,6 +572,8 @@ impl InMemoryDatabase {
             if input.finished_at.is_some() {
                 session.finished_at = input.finished_at;
             }
+            // Update updated_at on every update (mimics DB trigger)
+            session.updated_at = Self::now();
             return Ok(Some(session.clone()));
         }
         Ok(None)
@@ -1902,6 +1905,8 @@ impl InMemoryDatabase {
             session.total_output_tokens += output_tokens;
             session.total_cache_read_tokens += cache_read_tokens;
             session.total_cache_creation_tokens += cache_creation_tokens;
+            // Update updated_at on every update (mimics DB trigger)
+            session.updated_at = Self::now();
         }
         Ok(())
     }
@@ -2273,6 +2278,59 @@ mod tests {
         assert_eq!(sessions.len(), 1);
         assert_eq!(total, 1);
         assert_eq!(sessions[0].id, session.id);
+    }
+
+    #[tokio::test]
+    async fn test_session_updated_at() {
+        let db = InMemoryDatabase::new();
+
+        let agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    name: "Test Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        // Create session - updated_at should equal created_at
+        let session = db
+            .create_session(CreateSessionRow {
+                agent_id: agent.id,
+                title: Some("Test Session".to_string()),
+                tags: vec![],
+                model_id: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(session.created_at, session.updated_at);
+        let original_updated_at = session.updated_at;
+
+        // Small delay to ensure different timestamp
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Update session - updated_at should change
+        let updated = db
+            .update_session(
+                DEFAULT_ORG_ID,
+                session.id,
+                UpdateSession {
+                    title: Some("Updated Title".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(updated.updated_at > original_updated_at);
+        assert_eq!(updated.title, Some("Updated Title".to_string()));
     }
 
     #[tokio::test]
