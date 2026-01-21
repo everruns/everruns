@@ -996,12 +996,7 @@ impl ImageResolver for GrpcImageResolver {
         let inner = response.into_inner();
 
         if inner.found {
-            match (inner.base64, inner.media_type) {
-                (Some(base64), Some(media_type)) => {
-                    Ok(Some(ResolvedImage::new(base64, media_type)))
-                }
-                _ => Ok(None),
-            }
+            Ok(Some(ResolvedImage::new(inner.base64, inner.media_type)))
         } else {
             Ok(None)
         }

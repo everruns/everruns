@@ -89,6 +89,7 @@ tonic-build = "0.12"
 
 # Protocol Buffers (used by tonic/gRPC)
 prost = "0.13"
+prost-build = "0.13"
 prost-types = "0.13"
 
 # Image processing (for thumbnail generation)

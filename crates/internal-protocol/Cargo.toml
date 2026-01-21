@@ -37,4 +37,5 @@ chrono.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true
+prost-build.workspace = true
 protox = "0.7"

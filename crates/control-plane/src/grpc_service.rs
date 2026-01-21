@@ -1698,7 +1698,7 @@ impl WorkerService for WorkerServiceImpl {
                                 if activity_types_set.contains(&payload.activity_type) {
                                     let proto_notification = TaskNotification {
                                         notification_type: TaskNotificationType::TaskAvailable.into(),
-                                        activity_type: Some(payload.activity_type),
+                                        activity_type: payload.activity_type,
                                         pending_count: payload.pending_count,
                                         timestamp: Some(everruns_internal_protocol::datetime_to_proto_timestamp(
                                             chrono::Utc::now(),
@@ -1738,8 +1738,8 @@ impl WorkerService for WorkerServiceImpl {
                     _ = heartbeat_interval.tick() => {
                         let heartbeat = TaskNotification {
                             notification_type: TaskNotificationType::Heartbeat.into(),
-                            activity_type: None,
-                            pending_count: None,
+                            activity_type: String::new(),
+                            pending_count: 0,
                             timestamp: Some(everruns_internal_protocol::datetime_to_proto_timestamp(
                                 chrono::Utc::now(),
                             )),
@@ -1790,8 +1790,8 @@ impl WorkerService for WorkerServiceImpl {
             Ok(None) => {
                 return Ok(Response::new(ResolveImageResponse {
                     found: false,
-                    base64: None,
-                    media_type: None,
+                    base64: String::new(),
+                    media_type: String::new(),
                 }));
             }
             Err(e) => {
@@ -1805,8 +1805,8 @@ impl WorkerService for WorkerServiceImpl {
 
         Ok(Response::new(ResolveImageResponse {
             found: true,
-            base64: Some(base64_data),
-            media_type: Some(image_row.content_type),
+            base64: base64_data,
+            media_type: image_row.content_type,
         }))
     }
 
