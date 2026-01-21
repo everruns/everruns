@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This document defines the core data models for Everruns - a durable AI agent execution platform.
+This document defines the core data models for Everruns - a durable agentic harness engine.
 
 ## Requirements
 

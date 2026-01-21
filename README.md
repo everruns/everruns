@@ -8,7 +8,7 @@
 
 > **Note:** This repository is in **Heavy Vibecoding PoC Mode**. Expect rapid changes, experimental features, and unconventional approaches as we explore ideas quickly.
 
-Headless durable AI agent execution platform. Run long-running LLM agents reliably and scalably.
+Headless durable agentic harness engine. Run durable AI agents reliably and scalably.
 
 ## Overview
 
