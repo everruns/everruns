@@ -56,19 +56,50 @@ case "$cmd" in
 
     # Track child PIDs for cleanup
     CHILD_PIDS=()
+    CLEANUP_DONE=false
 
     cleanup() {
+      # Prevent multiple cleanup runs
+      if [ "$CLEANUP_DONE" = true ]; then
+        return
+      fi
+      CLEANUP_DONE=true
+
+      # Ignore signals during cleanup to prevent interruption
+      trap '' SIGINT SIGTERM
+
       stty sane 2>/dev/null || true
       echo ""
       echo "🛑 Stopping services..."
+
+      # Send SIGTERM to tracked PIDs first
       for pid in "${CHILD_PIDS[@]}"; do
         if kill -0 "$pid" 2>/dev/null; then
-          kill "$pid" 2>/dev/null || true
+          kill -TERM "$pid" 2>/dev/null || true
         fi
       done
-      pkill -f "cargo-watch" 2>/dev/null || true
-      pkill -f "everruns-control-plane" 2>/dev/null || true
-      pkill -f "next dev" 2>/dev/null || true
+
+      # Kill by name (catches any child processes we didn't track directly)
+      pkill -TERM -f "cargo-watch" 2>/dev/null || true
+      pkill -TERM -f "everruns-control-plane" 2>/dev/null || true
+      pkill -TERM -f "next dev" 2>/dev/null || true
+      pkill -TERM -f "next-router-worker" 2>/dev/null || true
+
+      # Give processes time to terminate gracefully
+      sleep 1
+
+      # Force kill any remaining processes
+      for pid in "${CHILD_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+          kill -KILL "$pid" 2>/dev/null || true
+        fi
+      done
+      pkill -KILL -f "cargo-watch" 2>/dev/null || true
+      pkill -KILL -f "everruns-control-plane" 2>/dev/null || true
+      pkill -KILL -f "next dev" 2>/dev/null || true
+      pkill -KILL -f "next-router-worker" 2>/dev/null || true
+
+      # Restore terminal state
       stty sane 2>/dev/null || true
       echo "✅ Services stopped"
       exit 0
@@ -187,20 +218,52 @@ case "$cmd" in
 
     CHILD_PIDS=()
     JAEGER_STARTED=false
+    CLEANUP_DONE=false
 
     cleanup() {
+      # Prevent multiple cleanup runs
+      if [ "$CLEANUP_DONE" = true ]; then
+        return
+      fi
+      CLEANUP_DONE=true
+
+      # Ignore signals during cleanup to prevent interruption
+      trap '' SIGINT SIGTERM
+
       stty sane 2>/dev/null || true
       echo ""
       echo "🛑 Stopping services..."
+
+      # Send SIGTERM to tracked PIDs first
       for pid in "${CHILD_PIDS[@]}"; do
         if kill -0 "$pid" 2>/dev/null; then
-          kill "$pid" 2>/dev/null || true
+          kill -TERM "$pid" 2>/dev/null || true
         fi
       done
-      pkill -f "cargo-watch" 2>/dev/null || true
-      pkill -f "everruns-control-plane" 2>/dev/null || true
-      pkill -f "everruns-worker" 2>/dev/null || true
-      pkill -f "next dev" 2>/dev/null || true
+
+      # Kill by name (catches any child processes we didn't track directly)
+      pkill -TERM -f "cargo-watch" 2>/dev/null || true
+      pkill -TERM -f "everruns-control-plane" 2>/dev/null || true
+      pkill -TERM -f "everruns-worker" 2>/dev/null || true
+      pkill -TERM -f "next dev" 2>/dev/null || true
+      pkill -TERM -f "next-router-worker" 2>/dev/null || true
+
+      # Give processes time to terminate gracefully
+      sleep 1
+
+      # Force kill any remaining processes
+      for pid in "${CHILD_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+          kill -KILL "$pid" 2>/dev/null || true
+        fi
+      done
+      pkill -KILL -f "cargo-watch" 2>/dev/null || true
+      pkill -KILL -f "everruns-control-plane" 2>/dev/null || true
+      pkill -KILL -f "everruns-worker" 2>/dev/null || true
+      pkill -KILL -f "next dev" 2>/dev/null || true
+      pkill -KILL -f "next-router-worker" 2>/dev/null || true
+
+      # Restore terminal state
       stty sane 2>/dev/null || true
       echo "✅ Services stopped (Docker still running if started)"
       exit 0
