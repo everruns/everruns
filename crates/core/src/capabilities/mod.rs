@@ -109,13 +109,13 @@ pub use web_fetch::{WebFetchCapability, WebFetchTool};
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::capabilities::{Capability, CapabilityId};
+/// use everruns_core::capabilities::Capability;
 ///
 /// struct CurrentTimeCapability;
 ///
 /// impl Capability for CurrentTimeCapability {
 ///     fn id(&self) -> &str {
-///         CapabilityId::CURRENT_TIME
+///         "current_time"
 ///     }
 ///
 ///     fn name(&self) -> &str {
@@ -224,12 +224,12 @@ pub trait Capability: Send + Sync {
 /// # Example
 ///
 /// ```
-/// use everruns_core::capabilities::{CapabilityRegistry, CapabilityId};
+/// use everruns_core::capabilities::CapabilityRegistry;
 ///
 /// let registry = CapabilityRegistry::with_builtins();
 ///
 /// // Get a capability by ID
-/// if let Some(cap) = registry.get(CapabilityId::CURRENT_TIME) {
+/// if let Some(cap) = registry.get("current_time") {
 ///     println!("Capability: {}", cap.name());
 /// }
 ///
@@ -776,13 +776,13 @@ pub struct AppliedCapabilities {
 /// # Example
 ///
 /// ```
-/// use everruns_core::capabilities::{apply_capabilities, CapabilityRegistry, CapabilityId};
+/// use everruns_core::capabilities::{apply_capabilities, CapabilityRegistry};
 /// use everruns_core::runtime_agent::RuntimeAgent;
 ///
 /// let registry = CapabilityRegistry::with_builtins();
 /// let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 ///
-/// let capability_ids = vec![CapabilityId::CURRENT_TIME.to_string()];
+/// let capability_ids = vec!["current_time".to_string()];
 /// let applied = apply_capabilities(base_runtime_agent, &capability_ids, &registry);
 ///
 /// // The runtime agent now includes CurrentTime tool
@@ -841,23 +841,23 @@ mod tests {
         // Dev mode includes all capabilities including experimental
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
 
-        assert!(registry.has(CapabilityId::NOOP));
-        assert!(registry.has(CapabilityId::CURRENT_TIME));
-        assert!(registry.has(CapabilityId::RESEARCH));
-        assert!(registry.has(CapabilityId::SANDBOX));
-        assert!(registry.has(CapabilityId::FILE_SYSTEM));
-        assert!(registry.has(CapabilityId::SESSION_STORAGE));
-        assert!(registry.has(CapabilityId::TEST_MATH));
-        assert!(registry.has(CapabilityId::TEST_WEATHER));
-        assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
-        assert!(registry.has(CapabilityId::WEB_FETCH));
-        assert!(registry.has(CapabilityId::SAMPLE_DATA));
-        assert!(registry.has(CapabilityId::FAKE_WAREHOUSE));
-        assert!(registry.has(CapabilityId::FAKE_AWS));
-        assert!(registry.has(CapabilityId::FAKE_CRM));
-        assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
+        assert!(registry.has("noop"));
+        assert!(registry.has("current_time"));
+        assert!(registry.has("research"));
+        assert!(registry.has("sandbox"));
+        assert!(registry.has("session_file_system"));
+        assert!(registry.has("session_storage"));
+        assert!(registry.has("test_math"));
+        assert!(registry.has("test_weather"));
+        assert!(registry.has("stateless_todo_list"));
+        assert!(registry.has("web_fetch"));
+        assert!(registry.has("sample_data"));
+        assert!(registry.has("fake_warehouse"));
+        assert!(registry.has("fake_aws"));
+        assert!(registry.has("fake_crm"));
+        assert!(registry.has("fake_financial"));
         // Experimental capability included in dev
-        assert!(registry.has(CapabilityId::DOCKER_CONTAINER));
+        assert!(registry.has("docker_container"));
         assert_eq!(registry.len(), 16);
     }
 
@@ -866,23 +866,23 @@ mod tests {
         // Prod mode excludes experimental capabilities
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
 
-        assert!(registry.has(CapabilityId::NOOP));
-        assert!(registry.has(CapabilityId::CURRENT_TIME));
-        assert!(registry.has(CapabilityId::RESEARCH));
-        assert!(registry.has(CapabilityId::SANDBOX));
-        assert!(registry.has(CapabilityId::FILE_SYSTEM));
-        assert!(registry.has(CapabilityId::SESSION_STORAGE));
-        assert!(registry.has(CapabilityId::TEST_MATH));
-        assert!(registry.has(CapabilityId::TEST_WEATHER));
-        assert!(registry.has(CapabilityId::STATELESS_TODO_LIST));
-        assert!(registry.has(CapabilityId::WEB_FETCH));
-        assert!(registry.has(CapabilityId::SAMPLE_DATA));
-        assert!(registry.has(CapabilityId::FAKE_WAREHOUSE));
-        assert!(registry.has(CapabilityId::FAKE_AWS));
-        assert!(registry.has(CapabilityId::FAKE_CRM));
-        assert!(registry.has(CapabilityId::FAKE_FINANCIAL));
+        assert!(registry.has("noop"));
+        assert!(registry.has("current_time"));
+        assert!(registry.has("research"));
+        assert!(registry.has("sandbox"));
+        assert!(registry.has("session_file_system"));
+        assert!(registry.has("session_storage"));
+        assert!(registry.has("test_math"));
+        assert!(registry.has("test_weather"));
+        assert!(registry.has("stateless_todo_list"));
+        assert!(registry.has("web_fetch"));
+        assert!(registry.has("sample_data"));
+        assert!(registry.has("fake_warehouse"));
+        assert!(registry.has("fake_aws"));
+        assert!(registry.has("fake_crm"));
+        assert!(registry.has("fake_financial"));
         // Experimental capability NOT included in prod
-        assert!(!registry.has(CapabilityId::DOCKER_CONTAINER));
+        assert!(!registry.has("docker_container"));
         assert_eq!(registry.len(), 15);
     }
 
@@ -890,8 +890,8 @@ mod tests {
     fn test_capability_registry_get() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let noop = registry.get(CapabilityId::NOOP).unwrap();
-        assert_eq!(noop.id(), CapabilityId::NOOP);
+        let noop = registry.get("noop").unwrap();
+        assert_eq!(noop.id(), "noop");
         assert_eq!(noop.name(), "No-Op");
         assert_eq!(noop.status(), CapabilityStatus::Available);
     }
@@ -903,8 +903,8 @@ mod tests {
             .capability(CurrentTimeCapability)
             .build();
 
-        assert!(registry.has(CapabilityId::NOOP));
-        assert!(registry.has(CapabilityId::CURRENT_TIME));
+        assert!(registry.has("noop"));
+        assert!(registry.has("current_time"));
         assert_eq!(registry.len(), 2);
     }
 
@@ -912,10 +912,10 @@ mod tests {
     fn test_capability_status() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
+        let current_time = registry.get("current_time").unwrap();
         assert_eq!(current_time.status(), CapabilityStatus::Available);
 
-        let research = registry.get(CapabilityId::RESEARCH).unwrap();
+        let research = registry.get("research").unwrap();
         assert_eq!(research.status(), CapabilityStatus::ComingSoon);
     }
 
@@ -923,11 +923,11 @@ mod tests {
     fn test_capability_icons_and_categories() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let noop = registry.get(CapabilityId::NOOP).unwrap();
+        let noop = registry.get("noop").unwrap();
         assert_eq!(noop.icon(), Some("circle-off"));
         assert_eq!(noop.category(), Some("Testing"));
 
-        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
+        let current_time = registry.get("current_time").unwrap();
         assert_eq!(current_time.icon(), Some("clock"));
         assert_eq!(current_time.category(), Some("Utilities"));
     }
@@ -956,11 +956,8 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &[CapabilityId::NOOP.to_string()],
-            &registry,
-        );
+        let applied =
+            apply_capabilities(base_runtime_agent.clone(), &["noop".to_string()], &registry);
 
         // Noop has no system prompt addition or tools
         assert_eq!(
@@ -968,7 +965,7 @@ mod tests {
             base_runtime_agent.system_prompt
         );
         assert!(applied.tool_registry.is_empty());
-        assert_eq!(applied.applied_ids, vec![CapabilityId::NOOP]);
+        assert_eq!(applied.applied_ids, vec!["noop"]);
     }
 
     #[test]
@@ -978,7 +975,7 @@ mod tests {
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &[CapabilityId::CURRENT_TIME.to_string()],
+            &["current_time".to_string()],
             &registry,
         );
 
@@ -989,7 +986,7 @@ mod tests {
         );
         assert!(applied.tool_registry.has("get_current_time"));
         assert_eq!(applied.tool_registry.len(), 1);
-        assert_eq!(applied.applied_ids, vec![CapabilityId::CURRENT_TIME]);
+        assert_eq!(applied.applied_ids, vec!["current_time"]);
     }
 
     #[test]
@@ -1000,7 +997,7 @@ mod tests {
         // Research is ComingSoon, so it should be skipped
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &[CapabilityId::RESEARCH.to_string()],
+            &["research".to_string()],
             &registry,
         );
 
@@ -1019,18 +1016,12 @@ mod tests {
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &[
-                CapabilityId::NOOP.to_string(),
-                CapabilityId::CURRENT_TIME.to_string(),
-            ],
+            &["noop".to_string(), "current_time".to_string()],
             &registry,
         );
 
         assert!(applied.tool_registry.has("get_current_time"));
-        assert_eq!(
-            applied.applied_ids,
-            vec![CapabilityId::NOOP, CapabilityId::CURRENT_TIME]
-        );
+        assert_eq!(applied.applied_ids, vec!["noop", "current_time"]);
     }
 
     #[test]
@@ -1041,17 +1032,11 @@ mod tests {
         // Order should be preserved in applied_ids
         let applied = apply_capabilities(
             base_runtime_agent,
-            &[
-                CapabilityId::CURRENT_TIME.to_string(),
-                CapabilityId::NOOP.to_string(),
-            ],
+            &["current_time".to_string(), "noop".to_string()],
             &registry,
         );
 
-        assert_eq!(
-            applied.applied_ids,
-            vec![CapabilityId::CURRENT_TIME, CapabilityId::NOOP]
-        );
+        assert_eq!(applied.applied_ids, vec!["current_time", "noop"]);
     }
 
     #[test]
@@ -1061,7 +1046,7 @@ mod tests {
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &[CapabilityId::TEST_MATH.to_string()],
+            &["test_math".to_string()],
             &registry,
         );
 
@@ -1081,7 +1066,7 @@ mod tests {
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &[CapabilityId::TEST_WEATHER.to_string()],
+            &["test_weather".to_string()],
             &registry,
         );
 
@@ -1104,10 +1089,7 @@ mod tests {
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &[
-                CapabilityId::TEST_MATH.to_string(),
-                CapabilityId::TEST_WEATHER.to_string(),
-            ],
+            &["test_math".to_string(), "test_weather".to_string()],
             &registry,
         );
 
@@ -1124,7 +1106,7 @@ mod tests {
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &[CapabilityId::STATELESS_TODO_LIST.to_string()],
+            &["stateless_todo_list".to_string()],
             &registry,
         );
 
@@ -1147,7 +1129,7 @@ mod tests {
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &[CapabilityId::WEB_FETCH.to_string()],
+            &["web_fetch".to_string()],
             &registry,
         );
 
@@ -1171,7 +1153,7 @@ mod tests {
     fn test_collect_capabilities_includes_mounts() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let collected = collect_capabilities(&[CapabilityId::SAMPLE_DATA.to_string()], &registry);
+        let collected = collect_capabilities(&["sample_data".to_string()], &registry);
 
         assert!(!collected.mounts.is_empty());
         assert_eq!(collected.mounts.len(), 1);
@@ -1184,7 +1166,7 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
 
         // Most capabilities don't have mounts
-        let collected = collect_capabilities(&[CapabilityId::CURRENT_TIME.to_string()], &registry);
+        let collected = collect_capabilities(&["current_time".to_string()], &registry);
 
         assert!(collected.mounts.is_empty());
     }
@@ -1195,10 +1177,7 @@ mod tests {
 
         // Collect from multiple capabilities - only sample_data has mounts
         let collected = collect_capabilities(
-            &[
-                CapabilityId::SAMPLE_DATA.to_string(),
-                CapabilityId::CURRENT_TIME.to_string(),
-            ],
+            &["sample_data".to_string(), "current_time".to_string()],
             &registry,
         );
 
@@ -1209,9 +1188,9 @@ mod tests {
     #[test]
     fn test_sample_data_capability() {
         let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get(CapabilityId::SAMPLE_DATA).unwrap();
+        let cap = registry.get("sample_data").unwrap();
 
-        assert_eq!(cap.id(), CapabilityId::SAMPLE_DATA);
+        assert_eq!(cap.id(), "sample_data");
         assert_eq!(cap.name(), "Sample Data");
         assert_eq!(cap.status(), CapabilityStatus::Available);
 
@@ -1243,10 +1222,9 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
 
         // CurrentTime has no dependencies
-        let resolved =
-            resolve_dependencies(&[CapabilityId::CURRENT_TIME.to_string()], &registry).unwrap();
+        let resolved = resolve_dependencies(&["current_time".to_string()], &registry).unwrap();
 
-        assert_eq!(resolved.resolved_ids, vec![CapabilityId::CURRENT_TIME]);
+        assert_eq!(resolved.resolved_ids, vec!["current_time"]);
         assert!(resolved.added_as_dependencies.is_empty());
     }
 
@@ -1255,28 +1233,24 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
 
         // SampleData depends on FileSystem
-        let resolved =
-            resolve_dependencies(&[CapabilityId::SAMPLE_DATA.to_string()], &registry).unwrap();
+        let resolved = resolve_dependencies(&["sample_data".to_string()], &registry).unwrap();
 
         // FileSystem should be resolved before SampleData
         assert_eq!(resolved.resolved_ids.len(), 2);
         let fs_pos = resolved
             .resolved_ids
             .iter()
-            .position(|id| id == CapabilityId::FILE_SYSTEM)
+            .position(|id| id == "session_file_system")
             .unwrap();
         let sd_pos = resolved
             .resolved_ids
             .iter()
-            .position(|id| id == CapabilityId::SAMPLE_DATA)
+            .position(|id| id == "sample_data")
             .unwrap();
         assert!(fs_pos < sd_pos, "FileSystem should come before SampleData");
 
         // FileSystem was added as a dependency
-        assert_eq!(
-            resolved.added_as_dependencies,
-            vec![CapabilityId::FILE_SYSTEM]
-        );
+        assert_eq!(resolved.added_as_dependencies, vec!["session_file_system"]);
     }
 
     #[test]
@@ -1285,10 +1259,7 @@ mod tests {
 
         // If dependency is already selected, it shouldn't be duplicated
         let resolved = resolve_dependencies(
-            &[
-                CapabilityId::FILE_SYSTEM.to_string(),
-                CapabilityId::SAMPLE_DATA.to_string(),
-            ],
+            &["session_file_system".to_string(), "sample_data".to_string()],
             &registry,
         )
         .unwrap();
@@ -1303,19 +1274,11 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
 
         // Multiple independent capabilities should maintain their relative order
-        let resolved = resolve_dependencies(
-            &[
-                CapabilityId::CURRENT_TIME.to_string(),
-                CapabilityId::NOOP.to_string(),
-            ],
-            &registry,
-        )
-        .unwrap();
+        let resolved =
+            resolve_dependencies(&["current_time".to_string(), "noop".to_string()], &registry)
+                .unwrap();
 
-        assert_eq!(
-            resolved.resolved_ids,
-            vec![CapabilityId::CURRENT_TIME, CapabilityId::NOOP]
-        );
+        assert_eq!(resolved.resolved_ids, vec!["current_time", "noop"]);
     }
 
     #[test]
@@ -1334,11 +1297,11 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
 
         // SampleData depends on FileSystem
-        let deps = get_dependencies(CapabilityId::SAMPLE_DATA, &registry);
-        assert_eq!(deps, vec![CapabilityId::FILE_SYSTEM]);
+        let deps = get_dependencies("sample_data", &registry);
+        assert_eq!(deps, vec!["session_file_system"]);
 
         // CurrentTime has no dependencies
-        let deps = get_dependencies(CapabilityId::CURRENT_TIME, &registry);
+        let deps = get_dependencies("current_time", &registry);
         assert!(deps.is_empty());
 
         // Unknown capability
@@ -1349,17 +1312,17 @@ mod tests {
     #[test]
     fn test_sample_data_has_dependency() {
         let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get(CapabilityId::SAMPLE_DATA).unwrap();
+        let cap = registry.get("sample_data").unwrap();
 
         let deps = cap.dependencies();
         assert_eq!(deps.len(), 1);
-        assert_eq!(deps[0], CapabilityId::FILE_SYSTEM);
+        assert_eq!(deps[0], "session_file_system");
     }
 
     #[test]
     fn test_noop_has_no_dependencies() {
         let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get(CapabilityId::NOOP).unwrap();
+        let cap = registry.get("noop").unwrap();
 
         assert!(cap.dependencies().is_empty());
     }
@@ -1475,7 +1438,7 @@ mod tests {
     fn test_collect_capabilities_with_configs_no_filter_providers() {
         let registry = CapabilityRegistry::with_builtins();
         let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new(CapabilityId::CURRENT_TIME),
+            capability_ref: CapabilityId::new("current_time"),
             config: serde_json::json!({}),
         }];
 
@@ -1677,10 +1640,10 @@ mod tests {
     fn test_capability_without_message_filter_returns_none() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let noop = registry.get(CapabilityId::NOOP).unwrap();
+        let noop = registry.get("noop").unwrap();
         assert!(noop.message_filter_provider().is_none());
 
-        let current_time = registry.get(CapabilityId::CURRENT_TIME).unwrap();
+        let current_time = registry.get("current_time").unwrap();
         assert!(current_time.message_filter_provider().is_none());
     }
 

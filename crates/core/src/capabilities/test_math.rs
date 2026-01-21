@@ -1,6 +1,6 @@
 //! TestMath Capability - calculator tools for testing tool calling
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -10,7 +10,7 @@ pub struct TestMathCapability;
 
 impl Capability for TestMathCapability {
     fn id(&self) -> &str {
-        CapabilityId::TEST_MATH
+        "test_math"
     }
 
     fn name(&self) -> &str {

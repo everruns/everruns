@@ -13,7 +13,7 @@
 //! - `crm_add_interaction`: Add customer interaction note
 //! - `crm_search_customers`: Search customers by criteria
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -25,7 +25,7 @@ pub struct FakeCrmCapability;
 
 impl Capability for FakeCrmCapability {
     fn id(&self) -> &str {
-        CapabilityId::FAKE_CRM
+        "fake_crm"
     }
 
     fn name(&self) -> &str {

@@ -13,7 +13,7 @@
 //! - `finance_get_revenue_report`: Generate revenue report
 //! - `finance_forecast_cash_flow`: Forecast cash flow
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -25,7 +25,7 @@ pub struct FakeFinancialCapability;
 
 impl Capability for FakeFinancialCapability {
     fn id(&self) -> &str {
-        CapabilityId::FAKE_FINANCIAL
+        "fake_financial"
     }
 
     fn name(&self) -> &str {

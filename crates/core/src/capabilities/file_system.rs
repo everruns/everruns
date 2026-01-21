@@ -11,7 +11,7 @@
 //! - `delete_file`: Delete a file or directory
 //! - `stat_file`: Get file metadata
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -22,7 +22,7 @@ pub struct FileSystemCapability;
 
 impl Capability for FileSystemCapability {
     fn id(&self) -> &str {
-        CapabilityId::FILE_SYSTEM
+        "session_file_system"
     }
 
     fn name(&self) -> &str {
@@ -644,7 +644,7 @@ mod tests {
     #[test]
     fn test_capability_metadata() {
         let cap = FileSystemCapability;
-        assert_eq!(cap.id(), CapabilityId::FILE_SYSTEM);
+        assert_eq!(cap.id(), "session_file_system");
         assert_eq!(cap.name(), "File System");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("hard-drive"));

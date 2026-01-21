@@ -15,7 +15,7 @@
 //! - `warehouse_process_return`: Process a product return
 //! - `warehouse_inventory_report`: Generate inventory report
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -27,7 +27,7 @@ pub struct FakeWarehouseCapability;
 
 impl Capability for FakeWarehouseCapability {
     fn id(&self) -> &str {
-        CapabilityId::FAKE_WAREHOUSE
+        "fake_warehouse"
     }
 
     fn name(&self) -> &str {

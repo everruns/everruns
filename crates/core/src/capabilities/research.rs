@@ -1,13 +1,13 @@
 //! Research Capability - for deep research with organized findings (coming soon)
 
-use super::{Capability, CapabilityId, CapabilityStatus};
+use super::{Capability, CapabilityStatus};
 
 /// Research capability - for deep research with organized findings (coming soon)
 pub struct ResearchCapability;
 
 impl Capability for ResearchCapability {
     fn id(&self) -> &str {
-        CapabilityId::RESEARCH
+        "research"
     }
 
     fn name(&self) -> &str {
