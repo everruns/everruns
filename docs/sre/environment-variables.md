@@ -338,96 +338,12 @@ LLM calls include the following OpenTelemetry attributes:
 
 Everruns supports sending LLM generation events to [Braintrust](https://www.braintrust.dev/) for observability, evaluation, and logging.
 
-### BRAINTRUST_API_KEY
+For setup instructions and configuration details, see the [Braintrust Integration Guide](/observability/braintrust/).
 
-API key for Braintrust authentication.
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `BRAINTRUST_API_KEY` | Yes | - | API key from Braintrust settings |
+| `BRAINTRUST_PROJECT_NAME` | No | `My Project` | Project name for organizing traces |
+| `BRAINTRUST_PROJECT_ID` | No | - | Direct project UUID (skips name lookup) |
+| `BRAINTRUST_API_URL` | No | `https://api.braintrust.dev` | API base URL |
 
-| Property | Value |
-|----------|-------|
-| **Required** | No (integration disabled if not set) |
-| **Default** | Not set |
-
-**Example:**
-
-```bash
-BRAINTRUST_API_KEY=sk-your-braintrust-api-key
-```
-
-**Notes:**
-- Create API keys in Braintrust: Settings > Organization > API keys
-- Both `BRAINTRUST_API_KEY` and a project identifier (`BRAINTRUST_PROJECT_NAME` or `BRAINTRUST_PROJECT_ID`) must be set
-
-### BRAINTRUST_PROJECT_NAME
-
-Braintrust project name.
-
-| Property | Value |
-|----------|-------|
-| **Required** | No |
-| **Default** | `My Project` |
-
-**Example:**
-
-```bash
-BRAINTRUST_PROJECT_NAME=My Project
-```
-
-**Notes:**
-- Defaults to "My Project" if not specified (Braintrust onboarding default)
-- The name is resolved to a project ID at startup via the Braintrust API
-- Override to use a different project for logging
-
-### BRAINTRUST_PROJECT_ID
-
-Braintrust project ID (UUID). Alternative to `BRAINTRUST_PROJECT_NAME`.
-
-| Property | Value |
-|----------|-------|
-| **Required** | Yes, unless `BRAINTRUST_PROJECT_NAME` is set |
-| **Default** | Not set |
-
-**Example:**
-
-```bash
-BRAINTRUST_PROJECT_ID=your-project-uuid
-```
-
-**Notes:**
-- Find your project ID in Braintrust project settings or URL
-- Use this to skip the name-to-ID resolution API call at startup
-
-### BRAINTRUST_API_URL
-
-Braintrust API base URL.
-
-| Property | Value |
-|----------|-------|
-| **Required** | No |
-| **Default** | `https://api.braintrust.dev` |
-
-**Example:**
-
-```bash
-# Use self-hosted Braintrust instance
-BRAINTRUST_API_URL=https://braintrust.internal.example.com
-```
-
-### Braintrust Event Data
-
-Each `llm.generation` event is sent to Braintrust with the following data:
-
-| Field | Description |
-|-------|-------------|
-| `input` | Messages sent to the LLM |
-| `output` | LLM response (text and tool calls) |
-| `error` | Error message if generation failed |
-| `metadata.model` | Model identifier (e.g., `gpt-4o`) |
-| `metadata.provider` | Provider name (e.g., `openai`) |
-| `metadata.session_id` | Everruns session ID |
-| `metadata.turn_id` | Turn ID within the session |
-| `metrics.prompt_tokens` | Input token count |
-| `metrics.completion_tokens` | Output token count |
-| `metrics.tokens` | Total token count |
-| `metrics.time_to_first_token` | Time to first token (seconds) |
-| `span_attributes.type` | Always `llm` |
-| `span_attributes.name` | Span name (e.g., `chat gpt-4o`) |

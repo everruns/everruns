@@ -19,21 +19,15 @@ Everruns integrates with [Braintrust](https://www.braintrust.dev/) to provide LL
 
 ### 2. Configure Everruns
 
-Set the environment variable:
+Set environment variables:
 
 ```bash
-export BRAINTRUST_API_KEY=your-api-key-here
+# Required
+export BRAINTRUST_API_KEY=sk-bt-your-api-key
+
+# Recommended: specify your project name
+export BRAINTRUST_PROJECT_NAME="My Project"
 ```
-
-That's it! Everruns will automatically start sending traces to Braintrust.
-
-### 3. View Traces
-
-1. Open the Braintrust dashboard
-2. Navigate to your project (default: "My Project")
-3. Go to **Logs** to see incoming traces
-
-## Configuration Options
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -42,16 +36,11 @@ That's it! Everruns will automatically start sending traces to Braintrust.
 | `BRAINTRUST_PROJECT_ID` | No | - | Direct project UUID (skips name lookup) |
 | `BRAINTRUST_API_URL` | No | `https://api.braintrust.dev` | API base URL |
 
-### Example Configuration
+### 3. View Traces
 
-```bash
-# Minimal (uses default project)
-export BRAINTRUST_API_KEY=sk-bt-...
-
-# With custom project name
-export BRAINTRUST_API_KEY=sk-bt-...
-export BRAINTRUST_PROJECT_NAME="Production Agents"
-```
+1. Open the Braintrust dashboard
+2. Navigate to your project
+3. Go to **Logs** to see incoming traces
 
 ## Trace Hierarchy
 
@@ -102,19 +91,7 @@ agent turn (root span)
 
 1. **Check API key**: Verify `BRAINTRUST_API_KEY` is set correctly
 2. **Check logs**: Look for "Braintrust listener initialized" at startup
-3. **Project exists**: Ensure the project name exists in Braintrust
-
-### Disconnected Spans
-
-If spans appear as separate traces instead of a hierarchy:
-- This is typically a bug - please report it
-- All spans within a turn should share the same `turn_id`
-
-### Missing Metrics
-
-Some metrics (like cache tokens) are only available for certain providers:
-- Cache metrics: Claude (Anthropic) only
-- Time-to-first-token: Requires streaming support
+3. **Project name mismatch**: If `BRAINTRUST_PROJECT_NAME` doesn't match an existing project in Braintrust, logs will be silently dropped. Verify the project name exists in your Braintrust dashboard.
 
 ## Links
 
