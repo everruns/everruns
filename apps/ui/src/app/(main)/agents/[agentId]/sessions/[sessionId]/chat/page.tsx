@@ -279,8 +279,8 @@ export default function ChatPage() {
                         </div>
                       </div>
                     ) : (
-                      /* Agent message - flat with robot icon */
-                      <div className="w-full flex items-start gap-2">
+                      /* Agent message - flat with robot icon, pr-3 matches user bubble padding */
+                      <div className="w-full flex items-start gap-2 pr-3">
                         <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
                         <div className="flex-1 flex items-start gap-2">
                           <div className="flex-1 space-y-2">
