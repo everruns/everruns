@@ -91,12 +91,12 @@ Sessions are instances of agentic loop execution tied to an agent.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/agents/{agent_id}/sessions` | Create session |
-| GET | `/v1/agents/{agent_id}/sessions` | List sessions (paginated) |
-| GET | `/v1/agents/{agent_id}/sessions/{session_id}` | Get session |
-| PATCH | `/v1/agents/{agent_id}/sessions/{session_id}` | Update session |
-| DELETE | `/v1/agents/{agent_id}/sessions/{session_id}` | Delete session |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/cancel` | Cancel current turn |
+| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions` | Create session |
+| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions` | List sessions (paginated) |
+| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}` | Get session |
+| PATCH | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}` | Update session |
+| DELETE | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}` | Delete session |
+| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel` | Cancel current turn |
 
 #### Cancel Turn
 
@@ -120,21 +120,20 @@ Messages store all conversation content (user, assistant, tool calls, tool resul
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/messages` | Create message (triggers workflow) |
-| GET | `/v1/agents/{agent_id}/sessions/{session_id}/messages` | List messages |
+| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages` | Create message (triggers workflow) |
+| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages` | List messages |
 
 ### Images
 
-Global image storage for message attachments. Images are stored with optional session metadata.
+Org-scoped image storage for message attachments. Images are stored with optional session metadata.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/images` | Upload image (multipart/form-data) |
-| GET | `/v1/images` | List images (paginated) |
-| GET | `/v1/images/{id}` | Get image metadata |
-| GET | `/v1/images/{id}/data` | Get full image data |
-| GET | `/v1/images/{id}/thumbnail` | Get thumbnail (200x200 max) |
-| DELETE | `/v1/images/{id}` | Delete image |
+| POST | `/v1/orgs/{org}/images` | Upload image (multipart/form-data) |
+| GET | `/v1/orgs/{org}/images` | List images (paginated) |
+| GET | `/v1/orgs/{org}/images/{id}` | Get image data |
+| GET | `/v1/orgs/{org}/images/{id}/thumbnail` | Get thumbnail (200x200 max) |
+| DELETE | `/v1/orgs/{org}/images/{id}` | Delete image |
 
 **Upload Request (multipart/form-data):**
 
@@ -167,7 +166,7 @@ Global image storage for message attachments. Images are stored with optional se
 Images can be attached to messages using the `image_file` content part type:
 
 ```json
-POST /v1/agents/{agent_id}/sessions/{session_id}/messages
+POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages
 {
   "message": {
     "content": [
@@ -186,16 +185,16 @@ Virtual filesystem scoped to each session. See [session-filesystem.md](session-f
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs` | List root directory |
-| GET | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Read file or list directory |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Create file or directory |
-| PUT | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Update file content |
-| DELETE | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Delete file |
-| DELETE | `/v1/agents/{agent_id}/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_/stat` | Get file metadata |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_/move` | Move/rename file |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_/copy` | Copy file |
-| POST | `/v1/agents/{agent_id}/sessions/{session_id}/fs/_/grep` | Search files by content |
+| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs` | List root directory |
+| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Read file or list directory |
+| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Create file or directory |
+| PUT | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Update file content |
+| DELETE | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Delete file |
+| DELETE | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
+| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/stat` | Get file metadata |
+| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/move` | Move/rename file |
+| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/copy` | Copy file |
+| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/grep` | Search files by content |
 
 **Note:** Paths starting with `_` are reserved for system actions and cannot be used for file creation or updates.
 
@@ -205,8 +204,8 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/agents/{agent_id}/sessions/{session_id}/sse` | Stream events (SSE) |
-| GET | `/v1/agents/{agent_id}/sessions/{session_id}/events` | List events (JSON) |
+| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse` | Stream events (SSE) |
+| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events` | List events (JSON) |
 
 ### LLM Provider Configuration
 
@@ -264,7 +263,8 @@ Providers with custom base URLs or providers that don't support model listing re
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/capabilities` | List available capabilities |
+| GET | `/v1/orgs/{org}/capabilities` | List available capabilities |
+| GET | `/v1/orgs/{org}/capabilities/{capability_id}` | Get capability details |
 
 Capabilities are modular functionality units that can be enabled on agents. They provide:
 - **Tool groups**: Sets of related tools (e.g., `session_file_system` provides read/write/grep tools)
@@ -291,7 +291,7 @@ Capabilities are modular functionality units that can be enabled on agents. They
 
 Create agent with capabilities:
 ```json
-POST /v1/agents
+POST /v1/orgs/{org}/agents
 {
   "name": "Research Assistant",
   "system_prompt": "You are a helpful research assistant.",
@@ -301,7 +301,7 @@ POST /v1/agents
 
 Update agent capabilities:
 ```json
-PATCH /v1/agents/{agent_id}
+PATCH /v1/orgs/{org}/agents/{agent_id}
 {
   "capabilities": ["current_time", "web_fetch", "session_file_system"]
 }
@@ -309,7 +309,7 @@ PATCH /v1/agents/{agent_id}
 
 Agent response includes capabilities:
 ```json
-GET /v1/agents/{agent_id}
+GET /v1/orgs/{org}/agents/{agent_id}
 {
   "id": "...",
   "name": "Research Assistant",
@@ -425,16 +425,16 @@ Endpoints that return lists support pagination via query parameters:
 
 | Endpoint | Default Limit | Notes |
 |----------|---------------|-------|
-| `GET /v1/agents/{agent_id}/sessions` | 20 | Ordered by `created_at DESC` |
+| `GET /v1/orgs/{org}/agents/{agent_id}/sessions` | 20 | Ordered by `created_at DESC` |
 
 **Non-Paginated List Endpoints:**
 
 These endpoints return all items wrapped in `{"data": [...], "total": N}`:
-- `GET /v1/agents` - Returns all agents
-- `GET /v1/agents/{agent_id}/sessions/{session_id}/messages` - Returns all messages
-- `GET /v1/agents/{agent_id}/sessions/{session_id}/events` - Returns all events
-- `GET /v1/llm-providers` - Returns all providers
-- `GET /v1/llm-models` - Returns all models
+- `GET /v1/orgs/{org}/agents` - Returns all agents
+- `GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages` - Returns all messages
+- `GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events` - Returns all events
+- `GET /v1/orgs/{org}/llm-providers` - Returns all providers
+- `GET /v1/orgs/{org}/llm-models` - Returns all models
 - `GET /v1/durable/workers` - Returns all workers
 - `GET /v1/durable/workflows` - Returns all workflows
 - `GET /v1/durable/workflows/{id}/events` - Returns workflow events
@@ -442,19 +442,19 @@ These endpoints return all items wrapped in `{"data": [...], "total": N}`:
 - `GET /v1/durable/dlq` - Returns all DLQ entries
 - `GET /v1/durable/circuit-breakers` - Returns all circuit breakers
 
-**Exception:** The `/v1/capabilities` endpoint uses `items` instead of `data` for historical reasons.
+**Exception:** The `/v1/orgs/{org}/capabilities` endpoint uses `items` instead of `data` for historical reasons.
 
 **Example Usage:**
 
 ```bash
 # First page (default)
-GET /v1/agents/{id}/sessions
+GET /v1/orgs/{org}/agents/{id}/sessions
 
 # Second page
-GET /v1/agents/{id}/sessions?offset=20&limit=20
+GET /v1/orgs/{org}/agents/{id}/sessions?offset=20&limit=20
 
 # Custom page size
-GET /v1/agents/{id}/sessions?limit=10
+GET /v1/orgs/{org}/agents/{id}/sessions?limit=10
 ```
 
 ### Error Responses
