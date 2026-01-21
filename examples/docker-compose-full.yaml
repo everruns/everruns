@@ -64,9 +64,9 @@ services:
   # ==========================================================================
   # Control Plane (API + gRPC server)
   # ==========================================================================
-  api:
+  control-plane:
     image: ghcr.io/everruns/everruns-control-plane:latest
-    container_name: everruns-api
+    container_name: everruns-control-plane
     environment:
       DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
@@ -97,11 +97,11 @@ services:
     image: ghcr.io/everruns/everruns-worker:latest
     container_name: everruns-worker-1
     environment:
-      GRPC_ADDRESS: api:9001
+      GRPC_ADDRESS: control-plane:9001
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
-      api:
+      control-plane:
         condition: service_started
     restart: unless-stopped
 
@@ -109,11 +109,11 @@ services:
     image: ghcr.io/everruns/everruns-worker:latest
     container_name: everruns-worker-2
     environment:
-      GRPC_ADDRESS: api:9001
+      GRPC_ADDRESS: control-plane:9001
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
-      api:
+      control-plane:
         condition: service_started
     restart: unless-stopped
 
@@ -121,11 +121,11 @@ services:
     image: ghcr.io/everruns/everruns-worker:latest
     container_name: everruns-worker-3
     environment:
-      GRPC_ADDRESS: api:9001
+      GRPC_ADDRESS: control-plane:9001
       RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
-      api:
+      control-plane:
         condition: service_started
     restart: unless-stopped
 
@@ -139,7 +139,7 @@ services:
       PORT: "9100"
       HOSTNAME: 0.0.0.0
     depends_on:
-      api:
+      control-plane:
         condition: service_started
 
   # ==========================================================================
@@ -154,7 +154,7 @@ services:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
     depends_on:
-      - api
+      - control-plane
       - ui
     restart: unless-stopped
 
@@ -185,16 +185,16 @@ configs:
       #   /*            -> UI
       :8080 {
         handle_path /api/* {
-          reverse_proxy api:9000
+          reverse_proxy control-plane:9000
         }
         handle /swagger-ui/* {
-          reverse_proxy api:9000
+          reverse_proxy control-plane:9000
         }
         handle /api-doc/* {
-          reverse_proxy api:9000
+          reverse_proxy control-plane:9000
         }
         handle /health {
-          reverse_proxy api:9000
+          reverse_proxy control-plane:9000
         }
         handle {
           reverse_proxy ui:9100
