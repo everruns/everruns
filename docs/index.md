@@ -1,6 +1,6 @@
 ---
 title: Everruns Documentation
-description: Documentation for Everruns - A durable AI agent execution platform
+description: Documentation for Everruns - A durable agentic harness engine
 ---
 
 Welcome to the Everruns documentation.

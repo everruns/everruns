@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Everruns is a durable AI agent execution platform built on Rust with a PostgreSQL-backed durable execution engine. It provides APIs for managing agents, threads, and runs with streaming event output via SSE. The architecture prioritizes durability, observability, and developer experience.
+Everruns is a durable agentic harness engine built on Rust with a PostgreSQL-backed durable execution engine. It provides APIs for managing agents, threads, and runs with streaming event output via SSE. The architecture prioritizes durability, observability, and developer experience.
 
 ## System Architecture
 

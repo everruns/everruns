@@ -9,8 +9,8 @@ Brand guidelines for the Everruns project ensuring visual and verbal consistency
 ### Name & Tagline
 
 1. **Name**: Everruns
-2. **Tagline**: "Durable AI. Unstoppable agents."
-3. **Meaning**: AI agents that **ever run** — continuous, uninterrupted, eternal execution
+2. **Tagline**: "Durable Agentic Harness. Unstoppable agents."
+3. **Meaning**: A harness engine where AI agents **ever run** — continuous, uninterrupted, eternal execution
 
 ### Logo
 
