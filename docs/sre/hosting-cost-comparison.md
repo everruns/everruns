@@ -47,30 +47,15 @@ Since DNS is on Cloudflare, use their free proxy for SSL termination.
    app.everruns.com  A  <EC2-IP>  (Proxied ☁️)
    ```
 2. SSL/TLS settings → Set to "Full" (or "Full (strict)" with origin cert)
-3. On EC2, run nginx/Caddy as local reverse proxy (HTTP only, port 80)
+3. On EC2, run Caddy as local reverse proxy (HTTP only, port 80)
 
-**nginx config** (on EC2):
-```nginx
-server {
-    listen 80;
-    server_name app.everruns.com;
-
-    # API routes
-    location /api/ {
-        proxy_pass http://localhost:9000/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+**Caddyfile** (on EC2):
+```
+:80 {
+    handle_path /api/* {
+        reverse_proxy localhost:9000
     }
-
-    # UI (default)
-    location / {
-        proxy_pass http://localhost:9100;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
+    reverse_proxy localhost:9100
 }
 ```
 
@@ -160,7 +145,7 @@ AWS managed ALB with ACM certificates.
 │                    EC2 t4g.small / Lightsail                 │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │               nginx / Caddy (:80)                     │   │
+│  │                   Caddy (:80)                         │   │
 │  │         /api/* → :9000    /* → :9100                  │   │
 │  └──────────────────────┬───────────────────────────────┘   │
 │                         │                                    │
@@ -415,7 +400,7 @@ cd apps/ui && npm run build && npm start &
 │  │           EC2 t4g.small (or Lightsail $20)         │   │
 │  │                                                    │   │
 │  │  ┌────────────────────────────────────────────┐   │   │
-│  │  │              nginx (:80)                    │   │   │
+│  │  │              Caddy (:80)                    │   │   │
 │  │  │   /api/* → localhost:9000                  │   │   │
 │  │  │   /*     → localhost:9100                  │   │   │
 │  │  └─────────────────────┬──────────────────────┘   │   │
