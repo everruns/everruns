@@ -22,6 +22,7 @@ import type {
   LlmGenerationData,
   AgentThinkingData,
   TextDeltaData,
+  ThinkingDeltaData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -57,6 +58,7 @@ interface SessionContextValue {
   // Streaming state (for real-time text updates)
   isThinking: boolean;
   streamingText: string | null;
+  streamingThinking: string | null;
   streamingTurnId: string | null;
   // Message sending
   sendMessage: UseMutationResult<
@@ -103,6 +105,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
   // Streaming state - tracks real-time text generation
   const [isThinking, setIsThinking] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [streamingThinking, setStreamingThinking] = useState<string | null>(null);
   const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
 
   // Optimistic events - shown immediately before SSE confirms
@@ -198,6 +201,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         // Also clear thinking/streaming state - session is done
         setIsThinking(false);
         setStreamingText(null);
+        setStreamingThinking(null);
         setStreamingTurnId(null);
         break;
       }
@@ -206,13 +210,14 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         setIsWaitingForResponse(false);
         setIsThinking(false);
         setStreamingText(null);
+        setStreamingThinking(null);
         setStreamingTurnId(null);
         break;
       }
     }
   }, [events]);
 
-  // Update streaming state from SSE events (agent.thinking, text.delta, message.agent)
+  // Update streaming state from SSE events (agent.thinking, text.delta, thinking.delta, message.agent)
   // This provides real-time feedback while the LLM generates text
   useEffect(() => {
     if (!events || events.length === 0) return;
@@ -228,6 +233,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         if (!streamingTurnId || turnId === streamingTurnId) {
           setIsThinking(false);
           setStreamingText(null);
+          setStreamingThinking(null);
           setStreamingTurnId(null);
         }
         break;
@@ -242,6 +248,15 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         break;
       }
 
+      // thinking.delta provides incremental thinking/reasoning updates
+      if (event.type === "thinking.delta") {
+        const data = event.data as ThinkingDeltaData;
+        // Still "thinking" in terms of UI, but now with visible thinking content
+        setStreamingThinking(data.accumulated);
+        setStreamingTurnId(data.turn_id);
+        break;
+      }
+
       // agent.thinking indicates LLM is generating (before first text)
       if (event.type === "agent.thinking") {
         const data = event.data as AgentThinkingData;
@@ -249,6 +264,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         if (!streamingText || streamingTurnId !== data.turn_id) {
           setIsThinking(true);
           setStreamingText(null);
+          setStreamingThinking(null);
           setStreamingTurnId(data.turn_id);
         }
         break;
@@ -262,6 +278,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     setOptimisticEvents([]);
     setIsThinking(false);
     setStreamingText(null);
+    setStreamingThinking(null);
     setStreamingTurnId(null);
   }, [sessionId]);
 
@@ -461,6 +478,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     setIsWaitingForResponse,
     isThinking,
     streamingText,
+    streamingThinking,
     streamingTurnId,
     sendMessage,
     cancelCurrentTurn,

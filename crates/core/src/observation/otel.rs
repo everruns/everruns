@@ -379,6 +379,7 @@ mod tests {
             tools: vec![],
             output: LlmGenerationOutput {
                 text: Some("Hi there!".to_string()),
+                thinking: None,
                 tool_calls: vec![],
             },
             metadata: LlmGenerationMetadata {
@@ -424,6 +425,7 @@ mod tests {
             tools: vec![],
             output: LlmGenerationOutput {
                 text: Some("Let me check...".to_string()),
+                thinking: None,
                 tool_calls,
             },
             metadata: LlmGenerationMetadata {
@@ -462,6 +464,7 @@ mod tests {
             tools: vec![],
             output: LlmGenerationOutput {
                 text: Some("Hi!".to_string()),
+                thinking: None,
                 tool_calls: vec![],
             },
             metadata: LlmGenerationMetadata {

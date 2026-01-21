@@ -124,6 +124,8 @@ pub enum ContentType {
     ImageFile,
     ToolCall,
     ToolResult,
+    /// LLM reasoning/thinking content (extended thinking)
+    Thinking,
 }
 
 impl std::fmt::Display for ContentType {
@@ -134,6 +136,7 @@ impl std::fmt::Display for ContentType {
             ContentType::ImageFile => write!(f, "image_file"),
             ContentType::ToolCall => write!(f, "tool_call"),
             ContentType::ToolResult => write!(f, "tool_result"),
+            ContentType::Thinking => write!(f, "thinking"),
         }
     }
 }
@@ -145,6 +148,7 @@ impl From<&str> for ContentType {
             "image_file" => ContentType::ImageFile,
             "tool_call" => ContentType::ToolCall,
             "tool_result" => ContentType::ToolResult,
+            "thinking" => ContentType::Thinking,
             _ => ContentType::Text,
         }
     }
@@ -294,11 +298,31 @@ impl ToolResultContentPart {
     }
 }
 
+/// Thinking content part (LLM reasoning/extended thinking)
+///
+/// Contains the model's reasoning process that led to the response.
+/// This is produced by models with extended thinking capabilities
+/// (e.g., Claude with extended thinking, OpenAI reasoning models).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ThinkingContentPart {
+    /// The thinking/reasoning content from the model
+    pub thinking: String,
+}
+
+impl ThinkingContentPart {
+    pub fn new(thinking: impl Into<String>) -> Self {
+        Self {
+            thinking: thinking.into(),
+        }
+    }
+}
+
 // ============================================
 // Content Part Enums
 // ============================================
 
-/// A part of message content - can be text, image, image_file, tool_call, or tool_result
+/// A part of message content - can be text, image, image_file, tool_call, tool_result, or thinking
 ///
 /// This is the canonical content part type used across the system.
 /// API layer enables the "openapi" feature to add ToSchema derive.
@@ -316,6 +340,8 @@ pub enum ContentPart {
     ToolCall(ToolCallContentPart),
     /// Tool result content (result of tool execution)
     ToolResult(ToolResultContentPart),
+    /// Thinking/reasoning content (model's reasoning process)
+    Thinking(ThinkingContentPart),
 }
 
 impl ContentPart {
@@ -352,10 +378,23 @@ impl ContentPart {
         ContentPart::ToolResult(ToolResultContentPart::new(tool_call_id, result, error))
     }
 
+    /// Create a thinking content part
+    pub fn thinking(thinking: impl Into<String>) -> Self {
+        ContentPart::Thinking(ThinkingContentPart::new(thinking))
+    }
+
     /// Get text if this is a text part
     pub fn as_text(&self) -> Option<&str> {
         match self {
             ContentPart::Text(t) => Some(&t.text),
+            _ => None,
+        }
+    }
+
+    /// Get thinking if this is a thinking part
+    pub fn as_thinking(&self) -> Option<&str> {
+        match self {
+            ContentPart::Thinking(t) => Some(&t.thinking),
             _ => None,
         }
     }
@@ -373,7 +412,13 @@ impl ContentPart {
             ContentPart::ImageFile(_) => ContentType::ImageFile,
             ContentPart::ToolCall(_) => ContentType::ToolCall,
             ContentPart::ToolResult(_) => ContentType::ToolResult,
+            ContentPart::Thinking(_) => ContentType::Thinking,
         }
+    }
+
+    /// Check if this is a Thinking part
+    pub fn is_thinking(&self) -> bool {
+        matches!(self, ContentPart::Thinking(_))
     }
 }
 
@@ -542,6 +587,17 @@ impl Message {
         self.content.iter().find_map(|p| p.as_text())
     }
 
+    /// Add thinking content to this message (builder pattern)
+    ///
+    /// Creates a new message with the thinking content prepended.
+    /// Thinking content represents the model's reasoning process.
+    pub fn with_thinking(mut self, thinking: impl Into<String>) -> Self {
+        // Prepend thinking content at the beginning
+        self.content
+            .insert(0, ContentPart::Thinking(ThinkingContentPart::new(thinking)));
+        self
+    }
+
     /// Get all tool calls from the message content
     pub fn tool_calls(&self) -> Vec<&ToolCallContentPart> {
         self.content
@@ -592,9 +648,33 @@ impl Message {
                         "{}".to_string()
                     }
                 }
+                ContentPart::Thinking(_) => {
+                    // Thinking content is not included in LLM string
+                    // (it's the model's internal reasoning, not to be sent back)
+                    String::new()
+                }
             })
+            .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// Get all thinking content from the message
+    pub fn thinking_content(&self) -> Option<String> {
+        let thinking: Vec<&str> = self
+            .content
+            .iter()
+            .filter_map(|p| match p {
+                ContentPart::Thinking(t) => Some(t.thinking.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        if thinking.is_empty() {
+            None
+        } else {
+            Some(thinking.join("\n"))
+        }
     }
 }
 

@@ -13,12 +13,13 @@ import {
 } from "@/components/ui/select";
 import { Send, Bot, Loader2, Brain, ImagePlus, StopCircle } from "lucide-react";
 import type { Controls, MessageUserData, MessageAgentData, ContentPart } from "@/lib/api/types";
-import { isImageFilePart } from "@/lib/api/types";
+import { isImageFilePart, isThinkingPart } from "@/lib/api/types";
 import { ToolCallCardFromEvent } from "@/components/chat/tool-call-card-from-event";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
+import { ThinkingContent } from "@/components/thinking-content";
 import { useSessionContext } from "../session-context";
 import { useLlmModels, useImageAttachments } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
@@ -43,6 +44,7 @@ export default function ChatPage() {
     setIsWaitingForResponse,
     isThinking,
     streamingText,
+    streamingThinking,
     sendMessage,
     cancelCurrentTurn,
     getMessageText,
@@ -118,10 +120,10 @@ export default function ChatPage() {
     }
   }, [supportsReasoning, reasoningEffortConfig, reasoningEffort, setReasoningEffort]);
 
-  // Auto-scroll to bottom when new events arrive or streaming text updates
+  // Auto-scroll to bottom when new events arrive or streaming text/thinking updates
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatEvents, streamingText, isThinking]);
+  }, [chatEvents, streamingText, streamingThinking, isThinking]);
 
   // Auto-focus message input when session loads
   useEffect(() => {
@@ -221,6 +223,13 @@ export default function ChatPage() {
     }));
   };
 
+  // Extract thinking content from message content
+  const getMessageThinking = (content: ContentPart[]): string | null => {
+    const thinkingParts = content.filter(isThinkingPart);
+    if (thinkingParts.length === 0) return null;
+    return thinkingParts.map((part) => part.thinking).join("\n");
+  };
+
   return (
     <>
       {/* Messages area */}
@@ -249,6 +258,7 @@ export default function ChatPage() {
             const textContent = getMessageText(data);
             const toolCalls = isUser ? [] : getToolCalls(data as MessageAgentData);
             const images = data.message?.content ? getMessageImages(data.message.content) : [];
+            const thinking = isUser ? null : (data.message?.content ? getMessageThinking(data.message.content) : null);
 
             return (
               <div key={event.id} className="space-y-2">
@@ -284,6 +294,10 @@ export default function ChatPage() {
                         <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
                         <div className="flex-1 flex items-start gap-2">
                           <div className="flex-1 space-y-2">
+                            {/* Thinking content (collapsible) - shown before main text */}
+                            {thinking && (
+                              <ThinkingContent thinking={thinking} className="mb-2" />
+                            )}
                             {textContent && (
                               <p className="text-sm whitespace-pre-wrap text-foreground/90">{textContent}</p>
                             )}
@@ -322,13 +336,22 @@ export default function ChatPage() {
           })
         )}
 
-        {/* Streaming content - thinking indicator or streaming text */}
-        {(isThinking || streamingText) && (
+        {/* Streaming content - thinking indicator, streaming thinking, or streaming text */}
+        {(isThinking || streamingThinking || streamingText) && (
           <div className="flex justify-start">
             <div className="w-full flex items-start gap-2">
               <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-              <div className="flex-1">
-                {isThinking && !streamingText ? (
+              <div className="flex-1 space-y-2">
+                {/* Show streaming thinking content (expanded during streaming) */}
+                {streamingThinking && (
+                  <ThinkingContent
+                    thinking={streamingThinking}
+                    isStreaming={!streamingText}
+                    defaultExpanded={true}
+                  />
+                )}
+                {/* Show thinking indicator when no thinking or text content yet */}
+                {isThinking && !streamingText && !streamingThinking ? (
                   <ThinkingIndicator />
                 ) : streamingText ? (
                   <StreamingMessage text={streamingText} />

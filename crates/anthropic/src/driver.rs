@@ -361,6 +361,10 @@ impl LlmDriver for AnthropicLlmDriver {
                                             }
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
+                                        AnthropicDelta::ThinkingDelta { thinking } => {
+                                            // Extended thinking content - emit as ThinkingDelta
+                                            return Ok(LlmStreamEvent::ThinkingDelta(thinking));
+                                        }
                                     }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -712,6 +716,9 @@ enum AnthropicContentBlockDelta {
     Text { text: String },
     #[serde(rename = "tool_use")]
     ToolUse { id: String, name: String },
+    /// Extended thinking block (for models with thinking enabled)
+    #[serde(rename = "thinking")]
+    Thinking { thinking: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -721,11 +728,15 @@ struct AnthropicContentBlockDeltaEvent {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
+#[allow(clippy::enum_variant_names)] // Delta suffix is intentional for API event type alignment
 enum AnthropicDelta {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
     #[serde(rename = "input_json_delta")]
     InputJsonDelta { partial_json: String },
+    /// Extended thinking delta (incremental thinking content)
+    #[serde(rename = "thinking_delta")]
+    ThinkingDelta { thinking: String },
 }
 
 #[derive(Debug, Deserialize)]

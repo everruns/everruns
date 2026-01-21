@@ -36,6 +36,8 @@ pub type LlmResponseStream = Pin<Box<dyn Stream<Item = Result<LlmStreamEvent>> +
 pub enum LlmStreamEvent {
     /// Text delta (incremental content)
     TextDelta(String),
+    /// Thinking/reasoning delta (for extended thinking models)
+    ThinkingDelta(String),
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
     /// Streaming completed
@@ -107,12 +109,14 @@ pub trait LlmDriver: Send + Sync {
 
         let mut stream = self.chat_completion_stream(messages, config).await?;
         let mut text = String::new();
+        let mut thinking = String::new();
         let mut tool_calls = Vec::new();
         let mut metadata = LlmCompletionMetadata::default();
 
         while let Some(event) = stream.next().await {
             match event? {
                 LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+                LlmStreamEvent::ThinkingDelta(delta) => thinking.push_str(&delta),
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
                 LlmStreamEvent::Done(meta) => metadata = meta,
                 LlmStreamEvent::Error(err) => return Err(crate::error::AgentLoopError::llm(err)),
@@ -121,6 +125,11 @@ pub trait LlmDriver: Send + Sync {
 
         Ok(LlmResponse {
             text,
+            thinking: if thinking.is_empty() {
+                None
+            } else {
+                Some(thinking)
+            },
             tool_calls: if tool_calls.is_empty() {
                 None
             } else {
@@ -328,6 +337,8 @@ impl From<&RuntimeAgent> for LlmCallConfig {
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
     pub text: String,
+    /// Thinking/reasoning content (for extended thinking models)
+    pub thinking: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub metadata: LlmCompletionMetadata,
 }
@@ -547,6 +558,10 @@ impl LlmMessage {
                         "{}".to_string()
                     };
                     parts.push(LlmContentPart::Text { text });
+                }
+                ContentPart::Thinking(_) => {
+                    // Thinking content is the model's internal reasoning - don't send back to LLM
+                    // This content was produced by the model and is for display purposes only
                 }
             }
         }

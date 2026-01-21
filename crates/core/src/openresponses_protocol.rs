@@ -340,6 +340,24 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                         }
                                     }
 
+                                    // Reasoning/thinking content from reasoning models (o1, o3, GPT-5.2+)
+                                    Some("response.reasoning_summary.delta")
+                                    | Some("response.reasoning.delta") => {
+                                        // Reasoning delta - emit as ThinkingDelta
+                                        if let Some(delta) =
+                                            json.get("delta").and_then(|d| d.as_str())
+                                        {
+                                            Ok(LlmStreamEvent::ThinkingDelta(delta.to_string()))
+                                        } else if let Some(text) =
+                                            json.get("text").and_then(|t| t.as_str())
+                                        {
+                                            // Some versions use "text" instead of "delta"
+                                            Ok(LlmStreamEvent::ThinkingDelta(text.to_string()))
+                                        } else {
+                                            Ok(LlmStreamEvent::TextDelta(String::new()))
+                                        }
+                                    }
+
                                     Some("response.function_call_arguments.delta") => {
                                         // Function call arguments delta
                                         if let (Some(call_id), Some(delta)) = (

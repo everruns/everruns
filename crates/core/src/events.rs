@@ -43,6 +43,8 @@ pub const LLM_GENERATION: &str = "llm.generation";
 // Streaming events (for real-time UI updates)
 pub const AGENT_THINKING: &str = "agent.thinking";
 pub const TEXT_DELTA: &str = "text.delta";
+/// Extended thinking/reasoning content delta (for models with thinking capabilities)
+pub const THINKING_DELTA: &str = "thinking.delta";
 
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
@@ -603,6 +605,10 @@ pub struct LlmGenerationOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
 
+    /// Thinking/reasoning content from the model (for extended thinking models)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+
     /// Tool calls requested by the model
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
@@ -694,7 +700,54 @@ impl LlmGenerationData {
         Self {
             messages,
             tools,
-            output: LlmGenerationOutput { text, tool_calls },
+            output: LlmGenerationOutput {
+                text,
+                thinking: None,
+                tool_calls,
+            },
+            metadata: LlmGenerationMetadata {
+                model,
+                provider,
+                usage,
+                duration_ms,
+                time_to_first_token_ms,
+                success: true,
+                error: None,
+                finish_reasons,
+                response_id: None,
+            },
+        }
+    }
+
+    /// Create a successful generation event with thinking content
+    #[allow(clippy::too_many_arguments)]
+    pub fn success_with_thinking(
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinitionSummary>,
+        text: Option<String>,
+        thinking: Option<String>,
+        tool_calls: Vec<ToolCall>,
+        model: String,
+        provider: Option<String>,
+        usage: Option<TokenUsage>,
+        duration_ms: Option<u64>,
+        time_to_first_token_ms: Option<u64>,
+    ) -> Self {
+        // Infer finish reasons from content
+        let finish_reasons = if !tool_calls.is_empty() {
+            Some(vec!["tool_calls".to_string()])
+        } else {
+            Some(vec!["stop".to_string()])
+        };
+
+        Self {
+            messages,
+            tools,
+            output: LlmGenerationOutput {
+                text,
+                thinking,
+                tool_calls,
+            },
             metadata: LlmGenerationMetadata {
                 model,
                 provider,
@@ -727,7 +780,11 @@ impl LlmGenerationData {
         Self {
             messages,
             tools,
-            output: LlmGenerationOutput { text, tool_calls },
+            output: LlmGenerationOutput {
+                text,
+                thinking: None,
+                tool_calls,
+            },
             metadata: LlmGenerationMetadata {
                 model,
                 provider,
@@ -757,6 +814,7 @@ impl LlmGenerationData {
             tools,
             output: LlmGenerationOutput {
                 text: None,
+                thinking: None,
                 tool_calls: vec![],
             },
             metadata: LlmGenerationMetadata {
@@ -810,6 +868,25 @@ pub struct TextDeltaData {
     pub delta: String,
 
     /// Accumulated text so far (convenience for UI)
+    pub accumulated: String,
+}
+
+/// Data for thinking.delta event
+///
+/// Emitted during LLM streaming when the model produces thinking/reasoning content.
+/// This is for models with extended thinking capabilities (Claude, OpenAI reasoning models).
+/// UI can display this in a collapsible thinking section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ThinkingDeltaData {
+    /// Turn ID this delta belongs to (for correlation)
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// The thinking delta (new thinking content since last delta)
+    pub delta: String,
+
+    /// Accumulated thinking so far (convenience for UI)
     pub accumulated: String,
 }
 
@@ -957,6 +1034,7 @@ pub struct SessionIdledData {
 /// - `tool.call_completed` → ToolCallCompletedData
 /// - `llm.generation` → LlmGenerationData
 /// - `text.delta` → TextDeltaData
+/// - `thinking.delta` → ThinkingDeltaData
 /// - `agent.thinking` → AgentThinkingData
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
@@ -993,11 +1071,12 @@ pub enum EventData {
     LlmGeneration(LlmGenerationData),
 
     // Streaming events
-    // NOTE: TextDelta must come BEFORE AgentThinking for untagged enum deserialization.
-    // TextDelta has more required fields (turn_id, delta, accumulated) while
+    // NOTE: TextDelta and ThinkingDelta must come BEFORE AgentThinking for untagged enum deserialization.
+    // TextDelta/ThinkingDelta have more required fields (turn_id, delta, accumulated) while
     // AgentThinking only requires turn_id (model is optional). If AgentThinking
-    // comes first, it will match TextDelta JSON and discard delta/accumulated fields.
+    // comes first, it will match their JSON and discard delta/accumulated fields.
     TextDelta(TextDeltaData),
+    ThinkingDelta(ThinkingDeltaData),
     AgentThinking(AgentThinkingData),
 
     // NOTE: TurnCancelled is placed here (after streaming events) because it only
@@ -1037,6 +1116,7 @@ impl EventData {
             EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::TextDelta(_) => TEXT_DELTA,
+            EventData::ThinkingDelta(_) => THINKING_DELTA,
             EventData::AgentThinking(_) => AGENT_THINKING,
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
@@ -1084,6 +1164,7 @@ impl_from_event_data! {
     LlmGenerationData => LlmGeneration,
     AgentThinkingData => AgentThinking,
     TextDeltaData => TextDelta,
+    ThinkingDeltaData => ThinkingDelta,
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,

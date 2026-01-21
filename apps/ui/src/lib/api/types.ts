@@ -138,7 +138,8 @@ export type ContentPart =
   | { type: "image"; url?: string; base64?: string; media_type?: string }
   | { type: "image_file"; image_id: string; filename?: string }
   | { type: "tool_call"; id: string; name: string; arguments: Record<string, unknown> }
-  | { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string };
+  | { type: "tool_result"; tool_call_id: string; result?: unknown; error?: string }
+  | { type: "thinking"; thinking: string };
 
 // Helper type guards for ContentPart
 export function isTextPart(part: ContentPart): part is { type: "text"; text: string } {
@@ -155,6 +156,10 @@ export function isToolResultPart(part: ContentPart): part is { type: "tool_resul
 
 export function isImageFilePart(part: ContentPart): part is { type: "image_file"; image_id: string; filename?: string } {
   return part.type === "image_file";
+}
+
+export function isThinkingPart(part: ContentPart): part is { type: "thinking"; thinking: string } {
+  return part.type === "thinking";
 }
 
 // Reasoning configuration for model controls
@@ -376,6 +381,8 @@ export interface ToolCallCompletedData {
 /** LLM generation output */
 export interface LlmGenerationOutput {
   text?: string;
+  /** Thinking/reasoning content from extended thinking models */
+  thinking?: string;
   tool_calls: ToolCall[];
 }
 
@@ -432,6 +439,15 @@ export interface TextDeltaData {
   accumulated: string;
 }
 
+/** Data for thinking.delta event (streaming thinking/reasoning update) */
+export interface ThinkingDeltaData {
+  turn_id: string;
+  /** The new thinking text since last delta */
+  delta: string;
+  /** Accumulated thinking text so far */
+  accumulated: string;
+}
+
 /** Union type for all event data types */
 export type EventData =
   | MessageUserData
@@ -452,6 +468,7 @@ export type EventData =
   | SessionIdledData
   | AgentThinkingData
   | TextDeltaData
+  | ThinkingDeltaData
   | Record<string, unknown>; // Raw/unknown event data
 
 export interface CreateEventRequest {

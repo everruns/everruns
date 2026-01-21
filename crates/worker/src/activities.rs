@@ -392,6 +392,7 @@ mod tests {
         let result = ReasonResult {
             success: true,
             text: "Hello!".to_string(),
+            thinking: None,
             tool_calls: vec![],
             has_tool_calls: false,
             tool_definitions: vec![],
