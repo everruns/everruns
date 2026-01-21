@@ -70,8 +70,9 @@ tonic.workspace = true
 prost.workspace = true
 
 [dev-dependencies]
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-native-certs", "blocking"] }
+reqwest.workspace = true
 http-body-util = "0.1"
+sysinfo = "0.33"
 
 [[bench]]
 name = "load_test"
