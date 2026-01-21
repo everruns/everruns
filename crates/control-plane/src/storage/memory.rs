@@ -2281,6 +2281,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_session_updated_at() {
+        let db = InMemoryDatabase::new();
+
+        let agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    name: "Test Agent".to_string(),
+                    description: None,
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    tags: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        // Create session - updated_at should equal created_at
+        let session = db
+            .create_session(CreateSessionRow {
+                agent_id: agent.id,
+                title: Some("Test Session".to_string()),
+                tags: vec![],
+                model_id: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(session.created_at, session.updated_at);
+        let original_updated_at = session.updated_at;
+
+        // Small delay to ensure different timestamp
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Update session - updated_at should change
+        let updated = db
+            .update_session(
+                DEFAULT_ORG_ID,
+                session.id,
+                UpdateSession {
+                    title: Some("Updated Title".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(updated.updated_at > original_updated_at);
+        assert_eq!(updated.title, Some("Updated Title".to_string()));
+    }
+
+    #[tokio::test]
     async fn test_events_sequence() {
         use chrono::Utc;
 
