@@ -844,9 +844,33 @@ let event_service = EventService::with_listeners(db, vec![otel_listener]);
 ### Execution Model
 
 1. Event is persisted to database
-2. All registered listeners are notified synchronously
+2. All registered listeners are notified sequentially
 3. Listeners should not block; spawn background tasks for heavy processing
 4. Listener failures do not affect event persistence
+
+### Error Isolation
+
+Listeners are executed in isolation to ensure misbehaving listeners cannot disrupt event processing:
+
+- **Panic isolation**: Each listener runs in a separate tokio task. If a listener panics, the panic is caught and logged, but other listeners continue to execute.
+- **No error propagation**: Listener errors/panics never propagate to the event emitter or affect event persistence.
+- **Logging**: Panics are logged with `tracing::error!` including the listener name for debugging.
+- **Sequential execution**: Despite isolation, listeners are awaited sequentially to preserve ordering semantics.
+
+**Rationale:** Event listeners are pluggable integrations (OTel, metrics, audit logs) that should not affect core event processing. A bug in an observability integration should never break the application.
+
+**Implementation:**
+```rust
+// Each listener is spawned in isolation
+let handle = tokio::spawn(async move {
+    listener.on_event(&event).await;
+});
+
+// Panics are caught and logged, not propagated
+if let Err(e) = handle.await {
+    tracing::error!(listener = name, error = %e, "EventListener panicked");
+}
+```
 
 ### Custom Listeners
 

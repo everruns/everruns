@@ -43,7 +43,11 @@ impl EventService {
         }
     }
 
-    /// Notify all registered listeners about an event
+    /// Notify all registered listeners about an event.
+    ///
+    /// Each listener is called in isolation - if a listener panics or fails,
+    /// other listeners are still notified. This ensures misbehaving listeners
+    /// cannot disrupt event processing.
     async fn notify_listeners(&self, event: &Event) {
         for listener in self.listeners.iter() {
             // Check if listener wants this event type
@@ -53,7 +57,23 @@ impl EventService {
                 .unwrap_or(true); // None means all events
 
             if should_notify {
-                listener.on_event(event).await;
+                let listener_name = listener.name();
+                let listener = listener.clone();
+                let event = event.clone();
+
+                // Spawn listener in isolated task to catch panics
+                let handle = tokio::spawn(async move {
+                    listener.on_event(&event).await;
+                });
+
+                // Wait for completion, log but don't propagate panics
+                if let Err(e) = handle.await {
+                    tracing::error!(
+                        listener = listener_name,
+                        error = %e,
+                        "EventListener panicked or was cancelled"
+                    );
+                }
             }
         }
     }
