@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { formatDate, formatDurationSeconds } from "@/lib/formatting";
+import { shortenId } from "@/lib/utils";
 import type { Session, Agent, LlmModelWithProvider } from "@/lib/api/types";
 
 interface RecentSessionsProps {
@@ -83,7 +84,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                         href={`/agents/${session.agent_id}/sessions/${session.id}`}
                         className="font-mono text-sm hover:underline"
                       >
-                        {session.title || session.id.slice(0, 8) + "..."}
+                        {session.title || shortenId(session.id)}
                       </Link>
                     </TableCell>
                     <TableCell>

@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import type { Session, SessionStatus, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 
@@ -128,7 +128,7 @@ export function SessionCard({
   summary,
 }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
-  const displayTitle = session.title || `Session ${session.id.slice(0, 8)}`;
+  const displayTitle = session.title || `Session ${shortenId(session.id)}`;
   // Show preview from session (first user message), explicit summary prop, or nothing
   const inputPreview = summary ?? session.preview;
   // Show output preview from session (last assistant message)

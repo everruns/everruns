@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ArrowLeft, Sparkles, MessageSquare, Folder, Activity, Zap, Database } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, shortenId } from "@/lib/utils";
 import { SessionProvider, useSessionContext } from "./session-context";
 
 // Helper function to format token counts in a compact way
@@ -101,7 +101,7 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">
-              {session.title || `Session ${session.id.slice(0, 8)}`}
+              {session.title || `Session ${shortenId(session.id)}`}
             </h1>
             <p className="text-sm text-muted-foreground">
               {activeTab === "files"
