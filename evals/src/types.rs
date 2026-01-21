@@ -1,0 +1,292 @@
+//! Core types for the evaluation framework
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use uuid::Uuid;
+
+/// A message in a conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub id: Uuid,
+    pub role: MessageRole,
+    pub content: String,
+    pub timestamp: DateTime<Utc>,
+    /// For tool_result messages, the name of the tool
+    pub tool_name: Option<String>,
+    /// Estimated token count
+    #[serde(default)]
+    pub estimated_tokens: usize,
+}
+
+impl Message {
+    pub fn user(content: impl Into<String>) -> Self {
+        let content = content.into();
+        let estimated_tokens = estimate_tokens(&content);
+        Self {
+            id: Uuid::new_v4(),
+            role: MessageRole::User,
+            content,
+            timestamp: Utc::now(),
+            tool_name: None,
+            estimated_tokens,
+        }
+    }
+
+    pub fn assistant(content: impl Into<String>) -> Self {
+        let content = content.into();
+        let estimated_tokens = estimate_tokens(&content);
+        Self {
+            id: Uuid::new_v4(),
+            role: MessageRole::Assistant,
+            content,
+            timestamp: Utc::now(),
+            tool_name: None,
+            estimated_tokens,
+        }
+    }
+
+    pub fn tool_result(tool_name: impl Into<String>, content: impl Into<String>) -> Self {
+        let content = content.into();
+        let estimated_tokens = estimate_tokens(&content);
+        Self {
+            id: Uuid::new_v4(),
+            role: MessageRole::ToolResult,
+            content,
+            timestamp: Utc::now(),
+            tool_name: Some(tool_name.into()),
+            estimated_tokens,
+        }
+    }
+
+    pub fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
+        self.timestamp = timestamp;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageRole {
+    User,
+    Assistant,
+    ToolResult,
+    System,
+}
+
+impl std::fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageRole::User => write!(f, "user"),
+            MessageRole::Assistant => write!(f, "assistant"),
+            MessageRole::ToolResult => write!(f, "tool_result"),
+            MessageRole::System => write!(f, "system"),
+        }
+    }
+}
+
+/// Estimate token count using character approximation
+/// More accurate would be tiktoken, but this is sufficient for budgeting
+pub fn estimate_tokens(text: &str) -> usize {
+    // Rough approximation: 1 token ≈ 4 characters for English text
+    // This tends to overestimate slightly which is safer for budgeting
+    (text.len() + 3) / 4
+}
+
+/// A test scenario definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Scenario {
+    /// Unique name for the scenario
+    pub name: String,
+    /// Human-readable description
+    pub description: String,
+    /// Type of scenario
+    pub scenario_type: ScenarioType,
+    /// The conversation history
+    pub messages: Vec<Message>,
+    /// The task/question to answer
+    pub task: String,
+    /// Expected answer or criteria for success
+    pub expected: ExpectedResult,
+    /// Metadata about planted information
+    #[serde(default)]
+    pub planted_info: Vec<PlantedInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScenarioType {
+    /// Find specific info planted early in conversation
+    NeedleInHaystack,
+    /// Synthesize info from multiple points
+    MultiHop,
+    /// Track cumulative changes
+    Cumulative,
+    /// General long-context QA
+    LongContextQa,
+}
+
+impl std::fmt::Display for ScenarioType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScenarioType::NeedleInHaystack => write!(f, "needle_in_haystack"),
+            ScenarioType::MultiHop => write!(f, "multi_hop"),
+            ScenarioType::Cumulative => write!(f, "cumulative"),
+            ScenarioType::LongContextQa => write!(f, "long_context_qa"),
+        }
+    }
+}
+
+/// Information planted in the conversation for retrieval tests
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlantedInfo {
+    /// Position in message list (0-indexed)
+    pub message_index: usize,
+    /// The key information to find
+    pub key: String,
+    /// The value/content to retrieve
+    pub value: String,
+}
+
+/// Expected result for evaluation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ExpectedResult {
+    /// Exact string match
+    Exact(String),
+    /// Must contain all of these strings
+    Contains { contains: Vec<String> },
+    /// Regex pattern match
+    Pattern { pattern: String },
+    /// Custom evaluation (LLM-as-judge)
+    LlmJudge { criteria: String },
+}
+
+/// Result of running a single scenario with a strategy
+#[derive(Debug, Clone, Serialize)]
+pub struct ScenarioResult {
+    pub scenario_name: String,
+    pub strategy_name: String,
+    pub success: bool,
+    pub response: String,
+    pub metrics: EvalMetrics,
+    pub error: Option<String>,
+}
+
+/// Metrics collected during evaluation
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct EvalMetrics {
+    /// Total tokens used (input + output)
+    pub total_tokens: usize,
+    /// Input tokens
+    pub input_tokens: usize,
+    /// Output tokens
+    pub output_tokens: usize,
+    /// Number of LLM calls made
+    pub llm_calls: usize,
+    /// Number of history queries made (for infinity strategy)
+    pub history_queries: usize,
+    /// Time to complete in milliseconds
+    pub latency_ms: u64,
+    /// Whether context was exceeded
+    pub context_exceeded: bool,
+    /// Messages included in context
+    pub messages_in_context: usize,
+    /// Messages excluded from context
+    pub messages_excluded: usize,
+}
+
+/// Aggregated results across all scenarios for a strategy
+#[derive(Debug, Clone, Serialize)]
+pub struct StrategyResults {
+    pub strategy_name: String,
+    pub total_scenarios: usize,
+    pub successful: usize,
+    pub failed: usize,
+    pub context_exceeded: usize,
+    pub avg_tokens: f64,
+    pub avg_latency_ms: f64,
+    pub avg_history_queries: f64,
+    pub scenario_results: Vec<ScenarioResult>,
+}
+
+impl StrategyResults {
+    pub fn accuracy(&self) -> f64 {
+        if self.total_scenarios == 0 {
+            0.0
+        } else {
+            self.successful as f64 / self.total_scenarios as f64 * 100.0
+        }
+    }
+}
+
+/// Full evaluation results
+#[derive(Debug, Clone, Serialize)]
+pub struct EvaluationResults {
+    pub timestamp: DateTime<Utc>,
+    pub model: String,
+    pub config: HashMap<String, String>,
+    pub strategy_results: Vec<StrategyResults>,
+}
+
+/// Prepared context for an LLM call
+#[derive(Debug, Clone)]
+pub struct PreparedContext {
+    /// Messages to send to LLM
+    pub messages: Vec<Message>,
+    /// Messages excluded from context (available for history queries)
+    pub excluded_messages: Vec<Message>,
+    /// System prompt additions
+    pub system_additions: Vec<String>,
+    /// Additional tools to provide
+    pub additional_tools: Vec<ToolDefinition>,
+    /// Estimated total tokens
+    pub estimated_tokens: usize,
+}
+
+/// Tool definition for the LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
+
+/// Tool call from LLM response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
+/// Query parameters for history search
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryQuery {
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub message_range: Option<MessageRange>,
+    #[serde(default)]
+    pub time_range: Option<TimeRange>,
+    #[serde(default)]
+    pub message_types: Option<Vec<String>>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+fn default_limit() -> usize {
+    20
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageRange {
+    pub from: usize,
+    pub to: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeRange {
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+}

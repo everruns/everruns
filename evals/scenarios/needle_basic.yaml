@@ -1,0 +1,22 @@
+# Needle in Haystack: Find API key from early in conversation
+name: needle_api_key
+description: Find an API key mentioned early in a 100+ message conversation
+scenario_type: needle_in_haystack
+
+# Task for the model
+task: "What API key did we configure earlier in our conversation?"
+
+# Expected result
+expected:
+  contains:
+    - "sk-secret-key-12345"
+
+# Planted information
+planted_info:
+  - message_index: 12
+    key: API_KEY
+    value: sk-secret-key-12345
+
+# Messages will be generated or loaded separately
+# This file defines the scenario metadata
+messages: []

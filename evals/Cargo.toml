@@ -1,0 +1,48 @@
+[package]
+name = "everruns-evals"
+version = "0.1.0"
+edition = "2024"
+description = "Evaluation framework for context management strategies"
+
+[[bin]]
+name = "eval"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# HTTP client for LLM APIs
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# For token estimation
+tiktoken-rs = "0.6"
+
+# For colored terminal output
+colored = "2"
+
+# For table formatting
+tabled = "0.17"
+
+# For pattern matching in metrics
+regex = "1"
+
+[dev-dependencies]
+tokio-test = "0.4"

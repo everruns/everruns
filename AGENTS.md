@@ -42,6 +42,7 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - `specs/id-schema.md` - Standardized prefixed ID format
 - `specs/braintrust-integration.md` - Braintrust observability
 - `specs/test-cases.md` - Manual test case format
+- `specs/infinity-context.md` - Infinity context capability
 
 ### Skills
 

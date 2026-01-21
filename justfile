@@ -80,3 +80,17 @@ start-all *args:
 # Stop all services (API, UI, Docker)
 stop-all:
     ./scripts/lib/services.sh stop-all
+
+# === Evaluations ===
+
+# Run infinity context evaluations (dry run by default)
+eval *args:
+    cd evals && cargo run --release -- --synthetic {{args}}
+
+# Run eval with actual LLM calls
+eval-live *args:
+    cd evals && cargo run --release -- --synthetic {{args}}
+
+# Run eval in dry-run mode (no LLM calls, shows what would happen)
+eval-dry *args:
+    cd evals && cargo run --release -- --synthetic --dry-run {{args}}
