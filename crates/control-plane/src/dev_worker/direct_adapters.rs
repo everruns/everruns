@@ -148,6 +148,7 @@ impl SessionStore for DirectSessionStore {
                 _ => SessionStatus::Started,
             },
             created_at: r.created_at,
+            updated_at: r.updated_at,
             started_at: r.started_at,
             finished_at: r.finished_at,
             usage: None, // Usage not tracked in direct adapter context

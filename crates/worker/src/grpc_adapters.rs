@@ -449,6 +449,9 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         _ => everruns_core::SessionStatus::Started,
     };
 
+    let created_at = proto_timestamp_or_now(proto_session.created_at.as_ref());
+    let updated_at = proto_timestamp_or_now(proto_session.updated_at.as_ref());
+
     Ok(Session {
         id: id.into(),
         agent_id: agent_id.into(),
@@ -458,7 +461,8 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         tags: vec![],
         model_id: model_id.map(|u| u.into()),
         status,
-        created_at: proto_timestamp_or_now(proto_session.created_at.as_ref()),
+        created_at,
+        updated_at,
         started_at: None,
         finished_at: None,
         usage: None, // Usage not tracked in worker context

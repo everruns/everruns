@@ -233,6 +233,7 @@ impl SessionService {
             model_id: row.model_id.map(|id| id.into()),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
+            updated_at: row.updated_at,
             started_at: row.started_at,
             finished_at: row.finished_at,
             usage,

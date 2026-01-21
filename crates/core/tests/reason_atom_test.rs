@@ -54,6 +54,7 @@ async fn setup_test_environment() -> (
 
     // Create a test session
     let session_id = Uuid::now_v7();
+    let now = chrono::Utc::now();
     let session = Session {
         id: session_id.into(),
         agent_id: agent_id.into(),
@@ -63,7 +64,8 @@ async fn setup_test_environment() -> (
         tags: vec![],
         status: SessionStatus::Started,
         model_id: None,
-        created_at: chrono::Utc::now(),
+        created_at: now,
+        updated_at: now,
         started_at: None,
         finished_at: None,
         usage: None,
@@ -294,6 +296,7 @@ async fn test_reason_atom_with_different_configs() {
 
     // Second test with a different configuration
     let session_id2 = Uuid::now_v7();
+    let now2 = chrono::Utc::now();
     let session2 = Session {
         id: session_id2.into(),
         agent_id: agent_id.into(),
@@ -303,7 +306,8 @@ async fn test_reason_atom_with_different_configs() {
         tags: vec![],
         status: SessionStatus::Started,
         model_id: None,
-        created_at: chrono::Utc::now(),
+        created_at: now2,
+        updated_at: now2,
         started_at: None,
         finished_at: None,
         usage: None,

@@ -466,6 +466,7 @@ impl InMemoryDatabase {
             model_id: input.model_id,
             status: "pending".to_string(), // Default status for new sessions
             created_at: now,
+            updated_at: now,
             started_at: None,
             finished_at: None,
             total_input_tokens: 0,
@@ -571,6 +572,8 @@ impl InMemoryDatabase {
             if input.finished_at.is_some() {
                 session.finished_at = input.finished_at;
             }
+            // Update updated_at on every update (mimics DB trigger)
+            session.updated_at = Self::now();
             return Ok(Some(session.clone()));
         }
         Ok(None)
@@ -1902,6 +1905,8 @@ impl InMemoryDatabase {
             session.total_output_tokens += output_tokens;
             session.total_cache_read_tokens += cache_read_tokens;
             session.total_cache_creation_tokens += cache_creation_tokens;
+            // Update updated_at on every update (mimics DB trigger)
+            session.updated_at = Self::now();
         }
         Ok(())
     }

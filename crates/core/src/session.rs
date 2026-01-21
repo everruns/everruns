@@ -83,6 +83,8 @@ pub struct Session {
     pub status: SessionStatus,
     /// Timestamp when the session was created.
     pub created_at: DateTime<Utc>,
+    /// Timestamp when the session was last updated.
+    pub updated_at: DateTime<Utc>,
     /// Timestamp when the session started executing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<DateTime<Utc>>,

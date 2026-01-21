@@ -136,6 +136,7 @@ async fn main() -> anyhow::Result<()> {
         model_id: None,
         status: SessionStatus::Started,
         created_at: now,
+        updated_at: now,
         started_at: None,
         finished_at: None,
         usage: None,

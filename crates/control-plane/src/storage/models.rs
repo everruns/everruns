@@ -214,6 +214,7 @@ pub struct SessionRow {
     pub model_id: Option<Uuid>,
     pub status: String,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     /// Cumulative input tokens for all LLM calls in this session
