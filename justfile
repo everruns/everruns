@@ -126,26 +126,66 @@ stop-all:
 
 # === Load Testing ===
 
-# Run load test against running API (requires API + Worker running)
-load-test *args:
-    cargo run --release -p everruns-server --bench load_test -- {{args}}
-
-# Run quick load test (10 sessions, 10 messages each)
-load-test-quick:
-    SESSIONS=10 MESSAGES_PER_SESSION=10 MAX_CONCURRENT=10 cargo run --release -p everruns-server --bench load_test
-
-# Run medium load test (100 sessions, 50 messages each = 5000 total)
-load-test-medium:
-    SESSIONS=100 MESSAGES_PER_SESSION=50 MAX_CONCURRENT=50 cargo run --release -p everruns-server --bench load_test
-
-# Run heavy load test (500 sessions, 100 messages each = 50000 total)
-load-test-heavy:
-    SESSIONS=500 MESSAGES_PER_SESSION=100 MAX_CONCURRENT=100 cargo run --release -p everruns-server --bench load_test
-
-# Run load test with realistic LLM delays
-load-test-realistic:
-    MODEL_ID=llmsim-ttft-500 SESSIONS=100 MESSAGES_PER_SESSION=50 cargo run --release -p everruns-server --bench load_test
-
-# Run load test with slow LLM simulation
-load-test-slow:
-    MODEL_ID=llmsim-ttft-2000 SESSIONS=50 MESSAGES_PER_SESSION=20 cargo run --release -p everruns-server --bench load_test
+# Load test subcommand: just load-test <profile> [args]
+# Profiles: quick, medium, heavy, realistic, slow
+# Example: just load-test medium
+#          just load-test quick --help
+#          SESSIONS=200 just load-test medium
+[no-cd]
+load-test profile="medium" *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{profile}}" in
+        quick)
+            SESSIONS="${SESSIONS:-10}" \
+            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-10}" \
+            MAX_CONCURRENT="${MAX_CONCURRENT:-10}" \
+            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            ;;
+        medium)
+            SESSIONS="${SESSIONS:-100}" \
+            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-50}" \
+            MAX_CONCURRENT="${MAX_CONCURRENT:-50}" \
+            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            ;;
+        heavy)
+            SESSIONS="${SESSIONS:-500}" \
+            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-100}" \
+            MAX_CONCURRENT="${MAX_CONCURRENT:-100}" \
+            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            ;;
+        realistic)
+            MODEL_ID="${MODEL_ID:-llmsim-ttft-500}" \
+            SESSIONS="${SESSIONS:-100}" \
+            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-50}" \
+            MAX_CONCURRENT="${MAX_CONCURRENT:-50}" \
+            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            ;;
+        slow)
+            MODEL_ID="${MODEL_ID:-llmsim-ttft-2000}" \
+            SESSIONS="${SESSIONS:-50}" \
+            MESSAGES_PER_SESSION="${MESSAGES_PER_SESSION:-20}" \
+            MAX_CONCURRENT="${MAX_CONCURRENT:-25}" \
+            cargo run --release -p everruns-server --bench load_test -- {{args}}
+            ;;
+        *)
+            echo "Unknown profile: {{profile}}"
+            echo "Available profiles: quick, medium, heavy, realistic, slow"
+            echo ""
+            echo "Usage: just load-test <profile> [args]"
+            echo ""
+            echo "Profiles:"
+            echo "  quick     - 10 sessions, 10 messages (100 total)"
+            echo "  medium    - 100 sessions, 50 messages (5000 total) [default]"
+            echo "  heavy     - 500 sessions, 100 messages (50000 total)"
+            echo "  realistic - medium + 500ms TTFT delay"
+            echo "  slow      - 50 sessions, 20 messages + 2s TTFT delay"
+            echo ""
+            echo "Examples:"
+            echo "  just load-test quick"
+            echo "  just load-test heavy"
+            echo "  SESSIONS=200 just load-test medium"
+            echo "  MODEL_ID=llmsim-ttft-1000 just load-test medium"
+            exit 1
+            ;;
+    esac
