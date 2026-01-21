@@ -221,16 +221,29 @@ Run PostgreSQL + Control-plane + Worker + UI on one instance.
 - Supabase: Projects pause after 1 week inactivity (not suitable for production)
 - Both require internet egress from EC2 to reach database
 
-### Option 5: ECS Fargate Spot
+### Option 5: ECS Fargate
 
-| Resource | Price | Notes |
-|----------|-------|-------|
-| **Fargate Spot 0.5 vCPU / 1GB** | ~$10/mo | 70% discount, interruptible |
-| **RDS db.t4g.micro** | FREE / ~$22/mo | |
-| **Total** | **~$10-32/mo** | |
+Run containers on AWS Fargate (serverless). **Requires RDS for PostgreSQL** (can't run PG in Fargate practically).
 
-**Pros**: Fully managed containers, auto-restart
-**Cons**: Spot can be interrupted (2 min warning)
+**Fargate pricing** (us-east-1, Linux/ARM):
+- vCPU: $0.03238/hour (~$23.64/mo per vCPU)
+- Memory: $0.00356/hour per GB (~$2.60/mo per GB)
+
+| Service | vCPU | Memory | On-Demand/mo | Spot/mo (70% off) |
+|---------|------|--------|--------------|-------------------|
+| Control-plane | 0.5 | 1 GB | ~$14.40 | ~$4.30 |
+| Worker | 0.5 | 1 GB | ~$14.40 | ~$4.30 |
+| UI (Next.js) | 0.25 | 0.5 GB | ~$7.20 | ~$2.20 |
+| **Fargate Total** | 1.25 | 2.5 GB | **~$36/mo** | **~$11/mo** |
+
+| Full Stack | On-Demand | With Spot |
+|------------|-----------|-----------|
+| Fargate (above) | ~$36/mo | ~$11/mo |
+| RDS db.t4g.micro | ~$22/mo | ~$22/mo |
+| **Total** | **~$58/mo** | **~$33/mo** |
+
+**Pros**: Fully managed, auto-scaling, no server maintenance
+**Cons**: More expensive than EC2, Spot can be interrupted (2 min warning), need separate RDS
 
 ### Option 6: App Runner
 
@@ -294,14 +307,15 @@ Run PostgreSQL + Control-plane + Worker + UI on one instance.
 
 ## Comparison Summary (with HTTPS for app.everruns.com)
 
-| Option | Compute | HTTPS | Total/mo | Complexity |
-|--------|---------|-------|----------|------------|
-| **AWS t4g.small + Cloudflare** | ~$2.40 | FREE | **~$2.40/mo** ⭐ | Low |
-| **AWS Lightsail $20 + Cloudflare** | $20 | FREE | **~$20/mo** ⭐ | Low |
-| **AWS EC2 + CloudFront** | ~$14 | $0-15 | **~$14-29/mo** | Medium |
-| **AWS EC2 + RDS + Cloudflare** | ~$36 | FREE | **~$36/mo** | Medium |
-| **Azure B1ms + PostgreSQL** | ~$28 | ~$5 | **~$33/mo** | Medium |
-| **GCP e2-small + Cloud SQL** | ~$43 | ~$0 | **~$43/mo** | Medium |
+| Option | Compute | DB | HTTPS | Total/mo | Complexity |
+|--------|---------|-----|-------|----------|------------|
+| **AWS t4g.small + Cloudflare** | ~$2.40 | self | FREE | **~$2.40/mo** ⭐ | Low |
+| **AWS Lightsail $20 + Cloudflare** | $20 | self | FREE | **~$20/mo** ⭐ | Low |
+| **AWS ECS Fargate Spot + RDS** | ~$11 | ~$22 | FREE | **~$33/mo** | Medium |
+| **AWS EC2 + RDS + Cloudflare** | ~$14 | ~$22 | FREE | **~$36/mo** | Medium |
+| **AWS ECS Fargate + RDS** | ~$36 | ~$22 | FREE | **~$58/mo** | Medium |
+| **Azure B1ms + PostgreSQL** | ~$16 | ~$12 | FREE | **~$28/mo** | Medium |
+| **GCP e2-small + Cloud SQL** | ~$13 | ~$30 | FREE | **~$43/mo** | Medium |
 
 **Note**: DNS is already on Cloudflare (free), so no additional DNS costs.
 
