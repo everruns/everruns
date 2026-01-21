@@ -29,11 +29,60 @@ pub struct GrpcDurableStore {
 }
 
 impl GrpcDurableStore {
-    /// Connect to the control-plane gRPC service
+    /// Connect to the control-plane gRPC service with retry logic.
+    /// Retries with exponential backoff for up to 5 seconds total.
     pub async fn connect(address: &str) -> Result<Self> {
+        use std::time::Duration;
+        use tokio::time::sleep;
+
         let endpoint = format!("http://{}", address);
-        let client = WorkerServiceClient::connect(endpoint).await?;
-        Ok(Self { client })
+        let max_duration = Duration::from_secs(5);
+        let initial_backoff = Duration::from_millis(100);
+        let max_backoff = Duration::from_secs(1);
+
+        let start = std::time::Instant::now();
+        let mut backoff = initial_backoff;
+        let mut attempt = 0;
+
+        loop {
+            attempt += 1;
+            match WorkerServiceClient::connect(endpoint.clone()).await {
+                Ok(client) => {
+                    if attempt > 1 {
+                        tracing::info!(
+                            address = %address,
+                            attempts = attempt,
+                            elapsed_ms = start.elapsed().as_millis(),
+                            "Connected to control-plane gRPC"
+                        );
+                    }
+                    return Ok(Self { client });
+                }
+                Err(e) => {
+                    let elapsed = start.elapsed();
+                    if elapsed >= max_duration {
+                        return Err(anyhow::anyhow!(
+                            "Failed to connect to control-plane at {} after {:.1}s ({} attempts): {}",
+                            address,
+                            elapsed.as_secs_f32(),
+                            attempt,
+                            e
+                        ));
+                    }
+
+                    tracing::debug!(
+                        address = %address,
+                        attempt = attempt,
+                        backoff_ms = backoff.as_millis(),
+                        error = %e,
+                        "Control-plane not available, retrying..."
+                    );
+
+                    sleep(backoff).await;
+                    backoff = std::cmp::min(backoff * 2, max_backoff);
+                }
+            }
+        }
     }
 
     /// Create a new durable workflow
@@ -526,5 +575,41 @@ mod tests {
         assert!(WorkflowStatus::Completed.is_terminal());
         assert!(WorkflowStatus::Failed.is_terminal());
         assert!(WorkflowStatus::Cancelled.is_terminal());
+    }
+
+    #[tokio::test]
+    async fn test_connect_fails_after_timeout_on_unavailable_server() {
+        // Verify connection fails with clear error after retry timeout
+        // when control-plane is unavailable
+        let start = std::time::Instant::now();
+        let result = GrpcDurableStore::connect("127.0.0.1:19999").await;
+
+        assert!(result.is_err());
+        let elapsed = start.elapsed();
+
+        // Should take ~5 seconds (the retry timeout)
+        assert!(
+            elapsed.as_secs() >= 4,
+            "Should retry for at least 4 seconds, got {:?}",
+            elapsed
+        );
+        assert!(
+            elapsed.as_secs() <= 7,
+            "Should not take more than 7 seconds, got {:?}",
+            elapsed
+        );
+
+        // Error message should be helpful
+        let err_msg = result.err().expect("Expected error").to_string();
+        assert!(
+            err_msg.contains("127.0.0.1:19999"),
+            "Error should contain address: {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("5") || err_msg.contains("attempts"),
+            "Error should mention timeout or attempts: {}",
+            err_msg
+        );
     }
 }

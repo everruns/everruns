@@ -174,6 +174,8 @@ Latency improvement:
 
 **Task Distribution**: Push-based via gRPC streaming. Workers subscribe to `SubscribeTaskNotifications` and receive immediate notifications when tasks are enqueued. Falls back to polling (10s interval) if stream disconnects.
 
+**Startup**: Workers retry connecting to control-plane for up to 5 seconds with exponential backoff (100ms → 1s). This handles startup race conditions when both services restart simultaneously.
+
 ## Benchmarks
 
 Load tests for validating performance and scalability. Located in `crates/durable/benches/`.
