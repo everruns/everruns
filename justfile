@@ -81,16 +81,16 @@ start-all *args:
 stop-all:
     ./scripts/lib/services.sh stop-all
 
-# === Evaluations ===
+# === Research / Evaluations ===
 
 # Run infinity context evaluations (dry run by default)
 eval *args:
-    cd evals && cargo run --release -- --synthetic {{args}}
+    cd research/infinity_context && cargo run --release -- --synthetic {{args}}
 
 # Run eval with actual LLM calls
 eval-live *args:
-    cd evals && cargo run --release -- --synthetic {{args}}
+    cd research/infinity_context && cargo run --release -- --synthetic {{args}}
 
 # Run eval in dry-run mode (no LLM calls, shows what would happen)
 eval-dry *args:
-    cd evals && cargo run --release -- --synthetic --dry-run {{args}}
+    cd research/infinity_context && cargo run --release -- --synthetic --dry-run {{args}}

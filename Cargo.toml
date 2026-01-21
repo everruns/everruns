@@ -13,7 +13,7 @@ members = [
 ]
 
 exclude = [
-    "evals",  # Standalone evaluation framework
+    "research/infinity_context",  # Research evaluation framework
 ]
 
 [workspace.package]
