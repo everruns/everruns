@@ -47,31 +47,47 @@ Phoenix displays full conversation context:
 
 Monitor LLM API costs when using providers that report pricing.
 
-## Trace Types
+## Trace Hierarchy
 
-Everruns emits three types of traces to Phoenix:
+Everruns creates **hierarchical spans** that show the full agentic loop:
 
-### LLM Traces
+```
+AGENT span (conversation turn)
+├── LLM span (first generation - decides to call tool)
+├── TOOL span (tool execution)
+├── LLM span (second generation - final response)
+└── ...
+```
 
-Created for each LLM API call with:
+This hierarchy enables Phoenix to display:
+- The complete conversation turn with all iterations
+- Nested LLM calls within the agent context
+- Tool executions as part of the reasoning flow
+- Duration breakdown at each step
+
+### Agent Spans
+
+Root span for each conversation turn:
+- Opens when user message is received
+- Closes when agent completes its response
+- Contains aggregated token usage across all LLM calls
+- Shows total iteration count
+
+### LLM Spans (Children of Agent)
+
+Created for each LLM API call:
 - Model name and provider
 - Token counts (input, output, total)
-- Latency metrics
-- Finish reason
+- Latency metrics (duration, time-to-first-token)
+- Finish reason (stop, tool_calls, etc.)
 
-### Tool Traces
+### Tool Spans (Children of Agent)
 
-Created when tools are executed:
+Created for tool executions:
 - Tool name
 - Execution duration
 - Success/failure status
-
-### Agent Traces
-
-Created for each conversation turn:
-- Iteration count
-- Aggregated token usage
-- Total turn duration
+- Arguments passed to the tool
 
 ## Configuration
 

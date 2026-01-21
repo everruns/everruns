@@ -95,22 +95,45 @@ Everruns emits both OpenTelemetry gen-ai and OpenInference attributes for maximu
 | `session.id` | Session identifier |
 | `tool.name` | Tool being executed |
 
+### Span Hierarchy
+
+Spans are hierarchical to show the full agentic loop:
+
+```
+AGENT span (turn.started → turn.completed)
+├── LLM span (llm.generation)
+├── TOOL span (tool.call_started → tool.call_completed)
+├── LLM span (llm.generation)
+└── ...
+```
+
+This hierarchy enables Phoenix to visualize:
+- The full agent iteration loop with all LLM calls and tool executions
+- Token usage aggregated per turn
+- Tool calls in context of the agent's reasoning
+- Duration of each step relative to the overall turn
+
 ### Span Types
 
-1. **LLM Spans** (`openinference.span.kind=LLM`):
+1. **AGENT Spans** (`openinference.span.kind=AGENT`):
+   - **Root span** for each conversation turn
+   - Opened at `turn.started`, closed at `turn.completed`
+   - Children: LLM spans and TOOL spans
+   - Includes aggregated token usage, iteration count, total duration
+   - Name format: `agent_turn {turn_id}`
+
+2. **LLM Spans** (`openinference.span.kind=LLM`):
+   - **Child of AGENT span**
    - Created for each `llm.generation` event
-   - Include token counts, latency, model info
+   - Point-in-time span (represents completed generation)
+   - Includes token counts, latency, model info, finish reason
    - Name format: `chat {model}`
 
-2. **Tool Spans** (`openinference.span.kind=TOOL`):
-   - Created for each `tool.call_completed` event
-   - Include tool name, success status, duration
-   - Name format: `execute_tool {name}`
-
-3. **Agent Spans** (`openinference.span.kind=AGENT`):
-   - Created for each `turn.completed` event
-   - Include iteration count, aggregated token usage
-   - Name format: `invoke_agent {turn_id}`
+3. **TOOL Spans** (`openinference.span.kind=TOOL`):
+   - **Child of AGENT span**
+   - Opened at `tool.call_started`, closed at `tool.call_completed`
+   - Includes tool name, success status, execution duration
+   - Name format: `tool {name}`
 
 ### Docker Configuration
 
@@ -163,20 +186,42 @@ just start-docker
 
 Location: `crates/core/src/observation/otel.rs`
 
-The listener subscribes to domain events and creates OTLP spans:
+The listener maintains **hierarchical spans** across event boundaries:
 
 ```rust
+pub struct OtelEventListener {
+    /// Active turns per session (only one turn active per session)
+    /// Key: session_id, Value: active turn info with span
+    active_turns: Mutex<HashMap<Uuid, ActiveTurn>>,
+
+    /// Active tool calls (can have multiple concurrent)
+    /// Key: tool_call_id, Value: active tool call info with span
+    active_tool_calls: Mutex<HashMap<String, ActiveToolCall>>,
+}
+
 impl EventListener for OtelEventListener {
     async fn on_event(&self, event: &Event) {
         match &event.data {
-            EventData::LlmGeneration(data) => self.handle_llm_generation(event, data),
-            EventData::ToolCallCompleted(data) => self.handle_tool_call_completed(event, data),
+            // AGENT span lifecycle
+            EventData::TurnStarted(data) => self.handle_turn_started(event, data),
             EventData::TurnCompleted(data) => self.handle_turn_completed(event, data),
+            // LLM span (child of AGENT)
+            EventData::LlmGeneration(data) => self.handle_llm_generation(event, data),
+            // TOOL span lifecycle (child of AGENT)
+            EventData::ToolCallStarted(data) => self.handle_tool_call_started(event, data),
+            EventData::ToolCallCompleted(data) => self.handle_tool_call_completed(event, data),
             _ => {}
         }
     }
 }
 ```
+
+**Key implementation details:**
+
+1. **AGENT spans are kept open** from `turn.started` until `turn.completed`
+2. **LLM spans are created as children** using `parent.in_scope(|| create_span())`
+3. **TOOL spans are kept open** from `tool.call_started` until `tool.call_completed`
+4. **Session-based correlation**: Only one turn active per session, so `session_id` links child events to parent turn
 
 ### Telemetry Module
 

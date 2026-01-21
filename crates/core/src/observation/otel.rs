@@ -3,18 +3,20 @@
 // This listener generates OTel spans from events following the gen-ai semantic conventions.
 // See: https://opentelemetry.io/docs/specs/semconv/gen-ai/
 //
-// The listener reacts to events and creates spans:
-// - llm.generation → gen_ai.chat span with model, tokens, messages
-// - tool.call_started/completed → gen_ai.execute_tool span
-// - turn.started/completed → gen_ai.invoke_agent span
-// - reason.started/completed → nested chat spans within invoke_agent
+// IMPORTANT: Spans are hierarchical to show the full agentic loop in Phoenix:
+// - AGENT span (turn) is the root span for each conversation turn
+// - LLM spans (generations) are children of the AGENT span
+// - TOOL spans (executions) are children of the AGENT span
 //
-// This approach decouples OTel instrumentation from business logic,
-// making it easier to support other observability backends.
+// This hierarchy allows Phoenix to visualize:
+// - The full agent iteration loop
+// - Token usage aggregated per turn
+// - Tool calls in context of the agent's reasoning
 
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use tracing::Span;
 use uuid::Uuid;
 
 use crate::event_listeners::EventListener;
@@ -26,21 +28,22 @@ use crate::events::{
 use crate::telemetry::{gen_ai, openinference};
 
 // ============================================================================
-// Internal Span Tracking
+// Active Span Tracking
 // ============================================================================
 
-/// Info tracked for in-flight tool calls
-#[allow(dead_code)]
-struct ToolCallSpanInfo {
-    tool_name: String,
+/// Active turn span - kept open for the duration of the turn
+struct ActiveTurn {
+    /// The tracing span for this turn (kept open until turn completes)
+    span: Span,
+    /// When the turn started
     started_at: std::time::Instant,
 }
 
-/// Info tracked for in-flight turns
-#[allow(dead_code)]
-struct TurnSpanInfo {
-    session_id: Uuid,
-    agent_id: Option<Uuid>,
+/// Active tool call span - kept open until tool execution completes
+struct ActiveToolCall {
+    /// The tracing span for this tool call
+    span: Span,
+    /// When the tool call started
     started_at: std::time::Instant,
 }
 
@@ -48,34 +51,42 @@ struct TurnSpanInfo {
 // OtelEventListener
 // ============================================================================
 
-/// OpenTelemetry event listener that generates gen-ai semantic convention spans.
+/// OpenTelemetry event listener that generates hierarchical gen-ai spans.
 ///
-/// This listener creates spans from events:
-/// - `llm.generation` → `chat {model}` span
-/// - `tool.call_started/completed` → `execute_tool {name}` span
-/// - `turn.started/completed` → `invoke_agent {agent_id}` span
+/// ## Span Hierarchy
 ///
-/// Spans are created synchronously when events are received.
+/// This listener creates a proper span hierarchy for the agentic loop:
 ///
-/// # Example
+/// ```text
+/// AGENT span (turn.started → turn.completed)
+///   ├── LLM span (llm.generation)
+///   ├── TOOL span (tool.call_started → tool.call_completed)
+///   ├── LLM span (llm.generation)
+///   └── ...
+/// ```
+///
+/// This hierarchy is critical for Phoenix to display:
+/// - The full conversation turn with all iterations
+/// - Nested LLM calls within the agent context
+/// - Tool executions as children of the agent turn
+///
+/// ## Usage
 ///
 /// ```ignore
 /// use everruns_core::observation::OtelEventListener;
 /// use everruns_core::EventListener;
 ///
 /// let listener = OtelEventListener::new();
-///
-/// // Register with event service
 /// event_service.add_listener(Arc::new(listener));
 /// ```
 pub struct OtelEventListener {
-    /// Track in-flight tool calls for span correlation
-    /// Key: tool_call_id, Value: span handle info
-    tool_call_spans: Mutex<HashMap<String, ToolCallSpanInfo>>,
+    /// Active turns per session (only one turn active per session at a time)
+    /// Key: session_id, Value: active turn info with span
+    active_turns: Mutex<HashMap<Uuid, ActiveTurn>>,
 
-    /// Track in-flight turns for span correlation
-    /// Key: turn_id, Value: span handle info
-    turn_spans: Mutex<HashMap<Uuid, TurnSpanInfo>>,
+    /// Active tool calls (can have multiple concurrent tool calls)
+    /// Key: tool_call_id, Value: active tool call info with span
+    active_tool_calls: Mutex<HashMap<String, ActiveToolCall>>,
 }
 
 impl Default for OtelEventListener {
@@ -88,12 +99,131 @@ impl OtelEventListener {
     /// Create a new OTel event listener
     pub fn new() -> Self {
         Self {
-            tool_call_spans: Mutex::new(HashMap::new()),
-            turn_spans: Mutex::new(HashMap::new()),
+            active_turns: Mutex::new(HashMap::new()),
+            active_tool_calls: Mutex::new(HashMap::new()),
         }
     }
 
-    /// Handle llm.generation event - create a chat span
+    /// Handle turn.started event - create and keep open an AGENT span
+    ///
+    /// This span becomes the parent for all LLM and TOOL spans within the turn.
+    fn handle_turn_started(&self, event: &Event, data: &TurnStartedData) {
+        let span_name = format!("agent_turn {}", data.turn_id);
+
+        // Create the AGENT span - this will be kept open until turn.completed
+        let span = tracing::info_span!(
+            "agent_turn",
+            "otel.name" = %span_name,
+            "otel.kind" = "internal",
+
+            // === OpenTelemetry gen-ai semantic conventions ===
+            "gen_ai.operation.name" = gen_ai::operation::INVOKE_AGENT,
+            "gen_ai.conversation.id" = %event.session_id,
+
+            // === OpenInference semantic conventions (Arize Phoenix) ===
+            "openinference.span.kind" = openinference::span_kind::AGENT,
+            "session.id" = %event.session_id,
+
+            // === Turn context ===
+            "turn.id" = %data.turn_id,
+            "turn.input_message_id" = %data.input_message_id,
+
+            // These will be filled in at turn.completed:
+            "turn.iterations" = tracing::field::Empty,
+            "gen_ai.usage.input_tokens" = tracing::field::Empty,
+            "gen_ai.usage.output_tokens" = tracing::field::Empty,
+            "llm.token_count.prompt" = tracing::field::Empty,
+            "llm.token_count.completion" = tracing::field::Empty,
+            "llm.token_count.total" = tracing::field::Empty,
+            "duration_ms" = tracing::field::Empty,
+        );
+
+        // Store the active turn (span stays open)
+        let mut turns = self.active_turns.lock().unwrap();
+        turns.insert(
+            event.session_id.uuid(),
+            ActiveTurn {
+                span,
+                started_at: std::time::Instant::now(),
+            },
+        );
+
+        tracing::debug!(
+            turn_id = %data.turn_id,
+            session_id = %event.session_id,
+            "Turn started - AGENT span opened"
+        );
+    }
+
+    /// Handle turn.completed event - close the AGENT span with final metrics
+    fn handle_turn_completed(&self, event: &Event, data: &TurnCompletedData) {
+        // Get and remove the active turn
+        let active_turn = {
+            let mut turns = self.active_turns.lock().unwrap();
+            turns.remove(&event.session_id.uuid())
+        };
+
+        let Some(active_turn) = active_turn else {
+            tracing::warn!(
+                turn_id = %data.turn_id,
+                session_id = %event.session_id,
+                "Turn completed but no active turn found - span may be missing"
+            );
+            return;
+        };
+
+        // Calculate duration
+        let duration_ms = data
+            .duration_ms
+            .unwrap_or_else(|| active_turn.started_at.elapsed().as_millis() as u64);
+
+        // Calculate token totals
+        let (input_tokens, output_tokens, total_tokens) = data
+            .usage
+            .as_ref()
+            .map(|u| {
+                (
+                    u.input_tokens,
+                    u.output_tokens,
+                    u.input_tokens + u.output_tokens,
+                )
+            })
+            .unwrap_or((0, 0, 0));
+
+        // Record final attributes on the span
+        active_turn.span.record("turn.iterations", data.iterations);
+        active_turn
+            .span
+            .record("gen_ai.usage.input_tokens", input_tokens);
+        active_turn
+            .span
+            .record("gen_ai.usage.output_tokens", output_tokens);
+        active_turn
+            .span
+            .record("llm.token_count.prompt", input_tokens);
+        active_turn
+            .span
+            .record("llm.token_count.completion", output_tokens);
+        active_turn
+            .span
+            .record("llm.token_count.total", total_tokens);
+        active_turn.span.record("duration_ms", duration_ms);
+
+        // Enter the span briefly to log completion, then it closes when dropped
+        let _guard = active_turn.span.enter();
+        tracing::debug!(
+            turn_id = %data.turn_id,
+            iterations = data.iterations,
+            duration_ms = duration_ms,
+            input_tokens = input_tokens,
+            output_tokens = output_tokens,
+            "Turn completed - AGENT span closed"
+        );
+
+        // Span closes here when active_turn is dropped
+    }
+
+    /// Handle llm.generation event - create an LLM span as child of the active AGENT span
     ///
     /// Emits both OpenTelemetry gen-ai and OpenInference attributes for compatibility
     /// with both standard OTEL backends (Jaeger, Tempo) and Arize Phoenix.
@@ -108,7 +238,7 @@ impl OtelEventListener {
             gen_ai::output_type::TEXT
         };
 
-        // Calculate total tokens for OpenInference
+        // Calculate token totals
         let input_tokens = data
             .metadata
             .usage
@@ -123,256 +253,244 @@ impl OtelEventListener {
             .unwrap_or(0);
         let total_tokens = input_tokens + output_tokens;
 
-        // Create span with both gen-ai and OpenInference semantic conventions
+        // Get the active turn span to use as parent
+        let turns = self.active_turns.lock().unwrap();
+        let parent_span = turns.get(&event.session_id.uuid()).map(|t| &t.span);
+
+        // Create the LLM span - either as child of AGENT span or standalone
         let span_name = format!("chat {}", model);
-        let span = tracing::info_span!(
-            "gen_ai.chat",
-            "otel.name" = %span_name,
-            "otel.kind" = "client",
 
-            // === OpenTelemetry gen-ai semantic conventions ===
-            // Operation and provider
-            "gen_ai.operation.name" = gen_ai::operation::CHAT,
-            "gen_ai.system" = %provider,
-            // Request attributes
-            "gen_ai.request.model" = %model,
-            // Response attributes
-            "gen_ai.response.model" = %model,
-            "gen_ai.response.id" = data.metadata.response_id.as_deref().unwrap_or(""),
-            "gen_ai.response.finish_reasons" = ?data.metadata.finish_reasons,
-            // Usage metrics
-            "gen_ai.usage.input_tokens" = input_tokens,
-            "gen_ai.usage.output_tokens" = output_tokens,
-            // Output type
-            "gen_ai.output.type" = %output_type,
-            // Conversation context
-            "gen_ai.conversation.id" = %event.session_id,
+        let create_llm_span = || {
+            tracing::info_span!(
+                "llm_generation",
+                "otel.name" = %span_name,
+                "otel.kind" = "client",
 
-            // === OpenInference semantic conventions (Arize Phoenix) ===
-            // Span kind - required for Phoenix to recognize this as an LLM span
-            "openinference.span.kind" = openinference::span_kind::LLM,
-            // LLM attributes
-            "llm.model_name" = %model,
-            "llm.system" = %provider,
-            // Token counts (OpenInference format)
-            "llm.token_count.prompt" = input_tokens,
-            "llm.token_count.completion" = output_tokens,
-            "llm.token_count.total" = total_tokens,
-            // Session tracking
-            "session.id" = %event.session_id,
+                // === OpenTelemetry gen-ai semantic conventions ===
+                "gen_ai.operation.name" = gen_ai::operation::CHAT,
+                "gen_ai.system" = %provider,
+                "gen_ai.request.model" = %model,
+                "gen_ai.response.model" = %model,
+                "gen_ai.response.id" = data.metadata.response_id.as_deref().unwrap_or(""),
+                "gen_ai.response.finish_reasons" = ?data.metadata.finish_reasons,
+                "gen_ai.usage.input_tokens" = input_tokens,
+                "gen_ai.usage.output_tokens" = output_tokens,
+                "gen_ai.output.type" = %output_type,
+                "gen_ai.conversation.id" = %event.session_id,
 
-            // === Custom attributes ===
-            // Duration
-            "duration_ms" = data.metadata.duration_ms.unwrap_or(0),
-            // Time to first token (streaming latency)
-            "time_to_first_token_ms" = data.metadata.time_to_first_token_ms.unwrap_or(0),
-        );
+                // === OpenInference semantic conventions (Arize Phoenix) ===
+                "openinference.span.kind" = openinference::span_kind::LLM,
+                "llm.model_name" = %model,
+                "llm.system" = %provider,
+                "llm.token_count.prompt" = input_tokens,
+                "llm.token_count.completion" = output_tokens,
+                "llm.token_count.total" = total_tokens,
+                "session.id" = %event.session_id,
 
-        // Enter and immediately exit the span (event is a point-in-time record)
-        let _guard = span.enter();
+                // === Custom attributes ===
+                "duration_ms" = data.metadata.duration_ms.unwrap_or(0),
+                "time_to_first_token_ms" = data.metadata.time_to_first_token_ms.unwrap_or(0),
+                "success" = data.metadata.success,
+            )
+        };
 
-        // Log event details at debug level within the span
-        tracing::debug!(
-            model = %model,
-            provider = %provider,
-            success = %data.metadata.success,
-            input_tokens = input_tokens,
-            output_tokens = output_tokens,
-            tool_calls = %data.output.tool_calls.len(),
-            "LLM generation completed"
-        );
+        // Create span within parent context if available
+        if let Some(parent) = parent_span {
+            // Create LLM span as child of AGENT span
+            parent.in_scope(|| {
+                let span = create_llm_span();
+                let _guard = span.enter();
+                tracing::debug!(
+                    model = %model,
+                    provider = %provider,
+                    success = %data.metadata.success,
+                    input_tokens = input_tokens,
+                    output_tokens = output_tokens,
+                    tool_calls = %data.output.tool_calls.len(),
+                    "LLM generation completed (child of AGENT span)"
+                );
+            });
+        } else {
+            // No active turn - create standalone span (shouldn't happen normally)
+            let span = create_llm_span();
+            let _guard = span.enter();
+            tracing::debug!(
+                model = %model,
+                provider = %provider,
+                success = %data.metadata.success,
+                input_tokens = input_tokens,
+                output_tokens = output_tokens,
+                tool_calls = %data.output.tool_calls.len(),
+                "LLM generation completed (standalone - no active turn)"
+            );
+        }
     }
 
-    /// Handle tool.call_started event - record start time for duration calculation
-    fn handle_tool_call_started(&self, _event: &Event, data: &ToolCallStartedData) {
-        let mut spans = self.tool_call_spans.lock().unwrap();
-        spans.insert(
-            data.tool_call.id.clone(),
-            ToolCallSpanInfo {
-                tool_name: data.tool_call.name.clone(),
+    /// Handle tool.call_started event - create and keep open a TOOL span as child of AGENT
+    fn handle_tool_call_started(&self, event: &Event, data: &ToolCallStartedData) {
+        let tool_name = &data.tool_call.name;
+        let tool_call_id = &data.tool_call.id;
+
+        // Get the active turn span to use as parent
+        let turns = self.active_turns.lock().unwrap();
+        let parent_span = turns.get(&event.session_id.uuid()).map(|t| &t.span);
+
+        let span_name = format!("tool {}", tool_name);
+
+        let create_tool_span = || {
+            tracing::info_span!(
+                "tool_execution",
+                "otel.name" = %span_name,
+                "otel.kind" = "internal",
+
+                // === OpenTelemetry gen-ai semantic conventions ===
+                "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+                "gen_ai.tool.name" = %tool_name,
+                "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
+                "gen_ai.tool.call.id" = %tool_call_id,
+                "gen_ai.conversation.id" = %event.session_id,
+
+                // === OpenInference semantic conventions (Arize Phoenix) ===
+                "openinference.span.kind" = openinference::span_kind::TOOL,
+                "tool.name" = %tool_name,
+                "session.id" = %event.session_id,
+
+                // These will be filled in at tool.call_completed:
+                "tool.success" = tracing::field::Empty,
+                "tool.status" = tracing::field::Empty,
+                "duration_ms" = tracing::field::Empty,
+            )
+        };
+
+        // Create span within parent context if available
+        let span = if let Some(parent) = parent_span {
+            parent.in_scope(create_tool_span)
+        } else {
+            create_tool_span()
+        };
+
+        // Store the active tool call (span stays open)
+        let mut tool_calls = self.active_tool_calls.lock().unwrap();
+        tool_calls.insert(
+            tool_call_id.clone(),
+            ActiveToolCall {
+                span,
                 started_at: std::time::Instant::now(),
             },
         );
+
+        tracing::debug!(
+            tool_name = %tool_name,
+            tool_call_id = %tool_call_id,
+            "Tool execution started - TOOL span opened"
+        );
     }
 
-    /// Handle tool.call_completed event - create execute_tool span
-    ///
-    /// Emits both OpenTelemetry gen-ai and OpenInference attributes for compatibility
-    /// with both standard OTEL backends (Jaeger, Tempo) and Arize Phoenix.
+    /// Handle tool.call_completed event - close the TOOL span with result
     fn handle_tool_call_completed(&self, event: &Event, data: &ToolCallCompletedData) {
-        // Get start info if available
-        let start_info = {
-            let mut spans = self.tool_call_spans.lock().unwrap();
-            spans.remove(&data.tool_call_id)
+        // Get and remove the active tool call
+        let active_tool = {
+            let mut tool_calls = self.active_tool_calls.lock().unwrap();
+            tool_calls.remove(&data.tool_call_id)
         };
 
-        let duration_ms = start_info
-            .as_ref()
-            .map(|info| info.started_at.elapsed().as_millis() as u64);
+        let Some(active_tool) = active_tool else {
+            // Tool call completed without a started event - create a point-in-time span
+            tracing::debug!(
+                tool_name = %data.tool_name,
+                tool_call_id = %data.tool_call_id,
+                "Tool completed but no active tool call found - creating point-in-time span"
+            );
 
-        // Create span with both gen-ai and OpenInference semantic conventions
-        let span_name = format!("execute_tool {}", data.tool_name);
-        let span = tracing::info_span!(
-            "gen_ai.execute_tool",
-            "otel.name" = %span_name,
-            "otel.kind" = "internal",
+            // Get parent span for context
+            let turns = self.active_turns.lock().unwrap();
+            let parent_span = turns.get(&event.session_id.uuid()).map(|t| &t.span);
 
-            // === OpenTelemetry gen-ai semantic conventions ===
-            // Operation
-            "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
-            // Tool attributes
-            "gen_ai.tool.name" = %data.tool_name,
-            "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
-            "gen_ai.tool.call.id" = %data.tool_call_id,
-            // Conversation context
-            "gen_ai.conversation.id" = %event.session_id,
+            let span_name = format!("tool {}", data.tool_name);
+            let create_span = || {
+                tracing::info_span!(
+                    "tool_execution",
+                    "otel.name" = %span_name,
+                    "otel.kind" = "internal",
+                    "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+                    "gen_ai.tool.name" = %data.tool_name,
+                    "gen_ai.tool.call.id" = %data.tool_call_id,
+                    "gen_ai.conversation.id" = %event.session_id,
+                    "openinference.span.kind" = openinference::span_kind::TOOL,
+                    "tool.name" = %data.tool_name,
+                    "tool.success" = %data.success,
+                    "tool.status" = %data.status,
+                    "session.id" = %event.session_id,
+                )
+            };
 
-            // === OpenInference semantic conventions (Arize Phoenix) ===
-            // Span kind - required for Phoenix to recognize this as a TOOL span
-            "openinference.span.kind" = openinference::span_kind::TOOL,
-            // Tool name (OpenInference uses same attribute)
-            "tool.name" = %data.tool_name,
-            // Session tracking
-            "session.id" = %event.session_id,
+            if let Some(parent) = parent_span {
+                parent.in_scope(|| {
+                    let span = create_span();
+                    let _guard = span.enter();
+                });
+            } else {
+                let span = create_span();
+                let _guard = span.enter();
+            }
+            return;
+        };
 
-            // === Custom attributes ===
-            // Result
-            "tool.success" = %data.success,
-            "tool.status" = %data.status,
-            // Duration
-            "duration_ms" = duration_ms.unwrap_or(0),
-        );
+        // Calculate duration
+        let duration_ms = active_tool.started_at.elapsed().as_millis() as u64;
 
-        let _guard = span.enter();
+        // Record final attributes on the span
+        active_tool.span.record("tool.success", data.success);
+        active_tool.span.record("tool.status", &data.status);
+        active_tool.span.record("duration_ms", duration_ms);
+
+        // Enter the span briefly to log completion
+        let _guard = active_tool.span.enter();
 
         if data.success {
             tracing::debug!(
                 tool_name = %data.tool_name,
                 tool_call_id = %data.tool_call_id,
-                "Tool execution succeeded"
+                duration_ms = duration_ms,
+                "Tool execution succeeded - TOOL span closed"
             );
         } else {
             tracing::warn!(
                 tool_name = %data.tool_name,
                 tool_call_id = %data.tool_call_id,
+                duration_ms = duration_ms,
                 error = ?data.error,
-                "Tool execution failed"
+                "Tool execution failed - TOOL span closed"
             );
         }
+
+        // Span closes here when active_tool is dropped
     }
 
-    /// Handle turn.started event - record start for invoke_agent span
-    fn handle_turn_started(&self, event: &Event, data: &TurnStartedData) {
-        let mut spans = self.turn_spans.lock().unwrap();
-        spans.insert(
-            data.turn_id.uuid(),
-            TurnSpanInfo {
-                session_id: event.session_id.uuid(),
-                agent_id: None, // Will be filled from context if available
-                started_at: std::time::Instant::now(),
-            },
-        );
-    }
-
-    /// Handle turn.completed event - create invoke_agent span
-    ///
-    /// Emits both OpenTelemetry gen-ai and OpenInference attributes for compatibility
-    /// with both standard OTEL backends (Jaeger, Tempo) and Arize Phoenix.
-    fn handle_turn_completed(&self, event: &Event, data: &TurnCompletedData) {
-        // Get start info if available
-        let start_info = {
-            let mut spans = self.turn_spans.lock().unwrap();
-            spans.remove(&data.turn_id.uuid())
-        };
-
-        let duration_ms = data.duration_ms.or_else(|| {
-            start_info
-                .as_ref()
-                .map(|info| info.started_at.elapsed().as_millis() as u64)
-        });
-
-        // Calculate total tokens if usage is available
-        let (input_tokens, output_tokens, total_tokens) = data
-            .usage
-            .as_ref()
-            .map(|u| {
-                (
-                    u.input_tokens,
-                    u.output_tokens,
-                    u.input_tokens + u.output_tokens,
-                )
-            })
-            .unwrap_or((0, 0, 0));
-
-        // Create span with both gen-ai and OpenInference semantic conventions
-        let span_name = format!("invoke_agent {}", data.turn_id);
-        let span = tracing::info_span!(
-            "gen_ai.invoke_agent",
-            "otel.name" = %span_name,
-            "otel.kind" = "internal",
-
-            // === OpenTelemetry gen-ai semantic conventions ===
-            // Operation
-            "gen_ai.operation.name" = gen_ai::operation::INVOKE_AGENT,
-            // Conversation context
-            "gen_ai.conversation.id" = %event.session_id,
-            // Usage (aggregated for the turn)
-            "gen_ai.usage.input_tokens" = input_tokens,
-            "gen_ai.usage.output_tokens" = output_tokens,
-
-            // === OpenInference semantic conventions (Arize Phoenix) ===
-            // Span kind - required for Phoenix to recognize this as an AGENT span
-            "openinference.span.kind" = openinference::span_kind::AGENT,
-            // Session tracking
-            "session.id" = %event.session_id,
-            // Token counts (OpenInference format - aggregated for turn)
-            "llm.token_count.prompt" = input_tokens,
-            "llm.token_count.completion" = output_tokens,
-            "llm.token_count.total" = total_tokens,
-
-            // === Custom attributes ===
-            // Turn context
-            "turn.id" = %data.turn_id,
-            "turn.iterations" = %data.iterations,
-            // Duration
-            "duration_ms" = duration_ms.unwrap_or(0),
-        );
-
-        let _guard = span.enter();
-
-        tracing::debug!(
-            turn_id = %data.turn_id,
-            iterations = %data.iterations,
-            duration_ms = ?duration_ms,
-            "Turn completed"
-        );
-    }
-
-    /// Get the number of tracked in-flight tool calls (for testing)
+    /// Get the number of active turns (for testing)
     #[cfg(test)]
-    fn pending_tool_calls(&self) -> usize {
-        self.tool_call_spans.lock().unwrap().len()
+    fn active_turn_count(&self) -> usize {
+        self.active_turns.lock().unwrap().len()
     }
 
-    /// Get the number of tracked in-flight turns (for testing)
+    /// Get the number of active tool calls (for testing)
     #[cfg(test)]
-    fn pending_turns(&self) -> usize {
-        self.turn_spans.lock().unwrap().len()
+    fn active_tool_call_count(&self) -> usize {
+        self.active_tool_calls.lock().unwrap().len()
     }
 }
 
 #[async_trait]
 impl EventListener for OtelEventListener {
     async fn on_event(&self, event: &Event) {
-        tracing::debug!(
-            event_type = %event.event_type,
-            event_id = %event.id,
-            "OtelEventListener received event"
-        );
-
         match &event.data {
+            EventData::TurnStarted(data) => {
+                self.handle_turn_started(event, data);
+            }
+            EventData::TurnCompleted(data) => {
+                self.handle_turn_completed(event, data);
+            }
             EventData::LlmGeneration(data) => {
-                tracing::debug!("Creating OTel span for llm.generation event");
                 self.handle_llm_generation(event, data);
             }
             EventData::ToolCallStarted(data) => {
@@ -381,33 +499,19 @@ impl EventListener for OtelEventListener {
             EventData::ToolCallCompleted(data) => {
                 self.handle_tool_call_completed(event, data);
             }
-            EventData::TurnStarted(data) => {
-                tracing::debug!("Creating OTel span for turn.started event");
-                self.handle_turn_started(event, data);
-            }
-            EventData::TurnCompleted(data) => {
-                tracing::debug!("Creating OTel span for turn.completed event");
-                self.handle_turn_completed(event, data);
-            }
             // Other events don't generate spans
-            other => {
-                tracing::trace!(
-                    event_type = %event.event_type,
-                    "Event data variant not handled by OtelEventListener (type: {})",
-                    std::any::type_name_of_val(other)
-                );
-            }
+            _ => {}
         }
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
-        // Only listen to events we generate spans for
+        // Listen to events needed for span hierarchy
         Some(vec![
+            TURN_STARTED,
+            TURN_COMPLETED,
             LLM_GENERATION,
             TOOL_CALL_STARTED,
             TOOL_CALL_COMPLETED,
-            TURN_STARTED,
-            TURN_COMPLETED,
         ])
     }
 
@@ -433,12 +537,8 @@ mod tests {
     async fn test_otel_listener_creation() {
         let listener = OtelEventListener::new();
         assert_eq!(listener.name(), "OtelEventListener");
-    }
-
-    #[tokio::test]
-    async fn test_otel_listener_default() {
-        let listener = OtelEventListener::default();
-        assert_eq!(listener.name(), "OtelEventListener");
+        assert_eq!(listener.active_turn_count(), 0);
+        assert_eq!(listener.active_tool_call_count(), 0);
     }
 
     #[tokio::test]
@@ -446,18 +546,77 @@ mod tests {
         let listener = OtelEventListener::new();
         let types = listener.event_types().unwrap();
         assert_eq!(types.len(), 5);
+        assert!(types.contains(&TURN_STARTED));
+        assert!(types.contains(&TURN_COMPLETED));
         assert!(types.contains(&LLM_GENERATION));
         assert!(types.contains(&TOOL_CALL_STARTED));
         assert!(types.contains(&TOOL_CALL_COMPLETED));
-        assert!(types.contains(&TURN_STARTED));
-        assert!(types.contains(&TURN_COMPLETED));
     }
 
     #[tokio::test]
-    async fn test_handle_llm_generation_success() {
+    async fn test_turn_lifecycle_creates_agent_span() {
         let listener = OtelEventListener::new();
+        let session_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
 
-        let data = LlmGenerationData {
+        // Start turn
+        let started_data = TurnStartedData {
+            turn_id,
+            input_message_id: MessageId::from_uuid(Uuid::now_v7()),
+        };
+        let start_event = Event::new(
+            session_id,
+            EventContext::empty(),
+            EventData::TurnStarted(started_data),
+        );
+        listener.on_event(&start_event).await;
+
+        // Verify turn is active
+        assert_eq!(listener.active_turn_count(), 1);
+
+        // Complete turn
+        let completed_data = TurnCompletedData {
+            turn_id,
+            iterations: 2,
+            duration_ms: Some(500),
+            usage: Some(TokenUsage {
+                input_tokens: 100,
+                output_tokens: 50,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+            }),
+        };
+        let complete_event = Event::new(
+            session_id,
+            EventContext::empty(),
+            EventData::TurnCompleted(completed_data),
+        );
+        listener.on_event(&complete_event).await;
+
+        // Verify turn is closed
+        assert_eq!(listener.active_turn_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_llm_generation_within_turn() {
+        let listener = OtelEventListener::new();
+        let session_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+
+        // Start turn first
+        let started_data = TurnStartedData {
+            turn_id,
+            input_message_id: MessageId::from_uuid(Uuid::now_v7()),
+        };
+        let start_event = Event::new(
+            session_id,
+            EventContext::empty(),
+            EventData::TurnStarted(started_data),
+        );
+        listener.on_event(&start_event).await;
+
+        // LLM generation during turn
+        let llm_data = LlmGenerationData {
             messages: vec![Message::user("Hello")],
             tools: vec![],
             output: LlmGenerationOutput {
@@ -481,142 +640,253 @@ mod tests {
                 response_id: Some("resp_123".to_string()),
             },
         };
-
-        let event = Event::new(
-            Uuid::now_v7(),
+        let llm_event = Event::new(
+            session_id,
             EventContext::empty(),
-            EventData::LlmGeneration(data),
+            EventData::LlmGeneration(llm_data),
         );
+        listener.on_event(&llm_event).await;
 
-        // Should not panic
-        listener.on_event(&event).await;
+        // Turn should still be active (LLM span is point-in-time child)
+        assert_eq!(listener.active_turn_count(), 1);
+
+        // Complete turn
+        let completed_data = TurnCompletedData {
+            turn_id,
+            iterations: 1,
+            duration_ms: Some(200),
+            usage: None,
+        };
+        let complete_event = Event::new(
+            session_id,
+            EventContext::empty(),
+            EventData::TurnCompleted(completed_data),
+        );
+        listener.on_event(&complete_event).await;
+
+        assert_eq!(listener.active_turn_count(), 0);
     }
 
     #[tokio::test]
-    async fn test_handle_llm_generation_with_tool_calls() {
+    async fn test_tool_call_lifecycle_within_turn() {
         let listener = OtelEventListener::new();
+        let session_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
 
-        let tool_calls = vec![ToolCall {
-            id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: json!({"city": "Tokyo"}),
-        }];
-
-        let data = LlmGenerationData {
-            messages: vec![Message::user("What's the weather?")],
-            tools: vec![],
-            output: LlmGenerationOutput {
-                text: Some("Let me check...".to_string()),
-                tool_calls,
-            },
-            metadata: LlmGenerationMetadata {
-                model: "gpt-4o".to_string(),
-                provider: Some("openai".to_string()),
-                usage: Some(TokenUsage {
-                    input_tokens: 20,
-                    output_tokens: 15,
-                    cache_read_tokens: None,
-                    cache_creation_tokens: None,
-                }),
-                duration_ms: Some(200),
-                time_to_first_token_ms: Some(50),
-                success: true,
-                error: None,
-                finish_reasons: Some(vec!["tool_calls".to_string()]),
-                response_id: Some("resp_456".to_string()),
-            },
+        // Start turn
+        let started_data = TurnStartedData {
+            turn_id,
+            input_message_id: MessageId::from_uuid(Uuid::now_v7()),
         };
-
-        let event = Event::new(
-            Uuid::now_v7(),
-            EventContext::empty(),
-            EventData::LlmGeneration(data),
-        );
-
-        listener.on_event(&event).await;
-    }
-
-    #[tokio::test]
-    async fn test_handle_llm_generation_without_optional_fields() {
-        let listener = OtelEventListener::new();
-
-        let data = LlmGenerationData {
-            messages: vec![Message::user("Hello")],
-            tools: vec![],
-            output: LlmGenerationOutput {
-                text: Some("Hi!".to_string()),
-                tool_calls: vec![],
-            },
-            metadata: LlmGenerationMetadata {
-                model: "claude-3".to_string(),
-                provider: None, // No provider
-                usage: None,    // No usage
-                duration_ms: None,
-                time_to_first_token_ms: None,
-                success: true,
-                error: None,
-                finish_reasons: None, // No finish reasons
-                response_id: None,    // No response ID
-            },
-        };
-
-        let event = Event::new(
-            Uuid::now_v7(),
-            EventContext::empty(),
-            EventData::LlmGeneration(data),
-        );
-
-        // Should not panic with missing optional fields
-        listener.on_event(&event).await;
-    }
-
-    #[tokio::test]
-    async fn test_handle_tool_call_lifecycle() {
-        let listener = OtelEventListener::new();
-
-        // Start a tool call
-        let started_data = ToolCallStartedData {
-            tool_call: ToolCall {
-                id: "call_abc".to_string(),
-                name: "calculate".to_string(),
-                arguments: json!({}),
-            },
-        };
-
         let start_event = Event::new(
-            Uuid::now_v7(),
+            session_id,
             EventContext::empty(),
-            EventData::ToolCallStarted(started_data),
+            EventData::TurnStarted(started_data),
         );
-
         listener.on_event(&start_event).await;
-        assert_eq!(listener.pending_tool_calls(), 1);
 
-        // Complete the tool call
-        let completed_data = ToolCallCompletedData {
-            tool_call_id: "call_abc".to_string(),
-            tool_name: "calculate".to_string(),
+        // Start tool call
+        let tool_started = ToolCallStartedData {
+            tool_call: ToolCall {
+                id: "call_123".to_string(),
+                name: "get_weather".to_string(),
+                arguments: json!({"city": "Tokyo"}),
+            },
+        };
+        let tool_start_event = Event::new(
+            session_id,
+            EventContext::empty(),
+            EventData::ToolCallStarted(tool_started),
+        );
+        listener.on_event(&tool_start_event).await;
+
+        // Verify tool call is active
+        assert_eq!(listener.active_tool_call_count(), 1);
+        assert_eq!(listener.active_turn_count(), 1);
+
+        // Complete tool call
+        let tool_completed = ToolCallCompletedData {
+            tool_call_id: "call_123".to_string(),
+            tool_name: "get_weather".to_string(),
             success: true,
             status: "success".to_string(),
             result: None,
             error: None,
         };
-
-        let complete_event = Event::new(
-            Uuid::now_v7(),
+        let tool_complete_event = Event::new(
+            session_id,
             EventContext::empty(),
-            EventData::ToolCallCompleted(completed_data),
+            EventData::ToolCallCompleted(tool_completed),
         );
+        listener.on_event(&tool_complete_event).await;
 
+        // Tool call closed, turn still active
+        assert_eq!(listener.active_tool_call_count(), 0);
+        assert_eq!(listener.active_turn_count(), 1);
+
+        // Complete turn
+        let completed_data = TurnCompletedData {
+            turn_id,
+            iterations: 1,
+            duration_ms: Some(300),
+            usage: None,
+        };
+        let complete_event = Event::new(
+            session_id,
+            EventContext::empty(),
+            EventData::TurnCompleted(completed_data),
+        );
         listener.on_event(&complete_event).await;
-        assert_eq!(listener.pending_tool_calls(), 0);
+
+        assert_eq!(listener.active_turn_count(), 0);
     }
 
     #[tokio::test]
-    async fn test_handle_tool_call_completed_without_start() {
+    async fn test_full_agentic_loop() {
         let listener = OtelEventListener::new();
+        let session_id = Uuid::now_v7();
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
 
-        // Complete a tool call that was never started (e.g., after restart)
+        // 1. Turn starts
+        listener
+            .on_event(&Event::new(
+                session_id,
+                EventContext::empty(),
+                EventData::TurnStarted(TurnStartedData {
+                    turn_id,
+                    input_message_id: MessageId::from_uuid(Uuid::now_v7()),
+                }),
+            ))
+            .await;
+
+        // 2. First LLM generation (decides to call tool)
+        listener
+            .on_event(&Event::new(
+                session_id,
+                EventContext::empty(),
+                EventData::LlmGeneration(LlmGenerationData {
+                    messages: vec![],
+                    tools: vec![],
+                    output: LlmGenerationOutput {
+                        text: Some("Let me check...".to_string()),
+                        tool_calls: vec![ToolCall {
+                            id: "call_1".to_string(),
+                            name: "search".to_string(),
+                            arguments: json!({}),
+                        }],
+                    },
+                    metadata: LlmGenerationMetadata {
+                        model: "gpt-4".to_string(),
+                        provider: Some("openai".to_string()),
+                        usage: Some(TokenUsage {
+                            input_tokens: 50,
+                            output_tokens: 20,
+                            cache_read_tokens: None,
+                            cache_creation_tokens: None,
+                        }),
+                        duration_ms: Some(100),
+                        time_to_first_token_ms: Some(30),
+                        success: true,
+                        error: None,
+                        finish_reasons: Some(vec!["tool_calls".to_string()]),
+                        response_id: None,
+                    },
+                }),
+            ))
+            .await;
+
+        // 3. Tool execution
+        listener
+            .on_event(&Event::new(
+                session_id,
+                EventContext::empty(),
+                EventData::ToolCallStarted(ToolCallStartedData {
+                    tool_call: ToolCall {
+                        id: "call_1".to_string(),
+                        name: "search".to_string(),
+                        arguments: json!({}),
+                    },
+                }),
+            ))
+            .await;
+
+        listener
+            .on_event(&Event::new(
+                session_id,
+                EventContext::empty(),
+                EventData::ToolCallCompleted(ToolCallCompletedData {
+                    tool_call_id: "call_1".to_string(),
+                    tool_name: "search".to_string(),
+                    success: true,
+                    status: "success".to_string(),
+                    result: None,
+                    error: None,
+                }),
+            ))
+            .await;
+
+        // 4. Second LLM generation (final response)
+        listener
+            .on_event(&Event::new(
+                session_id,
+                EventContext::empty(),
+                EventData::LlmGeneration(LlmGenerationData {
+                    messages: vec![],
+                    tools: vec![],
+                    output: LlmGenerationOutput {
+                        text: Some("Here's what I found...".to_string()),
+                        tool_calls: vec![],
+                    },
+                    metadata: LlmGenerationMetadata {
+                        model: "gpt-4".to_string(),
+                        provider: Some("openai".to_string()),
+                        usage: Some(TokenUsage {
+                            input_tokens: 100,
+                            output_tokens: 80,
+                            cache_read_tokens: None,
+                            cache_creation_tokens: None,
+                        }),
+                        duration_ms: Some(200),
+                        time_to_first_token_ms: Some(40),
+                        success: true,
+                        error: None,
+                        finish_reasons: Some(vec!["stop".to_string()]),
+                        response_id: None,
+                    },
+                }),
+            ))
+            .await;
+
+        // 5. Turn completes
+        listener
+            .on_event(&Event::new(
+                session_id,
+                EventContext::empty(),
+                EventData::TurnCompleted(TurnCompletedData {
+                    turn_id,
+                    iterations: 2,
+                    duration_ms: Some(500),
+                    usage: Some(TokenUsage {
+                        input_tokens: 150,
+                        output_tokens: 100,
+                        cache_read_tokens: None,
+                        cache_creation_tokens: None,
+                    }),
+                }),
+            ))
+            .await;
+
+        // All spans should be closed
+        assert_eq!(listener.active_turn_count(), 0);
+        assert_eq!(listener.active_tool_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_tool_completed_without_started() {
+        let listener = OtelEventListener::new();
+        let session_id = Uuid::now_v7();
+
+        // Tool completed without started event (e.g., after restart)
         let completed_data = ToolCallCompletedData {
             tool_call_id: "orphan_call".to_string(),
             tool_name: "unknown_tool".to_string(),
@@ -627,140 +897,37 @@ mod tests {
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            session_id,
             EventContext::empty(),
             EventData::ToolCallCompleted(completed_data),
         );
 
-        // Should not panic
+        // Should not panic - creates point-in-time span
         listener.on_event(&event).await;
+        assert_eq!(listener.active_tool_call_count(), 0);
     }
 
     #[tokio::test]
-    async fn test_handle_turn_lifecycle() {
+    async fn test_turn_completed_without_started() {
         let listener = OtelEventListener::new();
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let session_id = Uuid::now_v7();
 
-        // Start a turn
-        let started_data = TurnStartedData {
-            turn_id,
-            input_message_id: MessageId::from_uuid(Uuid::now_v7()),
-        };
-
-        let start_event = Event::new(
-            session_id,
-            EventContext::empty(),
-            EventData::TurnStarted(started_data),
-        );
-
-        listener.on_event(&start_event).await;
-        assert_eq!(listener.pending_turns(), 1);
-
-        // Complete the turn
-        let completed_data = TurnCompletedData {
-            turn_id,
-            iterations: 3,
-            duration_ms: Some(1500),
-            usage: None,
-        };
-
-        let complete_event = Event::new(
-            session_id,
-            EventContext::empty(),
-            EventData::TurnCompleted(completed_data),
-        );
-
-        listener.on_event(&complete_event).await;
-        assert_eq!(listener.pending_turns(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_handle_turn_completed_without_start() {
-        let listener = OtelEventListener::new();
-
-        // Complete a turn that was never started
+        // Turn completed without started event
         let completed_data = TurnCompletedData {
             turn_id: TurnId::from_uuid(Uuid::now_v7()),
             iterations: 1,
-            duration_ms: None, // No duration provided
+            duration_ms: None,
             usage: None,
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            session_id,
             EventContext::empty(),
             EventData::TurnCompleted(completed_data),
         );
 
-        // Should not panic
+        // Should not panic - just logs warning
         listener.on_event(&event).await;
-    }
-
-    #[tokio::test]
-    async fn test_unhandled_event_types() {
-        use crate::events::MessageUserData;
-
-        let listener = OtelEventListener::new();
-
-        // Send an event type that OtelEventListener doesn't handle
-        let event = Event::new(
-            Uuid::now_v7(),
-            EventContext::empty(),
-            EventData::MessageUser(MessageUserData {
-                message: Message::user("Hello"),
-            }),
-        );
-
-        // Should not panic, just ignore
-        listener.on_event(&event).await;
-    }
-
-    #[tokio::test]
-    async fn test_multiple_concurrent_tool_calls() {
-        let listener = OtelEventListener::new();
-
-        // Start multiple tool calls
-        for i in 0..3 {
-            let started_data = ToolCallStartedData {
-                tool_call: ToolCall {
-                    id: format!("call_{}", i),
-                    name: format!("tool_{}", i),
-                    arguments: json!({}),
-                },
-            };
-
-            let event = Event::new(
-                Uuid::now_v7(),
-                EventContext::empty(),
-                EventData::ToolCallStarted(started_data),
-            );
-
-            listener.on_event(&event).await;
-        }
-
-        assert_eq!(listener.pending_tool_calls(), 3);
-
-        // Complete them in different order
-        for i in [2, 0, 1] {
-            let completed_data = ToolCallCompletedData {
-                tool_call_id: format!("call_{}", i),
-                tool_name: format!("tool_{}", i),
-                success: true,
-                status: "success".to_string(),
-                result: None,
-                error: None,
-            };
-
-            let event = Event::new(
-                Uuid::now_v7(),
-                EventContext::empty(),
-                EventData::ToolCallCompleted(completed_data),
-            );
-
-            listener.on_event(&event).await;
-        }
-
-        assert_eq!(listener.pending_tool_calls(), 0);
+        assert_eq!(listener.active_turn_count(), 0);
     }
 }
