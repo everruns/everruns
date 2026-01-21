@@ -553,6 +553,7 @@ mod tests {
             max_tokens: None,
             tools: vec![],
             reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
         }
     }
 

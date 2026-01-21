@@ -258,6 +258,13 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                 effort: effort.clone(),
             });
 
+        // Build metadata for request tracking
+        let metadata = if config.metadata.is_empty() {
+            None
+        } else {
+            Some(config.metadata.clone())
+        };
+
         let request = ResponsesRequest {
             model: config.model.clone(),
             input: input_items,
@@ -267,6 +274,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             stream: true,
             tools,
             reasoning,
+            metadata,
         };
 
         let response = self
@@ -555,6 +563,10 @@ struct ResponsesRequest {
     tools: Option<Vec<ResponsesTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning: Option<ResponsesReasoning>,
+    /// Metadata for tracking API usage (up to 16 key-value pairs).
+    /// Useful for correlating requests with session_id, agent_id, org_id, etc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -665,6 +677,7 @@ mod tests {
             stream: true,
             tools: None,
             reasoning: None,
+            metadata: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
@@ -691,10 +704,38 @@ mod tests {
             reasoning: Some(ResponsesReasoning {
                 effort: "high".to_string(),
             }),
+            metadata: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["reasoning"]["effort"], "high");
+    }
+
+    #[test]
+    fn test_request_with_metadata() {
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("session_id".to_string(), "session_abc123".to_string());
+        metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
+
+        let request = ResponsesRequest {
+            model: "gpt-4o".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+            }],
+            instructions: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: Some(metadata),
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["metadata"]["session_id"], "session_abc123");
+        assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
     }
 
     #[test]

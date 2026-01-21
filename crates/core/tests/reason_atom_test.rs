@@ -136,6 +136,7 @@ async fn test_reason_atom_with_fixed_response() {
     let input = ReasonInput {
         context,
         agent_id,
+        org_id: 0,
         mcp_tool_definitions: vec![],
     };
 
@@ -194,6 +195,7 @@ async fn test_reason_atom_with_tool_calls() {
     let input = ReasonInput {
         context,
         agent_id,
+        org_id: 0,
         mcp_tool_definitions: vec![],
     };
 
@@ -237,6 +239,7 @@ async fn test_reason_atom_with_echo_response() {
     let input = ReasonInput {
         context,
         agent_id,
+        org_id: 0,
         mcp_tool_definitions: vec![],
     };
 
@@ -281,6 +284,7 @@ async fn test_reason_atom_with_different_configs() {
         .execute(ReasonInput {
             context: context1,
             agent_id,
+            org_id: 0,
             mcp_tool_definitions: vec![],
         })
         .await
@@ -326,6 +330,7 @@ async fn test_reason_atom_with_different_configs() {
         .execute(ReasonInput {
             context: context2,
             agent_id,
+            org_id: 0,
             mcp_tool_definitions: vec![],
         })
         .await
@@ -369,6 +374,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     let input = ReasonInput {
         context,
         agent_id,
+        org_id: 0,
         mcp_tool_definitions: vec![],
     };
 
@@ -430,6 +436,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
     let input = ReasonInput {
         context,
         agent_id,
+        org_id: 0,
         mcp_tool_definitions: vec![],
     };
 
@@ -469,6 +476,7 @@ async fn test_reason_atom_with_lorem_response() {
     let input = ReasonInput {
         context,
         agent_id,
+        org_id: 0,
         mcp_tool_definitions: vec![],
     };
 
@@ -515,6 +523,7 @@ async fn test_reason_atom_handles_llm_error() {
     let input = ReasonInput {
         context,
         agent_id,
+        org_id: 0,
         mcp_tool_definitions: vec![],
     };
 
@@ -604,6 +613,7 @@ async fn test_driver_registry_integration() {
         max_tokens: None,
         tools: vec![],
         reasoning_effort: None,
+        metadata: std::collections::HashMap::new(),
     };
 
     let response = driver
