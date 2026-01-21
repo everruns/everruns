@@ -27,9 +27,9 @@ chrono.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 reqwest.workspace = true
-sha2 = "0.10"
-hex = "0.4"
+sha2.workspace = true
+hex.workspace = true
 url = "2.5"
 
 # gRPC dependencies
-tonic = "0.12"
+tonic.workspace = true
