@@ -144,6 +144,7 @@ pub async fn reason_activity(
         EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
     };
     use everruns_core::traits::EventEmitter;
+    use everruns_core::MessageRetriever;
 
     tracing::info!(
         org_id = org_id,
@@ -214,6 +215,17 @@ pub async fn reason_activity(
                 tracing::warn!(error = %e, "Failed to emit turn.failed event");
             }
         } else {
+            // Fetch input message content for turn.completed (for Braintrust observability)
+            let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
+            let input_content = match message_retriever.get(session_id, input_message_id).await {
+                Ok(Some(msg)) => Some(msg.content_to_llm_string()),
+                Ok(None) => None,
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to fetch input message for turn.completed");
+                    None
+                }
+            };
+
             // Emit turn.completed event with usage
             let turn_completed_event = EventRequest::new(
                 session_id,
@@ -223,6 +235,7 @@ pub async fn reason_activity(
                     iterations: 1, // TODO: Track actual iterations when workflow supports it
                     duration_ms: None,
                     usage: result.usage.clone(),
+                    input_content,
                 },
             );
             if let Err(e) = event_emitter.emit(turn_completed_event).await {

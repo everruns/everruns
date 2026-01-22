@@ -584,6 +584,7 @@ mod tests {
             iterations: 3,
             duration_ms: Some(1500),
             usage: None,
+            input_content: Some("Test message".to_string()),
         };
 
         let complete_event = Event::new(
@@ -606,6 +607,7 @@ mod tests {
             iterations: 1,
             duration_ms: None, // No duration provided
             usage: None,
+            input_content: None,
         };
 
         let event = Event::new(

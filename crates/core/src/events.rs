@@ -930,6 +930,10 @@ pub struct TurnCompletedData {
     /// Aggregated token usage for all LLM calls in this turn
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
+
+    /// Input message content (for observability, passed through from turn.started)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_content: Option<String>,
 }
 
 /// Data for turn.failed event

@@ -401,10 +401,16 @@ impl BraintrustListener {
         // Root span: span_id and root_span_id both reference self (turn_id)
         let turn_id_str = data.turn_id.to_string();
 
+        // Use input_content if available (to preserve it during span merge)
+        let input = data
+            .input_content
+            .as_ref()
+            .map(|content| serde_json::json!(content));
+
         BraintrustLogEvent {
             id: turn_id_str.clone(), // Same ID as started to update the span
             created: event.ts,
-            input: None,
+            input,
             output: Some(serde_json::json!({
                 "iterations": data.iterations,
                 "status": "completed",
@@ -1221,6 +1227,7 @@ mod tests {
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
             }),
+            input_content: Some("Hello, how are you?".to_string()),
         };
 
         let event = Event::new(
@@ -1298,6 +1305,7 @@ mod tests {
             iterations: 1,
             duration_ms: Some(1000),
             usage: None,
+            input_content: Some("Test input content".to_string()),
         };
         let completed_event = Event::new(
             SessionId::new(),

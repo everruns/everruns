@@ -306,6 +306,8 @@ export interface TurnCompletedData {
   duration_ms?: number;
   /** Aggregated token usage for all LLM calls in this turn */
   usage?: TokenUsage;
+  /** Input message content (for observability, passed through from turn.started) */
+  input_content?: string;
 }
 
 /** Data for turn.failed event */

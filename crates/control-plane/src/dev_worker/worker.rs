@@ -458,6 +458,7 @@ impl InProcessWorker {
             EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
         };
         use everruns_core::traits::EventEmitter;
+        use everruns_core::MessageRetriever;
 
         debug!(
             session_id = %input.session_id,
@@ -540,6 +541,19 @@ impl InProcessWorker {
                     warn!(error = %e, "Failed to emit turn.failed event");
                 }
             } else {
+                // Fetch input message content for turn.completed (for Braintrust observability)
+                let message_retriever =
+                    DirectMessageRetriever::new(self.db.clone(), self.event_service.clone());
+                let input_content = match message_retriever.get(session_id, input_message_id).await
+                {
+                    Ok(Some(msg)) => Some(msg.content_to_llm_string()),
+                    Ok(None) => None,
+                    Err(e) => {
+                        warn!(error = %e, "Failed to fetch input message for turn.completed");
+                        None
+                    }
+                };
+
                 let turn_completed_event = EventRequest::new(
                     session_id,
                     EventContext::turn(turn_id, input_message_id),
@@ -548,6 +562,7 @@ impl InProcessWorker {
                         iterations: 1,
                         duration_ms: None,
                         usage: result.usage.clone(),
+                        input_content,
                     },
                 );
                 if let Err(e) = event_emitter.emit(turn_completed_event).await {
