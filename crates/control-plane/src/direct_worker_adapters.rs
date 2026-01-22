@@ -14,7 +14,7 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::ResolvedImage;
-use everruns_core::typed_id::MessageId;
+use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, ContentPart, DriverRegistry, EventData, LlmProviderType, Message,
     MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry, ToolResultContentPart,
@@ -87,10 +87,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // =========================================================================
 
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
-        let row = self.db.get_agent(org_id, agent_id).await.map_err(|e| {
-            tracing::error!("Failed to get agent: {}", e);
-            store_error("Failed to get agent")
-        })?;
+        let agent_id_typed = AgentId::from_uuid(agent_id);
+        let row = self
+            .db
+            .get_agent(org_id, agent_id_typed)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get agent: {}", e);
+                store_error("Failed to get agent")
+            })?;
 
         // Also get capabilities for the agent
         let capabilities = if let Some(ref _r) = row {
@@ -129,10 +134,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // =========================================================================
 
     async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<Session>> {
-        let row = self.db.get_session(org_id, session_id).await.map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            store_error("Failed to get session")
-        })?;
+        let session_id_typed = SessionId::from_uuid(session_id);
+        let row = self
+            .db
+            .get_session(org_id, session_id_typed)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get session: {}", e);
+                store_error("Failed to get session")
+            })?;
 
         Ok(row.map(|r| Session {
             id: r.id.into(),
@@ -163,13 +173,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: Uuid,
         status: &str,
     ) -> Result<Session> {
+        let session_id_typed = SessionId::from_uuid(session_id);
         let update = UpdateSession {
             status: Some(status.to_string()),
             ..Default::default()
         };
 
         self.db
-            .update_session(org_id, session_id, update)
+            .update_session(org_id, session_id_typed, update)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update session status: {}", e);
@@ -325,7 +336,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
             SessionFile {
                 id: r.id,
-                session_id: r.session_id,
+                session_id: r.session_id.uuid(),
                 path: r.path.clone(),
                 name: name_from_path(&r.path),
                 content,
@@ -381,7 +392,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .ok_or_else(|| store_error("File disappeared during update"))?
         } else {
             let create = CreateSessionFileRow {
-                session_id,
+                session_id: SessionId::from_uuid(session_id),
                 path: path.to_string(),
                 content: Some(content_bytes.clone()),
                 is_directory: false,
@@ -395,7 +406,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         Ok(SessionFile {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: name_from_path(&row.path),
             content: Some(content.to_string()),
@@ -444,7 +455,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .into_iter()
             .map(|r| FileInfo {
                 id: r.id,
-                session_id: r.session_id,
+                session_id: r.session_id.uuid(),
                 path: r.path.clone(),
                 name: name_from_path(&r.path),
                 is_directory: r.is_directory,
@@ -500,7 +511,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         use crate::storage::models::CreateSessionFileRow;
 
         let create = CreateSessionFileRow {
-            session_id,
+            session_id: SessionId::from_uuid(session_id),
             path: path.to_string(),
             content: None,
             is_directory: true,
@@ -514,7 +525,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         Ok(FileInfo {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: name_from_path(&row.path),
             is_directory: row.is_directory,

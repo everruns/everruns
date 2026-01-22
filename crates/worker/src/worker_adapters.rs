@@ -11,6 +11,7 @@ use everruns_core::error::Result;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{ImageResolver, ResolvedImage};
+use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId};
 use everruns_core::{
     Agent, DriverRegistry, LlmProviderType, Message, Session, ToolDefinition, ToolRegistry,
 };
@@ -208,8 +209,8 @@ impl<A: WorkerAdapters> AdapterAgentStore<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::AgentStore for AdapterAgentStore<A> {
-    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
-        self.adapters.get_agent(self.org_id, agent_id).await
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+        self.adapters.get_agent(self.org_id, agent_id.uuid()).await
     }
 }
 
@@ -227,8 +228,10 @@ impl<A: WorkerAdapters> AdapterSessionStore<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::SessionStore for AdapterSessionStore<A> {
-    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>> {
-        self.adapters.get_session(self.org_id, session_id).await
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+        self.adapters
+            .get_session(self.org_id, session_id.uuid())
+            .await
     }
 }
 
@@ -245,12 +248,14 @@ impl<A: WorkerAdapters> AdapterMessageRetriever<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::MessageRetriever for AdapterMessageRetriever<A> {
-    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
-        self.adapters.get_message(session_id, message_id).await
+    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+        self.adapters
+            .get_message(session_id.uuid(), message_id.uuid())
+            .await
     }
 
-    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
-        self.adapters.load_messages(session_id).await
+    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+        self.adapters.load_messages(session_id.uuid()).await
     }
 }
 
@@ -270,11 +275,11 @@ impl<A: WorkerAdapters> AdapterLlmProviderStore<A> {
 impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for AdapterLlmProviderStore<A> {
     async fn get_model_with_provider(
         &self,
-        model_id: Uuid,
+        model_id: ModelId,
     ) -> Result<Option<everruns_core::traits::ModelWithProvider>> {
         let result = self
             .adapters
-            .get_model_with_provider(self.org_id, model_id)
+            .get_model_with_provider(self.org_id, model_id.uuid())
             .await?;
         Ok(result.map(|m| everruns_core::traits::ModelWithProvider {
             model: m.model,
@@ -344,46 +349,48 @@ impl<A: WorkerAdapters> AdapterSessionFileStore<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::SessionFileStore for AdapterSessionFileStore<A> {
-    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
-        self.adapters.read_file(session_id, path).await
+    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
+        self.adapters.read_file(session_id.uuid(), path).await
     }
 
     async fn write_file(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         path: &str,
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
         self.adapters
-            .write_file(session_id, path, content, encoding)
+            .write_file(session_id.uuid(), path, content, encoding)
             .await
     }
 
-    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
-        self.adapters.delete_file(session_id, path, recursive).await
+    async fn delete_file(&self, session_id: SessionId, path: &str, recursive: bool) -> Result<bool> {
+        self.adapters
+            .delete_file(session_id.uuid(), path, recursive)
+            .await
     }
 
-    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
-        self.adapters.list_directory(session_id, path).await
+    async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
+        self.adapters.list_directory(session_id.uuid(), path).await
     }
 
-    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
-        self.adapters.stat_file(session_id, path).await
+    async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
+        self.adapters.stat_file(session_id.uuid(), path).await
     }
 
     async fn grep_files(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         self.adapters
-            .grep_files(session_id, pattern, path_pattern)
+            .grep_files(session_id.uuid(), pattern, path_pattern)
             .await
     }
 
-    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
-        self.adapters.create_directory(session_id, path).await
+    async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
+        self.adapters.create_directory(session_id.uuid(), path).await
     }
 }

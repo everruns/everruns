@@ -15,7 +15,7 @@ use everruns_core::events::{
     EventContext, EventRequest, SessionActivatedData, SessionIdledData, TurnCompletedData,
     TurnFailedData, TurnStartedData,
 };
-use everruns_core::typed_id::{MessageId, TurnId};
+use everruns_core::typed_id::{ExecId, TurnId};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, WorkerInfo, WorkflowEvent, WorkflowEventStore, WorkflowStatus,
     append_event, record_activity_completed, record_activity_failed, record_activity_started,
@@ -513,12 +513,12 @@ async fn execute_input_activity<A: WorkerAdapters>(
         session_id: input.session_id,
         turn_id: TurnId::new(),
         input_message_id: input.input_message_id,
-        exec_id: Uuid::now_v7(),
+        exec_id: ExecId::new(),
     };
 
     // Set session status to "active"
     if let Err(e) = adapters
-        .set_session_status(input.org_id, input.session_id, "active")
+        .set_session_status(input.org_id, input.session_id.uuid(), "active")
         .await
     {
         warn!(error = %e, "Failed to set session status to active");
@@ -530,7 +530,7 @@ async fn execute_input_activity<A: WorkerAdapters>(
         EventContext::turn(context.turn_id, input.input_message_id),
         SessionActivatedData {
             turn_id: context.turn_id,
-            input_message_id: MessageId::from_uuid(input.input_message_id),
+            input_message_id: input.input_message_id,
         },
     );
     if let Err(e) = adapters.emit_event(activated_event).await {
@@ -543,7 +543,8 @@ async fn execute_input_activity<A: WorkerAdapters>(
         EventContext::turn(context.turn_id, input.input_message_id),
         TurnStartedData {
             turn_id: context.turn_id,
-            input_message_id: MessageId::from_uuid(input.input_message_id),
+            input_message_id: input.input_message_id,
+            input_content: None, // Content will be extracted by Braintrust listener
         },
     );
     if let Err(e) = adapters.emit_event(turn_started_event).await {
@@ -588,14 +589,16 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         session_id: input.session_id,
         turn_id,
         input_message_id: input.input_message_id,
-        exec_id: Uuid::now_v7(),
+        exec_id: ExecId::new(),
     };
 
     let session_id = input.session_id;
     let input_message_id = input.input_message_id;
 
     // Load turn context (batch call for efficiency)
-    let turn_context = adapters.load_turn_context(input.org_id, session_id).await?;
+    let turn_context = adapters
+        .load_turn_context(input.org_id, session_id.uuid())
+        .await?;
 
     // Create atom dependencies
     let agent_store = AdapterAgentStore::new(adapters.clone(), input.org_id);
@@ -631,7 +634,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     let turn_complete = !result.has_tool_calls || !result.success;
     if turn_complete {
         if let Err(e) = adapters
-            .set_session_status(input.org_id, session_id, "idle")
+            .set_session_status(input.org_id, session_id.uuid(), "idle")
             .await
         {
             warn!(error = %e, "Failed to set session status to idle");
@@ -660,6 +663,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
                     iterations: 1,
                     duration_ms: None,
                     usage: result.usage.clone(),
+                    input_content: None, // Passed through from turn.started by Braintrust
                 },
             );
             if let Err(e) = adapters.emit_event(turn_completed_event).await {
@@ -697,7 +701,7 @@ async fn execute_act_activity<A: WorkerAdapters>(
     );
 
     // Build tool registry with defaults and capability tools
-    let tool_registry = adapters.build_tool_registry(input.agent_id).await?;
+    let tool_registry = adapters.build_tool_registry(input.agent_id.uuid()).await?;
 
     let event_emitter = AdapterEventEmitter::new(adapters.clone());
     let file_store = Arc::new(AdapterSessionFileStore::new(adapters.clone()));
@@ -781,7 +785,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                         session_id: input.session_id,
                         turn_id,
                         input_message_id: input.input_message_id,
-                        exec_id: Uuid::now_v7(),
+                        exec_id: ExecId::new(),
                     },
                     agent_id: input.agent_id,
                     tool_calls: reason_result.tool_calls,

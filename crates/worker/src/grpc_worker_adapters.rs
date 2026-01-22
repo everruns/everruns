@@ -9,6 +9,7 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{AgentStore, ResolvedImage};
+use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId};
 use everruns_core::{Agent, DriverRegistry, Message, Session, ToolRegistry};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -57,7 +58,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
         let store = GrpcAgentStore::new(self.client.clone(), org_id);
-        store.get_agent(agent_id).await
+        store.get_agent(AgentId::from_uuid(agent_id)).await
     }
 
     // =========================================================================
@@ -66,7 +67,8 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<Session>> {
         let store = GrpcSessionStore::new(self.client.clone(), org_id);
-        everruns_core::traits::SessionStore::get_session(&store, session_id).await
+        everruns_core::traits::SessionStore::get_session(&store, SessionId::from_uuid(session_id))
+            .await
     }
 
     async fn set_session_status(
@@ -76,7 +78,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         status: &str,
     ) -> Result<Session> {
         self.client
-            .set_session_status(org_id, session_id, status)
+            .set_session_status(org_id, SessionId::from_uuid(session_id), status)
             .await
     }
 
@@ -86,12 +88,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn get_message(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
         let retriever = GrpcMessageRetriever::new(self.client.clone());
-        everruns_core::MessageRetriever::get(&retriever, session_id, message_id).await
+        everruns_core::MessageRetriever::get(
+            &retriever,
+            SessionId::from_uuid(session_id),
+            MessageId::from_uuid(message_id),
+        )
+        .await
     }
 
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>> {
         let retriever = GrpcMessageRetriever::new(self.client.clone());
-        everruns_core::MessageRetriever::load(&retriever, session_id).await
+        everruns_core::MessageRetriever::load(&retriever, SessionId::from_uuid(session_id)).await
     }
 
     // =========================================================================
@@ -113,9 +120,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         model_id: Uuid,
     ) -> Result<Option<ModelWithProvider>> {
         let store = GrpcLlmProviderStore::new(self.client.clone(), org_id);
-        let result =
-            everruns_core::traits::LlmProviderStore::get_model_with_provider(&store, model_id)
-                .await?;
+        let result = everruns_core::traits::LlmProviderStore::get_model_with_provider(
+            &store,
+            ModelId::from_uuid(model_id),
+        )
+        .await?;
         Ok(result.map(|m| ModelWithProvider {
             model: m.model,
             provider_type: m.provider_type,
@@ -161,7 +170,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::read_file(&store, session_id, path).await
+        everruns_core::traits::SessionFileStore::read_file(
+            &store,
+            SessionId::from_uuid(session_id),
+            path,
+        )
+        .await
     }
 
     async fn write_file(
@@ -173,25 +187,44 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     ) -> Result<SessionFile> {
         let store = GrpcSessionFileStore::new(self.client.clone());
         everruns_core::traits::SessionFileStore::write_file(
-            &store, session_id, path, content, encoding,
+            &store,
+            SessionId::from_uuid(session_id),
+            path,
+            content,
+            encoding,
         )
         .await
     }
 
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::delete_file(&store, session_id, path, recursive)
-            .await
+        everruns_core::traits::SessionFileStore::delete_file(
+            &store,
+            SessionId::from_uuid(session_id),
+            path,
+            recursive,
+        )
+        .await
     }
 
     async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::list_directory(&store, session_id, path).await
+        everruns_core::traits::SessionFileStore::list_directory(
+            &store,
+            SessionId::from_uuid(session_id),
+            path,
+        )
+        .await
     }
 
     async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::stat_file(&store, session_id, path).await
+        everruns_core::traits::SessionFileStore::stat_file(
+            &store,
+            SessionId::from_uuid(session_id),
+            path,
+        )
+        .await
     }
 
     async fn grep_files(
@@ -203,7 +236,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         let store = GrpcSessionFileStore::new(self.client.clone());
         everruns_core::traits::SessionFileStore::grep_files(
             &store,
-            session_id,
+            SessionId::from_uuid(session_id),
             pattern,
             path_pattern,
         )
@@ -212,7 +245,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::create_directory(&store, session_id, path).await
+        everruns_core::traits::SessionFileStore::create_directory(
+            &store,
+            SessionId::from_uuid(session_id),
+            path,
+        )
+        .await
     }
 
     // =========================================================================
@@ -234,7 +272,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     async fn load_turn_context(&self, org_id: i64, session_id: Uuid) -> Result<TurnContext> {
-        let ctx = crate::grpc_adapters::load_turn_context(&self.client, org_id, session_id).await?;
+        let ctx = crate::grpc_adapters::load_turn_context(
+            &self.client,
+            org_id,
+            SessionId::from_uuid(session_id),
+        )
+        .await?;
         Ok(TurnContext {
             agent: ctx.agent,
             session: ctx.session,
