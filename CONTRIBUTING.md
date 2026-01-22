@@ -50,6 +50,26 @@ Uses in-memory storage (data lost on restart). Ideal for UI development.
 just stop-all
 ```
 
+## Commits
+
+[Conventional Commits](https://www.conventionalcommits.org): `type(scope): description`
+
+**Types:** feat, fix, docs, style, refactor, perf, test, chore, ci
+
+**Examples:**
+```
+feat(api): add agent versioning endpoint
+fix(workflow): handle timeout in run execution
+```
+
+## Pull Requests
+
+**Title:** Conventional Commits format.
+
+**Merge strategy:** Squash and Merge.
+
+**Template:** `.github/pull_request_template.md` (required)
+
 ## Code Quality
 
 Before committing, run:

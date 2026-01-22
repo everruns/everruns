@@ -36,12 +36,17 @@ curl -s http://localhost:9000/health | jq
 ### 3. Run Tests
 
 ```bash
-# Unit + integration tests
-cargo test
+# All tests (unit + integration, includes tool calling tests)
+cargo test --all-features
+
+# Integration tests only (requires server running)
+cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
 
 # Durable engine tests
 cargo test -p everruns-durable --lib
 ```
+
+Integration tests cover: API endpoints, tool calling (OpenAI/Anthropic/LLMSim), events, sessions, capabilities.
 
 ### 4. UI Check
 

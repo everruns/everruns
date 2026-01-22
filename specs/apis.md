@@ -473,3 +473,17 @@ Standard HTTP status codes:
 - `404` - Not Found
 - `422` - Unprocessable Entity (validation error)
 - `500` - Internal Server Error
+
+### Error Handling Guidelines
+
+- **Never expose internal error details.** Return generic `500 Internal Server Error` with "Internal server error".
+- **Always log server-side:** `tracing::error!()` before returning generic response.
+- Only return safe, user-facing messages: "Not found", "Invalid request", "Internal server error".
+
+Example:
+```rust
+let result = state.db.some_operation().await.map_err(|e| {
+    tracing::error!("Failed to perform operation: {}", e);
+    StatusCode::INTERNAL_SERVER_ERROR
+})?;
+```
