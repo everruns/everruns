@@ -250,6 +250,14 @@ impl LlmDriver for AnthropicLlmDriver {
             .as_ref()
             .and_then(|e| AnthropicThinking::from_effort(e));
 
+        tracing::info!(
+            model = %config.model,
+            reasoning_effort = ?config.reasoning_effort,
+            thinking_enabled = thinking.is_some(),
+            thinking_budget = ?thinking.as_ref().map(|t| t.budget_tokens),
+            "AnthropicDriver: building request with thinking config"
+        );
+
         // Calculate max_tokens - respect caller's limit, only increase when thinking requires it
         let base_max_tokens = config.max_tokens.unwrap_or(4096);
         let max_tokens = if let Some(ref thinking_config) = thinking {
@@ -379,6 +387,10 @@ impl LlmDriver for AnthropicLlmDriver {
                                         }
                                         AnthropicDelta::ThinkingDelta { thinking } => {
                                             // Stream thinking content from extended thinking models
+                                            tracing::debug!(
+                                                thinking_len = thinking.len(),
+                                                "AnthropicDriver: received thinking_delta from API"
+                                            );
                                             return Ok(LlmStreamEvent::ThinkingDelta(thinking));
                                         }
                                     }

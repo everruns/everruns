@@ -674,6 +674,12 @@ where
                     // Accumulate thinking content from extended thinking models
                     thinking.push_str(&delta);
                     pending_thinking_delta.push_str(&delta);
+                    tracing::debug!(
+                        session_id = %session_id,
+                        delta_len = delta.len(),
+                        total_thinking_len = thinking.len(),
+                        "ReasonAtom: received ThinkingDelta from LLM"
+                    );
 
                     // Emit batched thinking delta if interval elapsed
                     if last_thinking_delta_emit.elapsed().as_millis() as u64
