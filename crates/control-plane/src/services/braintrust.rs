@@ -1024,8 +1024,7 @@ mod tests {
     use super::*;
     use everruns_core::events::{
         EventContext, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
-        ReasonCompletedData, TokenUsage, ToolCallCompletedData, TurnCompletedData,
-        TurnStartedData,
+        ReasonCompletedData, TokenUsage, ToolCallCompletedData, TurnCompletedData, TurnStartedData,
     };
     use everruns_core::message::Message;
     use everruns_core::typed_id::{MessageId, TurnId};
@@ -1211,10 +1210,25 @@ mod tests {
         let bt_started = listener.convert_turn_started(&started_event, &started_data);
 
         // Root span: span_id = root_span_id = turn_id, no parents
-        assert_eq!(bt_started.id, turn_id.to_string(), "turn.started id should be turn_id");
-        assert_eq!(bt_started.span_id, Some(turn_id.to_string()), "turn.started span_id should be turn_id");
-        assert_eq!(bt_started.root_span_id, Some(turn_id.to_string()), "turn.started root_span_id should be turn_id");
-        assert!(bt_started.span_parents.is_none(), "turn.started should have no parents (root span)");
+        assert_eq!(
+            bt_started.id,
+            turn_id.to_string(),
+            "turn.started id should be turn_id"
+        );
+        assert_eq!(
+            bt_started.span_id,
+            Some(turn_id.to_string()),
+            "turn.started span_id should be turn_id"
+        );
+        assert_eq!(
+            bt_started.root_span_id,
+            Some(turn_id.to_string()),
+            "turn.started root_span_id should be turn_id"
+        );
+        assert!(
+            bt_started.span_parents.is_none(),
+            "turn.started should have no parents (root span)"
+        );
 
         // Test turn.completed uses same IDs (for merging)
         let completed_data = TurnCompletedData {
@@ -1231,8 +1245,16 @@ mod tests {
         let bt_completed = listener.convert_turn_completed(&completed_event, &completed_data);
 
         // Same IDs as started for proper merging
-        assert_eq!(bt_completed.id, turn_id.to_string(), "turn.completed id should match turn.started");
-        assert_eq!(bt_completed.span_id, Some(turn_id.to_string()), "turn.completed span_id should match turn.started");
+        assert_eq!(
+            bt_completed.id,
+            turn_id.to_string(),
+            "turn.completed id should match turn.started"
+        );
+        assert_eq!(
+            bt_completed.span_id,
+            Some(turn_id.to_string()),
+            "turn.completed span_id should match turn.started"
+        );
         assert_eq!(bt_completed.root_span_id, Some(turn_id.to_string()));
     }
 
@@ -1253,14 +1275,30 @@ mod tests {
             agent_id: Uuid::now_v7(),
             metadata: None,
         };
-        let event = Event::new(Uuid::now_v7(), context, EventData::ReasonStarted(data.clone()));
+        let event = Event::new(
+            Uuid::now_v7(),
+            context,
+            EventData::ReasonStarted(data.clone()),
+        );
 
         let bt_event = listener.convert_reason_started(&event, &data);
 
         // Reason should be child of turn
-        assert_eq!(bt_event.span_id, Some(reason_span_id.clone()), "reason span_id should be the reason's span");
-        assert_eq!(bt_event.root_span_id, Some(turn_id.to_string()), "reason root_span_id should be turn_id");
-        assert_eq!(bt_event.span_parents, Some(vec![turn_id.to_string()]), "reason parent should be turn");
+        assert_eq!(
+            bt_event.span_id,
+            Some(reason_span_id.clone()),
+            "reason span_id should be the reason's span"
+        );
+        assert_eq!(
+            bt_event.root_span_id,
+            Some(turn_id.to_string()),
+            "reason root_span_id should be turn_id"
+        );
+        assert_eq!(
+            bt_event.span_parents,
+            Some(vec![turn_id.to_string()]),
+            "reason parent should be turn"
+        );
     }
 
     #[test]
@@ -1296,14 +1334,30 @@ mod tests {
                 response_id: None,
             },
         };
-        let event = Event::new(Uuid::now_v7(), context, EventData::LlmGeneration(data.clone()));
+        let event = Event::new(
+            Uuid::now_v7(),
+            context,
+            EventData::LlmGeneration(data.clone()),
+        );
 
         let bt_event = listener.convert_llm_generation(&event, &data);
 
         // LLM should be child of reason
-        assert_eq!(bt_event.span_id, Some(llm_span_id), "llm span_id should be its own span");
-        assert_eq!(bt_event.root_span_id, Some(turn_id.to_string()), "llm root_span_id should be turn_id");
-        assert_eq!(bt_event.span_parents, Some(vec![reason_span_id]), "llm parent should be reason span");
+        assert_eq!(
+            bt_event.span_id,
+            Some(llm_span_id),
+            "llm span_id should be its own span"
+        );
+        assert_eq!(
+            bt_event.root_span_id,
+            Some(turn_id.to_string()),
+            "llm root_span_id should be turn_id"
+        );
+        assert_eq!(
+            bt_event.span_parents,
+            Some(vec![reason_span_id]),
+            "llm parent should be reason span"
+        );
     }
 
     #[test]
@@ -1338,9 +1392,21 @@ mod tests {
         let bt_event = listener.convert_act_started(&event, &data);
 
         // Act should be child of turn
-        assert_eq!(bt_event.span_id, Some(act_span_id.clone()), "act span_id should be the act's span");
-        assert_eq!(bt_event.root_span_id, Some(turn_id.to_string()), "act root_span_id should be turn_id");
-        assert_eq!(bt_event.span_parents, Some(vec![turn_id.to_string()]), "act parent should be turn");
+        assert_eq!(
+            bt_event.span_id,
+            Some(act_span_id.clone()),
+            "act span_id should be the act's span"
+        );
+        assert_eq!(
+            bt_event.root_span_id,
+            Some(turn_id.to_string()),
+            "act root_span_id should be turn_id"
+        );
+        assert_eq!(
+            bt_event.span_parents,
+            Some(vec![turn_id.to_string()]),
+            "act parent should be turn"
+        );
     }
 
     #[test]
@@ -1365,14 +1431,30 @@ mod tests {
             result: None,
             error: None,
         };
-        let event = Event::new(Uuid::now_v7(), context, EventData::ToolCallCompleted(data.clone()));
+        let event = Event::new(
+            Uuid::now_v7(),
+            context,
+            EventData::ToolCallCompleted(data.clone()),
+        );
 
         let bt_event = listener.convert_tool_call_completed(&event, &data);
 
         // Tool should be child of act
-        assert_eq!(bt_event.span_id, Some(tool_span_id), "tool span_id should be its own span");
-        assert_eq!(bt_event.root_span_id, Some(turn_id.to_string()), "tool root_span_id should be turn_id");
-        assert_eq!(bt_event.span_parents, Some(vec![act_span_id]), "tool parent should be act span");
+        assert_eq!(
+            bt_event.span_id,
+            Some(tool_span_id),
+            "tool span_id should be its own span"
+        );
+        assert_eq!(
+            bt_event.root_span_id,
+            Some(turn_id.to_string()),
+            "tool root_span_id should be turn_id"
+        );
+        assert_eq!(
+            bt_event.span_parents,
+            Some(vec![act_span_id]),
+            "tool parent should be act span"
+        );
     }
 
     #[test]
@@ -1416,8 +1498,14 @@ mod tests {
         let bt_completed = listener.convert_reason_completed(&completed_event, &completed_data);
 
         // Both should have same span_id for Braintrust to merge them
-        assert_eq!(bt_started.span_id, bt_completed.span_id, "started and completed should share span_id");
-        assert_eq!(bt_started.id, bt_completed.id, "started and completed should share log id");
+        assert_eq!(
+            bt_started.span_id, bt_completed.span_id,
+            "started and completed should share span_id"
+        );
+        assert_eq!(
+            bt_started.id, bt_completed.id,
+            "started and completed should share log id"
+        );
     }
 
     #[test]
@@ -1436,10 +1524,21 @@ mod tests {
         let expected_root = turn_id.to_string();
 
         // turn.started
-        let turn_data = TurnStartedData { turn_id, input_message_id };
-        let turn_event = Event::new(Uuid::now_v7(), EventContext::empty(), EventData::TurnStarted(turn_data.clone()));
+        let turn_data = TurnStartedData {
+            turn_id,
+            input_message_id,
+        };
+        let turn_event = Event::new(
+            Uuid::now_v7(),
+            EventContext::empty(),
+            EventData::TurnStarted(turn_data.clone()),
+        );
         let bt_turn = listener.convert_turn_started(&turn_event, &turn_data);
-        assert_eq!(bt_turn.root_span_id, Some(expected_root.clone()), "turn should have root_span_id = turn_id");
+        assert_eq!(
+            bt_turn.root_span_id,
+            Some(expected_root.clone()),
+            "turn should have root_span_id = turn_id"
+        );
 
         // reason event
         let mut reason_ctx = EventContext::empty();
@@ -1451,9 +1550,17 @@ mod tests {
             agent_id: Uuid::now_v7(),
             metadata: None,
         };
-        let reason_event = Event::new(Uuid::now_v7(), reason_ctx, EventData::ReasonStarted(reason_data.clone()));
+        let reason_event = Event::new(
+            Uuid::now_v7(),
+            reason_ctx,
+            EventData::ReasonStarted(reason_data.clone()),
+        );
         let bt_reason = listener.convert_reason_started(&reason_event, &reason_data);
-        assert_eq!(bt_reason.root_span_id, Some(expected_root.clone()), "reason should have root_span_id = turn_id");
+        assert_eq!(
+            bt_reason.root_span_id,
+            Some(expected_root.clone()),
+            "reason should have root_span_id = turn_id"
+        );
 
         // llm event
         let mut llm_ctx = EventContext::empty();
@@ -1464,7 +1571,10 @@ mod tests {
         let llm_data = LlmGenerationData {
             messages: vec![],
             tools: vec![],
-            output: LlmGenerationOutput { text: Some("hi".to_string()), tool_calls: vec![] },
+            output: LlmGenerationOutput {
+                text: Some("hi".to_string()),
+                tool_calls: vec![],
+            },
             metadata: LlmGenerationMetadata {
                 model: "gpt-4".to_string(),
                 provider: None,
@@ -1477,9 +1587,17 @@ mod tests {
                 response_id: None,
             },
         };
-        let llm_event = Event::new(Uuid::now_v7(), llm_ctx, EventData::LlmGeneration(llm_data.clone()));
+        let llm_event = Event::new(
+            Uuid::now_v7(),
+            llm_ctx,
+            EventData::LlmGeneration(llm_data.clone()),
+        );
         let bt_llm = listener.convert_llm_generation(&llm_event, &llm_data);
-        assert_eq!(bt_llm.root_span_id, Some(expected_root.clone()), "llm should have root_span_id = turn_id");
+        assert_eq!(
+            bt_llm.root_span_id,
+            Some(expected_root.clone()),
+            "llm should have root_span_id = turn_id"
+        );
 
         // act event
         let mut act_ctx = EventContext::empty();
@@ -1493,9 +1611,17 @@ mod tests {
                 name: "search".to_string(),
             }],
         };
-        let act_event = Event::new(Uuid::now_v7(), act_ctx, EventData::ActStarted(act_data.clone()));
+        let act_event = Event::new(
+            Uuid::now_v7(),
+            act_ctx,
+            EventData::ActStarted(act_data.clone()),
+        );
         let bt_act = listener.convert_act_started(&act_event, &act_data);
-        assert_eq!(bt_act.root_span_id, Some(expected_root.clone()), "act should have root_span_id = turn_id");
+        assert_eq!(
+            bt_act.root_span_id,
+            Some(expected_root.clone()),
+            "act should have root_span_id = turn_id"
+        );
 
         // tool event
         let mut tool_ctx = EventContext::empty();
@@ -1511,8 +1637,16 @@ mod tests {
             result: None,
             error: None,
         };
-        let tool_event = Event::new(Uuid::now_v7(), tool_ctx, EventData::ToolCallCompleted(tool_data.clone()));
+        let tool_event = Event::new(
+            Uuid::now_v7(),
+            tool_ctx,
+            EventData::ToolCallCompleted(tool_data.clone()),
+        );
         let bt_tool = listener.convert_tool_call_completed(&tool_event, &tool_data);
-        assert_eq!(bt_tool.root_span_id, Some(expected_root.clone()), "tool should have root_span_id = turn_id");
+        assert_eq!(
+            bt_tool.root_span_id,
+            Some(expected_root.clone()),
+            "tool should have root_span_id = turn_id"
+        );
     }
 }

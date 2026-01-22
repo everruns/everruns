@@ -1,3 +1,8 @@
+---
+title: Braintrust Integration
+description: LLM observability, evaluation, and trace visualization with Braintrust
+---
+
 # Braintrust Integration
 
 <img src="/images/observability/braintrust-logo.png" alt="Braintrust" width="64" style="float: right; margin-left: 16px;" />

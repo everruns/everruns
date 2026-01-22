@@ -1,3 +1,8 @@
+---
+title: Observability
+description: Monitor, debug, and evaluate your agentic workflows
+---
+
 # Observability
 
 Everruns provides observability integrations to help you monitor, debug, and evaluate your agentic workflows.

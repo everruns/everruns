@@ -851,7 +851,7 @@ impl DurableWorker {
             .map_err(|e| anyhow::anyhow!("Failed to load turn context: {}", e))?;
 
         // Create AtomContext - use turn_id from input if available (from input activity)
-        let turn_id = input.turn_id.unwrap_or_else(TurnId::new);
+        let turn_id = input.turn_id.unwrap_or_default();
         let context = AtomContext {
             session_id: input.session_id,
             turn_id,
@@ -1004,7 +1004,7 @@ impl DurableWorker {
                     let tool_count = reason_result.tool_calls.len();
 
                     // Use turn_id from input (propagated from input activity)
-                    let turn_id = input.turn_id.unwrap_or_else(TurnId::new);
+                    let turn_id = input.turn_id.unwrap_or_default();
 
                     let act_task_input = ActTaskInput {
                         org_id: input.org_id,

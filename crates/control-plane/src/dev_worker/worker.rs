@@ -446,7 +446,7 @@ impl InProcessWorker {
         );
 
         // Create AtomContext - use turn_id from input if available (from input activity)
-        let turn_id = input.turn_id.unwrap_or_else(TurnId::new);
+        let turn_id = input.turn_id.unwrap_or_default();
         let context = AtomContext {
             session_id: input.session_id,
             turn_id,
@@ -685,7 +685,7 @@ impl InProcessWorker {
                     let tool_count = reason_result.tool_calls.len();
 
                     // Use turn_id from input (propagated from input activity)
-                    let turn_id = input.turn_id.unwrap_or_else(TurnId::new);
+                    let turn_id = input.turn_id.unwrap_or_default();
 
                     // Schedule act activity
                     let act_input = ActInput {
