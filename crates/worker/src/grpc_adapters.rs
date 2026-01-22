@@ -310,6 +310,7 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         id: id.into(),
         role,
         content,
+        thinking: None, // Thinking retrieved from events, not gRPC message conversion
         controls,
         metadata,
         created_at: proto_timestamp_or_now(proto_msg.created_at.as_ref()),

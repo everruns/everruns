@@ -641,6 +641,7 @@ impl WorkerService for WorkerServiceImpl {
             id: uuid::Uuid::now_v7().into(),
             role: role.clone(),
             content,
+            thinking: None,
             controls,
             metadata,
             created_at: Utc::now(),
