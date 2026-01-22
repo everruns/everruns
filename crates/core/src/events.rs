@@ -1247,7 +1247,7 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
     };
 
     // If deserialization fails, return as raw data
-    result.unwrap_or_else(|_| EventData::Raw(data))
+    result.unwrap_or(EventData::Raw(data))
 }
 
 /// Macro to generate From implementations for EventData variants.

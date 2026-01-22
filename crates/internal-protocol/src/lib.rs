@@ -480,7 +480,7 @@ pub fn proto_message_to_schema(
         id: id.into(),
         role,
         content,
-        thinking: None, // Thinking is not transmitted via gRPC (only stored/retrieved via events)
+        thinking: value.thinking,
         controls,
         metadata,
         created_at,
@@ -512,6 +512,7 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
         controls,
         metadata,
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
+        thinking: value.thinking.clone(),
     }
 }
 

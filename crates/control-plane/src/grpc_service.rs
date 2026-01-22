@@ -345,6 +345,7 @@ impl WorkerService for WorkerServiceImpl {
                 controls,
                 metadata,
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
+                thinking: message.thinking.clone(),
             });
         }
 
@@ -583,6 +584,7 @@ impl WorkerService for WorkerServiceImpl {
                 controls,
                 metadata,
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
+                thinking: message.thinking.clone(),
             });
         }
 
@@ -694,6 +696,7 @@ impl WorkerService for WorkerServiceImpl {
             controls,
             metadata,
             created_at: Some(datetime_to_proto_timestamp(message.created_at)),
+            thinking: message.thinking.clone(),
         };
 
         Ok(Response::new(AddMessageResponse {
