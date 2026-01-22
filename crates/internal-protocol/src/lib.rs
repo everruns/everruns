@@ -914,7 +914,7 @@ fn parse_message_role(s: &str) -> everruns_core::MessageRole {
     match s.to_lowercase().as_str() {
         "system" => everruns_core::MessageRole::System,
         "user" => everruns_core::MessageRole::User,
-        "assistant" => everruns_core::MessageRole::Assistant,
+        "assistant" | "agent" => everruns_core::MessageRole::Assistant,
         "tool_result" => everruns_core::MessageRole::ToolResult,
         _ => everruns_core::MessageRole::User,
     }
@@ -1126,5 +1126,67 @@ mod tests {
 
         // Verify capabilities remain empty
         assert!(schema_agent.capabilities.is_empty());
+    }
+
+    #[test]
+    fn test_message_thinking_field_roundtrip() {
+        use chrono::Utc;
+        use everruns_core::{ContentPart, Message, MessageRole};
+        use uuid::Uuid;
+
+        // Create a Message with thinking content (simulating extended thinking model output)
+        let thinking_content = "Let me analyze this step by step...\n\n1. First, I need to understand the problem.\n2. Then, I'll formulate a solution.".to_string();
+        let message = Message {
+            id: Uuid::now_v7().into(),
+            role: MessageRole::Assistant,
+            content: vec![ContentPart::text("Here is my response based on my analysis.")],
+            thinking: Some(thinking_content.clone()),
+            controls: None,
+            metadata: None,
+            created_at: Utc::now(),
+        };
+
+        // Convert to proto
+        let proto_message = schema_message_to_proto(&message);
+
+        // Verify thinking field is set in proto
+        assert_eq!(proto_message.thinking, Some(thinking_content.clone()));
+
+        // Convert back to schema
+        let schema_message = proto_message_to_schema(proto_message).unwrap();
+
+        // Verify thinking field survives roundtrip
+        assert_eq!(schema_message.thinking, Some(thinking_content));
+        assert_eq!(schema_message.role, MessageRole::Assistant);
+    }
+
+    #[test]
+    fn test_message_without_thinking_roundtrip() {
+        use chrono::Utc;
+        use everruns_core::{ContentPart, Message, MessageRole};
+        use uuid::Uuid;
+
+        // Create a Message without thinking content (normal model output)
+        let message = Message {
+            id: Uuid::now_v7().into(),
+            role: MessageRole::Assistant,
+            content: vec![ContentPart::text("A simple response without thinking.")],
+            thinking: None,
+            controls: None,
+            metadata: None,
+            created_at: Utc::now(),
+        };
+
+        // Convert to proto
+        let proto_message = schema_message_to_proto(&message);
+
+        // Verify thinking field is None in proto
+        assert_eq!(proto_message.thinking, None);
+
+        // Convert back to schema
+        let schema_message = proto_message_to_schema(proto_message).unwrap();
+
+        // Verify thinking field remains None
+        assert_eq!(schema_message.thinking, None);
     }
 }
