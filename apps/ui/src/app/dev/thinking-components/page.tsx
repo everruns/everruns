@@ -41,7 +41,7 @@ export default function ThinkingComponentsPage() {
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">Expanded Thinking</h2>
         <p className="text-sm text-muted-foreground">
-          Shows the model's chain-of-thought reasoning before producing the final response.
+          Shows the model&apos;s chain-of-thought reasoning before producing the final response.
         </p>
         <StreamingThinking text={SAMPLE_THINKING} defaultCollapsed={false} />
       </section>
@@ -86,7 +86,7 @@ export default function ThinkingComponentsPage() {
                 The blue color of the sky is caused by <strong>Rayleigh scattering</strong>.
               </p>
               <p>
-                When sunlight enters Earth's atmosphere, it collides with gas molecules.
+                When sunlight enters Earth&apos;s atmosphere, it collides with gas molecules.
                 Shorter wavelengths (blue light) scatter more than longer wavelengths (red light),
                 with scattering intensity proportional to 1/wavelength^4.
               </p>
