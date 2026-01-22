@@ -1,7 +1,7 @@
 // Error types for the agent loop
 
+use crate::typed_id::{AgentId, SessionId};
 use thiserror::Error;
-use uuid::Uuid;
 
 /// Result type alias for agent loop operations
 pub type Result<T> = std::result::Result<T, AgentLoopError>;
@@ -48,11 +48,11 @@ pub enum AgentLoopError {
 
     /// Agent not found
     #[error("Agent not found: {0}")]
-    AgentNotFound(Uuid),
+    AgentNotFound(AgentId),
 
     /// Session not found
     #[error("Session not found: {0}")]
-    SessionNotFound(Uuid),
+    SessionNotFound(SessionId),
 
     /// Internal error
     #[error("Internal error: {0}")]
@@ -92,12 +92,12 @@ impl AgentLoopError {
     }
 
     /// Create an agent not found error
-    pub fn agent_not_found(agent_id: Uuid) -> Self {
+    pub fn agent_not_found(agent_id: AgentId) -> Self {
         AgentLoopError::AgentNotFound(agent_id)
     }
 
     /// Create a session not found error
-    pub fn session_not_found(session_id: Uuid) -> Self {
+    pub fn session_not_found(session_id: SessionId) -> Self {
         AgentLoopError::SessionNotFound(session_id)
     }
 

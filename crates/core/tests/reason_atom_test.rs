@@ -17,7 +17,7 @@ use everruns_core::memory::{
 };
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{ModelWithProvider, NoopEventEmitter};
-use everruns_core::typed_id::TurnId;
+use everruns_core::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::{Message, ToolCall};
 use serde_json::json;
 use uuid::Uuid;
@@ -104,8 +104,8 @@ fn create_custom_driver_registry(config: LlmSimConfig) -> DriverRegistry {
 /// Create an AtomContext for testing
 fn create_context(session_id: Uuid) -> AtomContext {
     let turn_id = TurnId::new();
-    let input_message_id = Uuid::now_v7();
-    AtomContext::new(session_id, turn_id, input_message_id)
+    let input_message_id = MessageId::new();
+    AtomContext::new(SessionId::from_uuid(session_id), turn_id, input_message_id)
 }
 
 #[tokio::test]
@@ -116,7 +116,7 @@ async fn test_reason_atom_with_fixed_response() {
     // Add a user message
     message_retriever
         .seed(
-            session_id,
+            session_id.into(),
             vec![Message::user("What is the capital of France?")],
         )
         .await;
@@ -138,7 +138,7 @@ async fn test_reason_atom_with_fixed_response() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id,
+        agent_id: agent_id.into(),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -154,7 +154,7 @@ async fn test_reason_atom_with_fixed_response() {
     assert!(result.tool_calls.is_empty());
 
     // Verify the assistant message was stored
-    let messages = message_retriever.load(session_id).await.unwrap();
+    let messages = message_retriever.load(session_id.into()).await.unwrap();
     assert_eq!(messages.len(), 2); // user + assistant
     assert_eq!(messages[1].text(), Some("The capital of France is Paris."));
 }
@@ -167,7 +167,7 @@ async fn test_reason_atom_with_tool_calls() {
     // Add a user message
     message_retriever
         .seed(
-            session_id,
+            session_id.into(),
             vec![Message::user("What's the weather in Tokyo?")],
         )
         .await;
@@ -197,7 +197,7 @@ async fn test_reason_atom_with_tool_calls() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id,
+        agent_id: agent_id.into(),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -222,7 +222,10 @@ async fn test_reason_atom_with_echo_response() {
 
     // Add a user message
     message_retriever
-        .seed(session_id, vec![Message::user("Hello, how are you?")])
+        .seed(
+            session_id.into(),
+            vec![Message::user("Hello, how are you?")],
+        )
         .await;
 
     // Create a driver that echoes the user input
@@ -241,7 +244,7 @@ async fn test_reason_atom_with_echo_response() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id,
+        agent_id: agent_id.into(),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -267,7 +270,7 @@ async fn test_reason_atom_with_different_configs() {
 
     // First test with one configuration
     message_retriever
-        .seed(session_id, vec![Message::user("Question 1")])
+        .seed(session_id.into(), vec![Message::user("Question 1")])
         .await;
 
     let driver_registry1 = create_custom_driver_registry(LlmSimConfig::fixed("Response A"));
@@ -286,7 +289,7 @@ async fn test_reason_atom_with_different_configs() {
     let result1 = atom1
         .execute(ReasonInput {
             context: context1,
-            agent_id,
+            agent_id: agent_id.into(),
             org_id: 0,
             mcp_tool_definitions: vec![],
         })
@@ -315,7 +318,7 @@ async fn test_reason_atom_with_different_configs() {
     };
     session_store.add_session(session2).await;
     message_retriever
-        .seed(session_id2, vec![Message::user("Question 2")])
+        .seed(session_id2.into(), vec![Message::user("Question 2")])
         .await;
 
     let driver_registry2 = create_custom_driver_registry(LlmSimConfig::fixed("Response B"));
@@ -334,7 +337,7 @@ async fn test_reason_atom_with_different_configs() {
     let result2 = atom2
         .execute(ReasonInput {
             context: context2,
-            agent_id,
+            agent_id: agent_id.into(),
             org_id: 0,
             mcp_tool_definitions: vec![],
         })
@@ -352,7 +355,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     // Seed a multi-turn conversation
     message_retriever
         .seed(
-            session_id,
+            session_id.into(),
             vec![
                 Message::user("Hi, I'm Bob."),
                 Message::assistant("Hello Bob! How can I help you today?"),
@@ -378,7 +381,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id,
+        agent_id: agent_id.into(),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -392,7 +395,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
     assert!(result.text.contains("Bob"));
 
     // Verify all messages are preserved
-    let messages = message_retriever.load(session_id).await.unwrap();
+    let messages = message_retriever.load(session_id.into()).await.unwrap();
     assert_eq!(messages.len(), 4); // 3 original + 1 new assistant response
 }
 
@@ -410,7 +413,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
 
     message_retriever
         .seed(
-            session_id,
+            session_id.into(),
             vec![
                 Message::user("What's the weather in Tokyo?"),
                 Message::assistant_with_tools("Let me check that.", vec![tool_call]),
@@ -440,7 +443,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id,
+        agent_id: agent_id.into(),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -461,7 +464,10 @@ async fn test_reason_atom_with_lorem_response() {
         setup_test_environment().await;
 
     message_retriever
-        .seed(session_id, vec![Message::user("Tell me a long story")])
+        .seed(
+            session_id.into(),
+            vec![Message::user("Tell me a long story")],
+        )
         .await;
 
     // Use lorem ipsum generator
@@ -480,7 +486,7 @@ async fn test_reason_atom_with_lorem_response() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id,
+        agent_id: agent_id.into(),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -505,7 +511,7 @@ async fn test_reason_atom_handles_llm_error() {
 
     // Add a user message
     message_retriever
-        .seed(session_id, vec![Message::user("Hello!")])
+        .seed(session_id.into(), vec![Message::user("Hello!")])
         .await;
 
     // Create a driver that returns an error (simulating API key missing, rate limit, etc.)
@@ -527,7 +533,7 @@ async fn test_reason_atom_handles_llm_error() {
     let context = create_context(session_id);
     let input = ReasonInput {
         context,
-        agent_id,
+        agent_id: agent_id.into(),
         org_id: 0,
         mcp_tool_definitions: vec![],
     };
@@ -563,7 +569,7 @@ async fn test_reason_atom_handles_llm_error() {
     assert!(result.tool_calls.is_empty());
 
     // Verify an error message was stored for the user
-    let messages = message_retriever.load(session_id).await.unwrap();
+    let messages = message_retriever.load(session_id.into()).await.unwrap();
     assert_eq!(messages.len(), 2, "Should have user + error message");
     assert_eq!(messages[1].role, everruns_core::MessageRole::Assistant);
     assert!(

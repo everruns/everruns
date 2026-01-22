@@ -10,7 +10,7 @@ use anyhow::Result;
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
-use everruns_core::typed_id::{MessageId, TurnId};
+use everruns_core::typed_id::{ExecId, TurnId};
 use everruns_core::{
     ActInput, DEFAULT_ORG_ID, InputAtomInput, ReasonInput, ReasonResult, TokenUsage,
 };
@@ -375,7 +375,7 @@ impl InProcessWorker {
             session_id: input.session_id,
             turn_id: TurnId::new(),
             input_message_id: input.input_message_id,
-            exec_id: Uuid::now_v7(),
+            exec_id: ExecId::new(),
         };
 
         // Set session status to "active"
@@ -391,7 +391,7 @@ impl InProcessWorker {
             EventContext::turn(context.turn_id, input.input_message_id),
             SessionActivatedData {
                 turn_id: context.turn_id,
-                input_message_id: MessageId::from_uuid(input.input_message_id),
+                input_message_id: input.input_message_id,
             },
         );
         if let Err(e) = event_emitter.emit(activated_event).await {
@@ -404,7 +404,7 @@ impl InProcessWorker {
             EventContext::turn(context.turn_id, input.input_message_id),
             TurnStartedData {
                 turn_id: context.turn_id,
-                input_message_id: MessageId::from_uuid(input.input_message_id),
+                input_message_id: input.input_message_id,
             },
         );
         if let Err(e) = event_emitter.emit(turn_started_event).await {
@@ -451,7 +451,7 @@ impl InProcessWorker {
             session_id: input.session_id,
             turn_id,
             input_message_id: input.input_message_id,
-            exec_id: Uuid::now_v7(),
+            exec_id: ExecId::new(),
         };
 
         let session_id = input.session_id;
@@ -481,7 +481,7 @@ impl InProcessWorker {
 
         // Fetch MCP tool definitions for agent's MCP capabilities
         let mcp_tool_definitions = self
-            .build_mcp_tool_definitions(input.agent_id)
+            .build_mcp_tool_definitions(input.agent_id.uuid())
             .await
             .unwrap_or_default();
 
@@ -592,7 +592,10 @@ impl InProcessWorker {
         let mut tool_registry = ToolRegistry::with_defaults();
 
         // Get agent's capabilities and add their tools to the registry
-        let capability_rows = self.db.get_agent_capabilities(input.agent_id).await?;
+        let capability_rows = self
+            .db
+            .get_agent_capabilities(input.agent_id.uuid())
+            .await?;
         let builtin_cap_ids: Vec<String> = capability_rows
             .iter()
             .map(|r| r.capability_id.clone())
@@ -693,7 +696,7 @@ impl InProcessWorker {
                             session_id: input.session_id,
                             turn_id,
                             input_message_id: input.input_message_id,
-                            exec_id: Uuid::now_v7(),
+                            exec_id: ExecId::new(),
                         },
                         agent_id: input.agent_id,
                         tool_calls: reason_result.tool_calls,

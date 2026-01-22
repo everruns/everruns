@@ -5,10 +5,10 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, FileInfo, FileStat, GrepMatch, Result, SessionFile, traits::SessionFileStore,
+    AgentLoopError, FileInfo, FileStat, GrepMatch, Result, SessionFile, SessionId,
+    traits::SessionFileStore,
 };
 use regex::Regex;
-use uuid::Uuid;
 
 use super::models::{CreateSessionFileRow, UpdateSessionFile};
 use super::repositories::Database;
@@ -54,13 +54,13 @@ impl DbSessionFileStore {
     }
 
     /// Ensure a directory exists, creating it and parents if needed
-    async fn ensure_directory_exists(&self, session_id: Uuid, path: &str) -> Result<()> {
+    async fn ensure_directory_exists(&self, session_id: SessionId, path: &str) -> Result<()> {
         if path == "/" {
             return Ok(()); // Root always exists
         }
 
         // Check if directory exists
-        if let Some(existing) = self.db.get_session_file(session_id, path).await? {
+        if let Some(existing) = self.db.get_session_file(session_id.uuid(), path).await? {
             if existing.is_directory {
                 return Ok(());
             } else {
@@ -92,11 +92,11 @@ impl DbSessionFileStore {
 
 #[async_trait]
 impl SessionFileStore for DbSessionFileStore {
-    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
+    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let path = Self::normalize_path(path);
         let row = self
             .db
-            .get_session_file(session_id, &path)
+            .get_session_file(session_id.uuid(), &path)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -110,7 +110,7 @@ impl SessionFileStore for DbSessionFileStore {
 
             SessionFile {
                 id: r.id,
-                session_id: r.session_id,
+                session_id: r.session_id.uuid(),
                 path: r.path.clone(),
                 name: FileInfo::name_from_path(&r.path),
                 content,
@@ -126,7 +126,7 @@ impl SessionFileStore for DbSessionFileStore {
 
     async fn write_file(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         path: &str,
         content: &str,
         encoding: &str,
@@ -145,7 +145,7 @@ impl SessionFileStore for DbSessionFileStore {
         // Check if file exists
         let existing = self
             .db
-            .get_session_file(session_id, &path)
+            .get_session_file(session_id.uuid(), &path)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -166,7 +166,7 @@ impl SessionFileStore for DbSessionFileStore {
 
             self.db
                 .update_session_file(
-                    session_id,
+                    session_id.uuid(),
                     &path,
                     UpdateSessionFile {
                         content: Some(bytes),
@@ -202,7 +202,7 @@ impl SessionFileStore for DbSessionFileStore {
 
         Ok(SessionFile {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: FileInfo::name_from_path(&row.path),
             content,
@@ -215,14 +215,19 @@ impl SessionFileStore for DbSessionFileStore {
         })
     }
 
-    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
+    async fn delete_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
         let path = Self::normalize_path(path);
 
         if path == "/" {
             if recursive {
                 // Delete all files in session
                 self.db
-                    .delete_session_file_recursive(session_id, "/")
+                    .delete_session_file_recursive(session_id.uuid(), "/")
                     .await
                     .map_err(|e| AgentLoopError::store(e.to_string()))?;
                 return Ok(true);
@@ -236,7 +241,7 @@ impl SessionFileStore for DbSessionFileStore {
         // Check if it's a directory with children
         let file = self
             .db
-            .get_session_file(session_id, &path)
+            .get_session_file(session_id.uuid(), &path)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -246,7 +251,7 @@ impl SessionFileStore for DbSessionFileStore {
         {
             let has_children = self
                 .db
-                .session_directory_has_children(session_id, &path)
+                .session_directory_has_children(session_id.uuid(), &path)
                 .await
                 .map_err(|e| AgentLoopError::store(e.to_string()))?;
             if has_children {
@@ -259,26 +264,26 @@ impl SessionFileStore for DbSessionFileStore {
         if recursive {
             let deleted = self
                 .db
-                .delete_session_file_recursive(session_id, &path)
+                .delete_session_file_recursive(session_id.uuid(), &path)
                 .await
                 .map_err(|e| AgentLoopError::store(e.to_string()))?;
             Ok(deleted > 0)
         } else {
             self.db
-                .delete_session_file(session_id, &path)
+                .delete_session_file(session_id.uuid(), &path)
                 .await
                 .map_err(|e| AgentLoopError::store(e.to_string()))
         }
     }
 
-    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
+    async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
         let path = Self::normalize_path(path);
 
         // Verify directory exists (root always exists)
         if path != "/" {
             let dir = self
                 .db
-                .get_session_file(session_id, &path)
+                .get_session_file(session_id.uuid(), &path)
                 .await
                 .map_err(|e| AgentLoopError::store(e.to_string()))?;
             match dir {
@@ -300,7 +305,7 @@ impl SessionFileStore for DbSessionFileStore {
 
         let rows = self
             .db
-            .list_session_files(session_id, &path)
+            .list_session_files(session_id.uuid(), &path)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -308,7 +313,7 @@ impl SessionFileStore for DbSessionFileStore {
             .into_iter()
             .map(|r| FileInfo {
                 id: r.id,
-                session_id: r.session_id,
+                session_id: r.session_id.uuid(),
                 path: r.path.clone(),
                 name: FileInfo::name_from_path(&r.path),
                 is_directory: r.is_directory,
@@ -320,7 +325,7 @@ impl SessionFileStore for DbSessionFileStore {
             .collect())
     }
 
-    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
+    async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         let path = Self::normalize_path(path);
 
         // Handle root directory specially
@@ -338,7 +343,7 @@ impl SessionFileStore for DbSessionFileStore {
 
         let row = self
             .db
-            .get_session_file(session_id, &path)
+            .get_session_file(session_id.uuid(), &path)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -355,7 +360,7 @@ impl SessionFileStore for DbSessionFileStore {
 
     async fn grep_files(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
@@ -366,7 +371,7 @@ impl SessionFileStore for DbSessionFileStore {
         // Get matching files from database
         let files = self
             .db
-            .grep_session_files(session_id, pattern, path_pattern)
+            .grep_session_files(session_id.uuid(), pattern, path_pattern)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -377,7 +382,7 @@ impl SessionFileStore for DbSessionFileStore {
             // Read full file content
             let file = self
                 .db
-                .get_session_file(session_id, &file_info.path)
+                .get_session_file(session_id.uuid(), &file_info.path)
                 .await
                 .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -402,20 +407,20 @@ impl SessionFileStore for DbSessionFileStore {
         Ok(results)
     }
 
-    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
+    async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
         let path = Self::normalize_path(path);
 
         // Check if already exists
         if let Some(existing) = self
             .db
-            .get_session_file(session_id, &path)
+            .get_session_file(session_id.uuid(), &path)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?
         {
             if existing.is_directory {
                 return Ok(FileInfo {
                     id: existing.id,
-                    session_id: existing.session_id,
+                    session_id: existing.session_id.uuid(),
                     path: existing.path.clone(),
                     name: FileInfo::name_from_path(&existing.path),
                     is_directory: existing.is_directory,
@@ -453,7 +458,7 @@ impl SessionFileStore for DbSessionFileStore {
 
         Ok(FileInfo {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: FileInfo::name_from_path(&row.path),
             is_directory: row.is_directory,

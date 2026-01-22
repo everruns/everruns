@@ -5,11 +5,10 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentCapabilityConfig, AgentLoopError, DEFAULT_ORG_ID, Result,
+    AgentCapabilityConfig, AgentId, AgentLoopError, DEFAULT_ORG_ID, Result,
     agent::{Agent, AgentStatus},
     traits::AgentStore,
 };
-use uuid::Uuid;
 
 use super::repositories::Database;
 
@@ -34,7 +33,7 @@ impl DbAgentStore {
 
 #[async_trait]
 impl AgentStore for DbAgentStore {
-    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         // TODO: Get org_id from context after Phase 3
         let agent_row = self
             .db
@@ -47,7 +46,7 @@ impl AgentStore for DbAgentStore {
                 // Load capabilities for this agent
                 let capability_rows = self
                     .db
-                    .get_agent_capabilities(agent_id)
+                    .get_agent_capabilities(agent_id.uuid())
                     .await
                     .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -57,11 +56,11 @@ impl AgentStore for DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
-                    id: row.id.into(),
+                    id: row.id,
                     name: row.name,
                     description: row.description,
                     system_prompt: row.system_prompt,
-                    default_model_id: row.default_model_id.map(|id| id.into()),
+                    default_model_id: row.default_model_id,
                     tags: row.tags,
                     capabilities,
                     status: AgentStatus::from(row.status.as_str()),

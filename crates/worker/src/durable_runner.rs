@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_core::TurnId;
+use everruns_core::typed_id::{AgentId, MessageId, SessionId, TurnId};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -32,9 +32,9 @@ use everruns_durable::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DurableTurnInput {
     pub org_id: i64,
-    pub session_id: Uuid,
-    pub agent_id: Uuid,
-    pub input_message_id: Uuid,
+    pub session_id: SessionId,
+    pub agent_id: AgentId,
+    pub input_message_id: MessageId,
     /// Turn ID for trace correlation. Created by input activity, propagated to reason/act.
     /// Uses typed TurnId for type safety and consistent prefixed format.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,7 +44,7 @@ pub struct DurableTurnInput {
 /// Output from the turn workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DurableTurnOutput {
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub success: bool,
     pub error: Option<String>,
 }
@@ -465,9 +465,9 @@ impl AgentRunner for DurableRunner {
     async fn start_run(
         &self,
         org_id: i64,
-        session_id: Uuid,
-        agent_id: Uuid,
-        input_message_id: Uuid,
+        session_id: SessionId,
+        agent_id: AgentId,
+        input_message_id: MessageId,
     ) -> Result<()> {
         info!(
             org_id = org_id,
@@ -489,7 +489,7 @@ impl AgentRunner for DurableRunner {
 
         // Create workflow instance
         // Use session_id as workflow_id for consistency
-        let workflow_id = session_id;
+        let workflow_id = session_id.uuid();
         let input_json = serde_json::to_value(&input)?;
 
         let mut store = self.store.lock().await;
@@ -595,10 +595,10 @@ impl AgentRunner for DurableRunner {
         Ok(())
     }
 
-    async fn cancel_run(&self, session_id: Uuid) -> Result<()> {
+    async fn cancel_run(&self, session_id: SessionId) -> Result<()> {
         info!(session_id = %session_id, "Cancelling durable workflow");
 
-        let workflow_id = session_id;
+        let workflow_id = session_id.uuid();
         let mut store = self.store.lock().await;
 
         // Update workflow status to cancelled
@@ -621,8 +621,8 @@ impl AgentRunner for DurableRunner {
         Ok(())
     }
 
-    async fn is_running(&self, session_id: Uuid) -> bool {
-        let workflow_id = session_id;
+    async fn is_running(&self, session_id: SessionId) -> bool {
+        let workflow_id = session_id.uuid();
         let mut store = self.store.lock().await;
 
         match store.get_workflow_status(workflow_id).await {
@@ -640,6 +640,7 @@ impl AgentRunner for DurableRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 
     #[test]
     fn test_durable_turn_input_serialization() {
@@ -647,9 +648,9 @@ mod tests {
 
         let input = DurableTurnInput {
             org_id: DEFAULT_ORG_ID,
-            session_id: Uuid::now_v7(),
-            agent_id: Uuid::now_v7(),
-            input_message_id: Uuid::now_v7(),
+            session_id: SessionId::new(),
+            agent_id: AgentId::new(),
+            input_message_id: MessageId::new(),
             turn_id: None,
         };
 
@@ -670,9 +671,9 @@ mod tests {
 
         let runner = DurableRunner::new_in_memory();
 
-        let session_id = Uuid::now_v7();
-        let agent_id = Uuid::now_v7();
-        let message_id = Uuid::now_v7();
+        let session_id = SessionId::new();
+        let agent_id = AgentId::new();
+        let message_id = MessageId::new();
 
         // First call should create a new workflow
         runner
@@ -691,10 +692,10 @@ mod tests {
 
         let runner = DurableRunner::new_in_memory();
 
-        let session_id = Uuid::now_v7();
-        let agent_id = Uuid::now_v7();
-        let message_id1 = Uuid::now_v7();
-        let message_id2 = Uuid::now_v7();
+        let session_id = SessionId::new();
+        let agent_id = AgentId::new();
+        let message_id1 = MessageId::new();
+        let message_id2 = MessageId::new();
 
         // First message
         runner
@@ -725,10 +726,10 @@ mod tests {
 
         let runner = DurableRunner::new_in_memory();
 
-        let session_id = Uuid::now_v7();
-        let agent_id = Uuid::now_v7();
-        let message_id1 = Uuid::now_v7();
-        let message_id2 = Uuid::now_v7();
+        let session_id = SessionId::new();
+        let agent_id = AgentId::new();
+        let message_id1 = MessageId::new();
+        let message_id2 = MessageId::new();
 
         // First message - creates workflow
         runner
@@ -742,7 +743,7 @@ mod tests {
         {
             let mut store = runner.store.lock().await;
             store
-                .update_workflow_status(session_id, WorkflowStatus::Completed, None, None)
+                .update_workflow_status(session_id.uuid(), WorkflowStatus::Completed, None, None)
                 .await
                 .expect("Should update workflow status");
         }
@@ -775,10 +776,10 @@ mod tests {
 
         let runner = DurableRunner::new_in_memory();
 
-        let session_id = Uuid::now_v7();
-        let agent_id = Uuid::now_v7();
-        let message_id1 = Uuid::now_v7();
-        let message_id2 = Uuid::now_v7();
+        let session_id = SessionId::new();
+        let agent_id = AgentId::new();
+        let message_id1 = MessageId::new();
+        let message_id2 = MessageId::new();
 
         // First message
         runner
@@ -791,7 +792,7 @@ mod tests {
             let mut store = runner.store.lock().await;
             store
                 .update_workflow_status(
-                    session_id,
+                    session_id.uuid(),
                     WorkflowStatus::Failed,
                     None,
                     Some("Test error".to_string()),

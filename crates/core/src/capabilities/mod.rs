@@ -831,6 +831,8 @@ pub fn apply_capabilities(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::typed_id::SessionId;
+    use uuid::Uuid;
 
     // =========================================================================
     // CapabilityRegistry tests
@@ -1537,7 +1539,7 @@ mod tests {
         let collected = collect_capabilities_with_configs(&configs, &registry);
 
         // Apply filters to a query
-        let session_id = uuid::Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let mut query = MessageQuery::new(session_id);
 
         collected.apply_message_filters(&mut query);
@@ -1624,7 +1626,7 @@ mod tests {
 
         let collected = collect_capabilities_with_configs(&configs, &registry);
 
-        let session_id = uuid::Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let mut query = MessageQuery::new(session_id);
 
         collected.apply_message_filters(&mut query);

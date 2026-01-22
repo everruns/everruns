@@ -172,6 +172,7 @@ mod tests {
     use super::*;
     use crate::events::{EventContext, EventData, MessageUserData};
     use crate::message::Message;
+    use crate::typed_id::SessionId;
     use std::sync::atomic::{AtomicU32, Ordering};
     use uuid::Uuid;
 
@@ -337,7 +338,7 @@ mod tests {
 
     fn create_test_event() -> Event {
         Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::MessageUser(MessageUserData {
                 message: Message::user("Hello"),

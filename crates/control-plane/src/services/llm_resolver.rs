@@ -77,7 +77,10 @@ impl LlmResolverService {
         };
 
         // Look up the provider
-        let provider_row = self.db.get_llm_provider(model_row.provider_id).await?;
+        let provider_row = self
+            .db
+            .get_llm_provider(model_row.provider_id.uuid())
+            .await?;
 
         let provider_row = match provider_row {
             Some(row) => row,
@@ -107,7 +110,10 @@ impl LlmResolverService {
         };
 
         // Look up the provider
-        let provider_row = self.db.get_llm_provider(model_row.provider_id).await?;
+        let provider_row = self
+            .db
+            .get_llm_provider(model_row.provider_id.uuid())
+            .await?;
 
         let provider_row = match provider_row {
             Some(row) => row,

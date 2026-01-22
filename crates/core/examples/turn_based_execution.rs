@@ -169,7 +169,7 @@ async fn main() -> anyhow::Result<()> {
     // Create Turn Context
     // =========================================================================
     let turn_id = TurnId::new();
-    let base_context = AtomContext::new(session_id, turn_id, user_message.id.into());
+    let base_context = AtomContext::new(session_id.into(), turn_id, user_message.id);
 
     println!("Turn ID: {}", turn_id);
     println!("Input Message ID: {}\n", user_message.id);
@@ -229,7 +229,7 @@ async fn main() -> anyhow::Result<()> {
         let reason_result = reason_atom
             .execute(ReasonInput {
                 context: reason_context,
-                agent_id,
+                agent_id: agent_id.into(),
                 org_id: 0,
                 mcp_tool_definitions: vec![],
             })
@@ -270,7 +270,7 @@ async fn main() -> anyhow::Result<()> {
         let act_result = act_atom
             .execute(ActInput {
                 context: act_context,
-                agent_id,
+                agent_id: agent_id.into(),
                 tool_calls: reason_result.tool_calls.clone(),
                 tool_definitions: reason_result.tool_definitions.clone(),
             })
@@ -313,7 +313,7 @@ async fn main() -> anyhow::Result<()> {
     // Conversation History
     // =========================================================================
     println!("\n━━━ Conversation History ━━━");
-    let messages = message_retriever.load(session_id).await?;
+    let messages = message_retriever.load(session_id.into()).await?;
     for (i, msg) in messages.iter().enumerate() {
         println!(
             "  {}. [{:?}] {}",

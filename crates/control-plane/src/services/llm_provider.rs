@@ -100,7 +100,7 @@ impl LlmProviderService {
         let api_key_set = row.api_key_set || has_default_api_key_from_env(&row.provider_type);
 
         LlmProvider {
-            id: row.id.into(),
+            id: row.id,
             name: row.name.clone(),
             provider_type,
             base_url: row.base_url.clone(),

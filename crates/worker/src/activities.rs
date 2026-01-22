@@ -17,7 +17,6 @@ use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capabilities, is_mcp_capability};
 use everruns_core::traits::AgentStore;
-use everruns_core::typed_id::MessageId;
 use std::sync::Arc;
 
 use crate::adapters::create_driver_registry;
@@ -75,7 +74,7 @@ pub async fn input_activity(
         EventContext::turn(input.context.turn_id, input.context.input_message_id),
         SessionActivatedData {
             turn_id: input.context.turn_id,
-            input_message_id: MessageId::from_uuid(input.context.input_message_id),
+            input_message_id: input.context.input_message_id,
         },
     );
     if let Err(e) = event_emitter.emit(activated_event).await {
@@ -88,7 +87,7 @@ pub async fn input_activity(
         EventContext::turn(input.context.turn_id, input.context.input_message_id),
         TurnStartedData {
             turn_id: input.context.turn_id,
-            input_message_id: MessageId::from_uuid(input.context.input_message_id),
+            input_message_id: input.context.input_message_id,
         },
     );
     if let Err(e) = event_emitter.emit(turn_started_event).await {
@@ -320,7 +319,7 @@ pub mod activity_types {
 mod tests {
     use super::*;
     use everruns_core::atoms::AtomContext;
-    use everruns_core::typed_id::TurnId;
+    use everruns_core::typed_id::{AgentId, MessageId, SessionId, TurnId};
     use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
     use serde_json::json;
     use uuid::Uuid;
@@ -328,9 +327,9 @@ mod tests {
     #[test]
     fn test_input_atom_input_serialization() {
         let context = AtomContext::new(
-            Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
+            SessionId::from_uuid(Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap()),
             TurnId::from_uuid(Uuid::parse_str("660e8400-e29b-41d4-a716-446655440000").unwrap()),
-            Uuid::parse_str("770e8400-e29b-41d4-a716-446655440000").unwrap(),
+            MessageId::from_uuid(Uuid::parse_str("770e8400-e29b-41d4-a716-446655440000").unwrap()),
         );
 
         let input = InputAtomInput { context };
@@ -338,18 +337,20 @@ mod tests {
         let json = serde_json::to_string(&input).unwrap();
         let parsed: InputAtomInput = serde_json::from_str(&json).unwrap();
         assert_eq!(
-            parsed.context.session_id,
+            parsed.context.session_id.uuid(),
             Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap()
         );
     }
 
     #[test]
     fn test_reason_input_serialization() {
-        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
 
         let input = ReasonInput {
             context: context.clone(),
-            agent_id: Uuid::parse_str("880e8400-e29b-41d4-a716-446655440000").unwrap(),
+            agent_id: AgentId::from_uuid(
+                Uuid::parse_str("880e8400-e29b-41d4-a716-446655440000").unwrap(),
+            ),
             org_id: 1,
             mcp_tool_definitions: vec![],
         };
@@ -357,18 +358,18 @@ mod tests {
         let json = serde_json::to_string(&input).unwrap();
         let parsed: ReasonInput = serde_json::from_str(&json).unwrap();
         assert_eq!(
-            parsed.agent_id,
+            parsed.agent_id.uuid(),
             Uuid::parse_str("880e8400-e29b-41d4-a716-446655440000").unwrap()
         );
     }
 
     #[test]
     fn test_act_input_serialization() {
-        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
 
         let input = ActInput {
             context: context.clone(),
-            agent_id: Uuid::now_v7(),
+            agent_id: AgentId::new(),
             tool_calls: vec![ToolCall {
                 id: "call_1".to_string(),
                 name: "get_weather".to_string(),

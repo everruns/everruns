@@ -105,8 +105,8 @@ impl EventContext {
     pub fn from_atom_context(ctx: &AtomContext) -> Self {
         Self {
             turn_id: Some(ctx.turn_id),
-            input_message_id: Some(MessageId::from_uuid(ctx.input_message_id)),
-            exec_id: Some(ExecId::from_uuid(ctx.exec_id)),
+            input_message_id: Some(ctx.input_message_id),
+            exec_id: Some(ctx.exec_id),
             trace_id: None,
             span_id: None,
             parent_span_id: None,
@@ -114,10 +114,10 @@ impl EventContext {
     }
 
     /// Create a context for turn-scoped events (without exec_id)
-    pub fn turn(turn_id: TurnId, input_message_id: Uuid) -> Self {
+    pub fn turn(turn_id: TurnId, input_message_id: MessageId) -> Self {
         Self {
             turn_id: Some(turn_id),
-            input_message_id: Some(MessageId::from_uuid(input_message_id)),
+            input_message_id: Some(input_message_id),
             exec_id: None,
             trace_id: None,
             span_id: None,
@@ -196,14 +196,14 @@ impl Event {
     /// Create a new event with the given session_id, context, and typed data
     ///
     /// The event type is automatically inferred from the data type.
-    pub fn new(session_id: Uuid, context: EventContext, data: impl Into<EventData>) -> Self {
+    pub fn new(session_id: SessionId, context: EventContext, data: impl Into<EventData>) -> Self {
         let data = data.into();
         let event_type = data.event_type().to_string();
         Self {
             id: EventId::new(),
             event_type,
             ts: Utc::now(),
-            session_id: SessionId::from_uuid(session_id),
+            session_id,
             context,
             data,
             metadata: None,
@@ -214,18 +214,18 @@ impl Event {
 
     /// Create an event with a specific ID (for testing or replay)
     pub fn with_id(
-        id: Uuid,
-        session_id: Uuid,
+        id: EventId,
+        session_id: SessionId,
         context: EventContext,
         data: impl Into<EventData>,
     ) -> Self {
         let data = data.into();
         let event_type = data.event_type().to_string();
         Self {
-            id: EventId::from_uuid(id),
+            id,
             event_type,
             ts: Utc::now(),
-            session_id: SessionId::from_uuid(session_id),
+            session_id,
             context,
             data,
             metadata: None,
@@ -450,7 +450,7 @@ impl InputReceivedData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasonStartedData {
     /// Agent ID being used
-    pub agent_id: Uuid,
+    pub agent_id: AgentId,
 
     /// Metadata about the model being used
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1149,7 +1149,7 @@ pub struct EventRequest {
     pub ts: DateTime<Utc>,
 
     /// Session this event belongs to
-    pub session_id: Uuid,
+    pub session_id: SessionId,
 
     /// Correlation context
     pub context: EventContext,
@@ -1170,7 +1170,7 @@ impl EventRequest {
     /// Create a new event request with the given session_id, context, and typed data
     ///
     /// The event type is automatically inferred from the data type.
-    pub fn new(session_id: Uuid, context: EventContext, data: impl Into<EventData>) -> Self {
+    pub fn new(session_id: SessionId, context: EventContext, data: impl Into<EventData>) -> Self {
         let data = data.into();
         let event_type = data.event_type().to_string();
         Self {
@@ -1197,12 +1197,12 @@ impl EventRequest {
     }
 
     /// Convert to an Event with the given id and sequence
-    pub fn into_event(self, id: Uuid, sequence: i32) -> Event {
+    pub fn into_event(self, id: EventId, sequence: i32) -> Event {
         Event {
-            id: EventId::from_uuid(id),
+            id,
             event_type: self.event_type,
             ts: self.ts,
-            session_id: SessionId::from_uuid(self.session_id),
+            session_id: self.session_id,
             context: self.context,
             data: self.data,
             metadata: self.metadata,
@@ -1218,26 +1218,26 @@ impl EventRequest {
 
 /// Builder for creating events with fluent API
 pub struct EventBuilder {
-    session_id: Uuid,
+    session_id: SessionId,
     context: EventContext,
 }
 
 impl EventBuilder {
-    pub fn new(session_id: Uuid) -> Self {
+    pub fn new(session_id: SessionId) -> Self {
         Self {
             session_id,
             context: EventContext::empty(),
         }
     }
 
-    pub fn with_turn(mut self, turn_id: Uuid, input_message_id: Uuid) -> Self {
-        self.context.turn_id = Some(TurnId::from_uuid(turn_id));
-        self.context.input_message_id = Some(MessageId::from_uuid(input_message_id));
+    pub fn with_turn(mut self, turn_id: TurnId, input_message_id: MessageId) -> Self {
+        self.context.turn_id = Some(turn_id);
+        self.context.input_message_id = Some(input_message_id);
         self
     }
 
-    pub fn with_exec(mut self, exec_id: Uuid) -> Self {
-        self.context.exec_id = Some(ExecId::from_uuid(exec_id));
+    pub fn with_exec(mut self, exec_id: ExecId) -> Self {
+        self.context.exec_id = Some(exec_id);
         self
     }
 
@@ -1256,38 +1256,35 @@ mod tests {
 
     #[test]
     fn test_event_creation() {
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let context = EventContext::empty();
         let data = InputReceivedData::new(Message::user("test"));
 
         let event = Event::new(session_id, context, data);
 
         assert_eq!(event.event_type, "input.received");
-        assert_eq!(event.session_uuid(), session_id);
+        assert_eq!(event.session_uuid(), session_id.uuid());
         assert!(event.is_atom_event());
         assert!(!event.is_message_event());
     }
 
     #[test]
     fn test_event_context_from_atom_context() {
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let turn_id = TurnId::new();
-        let input_message_id = Uuid::now_v7();
+        let input_message_id = MessageId::new();
 
         let atom_ctx = AtomContext::new(session_id, turn_id, input_message_id);
         let context = EventContext::from_atom_context(&atom_ctx);
 
         assert_eq!(context.turn_id, Some(turn_id));
-        assert_eq!(
-            context.input_message_id,
-            Some(MessageId::from_uuid(input_message_id))
-        );
-        assert_eq!(context.exec_id, Some(ExecId::from_uuid(atom_ctx.exec_id)));
+        assert_eq!(context.input_message_id, Some(input_message_id));
+        assert_eq!(context.exec_id, Some(atom_ctx.exec_id));
     }
 
     #[test]
     fn test_event_serialization() {
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let context = EventContext::empty();
         let event = Event::new(
             session_id,
@@ -1305,16 +1302,16 @@ mod tests {
 
     #[test]
     fn test_event_builder() {
-        let session_id = Uuid::now_v7();
-        let turn_id = Uuid::now_v7();
-        let input_message_id = Uuid::now_v7();
-        let exec_id = Uuid::now_v7();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        let exec_id = ExecId::new();
 
         let event = EventBuilder::new(session_id)
             .with_turn(turn_id, input_message_id)
             .with_exec(exec_id)
             .build(ReasonStartedData {
-                agent_id: Uuid::now_v7(),
+                agent_id: AgentId::new(),
                 metadata: Some(ModelMetadata {
                     model: "gpt-4o".to_string(),
                     model_id: None,
@@ -1323,9 +1320,9 @@ mod tests {
             });
 
         assert_eq!(event.event_type, "reason.started");
-        assert_eq!(event.session_id, SessionId::from_uuid(session_id));
-        assert_eq!(event.context.turn_id, Some(TurnId::from_uuid(turn_id)));
-        assert_eq!(event.context.exec_id, Some(ExecId::from_uuid(exec_id)));
+        assert_eq!(event.session_id, session_id);
+        assert_eq!(event.context.turn_id, Some(turn_id));
+        assert_eq!(event.context.exec_id, Some(exec_id));
     }
 
     #[test]

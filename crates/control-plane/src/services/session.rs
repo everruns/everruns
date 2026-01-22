@@ -13,7 +13,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    CapabilityRegistry, Session, SessionStatus, TokenUsage, capabilities::collect_capabilities,
+    AgentId, CapabilityRegistry, ModelId, Session, SessionId, SessionStatus, TokenUsage,
+    capabilities::collect_capabilities,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -50,9 +51,11 @@ impl SessionService {
         agent_id: Uuid,
         req: CreateSessionRequest,
     ) -> Result<Session> {
+        let agent_id = AgentId::from_uuid(agent_id);
+
         // If model_id not provided, use the agent's default_model_id
-        let model_id = match req.model_id {
-            Some(id) => Some(id.uuid()),
+        let model_id: Option<ModelId> = match req.model_id {
+            Some(id) => Some(id),
             None => {
                 // Look up the agent to get its default_model_id
                 let agent = self.db.get_agent(org_id, agent_id).await?;
@@ -70,7 +73,7 @@ impl SessionService {
         let session = Self::row_to_session(row);
 
         // Apply capability mounts to the session filesystem
-        self.apply_capability_mounts(agent_id, session.id.uuid())
+        self.apply_capability_mounts(agent_id.uuid(), session.id.uuid())
             .await?;
 
         Ok(session)
@@ -134,7 +137,10 @@ impl SessionService {
     }
 
     pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Session>> {
-        let row = self.db.get_session(org_id, id).await?;
+        let row = self
+            .db
+            .get_session(org_id, SessionId::from_uuid(id))
+            .await?;
         Ok(row.map(Self::row_to_session))
     }
 
@@ -147,7 +153,10 @@ impl SessionService {
         agent_id: Uuid,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
-        let (rows, total) = self.db.list_sessions(org_id, agent_id, pagination).await?;
+        let (rows, total) = self
+            .db
+            .list_sessions(org_id, AgentId::from_uuid(agent_id), pagination)
+            .await?;
         let mut sessions: Vec<Session> = rows.into_iter().map(Self::row_to_session).collect();
 
         // Fetch previews for all sessions in batch queries
@@ -179,7 +188,10 @@ impl SessionService {
             tags: req.tags,
             ..Default::default()
         };
-        let row = self.db.update_session(org_id, id, input).await?;
+        let row = self
+            .db
+            .update_session(org_id, SessionId::from_uuid(id), input)
+            .await?;
         Ok(row.map(Self::row_to_session))
     }
 
@@ -194,12 +206,17 @@ impl SessionService {
             status: Some(status),
             ..Default::default()
         };
-        let row = self.db.update_session(org_id, id, input).await?;
+        let row = self
+            .db
+            .update_session(org_id, SessionId::from_uuid(id), input)
+            .await?;
         Ok(row.map(Self::row_to_session))
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        self.db.delete_session(org_id, id).await
+        self.db
+            .delete_session(org_id, SessionId::from_uuid(id))
+            .await
     }
 
     fn row_to_session(row: crate::storage::SessionRow) -> Session {
@@ -224,13 +241,13 @@ impl SessionService {
         };
 
         Session {
-            id: row.id.into(),
-            agent_id: row.agent_id.into(),
+            id: row.id,
+            agent_id: row.agent_id,
             title: row.title,
             preview: None,        // Populated separately in list()
             output_preview: None, // Populated separately in list()
             tags: row.tags,
-            model_id: row.model_id.map(|id| id.into()),
+            model_id: row.model_id,
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,

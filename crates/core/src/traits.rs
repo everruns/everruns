@@ -9,6 +9,7 @@ use crate::agent::Agent;
 use crate::llm_models::LlmProviderType;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::typed_id::{AgentId, ModelId, SessionId};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,7 +35,7 @@ use crate::error::Result;
 #[async_trait]
 pub trait AgentStore: Send + Sync {
     /// Get an agent by ID
-    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>>;
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>>;
 }
 
 // ============================================================================
@@ -51,7 +52,7 @@ use crate::session::Session;
 #[async_trait]
 pub trait SessionStore: Send + Sync {
     /// Get a session by ID
-    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>>;
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>>;
 }
 
 // ============================================================================
@@ -82,11 +83,12 @@ pub struct ModelWithProvider {
 /// - Load from environment variables for development
 #[async_trait]
 pub trait LlmProviderStore: Send + Sync {
-    /// Get model with provider info by model UUID
+    /// Get model with provider info by model ID
     ///
     /// Returns the model string ID, provider type, decrypted API key, and base URL
     /// needed to create an LLM provider via the factory.
-    async fn get_model_with_provider(&self, model_id: Uuid) -> Result<Option<ModelWithProvider>>;
+    async fn get_model_with_provider(&self, model_id: ModelId)
+    -> Result<Option<ModelWithProvider>>;
 
     /// Get the default model with provider info
     ///
@@ -194,36 +196,37 @@ pub trait ToolExecutor: Send + Sync {
 #[async_trait]
 pub trait SessionFileStore: Send + Sync {
     /// Read a file by path
-    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>>;
+    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
 
     /// Write/create a file
     async fn write_file(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         path: &str,
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile>;
 
     /// Delete a file or directory
-    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool>;
+    async fn delete_file(&self, session_id: SessionId, path: &str, recursive: bool)
+    -> Result<bool>;
 
     /// List files in a directory
-    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>>;
+    async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>>;
 
     /// Get file metadata
-    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>>;
+    async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>>;
 
     /// Search files by pattern (grep)
     async fn grep_files(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>>;
 
     /// Create a directory
-    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo>;
+    async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo>;
 }
 
 // ============================================================================
@@ -260,30 +263,30 @@ pub trait SessionStorageStore: Send + Sync {
     // Key/Value operations (plain text)
 
     /// Set a key/value pair (creates or updates)
-    async fn set_value(&self, session_id: Uuid, key: &str, value: &str) -> Result<()>;
+    async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> Result<()>;
 
     /// Get a value by key
-    async fn get_value(&self, session_id: Uuid, key: &str) -> Result<Option<String>>;
+    async fn get_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>>;
 
     /// Delete a key/value pair
-    async fn delete_value(&self, session_id: Uuid, key: &str) -> Result<bool>;
+    async fn delete_value(&self, session_id: SessionId, key: &str) -> Result<bool>;
 
     /// List all keys in a session
-    async fn list_keys(&self, session_id: Uuid) -> Result<Vec<KeyInfo>>;
+    async fn list_keys(&self, session_id: SessionId) -> Result<Vec<KeyInfo>>;
 
     // Secret operations (encrypted)
 
     /// Set a secret (creates or updates, value is encrypted before storage)
-    async fn set_secret(&self, session_id: Uuid, name: &str, value: &str) -> Result<()>;
+    async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()>;
 
     /// Get a secret by name (value is decrypted before returning)
-    async fn get_secret(&self, session_id: Uuid, name: &str) -> Result<Option<String>>;
+    async fn get_secret(&self, session_id: SessionId, name: &str) -> Result<Option<String>>;
 
     /// Delete a secret
-    async fn delete_secret(&self, session_id: Uuid, name: &str) -> Result<bool>;
+    async fn delete_secret(&self, session_id: SessionId, name: &str) -> Result<bool>;
 
     /// List all secret names in a session (without values)
-    async fn list_secrets(&self, session_id: Uuid) -> Result<Vec<SecretInfo>>;
+    async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>>;
 }
 
 // ============================================================================
@@ -301,7 +304,7 @@ pub trait SessionStorageStore: Send + Sync {
 #[derive(Clone)]
 pub struct ToolContext {
     /// The session ID for the current execution
-    pub session_id: Uuid,
+    pub session_id: SessionId,
 
     /// Optional file store for filesystem operations
     pub file_store: Option<Arc<dyn SessionFileStore>>,
@@ -312,7 +315,7 @@ pub struct ToolContext {
 
 impl ToolContext {
     /// Create a new tool context with just a session ID
-    pub fn new(session_id: Uuid) -> Self {
+    pub fn new(session_id: SessionId) -> Self {
         Self {
             session_id,
             file_store: None,
@@ -321,7 +324,7 @@ impl ToolContext {
     }
 
     /// Create a context with a file store
-    pub fn with_file_store(session_id: Uuid, file_store: Arc<dyn SessionFileStore>) -> Self {
+    pub fn with_file_store(session_id: SessionId, file_store: Arc<dyn SessionFileStore>) -> Self {
         Self {
             session_id,
             file_store: Some(file_store),
@@ -331,7 +334,7 @@ impl ToolContext {
 
     /// Create a context with a storage store
     pub fn with_storage_store(
-        session_id: Uuid,
+        session_id: SessionId,
         storage_store: Arc<dyn SessionStorageStore>,
     ) -> Self {
         Self {
@@ -343,7 +346,7 @@ impl ToolContext {
 
     /// Create a context with both file store and storage store
     pub fn with_stores(
-        session_id: Uuid,
+        session_id: SessionId,
         file_store: Arc<dyn SessionFileStore>,
         storage_store: Arc<dyn SessionStorageStore>,
     ) -> Self {
@@ -400,7 +403,7 @@ pub struct NoopEventEmitter;
 impl EventEmitter for NoopEventEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         // Return a dummy event with sequence 0
-        Ok(request.into_event(uuid::Uuid::now_v7(), 0))
+        Ok(request.into_event(crate::typed_id::EventId::new(), 0))
     }
 }
 

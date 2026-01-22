@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 use everruns_core::message_filter::MessageQuery;
+use everruns_core::typed_id::{AgentId, EventId, SessionId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -166,13 +167,13 @@ impl StorageBackend {
     pub async fn create_agent_with_id(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: AgentId,
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
         dispatch!(self, create_agent_with_id, org_id, id, input)
     }
 
-    pub async fn get_agent(&self, org_id: i64, id: Uuid) -> Result<Option<AgentRow>> {
+    pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         dispatch!(self, get_agent, org_id, id)
     }
 
@@ -187,13 +188,13 @@ impl StorageBackend {
     pub async fn update_agent(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: AgentId,
         input: UpdateAgent,
     ) -> Result<Option<AgentRow>> {
         dispatch!(self, update_agent, org_id, id, input)
     }
 
-    pub async fn delete_agent(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         dispatch!(self, delete_agent, org_id, id)
     }
 
@@ -205,7 +206,7 @@ impl StorageBackend {
         dispatch!(self, create_session, input)
     }
 
-    pub async fn get_session(&self, org_id: i64, id: Uuid) -> Result<Option<SessionRow>> {
+    pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         dispatch!(self, get_session, org_id, id)
     }
 
@@ -214,7 +215,7 @@ impl StorageBackend {
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: Uuid,
+        agent_id: AgentId,
         pagination: Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         dispatch!(self, list_sessions, org_id, agent_id, pagination)
@@ -223,13 +224,13 @@ impl StorageBackend {
     pub async fn update_session(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: SessionId,
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
         dispatch!(self, update_session, org_id, id, input)
     }
 
-    pub async fn delete_session(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         dispatch!(self, delete_session, org_id, id)
     }
 
@@ -243,14 +244,14 @@ impl StorageBackend {
 
     pub async fn list_events(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         since_sequence: Option<i32>,
-        since_id: Option<Uuid>,
+        since_id: Option<EventId>,
     ) -> Result<Vec<EventRow>> {
         dispatch!(self, list_events, session_id, since_sequence, since_id)
     }
 
-    pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
+    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
         dispatch!(self, list_message_events, session_id)
     }
 

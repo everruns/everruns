@@ -343,8 +343,9 @@ mod tests {
     use crate::events::{EventContext, LlmGenerationMetadata, LlmGenerationOutput, TokenUsage};
     use crate::message::Message;
     use crate::tool_types::ToolCall;
-    use crate::typed_id::{MessageId, TurnId};
+    use crate::typed_id::{MessageId, SessionId, TurnId};
     use serde_json::json;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_otel_listener_creation() {
@@ -400,7 +401,7 @@ mod tests {
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::LlmGeneration(data),
         );
@@ -445,7 +446,7 @@ mod tests {
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::LlmGeneration(data),
         );
@@ -478,7 +479,7 @@ mod tests {
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::LlmGeneration(data),
         );
@@ -501,7 +502,7 @@ mod tests {
         };
 
         let start_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::ToolCallStarted(started_data),
         );
@@ -520,7 +521,7 @@ mod tests {
         };
 
         let complete_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::ToolCallCompleted(completed_data),
         );
@@ -544,7 +545,7 @@ mod tests {
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::ToolCallCompleted(completed_data),
         );
@@ -557,7 +558,7 @@ mod tests {
     async fn test_handle_turn_lifecycle() {
         let listener = OtelEventListener::new();
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::from_uuid(Uuid::now_v7());
 
         // Start a turn
         let started_data = TurnStartedData {
@@ -605,7 +606,7 @@ mod tests {
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::TurnCompleted(completed_data),
         );
@@ -622,7 +623,7 @@ mod tests {
 
         // Send an event type that OtelEventListener doesn't handle
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::from_uuid(Uuid::now_v7()),
             EventContext::empty(),
             EventData::MessageUser(MessageUserData {
                 message: Message::user("Hello"),
@@ -648,7 +649,7 @@ mod tests {
             };
 
             let event = Event::new(
-                Uuid::now_v7(),
+                SessionId::from_uuid(Uuid::now_v7()),
                 EventContext::empty(),
                 EventData::ToolCallStarted(started_data),
             );
@@ -670,7 +671,7 @@ mod tests {
             };
 
             let event = Event::new(
-                Uuid::now_v7(),
+                SessionId::from_uuid(Uuid::now_v7()),
                 EventContext::empty(),
                 EventData::ToolCallCompleted(completed_data),
             );

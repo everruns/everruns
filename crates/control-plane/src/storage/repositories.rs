@@ -4,6 +4,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
+use everruns_core::typed_id::{AgentId, EventId, SessionId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -344,7 +345,7 @@ impl Database {
     pub async fn create_agent_with_id(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: AgentId,
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
@@ -356,12 +357,12 @@ impl Database {
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
-        .bind(id)
+        .bind(id.uuid())
         .bind(org_id)
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
-        .bind(input.default_model_id)
+        .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
         .fetch_optional(&self.pool)
         .await?;
@@ -369,7 +370,7 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_agent(&self, org_id: i64, id: Uuid) -> Result<Option<AgentRow>> {
+    pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
             SELECT id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at,
@@ -379,7 +380,7 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(id)
+        .bind(id.uuid())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -423,7 +424,7 @@ impl Database {
     pub async fn update_agent(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: AgentId,
         input: UpdateAgent,
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
@@ -443,11 +444,11 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(id)
+        .bind(id.uuid())
         .bind(&input.name)
         .bind(&input.description)
         .bind(&input.system_prompt)
-        .bind(input.default_model_id)
+        .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
         .bind(&input.status)
         .fetch_optional(&self.pool)
@@ -456,7 +457,7 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_agent(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         // Archive instead of hard delete
         let result = sqlx::query(
             r#"
@@ -466,7 +467,7 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(id)
+        .bind(id.uuid())
         .execute(&self.pool)
         .await?;
 
@@ -497,7 +498,7 @@ impl Database {
     }
 
     /// Get session, validating org ownership via agent join
-    pub async fn get_session(&self, org_id: i64, id: Uuid) -> Result<Option<SessionRow>> {
+    pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
@@ -508,7 +509,7 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(id)
+        .bind(id.uuid())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -520,7 +521,7 @@ impl Database {
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: Uuid,
+        agent_id: AgentId,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         // Get total count (validates agent belongs to org)
@@ -533,7 +534,7 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(agent_id)
+        .bind(agent_id.uuid())
         .fetch_one(&self.pool)
         .await?;
 
@@ -550,7 +551,7 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(agent_id)
+        .bind(agent_id.uuid())
         .bind(pagination.limit as i64)
         .bind(pagination.offset as i64)
         .fetch_all(&self.pool)
@@ -563,7 +564,7 @@ impl Database {
     pub async fn update_session(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: SessionId,
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
         // Update only if session belongs to an agent in the org
@@ -585,10 +586,10 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(id)
+        .bind(id.uuid())
         .bind(&input.title)
         .bind(&input.tags)
-        .bind(input.model_id)
+        .bind(input.model_id.map(|m| m.uuid()))
         .bind(&input.status)
         .bind(input.started_at)
         .bind(input.finished_at)
@@ -599,7 +600,7 @@ impl Database {
     }
 
     /// Delete session, validating org ownership via agent join
-    pub async fn delete_session(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         let result = sqlx::query(
             r#"
             DELETE FROM sessions s
@@ -608,7 +609,7 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(id)
+        .bind(id.uuid())
         .execute(&self.pool)
         .await?;
 
@@ -647,9 +648,9 @@ impl Database {
 
     pub async fn list_events(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         since_sequence: Option<i32>,
-        since_id: Option<Uuid>,
+        since_id: Option<EventId>,
     ) -> Result<Vec<EventRow>> {
         // Prefer since_id (UUID v7 monotonically increasing) over sequence for filtering
         let rows = match (since_id, since_sequence) {
@@ -662,8 +663,8 @@ impl Database {
                     ORDER BY id ASC
                     "#,
                 )
-                .bind(session_id)
-                .bind(id)
+                .bind(session_id.uuid())
+                .bind(id.uuid())
                 .fetch_all(&self.pool)
                 .await?
             }
@@ -676,7 +677,7 @@ impl Database {
                     ORDER BY sequence ASC
                     "#,
                 )
-                .bind(session_id)
+                .bind(session_id.uuid())
                 .bind(seq)
                 .fetch_all(&self.pool)
                 .await?
@@ -690,7 +691,7 @@ impl Database {
                     ORDER BY sequence ASC
                     "#,
                 )
-                .bind(session_id)
+                .bind(session_id.uuid())
                 .fetch_all(&self.pool)
                 .await?
             }
@@ -705,7 +706,7 @@ impl Database {
     /// Ordered by sequence for conversation reconstruction.
     /// Note: Tool calls are embedded in message.agent events via ContentPart::ToolCall.
     /// Note: Tool results come from tool.call_completed events (not message.tool_result).
-    pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
+    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
         let rows = sqlx::query_as::<_, EventRow>(
             r#"
             SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
@@ -715,7 +716,7 @@ impl Database {
             ORDER BY sequence ASC
             "#,
         )
-        .bind(session_id)
+        .bind(session_id.uuid())
         .fetch_all(&self.pool)
         .await?;
 
@@ -807,12 +808,12 @@ impl Database {
                 }
                 MessageFilter::ExcludeIds(ids) => {
                     sql.push_str(&format!(" AND id != ALL(${})", param_idx));
-                    exclude_ids = Some(ids.clone());
+                    exclude_ids = Some(ids.iter().map(|id| id.uuid()).collect());
                     param_idx += 1;
                 }
                 MessageFilter::IncludeIds(ids) => {
                     sql.push_str(&format!(" AND id = ANY(${})", param_idx));
-                    include_ids = Some(ids.clone());
+                    include_ids = Some(ids.iter().map(|id| id.uuid()).collect());
                     param_idx += 1;
                 }
                 MessageFilter::Custom(_) => {
@@ -835,7 +836,7 @@ impl Database {
         // sqlx doesn't support truly dynamic queries, so we need to use raw SQL
         // with all possible parameters, binding None for unused ones
         let mut db_query = sqlx::query_as::<_, EventRow>(&sql)
-            .bind(query.session_id)
+            .bind(query.session_id.uuid())
             .bind(&types);
 
         // Bind parameters in order they were added to SQL

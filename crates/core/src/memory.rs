@@ -10,7 +10,7 @@ use crate::llm_models::LlmProviderType;
 use crate::session::Session;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ModelWithProvider;
-use crate::typed_id::{MessageId, SessionId};
+use crate::typed_id::{AgentId, EventId, MessageId, ModelId, SessionId};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ use chrono::Utc;
 /// for testing purposes. In production, messages are stored via EventEmitter.
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryMessageRetriever {
-    messages: Arc<RwLock<HashMap<Uuid, Vec<Message>>>>,
+    messages: Arc<RwLock<HashMap<SessionId, Vec<Message>>>>,
 }
 
 impl InMemoryMessageRetriever {
@@ -48,7 +48,7 @@ impl InMemoryMessageRetriever {
     }
 
     /// Get all sessions
-    pub async fn sessions(&self) -> Vec<Uuid> {
+    pub async fn sessions(&self) -> Vec<SessionId> {
         self.messages.read().await.keys().copied().collect()
     }
 
@@ -58,12 +58,12 @@ impl InMemoryMessageRetriever {
     }
 
     /// Clear messages for a specific session
-    pub async fn clear_session(&self, session_id: Uuid) {
+    pub async fn clear_session(&self, session_id: SessionId) {
         self.messages.write().await.remove(&session_id);
     }
 
     /// Pre-populate with messages (useful for testing)
-    pub async fn seed(&self, session_id: Uuid, messages: Vec<Message>) {
+    pub async fn seed(&self, session_id: SessionId, messages: Vec<Message>) {
         self.messages.write().await.insert(session_id, messages);
     }
 
@@ -84,7 +84,7 @@ impl InMemoryMessageRetriever {
         self.messages
             .write()
             .await
-            .entry(session_id.uuid())
+            .entry(session_id)
             .or_default()
             .push(message.clone());
 
@@ -95,7 +95,7 @@ impl InMemoryMessageRetriever {
     ///
     /// Note: In production, messages are stored via EventEmitter.
     /// This method is provided for test setup and in-memory usage.
-    pub async fn store(&self, session_id: Uuid, message: Message) -> Result<()> {
+    pub async fn store(&self, session_id: SessionId, message: Message) -> Result<()> {
         self.messages
             .write()
             .await
@@ -108,7 +108,7 @@ impl InMemoryMessageRetriever {
 
 #[async_trait]
 impl MessageRetriever for InMemoryMessageRetriever {
-    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
         Ok(self
             .messages
             .read()
@@ -117,7 +117,7 @@ impl MessageRetriever for InMemoryMessageRetriever {
             .and_then(|messages| messages.iter().find(|m| m.id == message_id).cloned()))
     }
 
-    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
         Ok(self
             .messages
             .read()
@@ -127,7 +127,7 @@ impl MessageRetriever for InMemoryMessageRetriever {
             .unwrap_or_default())
     }
 
-    async fn count(&self, session_id: Uuid) -> Result<usize> {
+    async fn count(&self, session_id: SessionId) -> Result<usize> {
         Ok(self
             .messages
             .read()
@@ -148,7 +148,7 @@ impl MessageRetriever for InMemoryMessageRetriever {
 /// Useful for testing and examples where you want to configure agents without a database.
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryAgentStore {
-    agents: Arc<RwLock<HashMap<Uuid, Agent>>>,
+    agents: Arc<RwLock<HashMap<AgentId, Agent>>>,
 }
 
 impl InMemoryAgentStore {
@@ -161,11 +161,11 @@ impl InMemoryAgentStore {
 
     /// Add an agent to the store
     pub async fn add_agent(&self, agent: Agent) {
-        self.agents.write().await.insert(agent.id.uuid(), agent);
+        self.agents.write().await.insert(agent.id, agent);
     }
 
     /// Get all agent IDs
-    pub async fn agent_ids(&self) -> Vec<Uuid> {
+    pub async fn agent_ids(&self) -> Vec<AgentId> {
         self.agents.read().await.keys().copied().collect()
     }
 
@@ -177,7 +177,7 @@ impl InMemoryAgentStore {
 
 #[async_trait]
 impl AgentStore for InMemoryAgentStore {
-    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         Ok(self.agents.read().await.get(&agent_id).cloned())
     }
 }
@@ -192,7 +192,7 @@ impl AgentStore for InMemoryAgentStore {
 /// Useful for testing and examples where you want to configure sessions without a database.
 #[derive(Debug, Default, Clone)]
 pub struct InMemorySessionStore {
-    sessions: Arc<RwLock<HashMap<Uuid, Session>>>,
+    sessions: Arc<RwLock<HashMap<SessionId, Session>>>,
 }
 
 impl InMemorySessionStore {
@@ -205,14 +205,11 @@ impl InMemorySessionStore {
 
     /// Add a session to the store
     pub async fn add_session(&self, session: Session) {
-        self.sessions
-            .write()
-            .await
-            .insert(session.id.uuid(), session);
+        self.sessions.write().await.insert(session.id, session);
     }
 
     /// Get all session IDs
-    pub async fn session_ids(&self) -> Vec<Uuid> {
+    pub async fn session_ids(&self) -> Vec<SessionId> {
         self.sessions.read().await.keys().copied().collect()
     }
 
@@ -224,7 +221,7 @@ impl InMemorySessionStore {
 
 #[async_trait]
 impl SessionStore for InMemorySessionStore {
-    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }
@@ -249,7 +246,7 @@ impl SessionStore for InMemorySessionStore {
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryLlmProviderStore {
-    models: Arc<RwLock<HashMap<Uuid, ModelWithProvider>>>,
+    models: Arc<RwLock<HashMap<ModelId, ModelWithProvider>>>,
     default_model: Arc<RwLock<Option<ModelWithProvider>>>,
 }
 
@@ -299,8 +296,8 @@ impl InMemoryLlmProviderStore {
     }
 
     /// Add a model to the store
-    pub async fn add_model(&self, model_uuid: Uuid, model: ModelWithProvider) {
-        self.models.write().await.insert(model_uuid, model);
+    pub async fn add_model(&self, model_id: ModelId, model: ModelWithProvider) {
+        self.models.write().await.insert(model_id, model);
     }
 
     /// Set the default model
@@ -317,7 +314,10 @@ impl InMemoryLlmProviderStore {
 
 #[async_trait]
 impl LlmProviderStore for InMemoryLlmProviderStore {
-    async fn get_model_with_provider(&self, model_id: Uuid) -> Result<Option<ModelWithProvider>> {
+    async fn get_model_with_provider(
+        &self,
+        model_id: ModelId,
+    ) -> Result<Option<ModelWithProvider>> {
         Ok(self.models.read().await.get(&model_id).cloned())
     }
 
@@ -668,7 +668,7 @@ impl EventEmitter for InMemoryEventEmitter {
         drop(sequence);
 
         // Convert EventRequest to Event with generated id and sequence
-        let event = request.into_event(Uuid::now_v7(), seq);
+        let event = request.into_event(EventId::new(), seq);
         self.events.write().await.push(event.clone());
         Ok(event)
     }
@@ -677,11 +677,12 @@ impl EventEmitter for InMemoryEventEmitter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_in_memory_message_retriever() {
         let store = InMemoryMessageRetriever::new();
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
 
         store
             .store(session_id, Message::user("Hello"))
@@ -696,21 +697,21 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_message_retriever_add_and_get() {
         let store = InMemoryMessageRetriever::new();
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
 
         // Add a message using the add method
         let message = store
-            .add(session_id.into(), InputMessage::user("Hello via add"))
+            .add(session_id, InputMessage::user("Hello via add"))
             .await
             .unwrap();
 
         // Get the message by ID
-        let retrieved = store.get(session_id, message.id.into()).await.unwrap();
+        let retrieved = store.get(session_id, message.id).await.unwrap();
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().text(), Some("Hello via add"));
 
         // Get non-existent message
-        let missing = store.get(session_id, Uuid::now_v7()).await.unwrap();
+        let missing = store.get(session_id, MessageId::new()).await.unwrap();
         assert!(missing.is_none());
     }
 
@@ -721,16 +722,16 @@ mod tests {
     #[tokio::test]
     async fn test_message_retriever_add_returns_consistent_id() {
         let store = InMemoryMessageRetriever::new();
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
 
         // Add a message
         let added = store
-            .add(session_id.into(), InputMessage::user("Test consistency"))
+            .add(session_id, InputMessage::user("Test consistency"))
             .await
             .unwrap();
 
         // The returned message ID must be retrievable
-        let retrieved = store.get(session_id, added.id.into()).await.unwrap();
+        let retrieved = store.get(session_id, added.id).await.unwrap();
         assert!(
             retrieved.is_some(),
             "Message must be retrievable by the ID returned from add()"
@@ -783,7 +784,7 @@ mod tests {
         use crate::events::{EventContext, EventRequest, InputReceivedData};
 
         let emitter = InMemoryEventEmitter::new();
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let event_context = EventContext::empty();
 
         // Emit an event
@@ -822,7 +823,7 @@ mod tests {
         };
 
         let emitter = InMemoryEventEmitter::new();
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let event_context = EventContext::empty();
 
         // Emit different event types
@@ -840,7 +841,7 @@ mod tests {
                 session_id,
                 event_context,
                 ReasonStartedData {
-                    agent_id: Uuid::now_v7(),
+                    agent_id: AgentId::new(),
                     metadata: None,
                 },
             ))
@@ -860,8 +861,8 @@ mod tests {
         use crate::events::{EventContext, EventRequest, InputReceivedData};
 
         let emitter = InMemoryEventEmitter::new();
-        let session1 = Uuid::now_v7();
-        let session2 = Uuid::now_v7();
+        let session1: SessionId = Uuid::now_v7().into();
+        let session2: SessionId = Uuid::now_v7().into();
 
         // Emit events for different sessions
         let context = EventContext::empty();
@@ -884,10 +885,10 @@ mod tests {
             .unwrap();
 
         // Filter by session
-        let session1_events = emitter.events_for_session(session1).await;
+        let session1_events = emitter.events_for_session(session1.uuid()).await;
         assert_eq!(session1_events.len(), 1);
 
-        let session2_events = emitter.events_for_session(session2).await;
+        let session2_events = emitter.events_for_session(session2.uuid()).await;
         assert_eq!(session2_events.len(), 1);
     }
 
@@ -896,7 +897,7 @@ mod tests {
         use crate::events::{EventContext, EventRequest, InputReceivedData};
 
         let emitter = InMemoryEventEmitter::new();
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let event_context = EventContext::empty();
 
         emitter

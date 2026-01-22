@@ -19,9 +19,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::message::Message;
+use crate::typed_id::{EventId, SessionId};
 
 // ============================================================================
 // MessageFilter - Filter specifications for message queries
@@ -61,15 +61,15 @@ pub enum MessageFilter {
     /// For production, consider using pg_trgm or tsvector for better performance.
     Search(String),
 
-    /// Exclude specific message IDs
+    /// Exclude specific event IDs
     ///
     /// Maps to: `WHERE id != ALL($ids)`
-    ExcludeIds(Vec<Uuid>),
+    ExcludeIds(Vec<EventId>),
 
-    /// Include only specific message IDs
+    /// Include only specific event IDs
     ///
     /// Maps to: `WHERE id = ANY($ids)`
-    IncludeIds(Vec<Uuid>),
+    IncludeIds(Vec<EventId>),
 
     /// Custom predicate (in-memory only)
     ///
@@ -183,10 +183,10 @@ impl InjectedMessage {
 ///     })
 ///     .with_limit(100);
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MessageQuery {
     /// Session to load messages from
-    pub session_id: Uuid,
+    pub session_id: SessionId,
 
     /// Filters to apply (combined with AND)
     pub filters: Vec<MessageFilter>,
@@ -201,9 +201,21 @@ pub struct MessageQuery {
     pub offset: Option<i64>,
 }
 
+impl Default for MessageQuery {
+    fn default() -> Self {
+        Self {
+            session_id: SessionId::from_seed(0),
+            filters: Vec::new(),
+            injections: Vec::new(),
+            limit: None,
+            offset: None,
+        }
+    }
+}
+
 impl MessageQuery {
     /// Create a new query for a session
-    pub fn new(session_id: Uuid) -> Self {
+    pub fn new(session_id: SessionId) -> Self {
         Self {
             session_id,
             filters: Vec::new(),
@@ -370,10 +382,11 @@ pub trait MessageFilterProvider: Send + Sync {
 mod tests {
     use super::*;
     use crate::message::Message;
+    use uuid::Uuid;
 
     #[test]
     fn test_message_query_builder() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let query = MessageQuery::new(session_id)
             .with_filter(MessageFilter::EventTypes(vec!["message.user".to_string()]))
             .with_limit(50)
@@ -387,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_message_query_has_filters() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
 
         let query_with_db_filter =
             MessageQuery::new(session_id).with_filter(MessageFilter::Search("hello".to_string()));
@@ -402,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_injection_at_start() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let injected = Message::system("Injected at start");
 
         let query = MessageQuery::new(session_id)
@@ -419,7 +432,7 @@ mod tests {
 
     #[test]
     fn test_injection_at_end() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let injected = Message::system("Injected at end");
 
         let query =
@@ -435,7 +448,7 @@ mod tests {
 
     #[test]
     fn test_injection_before_index() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let injected = Message::system("Injected before index 1");
 
         let query = MessageQuery::new(session_id)
@@ -457,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_multiple_injections() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
 
         let query = MessageQuery::new(session_id)
             .with_injection(InjectedMessage::at_start(Message::system("Start")))
@@ -494,7 +507,7 @@ mod tests {
 
     #[test]
     fn test_with_filters_multiple() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let query = MessageQuery::new(session_id).with_filters([
             MessageFilter::EventTypes(vec!["message.user".to_string()]),
             MessageFilter::Search("hello".to_string()),
@@ -507,7 +520,7 @@ mod tests {
 
     #[test]
     fn test_with_injections_multiple() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let query = MessageQuery::new(session_id).with_injections([
             InjectedMessage::at_start(Message::system("First")),
             InjectedMessage::at_end(Message::system("Last")),
@@ -519,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_injection_after_index() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let injected = Message::system("Injected after index 0");
 
         let query = MessageQuery::new(session_id)
@@ -542,7 +555,7 @@ mod tests {
 
     #[test]
     fn test_injection_into_empty_list() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
 
         let query = MessageQuery::new(session_id)
             .with_injection(InjectedMessage::at_start(Message::system("Start")))
@@ -559,7 +572,7 @@ mod tests {
 
     #[test]
     fn test_injection_before_index_out_of_bounds() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let injected = Message::system("Injected before index 10");
 
         // Index 10 is out of bounds for a 2-element list
@@ -577,7 +590,7 @@ mod tests {
 
     #[test]
     fn test_injection_after_index_out_of_bounds() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let injected = Message::system("Injected after index 10");
 
         // Index 10 is out of bounds for a 2-element list
@@ -595,7 +608,7 @@ mod tests {
 
     #[test]
     fn test_multiple_start_injections_preserve_order() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
 
         // Multiple start injections should maintain their order
         let query = MessageQuery::new(session_id)
@@ -617,7 +630,7 @@ mod tests {
 
     #[test]
     fn test_combined_db_and_custom_filters() {
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
 
         let query = MessageQuery::new(session_id)
             .with_filter(MessageFilter::Search("hello".to_string()))
@@ -632,8 +645,8 @@ mod tests {
 
     #[test]
     fn test_filter_exclude_ids() {
-        let id1 = Uuid::now_v7();
-        let id2 = Uuid::now_v7();
+        let id1 = EventId::new();
+        let id2 = EventId::new();
 
         let filter = MessageFilter::ExcludeIds(vec![id1, id2]);
         let debug_str = format!("{:?}", filter);
@@ -642,8 +655,8 @@ mod tests {
 
     #[test]
     fn test_filter_include_ids() {
-        let id1 = Uuid::now_v7();
-        let id2 = Uuid::now_v7();
+        let id1 = EventId::new();
+        let id2 = EventId::new();
 
         let filter = MessageFilter::IncludeIds(vec![id1, id2]);
         let debug_str = format!("{:?}", filter);
@@ -694,7 +707,7 @@ mod tests {
     #[test]
     fn test_filter_provider_apply() {
         let provider = TestFilterProvider { priority: 0 };
-        let session_id = Uuid::now_v7();
+        let session_id: SessionId = Uuid::now_v7().into();
         let mut query = MessageQuery::new(session_id);
 
         let config = serde_json::json!({ "search": "hello" });

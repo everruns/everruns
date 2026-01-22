@@ -12,8 +12,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::{
-    AgentLoopError, ContentPart, Event, EventData, InputMessage, Message, MessageFilter,
-    MessageQuery, MessageRetriever, MessageRole, Result,
+    AgentLoopError, ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageId,
+    MessageQuery, MessageRetriever, MessageRole, Result, SessionId,
     events::{
         EventContext, EventRequest, MessageAgentData, MessageUserData, ToolCallCompletedData,
     },
@@ -63,6 +63,7 @@ impl DbMessageRetriever {
         };
 
         // Emit as typed event based on role
+        let session_id: SessionId = session_id.into();
         let event_request = match message.role {
             MessageRole::User => EventRequest::new(
                 session_id,
@@ -91,12 +92,12 @@ impl DbMessageRetriever {
 
 #[async_trait]
 impl MessageRetriever for DbMessageRetriever {
-    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
         let messages = self.load(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))
     }
 
-    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
         let events = self
             .db
             .list_message_events(session_id)
@@ -157,7 +158,7 @@ impl MessageRetriever for DbMessageRetriever {
         Ok(messages)
     }
 
-    async fn count(&self, session_id: Uuid) -> Result<usize> {
+    async fn count(&self, session_id: SessionId) -> Result<usize> {
         let events = self
             .db
             .list_message_events(session_id)
@@ -250,6 +251,7 @@ pub fn create_db_message_retriever(db: Arc<StorageBackend>) -> DbMessageRetrieve
 #[cfg(test)]
 mod tests {
     use everruns_core::events::EventContext;
+    use everruns_core::typed_id::SessionId;
     use everruns_core::{ContentPart, Event, ToolCall, ToolCallCompletedData};
     use serde_json::json;
 
@@ -371,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_parse_message_user_event() {
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let message = Message::user("Hello from user!");
         let event = Event::new(
             session_id,
@@ -390,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_parse_message_agent_event() {
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let message = Message::assistant("Hello from agent!");
         let event = Event::new(
             session_id,
@@ -409,7 +411,7 @@ mod tests {
 
     #[test]
     fn test_parse_tool_call_completed_event() {
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let completed = ToolCallCompletedData::success(
             "call_123".to_string(),
             "get_weather".to_string(),
@@ -428,7 +430,7 @@ mod tests {
 
     #[test]
     fn test_parse_tool_call_completed_error() {
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let completed = ToolCallCompletedData::failure(
             "call_456".to_string(),
             "read_file".to_string(),
@@ -453,7 +455,7 @@ mod tests {
 
     #[test]
     fn test_parse_agent_message_with_tool_calls() {
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let message = Message::assistant_with_tools(
             "Let me search for that",
             vec![ToolCall {

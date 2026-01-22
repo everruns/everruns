@@ -54,11 +54,7 @@ impl EventListener for UsageTrackingListener {
         let cache_creation_tokens = usage.cache_creation_tokens.unwrap_or(0) as i64;
 
         // Get session to determine org_id
-        let session = match self
-            .db
-            .get_session(DEFAULT_ORG_ID, event.session_id.uuid())
-            .await
-        {
+        let session = match self.db.get_session(DEFAULT_ORG_ID, event.session_id).await {
             Ok(Some(s)) => s,
             Ok(None) => {
                 error!("Session not found for usage tracking: {}", event.session_id);
@@ -129,7 +125,7 @@ impl EventListener for UsageTrackingListener {
         if let Err(e) = self
             .db
             .increment_agent_usage(
-                session.agent_id,
+                session.agent_id.uuid(),
                 input_tokens,
                 output_tokens,
                 cache_read_tokens,

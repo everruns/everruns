@@ -251,6 +251,38 @@ impl<T: IdMarker> utoipa::PartialSchema for TypedId<T> {
     }
 }
 
+// sqlx support - maps TypedId to/from UUID in database
+#[cfg(feature = "sqlx")]
+impl<T: IdMarker> sqlx::Type<sqlx::Postgres> for TypedId<T> {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+
+    fn compatible(ty: &sqlx::postgres::PgTypeInfo) -> bool {
+        <Uuid as sqlx::Type<sqlx::Postgres>>::compatible(ty)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl<T: IdMarker> sqlx::Encode<'_, sqlx::Postgres> for TypedId<T> {
+    fn encode_by_ref(
+        &self,
+        buf: &mut sqlx::postgres::PgArgumentBuffer,
+    ) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+        <Uuid as sqlx::Encode<sqlx::Postgres>>::encode_by_ref(&self.uuid, buf)
+    }
+}
+
+#[cfg(feature = "sqlx")]
+impl<T: IdMarker> sqlx::Decode<'_, sqlx::Postgres> for TypedId<T> {
+    fn decode(
+        value: sqlx::postgres::PgValueRef<'_>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let uuid = <Uuid as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(Self::from_uuid(uuid))
+    }
+}
+
 // ============================================================================
 // Marker types for each entity
 // ============================================================================

@@ -4,8 +4,9 @@
 // session key/value pairs and encrypted secrets to the database.
 
 use async_trait::async_trait;
-use everruns_core::{AgentLoopError, KeyInfo, Result, SecretInfo, traits::SessionStorageStore};
-use uuid::Uuid;
+use everruns_core::{
+    AgentLoopError, KeyInfo, Result, SecretInfo, SessionId, traits::SessionStorageStore,
+};
 
 use super::encryption::EncryptionService;
 use super::models::{UpsertSessionKeyValue, UpsertSessionSecret};
@@ -59,7 +60,7 @@ impl SessionStorageStore for DbSessionStorageStore {
     // Key/Value operations (plain text)
     // ========================================================================
 
-    async fn set_value(&self, session_id: Uuid, key: &str, value: &str) -> Result<()> {
+    async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> Result<()> {
         let input = UpsertSessionKeyValue {
             session_id,
             key: key.to_string(),
@@ -74,27 +75,27 @@ impl SessionStorageStore for DbSessionStorageStore {
         Ok(())
     }
 
-    async fn get_value(&self, session_id: Uuid, key: &str) -> Result<Option<String>> {
+    async fn get_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
         let row = self
             .db
-            .get_session_key_value(session_id, key)
+            .get_session_key_value(session_id.uuid(), key)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
         Ok(row.map(|r| r.value))
     }
 
-    async fn delete_value(&self, session_id: Uuid, key: &str) -> Result<bool> {
+    async fn delete_value(&self, session_id: SessionId, key: &str) -> Result<bool> {
         self.db
-            .delete_session_key_value(session_id, key)
+            .delete_session_key_value(session_id.uuid(), key)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))
     }
 
-    async fn list_keys(&self, session_id: Uuid) -> Result<Vec<KeyInfo>> {
+    async fn list_keys(&self, session_id: SessionId) -> Result<Vec<KeyInfo>> {
         let rows = self
             .db
-            .list_session_keys(session_id)
+            .list_session_keys(session_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -112,7 +113,7 @@ impl SessionStorageStore for DbSessionStorageStore {
     // Secret operations (encrypted)
     // ========================================================================
 
-    async fn set_secret(&self, session_id: Uuid, name: &str, value: &str) -> Result<()> {
+    async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()> {
         let encryption = self.encryption()?;
 
         // Encrypt the value
@@ -134,12 +135,12 @@ impl SessionStorageStore for DbSessionStorageStore {
         Ok(())
     }
 
-    async fn get_secret(&self, session_id: Uuid, name: &str) -> Result<Option<String>> {
+    async fn get_secret(&self, session_id: SessionId, name: &str) -> Result<Option<String>> {
         let encryption = self.encryption()?;
 
         let row = self
             .db
-            .get_session_secret(session_id, name)
+            .get_session_secret(session_id.uuid(), name)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -155,17 +156,17 @@ impl SessionStorageStore for DbSessionStorageStore {
         }
     }
 
-    async fn delete_secret(&self, session_id: Uuid, name: &str) -> Result<bool> {
+    async fn delete_secret(&self, session_id: SessionId, name: &str) -> Result<bool> {
         self.db
-            .delete_session_secret(session_id, name)
+            .delete_session_secret(session_id.uuid(), name)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))
     }
 
-    async fn list_secrets(&self, session_id: Uuid) -> Result<Vec<SecretInfo>> {
+    async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>> {
         let rows = self
             .db
-            .list_session_secrets(session_id)
+            .list_session_secrets(session_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 

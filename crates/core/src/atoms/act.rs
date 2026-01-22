@@ -36,6 +36,7 @@ use crate::events::{
 use crate::message::ContentPart;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{EventEmitter, SessionFileStore, ToolContext, ToolExecutor};
+use crate::typed_id::AgentId;
 use uuid::Uuid;
 
 // ============================================================================
@@ -48,7 +49,7 @@ pub struct ActInput {
     /// Atom execution context
     pub context: AtomContext,
     /// Agent ID (needed for scheduling follow-up reason activity)
-    pub agent_id: uuid::Uuid,
+    pub agent_id: AgentId,
     /// Tool calls to execute
     pub tool_calls: Vec<ToolCall>,
     /// Available tool definitions for resolution
@@ -505,9 +506,8 @@ mod tests {
     use super::*;
     use crate::tools::ToolRegistry;
     use crate::traits::NoopEventEmitter;
-    use crate::typed_id::TurnId;
+    use crate::typed_id::{AgentId, MessageId, SessionId, TurnId};
     use serde_json::json;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_act_atom_empty_tool_calls() {
@@ -515,10 +515,10 @@ mod tests {
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter);
 
-        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             context,
-            agent_id: Uuid::now_v7(),
+            agent_id: AgentId::new(),
             tool_calls: vec![],
             tool_definitions: vec![],
         };
@@ -537,10 +537,10 @@ mod tests {
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter);
 
-        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             context,
-            agent_id: Uuid::now_v7(),
+            agent_id: AgentId::new(),
             tool_calls: vec![ToolCall {
                 id: "call_1".to_string(),
                 name: "nonexistent_tool".to_string(),
