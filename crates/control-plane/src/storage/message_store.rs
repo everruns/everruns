@@ -416,6 +416,7 @@ mod tests {
             "call_123".to_string(),
             "get_weather".to_string(),
             vec![ContentPart::text("Sunny, 72°F")],
+            Some(100),
         );
         let event = Event::new(session_id, EventContext::empty(), completed);
 
@@ -436,6 +437,7 @@ mod tests {
             "read_file".to_string(),
             "error".to_string(),
             "File not found".to_string(),
+            Some(25),
         );
         let event = Event::new(session_id, EventContext::empty(), completed);
 

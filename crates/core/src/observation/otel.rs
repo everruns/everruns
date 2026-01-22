@@ -518,6 +518,7 @@ mod tests {
             status: "success".to_string(),
             result: None,
             error: None,
+            duration_ms: Some(100),
         };
 
         let complete_event = Event::new(
@@ -542,6 +543,7 @@ mod tests {
             status: "error".to_string(),
             result: None,
             error: Some("Connection timeout".to_string()),
+            duration_ms: None,
         };
 
         let event = Event::new(
@@ -564,6 +566,7 @@ mod tests {
         let started_data = TurnStartedData {
             turn_id,
             input_message_id: MessageId::from_uuid(Uuid::now_v7()),
+            input_content: Some("Test message".to_string()),
         };
 
         let start_event = Event::new(
@@ -581,6 +584,7 @@ mod tests {
             iterations: 3,
             duration_ms: Some(1500),
             usage: None,
+            input_content: Some("Test message".to_string()),
         };
 
         let complete_event = Event::new(
@@ -603,6 +607,7 @@ mod tests {
             iterations: 1,
             duration_ms: None, // No duration provided
             usage: None,
+            input_content: None,
         };
 
         let event = Event::new(
@@ -668,6 +673,7 @@ mod tests {
                 status: "success".to_string(),
                 result: None,
                 error: None,
+                duration_ms: Some(50),
             };
 
             let event = Event::new(

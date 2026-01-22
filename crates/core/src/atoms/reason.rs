@@ -271,6 +271,9 @@ where
             Some(parent_span_id.clone()),
         );
 
+        // Track reason phase timing for Braintrust observability
+        let reason_start = Instant::now();
+
         // Emit reason.started event
         if let Err(e) = self
             .event_emitter
@@ -305,6 +308,9 @@ where
             .await
         {
             Ok(result) => {
+                // Calculate reason phase duration
+                let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
+
                 // Emit reason.completed event (same span as reason.started, parent is turn)
                 let completed_context = EventContext::from_atom_context(&context).with_span(
                     trace_id.clone(),
@@ -320,6 +326,8 @@ where
                             &result.text,
                             result.has_tool_calls,
                             result.tool_calls.len() as u32,
+                            Some(reason_duration_ms),
+                            result.usage.clone(),
                         ),
                     ))
                     .await
@@ -333,6 +341,9 @@ where
                 result
             }
             Err(e) => {
+                // Calculate reason phase duration even for failures
+                let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
+
                 // LLM call failure is a "normal" result per the spec
                 // Return a result indicating failure with the error message
                 tracing::warn!(
@@ -392,7 +403,7 @@ where
                     .emit(EventRequest::new(
                         context.session_id,
                         completed_context,
-                        ReasonCompletedData::failure(error_msg.clone()),
+                        ReasonCompletedData::failure(error_msg.clone(), Some(reason_duration_ms)),
                     ))
                     .await
                 {

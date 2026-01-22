@@ -295,6 +295,8 @@ export interface MessageAgentData {
 export interface TurnStartedData {
   turn_id: string;
   input_message_id: string;
+  /** Input message content (for observability) */
+  input_content?: string;
 }
 
 /** Data for turn.completed event */
@@ -304,6 +306,8 @@ export interface TurnCompletedData {
   duration_ms?: number;
   /** Aggregated token usage for all LLM calls in this turn */
   usage?: TokenUsage;
+  /** Input message content (for observability, passed through from turn.started) */
+  input_content?: string;
 }
 
 /** Data for turn.failed event */
@@ -331,6 +335,8 @@ export interface ReasonCompletedData {
   has_tool_calls: boolean;
   tool_call_count: number;
   error?: string;
+  duration_ms?: number;
+  usage?: TokenUsage;
 }
 
 /** Tool call summary (compact form) */
@@ -349,6 +355,7 @@ export interface ActCompletedData {
   completed: boolean;
   success_count: number;
   error_count: number;
+  duration_ms?: number;
 }
 
 /** Tool call from LLM response */
@@ -371,6 +378,7 @@ export interface ToolCallCompletedData {
   status: "success" | "error" | "timeout" | "cancelled";
   result?: ContentPart[];
   error?: string;
+  duration_ms?: number;
 }
 
 /** LLM generation output */

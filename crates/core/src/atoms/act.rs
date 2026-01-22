@@ -26,6 +26,7 @@ use async_trait::async_trait;
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::{Atom, AtomContext};
 use crate::error::Result;
@@ -192,6 +193,9 @@ where
             Some(parent_span_id.clone()),
         );
 
+        // Track act phase timing for Braintrust observability
+        let act_start = Instant::now();
+
         // Emit act.started event
         if let Err(e) = self
             .event_emitter
@@ -241,6 +245,9 @@ where
         let success_count = results.iter().filter(|r| r.success).count() as u32;
         let error_count = results.iter().filter(|r| !r.success).count() as u32;
 
+        // Calculate act phase duration
+        let act_duration_ms = act_start.elapsed().as_millis() as u64;
+
         // Emit act.completed event (same span as act.started, parent is turn)
         let completed_context = EventContext::from_atom_context(&context).with_span(
             trace_id.clone(),
@@ -256,6 +263,7 @@ where
                     completed: true,
                     success_count,
                     error_count,
+                    duration_ms: Some(act_duration_ms),
                 },
             ))
             .await
@@ -320,6 +328,9 @@ where
             Some(act_span_id.to_string()),
         );
 
+        // Track tool call timing for Braintrust observability
+        let tool_start = Instant::now();
+
         // Emit tool.call_started event (child of act.started)
         if let Err(e) = self
             .event_emitter
@@ -343,6 +354,7 @@ where
         // If tool definition not found, return error result
         let Some(tool_def) = tool_def else {
             let error_msg = format!("Tool definition not found: {}", tool_call.name);
+            let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
 
             // Emit tool.call_completed event for error (child of act.started)
             if let Err(e) = self
@@ -355,6 +367,7 @@ where
                         tool_call.name.clone(),
                         "error".to_string(),
                         error_msg.clone(),
+                        Some(tool_duration_ms),
                     ),
                 ))
                 .await
@@ -391,6 +404,7 @@ where
 
         match result {
             Ok(tool_result) => {
+                let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
                 let success = tool_result.error.is_none();
                 let status = if success { "success" } else { "error" };
 
@@ -406,6 +420,7 @@ where
                         tool_call.id.clone(),
                         tool_call.name.clone(),
                         result_content,
+                        Some(tool_duration_ms),
                     )
                 } else {
                     ToolCallCompletedData::failure(
@@ -413,6 +428,7 @@ where
                         tool_call.name.clone(),
                         status.to_string(),
                         tool_result.error.clone().unwrap_or_default(),
+                        Some(tool_duration_ms),
                     )
                 };
 
@@ -449,6 +465,7 @@ where
                 }
             }
             Err(e) => {
+                let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
                 let error_msg = e.to_string();
 
                 // Emit tool.call_completed event for error
@@ -462,6 +479,7 @@ where
                             tool_call.name.clone(),
                             "error".to_string(),
                             error_msg.clone(),
+                            Some(tool_duration_ms),
                         ),
                     ))
                     .await

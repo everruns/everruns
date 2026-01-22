@@ -216,6 +216,10 @@ struct BraintrustLogEvent {
     /// Parent span IDs
     #[serde(skip_serializing_if = "Option::is_none")]
     span_parents: Option<Vec<String>>,
+    /// When true, merge with existing event instead of replacing
+    /// Required for started/completed event pairs to combine properly
+    #[serde(rename = "_is_merge", skip_serializing_if = "Option::is_none")]
+    is_merge: Option<bool>,
 }
 
 /// Request body for Braintrust insert endpoint
@@ -255,6 +259,15 @@ impl BraintrustListener {
         );
 
         let request = BraintrustInsertRequest { events };
+
+        // Log the request payload for debugging
+        if let Ok(payload) = serde_json::to_string_pretty(&request) {
+            debug!(
+                url = %url,
+                payload = %payload,
+                "Sending events to Braintrust"
+            );
+        }
 
         let result = self
             .client
@@ -335,16 +348,36 @@ impl BraintrustListener {
         // This allows child spans to link to the root via root_span_id
         let turn_id_str = data.turn_id.to_string();
 
+        // Use input_content if available, otherwise fall back to message ID
+        let input = if let Some(content) = &data.input_content {
+            Some(serde_json::json!(content))
+        } else {
+            Some(serde_json::json!({
+                "input_message_id": data.input_message_id.to_string(),
+            }))
+        };
+
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
         BraintrustLogEvent {
             id: turn_id_str.clone(), // Use turn_id as span ID for parent linking
             created: event.ts,
-            input: Some(serde_json::json!({
-                "input_message_id": data.input_message_id.to_string(),
-            })),
+            input,
             output: None,
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "agent turn".to_string(),
                 span_type: "task".to_string(),
@@ -353,6 +386,7 @@ impl BraintrustListener {
             span_id: Some(turn_id_str.clone()), // Root span self-references
             root_span_id: Some(turn_id_str.clone()), // Root span self-references
             span_parents: None,                 // Root has no parents
+            is_merge: None,                     // First event creates the span
         }
     }
 
@@ -370,7 +404,7 @@ impl BraintrustListener {
 
         // Build metrics if we have usage/duration (with prompt caching support)
         let metrics = if data.usage.is_some() || data.duration_ms.is_some() {
-            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
             let start_time = data.duration_ms.map(|d| end_time - (d as f64 / 1000.0));
 
             Some(BraintrustMetrics {
@@ -394,10 +428,16 @@ impl BraintrustListener {
         // Root span: span_id and root_span_id both reference self (turn_id)
         let turn_id_str = data.turn_id.to_string();
 
+        // Use input_content if available (to preserve it during span merge)
+        let input = data
+            .input_content
+            .as_ref()
+            .map(|content| serde_json::json!(content));
+
         BraintrustLogEvent {
             id: turn_id_str.clone(), // Same ID as started to update the span
             created: event.ts,
-            input: None,
+            input,
             output: Some(serde_json::json!({
                 "iterations": data.iterations,
                 "status": "completed",
@@ -413,6 +453,7 @@ impl BraintrustListener {
             span_id: Some(turn_id_str.clone()), // Root span self-references
             root_span_id: Some(turn_id_str.clone()), // Root span self-references
             span_parents: None,
+            is_merge: Some(true), // Merge with turn.started event
         }
     }
 
@@ -455,7 +496,7 @@ impl BraintrustListener {
 
         // Build metrics with prompt caching support
         let metrics = data.metadata.usage.as_ref().map(|usage| {
-            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
             let start_time = data
                 .metadata
                 .duration_ms
@@ -495,6 +536,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
+            is_merge: None, // Single event, no merge needed
         }
     }
 
@@ -534,6 +576,23 @@ impl BraintrustListener {
             metadata["turn_id"] = serde_json::json!(turn_id.to_string());
         }
 
+        // Build metrics if we have duration for timeline display
+        let metrics = data.duration_ms.map(|duration_ms| {
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+            let start_time = end_time - (duration_ms as f64 / 1000.0);
+
+            BraintrustMetrics {
+                start: Some(start_time),
+                end: Some(end_time),
+                prompt_tokens: None,
+                completion_tokens: None,
+                tokens: None,
+                time_to_first_token: None,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+            }
+        });
+
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
@@ -547,7 +606,7 @@ impl BraintrustListener {
             output: Some(output),
             error: data.error.clone(),
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: format!("tool {}", data.tool_name),
                 span_type: "tool".to_string(),
@@ -556,6 +615,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
+            is_merge: Some(true), // Merge with tool_call.started event
         }
     }
 
@@ -591,6 +651,7 @@ impl BraintrustListener {
             span_id: Some(turn_id_str.clone()), // Root span self-references
             root_span_id: Some(turn_id_str.clone()), // Root span self-references
             span_parents: None,
+            is_merge: Some(true), // Merge with turn.started event
         }
     }
 
@@ -608,7 +669,7 @@ impl BraintrustListener {
         // Build metrics if we have usage
         let metrics = data.usage.as_ref().map(|usage| BraintrustMetrics {
             start: None,
-            end: Some(event.ts.timestamp_millis() as f64 / 1000.0),
+            end: Some(event.ts.timestamp_micros() as f64 / 1_000_000.0),
             prompt_tokens: Some(usage.input_tokens),
             completion_tokens: Some(usage.output_tokens),
             tokens: Some(usage.total_tokens()),
@@ -642,6 +703,7 @@ impl BraintrustListener {
             span_id: Some(turn_id_str.clone()), // Root span self-references
             root_span_id: Some(turn_id_str.clone()), // Root span self-references
             span_parents: None,
+            is_merge: Some(true), // Merge with turn.started event
         }
     }
 
@@ -680,6 +742,19 @@ impl BraintrustListener {
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
 
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
         BraintrustLogEvent {
             id: log_id,
             created: event.ts,
@@ -687,7 +762,7 @@ impl BraintrustListener {
             output: None,
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "reason".to_string(),
                 span_type: "task".to_string(),
@@ -696,6 +771,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
+            is_merge: None, // First event creates the span
         }
     }
 
@@ -720,6 +796,25 @@ impl BraintrustListener {
             "text_preview": data.text_preview,
         });
 
+        // Build metrics if we have duration/usage for timeline display
+        let metrics = if data.duration_ms.is_some() || data.usage.is_some() {
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+            let start_time = data.duration_ms.map(|d| end_time - (d as f64 / 1000.0));
+
+            Some(BraintrustMetrics {
+                start: start_time,
+                end: Some(end_time),
+                prompt_tokens: data.usage.as_ref().map(|u| u.input_tokens),
+                completion_tokens: data.usage.as_ref().map(|u| u.output_tokens),
+                tokens: data.usage.as_ref().map(|u| u.total_tokens()),
+                time_to_first_token: None,
+                cache_read_tokens: data.usage.as_ref().and_then(|u| u.cache_read_tokens),
+                cache_creation_tokens: data.usage.as_ref().and_then(|u| u.cache_creation_tokens),
+            })
+        } else {
+            None
+        };
+
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
@@ -740,7 +835,7 @@ impl BraintrustListener {
             output: Some(output),
             error: data.error.clone(),
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "reason".to_string(),
                 span_type: "task".to_string(),
@@ -749,6 +844,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
+            is_merge: Some(true), // Merge with reason.started event
         }
     }
 
@@ -782,6 +878,19 @@ impl BraintrustListener {
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
 
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
         BraintrustLogEvent {
             id: log_id,
             created: event.ts,
@@ -789,7 +898,7 @@ impl BraintrustListener {
             output: None,
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "act".to_string(),
                 span_type: "task".to_string(),
@@ -798,6 +907,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
+            is_merge: None, // First event creates the span
         }
     }
 
@@ -815,6 +925,23 @@ impl BraintrustListener {
             "completed": data.completed,
             "success_count": data.success_count,
             "error_count": data.error_count,
+        });
+
+        // Build metrics if we have duration for timeline display
+        let metrics = data.duration_ms.map(|duration_ms| {
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+            let start_time = end_time - (duration_ms as f64 / 1000.0);
+
+            BraintrustMetrics {
+                start: Some(start_time),
+                end: Some(end_time),
+                prompt_tokens: None,
+                completion_tokens: None,
+                tokens: None,
+                time_to_first_token: None,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+            }
         });
 
         // Parent-child linking using OTel-style span fields from context
@@ -837,7 +964,7 @@ impl BraintrustListener {
             output: Some(output),
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "act".to_string(),
                 span_type: "task".to_string(),
@@ -846,6 +973,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
+            is_merge: Some(true), // Merge with act.started event
         }
     }
 
@@ -878,6 +1006,19 @@ impl BraintrustListener {
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
 
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
         BraintrustLogEvent {
             id: log_id,
             created: event.ts,
@@ -885,7 +1026,7 @@ impl BraintrustListener {
             output: None,
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: format!("tool {}", data.tool_call.name),
                 span_type: "tool".to_string(),
@@ -894,6 +1035,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
+            is_merge: None, // First event creates the span
         }
     }
 }
@@ -1077,6 +1219,7 @@ mod tests {
         let data = TurnStartedData {
             turn_id,
             input_message_id: message_id,
+            input_content: Some("Hello, how are you?".to_string()),
         };
 
         let event = Event::new(
@@ -1160,6 +1303,7 @@ mod tests {
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
             }),
+            input_content: Some("Hello, how are you?".to_string()),
         };
 
         let event = Event::new(
@@ -1201,6 +1345,7 @@ mod tests {
         let started_data = TurnStartedData {
             turn_id,
             input_message_id,
+            input_content: Some("Test input content".to_string()),
         };
         let started_event = Event::new(
             SessionId::new(),
@@ -1236,6 +1381,7 @@ mod tests {
             iterations: 1,
             duration_ms: Some(1000),
             usage: None,
+            input_content: Some("Test input content".to_string()),
         };
         let completed_event = Event::new(
             SessionId::new(),
@@ -1434,6 +1580,7 @@ mod tests {
             status: "success".to_string(),
             result: None,
             error: None,
+            duration_ms: Some(200),
         };
         let event = Event::new(
             SessionId::new(),
@@ -1493,6 +1640,8 @@ mod tests {
             has_tool_calls: false,
             tool_call_count: 0,
             error: None,
+            duration_ms: Some(1500),
+            usage: None,
         };
         let completed_event = Event::new(
             SessionId::new(),
@@ -1531,6 +1680,7 @@ mod tests {
         let turn_data = TurnStartedData {
             turn_id,
             input_message_id,
+            input_content: Some("Test message".to_string()),
         };
         let turn_event = Event::new(
             SessionId::new(),
@@ -1640,6 +1790,7 @@ mod tests {
             status: "success".to_string(),
             result: None,
             error: None,
+            duration_ms: Some(75),
         };
         let tool_event = Event::new(
             SessionId::new(),
@@ -1651,6 +1802,253 @@ mod tests {
             bt_tool.root_span_id,
             Some(expected_root.clone()),
             "tool should have root_span_id = turn_id"
+        );
+    }
+
+    // =============================================================================
+    // _is_merge Serialization Tests
+    // =============================================================================
+    //
+    // These tests verify that the _is_merge field is correctly serialized:
+    // - Started events: is_merge = None (creates new span)
+    // - Completed events: is_merge = Some(true) (merges with existing span)
+
+    #[test]
+    fn test_is_merge_serialization_started_events() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+
+        // turn.started should have is_merge = None
+        let turn_data = TurnStartedData {
+            turn_id,
+            input_message_id,
+            input_content: Some("Test".to_string()),
+        };
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::empty(),
+            EventData::TurnStarted(turn_data.clone()),
+        );
+        let bt_event = listener.convert_turn_started(&event, &turn_data);
+
+        // is_merge should be None for started events
+        assert!(
+            bt_event.is_merge.is_none(),
+            "turn.started should have is_merge = None"
+        );
+
+        // Serialize to JSON and verify _is_merge is not present
+        let json = serde_json::to_string(&bt_event).unwrap();
+        assert!(
+            !json.contains("_is_merge"),
+            "turn.started JSON should not contain _is_merge: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_is_merge_serialization_completed_events() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+
+        // turn.completed should have is_merge = Some(true)
+        let turn_data = TurnCompletedData {
+            turn_id,
+            iterations: 1,
+            duration_ms: Some(1000),
+            usage: None,
+            input_content: Some("Test".to_string()),
+        };
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::empty(),
+            EventData::TurnCompleted(turn_data.clone()),
+        );
+        let bt_event = listener.convert_turn_completed(&event, &turn_data);
+
+        // is_merge should be Some(true) for completed events
+        assert_eq!(
+            bt_event.is_merge,
+            Some(true),
+            "turn.completed should have is_merge = Some(true)"
+        );
+
+        // Serialize to JSON and verify _is_merge is present and true
+        let json = serde_json::to_string(&bt_event).unwrap();
+        assert!(
+            json.contains("\"_is_merge\":true"),
+            "turn.completed JSON should contain _is_merge:true: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_is_merge_serialization_reason_events() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let reason_span_id = Uuid::now_v7().to_string();
+
+        let mut context = EventContext::empty();
+        context.turn_id = Some(turn_id);
+        context.trace_id = Some(turn_id.to_string());
+        context.span_id = Some(reason_span_id.clone());
+        context.parent_span_id = Some(turn_id.to_string());
+
+        // reason.started - should NOT have _is_merge
+        let started_data = ReasonStartedData {
+            agent_id: AgentId::new(),
+            metadata: None,
+        };
+        let started_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ReasonStarted(started_data.clone()),
+        );
+        let bt_started = listener.convert_reason_started(&started_event, &started_data);
+        let started_json = serde_json::to_string(&bt_started).unwrap();
+        assert!(
+            !started_json.contains("_is_merge"),
+            "reason.started should not have _is_merge: {}",
+            started_json
+        );
+
+        // reason.completed - should have _is_merge: true
+        let completed_data = ReasonCompletedData {
+            success: true,
+            text_preview: None,
+            has_tool_calls: false,
+            tool_call_count: 0,
+            error: None,
+            duration_ms: Some(500),
+            usage: None,
+        };
+        let completed_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ReasonCompleted(completed_data.clone()),
+        );
+        let bt_completed = listener.convert_reason_completed(&completed_event, &completed_data);
+        let completed_json = serde_json::to_string(&bt_completed).unwrap();
+        assert!(
+            completed_json.contains("\"_is_merge\":true"),
+            "reason.completed should have _is_merge:true: {}",
+            completed_json
+        );
+    }
+
+    #[test]
+    fn test_is_merge_serialization_act_events() {
+        use everruns_core::events::ToolCallSummary;
+
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let act_span_id = Uuid::now_v7().to_string();
+
+        let mut context = EventContext::empty();
+        context.turn_id = Some(turn_id);
+        context.trace_id = Some(turn_id.to_string());
+        context.span_id = Some(act_span_id.clone());
+        context.parent_span_id = Some(turn_id.to_string());
+
+        // act.started - should NOT have _is_merge
+        let started_data = ActStartedData {
+            tool_calls: vec![ToolCallSummary {
+                id: "call_1".to_string(),
+                name: "search".to_string(),
+            }],
+        };
+        let started_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ActStarted(started_data.clone()),
+        );
+        let bt_started = listener.convert_act_started(&started_event, &started_data);
+        let started_json = serde_json::to_string(&bt_started).unwrap();
+        assert!(
+            !started_json.contains("_is_merge"),
+            "act.started should not have _is_merge: {}",
+            started_json
+        );
+
+        // act.completed - should have _is_merge: true
+        let completed_data = ActCompletedData {
+            completed: true,
+            success_count: 1,
+            error_count: 0,
+            duration_ms: Some(200),
+        };
+        let completed_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ActCompleted(completed_data.clone()),
+        );
+        let bt_completed = listener.convert_act_completed(&completed_event, &completed_data);
+        let completed_json = serde_json::to_string(&bt_completed).unwrap();
+        assert!(
+            completed_json.contains("\"_is_merge\":true"),
+            "act.completed should have _is_merge:true: {}",
+            completed_json
+        );
+    }
+
+    #[test]
+    fn test_is_merge_serialization_tool_events() {
+        use everruns_core::tool_types::ToolCall;
+
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let tool_span_id = Uuid::now_v7().to_string();
+        let act_span_id = Uuid::now_v7().to_string();
+
+        let mut context = EventContext::empty();
+        context.turn_id = Some(turn_id);
+        context.trace_id = Some(turn_id.to_string());
+        context.span_id = Some(tool_span_id.clone());
+        context.parent_span_id = Some(act_span_id.clone());
+
+        // tool.call_started - should NOT have _is_merge
+        let started_data = ToolCallStartedData {
+            tool_call: ToolCall {
+                id: "call_1".to_string(),
+                name: "search".to_string(),
+                arguments: serde_json::json!({"query": "test"}),
+            },
+        };
+        let started_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ToolCallStarted(started_data.clone()),
+        );
+        let bt_started = listener.convert_tool_call_started(&started_event, &started_data);
+        let started_json = serde_json::to_string(&bt_started).unwrap();
+        assert!(
+            !started_json.contains("_is_merge"),
+            "tool.call_started should not have _is_merge: {}",
+            started_json
+        );
+
+        // tool.call_completed - should have _is_merge: true
+        let completed_data = ToolCallCompletedData {
+            tool_call_id: "call_1".to_string(),
+            tool_name: "search".to_string(),
+            success: true,
+            status: "success".to_string(),
+            result: None,
+            error: None,
+            duration_ms: Some(100),
+        };
+        let completed_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ToolCallCompleted(completed_data.clone()),
+        );
+        let bt_completed = listener.convert_tool_call_completed(&completed_event, &completed_data);
+        let completed_json = serde_json::to_string(&bt_completed).unwrap();
+        assert!(
+            completed_json.contains("\"_is_merge\":true"),
+            "tool.call_completed should have _is_merge:true: {}",
+            completed_json
         );
     }
 }

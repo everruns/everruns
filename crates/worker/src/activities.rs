@@ -46,6 +46,7 @@ pub async fn input_activity(
     org_id: i64,
     input: InputAtomInput,
 ) -> Result<InputAtomResult> {
+    use everruns_core::MessageRetriever;
     use everruns_core::events::{
         EventContext, EventRequest, SessionActivatedData, TurnStartedData,
     };
@@ -67,6 +68,25 @@ pub async fn input_activity(
         tracing::warn!(error = %e, "Failed to set session status to active");
     }
 
+    // Create message retriever early to fetch input content for observability
+    let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
+
+    // Fetch input message content for turn.started event (for Braintrust observability)
+    let input_content = match message_retriever
+        .get(input.context.session_id, input.context.input_message_id)
+        .await
+    {
+        Ok(Some(msg)) => Some(msg.content_to_llm_string()),
+        Ok(None) => {
+            tracing::warn!("Input message not found for turn.started event");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to fetch input message for turn.started event");
+            None
+        }
+    };
+
     // Emit session.activated event
     let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
     let activated_event = EventRequest::new(
@@ -81,20 +101,20 @@ pub async fn input_activity(
         tracing::warn!(error = %e, "Failed to emit session.activated event");
     }
 
-    // Emit turn.started event
+    // Emit turn.started event with input content for observability
     let turn_started_event = EventRequest::new(
         input.context.session_id,
         EventContext::turn(input.context.turn_id, input.context.input_message_id),
         TurnStartedData {
             turn_id: input.context.turn_id,
             input_message_id: input.context.input_message_id,
+            input_content,
         },
     );
     if let Err(e) = event_emitter.emit(turn_started_event).await {
         tracing::warn!(error = %e, "Failed to emit turn.started event");
     }
 
-    let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
     let atom = InputAtom::new(message_retriever, event_emitter);
 
     atom.execute(input)
@@ -120,6 +140,7 @@ pub async fn reason_activity(
     org_id: i64,
     input: ReasonInput,
 ) -> Result<ReasonResult> {
+    use everruns_core::MessageRetriever;
     use everruns_core::events::{
         EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
     };
@@ -194,6 +215,17 @@ pub async fn reason_activity(
                 tracing::warn!(error = %e, "Failed to emit turn.failed event");
             }
         } else {
+            // Fetch input message content for turn.completed (for Braintrust observability)
+            let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
+            let input_content = match message_retriever.get(session_id, input_message_id).await {
+                Ok(Some(msg)) => Some(msg.content_to_llm_string()),
+                Ok(None) => None,
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to fetch input message for turn.completed");
+                    None
+                }
+            };
+
             // Emit turn.completed event with usage
             let turn_completed_event = EventRequest::new(
                 session_id,
@@ -203,6 +235,7 @@ pub async fn reason_activity(
                     iterations: 1, // TODO: Track actual iterations when workflow supports it
                     duration_ms: None,
                     usage: result.usage.clone(),
+                    input_content,
                 },
             );
             if let Err(e) = event_emitter.emit(turn_completed_event).await {

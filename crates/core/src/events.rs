@@ -477,10 +477,24 @@ pub struct ReasonCompletedData {
     /// Error message if failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+
+    /// Duration of the reason phase in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+
+    /// Token usage from the LLM call
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
 }
 
 impl ReasonCompletedData {
-    pub fn success(text: &str, has_tool_calls: bool, tool_call_count: u32) -> Self {
+    pub fn success(
+        text: &str,
+        has_tool_calls: bool,
+        tool_call_count: u32,
+        duration_ms: Option<u64>,
+        usage: Option<TokenUsage>,
+    ) -> Self {
         let text_preview = if text.is_empty() {
             None
         } else {
@@ -493,16 +507,20 @@ impl ReasonCompletedData {
             has_tool_calls,
             tool_call_count,
             error: None,
+            duration_ms,
+            usage,
         }
     }
 
-    pub fn failure(error: String) -> Self {
+    pub fn failure(error: String, duration_ms: Option<u64>) -> Self {
         Self {
             success: false,
             text_preview: None,
             has_tool_calls: false,
             tool_call_count: 0,
             error: Some(error),
+            duration_ms,
+            usage: None,
         }
     }
 }
@@ -571,6 +589,10 @@ pub struct ActCompletedData {
 
     /// Number of failed tool calls
     pub error_count: u32,
+
+    /// Duration of the act phase in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 /// Data for tool.call_started event
@@ -604,10 +626,19 @@ pub struct ToolCallCompletedData {
     /// Error message if failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+
+    /// Duration of the tool call in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 impl ToolCallCompletedData {
-    pub fn success(tool_call_id: String, tool_name: String, result: Vec<ContentPart>) -> Self {
+    pub fn success(
+        tool_call_id: String,
+        tool_name: String,
+        result: Vec<ContentPart>,
+        duration_ms: Option<u64>,
+    ) -> Self {
         Self {
             tool_call_id,
             tool_name,
@@ -615,10 +646,17 @@ impl ToolCallCompletedData {
             status: "success".to_string(),
             result: Some(result),
             error: None,
+            duration_ms,
         }
     }
 
-    pub fn failure(tool_call_id: String, tool_name: String, status: String, error: String) -> Self {
+    pub fn failure(
+        tool_call_id: String,
+        tool_name: String,
+        status: String,
+        error: String,
+        duration_ms: Option<u64>,
+    ) -> Self {
         Self {
             tool_call_id,
             tool_name,
@@ -626,6 +664,7 @@ impl ToolCallCompletedData {
             status,
             result: None,
             error: Some(error),
+            duration_ms,
         }
     }
 }
@@ -867,6 +906,10 @@ pub struct TurnStartedData {
     /// Input message ID that triggered this turn
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_01933b5a00007000800000000000001"))]
     pub input_message_id: MessageId,
+
+    /// Input message content (for observability)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_content: Option<String>,
 }
 
 /// Data for turn.completed event
@@ -887,6 +930,10 @@ pub struct TurnCompletedData {
     /// Aggregated token usage for all LLM calls in this turn
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
+
+    /// Input message content (for observability, passed through from turn.started)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_content: Option<String>,
 }
 
 /// Data for turn.failed event
@@ -1327,15 +1374,18 @@ mod tests {
 
     #[test]
     fn test_reason_completed_data() {
-        let data = ReasonCompletedData::success("Hello world", true, 2);
+        let data = ReasonCompletedData::success("Hello world", true, 2, Some(1000), None);
         assert!(data.success);
         assert_eq!(data.text_preview, Some("Hello world".to_string()));
         assert!(data.has_tool_calls);
         assert_eq!(data.tool_call_count, 2);
+        assert_eq!(data.duration_ms, Some(1000));
+        assert!(data.usage.is_none());
 
-        let data = ReasonCompletedData::failure("Network error".to_string());
+        let data = ReasonCompletedData::failure("Network error".to_string(), Some(500));
         assert!(!data.success);
         assert_eq!(data.error, Some("Network error".to_string()));
+        assert_eq!(data.duration_ms, Some(500));
     }
 
     #[test]
