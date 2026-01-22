@@ -1139,7 +1139,9 @@ mod tests {
         let message = Message {
             id: Uuid::now_v7().into(),
             role: MessageRole::Assistant,
-            content: vec![ContentPart::text("Here is my response based on my analysis.")],
+            content: vec![ContentPart::text(
+                "Here is my response based on my analysis.",
+            )],
             thinking: Some(thinking_content.clone()),
             controls: None,
             metadata: None,
