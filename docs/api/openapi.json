@@ -5615,8 +5615,7 @@
         ],
         "properties": {
           "agent_id": {
-            "type": "string",
-            "format": "uuid",
+            "$ref": "#/components/schemas/TypedId",
             "description": "Agent ID being used"
           },
           "metadata": {
@@ -6301,6 +6300,12 @@
             "example": "turn_01933b5a00007000800000000000001"
           }
         }
+      },
+      "TypedId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'agent' prefix",
+        "example": "agent_01933b5a00007000800000000000001",
+        "pattern": "^agent_[0-9a-f]{32}$"
       },
       "UpdateAgentRequest": {
         "type": "object",
