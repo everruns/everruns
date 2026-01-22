@@ -15,7 +15,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 
 use crate::agent::{Agent, AgentStatus};
-use crate::atoms::{ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput};
+use crate::atoms::{
+    ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
+};
 use crate::capabilities::{Capability, CapabilityRegistry};
 use crate::error::Result;
 use crate::events::{Event, EventData, EventRequest, MESSAGE_AGENT};
@@ -32,6 +34,7 @@ use crate::session::{Session, SessionStatus};
 use crate::tool_types::ToolCall;
 use crate::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use crate::traits::{EventEmitter, ModelWithProvider};
+use crate::turn_state_machine::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use crate::typed_id::{AgentId, SessionId, TurnId};
 
 // ============================================================================
@@ -118,6 +121,44 @@ impl TurnResult {
     /// Check if the response contains a specific substring
     pub fn contains(&self, text: &str) -> bool {
         self.response.contains(text)
+    }
+
+    /// Create a TurnResult from a TurnOutcome and turn_id.
+    fn from_outcome(outcome: TurnOutcome, turn_id: TurnId) -> Self {
+        match outcome {
+            TurnOutcome::Success {
+                response,
+                iterations,
+                tool_calls_count,
+            } => Self {
+                response,
+                iterations,
+                tool_calls_count,
+                success: true,
+                error: None,
+                turn_id,
+            },
+            TurnOutcome::Failed { error, iterations } => Self {
+                response: String::new(),
+                iterations,
+                tool_calls_count: 0,
+                success: false,
+                error: Some(error),
+                turn_id,
+            },
+            TurnOutcome::MaxIterationsReached {
+                response,
+                iterations,
+                tool_calls_count,
+            } => Self {
+                response,
+                iterations,
+                tool_calls_count,
+                success: true, // Max iterations is not a failure
+                error: None,
+                turn_id,
+            },
+        }
     }
 }
 
@@ -314,31 +355,32 @@ impl InMemoryAgenticLoopBuilder {
 
         // Create provider store and driver registry
         let provider_store = InMemoryLlmProviderStore::new();
-        let driver_registry = if let (Some(model), Some(registry)) = (self.model, self.driver_registry) {
-            // Use provided model and driver registry
-            provider_store.set_default_model(model).await;
-            registry
-        } else {
-            // Use LlmSim (default or explicitly configured)
-            let config = self.llm_sim_config.unwrap_or_default();
-            let model = ModelWithProvider {
-                model: "llmsim-model".to_string(),
-                provider_type: LlmProviderType::LlmSim,
-                api_key: Some("fake-key".to_string()),
-                base_url: None,
-            };
-            provider_store.set_default_model(model).await;
+        let driver_registry =
+            if let (Some(model), Some(registry)) = (self.model, self.driver_registry) {
+                // Use provided model and driver registry
+                provider_store.set_default_model(model).await;
+                registry
+            } else {
+                // Use LlmSim (default or explicitly configured)
+                let config = self.llm_sim_config.unwrap_or_default();
+                let model = ModelWithProvider {
+                    model: "llmsim-model".to_string(),
+                    provider_type: LlmProviderType::LlmSim,
+                    api_key: Some("fake-key".to_string()),
+                    base_url: None,
+                };
+                provider_store.set_default_model(model).await;
 
-            // Create the driver once and share it across calls.
-            // This ensures sequence-based responses work correctly
-            // because the Arc counters are shared.
-            let driver = LlmSimDriver::new(config);
-            let mut registry = DriverRegistry::new();
-            registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
-                Box::new(driver.clone())
-            });
-            registry
-        };
+                // Create the driver once and share it across calls.
+                // This ensures sequence-based responses work correctly
+                // because the Arc counters are shared.
+                let driver = LlmSimDriver::new(config);
+                let mut registry = DriverRegistry::new();
+                registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+                    Box::new(driver.clone())
+                });
+                registry
+            };
 
         // Build tool registry - include tools from capabilities
         let mut tool_builder = ToolRegistryBuilder::new();
@@ -432,12 +474,7 @@ pub struct InMemoryAgenticLoop {
     provider_store: InMemoryLlmProviderStore,
     event_emitter: BridgingEventEmitter,
     tool_registry: ToolRegistry,
-    input_atom: Arc<
-        InputAtom<
-            InMemoryMessageRetriever,
-            BridgingEventEmitter,
-        >,
-    >,
+    input_atom: Arc<InputAtom<InMemoryMessageRetriever, BridgingEventEmitter>>,
     reason_atom: Arc<
         ReasonAtom<
             InMemoryAgentStore,
@@ -469,10 +506,13 @@ impl InMemoryAgenticLoop {
 
     /// Run a turn with the given user message
     ///
-    /// This executes the full agentic loop:
+    /// This executes the full agentic loop using the TurnStateMachine:
     /// 1. Add user message
     /// 2. Record input (InputAtom)
     /// 3. Reason loop (ReasonAtom → ActAtom → repeat until done)
+    ///
+    /// The TurnStateMachine ensures consistent orchestration logic,
+    /// proper error handling (checking success flag), and turn ID management.
     pub async fn run_turn(&self, user_message: &str) -> Result<TurnResult> {
         // Add user message
         let message = self
@@ -480,71 +520,89 @@ impl InMemoryAgenticLoop {
             .add(self.session_id, InputMessage::user(user_message))
             .await?;
 
-        // Create turn context
-        let turn_id = TurnId::new();
-        let base_context = AtomContext::new(self.session_id, turn_id, message.id);
+        // Create turn context and state machine
+        let turn_context = TurnContext::new(self.session_id, message.id, self.agent_id, 0);
+        let mut state_machine = TurnStateMachine::new(turn_context, self.max_iterations);
 
-        // Execute InputAtom
-        self.input_atom
-            .execute(InputAtomInput {
-                context: base_context.clone(),
-            })
-            .await?;
+        // Track last reason result for ActAtom
+        let mut last_reason_result: Option<crate::atoms::ReasonResult> = None;
 
-        // Reason loop
-        let mut iterations = 0;
-        let mut total_tool_calls = 0;
-        let mut final_response = String::new();
-        let mut final_error = None;
+        // Execute the turn using the state machine
+        loop {
+            match state_machine.next_action() {
+                TurnAction::ExecuteInput => {
+                    let base_context = AtomContext::new(
+                        state_machine.context().session_id,
+                        state_machine.context().turn_id,
+                        state_machine.context().input_message_id,
+                    );
+                    self.input_atom
+                        .execute(InputAtomInput {
+                            context: base_context,
+                        })
+                        .await?;
+                    state_machine.on_input_completed();
+                }
 
-        for iteration in 1..=self.max_iterations {
-            iterations = iteration;
+                TurnAction::ExecuteReason => {
+                    let base_context = AtomContext::new(
+                        state_machine.context().session_id,
+                        state_machine.context().turn_id,
+                        state_machine.context().input_message_id,
+                    );
+                    let reason_result = self
+                        .reason_atom
+                        .execute(ReasonInput {
+                            context: base_context.next_exec(),
+                            agent_id: self.agent_id,
+                            org_id: 0,
+                            mcp_tool_definitions: vec![],
+                        })
+                        .await?;
 
-            // Execute ReasonAtom
-            let reason_result = self
-                .reason_atom
-                .execute(ReasonInput {
-                    context: base_context.next_exec(),
-                    agent_id: self.agent_id,
-                    org_id: 0,
-                    mcp_tool_definitions: vec![],
-                })
-                .await?;
+                    let tool_call_count = reason_result.tool_calls.len();
+                    state_machine.on_reason_completed(
+                        reason_result.text.clone(),
+                        reason_result.has_tool_calls,
+                        tool_call_count,
+                        reason_result.success,
+                        reason_result.error.clone(),
+                    );
 
-            if !reason_result.text.is_empty() {
-                final_response = reason_result.text.clone();
+                    // Store for ActAtom if needed
+                    if reason_result.has_tool_calls {
+                        last_reason_result = Some(reason_result);
+                    }
+                }
+
+                TurnAction::ExecuteAct => {
+                    let reason_result = last_reason_result
+                        .take()
+                        .expect("ExecuteAct requires prior ReasonResult with tool calls");
+                    let base_context = AtomContext::new(
+                        state_machine.context().session_id,
+                        state_machine.context().turn_id,
+                        state_machine.context().input_message_id,
+                    );
+                    self.act_atom
+                        .execute(ActInput {
+                            context: base_context.next_exec(),
+                            agent_id: self.agent_id,
+                            tool_calls: reason_result.tool_calls,
+                            tool_definitions: reason_result.tool_definitions,
+                        })
+                        .await?;
+                    state_machine.on_act_completed();
+                }
+
+                TurnAction::Complete(outcome) => {
+                    return Ok(TurnResult::from_outcome(
+                        outcome,
+                        state_machine.context().turn_id,
+                    ));
+                }
             }
-
-            if let Some(err) = &reason_result.error {
-                final_error = Some(err.clone());
-            }
-
-            // Check if done
-            if !reason_result.has_tool_calls || reason_result.tool_calls.is_empty() {
-                break;
-            }
-
-            total_tool_calls += reason_result.tool_calls.len();
-
-            // Execute ActAtom
-            self.act_atom
-                .execute(ActInput {
-                    context: base_context.next_exec(),
-                    agent_id: self.agent_id,
-                    tool_calls: reason_result.tool_calls,
-                    tool_definitions: reason_result.tool_definitions,
-                })
-                .await?;
         }
-
-        Ok(TurnResult {
-            response: final_response,
-            iterations,
-            tool_calls_count: total_tool_calls,
-            success: final_error.is_none(),
-            error: final_error,
-            turn_id,
-        })
     }
 
     /// Run multiple turns in sequence
