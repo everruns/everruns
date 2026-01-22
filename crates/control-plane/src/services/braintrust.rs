@@ -260,6 +260,15 @@ impl BraintrustListener {
 
         let request = BraintrustInsertRequest { events };
 
+        // Log the request payload for debugging
+        if let Ok(payload) = serde_json::to_string_pretty(&request) {
+            debug!(
+                url = %url,
+                payload = %payload,
+                "Sending events to Braintrust"
+            );
+        }
+
         let result = self
             .client
             .post(&url)
@@ -1793,6 +1802,253 @@ mod tests {
             bt_tool.root_span_id,
             Some(expected_root.clone()),
             "tool should have root_span_id = turn_id"
+        );
+    }
+
+    // =============================================================================
+    // _is_merge Serialization Tests
+    // =============================================================================
+    //
+    // These tests verify that the _is_merge field is correctly serialized:
+    // - Started events: is_merge = None (creates new span)
+    // - Completed events: is_merge = Some(true) (merges with existing span)
+
+    #[test]
+    fn test_is_merge_serialization_started_events() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+
+        // turn.started should have is_merge = None
+        let turn_data = TurnStartedData {
+            turn_id,
+            input_message_id,
+            input_content: Some("Test".to_string()),
+        };
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::empty(),
+            EventData::TurnStarted(turn_data.clone()),
+        );
+        let bt_event = listener.convert_turn_started(&event, &turn_data);
+
+        // is_merge should be None for started events
+        assert!(
+            bt_event.is_merge.is_none(),
+            "turn.started should have is_merge = None"
+        );
+
+        // Serialize to JSON and verify _is_merge is not present
+        let json = serde_json::to_string(&bt_event).unwrap();
+        assert!(
+            !json.contains("_is_merge"),
+            "turn.started JSON should not contain _is_merge: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_is_merge_serialization_completed_events() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+
+        // turn.completed should have is_merge = Some(true)
+        let turn_data = TurnCompletedData {
+            turn_id,
+            iterations: 1,
+            duration_ms: Some(1000),
+            usage: None,
+            input_content: Some("Test".to_string()),
+        };
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::empty(),
+            EventData::TurnCompleted(turn_data.clone()),
+        );
+        let bt_event = listener.convert_turn_completed(&event, &turn_data);
+
+        // is_merge should be Some(true) for completed events
+        assert_eq!(
+            bt_event.is_merge,
+            Some(true),
+            "turn.completed should have is_merge = Some(true)"
+        );
+
+        // Serialize to JSON and verify _is_merge is present and true
+        let json = serde_json::to_string(&bt_event).unwrap();
+        assert!(
+            json.contains("\"_is_merge\":true"),
+            "turn.completed JSON should contain _is_merge:true: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_is_merge_serialization_reason_events() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let reason_span_id = Uuid::now_v7().to_string();
+
+        let mut context = EventContext::empty();
+        context.turn_id = Some(turn_id);
+        context.trace_id = Some(turn_id.to_string());
+        context.span_id = Some(reason_span_id.clone());
+        context.parent_span_id = Some(turn_id.to_string());
+
+        // reason.started - should NOT have _is_merge
+        let started_data = ReasonStartedData {
+            agent_id: AgentId::new(),
+            metadata: None,
+        };
+        let started_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ReasonStarted(started_data.clone()),
+        );
+        let bt_started = listener.convert_reason_started(&started_event, &started_data);
+        let started_json = serde_json::to_string(&bt_started).unwrap();
+        assert!(
+            !started_json.contains("_is_merge"),
+            "reason.started should not have _is_merge: {}",
+            started_json
+        );
+
+        // reason.completed - should have _is_merge: true
+        let completed_data = ReasonCompletedData {
+            success: true,
+            text_preview: None,
+            has_tool_calls: false,
+            tool_call_count: 0,
+            error: None,
+            duration_ms: Some(500),
+            usage: None,
+        };
+        let completed_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ReasonCompleted(completed_data.clone()),
+        );
+        let bt_completed = listener.convert_reason_completed(&completed_event, &completed_data);
+        let completed_json = serde_json::to_string(&bt_completed).unwrap();
+        assert!(
+            completed_json.contains("\"_is_merge\":true"),
+            "reason.completed should have _is_merge:true: {}",
+            completed_json
+        );
+    }
+
+    #[test]
+    fn test_is_merge_serialization_act_events() {
+        use everruns_core::events::ToolCallSummary;
+
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let act_span_id = Uuid::now_v7().to_string();
+
+        let mut context = EventContext::empty();
+        context.turn_id = Some(turn_id);
+        context.trace_id = Some(turn_id.to_string());
+        context.span_id = Some(act_span_id.clone());
+        context.parent_span_id = Some(turn_id.to_string());
+
+        // act.started - should NOT have _is_merge
+        let started_data = ActStartedData {
+            tool_calls: vec![ToolCallSummary {
+                id: "call_1".to_string(),
+                name: "search".to_string(),
+            }],
+        };
+        let started_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ActStarted(started_data.clone()),
+        );
+        let bt_started = listener.convert_act_started(&started_event, &started_data);
+        let started_json = serde_json::to_string(&bt_started).unwrap();
+        assert!(
+            !started_json.contains("_is_merge"),
+            "act.started should not have _is_merge: {}",
+            started_json
+        );
+
+        // act.completed - should have _is_merge: true
+        let completed_data = ActCompletedData {
+            completed: true,
+            success_count: 1,
+            error_count: 0,
+            duration_ms: Some(200),
+        };
+        let completed_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ActCompleted(completed_data.clone()),
+        );
+        let bt_completed = listener.convert_act_completed(&completed_event, &completed_data);
+        let completed_json = serde_json::to_string(&bt_completed).unwrap();
+        assert!(
+            completed_json.contains("\"_is_merge\":true"),
+            "act.completed should have _is_merge:true: {}",
+            completed_json
+        );
+    }
+
+    #[test]
+    fn test_is_merge_serialization_tool_events() {
+        use everruns_core::tool_types::ToolCall;
+
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let tool_span_id = Uuid::now_v7().to_string();
+        let act_span_id = Uuid::now_v7().to_string();
+
+        let mut context = EventContext::empty();
+        context.turn_id = Some(turn_id);
+        context.trace_id = Some(turn_id.to_string());
+        context.span_id = Some(tool_span_id.clone());
+        context.parent_span_id = Some(act_span_id.clone());
+
+        // tool.call_started - should NOT have _is_merge
+        let started_data = ToolCallStartedData {
+            tool_call: ToolCall {
+                id: "call_1".to_string(),
+                name: "search".to_string(),
+                arguments: serde_json::json!({"query": "test"}),
+            },
+        };
+        let started_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ToolCallStarted(started_data.clone()),
+        );
+        let bt_started = listener.convert_tool_call_started(&started_event, &started_data);
+        let started_json = serde_json::to_string(&bt_started).unwrap();
+        assert!(
+            !started_json.contains("_is_merge"),
+            "tool.call_started should not have _is_merge: {}",
+            started_json
+        );
+
+        // tool.call_completed - should have _is_merge: true
+        let completed_data = ToolCallCompletedData {
+            tool_call_id: "call_1".to_string(),
+            tool_name: "search".to_string(),
+            success: true,
+            status: "success".to_string(),
+            result: None,
+            error: None,
+            duration_ms: Some(100),
+        };
+        let completed_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ToolCallCompleted(completed_data.clone()),
+        );
+        let bt_completed = listener.convert_tool_call_completed(&completed_event, &completed_data);
+        let completed_json = serde_json::to_string(&bt_completed).unwrap();
+        assert!(
+            completed_json.contains("\"_is_merge\":true"),
+            "tool.call_completed should have _is_merge:true: {}",
+            completed_json
         );
     }
 }
