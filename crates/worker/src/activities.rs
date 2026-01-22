@@ -46,11 +46,11 @@ pub async fn input_activity(
     org_id: i64,
     input: InputAtomInput,
 ) -> Result<InputAtomResult> {
+    use everruns_core::MessageRetriever;
     use everruns_core::events::{
         EventContext, EventRequest, SessionActivatedData, TurnStartedData,
     };
     use everruns_core::traits::EventEmitter;
-    use everruns_core::MessageRetriever;
 
     tracing::info!(
         org_id = org_id,
@@ -140,11 +140,11 @@ pub async fn reason_activity(
     org_id: i64,
     input: ReasonInput,
 ) -> Result<ReasonResult> {
+    use everruns_core::MessageRetriever;
     use everruns_core::events::{
         EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
     };
     use everruns_core::traits::EventEmitter;
-    use everruns_core::MessageRetriever;
 
     tracing::info!(
         org_id = org_id,

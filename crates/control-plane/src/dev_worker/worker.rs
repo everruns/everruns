@@ -360,11 +360,11 @@ impl InProcessWorker {
 
     /// Execute input processing activity
     async fn execute_input_activity(&self, input: &DurableTurnInput) -> Result<serde_json::Value> {
+        use everruns_core::MessageRetriever;
         use everruns_core::events::{
             EventContext, EventRequest, SessionActivatedData, TurnStartedData,
         };
         use everruns_core::traits::EventEmitter;
-        use everruns_core::MessageRetriever;
 
         debug!(
             session_id = %input.session_id,
@@ -454,11 +454,11 @@ impl InProcessWorker {
 
     /// Execute reasoning activity (LLM call)
     async fn execute_reason_activity(&self, input: &DurableTurnInput) -> Result<serde_json::Value> {
+        use everruns_core::MessageRetriever;
         use everruns_core::events::{
             EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
         };
         use everruns_core::traits::EventEmitter;
-        use everruns_core::MessageRetriever;
 
         debug!(
             session_id = %input.session_id,

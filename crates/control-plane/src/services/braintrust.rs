@@ -453,7 +453,7 @@ impl BraintrustListener {
             span_id: Some(turn_id_str.clone()), // Root span self-references
             root_span_id: Some(turn_id_str.clone()), // Root span self-references
             span_parents: None,
-            is_merge: Some(true),               // Merge with turn.started event
+            is_merge: Some(true), // Merge with turn.started event
         }
     }
 
@@ -536,7 +536,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
-            is_merge: None,                     // Single event, no merge needed
+            is_merge: None, // Single event, no merge needed
         }
     }
 
@@ -615,7 +615,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
-            is_merge: Some(true),               // Merge with tool_call.started event
+            is_merge: Some(true), // Merge with tool_call.started event
         }
     }
 
@@ -651,7 +651,7 @@ impl BraintrustListener {
             span_id: Some(turn_id_str.clone()), // Root span self-references
             root_span_id: Some(turn_id_str.clone()), // Root span self-references
             span_parents: None,
-            is_merge: Some(true),               // Merge with turn.started event
+            is_merge: Some(true), // Merge with turn.started event
         }
     }
 
@@ -703,7 +703,7 @@ impl BraintrustListener {
             span_id: Some(turn_id_str.clone()), // Root span self-references
             root_span_id: Some(turn_id_str.clone()), // Root span self-references
             span_parents: None,
-            is_merge: Some(true),               // Merge with turn.started event
+            is_merge: Some(true), // Merge with turn.started event
         }
     }
 
@@ -771,7 +771,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
-            is_merge: None,                     // First event creates the span
+            is_merge: None, // First event creates the span
         }
     }
 
@@ -844,7 +844,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
-            is_merge: Some(true),               // Merge with reason.started event
+            is_merge: Some(true), // Merge with reason.started event
         }
     }
 
@@ -907,7 +907,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
-            is_merge: None,                     // First event creates the span
+            is_merge: None, // First event creates the span
         }
     }
 
@@ -973,7 +973,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
-            is_merge: Some(true),               // Merge with act.started event
+            is_merge: Some(true), // Merge with act.started event
         }
     }
 
@@ -1035,7 +1035,7 @@ impl BraintrustListener {
             span_id,
             root_span_id,
             span_parents,
-            is_merge: None,                     // First event creates the span
+            is_merge: None, // First event creates the span
         }
     }
 }
