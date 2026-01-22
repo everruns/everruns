@@ -1,6 +1,7 @@
 // Database models (internal, may differ from public DTOs)
 
 use chrono::{DateTime, Utc};
+use everruns_core::{AgentId, EventId, ImageId, McpServerId, ModelId, ProviderId, SessionId};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -158,12 +159,12 @@ pub struct CreateRefreshTokenRow {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentRow {
-    pub id: Uuid,
+    pub id: AgentId,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
-    pub default_model_id: Option<Uuid>,
+    pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -187,7 +188,7 @@ pub struct CreateAgentRow {
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
-    pub default_model_id: Option<Uuid>,
+    pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
 }
 
@@ -196,7 +197,7 @@ pub struct UpdateAgent {
     pub name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
-    pub default_model_id: Option<Uuid>,
+    pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
 }
@@ -207,11 +208,11 @@ pub struct UpdateAgent {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionRow {
-    pub id: Uuid,
-    pub agent_id: Uuid,
+    pub id: SessionId,
+    pub agent_id: AgentId,
     pub title: Option<String>,
     pub tags: Vec<String>,
-    pub model_id: Option<Uuid>,
+    pub model_id: Option<ModelId>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -233,17 +234,17 @@ pub struct SessionRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct CreateSessionRow {
-    pub agent_id: Uuid,
+    pub agent_id: AgentId,
     pub title: Option<String>,
     pub tags: Vec<String>,
-    pub model_id: Option<Uuid>,
+    pub model_id: Option<ModelId>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSession {
     pub title: Option<String>,
     pub tags: Option<Vec<String>>,
-    pub model_id: Option<Uuid>,
+    pub model_id: Option<ModelId>,
     pub status: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
@@ -258,8 +259,8 @@ pub struct UpdateSession {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct EventRow {
-    pub id: Uuid,
-    pub session_id: Uuid,
+    pub id: EventId,
+    pub session_id: SessionId,
     pub sequence: i32,
     pub event_type: String,
     pub ts: DateTime<Utc>,
@@ -272,7 +273,7 @@ pub struct EventRow {
 
 #[derive(Debug, Clone)]
 pub struct CreateEventRow {
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub event_type: String,
     pub ts: DateTime<Utc>,
     pub context: serde_json::Value,
@@ -287,7 +288,7 @@ pub struct CreateEventRow {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct LlmProviderRow {
-    pub id: Uuid,
+    pub id: ProviderId,
     pub org_id: i64,
     pub name: String,
     pub provider_type: String,
@@ -304,9 +305,9 @@ pub struct LlmProviderRow {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct LlmModelRow {
-    pub id: Uuid,
+    pub id: ModelId,
     pub org_id: i64,
-    pub provider_id: Uuid,
+    pub provider_id: ProviderId,
     pub model_id: String,
     pub display_name: String,
     pub capabilities: sqlx::types::JsonValue,
@@ -326,9 +327,9 @@ pub struct LlmModelRow {
 /// Model with provider info joined
 #[derive(Debug, Clone, FromRow)]
 pub struct LlmModelWithProviderRow {
-    pub id: Uuid,
+    pub id: ModelId,
     pub org_id: i64,
-    pub provider_id: Uuid,
+    pub provider_id: ProviderId,
     pub model_id: String,
     pub display_name: String,
     pub capabilities: sqlx::types::JsonValue,
@@ -350,7 +351,7 @@ pub struct LlmModelWithProviderRow {
 /// LLM Provider with decrypted API key (used by worker activities)
 #[derive(Debug, Clone)]
 pub struct LlmProviderWithApiKey {
-    pub id: Uuid,
+    pub id: ProviderId,
     pub name: String,
     pub provider_type: String,
     pub base_url: Option<String>,
@@ -380,7 +381,7 @@ pub struct UpdateLlmProvider {
 
 #[derive(Debug, Clone)]
 pub struct CreateLlmModelRow {
-    pub provider_id: Uuid,
+    pub provider_id: ProviderId,
     pub model_id: String,
     pub display_name: String,
     pub capabilities: Vec<String>,
@@ -413,7 +414,7 @@ pub struct UpdateLlmModel {
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentCapabilityRow {
     pub id: Uuid,
-    pub agent_id: Uuid,
+    pub agent_id: AgentId,
     pub capability_id: String,
     pub position: i32,
     /// Per-agent capability configuration (JSON)
@@ -423,7 +424,7 @@ pub struct AgentCapabilityRow {
 
 #[derive(Debug, Clone)]
 pub struct CreateAgentCapabilityRow {
-    pub agent_id: Uuid,
+    pub agent_id: AgentId,
     pub capability_id: String,
     pub position: i32,
     /// Per-agent capability configuration (JSON)
@@ -439,7 +440,7 @@ pub struct CreateAgentCapabilityRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionFileRow {
     pub id: Uuid,
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub path: String,
     pub content: Option<Vec<u8>>,
     pub is_directory: bool,
@@ -452,7 +453,7 @@ pub struct SessionFileRow {
 /// Input for creating a session file
 #[derive(Debug, Clone)]
 pub struct CreateSessionFileRow {
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub path: String,
     pub content: Option<Vec<u8>>,
     pub is_directory: bool,
@@ -470,7 +471,7 @@ pub struct UpdateSessionFile {
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionFileInfoRow {
     pub id: Uuid,
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub path: String,
     pub is_directory: bool,
     pub is_readonly: bool,
@@ -486,7 +487,7 @@ pub struct SessionFileInfoRow {
 /// MCP Server row from database
 #[derive(Debug, Clone, FromRow)]
 pub struct McpServerRow {
-    pub id: Uuid,
+    pub id: McpServerId,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
@@ -537,7 +538,7 @@ pub struct UpdateMcpServer {
 /// Image row from database
 #[derive(Debug, Clone, FromRow)]
 pub struct ImageRow {
-    pub id: Uuid,
+    pub id: ImageId,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
@@ -551,7 +552,7 @@ pub struct ImageRow {
 /// Image info without binary data (for listing)
 #[derive(Debug, Clone, FromRow)]
 pub struct ImageInfoRow {
-    pub id: Uuid,
+    pub id: ImageId,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
@@ -585,7 +586,7 @@ pub struct UpdateMcpServerTools {
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionKeyValueRow {
     pub id: Uuid,
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub key: String,
     pub value: String,
     pub created_at: DateTime<Utc>,
@@ -595,7 +596,7 @@ pub struct SessionKeyValueRow {
 /// Input for creating/updating a session key/value
 #[derive(Debug, Clone)]
 pub struct UpsertSessionKeyValue {
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub key: String,
     pub value: String,
 }
@@ -616,7 +617,7 @@ pub struct SessionKeyInfoRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionSecretRow {
     pub id: Uuid,
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub name: String,
     pub value_encrypted: Vec<u8>,
     pub created_at: DateTime<Utc>,
@@ -626,7 +627,7 @@ pub struct SessionSecretRow {
 /// Input for creating/updating a session secret
 #[derive(Debug, Clone)]
 pub struct UpsertSessionSecret {
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub name: String,
     pub value_encrypted: Vec<u8>,
 }

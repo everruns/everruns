@@ -5,11 +5,10 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, DEFAULT_ORG_ID, Result, TokenUsage,
+    AgentLoopError, DEFAULT_ORG_ID, Result, SessionId, TokenUsage,
     session::{Session, SessionStatus},
     traits::SessionStore,
 };
-use uuid::Uuid;
 
 use super::repositories::Database;
 
@@ -34,7 +33,7 @@ impl DbSessionStore {
 
 #[async_trait]
 impl SessionStore for DbSessionStore {
-    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
         // TODO: Get org_id from context after Phase 3
         let session_row = self
             .db
@@ -65,13 +64,13 @@ impl SessionStore for DbSessionStore {
                 };
 
                 Ok(Some(Session {
-                    id: row.id.into(),
-                    agent_id: row.agent_id.into(),
+                    id: row.id,
+                    agent_id: row.agent_id,
                     title: row.title,
                     preview: None, // Preview populated separately when listing sessions
                     output_preview: None, // Output preview populated separately when listing sessions
                     tags: row.tags,
-                    model_id: row.model_id.map(|id| id.into()),
+                    model_id: row.model_id,
                     status: SessionStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     updated_at: row.updated_at,

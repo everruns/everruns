@@ -15,9 +15,9 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_durable::InMemoryWorkflowEventStore;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::durable_runner::DurableRunner;
 
@@ -39,16 +39,16 @@ pub trait AgentRunner: Send + Sync {
     async fn start_run(
         &self,
         org_id: i64,
-        session_id: Uuid,
-        agent_id: Uuid,
-        input_message_id: Uuid,
+        session_id: SessionId,
+        agent_id: AgentId,
+        input_message_id: MessageId,
     ) -> Result<()>;
 
     /// Cancel a running workflow
-    async fn cancel_run(&self, run_id: Uuid) -> Result<()>;
+    async fn cancel_run(&self, run_id: SessionId) -> Result<()>;
 
     /// Check if a workflow is still running
-    async fn is_running(&self, run_id: Uuid) -> bool;
+    async fn is_running(&self, run_id: SessionId) -> bool;
 
     /// Get count of active workflows (for monitoring)
     async fn active_count(&self) -> usize;

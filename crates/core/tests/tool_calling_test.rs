@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use everruns_core::{BuiltinTool, ToolCall, ToolDefinition, ToolPolicy};
 use everruns_core::{
-    GetCurrentTimeTool, Message, MessageRetriever, MessageRole,
+    GetCurrentTimeTool, Message, MessageRetriever, MessageRole, SessionId,
     memory::InMemoryMessageRetriever,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
@@ -286,7 +286,7 @@ async fn test_multiple_tools_in_registry() {
 #[tokio::test]
 async fn test_message_retriever_preserves_tool_calls() {
     let store = InMemoryMessageRetriever::new();
-    let session_id = Uuid::now_v7();
+    let session_id: SessionId = Uuid::now_v7().into();
 
     // Create an assistant message with tool calls (the critical case)
     let tool_calls = vec![
@@ -325,7 +325,7 @@ async fn test_message_retriever_preserves_tool_calls() {
 #[tokio::test]
 async fn test_message_retriever_full_tool_conversation() {
     let store = InMemoryMessageRetriever::new();
-    let session_id = Uuid::now_v7();
+    let session_id: SessionId = Uuid::now_v7().into();
 
     // Simulate a full tool-calling conversation:
     // 1. User message
@@ -395,7 +395,7 @@ async fn test_message_retriever_full_tool_conversation() {
 #[tokio::test]
 async fn test_message_retriever_parallel_tool_calls() {
     let store = InMemoryMessageRetriever::new();
-    let session_id = Uuid::now_v7();
+    let session_id: SessionId = Uuid::now_v7().into();
 
     // Create an assistant message with multiple parallel tool calls
     let tool_calls = vec![

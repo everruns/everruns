@@ -55,6 +55,9 @@ fetchkit = { git = "https://github.com/everruns/fetchkit" }
 # OpenAPI schema generation (optional, enabled by everruns-control-plane)
 utoipa = { workspace = true, optional = true }
 
+# Database (optional, for TypedId sqlx support)
+sqlx = { workspace = true, optional = true }
+
 # Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
 # Tool types are defined locally in this crate
 
@@ -69,6 +72,7 @@ llmsim = "0.2.0"
 [features]
 default = []
 openapi = ["utoipa"]
+sqlx = ["dep:sqlx"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

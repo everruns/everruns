@@ -286,7 +286,7 @@ pub async fn upload_image(
     Ok((
         StatusCode::CREATED,
         Json(ImageUploadResponse {
-            id: row.id,
+            id: row.id.uuid(),
             filename: row.filename,
             content_type: row.content_type,
             size_bytes: row.size_bytes,
@@ -327,7 +327,7 @@ pub async fn list_images(
     let images: Vec<ImageInfo> = rows
         .into_iter()
         .map(|row| ImageInfo {
-            id: row.id,
+            id: row.id.uuid(),
             filename: row.filename,
             content_type: row.content_type,
             size_bytes: row.size_bytes,

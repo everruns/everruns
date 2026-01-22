@@ -5,11 +5,10 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, DEFAULT_ORG_ID, Result,
+    AgentLoopError, DEFAULT_ORG_ID, ModelId, Result,
     llm_models::LlmProviderType,
     traits::{LlmProviderStore, ModelWithProvider},
 };
-use uuid::Uuid;
 
 use super::{encryption::EncryptionService, repositories::Database};
 
@@ -37,11 +36,14 @@ impl DbLlmProviderStore {
 
 #[async_trait]
 impl LlmProviderStore for DbLlmProviderStore {
-    async fn get_model_with_provider(&self, model_id: Uuid) -> Result<Option<ModelWithProvider>> {
+    async fn get_model_with_provider(
+        &self,
+        model_id: ModelId,
+    ) -> Result<Option<ModelWithProvider>> {
         // Look up the model
         let model_row = self
             .db
-            .get_llm_model(model_id)
+            .get_llm_model(model_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -53,7 +55,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(model_row.provider_id)
+            .get_llm_provider(model_row.provider_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 
@@ -96,7 +98,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(model_row.provider_id)
+            .get_llm_provider(model_row.provider_id.uuid())
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?;
 

@@ -5,11 +5,11 @@
 // This trait provides read access for building LLM context.
 
 use async_trait::async_trait;
-use uuid::Uuid;
 
 use crate::error::Result;
 use crate::message::{ContentPart, Controls, Message, MessageRole};
 use crate::message_filter::MessageQuery;
+use crate::typed_id::{MessageId, SessionId};
 
 // ============================================================================
 // InputMessage - Input structure for message creation
@@ -77,10 +77,10 @@ impl InputMessage {
 #[async_trait]
 pub trait MessageRetriever: Send + Sync {
     /// Get a specific message by ID
-    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>>;
+    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>>;
 
     /// Load all messages for a session
-    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>>;
+    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>>;
 
     /// Load messages with filters and injections applied.
     ///
@@ -99,7 +99,7 @@ pub trait MessageRetriever: Send + Sync {
     /// Load messages with pagination
     async fn load_page(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         offset: usize,
         limit: usize,
     ) -> Result<Vec<Message>> {
@@ -108,7 +108,7 @@ pub trait MessageRetriever: Send + Sync {
     }
 
     /// Count messages in a session
-    async fn count(&self, session_id: Uuid) -> Result<usize> {
+    async fn count(&self, session_id: SessionId) -> Result<usize> {
         Ok(self.load(session_id).await?.len())
     }
 }

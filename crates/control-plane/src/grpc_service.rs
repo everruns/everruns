@@ -649,12 +649,12 @@ impl WorkerService for WorkerServiceImpl {
         // Create typed event request based on role
         let event_request = match role {
             MessageRole::User => EventRequest::new(
-                session_id,
+                session_id.into(),
                 EventContext::empty(),
                 MessageUserData::new(message.clone()),
             ),
             MessageRole::Assistant => EventRequest::new(
-                session_id,
+                session_id.into(),
                 EventContext::empty(),
                 MessageAgentData::new(message.clone()),
             ),

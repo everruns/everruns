@@ -146,23 +146,22 @@ mod tests {
     use crate::memory::InMemoryMessageRetriever;
     use crate::message_retriever::InputMessage;
     use crate::traits::NoopEventEmitter;
-    use crate::typed_id::TurnId;
-    use uuid::Uuid;
+    use crate::typed_id::{MessageId, SessionId, TurnId};
 
     #[tokio::test]
     async fn test_input_atom_retrieves_message() {
         let retriever = InMemoryMessageRetriever::new();
         let event_emitter = NoopEventEmitter;
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let turn_id = TurnId::new();
 
         // Add a user message to the retriever
         let user_message = retriever
-            .add(session_id.into(), InputMessage::user("Hello, world!"))
+            .add(session_id, InputMessage::user("Hello, world!"))
             .await
             .unwrap();
 
-        let context = AtomContext::new(session_id, turn_id, user_message.id.into());
+        let context = AtomContext::new(session_id, turn_id, user_message.id);
         let atom = InputAtom::new(retriever, event_emitter);
 
         let result = atom.execute(InputAtomInput { context }).await.unwrap();
@@ -175,9 +174,9 @@ mod tests {
     async fn test_input_atom_not_found() {
         let retriever = InMemoryMessageRetriever::new();
         let event_emitter = NoopEventEmitter;
-        let session_id = Uuid::now_v7();
+        let session_id = SessionId::new();
         let turn_id = TurnId::new();
-        let missing_id = Uuid::now_v7();
+        let missing_id = MessageId::new();
 
         let context = AtomContext::new(session_id, turn_id, missing_id);
         let atom = InputAtom::new(retriever, event_emitter);

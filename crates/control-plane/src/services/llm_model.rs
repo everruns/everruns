@@ -31,7 +31,7 @@ impl LlmModelService {
         }
 
         let input = CreateLlmModelRow {
-            provider_id,
+            provider_id: provider_id.into(),
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
@@ -76,7 +76,10 @@ impl LlmModelService {
         let provider_sync_times: std::collections::HashMap<
             Uuid,
             Option<chrono::DateTime<chrono::Utc>>,
-        > = providers.iter().map(|p| (p.id, p.last_synced_at)).collect();
+        > = providers
+            .iter()
+            .map(|p| (p.id.uuid(), p.last_synced_at))
+            .collect();
 
         let models: Vec<LlmModelWithProvider> = rows
             .iter()
@@ -99,7 +102,8 @@ impl LlmModelService {
                 // Only discovered models can be stale
                 if !include_stale
                     && row.source == "discovered"
-                    && let Some(Some(last_synced)) = provider_sync_times.get(&row.provider_id)
+                    && let Some(Some(last_synced)) =
+                        provider_sync_times.get(&row.provider_id.uuid())
                 {
                     // Model is stale if last_seen_at < provider.last_synced_at
                     if let Some(last_seen) = row.last_seen_at {
@@ -160,8 +164,8 @@ impl LlmModelService {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
         LlmModel {
-            id: row.id.into(),
-            provider_id: row.provider_id.into(),
+            id: row.id,
+            provider_id: row.provider_id,
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,
@@ -187,8 +191,8 @@ impl LlmModelService {
         let profile = get_model_profile(&provider_type, &row.model_id);
 
         LlmModelWithProvider {
-            id: row.id.into(),
-            provider_id: row.provider_id.into(),
+            id: row.id,
+            provider_id: row.provider_id,
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,

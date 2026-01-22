@@ -43,6 +43,7 @@ use crate::traits::{
     AgentStore, EventEmitter, ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage,
     SessionStore,
 };
+use crate::typed_id::{AgentId, SessionId};
 
 // ============================================================================
 // Helper Functions
@@ -93,7 +94,7 @@ pub struct ReasonInput {
     /// Atom execution context
     pub context: AtomContext,
     /// Agent ID for loading configuration
-    pub agent_id: Uuid,
+    pub agent_id: AgentId,
     /// Organization ID for multi-tenancy tracking
     #[serde(default)]
     pub org_id: i64,
@@ -431,8 +432,8 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn execute_llm_call(
         &self,
-        session_id: Uuid,
-        agent_id: Uuid,
+        session_id: SessionId,
+        agent_id: AgentId,
         org_id: i64,
         context: &AtomContext,
         mcp_tool_definitions: &[ToolDefinition],
@@ -538,11 +539,12 @@ where
 
         // Add metadata for API tracking and debugging
         // These IDs help correlate API requests with Everruns entities
+        // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
         llm_config_builder = llm_config_builder
-            .with_metadata("session_id", format!("session_{}", session_id.as_simple()))
-            .with_metadata("agent_id", format!("agent_{}", agent_id.as_simple()))
-            .with_metadata("turn_id", context.turn_id.to_string()) // TurnId.to_string() is already prefixed
-            .with_metadata("exec_id", format!("exec_{}", context.exec_id.as_simple()))
+            .with_metadata("session_id", session_id.to_string())
+            .with_metadata("agent_id", agent_id.to_string())
+            .with_metadata("turn_id", context.turn_id.to_string())
+            .with_metadata("exec_id", context.exec_id.to_string())
             .with_metadata("org_id", format!("org_{:032x}", org_id));
 
         // Add model_id if we have one (not available for system default model)
@@ -841,7 +843,7 @@ where
         if let Some(model_id) = controls_model_id
             && let Some(model_with_provider) = self
                 .provider_store
-                .get_model_with_provider(model_id.uuid())
+                .get_model_with_provider(model_id)
                 .await?
         {
             return Ok((model_with_provider, Some(model_id)));
@@ -851,7 +853,7 @@ where
         if let Some(model_id) = session_model_id
             && let Some(model_with_provider) = self
                 .provider_store
-                .get_model_with_provider(model_id.uuid())
+                .get_model_with_provider(model_id)
                 .await?
         {
             return Ok((model_with_provider, Some(model_id)));
@@ -861,7 +863,7 @@ where
         if let Some(model_id) = agent_model_id
             && let Some(model_with_provider) = self
                 .provider_store
-                .get_model_with_provider(model_id.uuid())
+                .get_model_with_provider(model_id)
                 .await?
         {
             return Ok((model_with_provider, Some(model_id)));

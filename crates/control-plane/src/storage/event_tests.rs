@@ -5,12 +5,13 @@
 
 use everruns_core::events::{EventContext, InputReceivedData, ToolCallCompletedData};
 use everruns_core::message::Message;
+use everruns_core::typed_id::SessionId;
 use everruns_core::{ContentPart, Event};
 use uuid::Uuid;
 
 #[test]
 fn test_event_serialization() {
-    let session_id = Uuid::now_v7();
+    let session_id = SessionId::new();
     let event_context = EventContext::empty();
     let event = Event::new(
         session_id,
@@ -23,14 +24,14 @@ fn test_event_serialization() {
     assert!(json.is_object());
     assert_eq!(json["type"], "input.received");
     // session_id now uses prefixed format (session_{hex})
-    let expected_session_id = format!("session_{}", session_id.simple());
+    let expected_session_id = format!("session_{}", session_id.uuid().simple());
     assert_eq!(json["session_id"], expected_session_id);
     assert!(json["context"].is_object());
 }
 
 #[test]
 fn test_event_type() {
-    let session_id = Uuid::now_v7();
+    let session_id = SessionId::new();
     let event_context = EventContext::empty();
     let event = Event::new(
         session_id,
@@ -43,7 +44,8 @@ fn test_event_type() {
 
 #[test]
 fn test_event_session_id() {
-    let session_id = Uuid::now_v7();
+    let raw_uuid = Uuid::now_v7();
+    let session_id = SessionId::from_uuid(raw_uuid);
     let event_context = EventContext::empty();
     let event = Event::new(
         session_id,
@@ -51,13 +53,13 @@ fn test_event_session_id() {
         InputReceivedData::new(Message::user("test")),
     );
 
-    assert_eq!(event.session_uuid(), session_id);
+    assert_eq!(event.session_uuid(), raw_uuid);
 }
 
 #[test]
 fn test_tool_call_completed_event_serialization() {
     // This test verifies the exact JSON structure that the UI expects
-    let session_id = Uuid::now_v7();
+    let session_id = SessionId::new();
     let completed = ToolCallCompletedData::success(
         "call_abc123".to_string(),
         "get_weather".to_string(),
@@ -74,7 +76,7 @@ fn test_tool_call_completed_event_serialization() {
     // Verify top-level structure
     assert_eq!(json["type"], "tool.call_completed");
     // session_id now uses prefixed format (session_{hex})
-    let expected_session_id = format!("session_{}", session_id.simple());
+    let expected_session_id = format!("session_{}", session_id.uuid().simple());
     assert_eq!(json["session_id"], expected_session_id);
 
     // Verify data field contains the payload directly (untagged)
@@ -93,7 +95,7 @@ fn test_tool_call_completed_event_serialization() {
 
 #[test]
 fn test_tool_call_completed_error_serialization() {
-    let session_id = Uuid::now_v7();
+    let session_id = SessionId::new();
     let completed = ToolCallCompletedData::failure(
         "call_xyz789".to_string(),
         "read_file".to_string(),

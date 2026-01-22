@@ -7,7 +7,7 @@ use everruns_core::Message;
 use everruns_core::atoms::AtomContext;
 use everruns_core::events::{EventContext, EventRequest, MessageAgentData, SessionIdledData};
 use everruns_core::traits::EventEmitter;
-use everruns_core::typed_id::TurnId;
+use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -48,9 +48,9 @@ struct ActTaskInput {
 async fn emit_cancellation_events(
     grpc_address: &str,
     org_id: i64,
-    session_id: Uuid,
+    session_id: SessionId,
     turn_id: TurnId,
-    input_message_id: Uuid,
+    input_message_id: MessageId,
 ) {
     // Connect to gRPC for event emission
     let grpc_client = match GrpcClient::connect(grpc_address).await {
@@ -573,7 +573,11 @@ impl DurableWorker {
                                 turn_input.input_message_id,
                             )
                         } else {
-                            (0, task.workflow_id, Uuid::nil())
+                            (
+                                0,
+                                SessionId::from_uuid(task.workflow_id),
+                                MessageId::from_uuid(Uuid::nil()),
+                            )
                         }
                     }
                     "act" => {
@@ -586,10 +590,18 @@ impl DurableWorker {
                                 act_input.act_input.context.input_message_id,
                             )
                         } else {
-                            (0, task.workflow_id, Uuid::nil())
+                            (
+                                0,
+                                SessionId::from_uuid(task.workflow_id),
+                                MessageId::from_uuid(Uuid::nil()),
+                            )
                         }
                     }
-                    _ => (0, task.workflow_id, Uuid::nil()),
+                    _ => (
+                        0,
+                        SessionId::from_uuid(task.workflow_id),
+                        MessageId::from_uuid(Uuid::nil()),
+                    ),
                 };
 
                 // Emit cancellation events (agent message + session.idled)
@@ -776,7 +788,7 @@ impl DurableWorker {
             session_id: input.session_id,
             turn_id: TurnId::new(),
             input_message_id: input.input_message_id,
-            exec_id: Uuid::now_v7(),
+            exec_id: ExecId::new(),
         };
 
         let atom_input = InputAtomInput {
@@ -856,7 +868,7 @@ impl DurableWorker {
             session_id: input.session_id,
             turn_id,
             input_message_id: input.input_message_id,
-            exec_id: Uuid::now_v7(),
+            exec_id: ExecId::new(),
         };
 
         let reason_input = ReasonInput {
@@ -1013,7 +1025,7 @@ impl DurableWorker {
                                 session_id: input.session_id,
                                 turn_id,
                                 input_message_id: input.input_message_id,
-                                exec_id: Uuid::now_v7(),
+                                exec_id: ExecId::new(),
                             },
                             agent_id: input.agent_id, // Pass through for follow-up reason activity
                             tool_calls: reason_result.tool_calls,

@@ -12,6 +12,7 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use everruns_core::{
     FileInfo, FileStat, GrepMatch, GrepResult, MountEntry, MountPoint, MountSource, SessionFile,
+    SessionId,
 };
 use regex::Regex;
 use std::sync::Arc;
@@ -133,7 +134,7 @@ impl SessionFileService {
         }
 
         let input = CreateSessionFileRow {
-            session_id,
+            session_id: SessionId::from_uuid(session_id),
             path: path.clone(),
             content,
             is_directory: false,
@@ -168,7 +169,7 @@ impl SessionFileService {
         }
 
         let input = CreateSessionFileRow {
-            session_id,
+            session_id: SessionId::from_uuid(session_id),
             path: path.clone(),
             content: None,
             is_directory: true,
@@ -201,7 +202,7 @@ impl SessionFileService {
 
         // Create this directory
         let input = CreateSessionFileRow {
-            session_id,
+            session_id: SessionId::from_uuid(session_id),
             path: path.to_string(),
             content: None,
             is_directory: true,
@@ -496,7 +497,7 @@ impl SessionFileService {
 
         SessionFile {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: FileInfo::name_from_path(&row.path),
             content,
@@ -512,7 +513,7 @@ impl SessionFileService {
     fn row_to_file_info(row: SessionFileRow) -> FileInfo {
         FileInfo {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: FileInfo::name_from_path(&row.path),
             is_directory: row.is_directory,
@@ -526,7 +527,7 @@ impl SessionFileService {
     fn row_to_file_info_from_info(row: SessionFileInfoRow) -> FileInfo {
         FileInfo {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: FileInfo::name_from_path(&row.path),
             is_directory: row.is_directory,
@@ -669,7 +670,7 @@ impl SessionFileService {
         let content_bytes = SessionFile::decode_content(content, encoding)?;
 
         let input = CreateSessionFileRow {
-            session_id,
+            session_id: SessionId::from_uuid(session_id),
             path: path.to_string(),
             content: Some(content_bytes),
             is_directory: false,
@@ -708,7 +709,7 @@ impl SessionFileService {
         }
 
         let input = CreateSessionFileRow {
-            session_id,
+            session_id: SessionId::from_uuid(session_id),
             path: path.to_string(),
             content: None,
             is_directory: true,

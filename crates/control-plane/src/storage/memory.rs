@@ -8,7 +8,10 @@
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
+use everruns_core::{
+    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, ImageId, McpServerId, ModelId,
+    ProviderId, SessionId,
+};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -26,20 +29,20 @@ pub struct InMemoryDatabase {
     users: RwLock<HashMap<Uuid, UserRow>>,
     api_keys: RwLock<HashMap<Uuid, ApiKeyRow>>,
     refresh_tokens: RwLock<HashMap<Uuid, RefreshTokenRow>>,
-    agents: RwLock<HashMap<Uuid, AgentRow>>,
-    sessions: RwLock<HashMap<Uuid, SessionRow>>,
-    events: RwLock<HashMap<Uuid, EventRow>>,
-    llm_providers: RwLock<HashMap<Uuid, LlmProviderRow>>,
-    llm_models: RwLock<HashMap<Uuid, LlmModelRow>>,
-    agent_capabilities: RwLock<HashMap<(Uuid, String), AgentCapabilityRow>>,
+    agents: RwLock<HashMap<AgentId, AgentRow>>,
+    sessions: RwLock<HashMap<SessionId, SessionRow>>,
+    events: RwLock<HashMap<EventId, EventRow>>,
+    llm_providers: RwLock<HashMap<ProviderId, LlmProviderRow>>,
+    llm_models: RwLock<HashMap<ModelId, LlmModelRow>>,
+    agent_capabilities: RwLock<HashMap<(AgentId, String), AgentCapabilityRow>>,
     session_files: RwLock<HashMap<Uuid, SessionFileRow>>,
-    mcp_servers: RwLock<HashMap<Uuid, McpServerRow>>,
-    images: RwLock<HashMap<Uuid, ImageRow>>,
+    mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
+    images: RwLock<HashMap<ImageId, ImageRow>>,
     // Event sequence counter per session
-    event_sequences: RwLock<HashMap<Uuid, i32>>,
+    event_sequences: RwLock<HashMap<SessionId, i32>>,
     // Session storage
-    session_key_values: RwLock<HashMap<(Uuid, String), SessionKeyValueRow>>,
-    session_secrets: RwLock<HashMap<(Uuid, String), SessionSecretRow>>,
+    session_key_values: RwLock<HashMap<(SessionId, String), SessionKeyValueRow>>,
+    session_secrets: RwLock<HashMap<(SessionId, String), SessionSecretRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -320,7 +323,7 @@ impl InMemoryDatabase {
 
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let now = Self::now();
-        let id = Uuid::now_v7();
+        let id = AgentId::new();
         let row = AgentRow {
             id,
             org_id,
@@ -345,7 +348,7 @@ impl InMemoryDatabase {
     pub async fn create_agent_with_id(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: AgentId,
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
         let mut agents = self.agents.write();
@@ -373,7 +376,7 @@ impl InMemoryDatabase {
         Ok(Some(row))
     }
 
-    pub async fn get_agent(&self, org_id: i64, id: Uuid) -> Result<Option<AgentRow>> {
+    pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         Ok(self
             .agents
             .read()
@@ -405,7 +408,7 @@ impl InMemoryDatabase {
     pub async fn update_agent(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: AgentId,
         input: UpdateAgent,
     ) -> Result<Option<AgentRow>> {
         let mut agents = self.agents.write();
@@ -434,7 +437,7 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn delete_agent(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         // Delete capabilities first
         {
             let mut caps = self.agent_capabilities.write();
@@ -457,7 +460,7 @@ impl InMemoryDatabase {
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let now = Self::now();
-        let id = Uuid::now_v7();
+        let id = SessionId::new();
         let row = SessionRow {
             id,
             agent_id: input.agent_id,
@@ -479,7 +482,7 @@ impl InMemoryDatabase {
     }
 
     /// Get session, validating org ownership via agent lookup
-    pub async fn get_session(&self, org_id: i64, id: Uuid) -> Result<Option<SessionRow>> {
+    pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let sessions = self.sessions.read();
         let agents = self.agents.read();
         if let Some(session) = sessions.get(&id) {
@@ -498,7 +501,7 @@ impl InMemoryDatabase {
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: Uuid,
+        agent_id: AgentId,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         // First validate the agent belongs to the org
@@ -535,7 +538,7 @@ impl InMemoryDatabase {
     pub async fn update_session(
         &self,
         org_id: i64,
-        id: Uuid,
+        id: SessionId,
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
         // First validate org ownership
@@ -580,7 +583,7 @@ impl InMemoryDatabase {
     }
 
     /// Delete session, validating org ownership via agent lookup
-    pub async fn delete_session(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         // First validate org ownership
         {
             let sessions = self.sessions.read();
@@ -601,7 +604,7 @@ impl InMemoryDatabase {
         // Delete events first
         {
             let mut events = self.events.write();
-            let to_remove: Vec<Uuid> = events
+            let to_remove: Vec<EventId> = events
                 .iter()
                 .filter(|(_, e)| e.session_id == id)
                 .map(|(eid, _)| *eid)
@@ -631,7 +634,7 @@ impl InMemoryDatabase {
 
     pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
         let now = Self::now();
-        let id = Uuid::now_v7();
+        let id = EventId::new();
 
         // Get next sequence for this session
         let sequence = {
@@ -659,9 +662,9 @@ impl InMemoryDatabase {
 
     pub async fn list_events(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         since_sequence: Option<i32>,
-        since_id: Option<Uuid>,
+        since_id: Option<EventId>,
     ) -> Result<Vec<EventRow>> {
         let events = self.events.read();
         let mut result: Vec<_> = events
@@ -672,7 +675,8 @@ impl InMemoryDatabase {
                 }
                 // Prefer since_id (UUID v7 monotonically increasing) over sequence
                 if let Some(id) = since_id {
-                    if e.id <= id {
+                    // Compare UUIDs directly for monotonic ordering
+                    if e.id.uuid() <= id.uuid() {
                         return false;
                     }
                 } else if let Some(seq) = since_sequence
@@ -689,7 +693,7 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<EventRow>> {
+    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
         let message_types = [
             "message.user",
             "message.assistant",
@@ -903,7 +907,7 @@ impl InMemoryDatabase {
         input: CreateLlmProviderRow,
     ) -> Result<LlmProviderRow> {
         let now = Self::now();
-        let id = Uuid::now_v7();
+        let id = ProviderId::new();
         let api_key_set = input.api_key_encrypted.is_some();
         let row = LlmProviderRow {
             id,
@@ -931,6 +935,7 @@ impl InMemoryDatabase {
         id: Uuid,
         input: CreateLlmProviderRow,
     ) -> Result<Option<LlmProviderRow>> {
+        let id = ProviderId::from_uuid(id);
         let mut providers = self.llm_providers.write();
         if providers.contains_key(&id) {
             return Ok(None); // Already exists
@@ -956,7 +961,11 @@ impl InMemoryDatabase {
     }
 
     pub async fn get_llm_provider(&self, id: Uuid) -> Result<Option<LlmProviderRow>> {
-        Ok(self.llm_providers.read().get(&id).cloned())
+        Ok(self
+            .llm_providers
+            .read()
+            .get(&ProviderId::from_uuid(id))
+            .cloned())
     }
 
     pub async fn list_llm_providers(&self) -> Result<Vec<LlmProviderRow>> {
@@ -971,6 +980,7 @@ impl InMemoryDatabase {
         id: Uuid,
         input: UpdateLlmProvider,
     ) -> Result<Option<LlmProviderRow>> {
+        let id = ProviderId::from_uuid(id);
         let mut providers = self.llm_providers.write();
         if let Some(provider) = providers.get_mut(&id) {
             if let Some(name) = input.name {
@@ -996,10 +1006,11 @@ impl InMemoryDatabase {
     }
 
     pub async fn delete_llm_provider(&self, id: Uuid) -> Result<bool> {
+        let id = ProviderId::from_uuid(id);
         // Delete models first
         {
             let mut models = self.llm_models.write();
-            let to_remove: Vec<Uuid> = models
+            let to_remove: Vec<ModelId> = models
                 .iter()
                 .filter(|(_, m)| m.provider_id == id)
                 .map(|(mid, _)| *mid)
@@ -1017,6 +1028,7 @@ impl InMemoryDatabase {
         id: Uuid,
         last_synced_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
+        let id = ProviderId::from_uuid(id);
         if let Some(provider) = self.llm_providers.write().get_mut(&id) {
             provider.last_synced_at = Some(last_synced_at);
             provider.updated_at = Self::now();
@@ -1104,7 +1116,7 @@ impl InMemoryDatabase {
         input: CreateLlmModelRow,
     ) -> Result<LlmModelRow> {
         let now = Self::now();
-        let id = Uuid::now_v7();
+        let id = ModelId::new();
         let row = LlmModelRow {
             id,
             org_id,
@@ -1133,6 +1145,7 @@ impl InMemoryDatabase {
         id: Uuid,
         input: CreateLlmModelRow,
     ) -> Result<Option<LlmModelRow>> {
+        let id = ModelId::from_uuid(id);
         let mut models = self.llm_models.write();
         let now = Self::now();
 
@@ -1179,6 +1192,7 @@ impl InMemoryDatabase {
     }
 
     pub async fn get_llm_model(&self, id: Uuid) -> Result<Option<LlmModelRow>> {
+        let id = ModelId::from_uuid(id);
         Ok(self.llm_models.read().get(&id).cloned())
     }
 
@@ -1186,6 +1200,7 @@ impl InMemoryDatabase {
         &self,
         id: Uuid,
     ) -> Result<Option<LlmModelWithProviderRow>> {
+        let id = ModelId::from_uuid(id);
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
 
@@ -1218,6 +1233,7 @@ impl InMemoryDatabase {
         &self,
         provider_id: Uuid,
     ) -> Result<Vec<LlmModelRow>> {
+        let provider_id = ProviderId::from_uuid(provider_id);
         let models = self.llm_models.read();
         let mut result: Vec<_> = models
             .values()
@@ -1272,6 +1288,7 @@ impl InMemoryDatabase {
         id: Uuid,
         input: UpdateLlmModel,
     ) -> Result<Option<LlmModelRow>> {
+        let id = ModelId::from_uuid(id);
         let mut models = self.llm_models.write();
         if let Some(model) = models.get_mut(&id) {
             if let Some(display_name) = input.display_name {
@@ -1296,6 +1313,7 @@ impl InMemoryDatabase {
     }
 
     pub async fn delete_llm_model(&self, id: Uuid) -> Result<bool> {
+        let id = ModelId::from_uuid(id);
         Ok(self.llm_models.write().remove(&id).is_some())
     }
 
@@ -1340,6 +1358,7 @@ impl InMemoryDatabase {
     // ============================================
 
     pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
+        let agent_id = AgentId::from_uuid(agent_id);
         let caps = self.agent_capabilities.read();
         let mut result: Vec<_> = caps
             .iter()
@@ -1355,6 +1374,7 @@ impl InMemoryDatabase {
         agent_id: Uuid,
         capabilities: Vec<(String, i32, serde_json::Value)>,
     ) -> Result<Vec<AgentCapabilityRow>> {
+        let agent_id = AgentId::from_uuid(agent_id);
         let now = Self::now();
         let mut caps = self.agent_capabilities.write();
 
@@ -1410,6 +1430,7 @@ impl InMemoryDatabase {
         agent_id: Uuid,
         capability_id: &str,
     ) -> Result<bool> {
+        let agent_id = AgentId::from_uuid(agent_id);
         Ok(self
             .agent_capabilities
             .write()
@@ -1542,6 +1563,7 @@ impl InMemoryDatabase {
     }
 
     pub async fn delete_session_file(&self, session_id: Uuid, path: &str) -> Result<bool> {
+        let session_id = SessionId::from_uuid(session_id);
         let mut files = self.session_files.write();
         let to_remove: Option<Uuid> = files
             .iter()
@@ -1556,6 +1578,7 @@ impl InMemoryDatabase {
     }
 
     pub async fn delete_session_file_recursive(&self, session_id: Uuid, path: &str) -> Result<u64> {
+        let session_id = SessionId::from_uuid(session_id);
         let mut files = self.session_files.write();
         let prefix = format!("{}/", path.trim_end_matches('/'));
 
@@ -1580,6 +1603,7 @@ impl InMemoryDatabase {
         source_path: &str,
         dest_path: &str,
     ) -> Result<Option<SessionFileRow>> {
+        let session_id = SessionId::from_uuid(session_id);
         // Check if destination exists
         {
             let files = self.session_files.read();
@@ -1609,6 +1633,7 @@ impl InMemoryDatabase {
         source_path: &str,
         dest_path: &str,
     ) -> Result<Option<SessionFileRow>> {
+        let session_id = SessionId::from_uuid(session_id);
         // Check if destination exists
         {
             let files = self.session_files.read();
@@ -1654,6 +1679,7 @@ impl InMemoryDatabase {
         pattern: &str,
         path_prefix: Option<&str>,
     ) -> Result<Vec<SessionFileInfoRow>> {
+        let session_id = SessionId::from_uuid(session_id);
         let regex = regex::Regex::new(pattern)?;
         let files = self.session_files.read();
 
@@ -1682,6 +1708,7 @@ impl InMemoryDatabase {
     }
 
     pub async fn session_file_exists(&self, session_id: Uuid, path: &str) -> Result<bool> {
+        let session_id = SessionId::from_uuid(session_id);
         Ok(self
             .session_files
             .read()
@@ -1694,6 +1721,7 @@ impl InMemoryDatabase {
         session_id: Uuid,
         path: &str,
     ) -> Result<bool> {
+        let session_id = SessionId::from_uuid(session_id);
         let prefix = format!("{}/", path.trim_end_matches('/'));
         Ok(self
             .session_files
@@ -1725,7 +1753,7 @@ impl InMemoryDatabase {
         }
 
         let now = Self::now();
-        let id = Uuid::now_v7();
+        let id = McpServerId::new();
         let api_key_set = input.api_key_encrypted.is_some();
 
         let row = McpServerRow {
@@ -1758,6 +1786,7 @@ impl InMemoryDatabase {
         id: Uuid,
         input: CreateMcpServerRow,
     ) -> Result<Option<McpServerRow>> {
+        let id = McpServerId::from_uuid(id);
         // Check if already exists
         if self.mcp_servers.read().contains_key(&id) {
             return Ok(None);
@@ -1789,6 +1818,7 @@ impl InMemoryDatabase {
     }
 
     pub async fn get_mcp_server(&self, id: Uuid) -> Result<Option<McpServerRow>> {
+        let id = McpServerId::from_uuid(id);
         Ok(self.mcp_servers.read().get(&id).cloned())
     }
 
@@ -1935,7 +1965,7 @@ impl InMemoryDatabase {
 
     pub async fn create_image(&self, input: CreateImageRow) -> Result<ImageRow> {
         let now = Self::now();
-        let id = Uuid::now_v7();
+        let id = ImageId::new();
         let row = ImageRow {
             id,
             filename: input.filename,
@@ -1952,10 +1982,12 @@ impl InMemoryDatabase {
     }
 
     pub async fn get_image(&self, id: Uuid) -> Result<Option<ImageRow>> {
+        let id = ImageId::from_uuid(id);
         Ok(self.images.read().get(&id).cloned())
     }
 
     pub async fn get_image_info(&self, id: Uuid) -> Result<Option<ImageInfoRow>> {
+        let id = ImageId::from_uuid(id);
         Ok(self.images.read().get(&id).map(|img| ImageInfoRow {
             id: img.id,
             filename: img.filename.clone(),
@@ -1967,6 +1999,7 @@ impl InMemoryDatabase {
     }
 
     pub async fn delete_image(&self, id: Uuid) -> Result<bool> {
+        let id = ImageId::from_uuid(id);
         Ok(self.images.write().remove(&id).is_some())
     }
 
@@ -1997,6 +2030,7 @@ impl InMemoryDatabase {
         id: Uuid,
         input: UpdateMcpServerTools,
     ) -> Result<Option<McpServerRow>> {
+        let id = McpServerId::from_uuid(id);
         let mut servers = self.mcp_servers.write();
         if let Some(server) = servers.get_mut(&id) {
             server.cached_tools = input.cached_tools;
@@ -2167,6 +2201,7 @@ impl InMemoryDatabase {
     // ============================================
 
     pub async fn list_session_keys(&self, session_id: Uuid) -> Result<Vec<SessionKeyInfoRow>> {
+        let session_id = SessionId::from_uuid(session_id);
         let storage = self.session_key_values.read();
         let mut keys: Vec<_> = storage
             .iter()
@@ -2186,6 +2221,7 @@ impl InMemoryDatabase {
         session_id: Uuid,
         key: &str,
     ) -> Result<Option<SessionKeyValueRow>> {
+        let session_id = SessionId::from_uuid(session_id);
         Ok(self
             .session_key_values
             .read()
@@ -2197,6 +2233,7 @@ impl InMemoryDatabase {
         &self,
         session_id: Uuid,
     ) -> Result<Vec<SessionSecretInfoRow>> {
+        let session_id = SessionId::from_uuid(session_id);
         let storage = self.session_secrets.read();
         let mut secrets: Vec<_> = storage
             .iter()

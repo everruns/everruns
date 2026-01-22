@@ -14,6 +14,7 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, EventEmitter, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
 };
+use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId};
 use everruns_core::{Agent, Message, Session};
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
@@ -78,11 +79,11 @@ impl GrpcClient {
     pub async fn set_session_status(
         &self,
         org_id: i64,
-        session_id: Uuid,
+        session_id: SessionId,
         status: &str,
     ) -> Result<Session> {
         let request = proto::SetSessionStatusRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             status: status.to_string(),
             org_id,
         };
@@ -239,18 +240,18 @@ impl GrpcMessageRetriever {
 
 #[async_trait]
 impl MessageRetriever for GrpcMessageRetriever {
-    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
         // Load all messages and find the one we want
         // TODO: Add a specific get_message RPC
         let messages = self.load(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))
     }
 
-    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::LoadMessagesRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
         };
 
         let response = client
@@ -333,11 +334,11 @@ impl GrpcAgentStore {
 
 #[async_trait]
 impl AgentStore for GrpcAgentStore {
-    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetAgentRequest {
-            agent_id: Some(uuid_to_proto(agent_id)),
+            agent_id: Some(uuid_to_proto(agent_id.uuid())),
             org_id: self.org_id,
         };
 
@@ -407,11 +408,11 @@ impl GrpcSessionStore {
 
 #[async_trait]
 impl SessionStore for GrpcSessionStore {
-    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetSessionRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             org_id: self.org_id,
         };
 
@@ -487,11 +488,14 @@ impl GrpcLlmProviderStore {
 
 #[async_trait]
 impl LlmProviderStore for GrpcLlmProviderStore {
-    async fn get_model_with_provider(&self, model_id: Uuid) -> Result<Option<ModelWithProvider>> {
+    async fn get_model_with_provider(
+        &self,
+        model_id: ModelId,
+    ) -> Result<Option<ModelWithProvider>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetModelWithProviderRequest {
-            model_id: Some(uuid_to_proto(model_id)),
+            model_id: Some(uuid_to_proto(model_id.uuid())),
             org_id: self.org_id,
         };
 
@@ -570,11 +574,11 @@ impl GrpcSessionFileStore {
 
 #[async_trait]
 impl SessionFileStore for GrpcSessionFileStore {
-    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
+    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::SessionReadFileRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             path: path.to_string(),
         };
 
@@ -594,7 +598,7 @@ impl SessionFileStore for GrpcSessionFileStore {
 
     async fn write_file(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         path: &str,
         content: &str,
         encoding: &str,
@@ -602,7 +606,7 @@ impl SessionFileStore for GrpcSessionFileStore {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::SessionWriteFileRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             path: path.to_string(),
             content: content.to_string(),
             encoding: encoding.to_string(),
@@ -621,11 +625,16 @@ impl SessionFileStore for GrpcSessionFileStore {
         proto_session_file_to_file(proto_file)
     }
 
-    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
+    async fn delete_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::SessionDeleteFileRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             path: path.to_string(),
             recursive,
         };
@@ -638,11 +647,11 @@ impl SessionFileStore for GrpcSessionFileStore {
         Ok(response.into_inner().deleted)
     }
 
-    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
+    async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::SessionListDirectoryRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             path: path.to_string(),
         };
 
@@ -659,11 +668,11 @@ impl SessionFileStore for GrpcSessionFileStore {
             .collect()
     }
 
-    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
+    async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::SessionStatFileRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             path: path.to_string(),
         };
 
@@ -683,14 +692,14 @@ impl SessionFileStore for GrpcSessionFileStore {
 
     async fn grep_files(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::SessionGrepFilesRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             pattern: pattern.to_string(),
             path_pattern: path_pattern.map(|s| s.to_string()),
         };
@@ -712,11 +721,11 @@ impl SessionFileStore for GrpcSessionFileStore {
             .collect())
     }
 
-    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
+    async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::SessionCreateDirectoryRequest {
-            session_id: Some(uuid_to_proto(session_id)),
+            session_id: Some(uuid_to_proto(session_id.uuid())),
             path: path.to_string(),
         };
 
@@ -852,12 +861,12 @@ pub struct TurnContext {
 pub async fn load_turn_context(
     client: &GrpcClient,
     org_id: i64,
-    session_id: Uuid,
+    session_id: SessionId,
 ) -> Result<TurnContext> {
     let mut grpc_client = client.inner.lock().await;
 
     let request = proto::GetTurnContextRequest {
-        session_id: Some(uuid_to_proto(session_id)),
+        session_id: Some(uuid_to_proto(session_id.uuid())),
         org_id,
     };
 

@@ -453,6 +453,7 @@ impl Tool for SecretStoreTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::typed_id::SessionId;
 
     #[test]
     fn test_capability_metadata() {
@@ -508,7 +509,7 @@ mod tests {
     #[tokio::test]
     async fn test_kv_store_missing_operation() {
         let tool = KvStoreTool;
-        let context = ToolContext::new(uuid::Uuid::nil());
+        let context = ToolContext::new(SessionId::new());
 
         let result = tool
             .execute_with_context(json!({"key": "test"}), &context)
@@ -524,7 +525,7 @@ mod tests {
     #[tokio::test]
     async fn test_kv_store_no_storage_store() {
         let tool = KvStoreTool;
-        let context = ToolContext::new(uuid::Uuid::nil());
+        let context = ToolContext::new(SessionId::new());
 
         let result = tool
             .execute_with_context(

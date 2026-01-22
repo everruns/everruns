@@ -10,7 +10,7 @@ use crate::storage::{
 use anyhow::{Context, Result};
 use chrono::Utc;
 use everruns_core::{
-    DiscoveredModel, DriverRegistry, LlmProviderType, ProviderConfig, ProviderType,
+    DiscoveredModel, DriverRegistry, LlmProviderType, ProviderConfig, ProviderId, ProviderType,
     get_model_profile,
 };
 use serde::{Deserialize, Serialize};
@@ -143,17 +143,17 @@ impl ModelSyncService {
     }
 
     /// Sync all providers (called by background job)
-    pub async fn sync_all(&self) -> Result<Vec<(Uuid, SyncResult)>> {
+    pub async fn sync_all(&self) -> Result<Vec<(ProviderId, SyncResult)>> {
         let providers = self.db.list_llm_providers().await?;
         let mut results = Vec::with_capacity(providers.len());
 
         for provider in providers {
-            let result =
-                self.sync_provider(provider.id)
-                    .await
-                    .unwrap_or_else(|e| SyncResult::Failed {
-                        error: e.to_string(),
-                    });
+            let result = self
+                .sync_provider(provider.id.uuid())
+                .await
+                .unwrap_or_else(|e| SyncResult::Failed {
+                    error: e.to_string(),
+                });
             results.push((provider.id, result));
         }
 
@@ -177,7 +177,10 @@ impl ModelSyncService {
             .unwrap_or(LlmProviderType::Openai);
 
         // Get existing models for this provider
-        let existing = self.db.list_llm_models_for_provider(provider.id).await?;
+        let existing = self
+            .db
+            .list_llm_models_for_provider(provider.id.uuid())
+            .await?;
         let existing_ids: std::collections::HashSet<_> =
             existing.iter().map(|m| m.model_id.as_str()).collect();
 
@@ -204,7 +207,9 @@ impl ModelSyncService {
                         provider_metadata: Some(metadata),
                         ..Default::default()
                     };
-                    self.db.update_llm_model(existing_model.id, update).await?;
+                    self.db
+                        .update_llm_model(existing_model.id.uuid(), update)
+                        .await?;
                     updated += 1;
                 }
             } else {

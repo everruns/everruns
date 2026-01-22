@@ -15,8 +15,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::MessageId;
 use everruns_core::{
-    Agent, AgentStatus, ContentPart, DEFAULT_ORG_ID, LlmProviderType, Message, MessageRole,
-    Session, SessionStatus, ToolResultContentPart,
+    Agent, AgentId, AgentStatus, ContentPart, DEFAULT_ORG_ID, LlmProviderType, Message,
+    MessageRole, ModelId, Session, SessionId, SessionStatus, ToolResultContentPart,
 };
 use everruns_core::{InputMessage, MessageRetriever};
 use std::sync::Arc;
@@ -60,7 +60,7 @@ impl DirectAgentStore {
 
 #[async_trait]
 impl AgentStore for DirectAgentStore {
-    async fn get_agent(&self, agent_id: Uuid) -> Result<Option<Agent>> {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         // TODO: Get org_id from context after Phase 3
         let row = self
             .db
@@ -74,7 +74,7 @@ impl AgentStore for DirectAgentStore {
         // Also get capabilities for the agent
         let capabilities = if let Some(ref _r) = row {
             self.db
-                .get_agent_capabilities(agent_id)
+                .get_agent_capabilities(agent_id.uuid())
                 .await
                 .unwrap_or_default()
         } else {
@@ -82,11 +82,11 @@ impl AgentStore for DirectAgentStore {
         };
 
         Ok(row.map(|r| Agent {
-            id: r.id.into(),
+            id: r.id,
             name: r.name,
             description: r.description,
             system_prompt: r.system_prompt,
-            default_model_id: r.default_model_id.map(|id| id.into()),
+            default_model_id: r.default_model_id,
             tags: r.tags,
             capabilities: capabilities
                 .into_iter()
@@ -121,7 +121,7 @@ impl DirectSessionStore {
 
 #[async_trait]
 impl SessionStore for DirectSessionStore {
-    async fn get_session(&self, session_id: Uuid) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
         // TODO: Get org_id from context after Phase 3
         let row = self
             .db
@@ -133,13 +133,13 @@ impl SessionStore for DirectSessionStore {
             })?;
 
         Ok(row.map(|r| Session {
-            id: r.id.into(),
-            agent_id: r.agent_id.into(),
+            id: r.id,
+            agent_id: r.agent_id,
             title: r.title,
             preview: None,
             output_preview: None,
             tags: r.tags,
-            model_id: r.model_id.map(|id| id.into()),
+            model_id: r.model_id,
             status: match r.status.as_str() {
                 "started" => SessionStatus::Started,
                 "active" => SessionStatus::Active,
@@ -211,7 +211,7 @@ impl DirectMessageRetriever {
             .as_ref()
             .and_then(|m| serde_json::to_value(m).ok());
         let request = EventRequest {
-            session_id,
+            session_id: session_id.into(),
             event_type: event_type.to_string(),
             ts: message.created_at,
             context: EventContext::default(),
@@ -231,15 +231,15 @@ impl DirectMessageRetriever {
 
 #[async_trait]
 impl MessageRetriever for DirectMessageRetriever {
-    async fn get(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
         let messages = self.load(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))
     }
 
-    async fn load(&self, session_id: Uuid) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
         let events = self
             .event_service
-            .list_message_events(session_id)
+            .list_message_events(session_id.uuid())
             .await
             .map_err(|e| {
                 tracing::error!("Failed to load message events: {}", e);
@@ -301,11 +301,18 @@ impl DirectLlmProviderStore {
 
 #[async_trait]
 impl LlmProviderStore for DirectLlmProviderStore {
-    async fn get_model_with_provider(&self, model_id: Uuid) -> Result<Option<ModelWithProvider>> {
-        let resolved = self.resolver.resolve_model(model_id).await.map_err(|e| {
-            tracing::error!("Failed to resolve model: {}", e);
-            store_error("Failed to resolve model")
-        })?;
+    async fn get_model_with_provider(
+        &self,
+        model_id: ModelId,
+    ) -> Result<Option<ModelWithProvider>> {
+        let resolved = self
+            .resolver
+            .resolve_model(model_id.uuid())
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve model: {}", e);
+                store_error("Failed to resolve model")
+            })?;
 
         Ok(resolved.map(|r| ModelWithProvider {
             model: r.model_id,
@@ -382,10 +389,10 @@ impl DirectSessionFileStore {
 
 #[async_trait]
 impl SessionFileStore for DirectSessionFileStore {
-    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
+    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let row = self
             .db
-            .get_session_file(session_id, path)
+            .get_session_file(session_id.uuid(), path)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to read file: {}", e);
@@ -411,7 +418,7 @@ impl SessionFileStore for DirectSessionFileStore {
 
             SessionFile {
                 id: r.id,
-                session_id: r.session_id,
+                session_id: r.session_id.uuid(),
                 path: r.path.clone(),
                 name: name_from_path(&r.path),
                 content,
@@ -427,7 +434,7 @@ impl SessionFileStore for DirectSessionFileStore {
 
     async fn write_file(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         path: &str,
         content: &str,
         encoding: &str,
@@ -447,7 +454,7 @@ impl SessionFileStore for DirectSessionFileStore {
         // Check if file exists
         let existing = self
             .db
-            .get_session_file(session_id, path)
+            .get_session_file(session_id.uuid(), path)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to check existing file: {}", e);
@@ -461,7 +468,7 @@ impl SessionFileStore for DirectSessionFileStore {
                 ..Default::default()
             };
             self.db
-                .update_session_file(session_id, path, update)
+                .update_session_file(session_id.uuid(), path, update)
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to update file: {}", e);
@@ -485,7 +492,7 @@ impl SessionFileStore for DirectSessionFileStore {
 
         Ok(SessionFile {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: name_from_path(&row.path),
             content: Some(content.to_string()),
@@ -498,11 +505,16 @@ impl SessionFileStore for DirectSessionFileStore {
         })
     }
 
-    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
+    async fn delete_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
         if recursive {
             let count = self
                 .db
-                .delete_session_file_recursive(session_id, path)
+                .delete_session_file_recursive(session_id.uuid(), path)
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to delete file recursively: {}", e);
@@ -511,7 +523,7 @@ impl SessionFileStore for DirectSessionFileStore {
             Ok(count > 0)
         } else {
             self.db
-                .delete_session_file(session_id, path)
+                .delete_session_file(session_id.uuid(), path)
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to delete file: {}", e);
@@ -520,10 +532,10 @@ impl SessionFileStore for DirectSessionFileStore {
         }
     }
 
-    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
+    async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
         let rows = self
             .db
-            .list_session_files(session_id, path)
+            .list_session_files(session_id.uuid(), path)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to list directory: {}", e);
@@ -534,7 +546,7 @@ impl SessionFileStore for DirectSessionFileStore {
             .into_iter()
             .map(|r| FileInfo {
                 id: r.id,
-                session_id: r.session_id,
+                session_id: r.session_id.uuid(),
                 path: r.path.clone(),
                 name: name_from_path(&r.path),
                 is_directory: r.is_directory,
@@ -546,10 +558,10 @@ impl SessionFileStore for DirectSessionFileStore {
             .collect())
     }
 
-    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
+    async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         let row = self
             .db
-            .get_session_file(session_id, path)
+            .get_session_file(session_id.uuid(), path)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to stat file: {}", e);
@@ -569,13 +581,13 @@ impl SessionFileStore for DirectSessionFileStore {
 
     async fn grep_files(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         let _rows = self
             .db
-            .grep_session_files(session_id, pattern, path_pattern)
+            .grep_session_files(session_id.uuid(), pattern, path_pattern)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to grep files: {}", e);
@@ -588,7 +600,7 @@ impl SessionFileStore for DirectSessionFileStore {
         Ok(vec![])
     }
 
-    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
+    async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
         use crate::storage::models::CreateSessionFileRow;
 
         let create = CreateSessionFileRow {
@@ -606,7 +618,7 @@ impl SessionFileStore for DirectSessionFileStore {
 
         Ok(FileInfo {
             id: row.id,
-            session_id: row.session_id,
+            session_id: row.session_id.uuid(),
             path: row.path.clone(),
             name: name_from_path(&row.path),
             is_directory: row.is_directory,
@@ -632,7 +644,7 @@ impl SessionStatusUpdater {
         Self { db }
     }
 
-    pub async fn set_status(&self, session_id: Uuid, status: &str) -> Result<()> {
+    pub async fn set_status(&self, session_id: SessionId, status: &str) -> Result<()> {
         let update = UpdateSession {
             status: Some(status.to_string()),
             ..Default::default()

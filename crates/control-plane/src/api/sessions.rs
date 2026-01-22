@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::events::{EventContext, EventRequest, MessageUserData, TurnCancelledData};
-use everruns_core::typed_id::{AgentId, ModelId, SessionId, TurnId};
+use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId, TurnId};
 use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
 
@@ -19,7 +19,6 @@ use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, PaginatedResponse
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 
 /// Request to create a session
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -385,8 +384,6 @@ pub async fn cancel_turn(
     State(state): State<AppState>,
     Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
 ) -> Result<Json<CancelTurnResponse>, StatusCode> {
-    use everruns_core::typed_id::SessionId;
-
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Verify session exists
@@ -406,20 +403,19 @@ pub async fn cancel_turn(
     }
 
     // Cancel the workflow
-    let session_uuid = session_id.uuid();
-    if let Err(e) = state.runner.cancel_run(session_uuid).await {
+    if let Err(e) = state.runner.cancel_run(session_id).await {
         tracing::error!(session_id = %session_id, error = %e, "Failed to cancel workflow");
         // Continue anyway - workflow may have already completed
     }
 
     // Generate IDs for the turn context
     // Use session_id as turn_id since workflow_id = session_id in durable runner
-    let turn_id = TurnId::from_uuid(session_uuid);
-    let input_message_id = Uuid::now_v7(); // Placeholder since we don't have the original
+    let turn_id = TurnId::from_uuid(session_id.uuid());
+    let input_message_id = MessageId::new(); // Placeholder since we don't have the original
 
     // Emit turn.cancelled event
     let cancelled_event = EventRequest::new(
-        session_uuid,
+        session_id,
         EventContext::turn(turn_id, input_message_id),
         TurnCancelledData {
             turn_id,
@@ -434,7 +430,7 @@ pub async fn cancel_turn(
     // Insert user message indicating cancellation request
     let user_cancel_message = Message::user("User requested to cancel the work.");
     let user_message_event = EventRequest::new(
-        session_uuid,
+        session_id,
         EventContext::turn(turn_id, input_message_id),
         MessageUserData::new(user_cancel_message),
     );

@@ -9,7 +9,7 @@ use crate::storage::{
     models::{CreateAgentRow, UpdateAgent},
 };
 use anyhow::Result;
-use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, TokenUsage};
+use everruns_core::{Agent, AgentCapabilityConfig, AgentId, AgentStatus, TokenUsage};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -31,7 +31,7 @@ impl AgentService {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
-            default_model_id: req.default_model_id.map(|id| id.uuid()),
+            default_model_id: req.default_model_id,
             tags: req.tags,
         };
         let row = self.db.create_agent(org_id, input).await?;
@@ -51,7 +51,9 @@ impl AgentService {
                     )
                 })
                 .collect();
-            self.db.set_agent_capabilities(agent_id, cap_tuples).await?;
+            self.db
+                .set_agent_capabilities(agent_id.uuid(), cap_tuples)
+                .await?;
             req.capabilities
         } else {
             vec![]
@@ -61,7 +63,7 @@ impl AgentService {
     }
 
     pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Agent>> {
-        let row = self.db.get_agent(org_id, id).await?;
+        let row = self.db.get_agent(org_id, AgentId::from_uuid(id)).await?;
         match row {
             Some(row) => {
                 let capabilities = self.get_capabilities(id).await?;
@@ -77,7 +79,7 @@ impl AgentService {
         // Fetch capabilities for each agent
         let mut agents = Vec::with_capacity(rows.len());
         for row in rows {
-            let capabilities = self.get_capabilities(row.id).await?;
+            let capabilities = self.get_capabilities(row.id.uuid()).await?;
             agents.push(Self::row_to_agent(row, capabilities));
         }
 
@@ -94,11 +96,14 @@ impl AgentService {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
-            default_model_id: req.default_model_id.map(|id| id.uuid()),
+            default_model_id: req.default_model_id,
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
         };
-        let row = self.db.update_agent(org_id, id, input).await?;
+        let row = self
+            .db
+            .update_agent(org_id, AgentId::from_uuid(id), input)
+            .await?;
 
         match row {
             Some(row) => {
@@ -128,7 +133,7 @@ impl AgentService {
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        self.db.delete_agent(org_id, id).await
+        self.db.delete_agent(org_id, AgentId::from_uuid(id)).await
     }
 
     async fn get_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityConfig>> {
@@ -161,11 +166,11 @@ impl AgentService {
         };
 
         Agent {
-            id: row.id.into(),
+            id: row.id,
             name: row.name,
             description: row.description,
             system_prompt: row.system_prompt,
-            default_model_id: row.default_model_id.map(|id| id.into()),
+            default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
             status: AgentStatus::from(row.status.as_str()),

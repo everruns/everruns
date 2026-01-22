@@ -205,7 +205,11 @@ impl EventService {
     ) -> Result<Vec<Event>> {
         let rows = self
             .db
-            .list_events(session_id, since_sequence, since_id)
+            .list_events(
+                SessionId::from_uuid(session_id),
+                since_sequence,
+                since_id.map(EventId::from_uuid),
+            )
             .await?;
         Ok(rows.into_iter().map(Self::row_to_event).collect())
     }
@@ -213,7 +217,10 @@ impl EventService {
     /// List events that represent messages (user, agent, tool results)
     /// Used by gRPC service to load conversation history for workers.
     pub async fn list_message_events(&self, session_id: Uuid) -> Result<Vec<Event>> {
-        let rows = self.db.list_message_events(session_id).await?;
+        let rows = self
+            .db
+            .list_message_events(SessionId::from_uuid(session_id))
+            .await?;
         Ok(rows.into_iter().map(Self::row_to_event).collect())
     }
 
@@ -222,10 +229,10 @@ impl EventService {
         let data =
             serde_json::from_value(row.data.clone()).unwrap_or_else(|_| EventData::raw(row.data));
         Event {
-            id: EventId::from_uuid(row.id),
+            id: row.id,
             event_type: row.event_type,
             ts: row.ts,
-            session_id: SessionId::from_uuid(row.session_id),
+            session_id: row.session_id,
             context: serde_json::from_value(row.context).unwrap_or_default(),
             data,
             metadata: row.metadata,

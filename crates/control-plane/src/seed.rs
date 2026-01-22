@@ -353,7 +353,7 @@ async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Res
         };
 
         match db
-            .create_agent_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .create_agent_with_id(DEFAULT_ORG_ID, seed.id.into(), input)
             .await?
         {
             Some(row) => {
@@ -371,7 +371,7 @@ async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Res
                             )
                         })
                         .collect();
-                    db.set_agent_capabilities(row.id, cap_tuples).await?;
+                    db.set_agent_capabilities(row.id.uuid(), cap_tuples).await?;
                 }
                 tracing::info!(name = seed.name, id = %seed.id, "Created seed agent");
                 result.created += 1;
@@ -794,7 +794,7 @@ async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
 
     for seed in SEED_MODELS {
         let input = CreateLlmModelRow {
-            provider_id: seed.provider_id,
+            provider_id: seed.provider_id.into(),
             model_id: seed.model_id.to_string(),
             display_name: seed.display_name.to_string(),
             capabilities: vec![], // Empty capabilities for now

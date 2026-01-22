@@ -140,8 +140,8 @@ Best practices:
 // ============================================================================
 
 /// Generate container name from session ID
-fn container_name(session_id: &uuid::Uuid) -> String {
-    format!("{}-{}", CONTAINER_PREFIX, session_id)
+fn container_name(session_id: &crate::typed_id::SessionId) -> String {
+    format!("{}-{}", CONTAINER_PREFIX, session_id.uuid())
 }
 
 /// Check if Docker is available on the system
@@ -972,7 +972,8 @@ mod tests {
 
     #[test]
     fn test_container_name() {
-        let session_id = uuid::Uuid::parse_str("12345678-1234-1234-1234-123456789012").unwrap();
+        let uuid = uuid::Uuid::parse_str("12345678-1234-1234-1234-123456789012").unwrap();
+        let session_id = crate::typed_id::SessionId::from_uuid(uuid);
         let name = container_name(&session_id);
         assert_eq!(name, "everruns-12345678-1234-1234-1234-123456789012");
     }
@@ -1018,7 +1019,7 @@ mod tests {
     #[tokio::test]
     async fn test_docker_exec_missing_command() {
         let tool = DockerExecTool;
-        let context = ToolContext::new(uuid::Uuid::nil());
+        let context = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
 
         let result = tool.execute_with_context(json!({}), &context).await;
 
@@ -1032,7 +1033,7 @@ mod tests {
     #[tokio::test]
     async fn test_docker_read_file_missing_path() {
         let tool = DockerReadFileTool;
-        let context = ToolContext::new(uuid::Uuid::nil());
+        let context = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
 
         let result = tool.execute_with_context(json!({}), &context).await;
 
@@ -1046,7 +1047,7 @@ mod tests {
     #[tokio::test]
     async fn test_docker_write_file_missing_params() {
         let tool = DockerWriteFileTool;
-        let context = ToolContext::new(uuid::Uuid::nil());
+        let context = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
 
         // Missing path
         let result = tool

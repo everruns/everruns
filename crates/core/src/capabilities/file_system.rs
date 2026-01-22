@@ -640,6 +640,7 @@ impl Tool for StatFileTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::typed_id::SessionId;
 
     #[test]
     fn test_capability_metadata() {
@@ -715,7 +716,7 @@ mod tests {
     #[tokio::test]
     async fn test_read_file_missing_path() {
         let tool = ReadFileTool;
-        let context = ToolContext::new(uuid::Uuid::nil());
+        let context = ToolContext::new(SessionId::new());
 
         let result = tool.execute_with_context(json!({}), &context).await;
 
@@ -729,7 +730,7 @@ mod tests {
     #[tokio::test]
     async fn test_read_file_no_file_store() {
         let tool = ReadFileTool;
-        let context = ToolContext::new(uuid::Uuid::nil());
+        let context = ToolContext::new(SessionId::new());
 
         let result = tool
             .execute_with_context(json!({"path": "/test.txt"}), &context)

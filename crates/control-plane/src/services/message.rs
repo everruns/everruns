@@ -12,7 +12,7 @@ use anyhow::Result;
 use chrono::Utc;
 use everruns_core::Event;
 use everruns_core::events::{EventContext, EventRequest, MessageUserData};
-use everruns_core::typed_id::{MessageId, SessionId};
+use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -73,11 +73,16 @@ impl MessageService {
             created_at: now,
         };
 
+        // Convert to typed IDs for emit/runner
+        let session_id_typed = SessionId::from_uuid(session_id);
+        let agent_id_typed = AgentId::from_uuid(agent_id);
+        let message_id_typed = MessageId::from_uuid(message_id);
+
         // Emit as typed event using EventService
         let stored_event = self
             .event_service
             .emit(EventRequest::new(
-                session_id,
+                session_id_typed,
                 EventContext::empty(),
                 MessageUserData::new(core_message),
             ))
@@ -85,8 +90,8 @@ impl MessageService {
 
         // Construct API Message
         let message = Message {
-            id: MessageId::from_uuid(message_id),
-            session_id: SessionId::from_uuid(session_id),
+            id: message_id_typed,
+            session_id: session_id_typed,
             sequence: stored_event.sequence.unwrap_or(0),
             role: MessageRole::User,
             content,
@@ -100,7 +105,7 @@ impl MessageService {
         let runner = self.runner.clone();
         tokio::spawn(async move {
             if let Err(e) = runner
-                .start_run(org_id, session_id, agent_id, message_id)
+                .start_run(org_id, session_id_typed, agent_id_typed, message_id_typed)
                 .await
             {
                 tracing::error!(
@@ -122,7 +127,10 @@ impl MessageService {
     }
 
     pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {
-        let events = self.db.list_message_events(session_id).await?;
+        let events = self
+            .db
+            .list_message_events(SessionId::from_uuid(session_id))
+            .await?;
         let mut messages = Vec::with_capacity(events.len());
 
         for event_row in events {

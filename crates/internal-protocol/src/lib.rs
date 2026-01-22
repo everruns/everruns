@@ -678,7 +678,7 @@ pub fn proto_event_request_to_schema(
     Ok(everruns_core::EventRequest {
         event_type: value.event_type,
         ts,
-        session_id,
+        session_id: SessionId::from_uuid(session_id),
         context,
         data,
         metadata,
@@ -700,7 +700,7 @@ pub fn schema_event_request_to_proto(value: &everruns_core::EventRequest) -> pro
         event_type: value.event_type.clone(),
         ts: Some(datetime_to_proto_timestamp(value.ts)),
         context: Some(proto::EventContext {
-            session_id: Some(uuid_to_proto_uuid(value.session_id)),
+            session_id: Some(uuid_to_proto_uuid(value.session_id.uuid())),
             turn_id: value
                 .context
                 .turn_id

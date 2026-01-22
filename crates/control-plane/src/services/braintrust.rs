@@ -1027,7 +1027,7 @@ mod tests {
         ReasonCompletedData, TokenUsage, ToolCallCompletedData, TurnCompletedData, TurnStartedData,
     };
     use everruns_core::message::Message;
-    use everruns_core::typed_id::{MessageId, TurnId};
+    use everruns_core::typed_id::{AgentId, MessageId, SessionId, TurnId};
     use uuid::Uuid;
 
     fn test_config() -> BraintrustConfig {
@@ -1080,7 +1080,7 @@ mod tests {
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             EventContext::empty(),
             EventData::TurnStarted(data.clone()),
         );
@@ -1131,7 +1131,7 @@ mod tests {
         context.turn_id = Some(turn_id);
 
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             context,
             EventData::LlmGeneration(data.clone()),
         );
@@ -1163,7 +1163,7 @@ mod tests {
         };
 
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             EventContext::empty(),
             EventData::TurnCompleted(data.clone()),
         );
@@ -1203,7 +1203,7 @@ mod tests {
             input_message_id,
         };
         let started_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             EventContext::empty(),
             EventData::TurnStarted(started_data.clone()),
         );
@@ -1238,7 +1238,7 @@ mod tests {
             usage: None,
         };
         let completed_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             EventContext::empty(),
             EventData::TurnCompleted(completed_data.clone()),
         );
@@ -1272,11 +1272,11 @@ mod tests {
         context.parent_span_id = Some(turn_id.to_string());
 
         let data = ReasonStartedData {
-            agent_id: Uuid::now_v7(),
+            agent_id: AgentId::new(),
             metadata: None,
         };
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             context,
             EventData::ReasonStarted(data.clone()),
         );
@@ -1335,7 +1335,7 @@ mod tests {
             },
         };
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             context,
             EventData::LlmGeneration(data.clone()),
         );
@@ -1387,7 +1387,11 @@ mod tests {
                 },
             ],
         };
-        let event = Event::new(Uuid::now_v7(), context, EventData::ActStarted(data.clone()));
+        let event = Event::new(
+            SessionId::new(),
+            context,
+            EventData::ActStarted(data.clone()),
+        );
 
         let bt_event = listener.convert_act_started(&event, &data);
 
@@ -1432,7 +1436,7 @@ mod tests {
             error: None,
         };
         let event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             context,
             EventData::ToolCallCompleted(data.clone()),
         );
@@ -1472,11 +1476,11 @@ mod tests {
 
         // reason.started
         let started_data = ReasonStartedData {
-            agent_id: Uuid::now_v7(),
+            agent_id: AgentId::new(),
             metadata: None,
         };
         let started_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             context.clone(),
             EventData::ReasonStarted(started_data.clone()),
         );
@@ -1491,7 +1495,7 @@ mod tests {
             error: None,
         };
         let completed_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             context.clone(),
             EventData::ReasonCompleted(completed_data.clone()),
         );
@@ -1529,7 +1533,7 @@ mod tests {
             input_message_id,
         };
         let turn_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             EventContext::empty(),
             EventData::TurnStarted(turn_data.clone()),
         );
@@ -1547,11 +1551,11 @@ mod tests {
         reason_ctx.span_id = Some(reason_span_id.clone());
         reason_ctx.parent_span_id = Some(turn_id.to_string());
         let reason_data = ReasonStartedData {
-            agent_id: Uuid::now_v7(),
+            agent_id: AgentId::new(),
             metadata: None,
         };
         let reason_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             reason_ctx,
             EventData::ReasonStarted(reason_data.clone()),
         );
@@ -1588,7 +1592,7 @@ mod tests {
             },
         };
         let llm_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             llm_ctx,
             EventData::LlmGeneration(llm_data.clone()),
         );
@@ -1612,7 +1616,7 @@ mod tests {
             }],
         };
         let act_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             act_ctx,
             EventData::ActStarted(act_data.clone()),
         );
@@ -1638,7 +1642,7 @@ mod tests {
             error: None,
         };
         let tool_event = Event::new(
-            Uuid::now_v7(),
+            SessionId::new(),
             tool_ctx,
             EventData::ToolCallCompleted(tool_data.clone()),
         );
