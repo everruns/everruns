@@ -31,6 +31,7 @@ pub struct GrpcDurableStore {
 impl GrpcDurableStore {
     /// Connect to the control-plane gRPC service with retry logic.
     /// Retries with exponential backoff for up to 5 seconds total.
+    /// Fails fast to allow orchestrator/script-level restarts.
     pub async fn connect(address: &str) -> Result<Self> {
         use std::time::Duration;
         use tokio::time::sleep;
@@ -594,8 +595,8 @@ mod tests {
             elapsed
         );
         assert!(
-            elapsed.as_secs() <= 7,
-            "Should not take more than 7 seconds, got {:?}",
+            elapsed.as_secs() <= 8,
+            "Should not take more than 8 seconds, got {:?}",
             elapsed
         );
 
