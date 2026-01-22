@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use everruns_core::TurnId;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -24,12 +25,20 @@ use everruns_durable::{
 // =============================================================================
 
 /// Input for the turn workflow
+///
+/// The turn_id is created by the input activity and propagated to subsequent
+/// activities (reason, act) to ensure all events share the same turn context
+/// for proper trace correlation in observability tools like Braintrust.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DurableTurnInput {
     pub org_id: i64,
     pub session_id: Uuid,
     pub agent_id: Uuid,
     pub input_message_id: Uuid,
+    /// Turn ID for trace correlation. Created by input activity, propagated to reason/act.
+    /// Uses typed TurnId for type safety and consistent prefixed format.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<TurnId>,
 }
 
 /// Output from the turn workflow
@@ -469,11 +478,13 @@ impl AgentRunner for DurableRunner {
         );
 
         // Build workflow input
+        // turn_id is None at workflow start - will be created by input activity
         let input = DurableTurnInput {
             org_id,
             session_id,
             agent_id,
             input_message_id,
+            turn_id: None,
         };
 
         // Create workflow instance
@@ -639,6 +650,7 @@ mod tests {
             session_id: Uuid::now_v7(),
             agent_id: Uuid::now_v7(),
             input_message_id: Uuid::now_v7(),
+            turn_id: None,
         };
 
         let json = serde_json::to_string(&input).unwrap();
@@ -648,6 +660,7 @@ mod tests {
         assert_eq!(input.session_id, parsed.session_id);
         assert_eq!(input.agent_id, parsed.agent_id);
         assert_eq!(input.input_message_id, parsed.input_message_id);
+        assert_eq!(input.turn_id, parsed.turn_id);
     }
 
     /// Test that start_run works for a new session (first message)

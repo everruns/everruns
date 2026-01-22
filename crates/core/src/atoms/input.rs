@@ -146,6 +146,7 @@ mod tests {
     use crate::memory::InMemoryMessageRetriever;
     use crate::message_retriever::InputMessage;
     use crate::traits::NoopEventEmitter;
+    use crate::typed_id::TurnId;
     use uuid::Uuid;
 
     #[tokio::test]
@@ -153,7 +154,7 @@ mod tests {
         let retriever = InMemoryMessageRetriever::new();
         let event_emitter = NoopEventEmitter;
         let session_id = Uuid::now_v7();
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::new();
 
         // Add a user message to the retriever
         let user_message = retriever
@@ -175,7 +176,7 @@ mod tests {
         let retriever = InMemoryMessageRetriever::new();
         let event_emitter = NoopEventEmitter;
         let session_id = Uuid::now_v7();
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::new();
         let missing_id = Uuid::now_v7();
 
         let context = AtomContext::new(session_id, turn_id, missing_id);

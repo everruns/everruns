@@ -271,11 +271,13 @@ impl InProcessWorker {
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
 
                 // Create DurableTurnInput from ActInput context (dev mode always uses DEFAULT_ORG_ID)
+                // Include turn_id from act_input context for trace correlation
                 let turn_input = DurableTurnInput {
                     org_id: DEFAULT_ORG_ID,
                     session_id: act_input.context.session_id,
                     agent_id: act_input.agent_id,
                     input_message_id: act_input.context.input_message_id,
+                    turn_id: Some(act_input.context.turn_id),
                 };
 
                 let res = self.execute_act_activity(&act_input).await;
@@ -371,7 +373,7 @@ impl InProcessWorker {
         // Create AtomContext
         let context = AtomContext {
             session_id: input.session_id,
-            turn_id: Uuid::now_v7(),
+            turn_id: TurnId::new(),
             input_message_id: input.input_message_id,
             exec_id: Uuid::now_v7(),
         };
@@ -388,7 +390,7 @@ impl InProcessWorker {
             input.session_id,
             EventContext::turn(context.turn_id, input.input_message_id),
             SessionActivatedData {
-                turn_id: TurnId::from_uuid(context.turn_id),
+                turn_id: context.turn_id,
                 input_message_id: MessageId::from_uuid(input.input_message_id),
             },
         );
@@ -401,7 +403,7 @@ impl InProcessWorker {
             input.session_id,
             EventContext::turn(context.turn_id, input.input_message_id),
             TurnStartedData {
-                turn_id: TurnId::from_uuid(context.turn_id),
+                turn_id: context.turn_id,
                 input_message_id: MessageId::from_uuid(input.input_message_id),
             },
         );
@@ -414,10 +416,20 @@ impl InProcessWorker {
             DirectMessageRetriever::new(self.db.clone(), self.event_service.clone());
         let atom = InputAtom::new(message_retriever, event_emitter);
 
-        let atom_input = InputAtomInput { context };
+        let atom_input = InputAtomInput {
+            context: context.clone(),
+        };
         let result = atom.execute(atom_input).await?;
 
-        Ok(serde_json::to_value(&result)?)
+        // Include turn_id in output for propagation to subsequent activities
+        let mut output = serde_json::to_value(&result)?;
+        if let serde_json::Value::Object(ref mut map) = output {
+            map.insert(
+                "turn_id".to_string(),
+                serde_json::json!(context.turn_id.to_string()),
+            );
+        }
+        Ok(output)
     }
 
     /// Execute reasoning activity (LLM call)
@@ -429,13 +441,15 @@ impl InProcessWorker {
 
         debug!(
             session_id = %input.session_id,
+            turn_id = ?input.turn_id,
             "Executing reason activity"
         );
 
-        // Create AtomContext
+        // Create AtomContext - use turn_id from input if available (from input activity)
+        let turn_id = input.turn_id.unwrap_or_default();
         let context = AtomContext {
             session_id: input.session_id,
-            turn_id: Uuid::now_v7(),
+            turn_id,
             input_message_id: input.input_message_id,
             exec_id: Uuid::now_v7(),
         };
@@ -497,7 +511,7 @@ impl InProcessWorker {
                     session_id,
                     EventContext::turn(turn_id, input_message_id),
                     TurnFailedData {
-                        turn_id: TurnId::from_uuid(turn_id),
+                        turn_id,
                         error: "An error occurred while processing your request.".to_string(),
                         error_code: Some("llm_error".to_string()),
                     },
@@ -510,7 +524,7 @@ impl InProcessWorker {
                     session_id,
                     EventContext::turn(turn_id, input_message_id),
                     TurnCompletedData {
-                        turn_id: TurnId::from_uuid(turn_id),
+                        turn_id,
                         iterations: 1,
                         duration_ms: None,
                         usage: result.usage.clone(),
@@ -553,7 +567,7 @@ impl InProcessWorker {
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
                 SessionIdledData {
-                    turn_id: TurnId::from_uuid(turn_id),
+                    turn_id,
                     iterations: None,
                     usage: session_usage,
                 },
@@ -617,10 +631,24 @@ impl InProcessWorker {
     ) -> Result<()> {
         use everruns_durable::TaskDefinition;
 
-        let input_json = serde_json::to_value(input)?;
-
         match completed_activity {
             "process_input" => {
+                // Extract turn_id from output (set by execute_input_activity)
+                let turn_id: Option<TurnId> = output
+                    .get("turn_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok());
+
+                // Create input with turn_id for subsequent activities
+                let input_with_turn = DurableTurnInput {
+                    org_id: input.org_id,
+                    session_id: input.session_id,
+                    agent_id: input.agent_id,
+                    input_message_id: input.input_message_id,
+                    turn_id,
+                };
+                let input_json = serde_json::to_value(&input_with_turn)?;
+
                 // After input processing, schedule reason activity
                 let activity_id = format!("reason_{}", Uuid::now_v7());
                 let task = TaskDefinition {
@@ -645,7 +673,7 @@ impl InProcessWorker {
                 let _ =
                     append_event(self.durable_store.as_ref(), workflow_id, scheduled_event).await;
 
-                debug!(workflow_id = %workflow_id, "Scheduled reason activity");
+                debug!(workflow_id = %workflow_id, turn_id = ?turn_id, "Scheduled reason activity");
             }
             "reason" => {
                 // After reasoning, check if there are tool calls
@@ -656,11 +684,14 @@ impl InProcessWorker {
                     // Get tool count before moving
                     let tool_count = reason_result.tool_calls.len();
 
+                    // Use turn_id from input (propagated from input activity)
+                    let turn_id = input.turn_id.unwrap_or_default();
+
                     // Schedule act activity
                     let act_input = ActInput {
                         context: AtomContext {
                             session_id: input.session_id,
-                            turn_id: Uuid::now_v7(),
+                            turn_id,
                             input_message_id: input.input_message_id,
                             exec_id: Uuid::now_v7(),
                         },
@@ -717,6 +748,9 @@ impl InProcessWorker {
                 }
             }
             "act" => {
+                // Input already has turn_id from act task context
+                let input_json = serde_json::to_value(input)?;
+
                 // After action, schedule another reason activity
                 let activity_id = format!("reason_{}", Uuid::now_v7());
                 let task = TaskDefinition {
@@ -741,7 +775,7 @@ impl InProcessWorker {
                 let _ =
                     append_event(self.durable_store.as_ref(), workflow_id, scheduled_event).await;
 
-                debug!(workflow_id = %workflow_id, "Scheduled reason activity after act");
+                debug!(workflow_id = %workflow_id, turn_id = ?input.turn_id, "Scheduled reason activity after act");
             }
             _ => {
                 warn!(

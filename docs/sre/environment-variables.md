@@ -333,3 +333,17 @@ LLM calls include the following OpenTelemetry attributes:
 | `gen_ai.usage.output_tokens` | Completion tokens used |
 | `gen_ai.response.finish_reasons` | Why generation stopped |
 | `server.address` | API endpoint URL |
+
+## Braintrust Integration
+
+Everruns supports sending LLM generation events to [Braintrust](https://www.braintrust.dev/) for observability, evaluation, and logging.
+
+For setup instructions and configuration details, see the [Braintrust Integration Guide](/observability/braintrust/).
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `BRAINTRUST_API_KEY` | Yes | - | API key from Braintrust settings |
+| `BRAINTRUST_PROJECT_NAME` | No | `My Project` | Project name for organizing traces |
+| `BRAINTRUST_PROJECT_ID` | No | - | Direct project UUID (skips name lookup) |
+| `BRAINTRUST_API_URL` | No | `https://api.braintrust.dev` | API base URL |
+

@@ -42,6 +42,7 @@ Available specs:
 - `specs/multitenancy.md` - Organization-based multitenancy and resource isolation
 - `specs/release-process.md` - Release workflow with CHANGELOG.md as source of truth
 - `specs/id-schema.md` - Standardized prefixed ID format for all entities
+- `specs/braintrust-integration.md` - Braintrust observability integration
 
 Specification format: Abstract and Requirements sections.
 

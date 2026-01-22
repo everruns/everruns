@@ -292,6 +292,10 @@ message EventContext {
     optional Uuid turn_id = 2;
     optional Uuid input_message_id = 3;
     optional Uuid exec_id = 4;  // For idempotency
+    // OTel-style trace/span fields for observability
+    optional string trace_id = 5;
+    optional string span_id = 6;
+    optional string parent_span_id = 7;
 }
 
 message EmitEventRequest {

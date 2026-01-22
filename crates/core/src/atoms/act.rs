@@ -36,6 +36,7 @@ use crate::events::{
 use crate::message::ContentPart;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{EventEmitter, SessionFileStore, ToolContext, ToolExecutor};
+use uuid::Uuid;
 
 // ============================================================================
 // Input and Output Types
@@ -172,8 +173,23 @@ where
             "ActAtom: executing tools in parallel"
         );
 
-        // Create event context from atom context
-        let event_context = EventContext::from_atom_context(&context);
+        // Generate OTel-style span IDs for hierarchical tracing
+        // trace_id: groups all events in this turn
+        // span_id: unique identifier for this act span (shared by started/completed)
+        // parent_span_id: links to turn as parent
+        //
+        // NOTE: TurnId::to_string() returns prefixed format (e.g., "turn_abc123")
+        // matching the format used by turn.started/completed events in Braintrust.
+        let trace_id = context.turn_id.to_string();
+        let act_span_id = Uuid::now_v7().to_string();
+        let parent_span_id = trace_id.clone(); // Parent is the turn
+
+        // Create event context from atom context with span info
+        let event_context = EventContext::from_atom_context(&context).with_span(
+            trace_id.clone(),
+            act_span_id.clone(),
+            Some(parent_span_id.clone()),
+        );
 
         // Emit act.started event
         if let Err(e) = self
@@ -203,12 +219,18 @@ where
             })
             .collect();
 
-        // Execute all tool calls in parallel
+        // Execute all tool calls in parallel (each tool event references act span as parent)
         let futures: Vec<_> = tool_calls
             .iter()
             .map(|tool_call| {
                 let tool_def = tool_map.get(tool_call.name.as_str()).cloned();
-                self.execute_single_tool(&context, tool_call.clone(), tool_def)
+                self.execute_single_tool(
+                    &context,
+                    tool_call.clone(),
+                    tool_def,
+                    &trace_id,
+                    &act_span_id,
+                )
             })
             .collect();
 
@@ -218,12 +240,17 @@ where
         let success_count = results.iter().filter(|r| r.success).count() as u32;
         let error_count = results.iter().filter(|r| !r.success).count() as u32;
 
-        // Emit act.completed event
+        // Emit act.completed event (same span as act.started, parent is turn)
+        let completed_context = EventContext::from_atom_context(&context).with_span(
+            trace_id.clone(),
+            act_span_id.clone(), // Same span_id as started
+            Some(parent_span_id.clone()),
+        );
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
                 context.session_id,
-                event_context,
+                completed_context,
                 ActCompletedData {
                     completed: true,
                     success_count,
@@ -271,6 +298,8 @@ where
         context: &AtomContext,
         tool_call: ToolCall,
         tool_def: Option<&ToolDefinition>,
+        trace_id: &str,
+        act_span_id: &str,
     ) -> ToolCallResult {
         tracing::debug!(
             session_id = %context.session_id,
@@ -280,10 +309,17 @@ where
             "ActAtom: executing tool"
         );
 
-        // Create event context from atom context
-        let event_context = EventContext::from_atom_context(context);
+        // Generate a unique span_id for this tool call (child of act span)
+        let tool_span_id = Uuid::now_v7().to_string();
 
-        // Emit tool.call_started event
+        // Create event context from atom context (with act span as parent)
+        let event_context = EventContext::from_atom_context(context).with_span(
+            trace_id.to_string(),
+            tool_span_id.clone(),
+            Some(act_span_id.to_string()),
+        );
+
+        // Emit tool.call_started event (child of act.started)
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
@@ -307,7 +343,7 @@ where
         let Some(tool_def) = tool_def else {
             let error_msg = format!("Tool definition not found: {}", tool_call.name);
 
-            // Emit tool.call_completed event for error
+            // Emit tool.call_completed event for error (child of act.started)
             if let Err(e) = self
                 .event_emitter
                 .emit(EventRequest::new(
@@ -469,6 +505,7 @@ mod tests {
     use super::*;
     use crate::tools::ToolRegistry;
     use crate::traits::NoopEventEmitter;
+    use crate::typed_id::TurnId;
     use serde_json::json;
     use uuid::Uuid;
 
@@ -478,7 +515,7 @@ mod tests {
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter);
 
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
         let input = ActInput {
             context,
             agent_id: Uuid::now_v7(),
@@ -500,7 +537,7 @@ mod tests {
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter);
 
-        let context = AtomContext::new(Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+        let context = AtomContext::new(Uuid::now_v7(), TurnId::new(), Uuid::now_v7());
         let input = ActInput {
             context,
             agent_id: Uuid::now_v7(),

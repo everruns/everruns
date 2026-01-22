@@ -2,6 +2,7 @@
 // Services own business logic and validation, calling storage directly
 
 pub mod agent;
+pub mod braintrust;
 pub mod capability;
 pub mod event;
 pub mod llm_model;
@@ -15,6 +16,7 @@ pub mod session_file;
 pub mod usage_tracking;
 
 pub use agent::AgentService;
+pub use braintrust::{BraintrustConfig, BraintrustListener};
 pub use capability::CapabilityService;
 pub use event::EventService;
 pub use llm_model::LlmModelService;

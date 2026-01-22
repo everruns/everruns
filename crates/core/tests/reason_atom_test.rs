@@ -17,6 +17,7 @@ use everruns_core::memory::{
 };
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{ModelWithProvider, NoopEventEmitter};
+use everruns_core::typed_id::TurnId;
 use everruns_core::{Message, ToolCall};
 use serde_json::json;
 use uuid::Uuid;
@@ -102,7 +103,7 @@ fn create_custom_driver_registry(config: LlmSimConfig) -> DriverRegistry {
 
 /// Create an AtomContext for testing
 fn create_context(session_id: Uuid) -> AtomContext {
-    let turn_id = Uuid::now_v7();
+    let turn_id = TurnId::new();
     let input_message_id = Uuid::now_v7();
     AtomContext::new(session_id, turn_id, input_message_id)
 }

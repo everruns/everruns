@@ -17,7 +17,10 @@ Every event MUST conform to this schema:
   "context": {
     "turn_id": "01937abc-def0-7000-8000-000000000003",
     "input_message_id": "01937abc-def0-7000-8000-000000000004",
-    "exec_id": "01937abc-def0-7000-8000-000000000005"
+    "exec_id": "01937abc-def0-7000-8000-000000000005",
+    "trace_id": "turn_01937abc",
+    "span_id": "exec_01937abc",
+    "parent_span_id": "turn_01937abc"
   },
   "data": {
     // Event-specific payload
@@ -49,6 +52,49 @@ The context provides correlation data for tracing and filtering:
 | `turn_id` | UUID | No | Turn identifier (for turn-scoped events) |
 | `input_message_id` | UUID | No | User message that triggered this turn |
 | `exec_id` | UUID | No | Atom execution identifier |
+| `trace_id` | string | No | OTel-style trace ID (typically the turn_id string) |
+| `span_id` | string | No | OTel-style span ID for this event |
+| `parent_span_id` | string | No | Parent span ID for hierarchical linking |
+
+### Hierarchical Tracing (OTel-Style)
+
+Events within an agent turn form a hierarchical trace structure using OpenTelemetry-style span relationships. This enables observability tools (Braintrust, Jaeger, etc.) to visualize the execution as a tree.
+
+**Trace Structure:**
+
+```
+turn (root span)
+├── reason (child of turn)
+│   └── llm.generation (child of reason)
+├── act (child of turn)
+│   ├── tool.call (child of act)
+│   └── tool.call (child of act)
+├── reason (child of turn)
+│   └── llm.generation (child of reason)
+└── ...
+```
+
+**Span ID Relationships:**
+
+| Event Type | span_id | parent_span_id | trace_id |
+|------------|---------|----------------|----------|
+| `turn.started/completed` | turn_id | `null` (root) | turn_id |
+| `reason.started/completed` | reason_span_id | turn_id | turn_id |
+| `llm.generation` | llm_span_id | reason_span_id | turn_id |
+| `act.started/completed` | act_span_id | turn_id | turn_id |
+| `tool.call_started/completed` | tool_span_id | act_span_id | turn_id |
+
+**Key Properties:**
+
+1. **trace_id**: Groups all events within a single turn into one trace. Always equals the turn_id string (prefixed format, e.g., `turn_abc123`).
+
+2. **span_id**: Uniquely identifies each event within the trace. Started/completed event pairs share the same span_id so observability tools merge them into a single span with timing.
+
+3. **parent_span_id**: Links this span to its parent in the hierarchy. Root spans (turn events) have `null` parent. Child spans reference their immediate parent.
+
+**ID Format Consistency:**
+
+All IDs (`trace_id`, `span_id`, `parent_span_id`) use the prefixed string format (e.g., `turn_xyz`, `exec_abc`) rather than raw UUIDs. This ensures spans are correctly linked in observability tools.
 
 ## Event Categories
 

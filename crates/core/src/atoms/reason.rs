@@ -43,7 +43,6 @@ use crate::traits::{
     AgentStore, EventEmitter, ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage,
     SessionStore,
 };
-use crate::typed_id::TurnId;
 
 // ============================================================================
 // Helper Functions
@@ -253,10 +252,25 @@ where
             "ReasonAtom: starting LLM call"
         );
 
-        // Create event context from atom context
-        let event_context = EventContext::from_atom_context(&context);
+        // Generate OTel-style span IDs for hierarchical tracing
+        // trace_id: groups all events in this turn
+        // span_id: unique identifier for this reason span (shared by started/completed)
+        // parent_span_id: links to turn as parent
+        //
+        // NOTE: TurnId::to_string() returns prefixed format (e.g., "turn_abc123")
+        // matching the format used by turn.started/completed events in Braintrust.
+        let trace_id = context.turn_id.to_string();
+        let reason_span_id = Uuid::now_v7().to_string();
+        let parent_span_id = trace_id.clone(); // Parent is the turn
 
-        // Emit reason.started event (note: we'll emit a more detailed event after model resolution)
+        // Create event context from atom context with span info
+        let event_context = EventContext::from_atom_context(&context).with_span(
+            trace_id.clone(),
+            reason_span_id.clone(),
+            Some(parent_span_id.clone()),
+        );
+
+        // Emit reason.started event
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
@@ -284,16 +298,23 @@ where
                 org_id,
                 &context,
                 &mcp_tool_definitions,
+                &trace_id,
+                &reason_span_id,
             )
             .await
         {
             Ok(result) => {
-                // Emit reason.completed event for success
+                // Emit reason.completed event (same span as reason.started, parent is turn)
+                let completed_context = EventContext::from_atom_context(&context).with_span(
+                    trace_id.clone(),
+                    reason_span_id.clone(), // Same span_id as started
+                    Some(parent_span_id.clone()),
+                );
                 if let Err(e) = self
                     .event_emitter
                     .emit(EventRequest::new(
                         context.session_id,
-                        event_context.clone(),
+                        completed_context,
                         ReasonCompletedData::success(
                             &result.text,
                             result.has_tool_calls,
@@ -337,11 +358,17 @@ where
                 let error_message = Message::assistant(&user_error_text);
 
                 // Emit message.agent event (stores message as event with proper turn context)
+                // message.agent is child of reason span
+                let error_msg_context = EventContext::from_atom_context(&context).with_span(
+                    trace_id.clone(),
+                    Uuid::now_v7().to_string(),   // Own span_id
+                    Some(reason_span_id.clone()), // Parent is reason span
+                );
                 if let Err(emit_err) = self
                     .event_emitter
                     .emit(EventRequest::new(
                         context.session_id,
-                        event_context.clone(),
+                        error_msg_context,
                         MessageAgentData::new(error_message),
                     ))
                     .await
@@ -353,12 +380,17 @@ where
                     );
                 }
 
-                // Emit reason.completed event for failure
+                // Emit reason.completed event for failure (same span as started, parent is turn)
+                let completed_context = EventContext::from_atom_context(&context).with_span(
+                    trace_id.clone(),
+                    reason_span_id.clone(), // Same span_id as started
+                    Some(parent_span_id.clone()),
+                );
                 if let Err(emit_err) = self
                     .event_emitter
                     .emit(EventRequest::new(
                         context.session_id,
-                        event_context,
+                        completed_context,
                         ReasonCompletedData::failure(error_msg.clone()),
                     ))
                     .await
@@ -396,6 +428,7 @@ where
     E: EventEmitter + Send + Sync,
 {
     /// Execute the actual LLM call
+    #[allow(clippy::too_many_arguments)]
     async fn execute_llm_call(
         &self,
         session_id: Uuid,
@@ -403,6 +436,8 @@ where
         org_id: i64,
         context: &AtomContext,
         mcp_tool_definitions: &[ToolDefinition],
+        trace_id: &str,
+        reason_span_id: &str,
     ) -> Result<ReasonResult> {
         // 1. Retrieve agent
         let agent = self
@@ -506,7 +541,7 @@ where
         llm_config_builder = llm_config_builder
             .with_metadata("session_id", format!("session_{}", session_id.as_simple()))
             .with_metadata("agent_id", format!("agent_{}", agent_id.as_simple()))
-            .with_metadata("turn_id", format!("turn_{}", context.turn_id.as_simple()))
+            .with_metadata("turn_id", context.turn_id.to_string()) // TurnId.to_string() is already prefixed
             .with_metadata("exec_id", format!("exec_{}", context.exec_id.as_simple()))
             .with_metadata("org_id", format!("org_{:032x}", org_id));
 
@@ -539,7 +574,7 @@ where
                 session_id,
                 streaming_event_context.clone(),
                 AgentThinkingData {
-                    turn_id: TurnId::from_uuid(context.turn_id),
+                    turn_id: context.turn_id,
                     model: Some(runtime_agent.model.clone()),
                 },
             ))
@@ -600,7 +635,7 @@ where
                                 session_id,
                                 streaming_event_context.clone(),
                                 TextDeltaData {
-                                    turn_id: TurnId::from_uuid(context.turn_id),
+                                    turn_id: context.turn_id,
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
                                 },
@@ -629,7 +664,7 @@ where
                                 session_id,
                                 streaming_event_context.clone(),
                                 TextDeltaData {
-                                    turn_id: TurnId::from_uuid(context.turn_id),
+                                    turn_id: context.turn_id,
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
                                 },
@@ -646,9 +681,13 @@ where
                     break;
                 }
                 LlmStreamEvent::Error(err) => {
-                    // Emit llm.generation failure event
+                    // Emit llm.generation failure event (child of reason span)
                     let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
-                    let event_context = EventContext::from_atom_context(context);
+                    let event_context = EventContext::from_atom_context(context).with_span(
+                        trace_id.to_string(),
+                        Uuid::now_v7().to_string(),
+                        Some(reason_span_id.to_string()),
+                    );
                     let tools_summary: Vec<ToolDefinitionSummary> =
                         runtime_agent.tools.iter().map(|t| t.into()).collect();
                     let _ = self
@@ -687,8 +726,12 @@ where
             }
         });
 
-        // 16. Emit llm.generation event
-        let event_context = EventContext::from_atom_context(context);
+        // 16. Emit llm.generation event (child of reason span)
+        let event_context = EventContext::from_atom_context(context).with_span(
+            trace_id.to_string(),
+            Uuid::now_v7().to_string(),
+            Some(reason_span_id.to_string()),
+        );
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
         // Infer finish reasons from content
@@ -748,8 +791,12 @@ where
         assistant_message.metadata = Some(metadata);
 
         // Emit message.agent event (this stores the message as an event with proper turn context)
-        // Include token usage for tracking
-        let message_event_context = EventContext::from_atom_context(context);
+        // Include token usage for tracking (child of reason span)
+        let message_event_context = EventContext::from_atom_context(context).with_span(
+            trace_id.to_string(),
+            Uuid::now_v7().to_string(),
+            Some(reason_span_id.to_string()),
+        );
         let mut message_agent_data = MessageAgentData::new(assistant_message);
         if let Some(ref u) = usage {
             message_agent_data = message_agent_data.with_usage(u.clone());

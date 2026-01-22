@@ -173,10 +173,20 @@ async fn main() -> Result<()> {
     let usage_listener: Arc<dyn EventListener> =
         Arc::new(services::UsageTrackingListener::new(db.clone()));
 
+    // Build list of event listeners
+    let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![otel_listener, usage_listener];
+
+    // BraintrustListener sends LLM generation events to Braintrust for observability
+    // Enabled when BRAINTRUST_API_KEY and BRAINTRUST_PROJECT_ID are set
+    if let Some(braintrust_listener) = services::BraintrustListener::from_env() {
+        tracing::info!("Braintrust integration enabled");
+        event_listeners.push(Arc::new(braintrust_listener));
+    }
+
     // Create EventService with listeners - shared between HTTP API and gRPC service
     let event_service = Arc::new(services::EventService::with_listeners(
         db.clone(),
-        vec![otel_listener, usage_listener],
+        event_listeners,
     ));
 
     let events_state = api::events::AppState {

@@ -56,6 +56,11 @@ pub const SESSION_IDLED: &str = "session.idled";
 use crate::atoms::AtomContext;
 
 /// Context for event correlation and tracing
+///
+/// Uses OpenTelemetry-style trace/span IDs for observability correlation:
+/// - `trace_id`: Root of the trace (typically the turn_id string)
+/// - `span_id`: This event's unique span identifier
+/// - `parent_span_id`: The parent span's identifier for hierarchical linking
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct EventContext {
@@ -73,6 +78,21 @@ pub struct EventContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "exec_01933b5a00007000800000000000001"))]
     pub exec_id: Option<ExecId>,
+
+    /// Trace ID for observability (OTel-style). Groups related spans into a single trace.
+    /// For agent turns, this is typically the turn_id string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+
+    /// This event's span ID for observability (OTel-style).
+    /// Uniquely identifies this span within the trace.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub span_id: Option<String>,
+
+    /// Parent span ID for hierarchical linking (OTel-style).
+    /// Links this span to its parent in the trace hierarchy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_span_id: Option<String>,
 }
 
 impl EventContext {
@@ -84,19 +104,38 @@ impl EventContext {
     /// Create a full context from an AtomContext
     pub fn from_atom_context(ctx: &AtomContext) -> Self {
         Self {
-            turn_id: Some(TurnId::from_uuid(ctx.turn_id)),
+            turn_id: Some(ctx.turn_id),
             input_message_id: Some(MessageId::from_uuid(ctx.input_message_id)),
             exec_id: Some(ExecId::from_uuid(ctx.exec_id)),
+            trace_id: None,
+            span_id: None,
+            parent_span_id: None,
         }
     }
 
     /// Create a context for turn-scoped events (without exec_id)
-    pub fn turn(turn_id: Uuid, input_message_id: Uuid) -> Self {
+    pub fn turn(turn_id: TurnId, input_message_id: Uuid) -> Self {
         Self {
-            turn_id: Some(TurnId::from_uuid(turn_id)),
+            turn_id: Some(turn_id),
             input_message_id: Some(MessageId::from_uuid(input_message_id)),
             exec_id: None,
+            trace_id: None,
+            span_id: None,
+            parent_span_id: None,
         }
+    }
+
+    /// Set OTel-style span context for hierarchical tracing
+    pub fn with_span(
+        mut self,
+        trace_id: String,
+        span_id: String,
+        parent_span_id: Option<String>,
+    ) -> Self {
+        self.trace_id = Some(trace_id);
+        self.span_id = Some(span_id);
+        self.parent_span_id = parent_span_id;
+        self
     }
 }
 
@@ -1232,13 +1271,13 @@ mod tests {
     #[test]
     fn test_event_context_from_atom_context() {
         let session_id = Uuid::now_v7();
-        let turn_id = Uuid::now_v7();
+        let turn_id = TurnId::new();
         let input_message_id = Uuid::now_v7();
 
         let atom_ctx = AtomContext::new(session_id, turn_id, input_message_id);
         let context = EventContext::from_atom_context(&atom_ctx);
 
-        assert_eq!(context.turn_id, Some(TurnId::from_uuid(turn_id)));
+        assert_eq!(context.turn_id, Some(turn_id));
         assert_eq!(
             context.input_message_id,
             Some(MessageId::from_uuid(input_message_id))

@@ -61,7 +61,9 @@ ensure_docker_daemon() {
 check_npm_deps() {
   local app_name="$1"
   local install_cmd="$2"
-  local app_dir="$PROJECT_ROOT/apps/${app_name,,}"  # lowercase
+  local app_name_lower
+  app_name_lower=$(echo "$app_name" | tr '[:upper:]' '[:lower:]')
+  local app_dir="$PROJECT_ROOT/apps/$app_name_lower"
 
   if [ ! -d "$app_dir/node_modules" ]; then
     echo "   ⚠️  $app_name dependencies not installed. Run: $install_cmd"

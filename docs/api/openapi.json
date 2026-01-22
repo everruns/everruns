@@ -3388,7 +3388,7 @@
       },
       "EventContext": {
         "type": "object",
-        "description": "Context for event correlation and tracing",
+        "description": "Context for event correlation and tracing\n\nUses OpenTelemetry-style trace/span IDs for observability correlation:\n- `trace_id`: Root of the trace (typically the turn_id string)\n- `span_id`: This event's unique span identifier\n- `parent_span_id`: The parent span's identifier for hierarchical linking",
         "properties": {
           "exec_id": {
             "type": [
@@ -3405,6 +3405,27 @@
             ],
             "description": "User message that triggered this turn",
             "example": "message_01933b5a00007000800000000000001"
+          },
+          "parent_span_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Parent span ID for hierarchical linking (OTel-style).\nLinks this span to its parent in the trace hierarchy."
+          },
+          "span_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "This event's span ID for observability (OTel-style).\nUniquely identifies this span within the trace."
+          },
+          "trace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Trace ID for observability (OTel-style). Groups related spans into a single trace.\nFor agent turns, this is typically the turn_id string."
           },
           "turn_id": {
             "type": [

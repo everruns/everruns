@@ -148,9 +148,9 @@ pub use events::{
     LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, MESSAGE_AGENT, MESSAGE_USER,
     MessageAgentData, MessageUserData, ModelMetadata, REASON_COMPLETED, REASON_STARTED,
     ReasonCompletedData, ReasonStartedData, SESSION_STARTED, SessionStartedData,
-    TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, TokenUsage,
-    ToolCallCompletedData, ToolCallStartedData, ToolCallSummary, TurnCompletedData, TurnFailedData,
-    TurnStartedData, UNKNOWN,
+    TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
+    TURN_STARTED, TokenUsage, ToolCallCompletedData, ToolCallStartedData, ToolCallSummary,
+    TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData, UNKNOWN,
 };
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{
