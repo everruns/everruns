@@ -240,12 +240,13 @@ impl LlmDriver for AnthropicLlmDriver {
             .as_ref()
             .and_then(|e| AnthropicThinking::from_effort(e));
 
-        // Calculate max_tokens ensuring it's greater than thinking budget
-        let base_max_tokens = config.max_tokens.unwrap_or(4096).max(4096);
+        // Calculate max_tokens - respect caller's limit, only increase when thinking requires it
+        let base_max_tokens = config.max_tokens.unwrap_or(4096);
         let max_tokens = if let Some(ref thinking_config) = thinking {
             // max_tokens must be > thinking.budget_tokens per Anthropic requirements
-            // Add 8192 to the budget to allow for actual response text
-            base_max_tokens.max(thinking_config.budget_tokens + 8192)
+            // Only increase if the caller's limit is too low for the thinking budget
+            let min_for_thinking = thinking_config.budget_tokens + 1024; // minimum headroom for response
+            base_max_tokens.max(min_for_thinking)
         } else {
             base_max_tokens
         };
