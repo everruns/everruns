@@ -1,6 +1,8 @@
 //! Context management strategies
 //!
 //! Each strategy defines how to prepare messages for LLM context.
+//! These strategies mirror the capabilities in everruns-core but are
+//! adapted for the evaluation framework.
 
 mod baseline;
 mod infinity;

@@ -3,7 +3,7 @@
 use crate::metrics::{aggregate_strategy_results, check_success};
 use crate::strategies::ContextStrategy;
 use crate::types::{
-    EvalMetrics, EvaluationResults, PreparedContext, Scenario, ScenarioResult, ToolCall,
+    EvalMetrics, EvaluationResults, MessageExt, PreparedContext, Scenario, ScenarioResult, ToolCall,
 };
 use anyhow::Result;
 use chrono::Utc;
@@ -278,10 +278,10 @@ fn build_api_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<Ap
 
         messages.push(ApiMessage {
             role: role.to_string(),
-            content: Some(msg.content.clone()),
+            content: Some(msg.text_content()),
             tool_calls: None,
             tool_call_id: None,
-            name: msg.tool_name.clone(),
+            name: None,
         });
     }
 

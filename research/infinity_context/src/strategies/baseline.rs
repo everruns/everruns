@@ -4,7 +4,7 @@
 //! It will fail when context exceeds the model's limit.
 
 use super::ContextStrategy;
-use crate::types::{Message, PreparedContext};
+use crate::types::{estimate_tokens, Message, PreparedContext};
 
 pub struct BaselineStrategy;
 
@@ -18,7 +18,7 @@ impl ContextStrategy for BaselineStrategy {
     }
 
     fn prepare_context(&self, messages: &[Message], _budget_tokens: usize) -> PreparedContext {
-        let estimated_tokens: usize = messages.iter().map(|m| m.estimated_tokens).sum();
+        let estimated_tokens: usize = messages.iter().map(|m| estimate_tokens(m)).sum();
 
         PreparedContext {
             messages: messages.to_vec(),

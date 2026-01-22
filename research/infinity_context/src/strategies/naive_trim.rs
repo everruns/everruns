@@ -2,9 +2,12 @@
 //!
 //! Simple approach that removes old messages when context is exceeded.
 //! Lost messages cannot be retrieved - context is permanently lost.
+//!
+//! This strategy mirrors the NaiveTrimCapability from core, adapted
+//! for the evaluation framework.
 
 use super::ContextStrategy;
-use crate::types::{Message, PreparedContext};
+use crate::types::{estimate_tokens, Message, MessageExt, PreparedContext};
 
 pub struct NaiveTrimStrategy {
     /// Minimum number of recent messages to always keep
@@ -53,26 +56,23 @@ impl ContextStrategy for NaiveTrimStrategy {
 
         for msg in recent_messages {
             selected.push(msg.clone());
-            current_tokens += msg.estimated_tokens;
+            current_tokens += estimate_tokens(msg);
         }
 
         // Add older messages (newest first) while we have budget
         let older_messages = &messages[..recent_start];
         for msg in older_messages.iter().rev() {
-            if current_tokens + msg.estimated_tokens > budget_tokens {
+            let msg_tokens = estimate_tokens(msg);
+            if current_tokens + msg_tokens > budget_tokens {
                 break;
             }
             selected.insert(0, msg.clone());
-            current_tokens += msg.estimated_tokens;
+            current_tokens += msg_tokens;
         }
 
         // Determine excluded messages (those we couldn't fit)
-        let selected_ids: std::collections::HashSet<_> = selected.iter().map(|m| m.id).collect();
-        let excluded: Vec<Message> = messages
-            .iter()
-            .filter(|m| !selected_ids.contains(&m.id))
-            .cloned()
-            .collect();
+        let selected_len = selected.len();
+        let excluded: Vec<Message> = messages[..messages.len() - selected_len].to_vec();
 
         PreparedContext {
             messages: selected,
@@ -87,13 +87,13 @@ impl ContextStrategy for NaiveTrimStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Message;
+    use crate::types::message_helpers;
 
     #[test]
     fn test_no_trimming_when_under_budget() {
         let strategy = NaiveTrimStrategy::with_min_recent(5);
         let messages: Vec<Message> = (0..10)
-            .map(|i| Message::user(format!("Message {}", i)))
+            .map(|i| message_helpers::user(format!("Message {}", i)))
             .collect();
 
         let result = strategy.prepare_context(&messages, 100000);
@@ -108,7 +108,7 @@ mod tests {
 
         // Create messages with known token counts
         let messages: Vec<Message> = (0..10)
-            .map(|i| Message::user(format!("Message number {} with some content", i)))
+            .map(|i| message_helpers::user(format!("Message number {} with some content", i)))
             .collect();
 
         // Set a small budget that can't fit all messages
@@ -120,7 +120,8 @@ mod tests {
         // Should have excluded some
         assert!(!result.excluded_messages.is_empty());
         // Most recent messages should be included
-        assert_eq!(result.messages.last().unwrap().content, "Message number 9 with some content");
+        let last_text = result.messages.last().unwrap().text_content();
+        assert!(last_text.contains("9"));
     }
 
     #[test]

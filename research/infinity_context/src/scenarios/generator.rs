@@ -1,7 +1,8 @@
 //! Synthetic scenario generation
+//!
+//! Uses everruns-core Message type for test scenarios.
 
-use crate::types::{ExpectedResult, Message, PlantedInfo, Scenario, ScenarioType};
-use chrono::{Duration, Utc};
+use crate::types::{message_helpers, ExpectedResult, Message, MessageExt, PlantedInfo, Scenario, ScenarioType};
 
 /// Generate synthetic test scenarios
 pub fn generate_synthetic(count: usize) -> Vec<Scenario> {
@@ -36,32 +37,21 @@ fn generate_needle_scenario(variant: usize) -> Scenario {
     let total_messages = 150 + (variant * 20); // Vary conversation length
 
     let mut messages = Vec::new();
-    let base_time = Utc::now() - Duration::hours(3);
 
     // Generate conversation with planted needle
     for i in 0..total_messages {
-        let time = base_time + Duration::minutes(i as i64 * 2);
-
         if i == needle_position {
             // Plant the needle
-            messages.push(
-                Message::user(format!(
-                    "By the way, I set the {} to {} in the .env file",
-                    key_name, key_value
-                ))
-                .with_timestamp(time),
-            );
+            messages.push(message_helpers::user(format!(
+                "By the way, I set the {} to {} in the .env file",
+                key_name, key_value
+            )));
         } else if i % 2 == 0 {
             // User message (filler)
-            messages.push(
-                Message::user(generate_filler_user_message(i)).with_timestamp(time),
-            );
+            messages.push(message_helpers::user(generate_filler_user_message(i)));
         } else {
             // Assistant message (filler)
-            messages.push(
-                Message::assistant(generate_filler_assistant_message(i))
-                    .with_timestamp(time),
-            );
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
         }
     }
 
@@ -88,7 +78,6 @@ fn generate_needle_scenario(variant: usize) -> Scenario {
 /// Generate a multi-hop scenario requiring synthesis from multiple points
 fn generate_multi_hop_scenario(variant: usize) -> Scenario {
     let mut messages = Vec::new();
-    let base_time = Utc::now() - Duration::hours(4);
     let total_messages = 200;
 
     // Plant information at different points
@@ -105,22 +94,15 @@ fn generate_multi_hop_scenario(variant: usize) -> Scenario {
     ];
 
     for i in 0..total_messages {
-        let time = base_time + Duration::minutes(i as i64 * 2);
-
         // Check if this is a plant position
         let plant = plants.iter().find(|(pos, _)| *pos == i);
 
         if let Some((_, content)) = plant {
-            messages.push(Message::user(content.clone()).with_timestamp(time));
+            messages.push(message_helpers::user(content.clone()));
         } else if i % 2 == 0 {
-            messages.push(
-                Message::user(generate_filler_user_message(i)).with_timestamp(time),
-            );
+            messages.push(message_helpers::user(generate_filler_user_message(i)));
         } else {
-            messages.push(
-                Message::assistant(generate_filler_assistant_message(i))
-                    .with_timestamp(time),
-            );
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
         }
     }
 
@@ -154,7 +136,6 @@ fn generate_multi_hop_scenario(variant: usize) -> Scenario {
 /// Generate a cumulative scenario tracking changes over time
 fn generate_cumulative_scenario(variant: usize) -> Scenario {
     let mut messages = Vec::new();
-    let base_time = Utc::now() - Duration::hours(2);
 
     // Build up a function incrementally
     let function_versions = [
@@ -168,39 +149,31 @@ fn generate_cumulative_scenario(variant: usize) -> Scenario {
     let total_messages = 150;
 
     for i in 0..total_messages {
-        let time = base_time + Duration::minutes(i as i64);
-
         // Check if this is a version update
         let version = function_versions.iter().find(|(pos, _)| *pos == i);
 
         if let Some((_, code)) = version {
-            messages.push(
-                Message::user(format!("Update the function to: ```rust\n{}\n```", code))
-                    .with_timestamp(time),
-            );
-            messages.push(
-                Message::assistant(format!("Done, I've updated the calculate function."))
-                    .with_timestamp(time + Duration::seconds(30)),
-            );
+            messages.push(message_helpers::user(format!(
+                "Update the function to: ```rust\n{}\n```",
+                code
+            )));
+            messages.push(message_helpers::assistant(
+                "Done, I've updated the calculate function.".to_string(),
+            ));
         } else if i % 3 == 0 {
-            messages.push(
-                Message::user(generate_filler_user_message(i)).with_timestamp(time),
-            );
+            messages.push(message_helpers::user(generate_filler_user_message(i)));
         } else if i % 3 == 1 {
-            messages.push(
-                Message::assistant(generate_filler_assistant_message(i))
-                    .with_timestamp(time),
-            );
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
         } else {
-            // Add some tool results for variety
-            messages.push(
-                Message::tool_result("read_file", generate_filler_file_content(i))
-                    .with_timestamp(time),
-            );
+            // Add some tool results for variety - using a generic tool call id
+            messages.push(message_helpers::tool_result(
+                format!("call_{}", i),
+                generate_filler_file_content(i),
+            ));
         }
     }
 
-    let final_version = function_versions.last().unwrap().1;
+    let _final_version = function_versions.last().unwrap().1;
 
     Scenario {
         name: format!("cumulative_{}", variant),
@@ -308,6 +281,6 @@ mod tests {
         // Verify the planted message exists at the specified index
         let plant = &scenario.planted_info[0];
         let planted_message = &scenario.messages[plant.message_index];
-        assert!(planted_message.content.contains(&plant.value));
+        assert!(planted_message.text_content().contains(&plant.value));
     }
 }

@@ -9,6 +9,9 @@ name = "eval"
 path = "src/main.rs"
 
 [dependencies]
+# Core types from main crate
+everruns-core = { path = "../../crates/core" }
+
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
@@ -32,7 +35,7 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# For token estimation
+# For token estimation (still useful for accurate counting)
 tiktoken-rs = "0.6"
 
 # For colored terminal output

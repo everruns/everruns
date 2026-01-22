@@ -1,96 +1,61 @@
 //! Core types for the evaluation framework
+//!
+//! Uses types from everruns-core where possible, with thin wrappers
+//! for eval-specific functionality.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
 
-/// A message in a conversation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    pub id: Uuid,
-    pub role: MessageRole,
-    pub content: String,
-    pub timestamp: DateTime<Utc>,
-    /// For tool_result messages, the name of the tool
-    pub tool_name: Option<String>,
-    /// Estimated token count
-    #[serde(default)]
-    pub estimated_tokens: usize,
+// Re-export core types
+pub use everruns_core::capabilities::estimate_tokens;
+pub use everruns_core::message::{Message, MessageRole};
+
+/// Extension trait for Message with eval-specific helpers
+pub trait MessageExt {
+    /// Get text content as a single string
+    fn text_content(&self) -> String;
+    /// Estimate token count for this message
+    fn estimated_tokens(&self) -> usize;
 }
 
-impl Message {
-    pub fn user(content: impl Into<String>) -> Self {
-        let content = content.into();
-        let estimated_tokens = estimate_tokens(&content);
-        Self {
-            id: Uuid::new_v4(),
-            role: MessageRole::User,
-            content,
-            timestamp: Utc::now(),
-            tool_name: None,
-            estimated_tokens,
-        }
+impl MessageExt for Message {
+    fn text_content(&self) -> String {
+        self.content
+            .iter()
+            .filter_map(|part| part.as_text())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
-    pub fn assistant(content: impl Into<String>) -> Self {
-        let content = content.into();
-        let estimated_tokens = estimate_tokens(&content);
-        Self {
-            id: Uuid::new_v4(),
-            role: MessageRole::Assistant,
-            content,
-            timestamp: Utc::now(),
-            tool_name: None,
-            estimated_tokens,
-        }
-    }
-
-    pub fn tool_result(tool_name: impl Into<String>, content: impl Into<String>) -> Self {
-        let content = content.into();
-        let estimated_tokens = estimate_tokens(&content);
-        Self {
-            id: Uuid::new_v4(),
-            role: MessageRole::ToolResult,
-            content,
-            timestamp: Utc::now(),
-            tool_name: Some(tool_name.into()),
-            estimated_tokens,
-        }
-    }
-
-    pub fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
-        self.timestamp = timestamp;
-        self
+    fn estimated_tokens(&self) -> usize {
+        estimate_tokens(self)
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MessageRole {
-    User,
-    Assistant,
-    ToolResult,
-    System,
-}
+/// Helper to create messages for eval scenarios
+pub mod message_helpers {
+    use super::*;
 
-impl std::fmt::Display for MessageRole {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MessageRole::User => write!(f, "user"),
-            MessageRole::Assistant => write!(f, "assistant"),
-            MessageRole::ToolResult => write!(f, "tool_result"),
-            MessageRole::System => write!(f, "system"),
-        }
+    pub fn user(content: impl Into<String>) -> Message {
+        Message::user(content)
     }
-}
 
-/// Estimate token count using character approximation
-/// More accurate would be tiktoken, but this is sufficient for budgeting
-pub fn estimate_tokens(text: &str) -> usize {
-    // Rough approximation: 1 token ≈ 4 characters for English text
-    // This tends to overestimate slightly which is safer for budgeting
-    (text.len() + 3) / 4
+    pub fn assistant(content: impl Into<String>) -> Message {
+        Message::assistant(content)
+    }
+
+    pub fn system(content: impl Into<String>) -> Message {
+        Message::system(content)
+    }
+
+    pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Message {
+        Message::tool_result(
+            tool_call_id,
+            Some(serde_json::json!(content.into())),
+            None,
+        )
+    }
 }
 
 /// A test scenario definition
@@ -244,7 +209,7 @@ pub struct PreparedContext {
     pub estimated_tokens: usize,
 }
 
-/// Tool definition for the LLM
+/// Tool definition for the LLM (eval-specific, simpler than core)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
