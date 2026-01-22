@@ -2572,6 +2572,15 @@
             "type": "boolean",
             "description": "Whether all tool calls completed"
           },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Duration of the act phase in milliseconds",
+            "minimum": 0
+          },
           "error_count": {
             "type": "integer",
             "format": "int32",
@@ -5577,6 +5586,15 @@
           "tool_call_count"
         ],
         "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Duration of the reason phase in milliseconds",
+            "minimum": 0
+          },
           "error": {
             "type": [
               "string",
@@ -5604,6 +5622,17 @@
             "format": "int32",
             "description": "Number of tool calls requested",
             "minimum": 0
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Token usage from the LLM call"
+              }
+            ]
           }
         }
       },
@@ -6062,6 +6091,15 @@
           "status"
         ],
         "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Duration of the tool call in milliseconds",
+            "minimum": 0
+          },
           "error": {
             "type": [
               "string",
@@ -6231,6 +6269,13 @@
             "description": "Duration in milliseconds",
             "minimum": 0
           },
+          "input_content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Input message content (for observability, passed through from turn.started)"
+          },
           "iterations": {
             "type": "integer",
             "format": "int32",
@@ -6289,6 +6334,13 @@
           "input_message_id"
         ],
         "properties": {
+          "input_content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Input message content (for observability)"
+          },
           "input_message_id": {
             "type": "string",
             "description": "Input message ID that triggered this turn",
