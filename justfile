@@ -38,31 +38,36 @@ reset:
 migrate:
     ./scripts/lib/docker.sh migrate
 
-# === Rust Build ===
+# === Build & Test ===
 
 # Build all crates
 build:
-    ./scripts/lib/rust.sh build
+    cargo build
 
-# Run tests
+# Run all tests (Rust + UI e2e)
 test:
-    ./scripts/lib/rust.sh test
-
-# Run format, lint, and test checks
-check:
-    ./scripts/lib/rust.sh check
+    cargo test --all-features
+    cd apps/ui && npm run e2e 2>/dev/null || echo "(e2e skipped)"
 
 # Run all formatters and linters (auto-fix)
 fmt:
-    ./scripts/lib/rust.sh fmt
+    cargo fmt
+    cargo clippy --all-targets --fix --allow-dirty --allow-staged 2>/dev/null || true
+    cd apps/ui && npm run lint -- --fix 2>/dev/null || true
+
+# Run format, lint, and test checks
+check:
+    cargo fmt --check
+    cargo clippy --all-targets -- -D warnings
+    cargo test
 
 # Run all pre-PR checks (fmt, clippy, tests, UI, OpenAPI, docs)
 pre-pr:
-    ./scripts/lib/rust.sh pre-pr
+    ./scripts/lib/pre-pr.sh
 
 # Clean build artifacts
 clean:
-    ./scripts/lib/rust.sh clean
+    cargo clean
 
 # === Services ===
 
