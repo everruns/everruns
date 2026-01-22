@@ -26,6 +26,7 @@ use async_trait::async_trait;
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::{Atom, AtomContext};
 use crate::error::Result;
@@ -192,6 +193,9 @@ where
             Some(parent_span_id.clone()),
         );
 
+        // Track act phase timing for Braintrust observability
+        let act_start = Instant::now();
+
         // Emit act.started event
         if let Err(e) = self
             .event_emitter
@@ -241,6 +245,9 @@ where
         let success_count = results.iter().filter(|r| r.success).count() as u32;
         let error_count = results.iter().filter(|r| !r.success).count() as u32;
 
+        // Calculate act phase duration
+        let act_duration_ms = act_start.elapsed().as_millis() as u64;
+
         // Emit act.completed event (same span as act.started, parent is turn)
         let completed_context = EventContext::from_atom_context(&context).with_span(
             trace_id.clone(),
@@ -256,6 +263,7 @@ where
                     completed: true,
                     success_count,
                     error_count,
+                    duration_ms: Some(act_duration_ms),
                 },
             ))
             .await

@@ -720,6 +720,25 @@ impl BraintrustListener {
             "text_preview": data.text_preview,
         });
 
+        // Build metrics if we have duration/usage for timeline display
+        let metrics = if data.duration_ms.is_some() || data.usage.is_some() {
+            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let start_time = data.duration_ms.map(|d| end_time - (d as f64 / 1000.0));
+
+            Some(BraintrustMetrics {
+                start: start_time,
+                end: Some(end_time),
+                prompt_tokens: data.usage.as_ref().map(|u| u.input_tokens),
+                completion_tokens: data.usage.as_ref().map(|u| u.output_tokens),
+                tokens: data.usage.as_ref().map(|u| u.total_tokens()),
+                time_to_first_token: None,
+                cache_read_tokens: data.usage.as_ref().and_then(|u| u.cache_read_tokens),
+                cache_creation_tokens: data.usage.as_ref().and_then(|u| u.cache_creation_tokens),
+            })
+        } else {
+            None
+        };
+
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
@@ -740,7 +759,7 @@ impl BraintrustListener {
             output: Some(output),
             error: data.error.clone(),
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "reason".to_string(),
                 span_type: "task".to_string(),
@@ -817,6 +836,23 @@ impl BraintrustListener {
             "error_count": data.error_count,
         });
 
+        // Build metrics if we have duration for timeline display
+        let metrics = data.duration_ms.map(|duration_ms| {
+            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let start_time = end_time - (duration_ms as f64 / 1000.0);
+
+            BraintrustMetrics {
+                start: Some(start_time),
+                end: Some(end_time),
+                prompt_tokens: None,
+                completion_tokens: None,
+                tokens: None,
+                time_to_first_token: None,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+            }
+        });
+
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
@@ -837,7 +873,7 @@ impl BraintrustListener {
             output: Some(output),
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "act".to_string(),
                 span_type: "task".to_string(),
@@ -1493,6 +1529,8 @@ mod tests {
             has_tool_calls: false,
             tool_call_count: 0,
             error: None,
+            duration_ms: Some(1500),
+            usage: None,
         };
         let completed_event = Event::new(
             SessionId::new(),

@@ -1011,7 +1011,7 @@ mod tests {
         use everruns_core::events::ReasonCompletedData;
 
         // Create test data
-        let data = ReasonCompletedData::success("Test response", true, 3);
+        let data = ReasonCompletedData::success("Test response", true, 3, Some(2000), None);
 
         // Serialize to JSON
         let json = serde_json::to_value(&data).unwrap();
