@@ -18,8 +18,12 @@ pub mod storage;
 // OpenAPI spec generation
 pub mod openapi;
 
-// DEV_MODE in-process worker
+// DEV_MODE in-process worker (legacy, to be removed)
 pub mod dev_worker;
+
+// Direct worker adapters for in-process unified worker
+pub mod direct_worker_adapters;
+pub use direct_worker_adapters::DirectWorkerAdapters;
 
 // Task notification broadcaster for push-based notifications
 pub mod task_notifications;
