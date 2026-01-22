@@ -24,6 +24,20 @@ use crate::events::Event;
 /// - Analytics and metrics collection
 /// - Audit logging
 ///
+/// ## Stateless Design Requirement
+///
+/// **Listeners MUST be stateless.** This is a critical architectural requirement because:
+///
+/// 1. **Multi-process/container deployment**: Listeners can run in different processes
+/// 2. **Event ordering**: Events may arrive out of order across instances
+/// 3. **Process restarts**: State would be lost on restart
+/// 4. **Horizontal scaling**: Multiple listener instances should work independently
+///
+/// Use `EventContext` span fields (`trace_id`, `span_id`, `parent_span_id`) for
+/// hierarchical correlation instead of tracking state.
+///
+/// ## Performance
+///
 /// Listeners should be fast and non-blocking. For heavy processing,
 /// consider spawning background tasks.
 ///

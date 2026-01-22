@@ -97,13 +97,18 @@ Everruns emits both OpenTelemetry gen-ai and OpenInference attributes for maximu
 
 ### Span Hierarchy
 
-Spans are hierarchical to show the full agentic loop:
+Spans are hierarchical to show the full agentic loop. Hierarchy is achieved through
+span context fields in `EventContext`:
+
+- `trace_id`: Groups all spans in a turn (typically the turn_id string)
+- `span_id`: Unique identifier for each span
+- `parent_span_id`: Links child spans to parents
 
 ```
-AGENT span (turn.started → turn.completed)
-├── LLM span (llm.generation)
-├── TOOL span (tool.call_started → tool.call_completed)
-├── LLM span (llm.generation)
+AGENT span (turn.started/completed)
+├── LLM span (llm.generation) - parent_span_id → turn span
+├── TOOL span (tool.call_started/completed) - parent_span_id → turn span
+├── LLM span (llm.generation) - parent_span_id → turn span
 └── ...
 ```
 
@@ -117,21 +122,19 @@ This hierarchy enables Phoenix to visualize:
 
 1. **AGENT Spans** (`openinference.span.kind=AGENT`):
    - **Root span** for each conversation turn
-   - Opened at `turn.started`, closed at `turn.completed`
-   - Children: LLM spans and TOOL spans
+   - Created for `turn.started`, `turn.completed`, `turn.failed`, `turn.cancelled`
    - Includes aggregated token usage, iteration count, total duration
    - Name format: `agent_turn {turn_id}`
 
 2. **LLM Spans** (`openinference.span.kind=LLM`):
-   - **Child of AGENT span**
    - Created for each `llm.generation` event
-   - Point-in-time span (represents completed generation)
+   - Linked to parent turn via `parent_span_id`
    - Includes token counts, latency, model info, finish reason
    - Name format: `chat {model}`
 
 3. **TOOL Spans** (`openinference.span.kind=TOOL`):
-   - **Child of AGENT span**
-   - Opened at `tool.call_started`, closed at `tool.call_completed`
+   - Created for `tool.call_started`, `tool.call_completed`
+   - Linked to parent turn via `parent_span_id`
    - Includes tool name, success status, execution duration
    - Name format: `tool {name}`
 
@@ -182,32 +185,45 @@ just start-docker
 
 ## Implementation Details
 
+### Stateless Design Requirement
+
+**Event listeners MUST be stateless.** This is a critical architectural requirement because:
+
+1. **Multi-process/container deployment**: Listeners can run in different processes or containers
+2. **Event ordering**: Events may arrive out of order across different instances
+3. **Process restarts**: State would be lost on restart
+4. **Horizontal scaling**: Multiple listener instances should work independently
+
+The `EventContext` provides all necessary span context for correlation:
+
+```rust
+pub struct EventContext {
+    pub trace_id: Option<String>,      // Groups spans in a turn
+    pub span_id: Option<String>,       // This span's unique ID
+    pub parent_span_id: Option<String>, // Parent span for hierarchy
+    // ...
+}
+```
+
 ### OtelEventListener
 
 Location: `crates/core/src/observation/otel.rs`
 
-The listener maintains **hierarchical spans** across event boundaries:
+The listener is **completely stateless** - it creates point-in-time spans for each event
+and relies on `EventContext` span fields for hierarchical correlation:
 
 ```rust
-pub struct OtelEventListener {
-    /// Active turns per session (only one turn active per session)
-    /// Key: session_id, Value: active turn info with span
-    active_turns: Mutex<HashMap<Uuid, ActiveTurn>>,
-
-    /// Active tool calls (can have multiple concurrent)
-    /// Key: tool_call_id, Value: active tool call info with span
-    active_tool_calls: Mutex<HashMap<String, ActiveToolCall>>,
-}
+#[derive(Default)]
+pub struct OtelEventListener;  // No state!
 
 impl EventListener for OtelEventListener {
     async fn on_event(&self, event: &Event) {
         match &event.data {
-            // AGENT span lifecycle
             EventData::TurnStarted(data) => self.handle_turn_started(event, data),
             EventData::TurnCompleted(data) => self.handle_turn_completed(event, data),
-            // LLM span (child of AGENT)
+            EventData::TurnFailed(data) => self.handle_turn_failed(event, data),
+            EventData::TurnCancelled(data) => self.handle_turn_cancelled(event, data),
             EventData::LlmGeneration(data) => self.handle_llm_generation(event, data),
-            // TOOL span lifecycle (child of AGENT)
             EventData::ToolCallStarted(data) => self.handle_tool_call_started(event, data),
             EventData::ToolCallCompleted(data) => self.handle_tool_call_completed(event, data),
             _ => {}
@@ -218,10 +234,10 @@ impl EventListener for OtelEventListener {
 
 **Key implementation details:**
 
-1. **AGENT spans are kept open** from `turn.started` until `turn.completed`
-2. **LLM spans are created as children** using `parent.in_scope(|| create_span())`
-3. **TOOL spans are kept open** from `tool.call_started` until `tool.call_completed`
-4. **Session-based correlation**: Only one turn active per session, so `session_id` links child events to parent turn
+1. **Stateless design**: No shared state, each event processed independently
+2. **Span context from EventContext**: Uses `trace_id`, `span_id`, `parent_span_id` for hierarchy
+3. **Cross-correlation attributes**: Emits `everruns.trace_id`, `everruns.span_id`, `everruns.parent_span_id`
+4. **Point-in-time spans**: All spans are instant duration; backends correlate via span IDs
 
 ### Telemetry Module
 
