@@ -8,14 +8,14 @@ mod grpc_service;
 mod seed;
 
 // Use modules from library
+use everruns_control_plane::DirectWorkerAdapters;
 use everruns_control_plane::api;
 use everruns_control_plane::auth;
-use everruns_control_plane::DirectWorkerAdapters;
-use everruns_worker::{TaskWorker, TaskWorkerConfig};
 use everruns_control_plane::openapi::ApiDoc;
 use everruns_control_plane::services;
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
 use everruns_control_plane::task_notifications::TaskNotificationBroadcaster;
+use everruns_worker::{TaskWorker, TaskWorkerConfig};
 
 use anyhow::{Context, Result};
 use axum::http::{HeaderValue, Method, header};
@@ -520,9 +520,7 @@ async fn main() -> Result<()> {
                 }
             });
 
-            tracing::info!(
-                "DEV MODE: Task worker started - control-plane is fully functional"
-            );
+            tracing::info!("DEV MODE: Task worker started - control-plane is fully functional");
         } else {
             tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }

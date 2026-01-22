@@ -365,7 +365,12 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionFileStore for AdapterSessi
             .await
     }
 
-    async fn delete_file(&self, session_id: SessionId, path: &str, recursive: bool) -> Result<bool> {
+    async fn delete_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
         self.adapters
             .delete_file(session_id.uuid(), path, recursive)
             .await
@@ -391,6 +396,8 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionFileStore for AdapterSessi
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
-        self.adapters.create_directory(session_id.uuid(), path).await
+        self.adapters
+            .create_directory(session_id.uuid(), path)
+            .await
     }
 }
