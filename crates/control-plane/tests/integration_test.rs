@@ -3529,9 +3529,13 @@ async fn test_agent_execution_multiple_tool_calls() {
 /// Test that streaming events are emitted during LLM generation.
 ///
 /// This test verifies that:
-/// 1. `agent.thinking` event is emitted when LLM starts generating
+/// 1. `reason.thinking.started` event is emitted when LLM starts generating
 /// 2. `text.delta` events are emitted with delta and accumulated fields
 /// 3. `llm.generation` event includes time_to_first_token_ms
+///
+/// Note: This test uses LlmSim which simulates streaming but does not produce
+/// extended thinking events (reason.thinking.delta, reason.thinking.completed).
+/// To test full extended thinking flow, use a real Anthropic model with reasoning_effort.
 #[tokio::test]
 async fn test_streaming_events_emitted() {
     use std::time::Duration;
@@ -3713,25 +3717,28 @@ async fn test_streaming_events_emitted() {
         .as_array()
         .expect("Expected events array");
 
-    // Check for agent.thinking event
+    // Check for reason.thinking.started event (renamed from agent.thinking)
     let thinking_events: Vec<_> = events
         .iter()
-        .filter(|e| e["type"] == "agent.thinking")
+        .filter(|e| e["type"] == "reason.thinking.started")
         .collect();
-    println!("Found {} agent.thinking events", thinking_events.len());
+    println!(
+        "Found {} reason.thinking.started events",
+        thinking_events.len()
+    );
     assert!(
         !thinking_events.is_empty(),
-        "Expected at least one agent.thinking event"
+        "Expected at least one reason.thinking.started event"
     );
 
-    // Verify agent.thinking has turn_id
+    // Verify reason.thinking.started has turn_id
     let thinking_event = &thinking_events[0];
     assert!(
         thinking_event["data"]["turn_id"].is_string(),
-        "agent.thinking should have turn_id"
+        "reason.thinking.started should have turn_id"
     );
     println!(
-        "agent.thinking event: turn_id={}, model={:?}",
+        "reason.thinking.started event: turn_id={}, model={:?}",
         thinking_event["data"]["turn_id"], thinking_event["data"]["model"]
     );
 
