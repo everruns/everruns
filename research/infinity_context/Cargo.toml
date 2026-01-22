@@ -12,9 +12,14 @@ path = "src/main.rs"
 # Core types from main crate
 everruns-core = { path = "../../crates/core" }
 
+# LLM provider drivers
+everruns-anthropic = { path = "../../crates/anthropic" }
+everruns-openai = { path = "../../crates/openai" }
+
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
+async-trait = "0.1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

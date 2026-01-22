@@ -4,12 +4,93 @@
 //! for eval-specific functionality.
 
 use chrono::{DateTime, Utc};
+use everruns_core::message::ContentPart;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // Re-export core types
-pub use everruns_core::capabilities::estimate_tokens;
 pub use everruns_core::message::{Message, MessageRole};
+
+// ============================================================================
+// Token Estimation
+// ============================================================================
+
+/// Estimate token count from message content
+/// Uses character-based approximation: ~4 chars per token for English
+pub fn estimate_tokens(message: &Message) -> usize {
+    let content_len: usize = message
+        .content
+        .iter()
+        .map(|part| match part {
+            ContentPart::Text(t) => t.text.len(),
+            ContentPart::ToolCall(tc) => tc.name.len() + tc.arguments.to_string().len(),
+            ContentPart::ToolResult(tr) => {
+                tr.result.as_ref().map(|v| v.to_string().len()).unwrap_or(0)
+                    + tr.error.as_ref().map(|e| e.len()).unwrap_or(0)
+            }
+            ContentPart::Image(_) | ContentPart::ImageFile(_) => 1000, // Images ~1k tokens
+        })
+        .sum();
+
+    // Rough approximation: 1 token ≈ 4 characters
+    (content_len + 3) / 4
+}
+
+/// Estimate total tokens for a slice of messages
+pub fn estimate_total_tokens(messages: &[Message]) -> usize {
+    messages.iter().map(estimate_tokens).sum()
+}
+
+// ============================================================================
+// Context Strategy Configuration
+// ============================================================================
+
+/// Configuration for context strategy capabilities
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextStrategyConfig {
+    /// Maximum tokens to send to LLM (default: 100000)
+    #[serde(default = "default_budget")]
+    pub context_budget_tokens: usize,
+
+    /// Minimum recent messages to always keep (default: 10)
+    #[serde(default = "default_min_recent")]
+    pub min_recent_messages: usize,
+
+    /// Boost more recent messages in search results (default: true)
+    #[serde(default = "default_true")]
+    pub boost_recency: bool,
+
+    /// Boost user/assistant messages over tool results (default: true)
+    #[serde(default = "default_true")]
+    pub boost_conversation: bool,
+}
+
+fn default_budget() -> usize {
+    100_000
+}
+
+fn default_min_recent() -> usize {
+    10
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for ContextStrategyConfig {
+    fn default() -> Self {
+        Self {
+            context_budget_tokens: default_budget(),
+            min_recent_messages: default_min_recent(),
+            boost_recency: true,
+            boost_conversation: true,
+        }
+    }
+}
+
+// ============================================================================
+// Message Extension Trait
+// ============================================================================
 
 /// Extension trait for Message with eval-specific helpers
 pub trait MessageExt {

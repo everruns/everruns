@@ -4,13 +4,17 @@
 //! - Baseline: Send all messages (fails on long conversations)
 //! - Naive trim: Drop oldest messages (loses context)
 //! - Infinity: Trim + history query tool (proposed solution)
+//!
+//! The strategies are implemented as capabilities using the core infrastructure
+//! (Capability trait, MessageFilterProvider, etc.) but live here for research.
 
+pub mod capabilities;
 mod metrics;
 mod report;
 mod runner;
 mod scenarios;
 mod strategies;
-mod types;
+pub mod types;
 
 use anyhow::Result;
 use clap::Parser;

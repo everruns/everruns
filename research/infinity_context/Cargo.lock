@@ -732,6 +732,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-anthropic"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "eventsource-stream",
+ "everruns-core",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "everruns-core"
 version = "0.4.0"
 dependencies = [
@@ -764,10 +782,13 @@ name = "everruns-evals"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "clap",
  "colored",
+ "everruns-anthropic",
  "everruns-core",
+ "everruns-openai",
  "futures",
  "regex",
  "reqwest",
@@ -782,6 +803,24 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "everruns-openai"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "eventsource-stream",
+ "everruns-core",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

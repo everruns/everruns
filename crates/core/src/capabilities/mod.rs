@@ -32,7 +32,6 @@ pub use crate::capability_types::{
 // Capability Modules
 // ============================================================================
 
-mod context_strategies;
 mod current_time;
 mod docker_container;
 mod fake_aws;
@@ -52,10 +51,6 @@ mod test_weather;
 mod web_fetch;
 
 // Re-export capabilities
-pub use context_strategies::{
-    ContextStrategyConfig, InfinityContextCapability, NaiveTrimCapability, QueryHistoryTool,
-    estimate_tokens, estimate_total_tokens,
-};
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use docker_container::{
     DockerContainerCapability, DockerContainerConfig, DockerExecTool, DockerReadFileTool,
@@ -290,10 +285,6 @@ impl CapabilityRegistry {
         registry.register(FakeAwsCapability);
         registry.register(FakeCrmCapability);
         registry.register(FakeFinancialCapability);
-
-        // Context strategy capabilities (all environments)
-        registry.register(NaiveTrimCapability);
-        registry.register(InfinityContextCapability);
 
         // Experimental capabilities (dev only)
         if grade.experimental_features_enabled() {
@@ -869,7 +860,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability included in dev
         assert!(registry.has("docker_container"));
-        assert_eq!(registry.len(), 18);
+        assert_eq!(registry.len(), 16);
     }
 
     #[test]
@@ -894,7 +885,7 @@ mod tests {
         assert!(registry.has("fake_financial"));
         // Experimental capability NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert_eq!(registry.len(), 17);
+        assert_eq!(registry.len(), 15);
     }
 
     #[test]

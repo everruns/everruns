@@ -1,8 +1,8 @@
 //! Context management strategies
 //!
-//! Each strategy defines how to prepare messages for LLM context.
-//! These strategies mirror the capabilities in everruns-core but are
-//! adapted for the evaluation framework.
+//! Strategies wrap the capability implementations for use in the evaluation
+//! framework. They provide the ContextStrategy trait interface while delegating
+//! to the underlying Capability and MessageFilterProvider implementations.
 
 mod baseline;
 mod infinity;
@@ -17,6 +17,9 @@ use anyhow::Result;
 use std::sync::Arc;
 
 /// Strategy for managing conversation context
+///
+/// This trait defines the interface used by the evaluation runner.
+/// Implementations wrap the capability-based context strategies.
 pub trait ContextStrategy: Send + Sync {
     /// Name of the strategy for reporting
     fn name(&self) -> &str;
@@ -31,7 +34,6 @@ pub trait ContextStrategy: Send + Sync {
     fn prepare_context(&self, messages: &[Message], budget_tokens: usize) -> PreparedContext;
 
     /// Handle a tool call from the LLM (for strategies that provide tools)
-    /// Returns the tool result content
     fn handle_tool_call(
         &self,
         _tool_call: &ToolCall,

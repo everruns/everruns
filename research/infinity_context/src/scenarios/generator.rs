@@ -2,7 +2,7 @@
 //!
 //! Uses everruns-core Message type for test scenarios.
 
-use crate::types::{message_helpers, ExpectedResult, Message, MessageExt, PlantedInfo, Scenario, ScenarioType};
+use crate::types::{message_helpers, ExpectedResult, PlantedInfo, Scenario, ScenarioType};
 
 /// Generate synthetic test scenarios
 pub fn generate_synthetic(count: usize) -> Vec<Scenario> {
@@ -257,6 +257,7 @@ fn generate_filler_file_content(seed: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::MessageExt;
 
     #[test]
     fn test_generate_synthetic_scenarios() {
