@@ -108,11 +108,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
         };
 
         Ok(row.map(|r| Agent {
-            id: r.id.into(),
+            id: r.id,
             name: r.name,
             description: r.description,
             system_prompt: r.system_prompt,
-            default_model_id: r.default_model_id.map(|id| id.into()),
+            default_model_id: r.default_model_id,
             tags: r.tags,
             capabilities: capabilities
                 .into_iter()
@@ -145,13 +145,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
             })?;
 
         Ok(row.map(|r| Session {
-            id: r.id.into(),
-            agent_id: r.agent_id.into(),
+            id: r.id,
+            agent_id: r.agent_id,
             title: r.title,
             preview: None,
             output_preview: None,
             tags: r.tags,
-            model_id: r.model_id.map(|id| id.into()),
+            model_id: r.model_id,
             status: match r.status.as_str() {
                 "started" => SessionStatus::Started,
                 "active" => SessionStatus::Active,
