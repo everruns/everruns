@@ -52,6 +52,10 @@ test:
 check:
     ./scripts/lib/rust.sh check
 
+# Run all formatters and linters (auto-fix)
+fmt:
+    ./scripts/lib/rust.sh fmt
+
 # Run all pre-PR checks (fmt, clippy, tests, UI, OpenAPI, docs)
 pre-pr:
     ./scripts/lib/rust.sh pre-pr

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rust operations: build, test, check, pre-pr, clean
+# Rust operations: build, test, check, fmt, pre-pr, clean
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -16,6 +16,19 @@ case "$cmd" in
     echo "🧪 Running tests..."
     cargo test
     echo "✅ Tests complete!"
+    ;;
+
+  fmt)
+    echo "🎨 Running formatters and linters..."
+    echo "  - Rust formatting..."
+    cargo fmt
+    echo "  - Rust lint fixes..."
+    cargo clippy --all-targets --fix --allow-dirty --allow-staged 2>/dev/null || true
+    echo "  - UI lint fixes..."
+    cd "$PROJECT_ROOT/apps/ui"
+    npm run lint -- --fix 2>/dev/null || true
+    cd "$PROJECT_ROOT"
+    echo "✅ Formatting complete!"
     ;;
 
   check)
@@ -153,7 +166,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "Usage: $0 {build|test|check|pre-pr|clean}"
+    echo "Usage: $0 {build|test|check|fmt|pre-pr|clean}"
     exit 1
     ;;
 esac
