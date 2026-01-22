@@ -79,7 +79,7 @@ fn default_limit() -> i64 {
 /// Query parameters for image upload
 #[derive(Debug, Deserialize)]
 pub struct UploadImageQuery {
-    /// Optional session ID for metadata tracking
+    /// Optional session ID stored as metadata for tracking (not required for upload)
     pub session_id: Option<Uuid>,
 }
 
@@ -174,7 +174,7 @@ fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, Strin
     path = "/v1/orgs/{org}/images",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("session_id" = Option<Uuid>, Query, description = "Optional session ID for tracking")
+        ("session_id" = Option<Uuid>, Query, description = "Optional: session ID stored as metadata for tracking (not required for upload)")
     ),
     request_body(content = String, description = "Multipart form data with 'file' field", content_type = "multipart/form-data"),
     responses(
