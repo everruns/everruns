@@ -84,7 +84,7 @@ case "$cmd" in
         sleep 1
       done
       echo "   ✅ PostgreSQL is ready"
-    elif pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; then
+    elif check_port_open "$DB_HOST" "$DB_PORT"; then
       echo "   ✅ Local PostgreSQL is ready"
       DB_USER="${DB_USER:-postgres}"
       DB_PASS="${DB_PASS:-postgres}"
