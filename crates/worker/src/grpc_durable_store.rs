@@ -30,13 +30,14 @@ pub struct GrpcDurableStore {
 
 impl GrpcDurableStore {
     /// Connect to the control-plane gRPC service with retry logic.
-    /// Retries with exponential backoff for up to 27 seconds total.
+    /// Retries with exponential backoff for up to 5 seconds total.
+    /// Fails fast to allow orchestrator/script-level restarts.
     pub async fn connect(address: &str) -> Result<Self> {
         use std::time::Duration;
         use tokio::time::sleep;
 
         let endpoint = format!("http://{}", address);
-        let max_duration = Duration::from_secs(27);
+        let max_duration = Duration::from_secs(5);
         let initial_backoff = Duration::from_millis(100);
         let max_backoff = Duration::from_secs(1);
 
@@ -578,7 +579,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Takes 27+ seconds to run
     async fn test_connect_fails_after_timeout_on_unavailable_server() {
         // Verify connection fails with clear error after retry timeout
         // when control-plane is unavailable
@@ -588,15 +588,15 @@ mod tests {
         assert!(result.is_err());
         let elapsed = start.elapsed();
 
-        // Should take ~27 seconds (the retry timeout)
+        // Should take ~5 seconds (the retry timeout)
         assert!(
-            elapsed.as_secs() >= 26,
-            "Should retry for at least 26 seconds, got {:?}",
+            elapsed.as_secs() >= 4,
+            "Should retry for at least 4 seconds, got {:?}",
             elapsed
         );
         assert!(
-            elapsed.as_secs() <= 32,
-            "Should not take more than 32 seconds, got {:?}",
+            elapsed.as_secs() <= 8,
+            "Should not take more than 8 seconds, got {:?}",
             elapsed
         );
 
@@ -608,7 +608,7 @@ mod tests {
             err_msg
         );
         assert!(
-            err_msg.contains("27") || err_msg.contains("attempts"),
+            err_msg.contains("5") || err_msg.contains("attempts"),
             "Error should mention timeout or attempts: {}",
             err_msg
         );

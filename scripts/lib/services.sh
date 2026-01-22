@@ -384,10 +384,10 @@ case "$cmd" in
     done
 
     # Start Worker with restart-on-crash logic
-    # Restarts every 5 seconds for up to 30 seconds if worker fails to connect
+    # Restarts every 5 seconds for up to 90 seconds if worker fails to connect
     start_worker_with_restart() {
       local start_time=$(date +%s)
-      local max_duration=30
+      local max_duration=90
       local retry_delay=5
 
       while true; do
