@@ -374,6 +374,7 @@ export interface ToolCallCompletedData {
   status: "success" | "error" | "timeout" | "cancelled";
   result?: ContentPart[];
   error?: string;
+  duration_ms?: number;
 }
 
 /** LLM generation output */

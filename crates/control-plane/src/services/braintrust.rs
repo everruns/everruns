@@ -534,6 +534,23 @@ impl BraintrustListener {
             metadata["turn_id"] = serde_json::json!(turn_id.to_string());
         }
 
+        // Build metrics if we have duration for timeline display
+        let metrics = data.duration_ms.map(|duration_ms| {
+            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let start_time = end_time - (duration_ms as f64 / 1000.0);
+
+            BraintrustMetrics {
+                start: Some(start_time),
+                end: Some(end_time),
+                prompt_tokens: None,
+                completion_tokens: None,
+                tokens: None,
+                time_to_first_token: None,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+            }
+        });
+
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
@@ -547,7 +564,7 @@ impl BraintrustListener {
             output: Some(output),
             error: data.error.clone(),
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: format!("tool {}", data.tool_name),
                 span_type: "tool".to_string(),
@@ -1470,6 +1487,7 @@ mod tests {
             status: "success".to_string(),
             result: None,
             error: None,
+            duration_ms: Some(200),
         };
         let event = Event::new(
             SessionId::new(),
@@ -1678,6 +1696,7 @@ mod tests {
             status: "success".to_string(),
             result: None,
             error: None,
+            duration_ms: Some(75),
         };
         let tool_event = Event::new(
             SessionId::new(),

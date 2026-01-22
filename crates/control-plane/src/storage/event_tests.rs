@@ -64,6 +64,7 @@ fn test_tool_call_completed_event_serialization() {
         "call_abc123".to_string(),
         "get_weather".to_string(),
         vec![ContentPart::text("Sunny, 72°F")],
+        Some(150),
     );
     let event = Event::new(session_id, EventContext::empty(), completed);
 
@@ -101,6 +102,7 @@ fn test_tool_call_completed_error_serialization() {
         "read_file".to_string(),
         "error".to_string(),
         "File not found".to_string(),
+        Some(50),
     );
     let event = Event::new(session_id, EventContext::empty(), completed);
 

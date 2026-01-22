@@ -518,6 +518,7 @@ mod tests {
             status: "success".to_string(),
             result: None,
             error: None,
+            duration_ms: Some(100),
         };
 
         let complete_event = Event::new(
@@ -542,6 +543,7 @@ mod tests {
             status: "error".to_string(),
             result: None,
             error: Some("Connection timeout".to_string()),
+            duration_ms: None,
         };
 
         let event = Event::new(
@@ -668,6 +670,7 @@ mod tests {
                 status: "success".to_string(),
                 result: None,
                 error: None,
+                duration_ms: Some(50),
             };
 
             let event = Event::new(

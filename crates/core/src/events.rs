@@ -626,10 +626,19 @@ pub struct ToolCallCompletedData {
     /// Error message if failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+
+    /// Duration of the tool call in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 impl ToolCallCompletedData {
-    pub fn success(tool_call_id: String, tool_name: String, result: Vec<ContentPart>) -> Self {
+    pub fn success(
+        tool_call_id: String,
+        tool_name: String,
+        result: Vec<ContentPart>,
+        duration_ms: Option<u64>,
+    ) -> Self {
         Self {
             tool_call_id,
             tool_name,
@@ -637,10 +646,17 @@ impl ToolCallCompletedData {
             status: "success".to_string(),
             result: Some(result),
             error: None,
+            duration_ms,
         }
     }
 
-    pub fn failure(tool_call_id: String, tool_name: String, status: String, error: String) -> Self {
+    pub fn failure(
+        tool_call_id: String,
+        tool_name: String,
+        status: String,
+        error: String,
+        duration_ms: Option<u64>,
+    ) -> Self {
         Self {
             tool_call_id,
             tool_name,
@@ -648,6 +664,7 @@ impl ToolCallCompletedData {
             status,
             result: None,
             error: Some(error),
+            duration_ms,
         }
     }
 }

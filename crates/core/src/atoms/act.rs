@@ -328,6 +328,9 @@ where
             Some(act_span_id.to_string()),
         );
 
+        // Track tool call timing for Braintrust observability
+        let tool_start = Instant::now();
+
         // Emit tool.call_started event (child of act.started)
         if let Err(e) = self
             .event_emitter
@@ -351,6 +354,7 @@ where
         // If tool definition not found, return error result
         let Some(tool_def) = tool_def else {
             let error_msg = format!("Tool definition not found: {}", tool_call.name);
+            let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
 
             // Emit tool.call_completed event for error (child of act.started)
             if let Err(e) = self
@@ -363,6 +367,7 @@ where
                         tool_call.name.clone(),
                         "error".to_string(),
                         error_msg.clone(),
+                        Some(tool_duration_ms),
                     ),
                 ))
                 .await
@@ -399,6 +404,7 @@ where
 
         match result {
             Ok(tool_result) => {
+                let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
                 let success = tool_result.error.is_none();
                 let status = if success { "success" } else { "error" };
 
@@ -414,6 +420,7 @@ where
                         tool_call.id.clone(),
                         tool_call.name.clone(),
                         result_content,
+                        Some(tool_duration_ms),
                     )
                 } else {
                     ToolCallCompletedData::failure(
@@ -421,6 +428,7 @@ where
                         tool_call.name.clone(),
                         status.to_string(),
                         tool_result.error.clone().unwrap_or_default(),
+                        Some(tool_duration_ms),
                     )
                 };
 
@@ -457,6 +465,7 @@ where
                 }
             }
             Err(e) => {
+                let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
                 let error_msg = e.to_string();
 
                 // Emit tool.call_completed event for error
@@ -470,6 +479,7 @@ where
                             tool_call.name.clone(),
                             "error".to_string(),
                             error_msg.clone(),
+                            Some(tool_duration_ms),
                         ),
                     ))
                     .await
