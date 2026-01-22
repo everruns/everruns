@@ -4061,13 +4061,13 @@ async fn test_anthropic_extended_thinking() {
     let model: LlmModel = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {} ({})", model.display_name, model.id);
 
-    // Step 2: Create agent
+    // Step 2: Create agent (no tool calls - tests basic thinking flow)
     println!("\nStep 2: Creating agent...");
     let agent_response = client
         .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
             "name": "Thinking Test Agent",
-            "system_prompt": "You are a helpful assistant. When asked a math question, think through the problem step by step.",
+            "system_prompt": "You are a helpful assistant. Think through problems step by step.",
             "default_model_id": model.id
         }))
         .send()
@@ -4107,7 +4107,7 @@ async fn test_anthropic_extended_thinking() {
         ))
         .json(&json!({
             "message": {
-                "content": [{"type": "text", "text": "What is 17 * 23?"}]
+                "content": [{"type": "text", "text": "What is 17 * 23? Show your reasoning."}]
             },
             "controls": {
                 "reasoning": {
