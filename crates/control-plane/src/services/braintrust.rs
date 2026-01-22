@@ -344,6 +344,19 @@ impl BraintrustListener {
             }))
         };
 
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
         BraintrustLogEvent {
             id: turn_id_str.clone(), // Use turn_id as span ID for parent linking
             created: event.ts,
@@ -351,7 +364,7 @@ impl BraintrustListener {
             output: None,
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "agent turn".to_string(),
                 span_type: "task".to_string(),
@@ -377,7 +390,7 @@ impl BraintrustListener {
 
         // Build metrics if we have usage/duration (with prompt caching support)
         let metrics = if data.usage.is_some() || data.duration_ms.is_some() {
-            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
             let start_time = data.duration_ms.map(|d| end_time - (d as f64 / 1000.0));
 
             Some(BraintrustMetrics {
@@ -468,7 +481,7 @@ impl BraintrustListener {
 
         // Build metrics with prompt caching support
         let metrics = data.metadata.usage.as_ref().map(|usage| {
-            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
             let start_time = data
                 .metadata
                 .duration_ms
@@ -549,7 +562,7 @@ impl BraintrustListener {
 
         // Build metrics if we have duration for timeline display
         let metrics = data.duration_ms.map(|duration_ms| {
-            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
             let start_time = end_time - (duration_ms as f64 / 1000.0);
 
             BraintrustMetrics {
@@ -638,7 +651,7 @@ impl BraintrustListener {
         // Build metrics if we have usage
         let metrics = data.usage.as_ref().map(|usage| BraintrustMetrics {
             start: None,
-            end: Some(event.ts.timestamp_millis() as f64 / 1000.0),
+            end: Some(event.ts.timestamp_micros() as f64 / 1_000_000.0),
             prompt_tokens: Some(usage.input_tokens),
             completion_tokens: Some(usage.output_tokens),
             tokens: Some(usage.total_tokens()),
@@ -710,6 +723,19 @@ impl BraintrustListener {
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
 
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
         BraintrustLogEvent {
             id: log_id,
             created: event.ts,
@@ -717,7 +743,7 @@ impl BraintrustListener {
             output: None,
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "reason".to_string(),
                 span_type: "task".to_string(),
@@ -752,7 +778,7 @@ impl BraintrustListener {
 
         // Build metrics if we have duration/usage for timeline display
         let metrics = if data.duration_ms.is_some() || data.usage.is_some() {
-            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
             let start_time = data.duration_ms.map(|d| end_time - (d as f64 / 1000.0));
 
             Some(BraintrustMetrics {
@@ -831,6 +857,19 @@ impl BraintrustListener {
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
 
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
         BraintrustLogEvent {
             id: log_id,
             created: event.ts,
@@ -838,7 +877,7 @@ impl BraintrustListener {
             output: None,
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: "act".to_string(),
                 span_type: "task".to_string(),
@@ -868,7 +907,7 @@ impl BraintrustListener {
 
         // Build metrics if we have duration for timeline display
         let metrics = data.duration_ms.map(|duration_ms| {
-            let end_time = event.ts.timestamp_millis() as f64 / 1000.0;
+            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
             let start_time = end_time - (duration_ms as f64 / 1000.0);
 
             BraintrustMetrics {
@@ -944,6 +983,19 @@ impl BraintrustListener {
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
 
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
         BraintrustLogEvent {
             id: log_id,
             created: event.ts,
@@ -951,7 +1003,7 @@ impl BraintrustListener {
             output: None,
             error: None,
             metadata,
-            metrics: None,
+            metrics,
             span_attributes: BraintrustSpanAttributes {
                 name: format!("tool {}", data.tool_call.name),
                 span_type: "tool".to_string(),
