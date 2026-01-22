@@ -1182,6 +1182,74 @@ impl EventData {
     }
 }
 
+/// Deserialize event data from JSON based on event_type.
+///
+/// This function uses the event_type to select the correct EventData variant,
+/// avoiding issues with serde's untagged enum deserialization where simpler
+/// types (fewer required fields) might incorrectly match before more complex ones.
+///
+/// # Arguments
+/// * `event_type` - The event type string (e.g., "reason.thinking.completed")
+/// * `data` - The JSON value to deserialize
+///
+/// # Returns
+/// The deserialized EventData variant, or EventData::Raw if the type is unknown.
+pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> EventData {
+    let result = match event_type {
+        MESSAGE_USER => serde_json::from_value::<MessageUserData>(data.clone())
+            .map(EventData::MessageUser),
+        MESSAGE_AGENT => serde_json::from_value::<MessageAgentData>(data.clone())
+            .map(EventData::MessageAgent),
+        TURN_STARTED => serde_json::from_value::<TurnStartedData>(data.clone())
+            .map(EventData::TurnStarted),
+        TURN_COMPLETED => serde_json::from_value::<TurnCompletedData>(data.clone())
+            .map(EventData::TurnCompleted),
+        TURN_FAILED => serde_json::from_value::<TurnFailedData>(data.clone())
+            .map(EventData::TurnFailed),
+        TURN_CANCELLED => serde_json::from_value::<TurnCancelledData>(data.clone())
+            .map(EventData::TurnCancelled),
+        INPUT_RECEIVED => serde_json::from_value::<InputReceivedData>(data.clone())
+            .map(EventData::InputReceived),
+        REASON_STARTED => serde_json::from_value::<ReasonStartedData>(data.clone())
+            .map(EventData::ReasonStarted),
+        REASON_COMPLETED => serde_json::from_value::<ReasonCompletedData>(data.clone())
+            .map(EventData::ReasonCompleted),
+        ACT_STARTED => serde_json::from_value::<ActStartedData>(data.clone())
+            .map(EventData::ActStarted),
+        ACT_COMPLETED => serde_json::from_value::<ActCompletedData>(data.clone())
+            .map(EventData::ActCompleted),
+        TOOL_CALL_STARTED => serde_json::from_value::<ToolCallStartedData>(data.clone())
+            .map(EventData::ToolCallStarted),
+        TOOL_CALL_COMPLETED => serde_json::from_value::<ToolCallCompletedData>(data.clone())
+            .map(EventData::ToolCallCompleted),
+        LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
+            .map(EventData::LlmGeneration),
+        REASON_THINKING_STARTED => serde_json::from_value::<ReasonThinkingStartedData>(data.clone())
+            .map(EventData::ReasonThinkingStarted),
+        REASON_THINKING_DELTA => serde_json::from_value::<ReasonThinkingDeltaData>(data.clone())
+            .map(EventData::ReasonThinkingDelta),
+        REASON_THINKING_COMPLETED => {
+            serde_json::from_value::<ReasonThinkingCompletedData>(data.clone())
+                .map(EventData::ReasonThinkingCompleted)
+        }
+        TEXT_DELTA => serde_json::from_value::<TextDeltaData>(data.clone())
+            .map(EventData::TextDelta),
+        SESSION_STARTED => serde_json::from_value::<SessionStartedData>(data.clone())
+            .map(EventData::SessionStarted),
+        SESSION_ACTIVATED => serde_json::from_value::<SessionActivatedData>(data.clone())
+            .map(EventData::SessionActivated),
+        SESSION_IDLED => serde_json::from_value::<SessionIdledData>(data.clone())
+            .map(EventData::SessionIdled),
+        _ => {
+            // Unknown event type - return as raw
+            return EventData::Raw(data);
+        }
+    };
+
+    // If deserialization fails, return as raw data
+    result.unwrap_or_else(|_| EventData::Raw(data))
+}
+
 /// Macro to generate From implementations for EventData variants.
 ///
 /// Reduces boilerplate from 5 lines to 1 line per variant.

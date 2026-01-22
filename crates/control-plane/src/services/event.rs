@@ -15,8 +15,9 @@
 
 use crate::storage::{EventRow, StorageBackend, models::CreateEventRow};
 use anyhow::{Result, bail};
+use everruns_core::events::deserialize_event_data;
 use everruns_core::typed_id::{EventId, SessionId};
-use everruns_core::{Event, EventData, EventListener, EventRequest, UNKNOWN};
+use everruns_core::{Event, EventListener, EventRequest, UNKNOWN};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -225,9 +226,10 @@ impl EventService {
     }
 
     fn row_to_event(row: EventRow) -> Event {
-        // Direct mapping from row columns to Event fields
-        let data =
-            serde_json::from_value(row.data.clone()).unwrap_or_else(|_| EventData::raw(row.data));
+        // Use event_type to correctly deserialize EventData.
+        // This avoids issues with serde's untagged enum deserialization where
+        // simpler types might incorrectly match before more complex ones.
+        let data = deserialize_event_data(&row.event_type, row.data);
         Event {
             id: row.id,
             event_type: row.event_type,
