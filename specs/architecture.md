@@ -21,7 +21,7 @@ graph TB
     end
 
     subgraph Workers
-        Worker[Durable Worker]
+        Worker[TaskWorker]
         Atoms[Atoms<br/>Input/Reason/Act]
         LLM[LLM Providers]
     end
@@ -50,7 +50,7 @@ graph TB
 1. **Monorepo Structure**: Single repository with Cargo workspace containing multiple crates
 2. **Crate Separation** (folder → package name):
    - `control-plane/` → `everruns-control-plane` - HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
-   - `worker/` → `everruns-worker` - Durable worker, turn workflow, activities, gRPC client adapters
+   - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, shared types)
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ control-plane
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
@@ -184,6 +184,57 @@ sequenceDiagram
 ```
 
 **Note**: Workers send periodic heartbeats while executing tasks. If heartbeats stop (worker crash), the control-plane reclaims stale tasks after 30 seconds and re-queues them for another worker.
+
+### Task Worker Architecture
+
+The `TaskWorker` provides a unified worker implementation that works with both in-memory (DEV_MODE) and database-backed (production) storage:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         TaskWorker<S, A>                         │
+│  Generic over: S = WorkflowEventStore, A = WorkerAdapters       │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
+│  │ Configuration   │  │ Task Polling     │  │ Heartbeating  │  │
+│  │ - worker_id     │  │ - claim_task()   │  │ - 10s interval│  │
+│  │ - concurrency   │  │ - complete_task()│  │ - liveness    │  │
+│  │ - poll_interval │  │ - fail_task()    │  │               │  │
+│  └─────────────────┘  └──────────────────┘  └───────────────┘  │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │               Activity Execution                          │   │
+│  │  ┌──────────┐    ┌───────────┐    ┌─────────┐           │   │
+│  │  │  input   │ →  │  reason   │ ⟷  │   act   │           │   │
+│  │  │ activity │    │ activity  │    │ activity│           │   │
+│  │  └──────────┘    └───────────┘    └─────────┘           │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Types**:
+
+1. **`WorkerAdapters` trait** - Unified interface for data operations
+   - `get_agent()`, `get_session()`, `load_messages()`
+   - `emit_event()`, `get_model_with_provider()`
+   - `read_file()`, `write_file()` (session filesystem)
+   - `load_turn_context()` - Batched context loading
+
+2. **Implementations**:
+   - `DirectWorkerAdapters` - Direct storage access (in-process workers)
+   - `GrpcWorkerAdapters` - gRPC access (external workers)
+
+3. **Deployment Modes**:
+
+| Mode | Store | Adapters | Use Case |
+|------|-------|----------|----------|
+| DEV_MODE | `InMemoryWorkflowEventStore` | `DirectWorkerAdapters` | Local development |
+| Production | `PostgresWorkflowEventStore` | `GrpcWorkerAdapters` | External workers |
+
+**Benefits of Unified Architecture**:
+- Single codebase for activity implementations (input, reason, act)
+- Shared task scheduling logic
+- Easy to test with mock adapters
+- Consistent behavior across deployment modes
 
 ### Core Abstractions (`everruns-core`)
 

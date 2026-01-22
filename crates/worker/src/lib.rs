@@ -4,8 +4,11 @@ pub mod durable_runner;
 pub mod durable_worker;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
+pub mod grpc_worker_adapters;
 pub mod mcp_executor;
 pub mod runner;
+pub mod unified_worker;
+pub mod worker_adapters;
 
 // Re-export main types
 pub use durable_runner::{
@@ -26,6 +29,15 @@ pub use adapters::{create_driver_registry, create_llm_driver};
 pub use grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageRetriever,
     GrpcSessionFileStore, GrpcSessionStore, TurnContext, load_turn_context,
+};
+
+// Re-export task worker types
+pub use grpc_worker_adapters::GrpcWorkerAdapters;
+pub use unified_worker::{TaskWorker, TaskWorkerConfig};
+pub use worker_adapters::{
+    AdapterAgentStore, AdapterEventEmitter, AdapterLlmProviderStore, AdapterMessageRetriever,
+    AdapterSessionFileStore, AdapterSessionStore, ModelWithProvider as WorkerModelWithProvider,
+    TurnContext as WorkerTurnContext, WorkerAdapters,
 };
 
 // Re-export OpenAI driver from the openai crate
