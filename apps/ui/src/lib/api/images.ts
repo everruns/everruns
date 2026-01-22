@@ -4,7 +4,7 @@
 // API functions for uploading, retrieving, and deleting images.
 // Images can be attached to messages as image_file content parts.
 
-import { getApiBaseUrl } from "./client";
+import { getApiBaseUrl, getDirectBackendUrl } from "./client";
 import type { ImageUploadResponse, ImageInfo } from "./types";
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "./types";
 
@@ -42,6 +42,9 @@ function formatBytes(bytes: number): string {
 
 /**
  * Upload an image file
+ * @param org - Organization public ID
+ * @param file - Image file to upload
+ * @param sessionId - Optional: session ID stored as metadata for tracking (not required)
  */
 export async function uploadImage(
   org: string,
@@ -51,14 +54,16 @@ export async function uploadImage(
   const formData = new FormData();
   formData.append("file", file);
 
-  let url = `${getApiBaseUrl()}/v1/orgs/${org}/images`;
-  if (sessionId) {
-    url += `?session_id=${sessionId}`;
-  }
+  // Use direct backend URL for multipart uploads
+  // Next.js rewrites don't handle streaming/multipart properly (causes EPIPE errors)
+  const baseUrl = getDirectBackendUrl();
+  const params = sessionId ? `?session_id=${sessionId}` : "";
+  const url = `${baseUrl}/v1/orgs/${org}/images${params}`;
 
   const response = await fetch(url, {
     method: "POST",
     body: formData,
+    credentials: "include", // Include cookies for auth
   });
 
   if (!response.ok) {
@@ -141,6 +146,9 @@ export interface PendingImage {
 
 /**
  * Create a pending image from a file
+ * @param org - Organization public ID
+ * @param file - Image file to upload
+ * @param sessionId - Optional: session ID stored as metadata for tracking (not required)
  */
 export function createPendingImage(org: string, file: File, sessionId?: string): PendingImage {
   const tempId = crypto.randomUUID();
