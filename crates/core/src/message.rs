@@ -375,6 +375,37 @@ impl ContentPart {
             ContentPart::ToolResult(_) => ContentType::ToolResult,
         }
     }
+
+    /// Convert content part to OpenAI-compatible format
+    ///
+    /// Returns `None` for content types that aren't valid in user/system messages
+    /// (ImageFile, ToolCall, ToolResult are handled at message level).
+    pub fn to_openai_format(&self) -> Option<serde_json::Value> {
+        match self {
+            ContentPart::Text(t) => Some(serde_json::json!({
+                "type": "text",
+                "text": t.text
+            })),
+            ContentPart::Image(img) => {
+                if let Some(url) = &img.url {
+                    Some(serde_json::json!({
+                        "type": "image_url",
+                        "image_url": { "url": url }
+                    }))
+                } else if let Some(b64) = &img.base64 {
+                    let media_type = img.media_type.as_deref().unwrap_or("image/png");
+                    Some(serde_json::json!({
+                        "type": "image_url",
+                        "image_url": { "url": format!("data:{};base64,{}", media_type, b64) }
+                    }))
+                } else {
+                    None
+                }
+            }
+            // ImageFile, ToolCall, ToolResult handled at message level
+            _ => None,
+        }
+    }
 }
 
 /// Input content part - text, image, and image_file (for user input)
@@ -595,6 +626,132 @@ impl Message {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// Convert message to OpenAI-compatible format
+    ///
+    /// Transforms internal message format to OpenAI API format:
+    /// - `agent` role → `assistant`
+    /// - `tool_result` role → `tool` (with tool_call_id at message level)
+    /// - Tool calls formatted as `{id, type: "function", function: {name, arguments}}`
+    ///
+    /// Used by observability backends (e.g., Braintrust) that expect OpenAI format.
+    pub fn to_openai_format(&self) -> serde_json::Value {
+        let role = match self.role {
+            MessageRole::System => "system",
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+            MessageRole::ToolResult => "tool",
+        };
+
+        // Handle tool result messages (need tool_call_id at message level)
+        if self.role == MessageRole::ToolResult {
+            let tool_call_id = self.tool_call_id().unwrap_or("");
+            let content = self
+                .content
+                .iter()
+                .find_map(|p| match p {
+                    ContentPart::ToolResult(tr) => {
+                        if let Some(error) = &tr.error {
+                            Some(format!("Error: {}", error))
+                        } else if let Some(result) = &tr.result {
+                            Some(serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string()))
+                        } else {
+                            Some("{}".to_string())
+                        }
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| "{}".to_string());
+
+            return serde_json::json!({
+                "role": role,
+                "content": content,
+                "tool_call_id": tool_call_id
+            });
+        }
+
+        // Handle assistant messages with tool calls
+        if self.role == MessageRole::Assistant {
+            let tool_calls: Vec<serde_json::Value> = self
+                .content
+                .iter()
+                .filter_map(|p| match p {
+                    ContentPart::ToolCall(tc) => Some(serde_json::json!({
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": serde_json::to_string(&tc.arguments).unwrap_or_else(|_| "{}".to_string())
+                        }
+                    })),
+                    _ => None,
+                })
+                .collect();
+
+            let text_content: String = self
+                .content
+                .iter()
+                .filter_map(|p| match p {
+                    ContentPart::Text(t) => Some(t.text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if tool_calls.is_empty() {
+                return serde_json::json!({
+                    "role": role,
+                    "content": text_content
+                });
+            } else {
+                let mut result = serde_json::json!({
+                    "role": role,
+                    "tool_calls": tool_calls
+                });
+                if !text_content.is_empty() {
+                    result["content"] = serde_json::json!(text_content);
+                }
+                return result;
+            }
+        }
+
+        // For system/user messages, convert content parts
+        let content = self.content_to_openai_format();
+        serde_json::json!({
+            "role": role,
+            "content": content
+        })
+    }
+
+    /// Convert content parts to OpenAI-compatible format
+    fn content_to_openai_format(&self) -> serde_json::Value {
+        // Single text content → string
+        if self.content.len() == 1
+            && let ContentPart::Text(t) = &self.content[0]
+        {
+            return serde_json::json!(t.text);
+        }
+
+        // Convert each content part
+        let parts: Vec<serde_json::Value> = self
+            .content
+            .iter()
+            .filter_map(|part| part.to_openai_format())
+            .collect();
+
+        if parts.is_empty() {
+            return serde_json::json!("");
+        }
+
+        // Single text part after filtering → string
+        if parts.len() == 1
+            && let Some(text) = parts[0].get("text")
+        {
+            return text.clone();
+        }
+
+        serde_json::json!(parts)
     }
 }
 

@@ -1,140 +1,36 @@
 // OpenAI-Compatible Message Format Conversion
 //
-// This module converts our internal message format to OpenAI-compatible format,
-// which is used by observability backends like Braintrust.
+// Convenience functions that wrap Message::to_openai_format() and related methods.
+// The actual conversion logic lives on the Message and ContentPart types.
 //
-// OpenAI format expectations:
-// - Roles: "system", "user", "assistant", "tool", "function", "developer"
-// - Content: string or array of {type: "text", text: "..."} objects
-//
-// Our internal format uses:
-// - Roles: "system", "user", "agent", "tool_result"
-// - Content: array of ContentPart enums
-//
-// Role mapping:
-// - system → system (no change)
-// - user → user (no change)
-// - agent → assistant
-// - tool_result → tool (with tool_call_id)
+// These functions are useful for:
+// - Batch operations on message slices
+// - Converting standalone ToolCall arrays (not part of a message)
 
-use crate::message::{ContentPart, Message, MessageRole};
+use crate::message::{ContentPart, Message};
 use crate::tool_types::ToolCall;
 
 /// Convert messages to OpenAI-compatible format
 ///
-/// Transforms our internal message format to the format expected by OpenAI-compatible APIs:
-/// - `agent` role → `assistant`
-/// - `tool_result` role → `tool` (with tool_call_id)
-/// - Content parts are flattened to OpenAI content format
+/// Convenience wrapper for batch conversion. Calls `Message::to_openai_format()`
+/// on each message.
 pub fn convert_messages_to_openai_format(messages: &[Message]) -> Vec<serde_json::Value> {
-    messages
-        .iter()
-        .map(convert_message_to_openai_format)
-        .collect()
+    messages.iter().map(|m| m.to_openai_format()).collect()
 }
 
 /// Convert a single message to OpenAI-compatible format
+///
+/// Convenience wrapper for `Message::to_openai_format()`.
 pub fn convert_message_to_openai_format(msg: &Message) -> serde_json::Value {
-    // Map roles to OpenAI-compatible values
-    let role = match msg.role {
-        MessageRole::System => "system",
-        MessageRole::User => "user",
-        MessageRole::Assistant => "assistant", // Our "agent" → "assistant"
-        MessageRole::ToolResult => "tool",     // Our "tool_result" → "tool"
-    };
-
-    // Handle tool result messages specially (need tool_call_id at message level)
-    if msg.role == MessageRole::ToolResult {
-        // Find the tool_call_id from the first ToolResult content part
-        let tool_call_id = msg.content.iter().find_map(|p| match p {
-            ContentPart::ToolResult(tr) => Some(tr.tool_call_id.as_str()),
-            _ => None,
-        });
-
-        // Content for tool messages should be the result string
-        let content = msg
-            .content
-            .iter()
-            .find_map(|p| match p {
-                ContentPart::ToolResult(tr) => {
-                    if let Some(error) = &tr.error {
-                        Some(format!("Error: {}", error))
-                    } else if let Some(result) = &tr.result {
-                        Some(serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string()))
-                    } else {
-                        Some("{}".to_string())
-                    }
-                }
-                _ => None,
-            })
-            .unwrap_or_else(|| "{}".to_string());
-
-        return serde_json::json!({
-            "role": role,
-            "content": content,
-            "tool_call_id": tool_call_id.unwrap_or("")
-        });
-    }
-
-    // For assistant messages with tool calls, format them in OpenAI style
-    if msg.role == MessageRole::Assistant {
-        let tool_calls: Vec<serde_json::Value> = msg
-            .content
-            .iter()
-            .filter_map(|p| match p {
-                ContentPart::ToolCall(tc) => Some(serde_json::json!({
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.name,
-                        "arguments": serde_json::to_string(&tc.arguments).unwrap_or_else(|_| "{}".to_string())
-                    }
-                })),
-                _ => None,
-            })
-            .collect();
-
-        // Get text content
-        let text_content: String = msg
-            .content
-            .iter()
-            .filter_map(|p| match p {
-                ContentPart::Text(t) => Some(t.text.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if tool_calls.is_empty() {
-            // Simple assistant message
-            return serde_json::json!({
-                "role": role,
-                "content": text_content
-            });
-        } else {
-            // Assistant message with tool calls
-            let mut result = serde_json::json!({
-                "role": role,
-                "tool_calls": tool_calls
-            });
-            if !text_content.is_empty() {
-                result["content"] = serde_json::json!(text_content);
-            }
-            return result;
-        }
-    }
-
-    // For system/user messages, convert content to OpenAI format
-    let content = convert_content_to_openai_format(&msg.content);
-    serde_json::json!({
-        "role": role,
-        "content": content
-    })
+    msg.to_openai_format()
 }
 
 /// Convert content parts to OpenAI-compatible format
+///
+/// Converts an array of ContentPart to OpenAI content format.
+/// Single text content becomes a string; multiple parts become an array.
 pub fn convert_content_to_openai_format(content: &[ContentPart]) -> serde_json::Value {
-    // If single text content, use string format
+    // Single text content → string
     if content.len() == 1
         && let ContentPart::Text(t) = &content[0]
     {
@@ -144,40 +40,14 @@ pub fn convert_content_to_openai_format(content: &[ContentPart]) -> serde_json::
     // Convert each content part
     let parts: Vec<serde_json::Value> = content
         .iter()
-        .filter_map(|part| match part {
-            ContentPart::Text(t) => Some(serde_json::json!({
-                "type": "text",
-                "text": t.text
-            })),
-            ContentPart::Image(img) => {
-                // Convert to OpenAI image_url format
-                if let Some(url) = &img.url {
-                    Some(serde_json::json!({
-                        "type": "image_url",
-                        "image_url": { "url": url }
-                    }))
-                } else if let Some(b64) = &img.base64 {
-                    let media_type = img.media_type.as_deref().unwrap_or("image/png");
-                    Some(serde_json::json!({
-                        "type": "image_url",
-                        "image_url": { "url": format!("data:{};base64,{}", media_type, b64) }
-                    }))
-                } else {
-                    None
-                }
-            }
-            // Skip ImageFile, ToolCall, ToolResult as they're handled separately
-            // or not valid in user/system messages
-            _ => None,
-        })
+        .filter_map(|part| part.to_openai_format())
         .collect();
 
-    // If we filtered everything out, return empty string
     if parts.is_empty() {
         return serde_json::json!("");
     }
 
-    // If single text part after filtering, use string format
+    // Single text part after filtering → string
     if parts.len() == 1
         && let Some(text) = parts[0].get("text")
     {
@@ -188,6 +58,9 @@ pub fn convert_content_to_openai_format(content: &[ContentPart]) -> serde_json::
 }
 
 /// Convert tool calls to OpenAI-compatible format
+///
+/// Used for standalone ToolCall arrays (e.g., from LlmGeneration events).
+/// Tool calls embedded in Messages are handled by Message::to_openai_format().
 pub fn convert_tool_calls_to_openai_format(tool_calls: &[ToolCall]) -> Vec<serde_json::Value> {
     tool_calls
         .iter()
