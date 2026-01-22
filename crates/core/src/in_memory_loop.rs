@@ -16,7 +16,7 @@ use chrono::Utc;
 
 use crate::agent::{Agent, AgentStatus};
 use crate::atoms::{ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput};
-use crate::capabilities::CapabilityRegistry;
+use crate::capabilities::{Capability, CapabilityRegistry};
 use crate::error::Result;
 use crate::events::{Event, EventData, EventRequest, MESSAGE_AGENT};
 use crate::llm_driver_registry::{DriverRegistry, ProviderType};
@@ -131,6 +131,7 @@ pub struct InMemoryAgenticLoopBuilder {
     system_prompt: String,
     llm_config: LlmConfig,
     tools: Vec<Box<dyn Tool>>,
+    capabilities: Vec<Box<dyn Capability>>,
     max_iterations: usize,
 }
 
@@ -158,6 +159,7 @@ impl InMemoryAgenticLoopBuilder {
             system_prompt: "You are a helpful assistant.".to_string(),
             llm_config: LlmConfig::Simulated(LlmSimConfig::default()),
             tools: vec![],
+            capabilities: vec![],
             max_iterations: 10,
         }
     }
@@ -221,6 +223,26 @@ impl InMemoryAgenticLoopBuilder {
     /// Add a tool
     pub fn tool<T: Tool + 'static>(mut self, tool: T) -> Self {
         self.tools.push(Box::new(tool));
+        self
+    }
+
+    /// Add a capability (which may provide tools and system prompt additions)
+    ///
+    /// Capabilities provide a way to bundle related tools and functionality.
+    /// For example, the `current_time` capability provides a `get_current_time` tool.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use everruns_core::capabilities::current_time::CurrentTimeCapability;
+    ///
+    /// let runner = InMemoryAgenticLoop::builder()
+    ///     .capability(CurrentTimeCapability)
+    ///     .build()
+    ///     .await?;
+    /// ```
+    pub fn capability<C: Capability + 'static>(mut self, capability: C) -> Self {
+        self.capabilities.push(Box::new(capability));
         self
     }
 
@@ -305,8 +327,17 @@ impl InMemoryAgenticLoopBuilder {
             }
         };
 
-        // Build tool registry
+        // Build tool registry - include tools from capabilities
         let mut tool_builder = ToolRegistryBuilder::new();
+
+        // Add tools from capabilities first
+        for capability in &self.capabilities {
+            for tool in capability.tools() {
+                tool_builder = tool_builder.tool_boxed(tool);
+            }
+        }
+
+        // Add explicit tools (can override capability tools)
         for tool in self.tools {
             tool_builder = tool_builder.tool_boxed(tool);
         }
