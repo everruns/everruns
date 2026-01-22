@@ -60,6 +60,28 @@ graph TB
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
    - See [specs/documentation.md](documentation.md) for detailed specification
 
+### Project Structure
+
+```
+everruns/
+├── apps/
+│   ├── ui/               # Next.js Management UI
+│   └── docs/             # Astro Starlight Documentation
+├── crates/
+│   ├── control-plane/    # HTTP API + gRPC server + storage
+│   ├── worker/           # Durable worker with gRPC client
+│   ├── core/             # Shared abstractions and types
+│   ├── internal-protocol/# gRPC protocol definitions
+│   ├── durable/          # Durable execution engine
+│   ├── openai/           # OpenAI provider
+│   └── anthropic/        # Anthropic provider
+├── docs/                 # Documentation content (symlinked to apps/docs)
+├── specs/                # Feature specifications
+├── test_cases/           # Manual test cases
+├── local/                # Docker Compose for local dev
+└── scripts/              # Dev scripts
+```
+
 ### Crate Dependency Graph
 
 ```mermaid
