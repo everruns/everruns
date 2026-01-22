@@ -1,426 +1,80 @@
-## Coding-agent guidance (repo root)
-
-This repo is intended to be runnable locally and easy for coding agents to work in.
+## Coding-agent guidance
 
 ### Style
 
-Telegraph. Drop filler/grammar. Min tokens (global AGENTS + replies).
+Telegraph. Drop filler/grammar. Min tokens.
 
 ### Critical Thinking
 
-Fix root cause (not band-aid). Unsure: read more code; if still stuck, ask w/ short options. Unrecognized changes: assume other agent; keep going; focus your changes. If it causes issues, stop + ask user. Leave breadcrumb notes in thread.
+Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecognized changes: assume other agent; keep going. If causes issues, stop + ask.
 
 ### Principles
 
-- Keep decisions as comments on top of the file. Only important decisions that could not be inferred from code.
-- Code should be easily testable, smoke testable, runnable in local dev env.
-- Prefer small, incremental PR-sized changes with a runnable state at each step.
-- Avoid adding dependencies with non-permissive licenses. If a dependency is non-permissive or unclear, stop and ask the repo owner.
-- No backward compatibility needed. All code is internal; no external consumers.
+- Important decisions as comments on top of file
+- Code testable, smoke testable, runnable locally
+- Small, incremental PR-sized changes
+- No backward compat needed (internal code)
 
-### Specs
+### Quick Reference
 
-`specs/` folder contains feature specifications outlining requirements for specific features and components. New code should comply with these specifications or propose changes to them.
+| Resource | Location |
+|----------|----------|
+| Specs | `specs/` - architecture, models, APIs, etc. |
+| Skills | `.claude/skills/` - smoke-test, ui-screenshots |
+| Test cases | `test_cases/` - format in `specs/conventions.md` |
+| Docs source | `docs/` → published at docs.everruns.com |
+| PR template | `.github/pull_request_template.md` |
 
-Available specs:
-- `specs/architecture.md` - System architecture, crate structure, infrastructure
-- `specs/models.md` - Data models (Agent, Session, Message, etc.)
-- `specs/apis.md` - HTTP API endpoints
-- `specs/events.md` - Event types and SSE streaming
-- `specs/tool-execution.md` - Tool types and execution flow
-- `specs/capabilities.md` - Agent capabilities system for modular functionality
-- `specs/mcp-servers.md` - MCP (Model Context Protocol) server registration
-- `specs/llm-drivers.md` - LLM driver trait, error types, provider implementations
-- `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
-- `specs/authentication.md` - Authentication modes and OAuth integration
-- `specs/encryption.md` - Envelope encryption for sensitive data
-- `specs/session-filesystem.md` - Per-session virtual filesystem
-- `specs/usage-tracking.md` - LLM token usage tracking and aggregation
-- `specs/documentation.md` - Documentation site (Astro Starlight, Cloudflare Pages)
-- `specs/brand.md` - Brand identity, colors, typography, voice
-- `specs/dismissed-options.md` - Technical options considered but dismissed
-- `specs/multitenancy.md` - Organization-based multitenancy and resource isolation
-- `specs/release-process.md` - Release workflow with CHANGELOG.md as source of truth
-- `specs/id-schema.md` - Standardized prefixed ID format for all entities
-- `specs/braintrust-integration.md` - Braintrust observability integration
-
-Specification format: Abstract and Requirements sections.
-
-### Skills
-
-`.claude/skills/` contains development skills following the [Agent Skills Specification](https://github.com/anthropics/skills/blob/main/spec/agent-skills-spec.md).
-
-Available skills:
-- `smoke-test/` - API and UI smoke testing with Docker-based environment
-- `no-docker-setup/` - Deterministic PostgreSQL setup for cloud agents and CI systems
-- `ui-screenshots/` - Take UI screenshots using Playwright and attach them as PR comments
-
-### Test Cases
-
-`test_cases/` contains manual test case documentation organized by feature. Each feature has its own folder with individual test case files.
-
-Test case format:
-- **Description**: What the test verifies
-- **Preconditions**: Required setup and environment configuration
-- **Test Data**: Input values in table format
-- **Steps**: Numbered actions to perform
-- **Expected Result**: Success criteria
-
-Naming convention: `TC###_short_description.md` (e.g., `TC001_success_login.md`)
-
-When adding new features, create corresponding test cases to document expected behavior and acceptance criteria.
-
-### Public Documentation
-
-Documentation is published at https://docs.everruns.com/ via Cloudflare Pages.
-
-**Source locations:**
-- `docs/` - Source markdown files (edit docs here)
-- `apps/docs/` - Astro Starlight documentation site (reads from `docs/` via symlink)
-
-**Content structure:**
-- `docs/getting-started/` - Quickstart guides
-- `docs/features/` - Feature documentation
-- `docs/sre/` - SRE documentation
-  - `environment-variables.md` - Configuration environment variables
-  - `admin-container.md` - Admin container usage guide
-  - `runbooks/` - Operational runbooks for common tasks
-- `docs/api/` - API reference documentation (auto-generated from OpenAPI spec)
-
-**API Reference documentation:**
-
-The API reference is auto-generated from `docs/api/openapi.json` using `starlight-openapi`. To update the spec:
+### Cloud Agent Start
 
 ```bash
-# Export the OpenAPI spec (no running server required)
-./scripts/export-openapi.sh
-
-# Verify the docs build
-cd apps/docs && npm run build
+./scripts/init-cloud-env.sh       # Install just + gh
+just start-dev --no-watch         # DEV MODE (no Docker)
 ```
 
-The spec should be regenerated and committed whenever API endpoints change.
+Pre-configured: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`
 
-**Development:**
-```bash
-cd apps/docs
-npm install
-npm run dev      # Local development server
-npm run check    # Type checking
-npm run build    # Production build
-```
-
-When making changes that affect user-facing behavior or operations, update the relevant docs in `docs/`. Ensure the docs build passes before creating a PR.
-
-### Local dev expectations
-
-**Command runner:** [just](https://github.com/casey/just)
-```bash
-just <command>       # Run a command
-just --list          # List all commands
-```
-
-Install: `cargo install just` or `./scripts/init-cloud-env.sh` (pre-built binary)
-
-**Full mode (with PostgreSQL):**
-- A `local/docker-compose.yml` brings up Postgres + Jaeger
-
-**DEV_MODE (no database required):**
-```bash
-# Quick start - no Docker/PostgreSQL needed
-just start-dev
-```
-- Uses in-memory storage (data lost on restart)
-- Execution happens in-process (no separate worker)
-- Ideal for UI development and quick API testing
-- See `docs/sre/environment-variables.md` for details
-
-### Smoke test prerequisites
-
-**DEV MODE (recommended):** No prerequisites - `just start-dev` works out of the box with in-memory storage.
-
-**Full mode (with persistence):** Requires Docker or PostgreSQL 17 + jq.
-
-### Cloud Agent environments
-
-**FIRST STEP in cloud environments (Claude Code on web, CI, etc.):**
-```bash
-./scripts/init-cloud-env.sh       # Install just + gh (~5 seconds)
-just start-dev --no-watch         # Start in DEV MODE (no Docker needed)
-```
-
-Use `--no-watch` in cloud/CI environments - faster startup, no cargo-watch dependency.
-
-DEV MODE uses in-memory storage and works out of the box - no PostgreSQL or Docker required.
-
-**Available secrets** (pre-configured, no setup needed):
-- `OPENAI_API_KEY` - OpenAI models
-- `ANTHROPIC_API_KEY` - Claude models
-- `GITHUB_TOKEN` - GitHub API (PRs, issues)
-
-### Rust conventions
-
-- Use stable Rust (edition 2024) and keep the toolchain pinned via `rust-toolchain.toml`.
-- Run `cargo fmt` and `cargo clippy -- -D warnings` for touched crates.
-- Prefer `axum`/`tower` for HTTP, `sqlx` for Postgres, `serde` for DTOs.
-
-### Code organization conventions
-
-The codebase follows a layered architecture with clear boundaries. See `specs/architecture.md` for full details.
-
-#### Layer separation
-
-1. **Storage Layer** (`control-plane/src/storage/`):
-   - Database models use `Row` suffix: `AgentRow`, `SessionRow`, `EventRow`
-   - Create input structs: `CreateAgentRow`, `CreateEventRow`
-   - Update structs: `UpdateAgent`, `UpdateSession`
-   - Repositories handle raw database operations only
-   - Migrations in `control-plane/migrations/`
-   - Note: Messages are stored as events (see `specs/models.md`)
-
-2. **Core Layer** (`core/` → `everruns-core`):
-   - Source of truth for all shared data structures
-   - Domain types: `Agent`, `Session`, `Message`, `Event`, `ContentPart`
-   - Tool types: `ToolCall`, `ToolResult`, `ToolDefinition`
-   - Trait definitions: `MessageRetriever`, `EventEmitter`, `LlmProvider`
-   - Types are DB-agnostic and serializable
-   - OpenAPI support via feature flag: `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
-
-3. **Control-Plane Layer** (`control-plane/` → `everruns-control-plane`):
-   - HTTP API (axum) on port 9000, gRPC server (tonic) on port 9001
-   - API contracts collocated with routes (e.g., `messages.rs` has routes + DTOs)
-   - Services accept API DTOs, transform to storage types, store in database
-   - Input types: `InputMessage`, `InputContentPart` (for user-facing input)
-   - Request wrappers: `CreateMessageRequest`, `CreateAgentRequest`
-
-4. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
-   - gRPC protocol definitions (proto files) for worker ↔ control-plane
-   - Generated Rust types via tonic-build + protox (pure Rust, no external protoc binary)
-   - Batched operations: `GetTurnContext`, `EmitEventStream`
-
-#### Naming conventions
-
-| Layer | Pattern | Example |
-|-------|---------|---------|
-| Storage Row | `{Entity}Row` | `AgentRow`, `EventRow` |
-| Storage Create | `Create{Entity}Row` | `CreateEventRow` |
-| Storage Update | `Update{Entity}` | `UpdateAgent` |
-| Core Domain | `{Entity}` | `Message`, `ContentPart` |
-| API Input | `Input{Entity}` | `InputMessage`, `InputContentPart` |
-| API Request | `{Action}{Entity}Request` | `CreateMessageRequest` |
-
-#### Type flow
-
-```
-API Request → API DTO → Service → Storage Row → Database
-                ↓
-         Core types (shared)
-```
-
-For example, creating a message:
-1. API receives `CreateMessageRequest` with `InputMessage`
-2. Service converts `InputContentPart[]` → `ContentPart[]` (core types)
-3. Service creates `CreateEventRow` with message data as JSON
-4. Repository stores event to database (messages stored as events)
-
-#### Content types
-
-Message content uses unified `Vec<ContentPart>` across all layers:
-- `ContentPart` - Full enum: text, image, tool_call, tool_result
-- `InputContentPart` - Restricted for user input: text, image only
-- `From<InputContentPart> for ContentPart` - Safe conversion
-
-### API error handling
-
-- **Never expose internal error details to API clients.** Database errors, connection failures, and other internal errors must return a generic `500 Internal Server Error` with message "Internal server error".
-- **Always log the full error server-side.** Use `tracing::error!()` to log the complete error details before returning the generic response.
-- Error messages returned to clients should only contain safe, user-facing information (e.g., "Not found", "Invalid request", "Internal server error").
-- Example pattern:
-  ```rust
-  let result = state.db.some_operation().await.map_err(|e| {
-      tracing::error!("Failed to perform operation: {}", e);
-      StatusCode::INTERNAL_SERVER_ERROR
-  })?;
-  ```
-
-### CI expectations
-
-- CI is implemented using GitHub Actions, status is available via `gh` tool
-- **NEVER merge when CI is red.** This is a hard requirement with no exceptions. Even if the failure appears unrelated to your changes, do not merge. Fix the issue or get help first.
-
-### Pre-PR checklist
-
-Before creating a pull request:
-
-1. **Run pre-PR script**: `just pre-pr` (runs checks 2-8 automatically)
-2. **Rust formatting**: `cargo fmt --check`
-3. **Rust linting**: `cargo clippy --all-targets --all-features -- -D warnings`
-4. **Rust tests**: `cargo test --all-features`
-5. **UI lint**: `npm run lint` in `apps/ui/`
-6. **UI build**: `npm run build` in `apps/ui/`
-7. **OpenAPI spec freshness**: Verifies `docs/api/openapi.json` matches current code
-8. **Docs build**: `npm run check && npm run build` in `apps/docs/`
-9. **Rebase on main**: Branch must be rebased on latest `main` before merging
-   ```bash
-   git fetch origin main && git rebase origin/main
-   ```
-10. **Smoke tests**: New functionality must be smoke tested end-to-end
-11. **UI screenshots**: If PR includes UI changes, attach screenshot of working UI
-    - Use real backend data (not faked), except for `/dev/*` component showcase pages
-    - Use `.claude/skills/ui-screenshots/` to capture screenshots via Playwright
-12. **CI green**: All CI checks must pass before merging
-13. **PR comments resolved**: No unaddressed review comments in PR
-14. **Examples**: If modifying examples, validate they run against a running API
-15. **Update specs**: If changes affect system behavior, update specs in `specs/`
-16. **Update docs**: If changes affect usage, update docs in `docs/`
-
-CI will fail if any automated checks fail. Always run `just pre-pr` before pushing.
-
-### UI conventions
-
-- Use **npm** for package management (CI uses `npm ci`)
-- After adding dependencies, ensure `package-lock.json` is updated via `npm install`
-- Run `npm run lint` to check for oxlint issues
-- Run `npm run build` to verify TypeScript types and build before pushing
-
-**E2E Testing (Playwright):**
-- Tests located in `apps/ui/e2e/`
-- Run with `just ui e2e` or `npm run e2e` in apps/ui
-- Screenshot tests: `just ui screenshots`
-- Dev pages (`/dev/*`) provide component showcases for visual testing
-
-### Testing conventions
-
-PRs should include appropriate tests for the changes being made:
-
-- **Unit tests**: Include inline `#[cfg(test)]` modules for:
-  - Data structure validation (serialization/deserialization)
-  - Error response formats
-  - Pure functions and transformations
-  - Business logic that doesn't require external dependencies
-
-- **Integration tests**: Add to `tests/integration_test.rs` for:
-  - New API endpoints
-  - Complex workflows spanning multiple services
-  - End-to-end functionality verification
-
-- **When to add tests**:
-  - New features: Always include tests
-  - Bug fixes: Add regression tests when feasible
-  - Refactoring: Ensure existing tests still pass; add tests if coverage gaps are found
-  - Security fixes: Include tests verifying the fix (e.g., error messages don't leak internal details)
-
-- **Running tests**:
-  ```bash
-  # Unit tests (no external dependencies)
-  cargo test
-
-  # Integration tests (requires API + Worker running)
-  cargo test -p everruns-control-plane --test integration_test -- --test-threads=1
-  ```
-
-### Commit message conventions
-
-Follow [Conventional Commits](https://www.conventionalcommits.org) for all commit messages:
-
-```
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-**Types:**
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style (formatting, semicolons, etc.)
-- `refactor`: Code refactoring without feature/fix
-- `perf`: Performance improvements
-- `test`: Adding or updating tests
-- `chore`: Build process, dependencies, tooling
-- `ci`: CI configuration changes
-
-**Examples:**
-```
-feat(api): add agent versioning endpoint
-fix(workflow): handle timeout in run execution
-docs: update API documentation
-refactor(db): simplify connection pooling
-```
-
-**Validation (optional):**
-```bash
-# Validate a commit message
-echo "feat: add new feature" | npx commitlint
-
-# Validate last commit
-npx commitlint --from HEAD~1 --to HEAD
-```
-
-### PR (Pull Request) conventions
-
-PR titles should follow Conventional Commits format. Use the PR template (`.github/pull_request_template.md`) for descriptions.
-
-**Merge strategy**: Always use **Squash and Merge** via GitHub when merging PRs to `main`. This keeps the main branch history clean with one commit per PR.
-
-**PR Body Template:**
-
-```markdown
-## What
-Clear description of the change.
-
-## Why
-Problem or motivation.
-
-## How
-High-level approach.
-
-## Risk
-- Low / Medium / High
-- What can break
-
-## Checklist
-- [ ] Tests added or updated
-- [ ] Backward compatibility considered
-```
-
-## Testing the system
+### Local Dev
 
 ```bash
-# Quick start (no Docker/PostgreSQL needed)
-just start-dev
-
-# Or: Full mode with persistence
-just start-all
+just start-dev          # DEV MODE (in-memory, no Docker)
+just start-all          # Full mode (PostgreSQL)
+just --list             # All commands
 ```
 
-Verify:
-- Health: `curl http://localhost:9000/health`
-- API docs: http://localhost:9000/swagger-ui/
-- UI: http://localhost:9100
+### Rust
 
-See `.claude/skills/smoke-test/SKILL.md` for full test checklist.
+- Stable Rust (edition 2024), toolchain in `rust-toolchain.toml`
+- `cargo fmt` and `cargo clippy -- -D warnings` for touched crates
 
+### Pre-PR Checklist
 
-### Project Structure
+1. `just pre-pr` (runs 2-7 automatically)
+2. `cargo fmt --check`
+3. `cargo clippy --all-targets --all-features -- -D warnings`
+4. `cargo test --all-features`
+5. `npm run lint` + `npm run build` in `apps/ui/`
+6. OpenAPI spec fresh: `./scripts/export-openapi.sh`
+7. Docs build: `npm run build` in `apps/docs/`
+8. Rebase on main: `git fetch origin main && git rebase origin/main`
+9. Smoke test new functionality
+10. UI screenshots for UI changes (use `.claude/skills/ui-screenshots/`)
+11. CI green before merge
+12. Resolve all PR comments
 
-```
-everruns/
-├── apps/
-│   ├── ui/               # Next.js Management UI
-│   └── docs/             # Astro Starlight Documentation Site
-├── crates/
-│   ├── control-plane/    # HTTP API + gRPC server + database layer (everruns-control-plane)
-│   ├── worker/           # Durable worker with gRPC client (everruns-worker)
-│   ├── core/             # Core abstractions, domain entities, tools (everruns-core)
-│   ├── internal-protocol/ # gRPC protocol definitions (everruns-internal-protocol)
-│   ├── openai/           # OpenAI provider (everruns-openai)
-│   └── anthropic/        # Anthropic provider (everruns-anthropic)
-├── docs/                 # Documentation content (published via apps/docs)
-├── local/              # Docker Compose
-├── specs/                # Specifications
-└── scripts/              # Dev scripts
-```
+### CI
 
+- GitHub Actions. Check via `gh` tool.
+- **NEVER merge when CI is red.** No exceptions.
+
+### Commits
+
+[Conventional Commits](https://www.conventionalcommits.org): `type(scope): description`
+
+Types: feat, fix, docs, refactor, test, chore
+
+### PRs
+
+**REQUIRED:** Use `.github/pull_request_template.md`. Squash and Merge.
+
+See `specs/conventions.md` for details.
