@@ -235,10 +235,24 @@ impl LlmDriver for AnthropicLlmDriver {
         };
 
         // Build thinking config from reasoning effort
-        let thinking = config
-            .reasoning_effort
-            .as_ref()
-            .and_then(|e| AnthropicThinking::from_effort(e));
+        // Note: Disable thinking if there are tool calls in the conversation history,
+        // as Anthropic requires thinking blocks in previous assistant messages when enabled
+        let has_tool_history = messages.iter().any(|m| {
+            m.role == LlmMessageRole::Tool
+                || (m.role == LlmMessageRole::Assistant
+                    && m.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty()))
+        });
+
+        let thinking = if has_tool_history {
+            // Can't use thinking with tool call history - Anthropic requires thinking blocks
+            // from previous turns which we don't store
+            None
+        } else {
+            config
+                .reasoning_effort
+                .as_ref()
+                .and_then(|e| AnthropicThinking::from_effort(e))
+        };
 
         // Calculate max_tokens - respect caller's limit, only increase when thinking requires it
         let base_max_tokens = config.max_tokens.unwrap_or(4096);
