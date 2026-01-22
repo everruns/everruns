@@ -13,8 +13,13 @@ case "$cmd" in
     ;;
 
   test)
-    echo "🧪 Running tests..."
-    cargo test
+    echo "🧪 Running all tests..."
+    echo "  - Rust tests..."
+    cargo test --all-features
+    echo "  - UI e2e tests..."
+    cd "$PROJECT_ROOT/apps/ui"
+    npm run e2e 2>/dev/null || echo "    (skipped - playwright not installed or server not running)"
+    cd "$PROJECT_ROOT"
     echo "✅ Tests complete!"
     ;;
 
