@@ -34,7 +34,7 @@ use crate::session::{Session, SessionStatus};
 use crate::tool_types::ToolCall;
 use crate::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use crate::traits::{EventEmitter, ModelWithProvider};
-use crate::turn_state_machine::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
+use crate::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use crate::typed_id::{AgentId, SessionId, TurnId};
 
 // ============================================================================
