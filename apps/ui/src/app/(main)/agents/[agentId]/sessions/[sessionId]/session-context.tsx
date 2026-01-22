@@ -20,9 +20,9 @@ import type {
   TokenUsage,
   SessionIdledData,
   LlmGenerationData,
-  AgentThinkingData,
+  ReasonThinkingStartedData,
+  ReasonThinkingDeltaData,
   TextDeltaData,
-  ThinkingDeltaData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -217,7 +217,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     }
   }, [events]);
 
-  // Update streaming state from SSE events (agent.thinking, text.delta, message.agent)
+  // Update streaming state from SSE events (reason.thinking.*, text.delta, message.agent)
   // This provides real-time feedback while the LLM generates text
   useEffect(() => {
     if (!events || events.length === 0) return;
@@ -248,18 +248,18 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         break;
       }
 
-      // thinking.delta provides incremental reasoning from extended thinking models
-      if (event.type === "thinking.delta") {
-        const data = event.data as ThinkingDeltaData;
+      // reason.thinking.delta provides incremental reasoning from extended thinking models
+      if (event.type === "reason.thinking.delta") {
+        const data = event.data as ReasonThinkingDeltaData;
         setStreamingThinking(data.accumulated);
         setStreamingTurnId(data.turn_id);
         // Continue looking for text.delta (don't break) - thinking comes before text
         continue;
       }
 
-      // agent.thinking indicates LLM is generating (before first text)
-      if (event.type === "agent.thinking") {
-        const data = event.data as AgentThinkingData;
+      // reason.thinking.started indicates LLM is generating (before first text)
+      if (event.type === "reason.thinking.started") {
+        const data = event.data as ReasonThinkingStartedData;
         // Only set thinking if we don't already have streaming text for this turn
         if (!streamingText || streamingTurnId !== data.turn_id) {
           setIsThinking(true);

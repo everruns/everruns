@@ -96,6 +96,68 @@ turn (root span)
 
 All IDs (`trace_id`, `span_id`, `parent_span_id`) use the prefixed string format (e.g., `turn_xyz`, `exec_abc`) rather than raw UUIDs. This ensures spans are correctly linked in observability tools.
 
+## Event Naming Patterns
+
+### Started-Completed-Failed Pattern
+
+Operations that have a lifecycle follow a consistent **Started-Completed-Failed** pattern:
+
+```
+{operation}.started   → Operation began
+{operation}.completed → Operation finished successfully
+{operation}.failed    → Operation failed (optional, some use completed with success=false)
+```
+
+This pattern provides:
+- **Observability**: Clear boundaries for timing and tracing
+- **Error handling**: Explicit failure states for error tracking
+- **UI feedback**: Start/end signals for loading indicators
+
+**Examples:**
+
+| Operation | Started | Completed | Failed |
+|-----------|---------|-----------|--------|
+| Turn | `turn.started` | `turn.completed` | `turn.failed` |
+| Reason | `reason.started` | `reason.completed` | (uses `success=false` in completed) |
+| Act | `act.started` | `act.completed` | (uses `success=false` in completed) |
+| Tool Call | `tool.call_started` | `tool.call_completed` | (uses `status` field) |
+| Thinking | `reason.thinking.started` | `reason.thinking.completed` | (implicit via `reason.completed`) |
+
+**Note:** Some operations use a `success` or `status` field in the completed event rather than a separate failed event. This is a design choice based on the operation's semantics.
+
+### Delta Pattern for Streaming
+
+Streaming content uses a **Delta** pattern with accumulated state:
+
+```
+{operation}.delta → Incremental update with delta and accumulated fields
+```
+
+Delta events include:
+- `delta`: New content since last event
+- `accumulated`: Total content so far (convenience for UI)
+
+**Examples:**
+
+| Content Type | Delta Event |
+|--------------|-------------|
+| Response text | `text.delta` |
+| Thinking content | `reason.thinking.delta` |
+
+### Namespace Hierarchy
+
+Event types use dot notation to indicate hierarchy:
+
+```
+{category}.{subcategory}.{action}
+```
+
+Examples:
+- `message.user` - User message event
+- `reason.started` - Reasoning phase started
+- `reason.thinking.started` - Thinking within reasoning started
+- `tool.call_completed` - Tool call within tool execution completed
+
 ## Event Categories
 
 ### Message Events
@@ -588,13 +650,13 @@ Session became idle (turn completed). Contains cumulative session usage for real
 
 Streaming events provide real-time feedback during LLM generation. These events enable the UI to show a "thinking" indicator and incrementally display text as it's generated.
 
-#### `agent.thinking`
+#### `reason.thinking.started`
 
 Emitted when the LLM starts generating a response. UI can show a "thinking" indicator until `text.delta` or `message.agent` events arrive.
 
 ```json
 {
-  "type": "agent.thinking",
+  "type": "reason.thinking.started",
   "session_id": "...",
   "context": {
     "turn_id": "...",
@@ -602,7 +664,7 @@ Emitted when the LLM starts generating a response. UI can show a "thinking" indi
   },
   "data": {
     "turn_id": "...",
-    "model": "gpt-4o"
+    "model": "claude-opus-4-5"
   }
 }
 ```
@@ -627,13 +689,13 @@ Streaming text update during LLM generation. Events are batched (~100ms) to redu
 }
 ```
 
-#### `thinking.delta`
+#### `reason.thinking.delta`
 
 Streaming thinking/reasoning content from extended thinking models (e.g., Claude with thinking enabled). These events contain the model's chain-of-thought reasoning before producing the final response. Events are batched (~100ms) similar to `text.delta`.
 
 ```json
 {
-  "type": "thinking.delta",
+  "type": "reason.thinking.delta",
   "session_id": "...",
   "context": {
     "turn_id": "...",
@@ -647,7 +709,26 @@ Streaming thinking/reasoning content from extended thinking models (e.g., Claude
 }
 ```
 
-**Note:** `thinking.delta` events are only emitted when using models that support extended thinking mode (e.g., Claude with `reasoning_effort` configured). The thinking content is separate from the main response text and typically shown in a collapsible section in the UI.
+#### `reason.thinking.completed`
+
+Emitted when the model finishes its chain-of-thought reasoning and transitions to producing the final response. Contains the complete thinking content.
+
+```json
+{
+  "type": "reason.thinking.completed",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "thinking": "Let me analyze this step by step...\n\n1. First consideration...\n2. Second consideration..."
+  }
+}
+```
+
+**Note:** Extended thinking events (`reason.thinking.*`) are only emitted when using models that support extended thinking mode (e.g., Anthropic Claude with `reasoning_effort` configured). The thinking content is separate from the main response text and typically shown in a collapsible section in the UI. Thinking content is also persisted in the `message.agent` event's `thinking` field for multi-turn context.
 
 **Streaming Timeline Example:**
 
@@ -655,14 +736,19 @@ Streaming thinking/reasoning content from extended thinking models (e.g., Claude
 User sends message
        │
        ▼
-┌─────────────────┐
-│ agent.thinking  │  ← UI shows thinking indicator
-└────────┬────────┘
+┌──────────────────────────┐
+│ reason.thinking.started  │  ← UI shows thinking indicator
+└────────┬─────────────────┘
          │
          ▼ (if extended thinking model)
-  ┌──────────────────┐
-  │ thinking.delta   │  ← UI shows streaming reasoning (optional)
-  └────────┬─────────┘
+  ┌────────────────────────┐
+  │ reason.thinking.delta  │  ← UI shows streaming reasoning
+  └────────┬───────────────┘
+           │
+           ▼
+  ┌──────────────────────────┐
+  │ reason.thinking.completed│  ← Thinking phase done
+  └────────┬─────────────────┘
            │
       ┌────┴────┐
       ▼         ▼
@@ -714,9 +800,10 @@ This approach provides real-time feedback as tokens are consumed during LLM call
 | `tool.call_started` | Atom | Individual tool started |
 | `tool.call_completed` | Atom | Individual tool completed (includes result) |
 | `llm.generation` | LLM | Full LLM API call with messages and response |
-| `agent.thinking` | Streaming | LLM generation started (thinking indicator) |
+| `reason.thinking.started` | Streaming | LLM generation started (thinking indicator) |
+| `reason.thinking.delta` | Streaming | Incremental reasoning content from extended thinking models |
+| `reason.thinking.completed` | Streaming | Extended thinking completed |
 | `text.delta` | Streaming | Incremental text update during streaming |
-| `thinking.delta` | Streaming | Incremental reasoning content from extended thinking models |
 | `session.started` | Session | Session execution started |
 | `session.activated` | Session | Session became active (turn started) |
 | `session.idled` | Session | Session became idle (turn completed, includes usage) |

@@ -253,9 +253,17 @@ fn deserialize_event_data(
             let typed: LlmGenerationData = serde_json::from_value(data)?;
             EventData::LlmGeneration(typed)
         }
-        AGENT_THINKING => {
-            let typed: AgentThinkingData = serde_json::from_value(data)?;
-            EventData::AgentThinking(typed)
+        REASON_THINKING_STARTED => {
+            let typed: ReasonThinkingStartedData = serde_json::from_value(data)?;
+            EventData::ReasonThinkingStarted(typed)
+        }
+        REASON_THINKING_DELTA => {
+            let typed: ReasonThinkingDeltaData = serde_json::from_value(data)?;
+            EventData::ReasonThinkingDelta(typed)
+        }
+        REASON_THINKING_COMPLETED => {
+            let typed: ReasonThinkingCompletedData = serde_json::from_value(data)?;
+            EventData::ReasonThinkingCompleted(typed)
         }
         TEXT_DELTA => {
             let typed: TextDeltaData = serde_json::from_value(data)?;
@@ -301,9 +309,10 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ToolCallStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ToolCallCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::LlmGeneration(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::AgentThinking(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ReasonThinkingStarted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ReasonThinkingDelta(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ReasonThinkingCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::TextDelta(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ThinkingDelta(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionIdled(d) => serde_json::to_value(d).unwrap_or_default(),

@@ -40,10 +40,13 @@ pub const TOOL_CALL_COMPLETED: &str = "tool.call_completed";
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
 
+// Reasoning/thinking events (extended thinking from models like Claude)
+pub const REASON_THINKING_STARTED: &str = "reason.thinking.started";
+pub const REASON_THINKING_DELTA: &str = "reason.thinking.delta";
+pub const REASON_THINKING_COMPLETED: &str = "reason.thinking.completed";
+
 // Streaming events (for real-time UI updates)
-pub const AGENT_THINKING: &str = "agent.thinking";
 pub const TEXT_DELTA: &str = "text.delta";
-pub const THINKING_DELTA: &str = "thinking.delta";
 
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
@@ -857,14 +860,15 @@ impl LlmGenerationData {
 // Streaming Event Data Types
 // ============================================================================
 
-/// Data for agent.thinking event
+/// Data for reason.thinking.started event
 ///
-/// Emitted when the LLM starts generating a response. UI can show a
-/// "thinking" indicator until text.delta or message.agent events arrive.
+/// Emitted when extended thinking begins during reasoning phase.
+/// This signals the model is using chain-of-thought reasoning.
+/// UI can show a "thinking" indicator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct AgentThinkingData {
-    /// Turn ID this thinking indicator belongs to
+pub struct ReasonThinkingStartedData {
+    /// Turn ID this thinking belongs to
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
 
@@ -892,14 +896,14 @@ pub struct TextDeltaData {
     pub accumulated: String,
 }
 
-/// Data for thinking.delta event (extended thinking content from models like Claude)
+/// Data for reason.thinking.delta event (extended thinking content from models like Claude)
 ///
 /// This event streams incremental thinking/reasoning content from models that support
 /// extended thinking mode (e.g., Claude with thinking enabled). The thinking content
 /// represents the model's chain-of-thought reasoning before producing the final response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct ThinkingDeltaData {
+pub struct ReasonThinkingDeltaData {
     /// Turn ID this delta belongs to (for correlation)
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
@@ -909,6 +913,21 @@ pub struct ThinkingDeltaData {
 
     /// Accumulated thinking text so far (convenience for UI)
     pub accumulated: String,
+}
+
+/// Data for reason.thinking.completed event
+///
+/// Emitted when extended thinking completes and the model transitions
+/// to producing the final response. Contains the complete thinking content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ReasonThinkingCompletedData {
+    /// Turn ID this thinking belongs to
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// Complete thinking content
+    pub thinking: String,
 }
 
 // ============================================================================
@@ -1063,7 +1082,9 @@ pub struct SessionIdledData {
 /// - `tool.call_completed` → ToolCallCompletedData
 /// - `llm.generation` → LlmGenerationData
 /// - `text.delta` → TextDeltaData
-/// - `agent.thinking` → AgentThinkingData
+/// - `reason.thinking.started` → ReasonThinkingStartedData
+/// - `reason.thinking.delta` → ReasonThinkingDeltaData
+/// - `reason.thinking.completed` → ReasonThinkingCompletedData
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
@@ -1099,13 +1120,14 @@ pub enum EventData {
     LlmGeneration(LlmGenerationData),
 
     // Streaming events
-    // NOTE: TextDelta and ThinkingDelta must come BEFORE AgentThinking for untagged enum deserialization.
-    // TextDelta/ThinkingDelta have more required fields (turn_id, delta, accumulated) while
-    // AgentThinking only requires turn_id (model is optional). If AgentThinking
-    // comes first, it will match their JSON and discard delta/accumulated fields.
+    // NOTE: TextDelta and ReasonThinkingDelta must come BEFORE other thinking events for untagged enum deserialization.
+    // TextDelta/ReasonThinkingDelta have more required fields (turn_id, delta, accumulated) while
+    // ReasonThinkingStarted/Completed have fewer required fields. If simpler types come first,
+    // they will match their JSON and discard delta/accumulated fields.
     TextDelta(TextDeltaData),
-    ThinkingDelta(ThinkingDeltaData),
-    AgentThinking(AgentThinkingData),
+    ReasonThinkingDelta(ReasonThinkingDeltaData),
+    ReasonThinkingStarted(ReasonThinkingStartedData),
+    ReasonThinkingCompleted(ReasonThinkingCompletedData),
 
     // NOTE: TurnCancelled is placed here (after streaming events) because it only
     // requires turn_id. If placed before TextDelta/AgentThinking, it would greedily
@@ -1144,8 +1166,9 @@ impl EventData {
             EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::TextDelta(_) => TEXT_DELTA,
-            EventData::ThinkingDelta(_) => THINKING_DELTA,
-            EventData::AgentThinking(_) => AGENT_THINKING,
+            EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
+            EventData::ReasonThinkingStarted(_) => REASON_THINKING_STARTED,
+            EventData::ReasonThinkingCompleted(_) => REASON_THINKING_COMPLETED,
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
             EventData::SessionIdled(_) => SESSION_IDLED,
@@ -1190,9 +1213,10 @@ impl_from_event_data! {
     ToolCallStartedData => ToolCallStarted,
     ToolCallCompletedData => ToolCallCompleted,
     LlmGenerationData => LlmGeneration,
-    AgentThinkingData => AgentThinking,
+    ReasonThinkingStartedData => ReasonThinkingStarted,
+    ReasonThinkingDeltaData => ReasonThinkingDelta,
+    ReasonThinkingCompletedData => ReasonThinkingCompleted,
     TextDeltaData => TextDelta,
-    ThinkingDeltaData => ThinkingDelta,
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
@@ -1558,31 +1582,33 @@ mod tests {
 
     #[test]
     fn test_streaming_event_types() {
-        assert_eq!(AGENT_THINKING, "agent.thinking");
+        assert_eq!(REASON_THINKING_STARTED, "reason.thinking.started");
+        assert_eq!(REASON_THINKING_DELTA, "reason.thinking.delta");
+        assert_eq!(REASON_THINKING_COMPLETED, "reason.thinking.completed");
         assert_eq!(TEXT_DELTA, "text.delta");
     }
 
     #[test]
-    fn test_agent_thinking_data() {
+    fn test_reason_thinking_started_data() {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = AgentThinkingData {
+        let data = ReasonThinkingStartedData {
             turn_id,
-            model: Some("gpt-4o".to_string()),
+            model: Some("claude-4-opus".to_string()),
         };
 
         let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), AGENT_THINKING);
+        assert_eq!(event_data.event_type(), REASON_THINKING_STARTED);
 
         // Test serialization
         let json = serde_json::to_string(&event_data).unwrap();
         assert!(json.contains("turn_id"));
-        assert!(json.contains("gpt-4o"));
+        assert!(json.contains("claude-4-opus"));
     }
 
     #[test]
-    fn test_agent_thinking_data_without_model() {
+    fn test_reason_thinking_started_data_without_model() {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = AgentThinkingData {
+        let data = ReasonThinkingStartedData {
             turn_id,
             model: None,
         };
@@ -1590,6 +1616,42 @@ mod tests {
         // Model should be skipped when None
         let json = serde_json::to_string(&data).unwrap();
         assert!(!json.contains("model"));
+    }
+
+    #[test]
+    fn test_reason_thinking_delta_data() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let data = ReasonThinkingDeltaData {
+            turn_id,
+            delta: "thinking step 1".to_string(),
+            accumulated: "thinking step 1".to_string(),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), REASON_THINKING_DELTA);
+
+        // Test serialization
+        let json = serde_json::to_string(&event_data).unwrap();
+        assert!(json.contains("turn_id"));
+        assert!(json.contains("delta"));
+        assert!(json.contains("accumulated"));
+    }
+
+    #[test]
+    fn test_reason_thinking_completed_data() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let data = ReasonThinkingCompletedData {
+            turn_id,
+            thinking: "Full thinking content here".to_string(),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), REASON_THINKING_COMPLETED);
+
+        // Test serialization
+        let json = serde_json::to_string(&event_data).unwrap();
+        assert!(json.contains("turn_id"));
+        assert!(json.contains("thinking"));
     }
 
     #[test]
@@ -1640,26 +1702,26 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_thinking_deserialization() {
+    fn test_reason_thinking_started_deserialization() {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = AgentThinkingData {
+        let data = ReasonThinkingStartedData {
             turn_id,
             model: Some("claude-3".to_string()),
         };
 
         // Serialize to JSON
-        let json = serde_json::to_value(EventData::AgentThinking(data.clone())).unwrap();
+        let json = serde_json::to_value(EventData::ReasonThinkingStarted(data.clone())).unwrap();
 
         // Deserialize back
         let deserialized: EventData = serde_json::from_value(json).unwrap();
 
-        // Verify it's AgentThinking and fields are preserved
+        // Verify it's ReasonThinkingStarted and fields are preserved
         match deserialized {
-            EventData::AgentThinking(at) => {
+            EventData::ReasonThinkingStarted(at) => {
                 assert_eq!(at.turn_id, turn_id);
                 assert_eq!(at.model, Some("claude-3".to_string()));
             }
-            _ => panic!("Expected AgentThinking, got different variant"),
+            _ => panic!("Expected ReasonThinkingStarted, got different variant"),
         }
     }
 

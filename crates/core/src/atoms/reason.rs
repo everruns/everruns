@@ -28,9 +28,9 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    AgentThinkingData, EventContext, EventRequest, LlmGenerationData, MessageAgentData,
-    ReasonCompletedData, ReasonStartedData, TextDeltaData, ThinkingDeltaData, TokenUsage,
-    ToolDefinitionSummary,
+    EventContext, EventRequest, LlmGenerationData, MessageAgentData, ReasonCompletedData,
+    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -575,20 +575,20 @@ where
             "ReasonAtom: calling LLM"
         );
 
-        // 13. Emit agent.thinking event BEFORE starting LLM call
+        // 13. Emit reason.thinking.started event BEFORE starting LLM call
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
         tracing::info!(
             session_id = %session_id,
             turn_id = %context.turn_id,
-            "ReasonAtom: emitting agent.thinking event"
+            "ReasonAtom: emitting reason.thinking.started event"
         );
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
                 session_id,
                 streaming_event_context.clone(),
-                AgentThinkingData {
+                ReasonThinkingStartedData {
                     turn_id: context.turn_id,
                     model: Some(runtime_agent.model.clone()),
                 },
@@ -598,12 +598,12 @@ where
             tracing::warn!(
                 session_id = %session_id,
                 error = %e,
-                "ReasonAtom: failed to emit agent.thinking event"
+                "ReasonAtom: failed to emit reason.thinking.started event"
             );
         } else {
             tracing::info!(
                 session_id = %session_id,
-                "ReasonAtom: agent.thinking event emitted successfully"
+                "ReasonAtom: reason.thinking.started event emitted successfully"
             );
         }
 
@@ -685,8 +685,8 @@ where
                             .emit(EventRequest::new(
                                 session_id,
                                 streaming_event_context.clone(),
-                                ThinkingDeltaData {
-                                    turn_id: TurnId::from_uuid(context.turn_id),
+                                ReasonThinkingDeltaData {
+                                    turn_id: context.turn_id,
                                     delta: pending_thinking_delta.clone(),
                                     accumulated: thinking.clone(),
                                 },
@@ -696,7 +696,7 @@ where
                             tracing::warn!(
                                 session_id = %session_id,
                                 error = %e,
-                                "ReasonAtom: failed to emit thinking.delta event"
+                                "ReasonAtom: failed to emit reason.thinking.delta event"
                             );
                         }
                         pending_thinking_delta.clear();
@@ -736,8 +736,8 @@ where
                             .emit(EventRequest::new(
                                 session_id,
                                 streaming_event_context.clone(),
-                                ThinkingDeltaData {
-                                    turn_id: TurnId::from_uuid(context.turn_id),
+                                ReasonThinkingDeltaData {
+                                    turn_id: context.turn_id,
                                     delta: pending_thinking_delta.clone(),
                                     accumulated: thinking.clone(),
                                 },
@@ -747,7 +747,28 @@ where
                         tracing::warn!(
                             session_id = %session_id,
                             error = %e,
-                            "ReasonAtom: failed to emit final thinking.delta event"
+                            "ReasonAtom: failed to emit final reason.thinking.delta event"
+                        );
+                    }
+
+                    // Emit reason.thinking.completed if we had any thinking content
+                    if !thinking.is_empty()
+                        && let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                ReasonThinkingCompletedData {
+                                    turn_id: context.turn_id,
+                                    thinking: thinking.clone(),
+                                },
+                            ))
+                            .await
+                    {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            error = %e,
+                            "ReasonAtom: failed to emit reason.thinking.completed event"
                         );
                     }
                     completion_metadata = Some(metadata);
