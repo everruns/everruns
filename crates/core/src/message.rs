@@ -857,4 +857,180 @@ mod tests {
         // Only tool calls, no empty text
         assert_eq!(msg.content.len(), 2);
     }
+
+    // =========================================================================
+    // OpenAI Format Conversion Tests
+    // =========================================================================
+
+    #[test]
+    fn test_to_openai_format_user_message() {
+        let msg = Message::user("Hello, world!");
+        let converted = msg.to_openai_format();
+
+        assert_eq!(converted["role"], "user");
+        assert_eq!(converted["content"], "Hello, world!");
+    }
+
+    #[test]
+    fn test_to_openai_format_system_message() {
+        let msg = Message::system("You are a helpful assistant.");
+        let converted = msg.to_openai_format();
+
+        assert_eq!(converted["role"], "system");
+        assert_eq!(converted["content"], "You are a helpful assistant.");
+    }
+
+    #[test]
+    fn test_to_openai_format_assistant_role_mapping() {
+        // Internal "agent" role → "assistant"
+        let msg = Message::assistant("Hi there!");
+        let converted = msg.to_openai_format();
+
+        assert_eq!(converted["role"], "assistant");
+        assert_eq!(converted["content"], "Hi there!");
+    }
+
+    #[test]
+    fn test_to_openai_format_assistant_with_tool_calls() {
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: serde_json::json!({"location": "Tokyo"}),
+        };
+        let msg = Message::assistant_with_tools("Let me check.", vec![tool_call]);
+        let converted = msg.to_openai_format();
+
+        assert_eq!(converted["role"], "assistant");
+        assert_eq!(converted["content"], "Let me check.");
+
+        let tool_calls = converted["tool_calls"].as_array().unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["id"], "call_123");
+        assert_eq!(tool_calls[0]["type"], "function");
+        assert_eq!(tool_calls[0]["function"]["name"], "get_weather");
+        assert_eq!(
+            tool_calls[0]["function"]["arguments"],
+            r#"{"location":"Tokyo"}"#
+        );
+    }
+
+    #[test]
+    fn test_to_openai_format_assistant_tool_calls_only() {
+        // Assistant message with only tool calls (no text)
+        let tool_call = ToolCall {
+            id: "call_abc".to_string(),
+            name: "search".to_string(),
+            arguments: serde_json::json!({"query": "rust"}),
+        };
+        let msg = Message::assistant_with_tools("", vec![tool_call]);
+        let converted = msg.to_openai_format();
+
+        assert_eq!(converted["role"], "assistant");
+        // No content field when text is empty
+        assert!(converted.get("content").is_none());
+        assert!(converted["tool_calls"].is_array());
+    }
+
+    #[test]
+    fn test_to_openai_format_tool_result_role_mapping() {
+        // Internal "tool_result" role → "tool"
+        let msg = Message::tool_result(
+            "call_123",
+            Some(serde_json::json!({"temperature": 72})),
+            None,
+        );
+        let converted = msg.to_openai_format();
+
+        assert_eq!(converted["role"], "tool");
+        assert_eq!(converted["tool_call_id"], "call_123");
+        assert_eq!(converted["content"], r#"{"temperature":72}"#);
+    }
+
+    #[test]
+    fn test_to_openai_format_tool_result_error() {
+        let msg = Message::tool_result("call_456", None, Some("API timeout".to_string()));
+        let converted = msg.to_openai_format();
+
+        assert_eq!(converted["role"], "tool");
+        assert_eq!(converted["tool_call_id"], "call_456");
+        assert_eq!(converted["content"], "Error: API timeout");
+    }
+
+    #[test]
+    fn test_to_openai_format_full_conversation() {
+        // Full conversation: user → assistant (tool call) → tool result → assistant
+        let tool_call = ToolCall {
+            id: "call_abc".to_string(),
+            name: "search".to_string(),
+            arguments: serde_json::json!({"query": "rust"}),
+        };
+
+        let messages = [
+            Message::user("Search for rust"),
+            Message::assistant_with_tools("", vec![tool_call]),
+            Message::tool_result(
+                "call_abc",
+                Some(serde_json::json!({"results": ["rust-lang.org"]})),
+                None,
+            ),
+            Message::assistant("Here are the search results."),
+        ];
+        let converted: Vec<_> = messages.iter().map(|m| m.to_openai_format()).collect();
+
+        assert_eq!(converted.len(), 4);
+        assert_eq!(converted[0]["role"], "user");
+        assert_eq!(converted[1]["role"], "assistant");
+        assert!(converted[1]["tool_calls"].is_array());
+        assert_eq!(converted[2]["role"], "tool");
+        assert_eq!(converted[2]["tool_call_id"], "call_abc");
+        assert_eq!(converted[3]["role"], "assistant");
+    }
+
+    // =========================================================================
+    // ContentPart::to_openai_format Tests
+    // =========================================================================
+
+    #[test]
+    fn test_content_part_to_openai_format_text() {
+        let part = ContentPart::text("Hello");
+        let converted = part.to_openai_format().unwrap();
+
+        assert_eq!(converted["type"], "text");
+        assert_eq!(converted["text"], "Hello");
+    }
+
+    #[test]
+    fn test_content_part_to_openai_format_image_url() {
+        let part = ContentPart::image_url("https://example.com/img.png");
+        let converted = part.to_openai_format().unwrap();
+
+        assert_eq!(converted["type"], "image_url");
+        assert_eq!(converted["image_url"]["url"], "https://example.com/img.png");
+    }
+
+    #[test]
+    fn test_content_part_to_openai_format_image_base64() {
+        let part = ContentPart::Image(ImageContentPart::from_base64("abc123", "image/jpeg"));
+        let converted = part.to_openai_format().unwrap();
+
+        assert_eq!(converted["type"], "image_url");
+        assert_eq!(
+            converted["image_url"]["url"],
+            "data:image/jpeg;base64,abc123"
+        );
+    }
+
+    #[test]
+    fn test_content_part_to_openai_format_tool_call_returns_none() {
+        // ToolCall parts are handled at message level, not content part level
+        let part = ContentPart::tool_call("call_1", "search", serde_json::json!({}));
+        assert!(part.to_openai_format().is_none());
+    }
+
+    #[test]
+    fn test_content_part_to_openai_format_tool_result_returns_none() {
+        // ToolResult parts are handled at message level
+        let part = ContentPart::tool_result("call_1", Some(serde_json::json!({})), None);
+        assert!(part.to_openai_format().is_none());
+    }
 }

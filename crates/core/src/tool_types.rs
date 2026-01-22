@@ -203,4 +203,39 @@ mod tests {
         assert_eq!(tool.parameters(), &serde_json::json!({"type": "object"}));
         assert_eq!(tool.policy(), &ToolPolicy::RequiresApproval);
     }
+
+    #[test]
+    fn test_tool_call_to_openai_format() {
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: serde_json::json!({"location": "Tokyo", "units": "celsius"}),
+        };
+
+        let converted = tool_call.to_openai_format();
+
+        assert_eq!(converted["id"], "call_123");
+        assert_eq!(converted["type"], "function");
+        assert_eq!(converted["function"]["name"], "get_weather");
+        // Arguments should be stringified JSON
+        let args: serde_json::Value =
+            serde_json::from_str(converted["function"]["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args["location"], "Tokyo");
+        assert_eq!(args["units"], "celsius");
+    }
+
+    #[test]
+    fn test_tool_call_to_openai_format_empty_arguments() {
+        let tool_call = ToolCall {
+            id: "call_456".to_string(),
+            name: "list_files".to_string(),
+            arguments: serde_json::json!({}),
+        };
+
+        let converted = tool_call.to_openai_format();
+
+        assert_eq!(converted["id"], "call_456");
+        assert_eq!(converted["function"]["name"], "list_files");
+        assert_eq!(converted["function"]["arguments"], "{}");
+    }
 }
