@@ -15,15 +15,43 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 - Small, incremental PR-sized changes
 - No backward compat needed (internal code)
 
-### Quick Reference
+### Specs
 
-| Resource | Location |
-|----------|----------|
-| Specs | `specs/` - architecture, models, APIs, etc. |
-| Skills | `.claude/skills/` - smoke-test, ui-screenshots |
-| Test cases | `test_cases/` - format in `specs/conventions.md` |
-| Docs source | `docs/` → published at docs.everruns.com |
-| PR template | `.github/pull_request_template.md` |
+`specs/` contains feature specifications. New code should comply with these or propose changes.
+
+- `specs/architecture.md` - System architecture, crate structure, infrastructure
+- `specs/models.md` - Data models (Agent, Session, Message, etc.)
+- `specs/apis.md` - HTTP API endpoints, error handling
+- `specs/events.md` - Event types and SSE streaming
+- `specs/tool-execution.md` - Tool types and execution flow
+- `specs/capabilities.md` - Agent capabilities system
+- `specs/mcp-servers.md` - MCP server registration
+- `specs/llm-drivers.md` - LLM driver trait, provider implementations
+- `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
+- `specs/authentication.md` - Authentication modes and OAuth
+- `specs/encryption.md` - Envelope encryption for sensitive data
+- `specs/session-filesystem.md` - Per-session virtual filesystem
+- `specs/usage-tracking.md` - LLM token usage tracking
+- `specs/documentation.md` - Documentation site (Astro Starlight)
+- `specs/brand.md` - Brand identity, colors, typography
+- `specs/dismissed-options.md` - Technical options considered but dismissed
+- `specs/multitenancy.md` - Organization-based multitenancy
+- `specs/release-process.md` - Release workflow with CHANGELOG.md
+- `specs/id-schema.md` - Standardized prefixed ID format
+- `specs/braintrust-integration.md` - Braintrust observability
+- `specs/test-cases.md` - Manual test case format
+
+### Skills
+
+`.claude/skills/` contains development skills.
+
+- `smoke-test/` - API and UI smoke testing
+- `no-docker-setup/` - PostgreSQL setup for cloud agents
+- `ui-screenshots/` - Playwright screenshots for PR comments
+
+### Test Cases
+
+`test_cases/` - manual test cases by feature. Format in `specs/test-cases.md`.
 
 ### Cloud Agent Start
 
@@ -77,4 +105,4 @@ Types: feat, fix, docs, refactor, test, chore
 
 **REQUIRED:** Use `.github/pull_request_template.md`. Squash and Merge.
 
-See `specs/conventions.md` for details.
+See `CONTRIBUTING.md` for details.
