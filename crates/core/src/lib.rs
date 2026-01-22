@@ -178,5 +178,5 @@ pub use typed_id::{
 // Deployment configuration
 pub use deployment::DeploymentGrade;
 
-// OTel event listener (observation backend)
-pub use observation::OtelEventListener;
+// Observation backends
+pub use observation::{BraintrustConfig, BraintrustListener, OtelEventListener};

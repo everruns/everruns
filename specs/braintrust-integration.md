@@ -204,11 +204,25 @@ Events are sent with span attributes based on type:
 - `block_in_place` tells tokio to handle blocking work properly
 - Alternative (async init) would require significant refactoring
 
+### Message Format Conversion
+
+Messages are converted to OpenAI-compatible format before sending to Braintrust:
+
+| Internal Role | OpenAI Role | Notes |
+|--------------|-------------|-------|
+| `agent` | `assistant` | Assistant responses |
+| `tool_result` | `tool` | Includes `tool_call_id` at message level |
+| `system` | `system` | No change |
+| `user` | `user` | No change |
+
+Conversion is handled via `Message::to_openai_format()` and `ToolCall::to_openai_format()` methods defined in the core crate.
+
 ## Implementation
 
-- **File**: `crates/control-plane/src/services/braintrust.rs`
+- **File**: `crates/core/src/observation/braintrust.rs`
 - **Registration**: `crates/control-plane/src/main.rs` (event listener setup)
 - **Configuration**: `docs/sre/environment-variables.md`
+- **Format conversion**: `crates/core/src/message.rs` (`Message::to_openai_format()`)
 
 ## API Endpoints Used
 

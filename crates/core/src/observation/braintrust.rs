@@ -30,15 +30,16 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use everruns_core::{
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info};
+
+use crate::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, EventListener,
     LLM_GENERATION, REASON_COMPLETED, REASON_STARTED, ReasonCompletedData, ReasonStartedData,
     TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
     TURN_STARTED, ToolCallStartedData, TurnCancelledData, TurnFailedData,
 };
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
 
 /// Configuration for Braintrust integration
 #[derive(Debug, Clone)]
@@ -336,7 +337,7 @@ impl BraintrustListener {
     fn convert_turn_started(
         &self,
         event: &Event,
-        data: &everruns_core::TurnStartedData,
+        data: &crate::TurnStartedData,
     ) -> BraintrustLogEvent {
         let metadata = serde_json::json!({
             "session_id": event.session_id.to_string(),
@@ -394,7 +395,7 @@ impl BraintrustListener {
     fn convert_turn_completed(
         &self,
         event: &Event,
-        data: &everruns_core::TurnCompletedData,
+        data: &crate::TurnCompletedData,
     ) -> BraintrustLogEvent {
         let mut metadata = serde_json::json!({
             "session_id": event.session_id.to_string(),
@@ -461,16 +462,31 @@ impl BraintrustListener {
     fn convert_llm_generation(
         &self,
         event: &Event,
-        data: &everruns_core::LlmGenerationData,
+        data: &crate::LlmGenerationData,
     ) -> BraintrustLogEvent {
-        // Convert messages to input format
-        let input = serde_json::json!(data.messages);
+        // Convert messages to Braintrust-compatible (OpenAI) format
+        // Our internal format uses "agent" and "tool_result" roles, but Braintrust
+        // expects "assistant" and "tool" roles
+        let input: serde_json::Value = data.messages.iter().map(|m| m.to_openai_format()).collect();
 
-        // Convert output
-        let output = serde_json::json!({
-            "text": data.output.text,
-            "tool_calls": data.output.tool_calls,
-        });
+        // Convert output tool_calls to OpenAI format
+        let tool_calls: Vec<serde_json::Value> = data
+            .output
+            .tool_calls
+            .iter()
+            .map(|tc| tc.to_openai_format())
+            .collect();
+
+        let output = if tool_calls.is_empty() {
+            serde_json::json!({
+                "text": data.output.text,
+            })
+        } else {
+            serde_json::json!({
+                "text": data.output.text,
+                "tool_calls": tool_calls,
+            })
+        };
 
         // Build metadata
         let mut metadata = serde_json::json!({
@@ -545,7 +561,7 @@ impl BraintrustListener {
     fn convert_tool_call_completed(
         &self,
         event: &Event,
-        data: &everruns_core::ToolCallCompletedData,
+        data: &crate::ToolCallCompletedData,
     ) -> BraintrustLogEvent {
         let input = serde_json::json!({
             "tool_call_id": data.tool_call_id,
@@ -1164,12 +1180,12 @@ impl EventListener for BraintrustListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::events::{
+    use crate::events::{
         EventContext, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
         ReasonCompletedData, TokenUsage, ToolCallCompletedData, TurnCompletedData, TurnStartedData,
     };
-    use everruns_core::message::Message;
-    use everruns_core::typed_id::{AgentId, MessageId, SessionId, TurnId};
+    use crate::message::Message;
+    use crate::typed_id::{AgentId, MessageId, SessionId, TurnId};
     use uuid::Uuid;
 
     fn test_config() -> BraintrustConfig {
@@ -1508,7 +1524,7 @@ mod tests {
 
     #[test]
     fn test_act_events_have_turn_as_parent() {
-        use everruns_core::events::ToolCallSummary;
+        use crate::events::ToolCallSummary;
 
         let listener = BraintrustListener::new(test_config());
         let turn_id = TurnId::new();
@@ -1663,7 +1679,7 @@ mod tests {
 
     #[test]
     fn test_all_events_in_trace_share_root_span_id() {
-        use everruns_core::events::ToolCallSummary;
+        use crate::events::ToolCallSummary;
 
         let listener = BraintrustListener::new(test_config());
         let turn_id = TurnId::new();
@@ -1939,7 +1955,7 @@ mod tests {
 
     #[test]
     fn test_is_merge_serialization_act_events() {
-        use everruns_core::events::ToolCallSummary;
+        use crate::events::ToolCallSummary;
 
         let listener = BraintrustListener::new(test_config());
         let turn_id = TurnId::new();
@@ -1994,7 +2010,7 @@ mod tests {
 
     #[test]
     fn test_is_merge_serialization_tool_events() {
-        use everruns_core::tool_types::ToolCall;
+        use crate::tool_types::ToolCall;
 
         let listener = BraintrustListener::new(test_config());
         let turn_id = TurnId::new();

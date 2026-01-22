@@ -90,6 +90,23 @@ pub struct ToolCall {
     pub arguments: serde_json::Value,
 }
 
+impl ToolCall {
+    /// Convert tool call to OpenAI-compatible format
+    ///
+    /// Returns format: `{id, type: "function", function: {name, arguments}}`
+    /// where arguments is stringified JSON.
+    pub fn to_openai_format(&self) -> serde_json::Value {
+        serde_json::json!({
+            "id": self.id,
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "arguments": serde_json::to_string(&self.arguments).unwrap_or_else(|_| "{}".to_string())
+            }
+        })
+    }
+}
+
 /// Tool execution result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
@@ -185,5 +202,40 @@ mod tests {
         assert_eq!(tool.description(), "A test tool");
         assert_eq!(tool.parameters(), &serde_json::json!({"type": "object"}));
         assert_eq!(tool.policy(), &ToolPolicy::RequiresApproval);
+    }
+
+    #[test]
+    fn test_tool_call_to_openai_format() {
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: serde_json::json!({"location": "Tokyo", "units": "celsius"}),
+        };
+
+        let converted = tool_call.to_openai_format();
+
+        assert_eq!(converted["id"], "call_123");
+        assert_eq!(converted["type"], "function");
+        assert_eq!(converted["function"]["name"], "get_weather");
+        // Arguments should be stringified JSON
+        let args: serde_json::Value =
+            serde_json::from_str(converted["function"]["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args["location"], "Tokyo");
+        assert_eq!(args["units"], "celsius");
+    }
+
+    #[test]
+    fn test_tool_call_to_openai_format_empty_arguments() {
+        let tool_call = ToolCall {
+            id: "call_456".to_string(),
+            name: "list_files".to_string(),
+            arguments: serde_json::json!({}),
+        };
+
+        let converted = tool_call.to_openai_format();
+
+        assert_eq!(converted["id"], "call_456");
+        assert_eq!(converted["function"]["name"], "list_files");
+        assert_eq!(converted["function"]["arguments"], "{}");
     }
 }

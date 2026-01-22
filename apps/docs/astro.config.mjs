@@ -51,6 +51,10 @@ export default defineConfig({
             },
           ],
         },
+        {
+          label: "Observability",
+          autogenerate: { directory: "observability" },
+        },
         // Auto-generated API Reference from OpenAPI spec
         ...openAPISidebarGroups,
       ],
