@@ -35,11 +35,15 @@ use everruns_core::{
     LLM_GENERATION, REASON_COMPLETED, REASON_STARTED, ReasonCompletedData, ReasonStartedData,
     TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
     TURN_STARTED, ToolCallStartedData, TurnCancelledData, TurnFailedData,
-    message::{ContentPart, Message, MessageRole},
+    observation::{convert_messages_to_openai_format, convert_tool_calls_to_openai_format},
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
+
+// Test-only import for single message conversion
+#[cfg(test)]
+use everruns_core::observation::convert_message_to_openai_format;
 
 /// Configuration for Braintrust integration
 #[derive(Debug, Clone)]
@@ -227,181 +231,6 @@ struct BraintrustLogEvent {
 #[derive(Debug, Serialize)]
 struct BraintrustInsertRequest {
     events: Vec<BraintrustLogEvent>,
-}
-
-// ============================================================================
-// Message Conversion for Braintrust
-// ============================================================================
-//
-// Braintrust expects OpenAI-compatible message format:
-// - Roles: "system", "user", "assistant", "tool", "function", "developer"
-// - Content: string or array of {type: "text", text: "..."} objects
-//
-// Our internal format uses:
-// - Roles: "system", "user", "agent", "tool_result"
-// - Content: array of ContentPart enums
-//
-// This conversion maps our format to Braintrust-compatible format.
-
-/// Convert messages to Braintrust-compatible (OpenAI) format
-///
-/// Transforms our internal message format to the format expected by Braintrust:
-/// - `agent` role → `assistant`
-/// - `tool_result` role → `tool` (with tool_call_id)
-/// - Content parts are flattened to OpenAI content format
-fn convert_messages_for_braintrust(messages: &[Message]) -> Vec<serde_json::Value> {
-    messages
-        .iter()
-        .map(convert_message_for_braintrust)
-        .collect()
-}
-
-/// Convert a single message to Braintrust-compatible format
-fn convert_message_for_braintrust(msg: &Message) -> serde_json::Value {
-    // Map roles to OpenAI-compatible values
-    let role = match msg.role {
-        MessageRole::System => "system",
-        MessageRole::User => "user",
-        MessageRole::Assistant => "assistant", // Our "agent" → "assistant"
-        MessageRole::ToolResult => "tool",     // Our "tool_result" → "tool"
-    };
-
-    // Handle tool result messages specially (need tool_call_id at message level)
-    if msg.role == MessageRole::ToolResult {
-        // Find the tool_call_id from the first ToolResult content part
-        let tool_call_id = msg.content.iter().find_map(|p| match p {
-            ContentPart::ToolResult(tr) => Some(tr.tool_call_id.as_str()),
-            _ => None,
-        });
-
-        // Content for tool messages should be the result string
-        let content = msg
-            .content
-            .iter()
-            .find_map(|p| match p {
-                ContentPart::ToolResult(tr) => {
-                    if let Some(error) = &tr.error {
-                        Some(format!("Error: {}", error))
-                    } else if let Some(result) = &tr.result {
-                        Some(serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string()))
-                    } else {
-                        Some("{}".to_string())
-                    }
-                }
-                _ => None,
-            })
-            .unwrap_or_else(|| "{}".to_string());
-
-        return serde_json::json!({
-            "role": role,
-            "content": content,
-            "tool_call_id": tool_call_id.unwrap_or("")
-        });
-    }
-
-    // For assistant messages with tool calls, format them in OpenAI style
-    if msg.role == MessageRole::Assistant {
-        let tool_calls: Vec<serde_json::Value> = msg.content.iter().filter_map(|p| match p {
-            ContentPart::ToolCall(tc) => Some(serde_json::json!({
-                "id": tc.id,
-                "type": "function",
-                "function": {
-                    "name": tc.name,
-                    "arguments": serde_json::to_string(&tc.arguments).unwrap_or_else(|_| "{}".to_string())
-                }
-            })),
-            _ => None,
-        }).collect();
-
-        // Get text content
-        let text_content: String = msg
-            .content
-            .iter()
-            .filter_map(|p| match p {
-                ContentPart::Text(t) => Some(t.text.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if tool_calls.is_empty() {
-            // Simple assistant message
-            return serde_json::json!({
-                "role": role,
-                "content": text_content
-            });
-        } else {
-            // Assistant message with tool calls
-            let mut result = serde_json::json!({
-                "role": role,
-                "tool_calls": tool_calls
-            });
-            if !text_content.is_empty() {
-                result["content"] = serde_json::json!(text_content);
-            }
-            return result;
-        }
-    }
-
-    // For system/user messages, convert content to OpenAI format
-    let content = convert_content_for_braintrust(&msg.content);
-    serde_json::json!({
-        "role": role,
-        "content": content
-    })
-}
-
-/// Convert content parts to Braintrust-compatible format
-fn convert_content_for_braintrust(content: &[ContentPart]) -> serde_json::Value {
-    // If single text content, use string format
-    if content.len() == 1 && let ContentPart::Text(t) = &content[0] {
-        return serde_json::json!(t.text);
-    }
-
-    // Convert each content part
-    let parts: Vec<serde_json::Value> = content
-        .iter()
-        .filter_map(|part| {
-            match part {
-                ContentPart::Text(t) => Some(serde_json::json!({
-                    "type": "text",
-                    "text": t.text
-                })),
-                ContentPart::Image(img) => {
-                    // Convert to OpenAI image_url format
-                    if let Some(url) = &img.url {
-                        Some(serde_json::json!({
-                            "type": "image_url",
-                            "image_url": { "url": url }
-                        }))
-                    } else if let Some(b64) = &img.base64 {
-                        let media_type = img.media_type.as_deref().unwrap_or("image/png");
-                        Some(serde_json::json!({
-                            "type": "image_url",
-                            "image_url": { "url": format!("data:{};base64,{}", media_type, b64) }
-                        }))
-                    } else {
-                        None
-                    }
-                }
-                // Skip ImageFile, ToolCall, ToolResult as they're handled separately
-                // or not valid in user/system messages
-                _ => None,
-            }
-        })
-        .collect();
-
-    // If we filtered everything out, return empty string
-    if parts.is_empty() {
-        return serde_json::json!("");
-    }
-
-    // If single text part after filtering, use string format
-    if parts.len() == 1 && let Some(text) = parts[0].get("text") {
-        return text.clone();
-    }
-
-    serde_json::json!(parts)
 }
 
 /// Event listener that sends agentic loop events to Braintrust
@@ -642,19 +471,10 @@ impl BraintrustListener {
         // Convert messages to Braintrust-compatible (OpenAI) format
         // Our internal format uses "agent" and "tool_result" roles, but Braintrust
         // expects "assistant" and "tool" roles
-        let input = serde_json::json!(convert_messages_for_braintrust(&data.messages));
+        let input = serde_json::json!(convert_messages_to_openai_format(&data.messages));
 
         // Convert output tool_calls to OpenAI format
-        let tool_calls: Vec<serde_json::Value> = data.output.tool_calls.iter().map(|tc| {
-            serde_json::json!({
-                "id": tc.id,
-                "type": "function",
-                "function": {
-                    "name": tc.name,
-                    "arguments": serde_json::to_string(&tc.arguments).unwrap_or_else(|_| "{}".to_string())
-                }
-            })
-        }).collect();
+        let tool_calls = convert_tool_calls_to_openai_format(&data.output.tool_calls);
 
         let output = if tool_calls.is_empty() {
             serde_json::json!({
@@ -2261,7 +2081,7 @@ mod tests {
     #[test]
     fn test_convert_user_message() {
         let msg = Message::user("Hello, world!");
-        let converted = convert_message_for_braintrust(&msg);
+        let converted = convert_message_to_openai_format(&msg);
 
         assert_eq!(converted["role"], "user");
         assert_eq!(converted["content"], "Hello, world!");
@@ -2270,7 +2090,7 @@ mod tests {
     #[test]
     fn test_convert_system_message() {
         let msg = Message::system("You are a helpful assistant.");
-        let converted = convert_message_for_braintrust(&msg);
+        let converted = convert_message_to_openai_format(&msg);
 
         assert_eq!(converted["role"], "system");
         assert_eq!(converted["content"], "You are a helpful assistant.");
@@ -2280,7 +2100,7 @@ mod tests {
     fn test_convert_assistant_message_maps_role() {
         // Our internal "agent" role should become "assistant" for Braintrust
         let msg = Message::assistant("Hi there!");
-        let converted = convert_message_for_braintrust(&msg);
+        let converted = convert_message_to_openai_format(&msg);
 
         assert_eq!(
             converted["role"], "assistant",
@@ -2299,7 +2119,7 @@ mod tests {
             arguments: serde_json::json!({"location": "Tokyo"}),
         };
         let msg = Message::assistant_with_tools("Let me check.", vec![tool_call]);
-        let converted = convert_message_for_braintrust(&msg);
+        let converted = convert_message_to_openai_format(&msg);
 
         assert_eq!(converted["role"], "assistant");
         assert_eq!(converted["content"], "Let me check.");
@@ -2325,7 +2145,7 @@ mod tests {
             Some(serde_json::json!({"temperature": 72})),
             None,
         );
-        let converted = convert_message_for_braintrust(&msg);
+        let converted = convert_message_to_openai_format(&msg);
 
         assert_eq!(
             converted["role"], "tool",
@@ -2338,7 +2158,7 @@ mod tests {
     #[test]
     fn test_convert_tool_result_error() {
         let msg = Message::tool_result("call_456", None, Some("API timeout".to_string()));
-        let converted = convert_message_for_braintrust(&msg);
+        let converted = convert_message_to_openai_format(&msg);
 
         assert_eq!(converted["role"], "tool");
         assert_eq!(converted["tool_call_id"], "call_456");
@@ -2352,7 +2172,7 @@ mod tests {
             Message::user("Hello"),
             Message::assistant("Hi!"),
         ];
-        let converted = convert_messages_for_braintrust(&messages);
+        let converted = convert_messages_to_openai_format(&messages);
 
         assert_eq!(converted.len(), 3);
         assert_eq!(converted[0]["role"], "system");
@@ -2381,7 +2201,7 @@ mod tests {
             ),
             Message::assistant("Here are the search results."),
         ];
-        let converted = convert_messages_for_braintrust(&messages);
+        let converted = convert_messages_to_openai_format(&messages);
 
         assert_eq!(converted.len(), 4);
         assert_eq!(converted[0]["role"], "user");
