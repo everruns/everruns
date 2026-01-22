@@ -31,9 +31,9 @@ pub use grpc_adapters::{
     GrpcSessionFileStore, GrpcSessionStore, TurnContext, load_turn_context,
 };
 
-// Re-export unified worker types
+// Re-export task worker types
 pub use grpc_worker_adapters::GrpcWorkerAdapters;
-pub use unified_worker::{UnifiedWorker, UnifiedWorkerConfig};
+pub use unified_worker::{TaskWorker, TaskWorkerConfig};
 pub use worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterLlmProviderStore, AdapterMessageRetriever,
     AdapterSessionFileStore, AdapterSessionStore, ModelWithProvider as WorkerModelWithProvider,

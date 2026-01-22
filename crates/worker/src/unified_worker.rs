@@ -1,10 +1,11 @@
-// Unified Worker Implementation
+// Task Worker Implementation
 //
 // Decision: Single worker implementation generic over WorkerAdapters
 // Decision: Works with both gRPC (external) and Direct (in-process) adapters
 // Decision: Replaces both InProcessWorker and DurableWorker
 //
-// This unifies the two worker implementations into one, eliminating code duplication
+// TaskWorker executes activities (input, reason, act) from the durable task queue.
+// It unifies the two worker implementations into one, eliminating code duplication
 // while preserving the different deployment models (in-process vs external).
 
 use anyhow::Result;
@@ -40,9 +41,9 @@ pub use everruns_core::atoms::{InputAtomInput, ReasonInput, ReasonResult};
 // Configuration
 // =============================================================================
 
-/// Configuration for the unified worker
+/// Configuration for the task worker
 #[derive(Debug, Clone)]
-pub struct UnifiedWorkerConfig {
+pub struct TaskWorkerConfig {
     /// Worker ID (unique identifier for this worker instance)
     pub worker_id: String,
     /// Activity types this worker handles
@@ -57,7 +58,7 @@ pub struct UnifiedWorkerConfig {
     pub worker_group: Option<String>,
 }
 
-impl Default for UnifiedWorkerConfig {
+impl Default for TaskWorkerConfig {
     fn default() -> Self {
         Self {
             worker_id: format!("worker-{}", Uuid::now_v7()),
@@ -74,7 +75,7 @@ impl Default for UnifiedWorkerConfig {
     }
 }
 
-impl UnifiedWorkerConfig {
+impl TaskWorkerConfig {
     /// Create dev mode configuration (faster polling, lower concurrency)
     pub fn dev_mode() -> Self {
         Self {
@@ -125,12 +126,12 @@ impl UnifiedWorkerConfig {
 /// This worker is generic over:
 /// - `S`: WorkflowEventStore implementation (InMemory or Postgres)
 /// - `A`: WorkerAdapters implementation (Direct or gRPC)
-pub struct UnifiedWorker<S, A>
+pub struct TaskWorker<S, A>
 where
     S: WorkflowEventStore,
     A: WorkerAdapters,
 {
-    config: UnifiedWorkerConfig,
+    config: TaskWorkerConfig,
     store: Arc<S>,
     adapters: A,
     shutdown_tx: watch::Sender<bool>,
@@ -138,13 +139,13 @@ where
     in_flight: Arc<AtomicUsize>,
 }
 
-impl<S, A> UnifiedWorker<S, A>
+impl<S, A> TaskWorker<S, A>
 where
     S: WorkflowEventStore,
     A: WorkerAdapters,
 {
     /// Create a new unified worker
-    pub fn new(config: UnifiedWorkerConfig, store: Arc<S>, adapters: A) -> Self {
+    pub fn new(config: TaskWorkerConfig, store: Arc<S>, adapters: A) -> Self {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
         info!(
@@ -872,21 +873,21 @@ mod tests {
 
     #[test]
     fn test_config_default() {
-        let config = UnifiedWorkerConfig::default();
+        let config = TaskWorkerConfig::default();
         assert!(config.worker_id.starts_with("worker-"));
         assert_eq!(config.max_concurrent_tasks, 10);
     }
 
     #[test]
     fn test_config_dev_mode() {
-        let config = UnifiedWorkerConfig::dev_mode();
+        let config = TaskWorkerConfig::dev_mode();
         assert!(config.worker_id.starts_with("dev-worker-"));
         assert_eq!(config.worker_group, Some("dev".to_string()));
     }
 
     #[test]
     fn test_config_production() {
-        let config = UnifiedWorkerConfig::production();
+        let config = TaskWorkerConfig::production();
         assert_eq!(config.max_concurrent_tasks, 1000);
     }
 }

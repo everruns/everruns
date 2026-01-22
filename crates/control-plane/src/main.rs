@@ -10,7 +10,8 @@ mod seed;
 // Use modules from library
 use everruns_control_plane::api;
 use everruns_control_plane::auth;
-use everruns_control_plane::dev_worker::{InProcessWorker, InProcessWorkerConfig};
+use everruns_control_plane::DirectWorkerAdapters;
+use everruns_worker::{TaskWorker, TaskWorkerConfig};
 use everruns_control_plane::openapi::ApiDoc;
 use everruns_control_plane::services;
 use everruns_control_plane::storage::{EncryptionService, StorageBackend};
@@ -481,52 +482,49 @@ async fn main() -> Result<()> {
             }
         }
     } else {
-        // DEV MODE: Start in-process worker instead of gRPC server
+        // DEV MODE: Start in-process task worker instead of gRPC server
         if let Some(shared_store) = shared_durable_store {
-            tracing::info!("DEV MODE: Starting in-process worker for task execution");
+            tracing::info!("DEV MODE: Starting task worker for in-process execution");
 
-            // Create LLM resolver service for the in-process worker
+            // Create LLM resolver service for the task worker
             let llm_resolver = Arc::new(services::LlmResolverService::new(
                 db.clone(),
                 encryption.clone(),
             ));
 
-            // Create MCP server service for the in-process worker
+            // Create MCP server service for the task worker
             let mcp_server_service = Arc::new(services::McpServerService::new(
                 db.clone(),
                 encryption.clone(),
             ));
 
-            // Create in-process worker configuration
-            let worker_config = InProcessWorkerConfig::default();
-
             // Create capability registry for tool execution
             let capability_registry = CapabilityRegistry::with_builtins();
 
-            // Create and spawn the in-process worker
-            let worker_db = db.clone();
-            let worker_event_service = event_service.clone();
+            // Create direct adapters for in-process worker (no gRPC overhead)
+            let adapters = DirectWorkerAdapters::new(
+                db.clone(),
+                event_service.clone(),
+                llm_resolver,
+                mcp_server_service,
+                capability_registry,
+            );
+
+            // Create and spawn the task worker with in-memory store
+            let worker_config = TaskWorkerConfig::dev_mode();
             tokio::spawn(async move {
-                let mut worker = InProcessWorker::new(
-                    worker_config,
-                    shared_store,
-                    worker_db,
-                    worker_event_service,
-                    llm_resolver,
-                    mcp_server_service,
-                    capability_registry,
-                );
+                let mut worker = TaskWorker::new(worker_config, shared_store, adapters);
 
                 if let Err(e) = worker.run().await {
-                    tracing::error!("In-process worker error: {}", e);
+                    tracing::error!("Task worker error: {}", e);
                 }
             });
 
             tracing::info!(
-                "DEV MODE: In-process worker started - control-plane is fully functional"
+                "DEV MODE: Task worker started - control-plane is fully functional"
             );
         } else {
-            tracing::info!("DEV MODE: gRPC server disabled, no in-process worker available");
+            tracing::info!("DEV MODE: gRPC server disabled, no task worker available");
         }
     }
 
