@@ -66,6 +66,12 @@ pub mod memory;
 // LLM Simulator driver for testing
 pub mod llmsim_driver;
 
+// In-memory agentic loop for testing and prototyping
+pub mod in_memory_loop;
+
+// Turn orchestration (state machine, context, outcomes)
+pub mod turn;
+
 // Note: LLM Driver implementations (AnthropicLlmDriver, OpenAILlmDriver) are now in
 // separate crates (everruns-anthropic, everruns-openai) that depend on everruns-core.
 // This enables dependency inversion - provider crates register their drivers at startup.
