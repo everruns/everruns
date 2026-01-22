@@ -471,6 +471,7 @@ pub fn proto_message_to_schema(
         id: id.into(),
         role,
         content,
+        thinking: None, // Thinking is not transmitted via gRPC (only stored/retrieved via events)
         controls,
         metadata,
         created_at,
