@@ -335,12 +335,19 @@ impl BraintrustListener {
         // This allows child spans to link to the root via root_span_id
         let turn_id_str = data.turn_id.to_string();
 
+        // Use input_content if available, otherwise fall back to message ID
+        let input = if let Some(content) = &data.input_content {
+            Some(serde_json::json!(content))
+        } else {
+            Some(serde_json::json!({
+                "input_message_id": data.input_message_id.to_string(),
+            }))
+        };
+
         BraintrustLogEvent {
             id: turn_id_str.clone(), // Use turn_id as span ID for parent linking
             created: event.ts,
-            input: Some(serde_json::json!({
-                "input_message_id": data.input_message_id.to_string(),
-            })),
+            input,
             output: None,
             error: None,
             metadata,
@@ -1130,6 +1137,7 @@ mod tests {
         let data = TurnStartedData {
             turn_id,
             input_message_id: message_id,
+            input_content: Some("Hello, how are you?".to_string()),
         };
 
         let event = Event::new(
@@ -1254,6 +1262,7 @@ mod tests {
         let started_data = TurnStartedData {
             turn_id,
             input_message_id,
+            input_content: Some("Test input content".to_string()),
         };
         let started_event = Event::new(
             SessionId::new(),
@@ -1587,6 +1596,7 @@ mod tests {
         let turn_data = TurnStartedData {
             turn_id,
             input_message_id,
+            input_content: Some("Test message".to_string()),
         };
         let turn_event = Event::new(
             SessionId::new(),

@@ -295,6 +295,8 @@ export interface MessageAgentData {
 export interface TurnStartedData {
   turn_id: string;
   input_message_id: string;
+  /** Input message content (for observability) */
+  input_content?: string;
 }
 
 /** Data for turn.completed event */

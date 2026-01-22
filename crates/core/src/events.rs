@@ -906,6 +906,10 @@ pub struct TurnStartedData {
     /// Input message ID that triggered this turn
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_01933b5a00007000800000000000001"))]
     pub input_message_id: MessageId,
+
+    /// Input message content (for observability)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_content: Option<String>,
 }
 
 /// Data for turn.completed event

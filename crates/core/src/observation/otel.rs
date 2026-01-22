@@ -566,6 +566,7 @@ mod tests {
         let started_data = TurnStartedData {
             turn_id,
             input_message_id: MessageId::from_uuid(Uuid::now_v7()),
+            input_content: Some("Test message".to_string()),
         };
 
         let start_event = Event::new(

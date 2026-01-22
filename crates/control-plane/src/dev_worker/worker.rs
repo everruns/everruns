@@ -364,6 +364,7 @@ impl InProcessWorker {
             EventContext, EventRequest, SessionActivatedData, TurnStartedData,
         };
         use everruns_core::traits::EventEmitter;
+        use everruns_core::MessageRetriever;
 
         debug!(
             session_id = %input.session_id,
@@ -384,6 +385,26 @@ impl InProcessWorker {
             warn!(error = %e, "Failed to set session status to active");
         }
 
+        // Create message retriever early to fetch input content for observability
+        let message_retriever =
+            DirectMessageRetriever::new(self.db.clone(), self.event_service.clone());
+
+        // Fetch input message content for turn.started event (for Braintrust observability)
+        let input_content = match message_retriever
+            .get(input.session_id, input.input_message_id)
+            .await
+        {
+            Ok(Some(msg)) => Some(msg.content_to_llm_string()),
+            Ok(None) => {
+                warn!("Input message not found for turn.started event");
+                None
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to fetch input message for turn.started event");
+                None
+            }
+        };
+
         // Emit session.activated event
         let event_emitter = DirectEventEmitter::new(self.event_service.clone());
         let activated_event = EventRequest::new(
@@ -398,13 +419,14 @@ impl InProcessWorker {
             warn!(error = %e, "Failed to emit session.activated event");
         }
 
-        // Emit turn.started event
+        // Emit turn.started event with input content for observability
         let turn_started_event = EventRequest::new(
             input.session_id,
             EventContext::turn(context.turn_id, input.input_message_id),
             TurnStartedData {
                 turn_id: context.turn_id,
                 input_message_id: input.input_message_id,
+                input_content,
             },
         );
         if let Err(e) = event_emitter.emit(turn_started_event).await {
@@ -412,8 +434,6 @@ impl InProcessWorker {
         }
 
         // Execute InputAtom
-        let message_retriever =
-            DirectMessageRetriever::new(self.db.clone(), self.event_service.clone());
         let atom = InputAtom::new(message_retriever, event_emitter);
 
         let atom_input = InputAtomInput {
