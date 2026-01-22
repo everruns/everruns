@@ -22,7 +22,7 @@ use axum::http::{HeaderValue, Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::CapabilityRegistry;
 use everruns_core::telemetry::{TelemetryConfig, init_telemetry};
-use everruns_core::{EventListener, OtelEventListener};
+use everruns_core::{BraintrustListener, EventListener, OtelEventListener};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
@@ -179,7 +179,7 @@ async fn main() -> Result<()> {
 
     // BraintrustListener sends LLM generation events to Braintrust for observability
     // Enabled when BRAINTRUST_API_KEY and BRAINTRUST_PROJECT_ID are set
-    if let Some(braintrust_listener) = services::BraintrustListener::from_env() {
+    if let Some(braintrust_listener) = BraintrustListener::from_env() {
         tracing::info!("Braintrust integration enabled");
         event_listeners.push(Arc::new(braintrust_listener));
     }
