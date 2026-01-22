@@ -97,6 +97,12 @@ pub struct Message {
     /// Message content as array of content parts (text, images, tool calls, tool results)
     pub content: Vec<ContentPart>,
 
+    /// Thinking content from extended thinking models (Anthropic Claude)
+    /// This is the model's chain-of-thought reasoning before producing the response.
+    /// Must be included in subsequent API calls when thinking is enabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<Controls>,
@@ -475,6 +481,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::User,
             content: vec![ContentPart::text(content)],
+            thinking: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -487,6 +494,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::Assistant,
             content: vec![ContentPart::text(content)],
+            thinking: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -519,6 +527,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::Assistant,
             content: parts,
+            thinking: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -531,6 +540,7 @@ impl Message {
             id: MessageId::new(),
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
+            thinking: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -552,6 +562,7 @@ impl Message {
                 result,
                 error,
             ))],
+            thinking: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),

@@ -864,12 +864,14 @@ mod tests {
                     arguments: json!({"timezone": "UTC"}),
                 }]),
                 tool_call_id: None,
+                thinking: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
                 content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_xyz789".to_string()),
+                thinking: None,
             },
         ];
 
@@ -910,6 +912,7 @@ mod tests {
                     arguments: json!({}),
                 }]),
                 tool_call_id: None,
+                thinking: None,
             },
         ];
 

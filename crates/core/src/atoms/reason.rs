@@ -526,6 +526,7 @@ where
                 content: LlmMessageContent::Text(runtime_agent.system_prompt.clone()),
                 tool_calls: None,
                 tool_call_id: None,
+                thinking: None,
             });
         }
 
@@ -861,6 +862,10 @@ where
             Message::assistant(&text)
         };
         assistant_message.metadata = Some(metadata);
+        // Store thinking content for extended thinking models (required for subsequent API calls)
+        if !thinking.is_empty() {
+            assistant_message.thinking = Some(thinking.clone());
+        }
 
         // Emit message.agent event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)

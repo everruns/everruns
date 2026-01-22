@@ -174,7 +174,17 @@ impl AnthropicLlmDriver {
                     }
                 }
                 LlmMessageRole::Assistant => {
-                    let mut content = Self::convert_content(&msg.content);
+                    let mut content = Vec::new();
+
+                    // Add thinking block first if present (required by Anthropic when thinking is enabled)
+                    if let Some(thinking) = &msg.thinking {
+                        content.push(AnthropicContentBlock::Thinking {
+                            thinking: thinking.clone(),
+                        });
+                    }
+
+                    // Add text/image content
+                    content.extend(Self::convert_content(&msg.content));
 
                     // Add tool_use blocks if present
                     if let Some(tool_calls) = &msg.tool_calls {
@@ -235,24 +245,10 @@ impl LlmDriver for AnthropicLlmDriver {
         };
 
         // Build thinking config from reasoning effort
-        // Note: Disable thinking if there are tool calls in the conversation history,
-        // as Anthropic requires thinking blocks in previous assistant messages when enabled
-        let has_tool_history = messages.iter().any(|m| {
-            m.role == LlmMessageRole::Tool
-                || (m.role == LlmMessageRole::Assistant
-                    && m.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty()))
-        });
-
-        let thinking = if has_tool_history {
-            // Can't use thinking with tool call history - Anthropic requires thinking blocks
-            // from previous turns which we don't store
-            None
-        } else {
-            config
-                .reasoning_effort
-                .as_ref()
-                .and_then(|e| AnthropicThinking::from_effort(e))
-        };
+        let thinking = config
+            .reasoning_effort
+            .as_ref()
+            .and_then(|e| AnthropicThinking::from_effort(e));
 
         // Calculate max_tokens - respect caller's limit, only increase when thinking requires it
         let base_max_tokens = config.max_tokens.unwrap_or(4096);
@@ -658,6 +654,8 @@ enum AnthropicContentBlock {
     Text { text: String },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
+    #[serde(rename = "thinking")]
+    Thinking { thinking: String },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -879,6 +877,7 @@ mod tests {
                 arguments: serde_json::json!({"city": "London"}),
             }]),
             tool_call_id: None,
+            thinking: None,
         }];
 
         let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);
@@ -963,12 +962,14 @@ mod tests {
                 content: LlmMessageContent::Text("You are helpful".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                thinking: None,
             },
             LlmMessage {
                 role: LlmMessageRole::User,
                 content: LlmMessageContent::Text("Hello".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                thinking: None,
             },
         ];
 
@@ -986,6 +987,7 @@ mod tests {
             content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_123".to_string()),
+            thinking: None,
         }];
 
         let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);
