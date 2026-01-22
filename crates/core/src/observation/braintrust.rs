@@ -34,19 +34,12 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
-use super::openai_format::{
-    convert_messages_to_openai_format, convert_tool_calls_to_openai_format,
-};
 use crate::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, EventListener,
     LLM_GENERATION, REASON_COMPLETED, REASON_STARTED, ReasonCompletedData, ReasonStartedData,
     TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
     TURN_STARTED, ToolCallStartedData, TurnCancelledData, TurnFailedData,
 };
-
-// Test-only import for single message conversion
-#[cfg(test)]
-use super::openai_format::convert_message_to_openai_format;
 
 /// Configuration for Braintrust integration
 #[derive(Debug, Clone)]
@@ -474,10 +467,15 @@ impl BraintrustListener {
         // Convert messages to Braintrust-compatible (OpenAI) format
         // Our internal format uses "agent" and "tool_result" roles, but Braintrust
         // expects "assistant" and "tool" roles
-        let input = serde_json::json!(convert_messages_to_openai_format(&data.messages));
+        let input: serde_json::Value = data.messages.iter().map(|m| m.to_openai_format()).collect();
 
         // Convert output tool_calls to OpenAI format
-        let tool_calls = convert_tool_calls_to_openai_format(&data.output.tool_calls);
+        let tool_calls: Vec<serde_json::Value> = data
+            .output
+            .tool_calls
+            .iter()
+            .map(|tc| tc.to_openai_format())
+            .collect();
 
         let output = if tool_calls.is_empty() {
             serde_json::json!({
@@ -2084,7 +2082,7 @@ mod tests {
     #[test]
     fn test_convert_user_message() {
         let msg = Message::user("Hello, world!");
-        let converted = convert_message_to_openai_format(&msg);
+        let converted = msg.to_openai_format();
 
         assert_eq!(converted["role"], "user");
         assert_eq!(converted["content"], "Hello, world!");
@@ -2093,7 +2091,7 @@ mod tests {
     #[test]
     fn test_convert_system_message() {
         let msg = Message::system("You are a helpful assistant.");
-        let converted = convert_message_to_openai_format(&msg);
+        let converted = msg.to_openai_format();
 
         assert_eq!(converted["role"], "system");
         assert_eq!(converted["content"], "You are a helpful assistant.");
@@ -2103,7 +2101,7 @@ mod tests {
     fn test_convert_assistant_message_maps_role() {
         // Our internal "agent" role should become "assistant" for Braintrust
         let msg = Message::assistant("Hi there!");
-        let converted = convert_message_to_openai_format(&msg);
+        let converted = msg.to_openai_format();
 
         assert_eq!(
             converted["role"], "assistant",
@@ -2122,7 +2120,7 @@ mod tests {
             arguments: serde_json::json!({"location": "Tokyo"}),
         };
         let msg = Message::assistant_with_tools("Let me check.", vec![tool_call]);
-        let converted = convert_message_to_openai_format(&msg);
+        let converted = msg.to_openai_format();
 
         assert_eq!(converted["role"], "assistant");
         assert_eq!(converted["content"], "Let me check.");
@@ -2148,7 +2146,7 @@ mod tests {
             Some(serde_json::json!({"temperature": 72})),
             None,
         );
-        let converted = convert_message_to_openai_format(&msg);
+        let converted = msg.to_openai_format();
 
         assert_eq!(
             converted["role"], "tool",
@@ -2161,7 +2159,7 @@ mod tests {
     #[test]
     fn test_convert_tool_result_error() {
         let msg = Message::tool_result("call_456", None, Some("API timeout".to_string()));
-        let converted = convert_message_to_openai_format(&msg);
+        let converted = msg.to_openai_format();
 
         assert_eq!(converted["role"], "tool");
         assert_eq!(converted["tool_call_id"], "call_456");
@@ -2175,7 +2173,7 @@ mod tests {
             Message::user("Hello"),
             Message::assistant("Hi!"),
         ];
-        let converted = convert_messages_to_openai_format(&messages);
+        let converted: Vec<_> = messages.iter().map(|m| m.to_openai_format()).collect();
 
         assert_eq!(converted.len(), 3);
         assert_eq!(converted[0]["role"], "system");
@@ -2204,7 +2202,7 @@ mod tests {
             ),
             Message::assistant("Here are the search results."),
         ];
-        let converted = convert_messages_to_openai_format(&messages);
+        let converted: Vec<_> = messages.iter().map(|m| m.to_openai_format()).collect();
 
         assert_eq!(converted.len(), 4);
         assert_eq!(converted[0]["role"], "user");

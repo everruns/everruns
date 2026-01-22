@@ -7,17 +7,14 @@
 // - `braintrust`: Braintrust tracing and logging
 // - `otel`: OpenTelemetry spans following gen-ai semantic conventions
 //
-// Utilities:
-// - `openai_format`: Convert internal messages to OpenAI-compatible format
+// OpenAI format conversion is handled via methods on domain types:
+// - Message::to_openai_format()
+// - ContentPart::to_openai_format()
+// - ToolCall::to_openai_format()
 
 pub mod braintrust;
-pub mod openai_format;
 pub mod otel;
 
 // Re-exports
 pub use braintrust::{BraintrustConfig, BraintrustListener};
-pub use openai_format::{
-    convert_content_to_openai_format, convert_message_to_openai_format,
-    convert_messages_to_openai_format, convert_tool_calls_to_openai_format,
-};
 pub use otel::OtelEventListener;

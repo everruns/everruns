@@ -90,6 +90,23 @@ pub struct ToolCall {
     pub arguments: serde_json::Value,
 }
 
+impl ToolCall {
+    /// Convert tool call to OpenAI-compatible format
+    ///
+    /// Returns format: `{id, type: "function", function: {name, arguments}}`
+    /// where arguments is stringified JSON.
+    pub fn to_openai_format(&self) -> serde_json::Value {
+        serde_json::json!({
+            "id": self.id,
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "arguments": serde_json::to_string(&self.arguments).unwrap_or_else(|_| "{}".to_string())
+            }
+        })
+    }
+}
+
 /// Tool execution result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
