@@ -383,14 +383,53 @@ case "$cmd" in
       sleep 2
     done
 
-    # Start Worker
+    # Start Worker with restart-on-crash logic
+    # Restarts every 5 seconds for up to 30 seconds if worker fails to connect
+    start_worker_with_restart() {
+      local start_time=$(date +%s)
+      local max_duration=30
+      local retry_delay=5
+
+      while true; do
+        local now=$(date +%s)
+        local elapsed=$((now - start_time))
+
+        if [ $elapsed -ge $max_duration ]; then
+          echo "   ❌ Worker failed to start after ${max_duration}s, giving up"
+          return 1
+        fi
+
+        if [ "$NO_WATCH" = true ]; then
+          cargo run -p everruns-worker
+        else
+          cargo watch -w crates -x 'run -p everruns-worker'
+        fi
+        local exit_code=$?
+
+        # Check if we should retry
+        now=$(date +%s)
+        elapsed=$((now - start_time))
+        if [ $elapsed -ge $max_duration ]; then
+          echo "   ❌ Worker exited after ${max_duration}s total, not restarting"
+          return $exit_code
+        fi
+
+        if [ $exit_code -ne 0 ]; then
+          echo "   ⚠️  Worker exited with code $exit_code, restarting in ${retry_delay}s..."
+          sleep $retry_delay
+        else
+          # Clean exit, don't restart
+          return 0
+        fi
+      done
+    }
+
     if [ "$NO_WATCH" = true ]; then
       echo "6️⃣  Starting worker..."
-      cargo run -p everruns-worker &
     else
       echo "6️⃣  Starting worker with auto-reload..."
-      cargo watch -w crates -x 'run -p everruns-worker' &
     fi
+    start_worker_with_restart &
     WORKER_PID=$!
     CHILD_PIDS+=("$WORKER_PID")
     sleep 2
