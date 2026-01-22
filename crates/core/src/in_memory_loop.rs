@@ -129,20 +129,12 @@ impl TurnResult {
 pub struct InMemoryAgenticLoopBuilder {
     agent_name: String,
     system_prompt: String,
-    llm_config: LlmConfig,
+    model: Option<ModelWithProvider>,
+    driver_registry: Option<DriverRegistry>,
+    llm_sim_config: Option<LlmSimConfig>,
     tools: Vec<Box<dyn Tool>>,
     capabilities: Vec<Box<dyn Capability>>,
     max_iterations: usize,
-}
-
-enum LlmConfig {
-    /// Use a custom driver registry (for real LLMs)
-    Custom {
-        model: ModelWithProvider,
-        registry: DriverRegistry,
-    },
-    /// Use LlmSim with specific configuration
-    Simulated(LlmSimConfig),
 }
 
 impl Default for InMemoryAgenticLoopBuilder {
@@ -157,7 +149,9 @@ impl InMemoryAgenticLoopBuilder {
         Self {
             agent_name: "Test Agent".to_string(),
             system_prompt: "You are a helpful assistant.".to_string(),
-            llm_config: LlmConfig::Simulated(LlmSimConfig::default()),
+            model: None,
+            driver_registry: None,
+            llm_sim_config: Some(LlmSimConfig::default()),
             tools: vec![],
             capabilities: vec![],
             max_iterations: 10,
@@ -178,45 +172,66 @@ impl InMemoryAgenticLoopBuilder {
 
     /// Use a simulated LLM with a fixed response (no real API calls)
     pub fn with_simulated_response(mut self, response: impl Into<String>) -> Self {
-        self.llm_config = LlmConfig::Simulated(LlmSimConfig::fixed(response));
+        self.llm_sim_config = Some(LlmSimConfig::fixed(response));
+        self.model = None;
+        self.driver_registry = None;
         self
     }
 
     /// Use a simulated LLM with custom configuration
     pub fn with_llm_sim(mut self, config: LlmSimConfig) -> Self {
-        self.llm_config = LlmConfig::Simulated(config);
+        self.llm_sim_config = Some(config);
+        self.model = None;
+        self.driver_registry = None;
         self
     }
 
-    /// Use a real LLM with custom driver registry
+    /// Set the LLM model to use
     ///
-    /// The driver registry should have the appropriate provider registered.
-    /// For OpenAI/Anthropic, register the drivers from their respective crates.
+    /// # Example
+    ///
+    /// ```ignore
+    /// use everruns_core::traits::ModelWithProvider;
+    /// use everruns_core::llm_models::LlmProviderType;
+    ///
+    /// let model = ModelWithProvider {
+    ///     model: "claude-sonnet-4-20250514".to_string(),
+    ///     provider_type: LlmProviderType::Anthropic,
+    ///     api_key: Some(std::env::var("ANTHROPIC_API_KEY").unwrap()),
+    ///     base_url: None,
+    /// };
+    ///
+    /// let runner = InMemoryAgenticLoop::builder()
+    ///     .model(model)
+    ///     .driver_registry(driver_registry)
+    ///     .build()
+    ///     .await?;
+    /// ```
+    pub fn model(mut self, model: ModelWithProvider) -> Self {
+        self.model = Some(model);
+        self.llm_sim_config = None;
+        self
+    }
+
+    /// Set the driver registry for LLM providers
     ///
     /// # Example
     ///
     /// ```ignore
     /// use everruns_core::llm_driver_registry::DriverRegistry;
-    /// use everruns_core::traits::ModelWithProvider;
-    /// use everruns_core::llm_models::LlmProviderType;
     ///
-    /// let mut registry = DriverRegistry::new();
-    /// everruns_openai::register_driver(&mut registry);
-    ///
-    /// let model = ModelWithProvider {
-    ///     model: "gpt-4o".to_string(),
-    ///     provider_type: LlmProviderType::Openai,
-    ///     api_key: Some(std::env::var("OPENAI_API_KEY").unwrap()),
-    ///     base_url: None,
-    /// };
+    /// let mut driver_registry = DriverRegistry::new();
+    /// everruns_anthropic::register_driver(&mut driver_registry);
     ///
     /// let runner = InMemoryAgenticLoop::builder()
-    ///     .with_driver_registry(model, registry)
+    ///     .model(model)
+    ///     .driver_registry(driver_registry)
     ///     .build()
     ///     .await?;
     /// ```
-    pub fn with_driver_registry(mut self, model: ModelWithProvider, registry: DriverRegistry) -> Self {
-        self.llm_config = LlmConfig::Custom { model, registry };
+    pub fn driver_registry(mut self, driver_registry: DriverRegistry) -> Self {
+        self.driver_registry = Some(driver_registry);
+        self.llm_sim_config = None;
         self
     }
 
@@ -299,32 +314,30 @@ impl InMemoryAgenticLoopBuilder {
 
         // Create provider store and driver registry
         let provider_store = InMemoryLlmProviderStore::new();
-        let driver_registry = match self.llm_config {
-            LlmConfig::Custom { model, registry } => {
-                // Use provided driver registry and model
-                provider_store.set_default_model(model).await;
-                registry
-            }
-            LlmConfig::Simulated(config) => {
-                // Use LlmSim
-                let model = ModelWithProvider {
-                    model: "llmsim-model".to_string(),
-                    provider_type: LlmProviderType::LlmSim,
-                    api_key: Some("fake-key".to_string()),
-                    base_url: None,
-                };
-                provider_store.set_default_model(model).await;
+        let driver_registry = if let (Some(model), Some(registry)) = (self.model, self.driver_registry) {
+            // Use provided model and driver registry
+            provider_store.set_default_model(model).await;
+            registry
+        } else {
+            // Use LlmSim (default or explicitly configured)
+            let config = self.llm_sim_config.unwrap_or_default();
+            let model = ModelWithProvider {
+                model: "llmsim-model".to_string(),
+                provider_type: LlmProviderType::LlmSim,
+                api_key: Some("fake-key".to_string()),
+                base_url: None,
+            };
+            provider_store.set_default_model(model).await;
 
-                // Create the driver once and share it across calls.
-                // This ensures sequence-based responses work correctly
-                // because the Arc counters are shared.
-                let driver = LlmSimDriver::new(config);
-                let mut registry = DriverRegistry::new();
-                registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
-                    Box::new(driver.clone())
-                });
-                registry
-            }
+            // Create the driver once and share it across calls.
+            // This ensures sequence-based responses work correctly
+            // because the Arc counters are shared.
+            let driver = LlmSimDriver::new(config);
+            let mut registry = DriverRegistry::new();
+            registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+                Box::new(driver.clone())
+            });
+            registry
         };
 
         // Build tool registry - include tools from capabilities

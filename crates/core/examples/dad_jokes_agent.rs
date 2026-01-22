@@ -55,8 +55,8 @@ async fn main() -> anyhow::Result<()> {
     println!("Using Anthropic Claude with current_time capability\n");
 
     // Set up the Anthropic driver registry
-    let mut registry = DriverRegistry::new();
-    everruns_anthropic::register_driver(&mut registry);
+    let mut driver_registry = DriverRegistry::new();
+    everruns_anthropic::register_driver(&mut driver_registry);
 
     // Configure the model
     let model = ModelWithProvider {
@@ -70,7 +70,8 @@ async fn main() -> anyhow::Result<()> {
     let runner = InMemoryAgenticLoop::builder()
         .agent_name("Dad Jokes Bot")
         .system_prompt(DAD_JOKES_SYSTEM_PROMPT)
-        .with_driver_registry(model, registry)
+        .model(model)
+        .driver_registry(driver_registry)
         .capability(CurrentTimeCapability)
         .max_iterations(5)
         .build()
