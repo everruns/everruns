@@ -12,16 +12,18 @@ Configuration for an agentic loop. An agent can have many concurrent sessions.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
+| `id` | AgentId | Typed ID with `agent_` prefix (UUIDv7) |
 | `name` | string | Display name |
 | `description` | string? | Optional description (supports markdown) |
 | `system_prompt` | string | System prompt for the LLM |
-| `default_model_id` | UUID? | Reference to llm_models table |
+| `default_model_id` | ModelId? | Reference to llm_models table |
 | `tags` | string[] | Tags for organization/filtering |
 | `capabilities` | CapabilityId[] | Enabled capabilities |
 | `status` | enum | `active` or `archived` |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time |
+
+**Note:** All entity IDs use typed wrappers (AgentId, SessionId, etc.) for compile-time type safety. See `specs/id-schema.md` for details.
 
 **Input Validation Limits:**
 
@@ -41,11 +43,11 @@ An instance of agentic loop execution. Multiple sessions can exist concurrently 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `agent_id` | UUID v7 | Parent agent reference |
+| `id` | SessionId | Typed ID with `session_` prefix (UUIDv7) |
+| `agent_id` | AgentId | Parent agent reference |
 | `title` | string? | Session title (user-provided or auto-generated) |
 | `tags` | string[] | Tags for organization/filtering |
-| `model_id` | UUID? | Override model (null = use agent default) |
+| `model_id` | ModelId? | Override model (null = use agent default) |
 | `status` | enum | `started`, `active`, `idle` |
 | `created_at` | timestamp | Creation time |
 | `updated_at` | timestamp | Last modification time (auto-updated on any change) |
@@ -62,8 +64,8 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | UUID v7 | Unique identifier (stored in event.data.message_id) |
-| `session_id` | UUID v7 | Parent session reference (from event.session_id) |
+| `id` | MessageId | Typed ID with `message_` prefix (stored in event.data.message_id) |
+| `session_id` | SessionId | Parent session reference (from event.session_id) |
 | `sequence` | integer | Order within session (from event.sequence) |
 | `role` | enum | `user`, `assistant`, `tool_result` |
 | `content` | ContentPart[] | Array of content parts (see below) |

@@ -131,11 +131,89 @@ The `TypedId<T>` generic type provides:
 - Automatic serialization/deserialization
 - Validation on construction
 - Display and Debug implementations
+- Database compatibility via sqlx `Type`/`Encode`/`Decode` implementations
 
 ```rust
 // Type aliases for each entity
 pub type AgentId = TypedId<AgentIdMarker>;
 pub type SessionId = TypedId<SessionIdMarker>;
 pub type MessageId = TypedId<MessageIdMarker>;
-// etc.
+pub type EventId = TypedId<EventIdMarker>;
+pub type TurnId = TypedId<TurnIdMarker>;
+pub type ExecId = TypedId<ExecIdMarker>;
+pub type ProviderId = TypedId<ProviderIdMarker>;
+pub type ModelId = TypedId<ModelIdMarker>;
+pub type ImageId = TypedId<ImageIdMarker>;
+pub type McpServerId = TypedId<McpServerIdMarker>;
+```
+
+### Usage Requirements
+
+**IMPORTANT: Typed IDs are mandatory throughout the codebase.**
+
+All code MUST use typed IDs instead of raw `Uuid` for entity identifiers:
+
+```rust
+// ✅ Correct: Use typed IDs
+fn get_session(session_id: SessionId) -> Option<Session>;
+fn create_event(session_id: SessionId, agent_id: AgentId) -> Event;
+
+// ❌ Wrong: Raw UUIDs lose type safety
+fn get_session(session_id: Uuid) -> Option<Session>;
+fn create_event(session_id: Uuid, agent_id: Uuid) -> Event;
+```
+
+### Common Patterns
+
+```rust
+// Create new ID (uses UUIDv7 internally)
+let session_id = SessionId::new();
+
+// Convert from existing UUID
+let session_id = SessionId::from_uuid(uuid);
+let session_id: SessionId = uuid.into();
+
+// Extract underlying UUID (for database queries, external APIs)
+let uuid = session_id.uuid();
+let uuid: Uuid = session_id.into();
+
+// String formatting (produces prefixed format)
+let s = session_id.to_string(); // "session_01933b5a..."
+
+// Parse from string
+let session_id: SessionId = "session_01933b5a...".parse()?;
+```
+
+### Trait Implementations
+
+All core traits use typed IDs:
+
+```rust
+// MessageRetriever uses SessionId and MessageId
+async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>>;
+async fn load(&self, session_id: SessionId) -> Result<Vec<Message>>;
+
+// AgentStore uses AgentId
+async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>>;
+
+// SessionStore uses SessionId
+async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>>;
+
+// LlmProviderStore uses ModelId
+async fn get_model_with_provider(&self, model_id: ModelId) -> Result<Option<ModelWithProvider>>;
+```
+
+### Database Integration
+
+TypedId implements sqlx traits for direct database usage:
+
+```rust
+// Direct use in queries - stored as UUID in database
+let row = sqlx::query_as!(
+    AgentRow,
+    "SELECT * FROM agents WHERE id = $1",
+    agent_id  // AgentId works directly
+)
+.fetch_one(&pool)
+.await?;
 ```
