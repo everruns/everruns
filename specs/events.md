@@ -652,7 +652,9 @@ Streaming events provide real-time feedback during LLM generation. These events 
 
 #### `reason.thinking.started`
 
-Emitted when the LLM starts generating a response. UI can show a "thinking" indicator until `text.delta` or `message.agent` events arrive.
+Emitted when the LLM starts generating a response with extended thinking enabled (`reasoning_effort` is set). This event is only emitted when using models that support extended thinking (e.g., Anthropic Claude). UI can show a "thinking" indicator until `text.delta` or `message.agent` events arrive.
+
+**Note:** This event is NOT emitted when `reasoning_effort` is not configured, even if the model supports extended thinking.
 
 ```json
 {

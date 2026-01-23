@@ -69,6 +69,8 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 | `sequence` | integer | Order within session (from event.sequence) |
 | `role` | enum | `user`, `assistant`, `tool_result` |
 | `content` | ContentPart[] | Array of content parts (see below) |
+| `thinking` | string? | Extended thinking content from reasoning models (Anthropic Claude) |
+| `thinking_signature` | string? | Cryptographic signature for thinking (required for multi-turn with Anthropic) |
 | `controls` | Controls? | Runtime controls for message processing |
 | `metadata` | object? | Message-level metadata (e.g., locale) |
 | `tags` | string[] | Tags for organization/filtering |
@@ -121,6 +123,15 @@ Conversation data stored as events in the `events` table with `event_type` prefi
 ```
 
 Controls are optional and allow per-message overrides for model selection and reasoning configuration.
+
+**Extended Thinking:**
+
+When `controls.reasoning.effort` is set, models that support extended thinking (e.g., Anthropic Claude) will generate internal reasoning before producing a response. This thinking content is stored in the `thinking` field of assistant messages.
+
+- `thinking`: The model's chain-of-thought reasoning (can be lengthy)
+- `thinking_signature`: Cryptographic signature required by Anthropic for multi-turn conversations
+
+Both fields must be preserved and sent back to the Anthropic API in subsequent turns when thinking is enabled. See [LLM Drivers spec](llm-drivers.md) for provider-specific requirements.
 
 **Model resolution priority:**
 

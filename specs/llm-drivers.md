@@ -127,6 +127,43 @@ Detect `RequestTooLarge` for:
    - `tools`: Tool definitions
    - `reasoning_effort`: Optional reasoning level (low, medium, high)
 
+3. **LlmMessage Extended Fields**:
+   - `thinking`: Optional thinking content from extended thinking models
+   - `thinking_signature`: Optional cryptographic signature for thinking (Anthropic)
+
+### Extended Thinking Support
+
+Extended thinking allows models to perform chain-of-thought reasoning before generating responses. This is supported by Anthropic Claude models.
+
+#### Stream Events
+
+When `reasoning_effort` is configured, drivers emit additional stream events:
+- `ThinkingDelta(String)` - Incremental thinking content
+- `ThinkingSignature(String)` - Cryptographic signature for thinking (Anthropic-specific)
+
+#### Anthropic-Specific Requirements
+
+1. **Beta Header for Tool Use**: When extended thinking is enabled AND tools are present, include:
+   ```
+   anthropic-beta: interleaved-thinking-2025-05-14
+   ```
+   This enables interleaved thinking where Claude can reason between tool calls.
+
+2. **Thinking Signature**: Anthropic returns a cryptographic signature with thinking content via `content_block_stop` events. This signature MUST be:
+   - Captured from the stream response
+   - Stored with the assistant message
+   - Sent back with the thinking content in subsequent API calls
+
+3. **Multi-turn Requirements**: When sending conversation history to Anthropic with thinking enabled:
+   - Every assistant message with thinking MUST include both `thinking` and `signature`
+   - Thinking block MUST appear before `tool_use` blocks in message content
+   - Without proper signatures, Anthropic returns: `"Expected 'thinking' or 'redacted_thinking', but found 'tool_use'"`
+
+4. **Budget Tokens**: The thinking budget is derived from `reasoning_effort`:
+   - `low`: 10,000 tokens
+   - `medium`: 50,000 tokens
+   - `high`: 100,000 tokens
+
 ### Completion Metadata
 
 `LlmCompletionMetadata` returned on stream completion:
