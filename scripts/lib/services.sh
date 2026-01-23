@@ -275,17 +275,17 @@ case "$cmd" in
     echo "1️⃣  Checking PostgreSQL..."
     if [ "$NO_DOCKER" = true ]; then
       # No Docker mode - require local PostgreSQL
-      if check_port_open localhost 5432; then
+      if check_postgres_ready localhost 5432 everruns; then
         echo "   ✅ Local PostgreSQL is ready"
         export DATABASE_URL=${DATABASE_URL:-postgres://everruns:everruns@localhost:5432/everruns}
       else
-        echo "   ❌ PostgreSQL not running on localhost:5432"
+        echo "   ❌ PostgreSQL not running or not responding on localhost:5432"
         echo "   Start PostgreSQL or remove --no-docker flag"
         exit 1
       fi
       export OTEL_SDK_DISABLED=true
       echo "   ℹ️  OpenTelemetry disabled (--no-docker)"
-    elif check_port_open localhost 5432; then
+    elif check_postgres_ready localhost 5432 postgres; then
       echo "   ✅ Local PostgreSQL is ready"
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost/everruns}
       if resolve_docker_compose 2>/dev/null; then
