@@ -66,7 +66,7 @@ export function AgentListWidget({
                       <p className="font-medium">{agent.name}</p>
                       <div className="flex items-center gap-2">
                         <p className="text-xs text-muted-foreground font-mono">
-                          {agent.id.slice(0, 8)}...
+                          {agent.id}
                         </p>
                         {/* Capabilities icons */}
                         {agentCapabilities.length > 0 && (
