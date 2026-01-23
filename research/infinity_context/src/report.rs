@@ -2,7 +2,6 @@
 
 use crate::runner::EvalConfig;
 use crate::types::{EvaluationResults, StrategyResults};
-use colored::Colorize;
 
 /// Generate a markdown report from evaluation results
 pub fn generate(results: &EvaluationResults, config: &EvalConfig) -> String {
@@ -213,63 +212,3 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
     analysis
 }
 
-/// Print a colored summary to terminal
-pub fn print_summary(results: &EvaluationResults) {
-    println!(
-        "\n{}",
-        "═".repeat(70).bright_cyan()
-    );
-    println!(
-        "{}",
-        "                    EVALUATION SUMMARY".bright_cyan().bold()
-    );
-    println!(
-        "{}\n",
-        "═".repeat(70).bright_cyan()
-    );
-
-    // Find best strategy
-    let best = results
-        .strategy_results
-        .iter()
-        .max_by(|a, b| a.accuracy().partial_cmp(&b.accuracy()).unwrap());
-
-    for strategy in &results.strategy_results {
-        let is_best = best.map(|b| b.strategy_name == strategy.strategy_name).unwrap_or(false);
-        let name = if is_best {
-            format!("{} ★", strategy.strategy_name).bright_green().bold()
-        } else {
-            strategy.strategy_name.normal()
-        };
-
-        let accuracy_color = if strategy.accuracy() >= 80.0 {
-            strategy.accuracy().to_string().bright_green()
-        } else if strategy.accuracy() >= 50.0 {
-            strategy.accuracy().to_string().bright_yellow()
-        } else {
-            strategy.accuracy().to_string().bright_red()
-        };
-
-        println!(
-            "  {:20} Accuracy: {:>6}%  Tokens: {:>8.0}  Latency: {:>6.0}ms",
-            name,
-            accuracy_color,
-            strategy.avg_tokens,
-            strategy.avg_latency_ms
-        );
-
-        if strategy.context_exceeded > 0 {
-            println!(
-                "  {:20} {} context exceeded on {} scenario(s)",
-                "",
-                "⚠".bright_yellow(),
-                strategy.context_exceeded
-            );
-        }
-    }
-
-    println!(
-        "\n{}\n",
-        "═".repeat(70).bright_cyan()
-    );
-}
