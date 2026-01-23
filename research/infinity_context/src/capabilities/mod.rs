@@ -8,7 +8,7 @@ pub mod naive_trim;
 mod infinity_context;
 
 pub use naive_trim::NaiveTrimCapability;
-pub use infinity_context::{InfinityContextCapability, QueryHistoryTool};
+pub use infinity_context::InfinityContextCapability;
 
 // Re-export the config from types
 pub use crate::types::ContextStrategyConfig;

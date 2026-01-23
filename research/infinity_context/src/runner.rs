@@ -2,19 +2,23 @@
 //!
 //! Uses core's LLM driver and Capability infrastructure directly.
 
-use crate::capabilities::{BatchTransformResult, Capability, MessageFilter, MessageFilterProvider, MessageQuery};
+use crate::capabilities::{Capability, MessageFilter, MessageQuery};
 use crate::metrics::{aggregate_strategy_results, check_success};
 use crate::types::{ContextStrategyConfig, EvalMetrics, EvaluationResults, Message, MessageExt, Scenario, ScenarioResult};
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
 use colored::Colorize;
+use everruns_core::error::Result as CoreResult;
 use everruns_core::llm_driver_registry::{
     DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, ProviderConfig,
     ProviderType,
 };
+use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::tool_types::{BuiltinTool, ToolDefinition as CoreToolDefinition};
 use everruns_core::tools::Tool;
-use serde_json::json;
+use everruns_core::traits::ToolContext;
+use everruns_core::typed_id::{MessageId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -28,7 +32,36 @@ pub struct EvalConfig {
     pub dry_run: bool,
 }
 
-/// Create a driver registry with Anthropic and OpenAI drivers registered
+// ============================================================================
+// In-Memory Message Retriever for Evals
+// ============================================================================
+
+/// Simple in-memory MessageRetriever that holds excluded messages for eval.
+struct ExcludedMessagesRetriever {
+    messages: Vec<Message>,
+}
+
+impl ExcludedMessagesRetriever {
+    fn new(messages: Vec<Message>) -> Self {
+        Self { messages }
+    }
+}
+
+#[async_trait]
+impl MessageRetriever for ExcludedMessagesRetriever {
+    async fn get(&self, _session_id: SessionId, _message_id: MessageId) -> CoreResult<Option<Message>> {
+        Ok(None) // Not needed for eval
+    }
+
+    async fn load(&self, _session_id: SessionId) -> CoreResult<Vec<Message>> {
+        Ok(self.messages.clone())
+    }
+}
+
+// ============================================================================
+// Driver Setup
+// ============================================================================
+
 fn create_driver_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
     everruns_anthropic::register_driver(&mut registry);
@@ -36,7 +69,6 @@ fn create_driver_registry() -> DriverRegistry {
     registry
 }
 
-/// Get provider type from model name
 fn get_provider_type(model: &str) -> ProviderType {
     if model.starts_with("claude") {
         ProviderType::Anthropic
@@ -44,6 +76,10 @@ fn get_provider_type(model: &str) -> ProviderType {
         ProviderType::OpenAI
     }
 }
+
+// ============================================================================
+// Evaluation Runner
+// ============================================================================
 
 /// Run evaluation across all scenarios and capabilities
 pub async fn run_evaluation(
@@ -133,16 +169,19 @@ pub async fn run_evaluation(
     })
 }
 
-/// Prepared context after filtering
+// ============================================================================
+// Context Preparation
+// ============================================================================
+
 struct PreparedContext {
     messages: Vec<Message>,
     excluded: Vec<Message>,
     system_addition: Option<String>,
-    tools: Vec<CoreToolDefinition>,
+    tools: Vec<Box<dyn Tool>>,
+    tool_definitions: Vec<CoreToolDefinition>,
     estimated_tokens: usize,
 }
 
-/// Prepare context using capability's message filter
 fn prepare_context(
     capability: &dyn Capability,
     messages: &[Message],
@@ -153,11 +192,14 @@ fn prepare_context(
     // If no filter provider, pass all messages through (baseline)
     let Some(provider) = filter_provider else {
         let estimated_tokens: usize = messages.iter().map(|m| m.estimated_tokens()).sum();
+        let tools = capability.tools();
+        let tool_definitions = tools_to_definitions(&tools);
         return PreparedContext {
             messages: messages.to_vec(),
             excluded: vec![],
             system_addition: capability.system_prompt_addition().map(String::from),
-            tools: capability_tools(capability),
+            tools,
+            tool_definitions,
             estimated_tokens,
         };
     };
@@ -186,20 +228,21 @@ fn prepare_context(
     }
 
     let estimated_tokens: usize = current_messages.iter().map(|m| m.estimated_tokens()).sum();
+    let tools = capability.tools();
+    let tool_definitions = tools_to_definitions(&tools);
 
     PreparedContext {
         messages: current_messages,
         excluded,
         system_addition: capability.system_prompt_addition().map(String::from),
-        tools: capability_tools(capability),
+        tools,
+        tool_definitions,
         estimated_tokens,
     }
 }
 
-/// Get tool definitions from capability
-fn capability_tools(capability: &dyn Capability) -> Vec<CoreToolDefinition> {
-    capability
-        .tools()
+fn tools_to_definitions(tools: &[Box<dyn Tool>]) -> Vec<CoreToolDefinition> {
+    tools
         .iter()
         .map(|t| {
             CoreToolDefinition::Builtin(BuiltinTool {
@@ -212,7 +255,10 @@ fn capability_tools(capability: &dyn Capability) -> Vec<CoreToolDefinition> {
         .collect()
 }
 
-/// Run a single scenario with a capability
+// ============================================================================
+// Scenario Execution
+// ============================================================================
+
 async fn run_single_scenario(
     config: &EvalConfig,
     scenario: &Scenario,
@@ -231,7 +277,7 @@ async fn run_single_scenario(
     let messages_in_context = prepared.messages.len();
     let messages_excluded = prepared.excluded.len();
 
-    match execute_llm_calls(config, scenario, capability, prepared, driver_registry).await {
+    match execute_llm_calls(config, scenario, prepared, driver_registry).await {
         Ok((response, metrics)) => {
             let success = check_success(&response, &scenario.expected);
             ScenarioResult {
@@ -269,11 +315,9 @@ async fn run_single_scenario(
     }
 }
 
-/// Execute LLM calls with tool handling
 async fn execute_llm_calls(
     config: &EvalConfig,
     scenario: &Scenario,
-    capability: &dyn Capability,
     prepared: PreparedContext,
     driver_registry: &DriverRegistry,
 ) -> Result<(String, EvalMetrics)> {
@@ -289,16 +333,21 @@ async fn execute_llm_calls(
     let driver = driver_registry.create_driver(&provider_config)?;
 
     let mut llm_messages = build_llm_messages(&prepared, scenario);
-    let has_tools = !prepared.tools.is_empty();
+    let has_tools = !prepared.tool_definitions.is_empty();
     let max_iterations = 5;
     let mut final_response = String::new();
+
+    // Create tool context with excluded messages as the retriever
+    let retriever: Arc<dyn MessageRetriever> = Arc::new(ExcludedMessagesRetriever::new(prepared.excluded));
+    let tool_context = ToolContext::new(SessionId::new())
+        .with_message_retriever(retriever);
 
     for _iteration in 0..max_iterations {
         let llm_config = LlmCallConfig {
             model: config.model.clone(),
             temperature: Some(0.0),
             max_tokens: Some(4096),
-            tools: prepared.tools.clone(),
+            tools: prepared.tool_definitions.clone(),
             reasoning_effort: None,
             metadata: HashMap::new(),
         };
@@ -323,13 +372,8 @@ async fn execute_llm_calls(
             for tool_call in tool_calls {
                 metrics.history_queries += 1;
 
-                // Handle query_history tool directly in runner
-                let tool_result = if tool_call.name == "query_history" {
-                    execute_query_history(&tool_call.arguments, &prepared.excluded)
-                } else {
-                    // For other tools, use capability's tool executor
-                    execute_capability_tool(capability, &tool_call.name, &tool_call.arguments).await
-                };
+                // Find and execute the tool using execute_with_context
+                let tool_result = execute_tool(&prepared.tools, &tool_call.name, &tool_call.arguments, &tool_context).await;
 
                 llm_messages.push(LlmMessage {
                     role: LlmMessageRole::Assistant,
@@ -354,82 +398,32 @@ async fn execute_llm_calls(
     Ok((final_response, metrics))
 }
 
-/// Execute query_history tool with excluded messages
-fn execute_query_history(arguments: &serde_json::Value, excluded: &[Message]) -> String {
-    let query = arguments.get("query").and_then(|v| v.as_str()).unwrap_or("");
-    let limit = arguments.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
-
-    if query.is_empty() {
-        // Return most recent excluded messages
-        let recent: Vec<_> = excluded.iter().rev().take(limit).collect();
-        let mut output = format!("Most recent {} excluded messages:\n\n", recent.len());
-        for msg in recent {
-            let content = msg.text_content();
-            let truncated = if content.len() > 500 {
-                format!("{}...", &content[..500])
-            } else {
-                content
-            };
-            output.push_str(&format!("--- {:?} ---\n{}\n\n", msg.role, truncated));
-        }
-        return output;
-    }
-
-    // Search by keyword
-    let query_lower = query.to_lowercase();
-    let mut results: Vec<(usize, &Message, f64)> = Vec::new();
-
-    for (idx, msg) in excluded.iter().enumerate() {
-        let content = msg.text_content().to_lowercase();
-        if content.contains(&query_lower) {
-            let score = 1.0 + (idx as f64 / excluded.len().max(1) as f64) * 0.3;
-            results.push((idx, msg, score));
-        }
-    }
-
-    results.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
-    results.truncate(limit);
-
-    if results.is_empty() {
-        return "No matching messages found.".to_string();
-    }
-
-    let mut output = format!("Found {} relevant message(s):\n\n", results.len());
-    for (idx, msg, score) in results {
-        let content = msg.text_content();
-        let truncated = if content.len() > 500 {
-            format!("{}...", &content[..500])
-        } else {
-            content
-        };
-        output.push_str(&format!(
-            "--- Message {} ({:?}, score: {:.2}) ---\n{}\n\n",
-            idx + 1,
-            msg.role,
-            score,
-            truncated
-        ));
-    }
-
-    output
-}
-
-/// Execute a capability tool by name
-async fn execute_capability_tool(
-    capability: &dyn Capability,
+/// Execute a tool by name using execute_with_context
+async fn execute_tool(
+    tools: &[Box<dyn Tool>],
     name: &str,
     arguments: &serde_json::Value,
+    context: &ToolContext,
 ) -> String {
-    for tool in capability.tools() {
+    use everruns_core::tools::ToolExecutionResult;
+
+    for tool in tools {
         if tool.name() == name {
-            let result = tool.execute(arguments.clone()).await;
-            return result.output.to_string();
+            let result = tool.execute_with_context(arguments.clone(), context).await;
+            return match result {
+                ToolExecutionResult::Success(value) => value.to_string(),
+                ToolExecutionResult::ToolError(msg) => format!("Error: {}", msg),
+                ToolExecutionResult::InternalError(err) => format!("Internal error: {}", err.message),
+            };
         }
     }
     format!("Unknown tool: {}", name)
 }
 
-/// Get API key from environment
+// ============================================================================
+// Helpers
+// ============================================================================
+
 fn get_api_key(provider_type: &ProviderType) -> Result<String> {
     let key_name = match provider_type {
         ProviderType::Anthropic => "ANTHROPIC_API_KEY",
@@ -439,7 +433,6 @@ fn get_api_key(provider_type: &ProviderType) -> Result<String> {
     std::env::var(key_name).map_err(|_| anyhow::anyhow!("{} not set", key_name))
 }
 
-/// Build LLM messages from prepared context
 fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<LlmMessage> {
     let mut messages = Vec::new();
 
@@ -482,7 +475,6 @@ fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<Ll
     messages
 }
 
-/// Create a result for dry run mode
 fn create_dry_run_result(
     scenario: &Scenario,
     capability: &dyn Capability,
@@ -512,6 +504,10 @@ fn create_dry_run_result(
         },
     }
 }
+
+// ============================================================================
+// Capability Registry
+// ============================================================================
 
 /// Get all available capabilities for evaluation
 pub fn all_capabilities() -> Vec<Arc<dyn Capability>> {

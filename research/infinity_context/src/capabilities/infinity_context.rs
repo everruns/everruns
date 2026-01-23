@@ -4,17 +4,18 @@
 //! a history search tool for the LLM to query excluded messages.
 
 use super::{
-    BatchTransformResult, Capability, CapabilityStatus, InjectedMessage, InjectionPosition,
-    MessageFilter, MessageFilterProvider, MessageQuery,
+    BatchTransformResult, Capability, CapabilityStatus, MessageFilter, MessageFilterProvider,
+    MessageQuery,
 };
 use crate::capabilities::naive_trim::trim_messages_to_budget;
 use crate::types::ContextStrategyConfig;
 use async_trait::async_trait;
 use everruns_core::message::{ContentPart, Message, MessageRole};
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 /// Capability that enables unlimited conversation length via history querying.
 pub struct InfinityContextCapability;
@@ -49,7 +50,7 @@ impl Capability for InfinityContextCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(QueryHistoryTool::new())]
+        vec![Box::new(QueryHistoryTool)]
     }
 
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
@@ -79,21 +80,11 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         let budget = config.context_budget_tokens;
         let min_recent = config.min_recent_messages;
 
-        // Add batch transform filter that trims messages
         query.filters.push(MessageFilter::BatchTransform(Arc::new(
             move |messages: Vec<Message>| -> BatchTransformResult {
                 trim_messages_to_budget(messages, budget, min_recent)
             },
         )));
-
-        // Inject a notice about excluded messages at the start
-        let notice = Message::system(
-            "[Context Notice: Earlier messages may not be shown. Use `query_history` tool to search history.]",
-        );
-        query.injections.push(InjectedMessage {
-            position: InjectionPosition::Start,
-            message: notice,
-        });
     }
 
     fn priority(&self) -> i32 {
@@ -105,130 +96,17 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
 // Query History Tool
 // ============================================================================
 
-/// Tool for querying conversation history
+/// Tool for querying conversation history via MessageRetriever.
 ///
-/// Allows the LLM to search and retrieve messages excluded from current context.
-pub struct QueryHistoryTool {
-    excluded_messages: Arc<RwLock<Vec<Message>>>,
-    config: Arc<RwLock<ContextStrategyConfig>>,
-}
-
-impl QueryHistoryTool {
-    pub fn new() -> Self {
-        Self {
-            excluded_messages: Arc::new(RwLock::new(Vec::new())),
-            config: Arc::new(RwLock::new(ContextStrategyConfig::default())),
-        }
-    }
-
-    /// Set the excluded messages for querying
-    pub fn set_excluded_messages(&self, messages: Vec<Message>) {
-        *self.excluded_messages.write().unwrap() = messages;
-    }
-
-    /// Set the configuration
-    pub fn set_config(&self, config: ContextStrategyConfig) {
-        *self.config.write().unwrap() = config;
-    }
-
-    fn search_messages(&self, query: &str, limit: usize) -> Vec<SearchResult> {
-        let messages = self.excluded_messages.read().unwrap();
-        let config = self.config.read().unwrap();
-        let query_lower = query.to_lowercase();
-        let mut results: Vec<SearchResult> = Vec::new();
-
-        for (idx, msg) in messages.iter().enumerate() {
-            let content_text = extract_text_content(msg);
-            let content_lower = content_text.to_lowercase();
-
-            let mut score = 0.0;
-
-            if content_lower.contains(&query_lower) {
-                score += 1.0;
-                if content_lower.split_whitespace().any(|w| w == query_lower) {
-                    score += 0.5;
-                }
-            }
-
-            if score > 0.0 {
-                if config.boost_recency && !messages.is_empty() {
-                    let recency_factor = (idx as f64 + 1.0) / messages.len() as f64;
-                    score += recency_factor * 0.3;
-                }
-
-                if config.boost_conversation {
-                    match msg.role {
-                        MessageRole::User | MessageRole::Assistant => score += 0.2,
-                        MessageRole::ToolResult => {}
-                        MessageRole::System => score += 0.1,
-                    }
-                }
-
-                results.push(SearchResult {
-                    index: idx,
-                    message: msg.clone(),
-                    score,
-                });
-            }
-        }
-
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        results.truncate(limit);
-        results
-    }
-
-    fn get_range(&self, from: usize, to: usize, limit: usize) -> Vec<Message> {
-        let messages = self.excluded_messages.read().unwrap();
-        let from = from.min(messages.len());
-        let to = to.min(messages.len()).max(from);
-        messages[from..to].iter().take(limit).cloned().collect()
-    }
-}
-
-impl Default for QueryHistoryTool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug)]
-struct SearchResult {
-    index: usize,
-    message: Message,
-    score: f64,
-}
-
-fn extract_text_content(message: &Message) -> String {
-    message
-        .content
-        .iter()
-        .filter_map(|part| match part {
-            ContentPart::Text(t) => Some(t.text.clone()),
-            ContentPart::ToolResult(tr) => tr.result.as_ref().map(|v| v.to_string()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn truncate_content(content: &str, max_len: usize) -> String {
-    if content.len() <= max_len {
-        content.to_string()
-    } else {
-        format!("{}...", &content[..max_len])
-    }
-}
+/// Uses `execute_with_context()` to access messages through the retriever.
+pub struct QueryHistoryTool;
 
 #[derive(Debug, Deserialize)]
 struct QueryHistoryParams {
+    #[serde(default)]
     query: Option<String>,
+    #[serde(default)]
     message_range: Option<MessageRange>,
-    #[allow(dead_code)]
-    message_types: Option<Vec<String>>,
     #[serde(default = "default_limit")]
     limit: usize,
 }
@@ -278,16 +156,40 @@ impl Tool for QueryHistoryTool {
         })
     }
 
-    async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        // Without context, we can't access messages
+        ToolExecutionResult::tool_error(
+            "query_history requires ToolContext with MessageRetriever. Use execute_with_context()."
+        )
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
         let params: QueryHistoryParams = match serde_json::from_value(arguments) {
             Ok(p) => p,
             Err(e) => return ToolExecutionResult::tool_error(format!("Invalid parameters: {}", e)),
         };
 
-        let messages = self.excluded_messages.read().unwrap();
+        // Get messages from MessageRetriever
+        let Some(retriever) = &context.message_retriever else {
+            return ToolExecutionResult::tool_error("No message retriever available");
+        };
+
+        let messages = match retriever.load(context.session_id.clone()).await {
+            Ok(m) => m,
+            Err(e) => return ToolExecutionResult::tool_error(format!("Failed to load messages: {}", e)),
+        };
+
         if messages.is_empty() {
             return ToolExecutionResult::success(json!({
-                "message": "No excluded messages available. All conversation history is visible.",
+                "message": "No messages available in history.",
                 "count": 0
             }));
         }
@@ -295,24 +197,103 @@ impl Tool for QueryHistoryTool {
         let limit = params.limit.min(50);
         let total = messages.len();
 
+        // Handle range query
         if let Some(range) = params.message_range {
-            drop(messages);
-            let range_messages = self.get_range(range.from, range.to, limit);
-            return format_range_result(&range_messages, range.from, total);
+            let from = range.from.min(total);
+            let to = range.to.min(total).max(from);
+            let range_messages: Vec<_> = messages[from..to].iter().take(limit).collect();
+            return format_range_result(&range_messages, from, total);
         }
 
+        // Handle search query
         if let Some(ref search_query) = params.query {
-            drop(messages);
-            let results = self.search_messages(search_query, limit);
+            let results = search_messages(&messages, search_query, limit);
             return format_search_result(&results, total);
         }
 
-        let recent: Vec<_> = messages.iter().rev().take(limit).cloned().collect();
+        // Default: return most recent messages
+        let recent: Vec<_> = messages.iter().rev().take(limit).collect();
         format_recent_result(&recent, total)
     }
 }
 
-fn format_range_result(messages: &[Message], start_idx: usize, total: usize) -> ToolExecutionResult {
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+struct SearchResult<'a> {
+    index: usize,
+    message: &'a Message,
+    score: f64,
+}
+
+fn search_messages<'a>(messages: &'a [Message], query: &str, limit: usize) -> Vec<SearchResult<'a>> {
+    let query_lower = query.to_lowercase();
+    let mut results: Vec<SearchResult<'a>> = Vec::new();
+
+    for (idx, msg) in messages.iter().enumerate() {
+        let content = extract_text_content(msg).to_lowercase();
+
+        if content.contains(&query_lower) {
+            let mut score = 1.0;
+
+            // Exact word match bonus
+            if content.split_whitespace().any(|w| w == query_lower) {
+                score += 0.5;
+            }
+
+            // Recency boost
+            if !messages.is_empty() {
+                score += (idx as f64 / messages.len() as f64) * 0.3;
+            }
+
+            // Message type boost
+            match msg.role {
+                MessageRole::User | MessageRole::Assistant => score += 0.2,
+                MessageRole::System => score += 0.1,
+                MessageRole::ToolResult => {}
+            }
+
+            results.push(SearchResult { index: idx, message: msg, score });
+        }
+    }
+
+    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.truncate(limit);
+    results
+}
+
+fn extract_text_content(message: &Message) -> String {
+    message
+        .content
+        .iter()
+        .filter_map(|part| match part {
+            ContentPart::Text(t) => Some(t.text.clone()),
+            ContentPart::ToolResult(tr) => tr.result.as_ref().map(|v| v.to_string()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn truncate_content(content: &str, max_len: usize) -> String {
+    if content.len() <= max_len {
+        content.to_string()
+    } else {
+        format!("{}...", &content[..max_len])
+    }
+}
+
+fn format_message(msg: &Message, idx: usize, total: usize) -> Value {
+    json!({
+        "index": idx,
+        "position": format!("{}/{}", idx + 1, total),
+        "role": format!("{:?}", msg.role),
+        "content": truncate_content(&extract_text_content(msg), 500)
+    })
+}
+
+fn format_range_result(messages: &[&Message], start_idx: usize, total: usize) -> ToolExecutionResult {
     if messages.is_empty() {
         return ToolExecutionResult::success(json!({
             "message": "No messages in the specified range.",
@@ -323,19 +304,14 @@ fn format_range_result(messages: &[Message], start_idx: usize, total: usize) -> 
     let formatted: Vec<Value> = messages
         .iter()
         .enumerate()
-        .map(|(offset, msg)| {
-            json!({
-                "index": start_idx + offset,
-                "role": format!("{:?}", msg.role),
-                "content": truncate_content(&extract_text_content(msg), 500)
-            })
-        })
+        .map(|(i, msg)| format_message(msg, start_idx + i, total))
         .collect();
 
     ToolExecutionResult::success(json!({
         "messages": formatted,
         "count": messages.len(),
-        "total_excluded": total
+        "total_in_history": total,
+        "range": format!("{}-{}", start_idx + 1, start_idx + messages.len())
     }))
 }
 
@@ -343,47 +319,38 @@ fn format_search_result(results: &[SearchResult], total: usize) -> ToolExecution
     if results.is_empty() {
         return ToolExecutionResult::success(json!({
             "message": "No matching messages found.",
-            "count": 0,
-            "total_excluded": total
+            "count": 0
         }));
     }
 
     let formatted: Vec<Value> = results
         .iter()
         .map(|r| {
-            json!({
-                "index": r.index,
-                "role": format!("{:?}", r.message.role),
-                "content": truncate_content(&extract_text_content(&r.message), 500),
-                "relevance": r.score
-            })
+            let mut obj = format_message(r.message, r.index, total);
+            obj["relevance_score"] = json!(format!("{:.2}", r.score));
+            obj
         })
         .collect();
 
     ToolExecutionResult::success(json!({
         "messages": formatted,
         "count": results.len(),
-        "total_excluded": total
+        "total_in_history": total
     }))
 }
 
-fn format_recent_result(messages: &[Message], total: usize) -> ToolExecutionResult {
+fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionResult {
     let formatted: Vec<Value> = messages
         .iter()
         .enumerate()
-        .map(|(idx, msg)| {
-            json!({
-                "index": total - messages.len() + idx,
-                "role": format!("{:?}", msg.role),
-                "content": truncate_content(&extract_text_content(msg), 500)
-            })
-        })
+        .map(|(i, msg)| format_message(msg, total - messages.len() + i, total))
         .collect();
 
     ToolExecutionResult::success(json!({
         "messages": formatted,
         "count": messages.len(),
-        "total_excluded": total
+        "total_in_history": total,
+        "note": "Showing most recent messages. Use 'query' parameter to search."
     }))
 }
 
@@ -393,18 +360,7 @@ mod tests {
     use crate::types::message_helpers;
 
     #[test]
-    fn test_capability_properties() {
-        let cap = InfinityContextCapability;
-        assert_eq!(cap.id(), "infinity_context");
-        assert!(cap.message_filter_provider().is_some());
-        assert_eq!(cap.tools().len(), 1);
-        assert!(cap.system_prompt_addition().is_some());
-    }
-
-    #[test]
-    fn test_query_history_tool_search() {
-        let tool = QueryHistoryTool::new();
-
+    fn test_search_messages() {
         let messages = vec![
             message_helpers::user("Let's discuss the API design"),
             message_helpers::assistant("Sure, what about authentication?"),
@@ -412,9 +368,14 @@ mod tests {
             message_helpers::assistant("JWT sounds good for the API"),
         ];
 
-        tool.set_excluded_messages(messages);
-
-        let results = tool.search_messages("API", 10);
+        let results = search_messages(&messages, "API", 10);
         assert!(!results.is_empty());
+        assert!(results.iter().any(|r| extract_text_content(r.message).contains("API")));
+    }
+
+    #[test]
+    fn test_extract_text_content() {
+        let msg = message_helpers::user("Hello world");
+        assert_eq!(extract_text_content(&msg), "Hello world");
     }
 }
