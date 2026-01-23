@@ -72,8 +72,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nExample completed successfully!");
     println!("\nNext steps:");
-    println!("   - Create a session: POST /v1/agents/<agent_id>/sessions");
-    println!("   - Send a message: POST /v1/agents/<agent_id>/sessions/<session_id>/messages");
+    println!("   - Create a session: POST /v1/orgs/default/sessions (with agent_id in body)");
+    println!("   - Send a message: POST /v1/orgs/default/sessions/<session_id>/messages");
     println!("   - View API docs: http://localhost:9000/swagger-ui/");
 
     Ok(())

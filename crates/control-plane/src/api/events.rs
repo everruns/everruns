@@ -1,6 +1,6 @@
 // Event streaming HTTP routes (SSE)
 // Events are notifications streamed to clients, NOT primary data storage
-// Routes are org-scoped: /v1/orgs/:org/agents/:agent_id/sessions/:session_id/...
+// Routes are org-scoped: /v1/orgs/:org/sessions/:session_id/...
 
 use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::storage::StorageBackend;

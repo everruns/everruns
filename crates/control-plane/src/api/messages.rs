@@ -1,5 +1,5 @@
 // Message HTTP routes and API contracts
-// Routes are org-scoped: /v1/orgs/:org/agents/:agent_id/sessions/:session_id/messages
+// Routes are org-scoped: /v1/orgs/:org/sessions/:session_id/messages
 //
 // BREAKING CHANGE: Simplified message roles to just `user` and `agent`.
 // - Tool results are conveyed via `tool.completed` events

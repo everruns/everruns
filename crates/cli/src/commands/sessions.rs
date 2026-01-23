@@ -50,6 +50,7 @@ pub enum SessionsCommand {
 /// Request to create a session
 #[derive(Debug, Serialize)]
 struct CreateSessionRequest {
+    agent_id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
     #[serde(default)]
@@ -62,6 +63,7 @@ struct CreateSessionRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,
+    pub organization_id: String,
     pub agent_id: String,
     #[serde(default)]
     pub title: Option<String>,
@@ -110,6 +112,7 @@ async fn create(
     tags: Vec<String>,
 ) -> Result<()> {
     let request = CreateSessionRequest {
+        agent_id,
         title,
         tags,
         model_id,
@@ -117,10 +120,7 @@ async fn create(
 
     let session: Session = client
         .post(
-            &format!(
-                "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions",
-                agent_id
-            ),
+            "/v1/orgs/org_00000000000000000000000000000001/sessions",
             &request,
         )
         .await?;
@@ -143,8 +143,8 @@ async fn create(
 async fn list(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<()> {
     let response: ListResponse<Session> = client
         .get(&format!(
-            "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions",
-            agent_id
+            "/v1/orgs/org_00000000000000000000000000000001/sessions?agent_id=agt_{}",
+            agent_id.as_hyphenated()
         ))
         .await?;
 
@@ -175,13 +175,13 @@ async fn list(client: &Client, output: OutputFormat, agent_id: Uuid) -> Result<(
 async fn get(
     client: &Client,
     output: OutputFormat,
-    agent_id: Uuid,
+    _agent_id: Uuid,
     session_id: Uuid,
 ) -> Result<()> {
     let session: Session = client
         .get(&format!(
-            "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}",
-            agent_id, session_id
+            "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}",
+            session_id.as_hyphenated()
         ))
         .await
         .map_err(|e| match e {
