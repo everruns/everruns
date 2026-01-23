@@ -67,7 +67,8 @@ export default function SessionsPage() {
       const session = await createSession.mutateAsync({
         request: { agent_id: targetAgentId },
       });
-      router.push(`/agents/${targetAgentId}/sessions/${session.id}`);
+      // Use org-level session URL
+      router.push(`/sessions/${session.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
     }
@@ -165,6 +166,7 @@ export default function SessionsPage() {
                         session={session}
                         agentName={!selectedAgentId ? agent?.name : undefined}
                         model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                        useOrgLevelUrl={true}
                       />
                     </div>
                     <Button

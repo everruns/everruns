@@ -33,6 +33,8 @@ export interface SessionCardProps {
   model?: LlmModelWithProvider;
   /** Optional custom summary text (overrides default title display) */
   summary?: string;
+  /** Whether to use org-level URL (/sessions/{id}) instead of agent-scoped URL */
+  useOrgLevelUrl?: boolean;
   /** Whether to show the delete button (if provided with onDelete) */
   onDelete?: (sessionId: string, sessionTitle: string) => void;
 }
@@ -130,6 +132,7 @@ export function SessionCard({
   agentName,
   model,
   summary,
+  useOrgLevelUrl = false,
 }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
@@ -139,10 +142,14 @@ export function SessionCard({
   const outputPreview = session.output_preview;
   // Use provided agentId or fall back to session.agent_id for link building
   const linkAgentId = agentId ?? session.agent_id;
+  // Build URL based on whether to use org-level or agent-scoped path
+  const sessionUrl = useOrgLevelUrl
+    ? `/sessions/${session.id}`
+    : `/agents/${linkAgentId}/sessions/${session.id}`;
 
   return (
     <Link
-      href={`/agents/${linkAgentId}/sessions/${session.id}`}
+      href={sessionUrl}
       className="flex items-start justify-between p-3 rounded-md border hover:bg-muted transition-colors group"
     >
       <div className="flex items-start gap-3 flex-1 min-w-0">
