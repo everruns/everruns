@@ -6,7 +6,6 @@
 //! - Infinity: Trim + history query tool (proposed solution)
 
 pub mod capabilities;
-mod eval_capability;
 mod metrics;
 mod report;
 mod runner;
@@ -16,7 +15,6 @@ pub mod types;
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use eval_capability::all_capabilities;
 use std::path::PathBuf;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -73,7 +71,6 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize tracing
     let filter = if cli.verbose {
         EnvFilter::new("debug")
     } else {
@@ -103,7 +100,6 @@ async fn main() -> Result<()> {
             .bold()
     );
 
-    // Build configuration
     let config = runner::EvalConfig {
         model: cli.model.clone(),
         context_window: cli.context_window,
@@ -126,7 +122,6 @@ async fn main() -> Result<()> {
     }
     println!();
 
-    // Load or generate scenarios
     let scenarios = if cli.synthetic {
         println!(
             "{} Generating {} synthetic scenarios...\n",
@@ -143,7 +138,6 @@ async fn main() -> Result<()> {
         scenarios::load_from_directory(&cli.scenarios_dir).await?
     };
 
-    // Filter scenarios if specific one requested
     let scenarios: Vec<_> = if let Some(ref name) = cli.scenario {
         scenarios.into_iter().filter(|s| s.name == *name).collect()
     } else {
@@ -161,16 +155,15 @@ async fn main() -> Result<()> {
         scenarios.len()
     );
 
-    // Determine which capabilities to run
     let capabilities = if let Some(ref name) = cli.capability {
-        let all = all_capabilities();
+        let all = runner::all_capabilities();
         let cap = all
             .into_iter()
             .find(|c| c.name() == name)
             .ok_or_else(|| anyhow::anyhow!("Unknown capability: {}", name))?;
         vec![cap]
     } else {
-        all_capabilities()
+        runner::all_capabilities()
     };
 
     println!("{}", "Capabilities to evaluate:".bold());
@@ -179,14 +172,11 @@ async fn main() -> Result<()> {
     }
     println!();
 
-    // Run evaluation
     let results = runner::run_evaluation(&config, &scenarios, &capabilities).await?;
 
-    // Generate report
     let report = report::generate(&results, &config);
     println!("{}", report);
 
-    // Save report to file
     let report_path = cli.output_dir.join(format!(
         "eval_{}_{}.md",
         chrono::Utc::now().format("%Y%m%d_%H%M%S"),

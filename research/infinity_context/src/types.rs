@@ -274,19 +274,3 @@ pub struct EvaluationResults {
     pub config: HashMap<String, String>,
     pub strategy_results: Vec<StrategyResults>,
 }
-
-/// Tool definition for the LLM (eval-specific, simpler than core)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub parameters: serde_json::Value,
-}
-
-/// Tool call from LLM response
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCall {
-    pub id: String,
-    pub name: String,
-    pub arguments: serde_json::Value,
-}
