@@ -57,6 +57,8 @@ impl DbMessageRetriever {
             id: Uuid::now_v7().into(),
             role: input.role,
             content: input.content,
+            thinking: None,
+            thinking_signature: None,
             controls: input.controls,
             metadata: input.metadata,
             created_at: Utc::now(),

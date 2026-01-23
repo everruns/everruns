@@ -38,6 +38,8 @@ The integration traces the full agentic loop with the following event types:
 | `turn.cancelled` | `task` | Root span - agent turn cancelled |
 | `reason.started` | `task` | Child span - LLM reasoning phase begins |
 | `reason.completed` | `task` | Child span - LLM reasoning phase ends |
+| `reason.thinking.started` | `task` | Child span - Extended thinking begins (within reason) |
+| `reason.thinking.completed` | `task` | Child span - Extended thinking ends (within reason) |
 | `act.started` | `task` | Child span - Tool execution phase begins |
 | `act.completed` | `task` | Child span - Tool execution phase ends |
 | `llm.generation` | `llm` | Child span - LLM API call |
@@ -51,18 +53,23 @@ The agentic loop produces a hierarchical trace structure where all events within
 ```
 agent turn (root)
 ├── reason (iteration 1)
+│   ├── thinking (if extended thinking enabled)
 │   └── llm.generation (gpt-4o)
 ├── act (iteration 1)
 │   ├── tool.call (search)
 │   └── tool.call (fetch)
 ├── reason (iteration 2)
+│   ├── thinking (if extended thinking enabled)
 │   └── llm.generation (gpt-4o)
 ├── act (iteration 2)
 │   └── tool.call (compute)
 ├── reason (iteration 3)
+│   ├── thinking (if extended thinking enabled)
 │   └── llm.generation (gpt-4o)
 └── (no act - turn complete)
 ```
+
+**Note:** Thinking spans only appear when `reasoning_effort` is configured and using a model that supports extended thinking (e.g., Anthropic Claude).
 
 ### Span ID Relationships
 
@@ -70,6 +77,7 @@ agent turn (root)
 |------------|---------|--------------|--------------|
 | `turn.started/completed` | turn_id | turn_id | `null` (root) |
 | `reason.started/completed` | reason_span_id | turn_id | `[turn_id]` |
+| `reason.thinking.started/completed` | thinking_span_id | turn_id | `[reason_span_id]` |
 | `llm.generation` | llm_span_id | turn_id | `[reason_span_id]` |
 | `act.started/completed` | act_span_id | turn_id | `[turn_id]` |
 | `tool.call_started/completed` | tool_span_id | turn_id | `[act_span_id]` |
@@ -132,6 +140,20 @@ The `turn.started` and `turn.completed` events both use `turn_id` as their log I
 | `data.result` | `output.result` | Tool result (on success) |
 | `data.error` | `error`, `output.error` | Error message (on failure) |
 
+#### Thinking Events
+
+Extended thinking events (`reason.thinking.*`) are converted to Braintrust spans when models use reasoning mode.
+
+| Everruns Event Field | Braintrust Field | Notes |
+|---------------------|------------------|-------|
+| `data.turn_id` | `metadata.turn_id` | Turn context |
+| `data.thinking` | `output.thinking` | Complete thinking content (on completed) |
+| `data.model` | `metadata.model` | Model name (on started) |
+| `event.context.span_id` | `span_id` | Thinking span ID |
+| `event.context.parent_span_id` | `span_parents` | Parent is reason span |
+
+**Note:** Thinking spans are child spans of the reason phase. They appear between `reason.started` and `llm.generation` in the span hierarchy.
+
 ### Span Attributes
 
 Events are sent with span attributes based on type:
@@ -140,6 +162,7 @@ Events are sent with span attributes based on type:
 |------------|------------------------|------------------------|
 | Turn events | `task` | `"agent turn"` |
 | Reason events | `task` | `"reason"` |
+| Thinking events | `task` | `"thinking"` |
 | Act events | `task` | `"act"` |
 | LLM generation | `llm` | `"chat {model}"` (e.g., "chat gpt-4o") |
 | Tool events | `tool` | `"tool {name}"` (e.g., "tool search") |

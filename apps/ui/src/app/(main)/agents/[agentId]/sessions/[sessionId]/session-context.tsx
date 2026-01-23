@@ -20,7 +20,8 @@ import type {
   TokenUsage,
   SessionIdledData,
   LlmGenerationData,
-  AgentThinkingData,
+  ReasonThinkingStartedData,
+  ReasonThinkingDeltaData,
   TextDeltaData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
@@ -57,6 +58,7 @@ interface SessionContextValue {
   // Streaming state (for real-time text updates)
   isThinking: boolean;
   streamingText: string | null;
+  streamingThinking: string | null; // Extended thinking content from reasoning models
   streamingTurnId: string | null;
   // Message sending
   sendMessage: UseMutationResult<
@@ -103,6 +105,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
   // Streaming state - tracks real-time text generation
   const [isThinking, setIsThinking] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [streamingThinking, setStreamingThinking] = useState<string | null>(null);
   const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
 
   // Optimistic events - shown immediately before SSE confirms
@@ -198,6 +201,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         // Also clear thinking/streaming state - session is done
         setIsThinking(false);
         setStreamingText(null);
+        setStreamingThinking(null);
         setStreamingTurnId(null);
         break;
       }
@@ -206,13 +210,14 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         setIsWaitingForResponse(false);
         setIsThinking(false);
         setStreamingText(null);
+        setStreamingThinking(null);
         setStreamingTurnId(null);
         break;
       }
     }
   }, [events]);
 
-  // Update streaming state from SSE events (agent.thinking, text.delta, message.agent)
+  // Update streaming state from SSE events (reason.thinking.*, text.delta, message.agent)
   // This provides real-time feedback while the LLM generates text
   useEffect(() => {
     if (!events || events.length === 0) return;
@@ -228,6 +233,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         if (!streamingTurnId || turnId === streamingTurnId) {
           setIsThinking(false);
           setStreamingText(null);
+          setStreamingThinking(null);
           setStreamingTurnId(null);
         }
         break;
@@ -242,9 +248,18 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         break;
       }
 
-      // agent.thinking indicates LLM is generating (before first text)
-      if (event.type === "agent.thinking") {
-        const data = event.data as AgentThinkingData;
+      // reason.thinking.delta provides incremental reasoning from extended thinking models
+      if (event.type === "reason.thinking.delta") {
+        const data = event.data as ReasonThinkingDeltaData;
+        setStreamingThinking(data.accumulated);
+        setStreamingTurnId(data.turn_id);
+        // Continue looking for text.delta (don't break) - thinking comes before text
+        continue;
+      }
+
+      // reason.thinking.started indicates LLM is generating (before first text)
+      if (event.type === "reason.thinking.started") {
+        const data = event.data as ReasonThinkingStartedData;
         // Only set thinking if we don't already have streaming text for this turn
         if (!streamingText || streamingTurnId !== data.turn_id) {
           setIsThinking(true);
@@ -262,6 +277,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     setOptimisticEvents([]);
     setIsThinking(false);
     setStreamingText(null);
+    setStreamingThinking(null);
     setStreamingTurnId(null);
   }, [sessionId]);
 
@@ -461,6 +477,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     setIsWaitingForResponse,
     isThinking,
     streamingText,
+    streamingThinking,
     streamingTurnId,
     sendMessage,
     cancelCurrentTurn,

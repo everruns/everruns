@@ -19,6 +19,7 @@ import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { StreamingMessage } from "@/components/streaming-message";
+import { StreamingThinking } from "@/components/streaming-thinking";
 import { useSessionContext } from "../session-context";
 import { useLlmModels, useImageAttachments } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
@@ -43,6 +44,7 @@ export default function ChatPage() {
     setIsWaitingForResponse,
     isThinking,
     streamingText,
+    streamingThinking,
     sendMessage,
     cancelCurrentTurn,
     getMessageText,
@@ -121,7 +123,7 @@ export default function ChatPage() {
   // Auto-scroll to bottom when new events arrive or streaming text updates
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatEvents, streamingText, isThinking]);
+  }, [chatEvents, streamingText, streamingThinking, isThinking]);
 
   // Auto-focus message input when session loads
   useEffect(() => {
@@ -284,6 +286,14 @@ export default function ChatPage() {
                         <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
                         <div className="flex-1 flex items-start gap-2">
                           <div className="flex-1 space-y-2">
+                            {/* Display thinking if present (collapsed by default in history) */}
+                            {data.message?.thinking && (
+                              <StreamingThinking
+                                text={data.message.thinking}
+                                defaultCollapsed={true}
+                                isStreaming={false}
+                              />
+                            )}
                             {textContent && (
                               <p className="text-sm whitespace-pre-wrap text-foreground/90">{textContent}</p>
                             )}
@@ -322,13 +332,22 @@ export default function ChatPage() {
           })
         )}
 
-        {/* Streaming content - thinking indicator or streaming text */}
-        {(isThinking || streamingText) && (
+        {/* Streaming content - thinking indicator, thinking content, or streaming text */}
+        {(isThinking || streamingText || streamingThinking) && (
           <div className="flex justify-start">
             <div className="w-full flex items-start gap-2">
               <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-              <div className="flex-1">
-                {isThinking && !streamingText ? (
+              <div className="flex-1 space-y-2">
+                {/* Extended thinking content from reasoning models */}
+                {streamingThinking && (
+                  <StreamingThinking
+                    text={streamingThinking}
+                    isStreaming={!streamingText && isThinking}
+                    defaultCollapsed={false}
+                  />
+                )}
+                {/* Main content - thinking indicator or streaming text */}
+                {isThinking && !streamingText && !streamingThinking ? (
                   <ThinkingIndicator />
                 ) : streamingText ? (
                   <StreamingMessage text={streamingText} />

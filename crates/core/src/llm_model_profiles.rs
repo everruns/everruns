@@ -98,6 +98,20 @@ fn reasoning_effort_gpt52_pro() -> ReasoningEffortConfig {
     }
 }
 
+/// Extended thinking config for Anthropic Claude models
+/// Maps to thinking budget_tokens: low=1024, medium=4096, high=16384, xhigh=32768
+fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
+    ReasoningEffortConfig {
+        values: vec![
+            effort(ReasoningEffort::Low, "Low (1K tokens)"),
+            effort(ReasoningEffort::Medium, "Medium (4K tokens)"),
+            effort(ReasoningEffort::High, "High (16K tokens)"),
+            effort(ReasoningEffort::Xhigh, "Extra High (32K tokens)"),
+        ],
+        default: ReasoningEffort::Medium,
+    }
+}
+
 /// Get a model profile by matching provider_type and model_id
 /// Returns None if no matching profile is found
 pub fn get_model_profile(
@@ -1001,7 +1015,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
-            reasoning_effort: None, // Anthropic uses extended thinking
+            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
         }),
 
         "claude-sonnet-4-5" => Some(LlmModelProfile {
@@ -1029,7 +1043,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
-            reasoning_effort: None,
+            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
         }),
 
         "claude-haiku-4-5" => Some(LlmModelProfile {
@@ -1057,7 +1071,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
-            reasoning_effort: None,
+            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
         }),
 
         // Claude 4 series
@@ -1114,7 +1128,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
-            reasoning_effort: None, // Anthropic uses extended thinking, not reasoning effort
+            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
         }),
 
         // Claude 3.7 series
@@ -1143,7 +1157,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
-            reasoning_effort: None,
+            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
         }),
 
         // Claude 3.5 series

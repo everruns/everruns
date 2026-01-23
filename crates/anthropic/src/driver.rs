@@ -174,7 +174,44 @@ impl AnthropicLlmDriver {
                     }
                 }
                 LlmMessageRole::Assistant => {
-                    let mut content = Self::convert_content(&msg.content);
+                    let mut content = Vec::new();
+
+                    // Debug: log thinking state for assistant messages
+                    tracing::debug!(
+                        has_thinking = msg.thinking.is_some(),
+                        has_signature = msg.thinking_signature.is_some(),
+                        thinking_len = msg.thinking.as_ref().map(|t| t.len()),
+                        signature_len = msg.thinking_signature.as_ref().map(|s| s.len()),
+                        has_tool_calls = msg.tool_calls.is_some(),
+                        tool_calls_count = msg.tool_calls.as_ref().map(|tc| tc.len()),
+                        "AnthropicDriver: converting assistant message"
+                    );
+
+                    // Add thinking block first if present (required by Anthropic when thinking is enabled)
+                    // Both thinking content and signature are required when sending thinking back
+                    if let (Some(thinking), Some(signature)) =
+                        (&msg.thinking, &msg.thinking_signature)
+                    {
+                        tracing::debug!(
+                            thinking_len = thinking.len(),
+                            signature_len = signature.len(),
+                            "AnthropicDriver: adding thinking block to assistant message"
+                        );
+                        content.push(AnthropicContentBlock::Thinking {
+                            thinking: thinking.clone(),
+                            signature: signature.clone(),
+                        });
+                    } else if msg.thinking.is_some() || msg.thinking_signature.is_some() {
+                        // Warn if one is present but not the other
+                        tracing::warn!(
+                            has_thinking = msg.thinking.is_some(),
+                            has_signature = msg.thinking_signature.is_some(),
+                            "AnthropicDriver: assistant message has partial thinking data (need both)"
+                        );
+                    }
+
+                    // Add text/image content
+                    content.extend(Self::convert_content(&msg.content));
 
                     // Add tool_use blocks if present
                     if let Some(tool_calls) = &msg.tool_calls {
@@ -240,10 +277,32 @@ impl LlmDriver for AnthropicLlmDriver {
             .as_ref()
             .and_then(|e| AnthropicThinking::from_effort(e));
 
-        let mut request = AnthropicRequest {
+        tracing::info!(
+            model = %config.model,
+            reasoning_effort = ?config.reasoning_effort,
+            thinking_enabled = thinking.is_some(),
+            thinking_budget = ?thinking.as_ref().map(|t| t.budget_tokens),
+            "AnthropicDriver: building request with thinking config"
+        );
+
+        // Calculate max_tokens - respect caller's limit, only increase when thinking requires it
+        let base_max_tokens = config.max_tokens.unwrap_or(4096);
+        let max_tokens = if let Some(ref thinking_config) = thinking {
+            // max_tokens must be > thinking.budget_tokens per Anthropic requirements
+            // Only increase if the caller's limit is too low for the thinking budget
+            let min_for_thinking = thinking_config.budget_tokens + 1024; // minimum headroom for response
+            base_max_tokens.max(min_for_thinking)
+        } else {
+            base_max_tokens
+        };
+
+        // Check if we need interleaved thinking beta header BEFORE moving values
+        let needs_interleaved_thinking = thinking.is_some() && tools.is_some();
+
+        let request = AnthropicRequest {
             model: config.model.clone(),
             messages: anthropic_messages,
-            max_tokens: config.max_tokens.unwrap_or(4096),
+            max_tokens,
             temperature: config.temperature,
             system: system_prompt,
             stream: true,
@@ -251,17 +310,23 @@ impl LlmDriver for AnthropicLlmDriver {
             thinking,
         };
 
-        // Ensure max_tokens is set (required by Anthropic)
-        if request.max_tokens == 0 {
-            request.max_tokens = 4096;
-        }
-
-        let response = self
+        // Build request with headers
+        let mut request_builder = self
             .client
             .post(&self.api_url)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+
+        // Add interleaved thinking beta header when thinking is enabled with tools
+        // Required for tool use with extended thinking per Anthropic docs
+        if needs_interleaved_thinking {
+            request_builder =
+                request_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
+            tracing::info!("AnthropicDriver: enabling interleaved thinking beta for tool use");
+        }
+
+        let response = request_builder
             .json(&request)
             .send()
             .await
@@ -361,11 +426,34 @@ impl LlmDriver for AnthropicLlmDriver {
                                             }
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
+                                        AnthropicDelta::ThinkingDelta { thinking } => {
+                                            // Stream thinking content from extended thinking models
+                                            tracing::debug!(
+                                                thinking_len = thinking.len(),
+                                                "AnthropicDriver: received thinking_delta from API"
+                                            );
+                                            return Ok(LlmStreamEvent::ThinkingDelta(thinking));
+                                        }
+                                        AnthropicDelta::SignatureDelta { signature } => {
+                                            // Cryptographic signature for thinking content
+                                            // This is required when sending thinking back to Anthropic
+                                            tracing::info!(
+                                                signature_len = signature.len(),
+                                                "AnthropicDriver: received signature_delta from API"
+                                            );
+                                            return Ok(LlmStreamEvent::ThinkingSignature(signature));
+                                        }
                                     }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
                             "content_block_stop" => {
+                                // Debug: log raw content_block_stop data
+                                tracing::debug!(
+                                    raw_data = %event.data,
+                                    "AnthropicDriver: received content_block_stop event"
+                                );
+
                                 // Finalize current tool call if any
                                 let mut current = current_tool_call.lock().unwrap();
                                 if let Some(mut tc) = current.take() {
@@ -375,6 +463,34 @@ impl LlmDriver for AnthropicLlmDriver {
                                             serde_json::from_str(args_str).unwrap_or(json!({}));
                                     }
                                     accumulated_tool_calls.lock().unwrap().push(tc);
+                                }
+                                // Check if this is a thinking block with signature
+                                match serde_json::from_str::<AnthropicContentBlockStop>(&event.data)
+                                {
+                                    Ok(data) => {
+                                        tracing::debug!(
+                                            has_content_block = data.content_block.is_some(),
+                                            "AnthropicDriver: parsed content_block_stop"
+                                        );
+                                        if let Some(AnthropicCompletedContentBlock::Thinking {
+                                            signature,
+                                            ..
+                                        }) = data.content_block
+                                        {
+                                            tracing::info!(
+                                                signature_len = signature.len(),
+                                                "AnthropicDriver: extracted thinking signature from content_block_stop"
+                                            );
+                                            return Ok(LlmStreamEvent::ThinkingSignature(signature));
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::debug!(
+                                            error = %e,
+                                            raw_data = %event.data,
+                                            "AnthropicDriver: failed to parse content_block_stop"
+                                        );
+                                    }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
@@ -634,6 +750,12 @@ enum AnthropicContentBlock {
     Text { text: String },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
+    #[serde(rename = "thinking")]
+    Thinking {
+        thinking: String,
+        /// Cryptographic signature required when sending thinking back to the API
+        signature: String,
+    },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -704,6 +826,35 @@ struct AnthropicContentBlockStart {
     content_block: AnthropicContentBlockDelta,
 }
 
+/// Completed content block from content_block_stop event
+/// Includes the cryptographic signature for thinking blocks
+#[derive(Debug, Deserialize)]
+struct AnthropicContentBlockStop {
+    #[serde(default)]
+    content_block: Option<AnthropicCompletedContentBlock>,
+}
+
+/// Completed content block variants (from content_block_stop)
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+#[allow(dead_code)] // Fields used for JSON deserialization
+enum AnthropicCompletedContentBlock {
+    #[serde(rename = "thinking")]
+    Thinking {
+        thinking: String,
+        /// Cryptographic signature for the thinking content (required to send it back)
+        signature: String,
+    },
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 #[allow(dead_code)] // Fields used for deserialization
@@ -712,6 +863,8 @@ enum AnthropicContentBlockDelta {
     Text { text: String },
     #[serde(rename = "tool_use")]
     ToolUse { id: String, name: String },
+    #[serde(rename = "thinking")]
+    Thinking { thinking: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -721,11 +874,17 @@ struct AnthropicContentBlockDeltaEvent {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
+#[allow(clippy::enum_variant_names)] // Delta suffix matches Anthropic's API naming
 enum AnthropicDelta {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
     #[serde(rename = "input_json_delta")]
     InputJsonDelta { partial_json: String },
+    #[serde(rename = "thinking_delta")]
+    ThinkingDelta { thinking: String },
+    /// Cryptographic signature for thinking content (sent after thinking_delta completes)
+    #[serde(rename = "signature_delta")]
+    SignatureDelta { signature: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -850,6 +1009,8 @@ mod tests {
                 arguments: serde_json::json!({"city": "London"}),
             }]),
             tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
         }];
 
         let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);
@@ -934,12 +1095,16 @@ mod tests {
                 content: LlmMessageContent::Text("You are helpful".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                thinking: None,
+                thinking_signature: None,
             },
             LlmMessage {
                 role: LlmMessageRole::User,
                 content: LlmMessageContent::Text("Hello".to_string()),
                 tool_calls: None,
                 tool_call_id: None,
+                thinking: None,
+                thinking_signature: None,
             },
         ];
 
@@ -957,6 +1122,8 @@ mod tests {
             content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_123".to_string()),
+            thinking: None,
+            thinking_signature: None,
         }];
 
         let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);

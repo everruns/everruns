@@ -36,6 +36,11 @@ pub type LlmResponseStream = Pin<Box<dyn Stream<Item = Result<LlmStreamEvent>> +
 pub enum LlmStreamEvent {
     /// Text delta (incremental content)
     TextDelta(String),
+    /// Thinking delta (incremental reasoning content from extended thinking models)
+    ThinkingDelta(String),
+    /// Cryptographic signature for thinking content (Anthropic Claude)
+    /// Emitted when a thinking block completes, before the Done event
+    ThinkingSignature(String),
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
     /// Streaming completed
@@ -107,12 +112,16 @@ pub trait LlmDriver: Send + Sync {
 
         let mut stream = self.chat_completion_stream(messages, config).await?;
         let mut text = String::new();
+        let mut thinking = String::new();
+        let mut thinking_signature: Option<String> = None;
         let mut tool_calls = Vec::new();
         let mut metadata = LlmCompletionMetadata::default();
 
         while let Some(event) = stream.next().await {
             match event? {
                 LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+                LlmStreamEvent::ThinkingDelta(delta) => thinking.push_str(&delta),
+                LlmStreamEvent::ThinkingSignature(sig) => thinking_signature = Some(sig),
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
                 LlmStreamEvent::Done(meta) => metadata = meta,
                 LlmStreamEvent::Error(err) => return Err(crate::error::AgentLoopError::llm(err)),
@@ -121,6 +130,12 @@ pub trait LlmDriver: Send + Sync {
 
         Ok(LlmResponse {
             text,
+            thinking: if thinking.is_empty() {
+                None
+            } else {
+                Some(thinking)
+            },
+            thinking_signature,
             tool_calls: if tool_calls.is_empty() {
                 None
             } else {
@@ -178,6 +193,12 @@ pub struct LlmMessage {
     pub content: LlmMessageContent,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
+    /// Thinking content from extended thinking models (Anthropic Claude)
+    /// Must be included in subsequent API calls when thinking is enabled
+    pub thinking: Option<String>,
+    /// Cryptographic signature for thinking content (Anthropic Claude)
+    /// Required when sending thinking back in subsequent API calls
+    pub thinking_signature: Option<String>,
 }
 
 impl LlmMessage {
@@ -188,6 +209,8 @@ impl LlmMessage {
             content: LlmMessageContent::Text(content.into()),
             tool_calls: None,
             tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
         }
     }
 
@@ -198,6 +221,8 @@ impl LlmMessage {
             content: LlmMessageContent::Parts(parts),
             tool_calls: None,
             tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
         }
     }
 
@@ -328,6 +353,10 @@ impl From<&RuntimeAgent> for LlmCallConfig {
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
     pub text: String,
+    /// Thinking content from extended thinking models (e.g., Claude with thinking enabled)
+    pub thinking: Option<String>,
+    /// Cryptographic signature for thinking content (Anthropic Claude)
+    pub thinking_signature: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub metadata: LlmCompletionMetadata,
 }
@@ -451,6 +480,8 @@ impl From<&crate::message::Message> for LlmMessage {
                 Some(tool_calls)
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
+            thinking: msg.thinking.clone(),
+            thinking_signature: msg.thinking_signature.clone(),
         }
     }
 }
@@ -576,6 +607,8 @@ impl LlmMessage {
                 Some(tool_calls)
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
+            thinking: msg.thinking.clone(),
+            thinking_signature: msg.thinking_signature.clone(),
         }
     }
 
@@ -978,6 +1011,8 @@ mod tests {
                     filename: Some("test.png".to_string()),
                 }),
             ],
+            thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -994,6 +1029,8 @@ mod tests {
             content: vec![ContentPart::Text(TextContentPart {
                 text: "Just text".to_string(),
             })],
+            thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1023,6 +1060,8 @@ mod tests {
                     filename: Some("test2.png".to_string()),
                 }),
             ],
+            thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1042,6 +1081,8 @@ mod tests {
             content: vec![ContentPart::Text(TextContentPart {
                 text: "Hello".to_string(),
             })],
+            thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1072,6 +1113,8 @@ mod tests {
                     filename: Some("test.png".to_string()),
                 }),
             ],
+            thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1111,6 +1154,8 @@ mod tests {
                 image_id: image_id.into(),
                 filename: Some("missing.png".to_string()),
             })],
+            thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),

@@ -253,9 +253,17 @@ fn deserialize_event_data(
             let typed: LlmGenerationData = serde_json::from_value(data)?;
             EventData::LlmGeneration(typed)
         }
-        AGENT_THINKING => {
-            let typed: AgentThinkingData = serde_json::from_value(data)?;
-            EventData::AgentThinking(typed)
+        REASON_THINKING_STARTED => {
+            let typed: ReasonThinkingStartedData = serde_json::from_value(data)?;
+            EventData::ReasonThinkingStarted(typed)
+        }
+        REASON_THINKING_DELTA => {
+            let typed: ReasonThinkingDeltaData = serde_json::from_value(data)?;
+            EventData::ReasonThinkingDelta(typed)
+        }
+        REASON_THINKING_COMPLETED => {
+            let typed: ReasonThinkingCompletedData = serde_json::from_value(data)?;
+            EventData::ReasonThinkingCompleted(typed)
         }
         TEXT_DELTA => {
             let typed: TextDeltaData = serde_json::from_value(data)?;
@@ -301,7 +309,9 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ToolCallStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ToolCallCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::LlmGeneration(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::AgentThinking(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ReasonThinkingStarted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ReasonThinkingDelta(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ReasonThinkingCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::TextDelta(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
@@ -470,6 +480,8 @@ pub fn proto_message_to_schema(
         id: id.into(),
         role,
         content,
+        thinking: value.thinking,
+        thinking_signature: value.thinking_signature,
         controls,
         metadata,
         created_at,
@@ -501,6 +513,8 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
         controls,
         metadata,
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
+        thinking: value.thinking.clone(),
+        thinking_signature: value.thinking_signature.clone(),
     }
 }
 
@@ -902,7 +916,7 @@ fn parse_message_role(s: &str) -> everruns_core::MessageRole {
     match s.to_lowercase().as_str() {
         "system" => everruns_core::MessageRole::System,
         "user" => everruns_core::MessageRole::User,
-        "assistant" => everruns_core::MessageRole::Assistant,
+        "assistant" | "agent" => everruns_core::MessageRole::Assistant,
         "tool_result" => everruns_core::MessageRole::ToolResult,
         _ => everruns_core::MessageRole::User,
     }
@@ -1114,5 +1128,75 @@ mod tests {
 
         // Verify capabilities remain empty
         assert!(schema_agent.capabilities.is_empty());
+    }
+
+    #[test]
+    fn test_message_thinking_field_roundtrip() {
+        use chrono::Utc;
+        use everruns_core::{ContentPart, Message, MessageRole};
+        use uuid::Uuid;
+
+        // Create a Message with thinking content (simulating extended thinking model output)
+        let thinking_content = "Let me analyze this step by step...\n\n1. First, I need to understand the problem.\n2. Then, I'll formulate a solution.".to_string();
+        let message = Message {
+            id: Uuid::now_v7().into(),
+            role: MessageRole::Assistant,
+            content: vec![ContentPart::text(
+                "Here is my response based on my analysis.",
+            )],
+            thinking: Some(thinking_content.clone()),
+            thinking_signature: Some("test_signature_abc123".to_string()),
+            controls: None,
+            metadata: None,
+            created_at: Utc::now(),
+        };
+
+        // Convert to proto
+        let proto_message = schema_message_to_proto(&message);
+
+        // Verify thinking field is set in proto
+        assert_eq!(proto_message.thinking, Some(thinking_content.clone()));
+        assert_eq!(
+            proto_message.thinking_signature,
+            Some("test_signature_abc123".to_string())
+        );
+
+        // Convert back to schema
+        let schema_message = proto_message_to_schema(proto_message).unwrap();
+
+        // Verify thinking field survives roundtrip
+        assert_eq!(schema_message.thinking, Some(thinking_content));
+        assert_eq!(schema_message.role, MessageRole::Assistant);
+    }
+
+    #[test]
+    fn test_message_without_thinking_roundtrip() {
+        use chrono::Utc;
+        use everruns_core::{ContentPart, Message, MessageRole};
+        use uuid::Uuid;
+
+        // Create a Message without thinking content (normal model output)
+        let message = Message {
+            id: Uuid::now_v7().into(),
+            role: MessageRole::Assistant,
+            content: vec![ContentPart::text("A simple response without thinking.")],
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: None,
+            created_at: Utc::now(),
+        };
+
+        // Convert to proto
+        let proto_message = schema_message_to_proto(&message);
+
+        // Verify thinking field is None in proto
+        assert_eq!(proto_message.thinking, None);
+
+        // Convert back to schema
+        let schema_message = proto_message_to_schema(proto_message).unwrap();
+
+        // Verify thinking field remains None
+        assert_eq!(schema_message.thinking, None);
     }
 }

@@ -36,9 +36,11 @@ use tracing::{debug, error, info};
 
 use crate::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, EventListener,
-    LLM_GENERATION, REASON_COMPLETED, REASON_STARTED, ReasonCompletedData, ReasonStartedData,
-    TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
-    TURN_STARTED, ToolCallStartedData, TurnCancelledData, TurnFailedData,
+    LLM_GENERATION, REASON_COMPLETED, REASON_STARTED, REASON_THINKING_COMPLETED,
+    REASON_THINKING_STARTED, ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData,
+    ReasonThinkingStartedData, TOOL_CALL_COMPLETED, TOOL_CALL_STARTED, TURN_CANCELLED,
+    TURN_COMPLETED, TURN_FAILED, TURN_STARTED, ToolCallStartedData, TurnCancelledData,
+    TurnFailedData,
 };
 
 /// Configuration for Braintrust integration
@@ -864,6 +866,124 @@ impl BraintrustListener {
         }
     }
 
+    /// Convert a reason.thinking.started event to Braintrust format (child task span)
+    /// Used for extended thinking models like Claude with thinking enabled.
+    /// Uses span_id as the log ID so started/completed events merge into one span.
+    fn convert_reason_thinking_started(
+        &self,
+        event: &Event,
+        data: &ReasonThinkingStartedData,
+    ) -> BraintrustLogEvent {
+        let mut metadata = serde_json::json!({
+            "session_id": event.session_id.to_string(),
+            "turn_id": data.turn_id.to_string(),
+        });
+
+        if let Some(model) = &data.model {
+            metadata["model"] = serde_json::json!(model);
+        }
+
+        // Parent-child linking using OTel-style span fields from context
+        let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
+
+        if let Some(exec_id) = &event.context.exec_id {
+            metadata["exec_id"] = serde_json::json!(exec_id.to_string());
+        }
+
+        // Use span_id as log ID so started/completed merge into one span
+        let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
+
+        // Set start time in metrics for proper timeline ordering
+        let start_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: Some(start_time),
+            end: None, // Will be set by completed event
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
+        BraintrustLogEvent {
+            id: log_id,
+            created: event.ts,
+            input: None,
+            output: None,
+            error: None,
+            metadata,
+            metrics,
+            span_attributes: BraintrustSpanAttributes {
+                name: "thinking".to_string(),
+                span_type: "task".to_string(),
+            },
+            tags: event.tags.clone(),
+            span_id,
+            root_span_id,
+            span_parents,
+            is_merge: None, // First event creates the span
+        }
+    }
+
+    /// Convert a reason.thinking.completed event to Braintrust format (child task span)
+    /// Contains the complete thinking content from extended thinking models.
+    /// Uses span_id as the log ID so started/completed events merge into one span.
+    fn convert_reason_thinking_completed(
+        &self,
+        event: &Event,
+        data: &ReasonThinkingCompletedData,
+    ) -> BraintrustLogEvent {
+        let metadata = serde_json::json!({
+            "session_id": event.session_id.to_string(),
+            "turn_id": data.turn_id.to_string(),
+            "thinking_length": data.thinking.len(),
+        });
+
+        // Output contains the full thinking content
+        let output = serde_json::json!({
+            "thinking": data.thinking,
+        });
+
+        // Parent-child linking using OTel-style span fields from context
+        let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
+
+        // Use span_id as log ID so started/completed merge into one span
+        let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
+
+        // Set end time in metrics
+        let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
+        let metrics = Some(BraintrustMetrics {
+            start: None, // Was set by started event
+            end: Some(end_time),
+            prompt_tokens: None,
+            completion_tokens: None,
+            tokens: None,
+            time_to_first_token: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        });
+
+        BraintrustLogEvent {
+            id: log_id,
+            created: event.ts,
+            input: None,
+            output: Some(output),
+            error: None,
+            metadata,
+            metrics,
+            span_attributes: BraintrustSpanAttributes {
+                name: "thinking".to_string(),
+                span_type: "task".to_string(),
+            },
+            tags: event.tags.clone(),
+            span_id,
+            root_span_id,
+            span_parents,
+            is_merge: Some(true), // Merge with reason.thinking.started event
+        }
+    }
+
     /// Convert an act.started event to Braintrust format (child task span)
     /// Uses span_id as the log ID so started/completed events merge into one span
     fn convert_act_started(&self, event: &Event, data: &ActStartedData) -> BraintrustLogEvent {
@@ -1090,6 +1210,17 @@ impl EventListener for BraintrustListener {
                 );
                 self.convert_reason_completed(event, data)
             }
+
+            // Extended thinking events (e.g., Claude extended thinking mode)
+            EventData::ReasonThinkingStarted(data) => {
+                debug!(turn_id = %data.turn_id, "Processing reason.thinking.started for Braintrust");
+                self.convert_reason_thinking_started(event, data)
+            }
+            EventData::ReasonThinkingCompleted(data) => {
+                debug!(turn_id = %data.turn_id, "Processing reason.thinking.completed for Braintrust");
+                self.convert_reason_thinking_completed(event, data)
+            }
+
             EventData::ActStarted(data) => {
                 debug!(
                     tool_count = data.tool_calls.len(),
@@ -1160,6 +1291,9 @@ impl EventListener for BraintrustListener {
             REASON_COMPLETED,
             ACT_STARTED,
             ACT_COMPLETED,
+            // Extended thinking (e.g., Claude extended thinking mode)
+            REASON_THINKING_STARTED,
+            REASON_THINKING_COMPLETED,
             // LLM generation
             LLM_GENERATION,
             // Tool execution
@@ -1206,8 +1340,8 @@ mod tests {
     fn test_event_types() {
         let listener = BraintrustListener::new(test_config());
         let types = listener.event_types().unwrap();
-        // 11 event types: 4 turn lifecycle + 4 atom lifecycle + 1 llm + 2 tool
-        assert_eq!(types.len(), 11);
+        // 13 event types: 4 turn lifecycle + 4 atom lifecycle + 2 thinking + 1 llm + 2 tool
+        assert_eq!(types.len(), 13);
         // Turn lifecycle
         assert!(types.contains(&TURN_STARTED));
         assert!(types.contains(&TURN_COMPLETED));
@@ -1218,6 +1352,9 @@ mod tests {
         assert!(types.contains(&REASON_COMPLETED));
         assert!(types.contains(&ACT_STARTED));
         assert!(types.contains(&ACT_COMPLETED));
+        // Extended thinking
+        assert!(types.contains(&REASON_THINKING_STARTED));
+        assert!(types.contains(&REASON_THINKING_COMPLETED));
         // LLM
         assert!(types.contains(&LLM_GENERATION));
         // Tool
@@ -2064,6 +2201,158 @@ mod tests {
         assert!(
             completed_json.contains("\"_is_merge\":true"),
             "tool.call_completed should have _is_merge:true: {}",
+            completed_json
+        );
+    }
+
+    #[test]
+    fn test_convert_reason_thinking_started() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let span_id = Uuid::new_v4().to_string();
+
+        let data = ReasonThinkingStartedData {
+            turn_id,
+            model: Some("claude-sonnet-4-20250514".to_string()),
+        };
+
+        // Context with parent span
+        let context = EventContext {
+            turn_id: Some(turn_id),
+            input_message_id: None,
+            span_id: Some(span_id.clone()),
+            parent_span_id: Some(turn_id.to_string()),
+            exec_id: None,
+            trace_id: Some(turn_id.to_string()),
+        };
+
+        let event = Event::new(
+            SessionId::new(),
+            context,
+            EventData::ReasonThinkingStarted(data.clone()),
+        );
+
+        let bt_event = listener.convert_reason_thinking_started(&event, &data);
+
+        assert_eq!(bt_event.span_attributes.name, "thinking");
+        assert_eq!(bt_event.span_attributes.span_type, "task");
+        assert_eq!(bt_event.span_id, Some(span_id.clone()));
+        assert_eq!(bt_event.root_span_id, Some(turn_id.to_string()));
+        assert!(bt_event.is_merge.is_none()); // First event creates the span
+        assert!(bt_event.metrics.as_ref().unwrap().start.is_some());
+        assert!(bt_event.metrics.as_ref().unwrap().end.is_none());
+
+        // Verify metadata
+        let metadata = bt_event.metadata;
+        assert_eq!(metadata["model"], "claude-sonnet-4-20250514");
+        assert_eq!(metadata["turn_id"], turn_id.to_string());
+    }
+
+    #[test]
+    fn test_convert_reason_thinking_completed() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let span_id = Uuid::new_v4().to_string();
+
+        let thinking_content = "Let me think about this problem step by step...".to_string();
+        let data = ReasonThinkingCompletedData {
+            turn_id,
+            thinking: thinking_content.clone(),
+        };
+
+        // Context with parent span
+        let context = EventContext {
+            turn_id: Some(turn_id),
+            input_message_id: None,
+            span_id: Some(span_id.clone()),
+            parent_span_id: Some(turn_id.to_string()),
+            exec_id: None,
+            trace_id: Some(turn_id.to_string()),
+        };
+
+        let event = Event::new(
+            SessionId::new(),
+            context,
+            EventData::ReasonThinkingCompleted(data.clone()),
+        );
+
+        let bt_event = listener.convert_reason_thinking_completed(&event, &data);
+
+        assert_eq!(bt_event.span_attributes.name, "thinking");
+        assert_eq!(bt_event.span_attributes.span_type, "task");
+        assert_eq!(bt_event.span_id, Some(span_id.clone()));
+        assert_eq!(bt_event.root_span_id, Some(turn_id.to_string()));
+        assert_eq!(bt_event.is_merge, Some(true)); // Merges with started event
+
+        // Verify output contains thinking content
+        let output = bt_event.output.unwrap();
+        assert_eq!(output["thinking"], thinking_content);
+
+        // Verify metadata
+        let metadata = bt_event.metadata;
+        assert_eq!(metadata["thinking_length"], thinking_content.len());
+        assert_eq!(metadata["turn_id"], turn_id.to_string());
+
+        // Verify metrics have end time
+        assert!(bt_event.metrics.as_ref().unwrap().end.is_some());
+    }
+
+    #[test]
+    fn test_thinking_spans_merge_correctly() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let span_id = Uuid::new_v4().to_string();
+
+        let context = EventContext {
+            turn_id: Some(turn_id),
+            input_message_id: None,
+            span_id: Some(span_id.clone()),
+            parent_span_id: Some(turn_id.to_string()),
+            exec_id: None,
+            trace_id: Some(turn_id.to_string()),
+        };
+
+        // thinking.started
+        let started_data = ReasonThinkingStartedData {
+            turn_id,
+            model: Some("claude-sonnet-4-20250514".to_string()),
+        };
+        let started_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ReasonThinkingStarted(started_data.clone()),
+        );
+        let bt_started = listener.convert_reason_thinking_started(&started_event, &started_data);
+
+        // thinking.completed
+        let completed_data = ReasonThinkingCompletedData {
+            turn_id,
+            thinking: "Complete thinking content".to_string(),
+        };
+        let completed_event = Event::new(
+            SessionId::new(),
+            context.clone(),
+            EventData::ReasonThinkingCompleted(completed_data.clone()),
+        );
+        let bt_completed =
+            listener.convert_reason_thinking_completed(&completed_event, &completed_data);
+
+        // Both should use the same span_id for merging
+        assert_eq!(bt_started.id, bt_completed.id);
+        assert_eq!(bt_started.span_id, bt_completed.span_id);
+
+        // started should not have _is_merge, completed should have _is_merge: true
+        let started_json = serde_json::to_string(&bt_started).unwrap();
+        assert!(
+            !started_json.contains("\"_is_merge\""),
+            "thinking.started should not have _is_merge: {}",
+            started_json
+        );
+
+        let completed_json = serde_json::to_string(&bt_completed).unwrap();
+        assert!(
+            completed_json.contains("\"_is_merge\":true"),
+            "thinking.completed should have _is_merge:true: {}",
             completed_json
         );
     }

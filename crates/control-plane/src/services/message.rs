@@ -68,6 +68,8 @@ impl MessageService {
             id: message_id.into(),
             role: everruns_core::MessageRole::User,
             content: content.clone(),
+            thinking: None,
+            thinking_signature: None,
             controls: req.controls.clone(),
             metadata: req.metadata.clone(),
             created_at: now,

@@ -186,6 +186,10 @@ export interface Message {
   content: ContentPart[];
   metadata?: Record<string, unknown>;
   tool_call_id: string | null;
+  /** Extended thinking content (Anthropic Claude with reasoning) */
+  thinking?: string;
+  /** Cryptographic signature for thinking (required for multi-turn) */
+  thinking_signature?: string;
   created_at: string;
 }
 
@@ -425,8 +429,8 @@ export interface SessionIdledData {
   usage?: TokenUsage;
 }
 
-/** Data for agent.thinking event (LLM generation started) */
-export interface AgentThinkingData {
+/** Data for reason.thinking.started event (LLM generation with thinking started) */
+export interface ReasonThinkingStartedData {
   turn_id: string;
   model?: string;
 }
@@ -438,6 +442,22 @@ export interface TextDeltaData {
   delta: string;
   /** Accumulated text so far */
   accumulated: string;
+}
+
+/** Data for reason.thinking.delta event (streaming reasoning from extended thinking models) */
+export interface ReasonThinkingDeltaData {
+  turn_id: string;
+  /** The new thinking text since last delta */
+  delta: string;
+  /** Accumulated thinking text so far */
+  accumulated: string;
+}
+
+/** Data for reason.thinking.completed event (extended thinking completed) */
+export interface ReasonThinkingCompletedData {
+  turn_id: string;
+  /** Complete thinking content */
+  thinking: string;
 }
 
 /** Union type for all event data types */
@@ -458,7 +478,9 @@ export type EventData =
   | SessionStartedData
   | SessionActivatedData
   | SessionIdledData
-  | AgentThinkingData
+  | ReasonThinkingStartedData
+  | ReasonThinkingDeltaData
+  | ReasonThinkingCompletedData
   | TextDeltaData
   | Record<string, unknown>; // Raw/unknown event data
 

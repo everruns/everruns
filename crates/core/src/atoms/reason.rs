@@ -28,8 +28,9 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    AgentThinkingData, EventContext, EventRequest, LlmGenerationData, MessageAgentData,
-    ReasonCompletedData, ReasonStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
+    EventContext, EventRequest, LlmGenerationData, MessageAgentData, ReasonCompletedData,
+    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -525,6 +526,8 @@ where
                 content: LlmMessageContent::Text(runtime_agent.system_prompt.clone()),
                 tool_calls: None,
                 tool_call_id: None,
+                thinking: None,
+                thinking_signature: None,
             });
         }
 
@@ -573,36 +576,39 @@ where
             "ReasonAtom: calling LLM"
         );
 
-        // 13. Emit agent.thinking event BEFORE starting LLM call
+        // 13. Emit reason.thinking.started event BEFORE starting LLM call (only if thinking enabled)
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
-        tracing::info!(
-            session_id = %session_id,
-            turn_id = %context.turn_id,
-            "ReasonAtom: emitting agent.thinking event"
-        );
-        if let Err(e) = self
-            .event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                streaming_event_context.clone(),
-                AgentThinkingData {
-                    turn_id: context.turn_id,
-                    model: Some(runtime_agent.model.clone()),
-                },
-            ))
-            .await
-        {
-            tracing::warn!(
-                session_id = %session_id,
-                error = %e,
-                "ReasonAtom: failed to emit agent.thinking event"
-            );
-        } else {
+        let thinking_enabled = reasoning_effort.is_some();
+        if thinking_enabled {
             tracing::info!(
                 session_id = %session_id,
-                "ReasonAtom: agent.thinking event emitted successfully"
+                turn_id = %context.turn_id,
+                "ReasonAtom: emitting reason.thinking.started event"
             );
+            if let Err(e) = self
+                .event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    streaming_event_context.clone(),
+                    ReasonThinkingStartedData {
+                        turn_id: context.turn_id,
+                        model: Some(runtime_agent.model.clone()),
+                    },
+                ))
+                .await
+            {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "ReasonAtom: failed to emit reason.thinking.started event"
+                );
+            } else {
+                tracing::info!(
+                    session_id = %session_id,
+                    "ReasonAtom: reason.thinking.started event emitted successfully"
+                );
+            }
         }
 
         // Track LLM call timing
@@ -616,10 +622,14 @@ where
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let mut text = String::new();
+        let mut thinking = String::new();
+        let mut thinking_signature: Option<String> = None;
         let mut tool_calls = Vec::new();
         let mut completion_metadata: Option<LlmCompletionMetadata> = None;
         let mut pending_delta = String::new();
+        let mut pending_thinking_delta = String::new();
         let mut last_delta_emit = Instant::now();
+        let mut last_thinking_delta_emit = Instant::now();
         let mut time_to_first_token_ms: Option<u64> = None;
 
         while let Some(event) = stream.next().await {
@@ -665,6 +675,54 @@ where
                         last_delta_emit = Instant::now();
                     }
                 }
+                LlmStreamEvent::ThinkingDelta(delta) => {
+                    // Accumulate thinking content from extended thinking models
+                    thinking.push_str(&delta);
+                    pending_thinking_delta.push_str(&delta);
+                    tracing::debug!(
+                        session_id = %session_id,
+                        delta_len = delta.len(),
+                        total_thinking_len = thinking.len(),
+                        "ReasonAtom: received ThinkingDelta from LLM"
+                    );
+
+                    // Emit batched thinking delta if interval elapsed
+                    if last_thinking_delta_emit.elapsed().as_millis() as u64
+                        >= DELTA_BATCH_INTERVAL_MS
+                        && !pending_thinking_delta.is_empty()
+                    {
+                        if let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                ReasonThinkingDeltaData {
+                                    turn_id: context.turn_id,
+                                    delta: pending_thinking_delta.clone(),
+                                    accumulated: thinking.clone(),
+                                },
+                            ))
+                            .await
+                        {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                error = %e,
+                                "ReasonAtom: failed to emit reason.thinking.delta event"
+                            );
+                        }
+                        pending_thinking_delta.clear();
+                        last_thinking_delta_emit = Instant::now();
+                    }
+                }
+                LlmStreamEvent::ThinkingSignature(signature) => {
+                    // Capture the cryptographic signature for thinking content (required to send it back)
+                    tracing::debug!(
+                        session_id = %session_id,
+                        signature_len = signature.len(),
+                        "ReasonAtom: received ThinkingSignature from LLM"
+                    );
+                    thinking_signature = Some(signature);
+                }
                 LlmStreamEvent::ToolCalls(calls) => {
                     tool_calls = calls;
                 }
@@ -688,6 +746,49 @@ where
                             session_id = %session_id,
                             error = %e,
                             "ReasonAtom: failed to emit final text.delta event"
+                        );
+                    }
+
+                    // Emit any remaining pending thinking delta before completing
+                    if !pending_thinking_delta.is_empty()
+                        && let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                ReasonThinkingDeltaData {
+                                    turn_id: context.turn_id,
+                                    delta: pending_thinking_delta.clone(),
+                                    accumulated: thinking.clone(),
+                                },
+                            ))
+                            .await
+                    {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            error = %e,
+                            "ReasonAtom: failed to emit final reason.thinking.delta event"
+                        );
+                    }
+
+                    // Emit reason.thinking.completed if we had any thinking content
+                    if !thinking.is_empty()
+                        && let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                ReasonThinkingCompletedData {
+                                    turn_id: context.turn_id,
+                                    thinking: thinking.clone(),
+                                },
+                            ))
+                            .await
+                    {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            error = %e,
+                            "ReasonAtom: failed to emit reason.thinking.completed event"
                         );
                     }
                     completion_metadata = Some(metadata);
@@ -802,6 +903,12 @@ where
             Message::assistant(&text)
         };
         assistant_message.metadata = Some(metadata);
+        // Store thinking content and signature for extended thinking models
+        // Both are required for subsequent API calls when thinking is enabled
+        if !thinking.is_empty() {
+            assistant_message.thinking = Some(thinking.clone());
+            assistant_message.thinking_signature = thinking_signature.clone();
+        }
 
         // Emit message.agent event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)
