@@ -371,8 +371,8 @@ where
                 // Create error message for the user to see
                 let error_message = Message::assistant(&user_error_text);
 
-                // Emit message.agent event (stores message as event with proper turn context)
-                // message.agent is child of reason span
+                // Emit output.message.completed event (stores message as event with proper turn context)
+                // output.message.completed is child of reason span
                 let error_msg_context = EventContext::from_atom_context(&context).with_span(
                     trace_id.clone(),
                     Uuid::now_v7().to_string(),   // Own span_id
@@ -578,7 +578,7 @@ where
         );
 
         // 13. Emit output.message.started event BEFORE starting LLM call
-        // This allows UI to show a "thinking" indicator immediately
+        // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
         tracing::info!(
             session_id = %session_id,
@@ -649,7 +649,7 @@ where
             .chat_completion_stream(llm_messages, &llm_config)
             .await?;
 
-        // 14. Process stream with batched text.delta emissions
+        // 14. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let mut text = String::new();
@@ -926,7 +926,7 @@ where
             );
         }
 
-        // 18. Store and emit message.agent event with metadata and usage
+        // 18. Store and emit output.message.completed event with metadata and usage
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -941,7 +941,7 @@ where
             assistant_message.thinking_signature = thinking_signature.clone();
         }
 
-        // Emit message.agent event (this stores the message as an event with proper turn context)
+        // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)
         let message_event_context = EventContext::from_atom_context(context).with_span(
             trace_id.to_string(),

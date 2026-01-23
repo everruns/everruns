@@ -71,7 +71,7 @@ Verify that the research agent completes a full research workflow: receives a qu
 
 | Check | Expected |
 |-------|----------|
-| Agent message exists | `events` contains `type: "message.agent"` |
+| Agent message exists | `events` contains `type: "output.message.completed"` |
 | Response has content | `message.content[0].text` is non-empty |
 | Response is relevant | Text mentions "Axum" |
 | Model metadata present | `message.metadata.model` exists |
@@ -106,7 +106,7 @@ Verify that the research agent completes a full research workflow: receives a qu
 
 ```bash
 # Assert: Agent responded
-curl -s ".../events" | jq '[.data[] | select(.type == "message.agent")] | length > 0'
+curl -s ".../events" | jq '[.data[] | select(.type == "output.message.completed")] | length > 0'
 
 # Assert: Turn completed successfully
 curl -s ".../events" | jq '[.data[] | select(.type == "turn.completed")] | length > 0'

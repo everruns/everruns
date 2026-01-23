@@ -54,7 +54,7 @@ pub trait EventListener: Send + Sync {
     /// Optional: Filter which event types this listener cares about.
     ///
     /// Return `None` to receive all events (default).
-    /// Return `Some(vec!["llm.generation", "tool.call_completed"])` to filter.
+    /// Return `Some(vec!["llm.generation", "tool.completed"])` to filter.
     fn event_types(&self) -> Option<Vec<&'static str>> {
         None // Receive all events by default
     }

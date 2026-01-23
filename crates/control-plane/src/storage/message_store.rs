@@ -1,7 +1,7 @@
 // Event-based MessageRetriever implementation
 //
 // Design decision: MessageRetriever is retrieval-only.
-// Messages are stored via EventService (message.user, message.agent events).
+// Messages are stored via EventService (input.message, output.message.completed events).
 // This trait provides read access for building LLM context.
 //
 // This module implements the core MessageRetriever trait using the events table

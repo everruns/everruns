@@ -3,7 +3,7 @@
 /**
  * StreamingMessage - Displays streaming text while LLM is generating
  *
- * Shows the accumulated text from text.delta events with a cursor indicator
+ * Shows the accumulated text from output.message.delta events with a cursor indicator
  * to show that more text is being generated.
  */
 
@@ -27,7 +27,7 @@ export function StreamingMessage({ text, className }: StreamingMessageProps) {
       </div>
 
       {/* Streaming text content - plain text rendering for performance
-          The final message.agent will be rendered with full markdown */}
+          The final output.message.completed will be rendered with full markdown */}
       <div className="text-sm whitespace-pre-wrap pt-4">
         {text}
         {/* Blinking cursor to indicate more content coming */}

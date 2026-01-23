@@ -43,7 +43,7 @@ use crate::typed_id::{AgentId, SessionId, TurnId};
 
 /// Event emitter that bridges events to message storage
 ///
-/// When a `message.agent` event is emitted, it also stores the message
+/// When a `output.message.completed` event is emitted, it also stores the message
 /// in the provided message retriever. This enables full agentic loops
 /// in memory without the database layer.
 #[derive(Clone)]

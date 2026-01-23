@@ -2,7 +2,7 @@
 // Routes are org-scoped: /v1/orgs/:org/agents/:agent_id/sessions/:session_id/messages
 //
 // BREAKING CHANGE: Simplified message roles to just `user` and `agent`.
-// - Tool results are conveyed via `tool.call_completed` events
+// - Tool results are conveyed via `tool.completed` events
 // - System messages are internal and not exposed via API
 //
 // ContentPart and InputContentPart are defined in everruns-core.
@@ -42,7 +42,7 @@ pub use everruns_core::{
 /// Message role (API layer)
 ///
 /// Simplified to only user and agent messages.
-/// Tool results are conveyed via `tool.call_completed` events.
+/// Tool results are conveyed via `tool.completed` events.
 /// System messages are internal and not exposed via API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]

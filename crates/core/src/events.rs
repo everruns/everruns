@@ -151,7 +151,7 @@ impl EventContext {
 ///
 /// All events have a consistent structure:
 /// - `id`: Unique event identifier (format: event_{32-hex})
-/// - `type`: Event type in dot notation (e.g., "message.user", "reason.started")
+/// - `type`: Event type in dot notation (e.g., "input.message", "reason.started")
 /// - `ts`: ISO 8601 timestamp with millisecond precision
 /// - `session_id`: Session this event belongs to (format: session_{32-hex})
 /// - `context`: Correlation context for tracing

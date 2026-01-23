@@ -22,7 +22,7 @@
 // - reason.started/reason.completed - LLM reasoning phase within turn (type: "task")
 // - act.started/act.completed - Tool execution phase within turn (type: "task")
 // - llm.generation - LLM API calls (type: "llm")
-// - tool.call_started/tool.call_completed - Tool executions (type: "tool")
+// - tool.started/tool.completed - Tool executions (type: "tool")
 //
 // Parent-child relationships use OTel-style trace_id/span_id/parent_span_id fields.
 // trace_id groups all spans in a turn, span_id identifies each span, parent_span_id links to parent.
@@ -557,7 +557,7 @@ impl BraintrustListener {
         }
     }
 
-    /// Convert a tool.call_completed event to Braintrust format (child span)
+    /// Convert a tool.completed event to Braintrust format (child span)
     /// Uses span_id as the log ID so started/completed events merge into one span
     fn convert_tool_call_completed(
         &self,
@@ -1112,7 +1112,7 @@ impl BraintrustListener {
         }
     }
 
-    /// Convert a tool.call_started event to Braintrust format (child tool span)
+    /// Convert a tool.started event to Braintrust format (child tool span)
     /// Uses span_id as the log ID so started/completed events merge into one span
     fn convert_tool_call_started(
         &self,
@@ -1251,7 +1251,7 @@ impl EventListener for BraintrustListener {
                 debug!(
                     tool_name = %data.tool_call.name,
                     tool_call_id = %data.tool_call.id,
-                    "Processing tool.call_started for Braintrust"
+                    "Processing tool.started for Braintrust"
                 );
                 self.convert_tool_call_started(event, data)
             }
@@ -1259,7 +1259,7 @@ impl EventListener for BraintrustListener {
                 debug!(
                     tool_name = %data.tool_name,
                     tool_call_id = %data.tool_call_id,
-                    "Processing tool.call_completed for Braintrust"
+                    "Processing tool.completed for Braintrust"
                 );
                 self.convert_tool_call_completed(event, data)
             }
@@ -2159,7 +2159,7 @@ mod tests {
         context.span_id = Some(tool_span_id.clone());
         context.parent_span_id = Some(act_span_id.clone());
 
-        // tool.call_started - should NOT have _is_merge
+        // tool.started - should NOT have _is_merge
         let started_data = ToolStartedData {
             tool_call: ToolCall {
                 id: "call_1".to_string(),
@@ -2176,11 +2176,11 @@ mod tests {
         let started_json = serde_json::to_string(&bt_started).unwrap();
         assert!(
             !started_json.contains("_is_merge"),
-            "tool.call_started should not have _is_merge: {}",
+            "tool.started should not have _is_merge: {}",
             started_json
         );
 
-        // tool.call_completed - should have _is_merge: true
+        // tool.completed - should have _is_merge: true
         let completed_data = ToolCompletedData {
             tool_call_id: "call_1".to_string(),
             tool_name: "search".to_string(),
@@ -2199,7 +2199,7 @@ mod tests {
         let completed_json = serde_json::to_string(&bt_completed).unwrap();
         assert!(
             completed_json.contains("\"_is_merge\":true"),
-            "tool.call_completed should have _is_merge:true: {}",
+            "tool.completed should have _is_merge:true: {}",
             completed_json
         );
     }

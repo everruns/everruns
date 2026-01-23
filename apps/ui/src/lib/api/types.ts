@@ -176,7 +176,7 @@ export interface Controls {
  * Message for UI display
  *
  * Uses DisplayMessageRole since messages can be derived from events
- * including tool.call_completed events which become "tool_result" messages.
+ * including tool.completed events which become "tool_result" messages.
  */
 export interface Message {
   id: string;

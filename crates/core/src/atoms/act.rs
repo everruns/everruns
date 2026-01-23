@@ -2,16 +2,16 @@
 //!
 //! This atom handles:
 //! 1. Emitting act.started event
-//! 2. Executing multiple tool calls in parallel (with tool.call_started/completed events)
+//! 2. Executing multiple tool calls in parallel (with tool.started/completed events)
 //! 3. Handling errors, timeouts, and cancellations as "normal" results
 //! 4. Emitting act.completed event
 //! 5. Returning all tool results (success, error, timeout, or cancelled)
 //!
-//! Tool results are emitted as `tool.call_completed` events and returned in ActResult.
+//! Tool results are emitted as `tool.completed` events and returned in ActResult.
 //! Messages are derived from events - no separate message storage is needed.
 //!
 //! Note: OTel instrumentation is handled via the event-listener pattern.
-//! tool.call_started/completed events are emitted by this atom, and OtelEventListener
+//! tool.started/completed events are emitted by this atom, and OtelEventListener
 //! creates the appropriate gen-ai spans from those events.
 //!
 //! NOTES from Python spec:
@@ -91,7 +91,7 @@ pub struct ActResult {
 ///
 /// This atom:
 /// 1. Emits act.started event
-/// 2. Executes all tool calls in parallel (emitting tool.call_started/completed for each)
+/// 2. Executes all tool calls in parallel (emitting tool.started/completed for each)
 /// 3. Handles errors, timeouts, and cancellations gracefully
 /// 4. Emits act.completed event
 /// 5. Returns comprehensive results for all tools
@@ -300,7 +300,7 @@ where
     /// Execute a single tool call
     ///
     /// Note: OTel instrumentation is handled via event listeners.
-    /// tool.call_started/completed events are emitted, and OtelEventListener
+    /// tool.started/completed events are emitted, and OtelEventListener
     /// creates gen-ai spans from those events.
     async fn execute_single_tool(
         &self,
@@ -331,7 +331,7 @@ where
         // Track tool call timing for Braintrust observability
         let tool_start = Instant::now();
 
-        // Emit tool.call_started event (child of act.started)
+        // Emit tool.started event (child of act.started)
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
@@ -347,7 +347,7 @@ where
                 session_id = %context.session_id,
                 tool_call_id = %tool_call.id,
                 error = %e,
-                "ActAtom: failed to emit tool.call_started event"
+                "ActAtom: failed to emit tool.started event"
             );
         }
 
@@ -356,7 +356,7 @@ where
             let error_msg = format!("Tool definition not found: {}", tool_call.name);
             let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
 
-            // Emit tool.call_completed event for error (child of act.started)
+            // Emit tool.completed event for error (child of act.started)
             if let Err(e) = self
                 .event_emitter
                 .emit(EventRequest::new(
@@ -376,7 +376,7 @@ where
                     session_id = %context.session_id,
                     tool_call_id = %tool_call.id,
                     error = %e,
-                    "ActAtom: failed to emit tool.call_completed event"
+                    "ActAtom: failed to emit tool.completed event"
                 );
             }
 
@@ -408,7 +408,7 @@ where
                 let success = tool_result.error.is_none();
                 let status = if success { "success" } else { "error" };
 
-                // Emit tool.call_completed event
+                // Emit tool.completed event
                 let completed_data = if success {
                     // Convert result to ContentPart (text representation of JSON)
                     let result_content = tool_result
@@ -445,7 +445,7 @@ where
                         session_id = %context.session_id,
                         tool_call_id = %tool_call.id,
                         error = %e,
-                        "ActAtom: failed to emit tool.call_completed event"
+                        "ActAtom: failed to emit tool.completed event"
                     );
                 }
 
@@ -468,7 +468,7 @@ where
                 let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
                 let error_msg = e.to_string();
 
-                // Emit tool.call_completed event for error
+                // Emit tool.completed event for error
                 if let Err(emit_err) = self
                     .event_emitter
                     .emit(EventRequest::new(
@@ -488,7 +488,7 @@ where
                         session_id = %context.session_id,
                         tool_call_id = %tool_call.id,
                         error = %emit_err,
-                        "ActAtom: failed to emit tool.call_completed event"
+                        "ActAtom: failed to emit tool.completed event"
                     );
                 }
 
