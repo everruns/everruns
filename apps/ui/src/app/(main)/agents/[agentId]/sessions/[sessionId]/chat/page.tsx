@@ -143,7 +143,7 @@ export default function ChatPage() {
       images: Array<{ imageId: string; filename?: string }>;
       controls?: Controls;
     }) => {
-      return sendUserMessageWithImages(org!, agentId, sessionId, text, images, controls);
+      return sendUserMessageWithImages(org!, sessionId, text, images, controls);
     },
   });
 
@@ -178,7 +178,6 @@ export default function ChatPage() {
       } else {
         // Use the regular sendMessage for text-only (has optimistic UI)
         await sendMessage.mutateAsync({
-          agentId,
           sessionId,
           content: inputValue.trim(),
           controls,

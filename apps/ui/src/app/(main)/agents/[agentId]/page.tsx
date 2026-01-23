@@ -73,8 +73,7 @@ export default function AgentDetailPage({
   const handleNewSession = async () => {
     try {
       const session = await createSession.mutateAsync({
-        agentId,
-        request: {},
+        request: { agent_id: agentId },
       });
       router.push(`/agents/${agentId}/sessions/${session.id}`);
     } catch (error) {

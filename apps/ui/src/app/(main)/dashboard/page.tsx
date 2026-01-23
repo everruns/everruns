@@ -1,20 +1,36 @@
 "use client";
 
-import { useAgents, useCapabilities } from "@/hooks";
+import { useMemo } from "react";
+import { useAgents, useCapabilities, useSessions, useLlmModels } from "@/hooks";
 import { Header } from "@/components/layout/header";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { AgentListWidget } from "@/components/dashboard/agent-list-widget";
+import { RecentSessions } from "@/components/dashboard/recent-sessions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus, Boxes } from "lucide-react";
+import type { Agent, LlmModelWithProvider } from "@/lib/api/types";
 
 export default function DashboardPage() {
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const { data: allCapabilities } = useCapabilities();
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(undefined, { limit: 5 });
+  const { data: llmModels } = useLlmModels();
 
-  if (agentsLoading) {
+  // Create a map of agent_id -> agent for quick lookups
+  const agentMap = useMemo(() => {
+    return new Map<string, Agent>(agents.map((a) => [a.id, a]));
+  }, [agents]);
+
+  // Create a map of model_id -> model for quick lookups
+  const modelMap = useMemo(() => {
+    if (!llmModels) return new Map<string, LlmModelWithProvider>();
+    return new Map(llmModels.map((m) => [m.id, m]));
+  }, [llmModels]);
+
+  if (agentsLoading || sessionsLoading) {
     return (
       <>
         <Header title="Dashboard" />
@@ -33,8 +49,7 @@ export default function DashboardPage() {
     );
   }
 
-  // For now, pass empty sessions array since we don't have a global sessions endpoint yet
-  const sessions: [] = [];
+  const sessions = sessionsResponse?.data ?? [];
 
   return (
     <>
@@ -72,6 +87,12 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        <RecentSessions
+          sessions={sessions}
+          agents={agents}
+          models={llmModels}
+        />
       </div>
     </>
   );

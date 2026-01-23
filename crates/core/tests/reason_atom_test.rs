@@ -58,6 +58,7 @@ async fn setup_test_environment() -> (
     let now = chrono::Utc::now();
     let session = Session {
         id: session_id.into(),
+        organization_id: "default".to_string(),
         agent_id: agent_id.into(),
         title: Some("Test Session".to_string()),
         preview: None,
@@ -303,6 +304,7 @@ async fn test_reason_atom_with_different_configs() {
     let now2 = chrono::Utc::now();
     let session2 = Session {
         id: session_id2.into(),
+        organization_id: "default".to_string(),
         agent_id: agent_id.into(),
         title: Some("Test Session 2".to_string()),
         preview: None,

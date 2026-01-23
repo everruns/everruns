@@ -1,37 +1,38 @@
 "use client";
 
-import { use, useState, useMemo } from "react";
-import { useAgent, useSessions, useCreateSession, useLlmModels, useDeleteSession } from "@/hooks";
+import { useState, useMemo } from "react";
+import { useAgents, useSessions, useCreateSession, useLlmModels, useDeleteSession } from "@/hooks";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SessionCard } from "@/components/session/session-card";
 import {
-  ArrowLeft,
   Plus,
   ChevronLeft,
   ChevronRight,
   Trash2,
 } from "lucide-react";
-import type { LlmModelWithProvider } from "@/lib/api/types";
+import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
 
 const PAGE_SIZE = 20;
 
-export default function SessionsListPage({
-  params,
-}: {
-  params: Promise<{ agentId: string }>;
-}) {
-  const { agentId } = use(params);
+export default function SessionsPage() {
   const router = useRouter();
   const [page, setPage] = useState(0);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const offset = page * PAGE_SIZE;
 
-  const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  const { data: agents, isLoading: agentsLoading } = useAgents();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
-    agentId,
+    selectedAgentId || undefined, // Pass undefined to get all sessions
     { offset, limit: PAGE_SIZE }
   );
   const { data: llmModels } = useLlmModels();
@@ -48,12 +49,25 @@ export default function SessionsListPage({
     return new Map(llmModels.map((m) => [m.id, m]));
   }, [llmModels]);
 
+  // Create a map of agent_id -> agent for quick lookups
+  const agentMap = useMemo(() => {
+    if (!agents) return new Map<string, Agent>();
+    return new Map(agents.map((a) => [a.id, a]));
+  }, [agents]);
+
   const handleNewSession = async () => {
+    // If an agent is selected, create session for that agent
+    // Otherwise, show the first available agent
+    const targetAgentId = selectedAgentId || agents?.[0]?.id;
+    if (!targetAgentId) {
+      console.error("No agent available to create session");
+      return;
+    }
     try {
       const session = await createSession.mutateAsync({
-        request: { agent_id: agentId },
+        request: { agent_id: targetAgentId },
       });
-      router.push(`/agents/${agentId}/sessions/${session.id}`);
+      router.push(`/agents/${targetAgentId}/sessions/${session.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
     }
@@ -80,56 +94,57 @@ export default function SessionsListPage({
     setPage((p) => Math.min(totalPages - 1, p + 1));
   };
 
-  if (agentLoading) {
-    return (
-      <div className="container mx-auto p-6">
-        <Skeleton className="h-8 w-1/3 mb-4" />
-        <Skeleton className="h-4 w-2/3 mb-8" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (!agent) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Agent not found</div>
-        <Link href="/agents" className="text-blue-500 hover:underline">
-          Back to agents
-        </Link>
-      </div>
-    );
-  }
+  const handleAgentFilterChange = (value: string) => {
+    setSelectedAgentId(value === "all" ? "" : value);
+    setPage(0); // Reset pagination when filter changes
+  };
 
   return (
     <div className="container mx-auto p-6">
-      <Link
-        href={`/agents/${agentId}`}
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to {agent.name}
-      </Link>
-
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">{agent.name} - Sessions</h1>
+          <h1 className="text-2xl font-bold">Sessions</h1>
           <p className="text-muted-foreground">
             {totalSessions} session{totalSessions !== 1 ? "s" : ""} total
           </p>
         </div>
-        <Button variant="accent" onClick={handleNewSession} disabled={createSession.isPending}>
-          <Plus className="w-4 h-4 mr-2" />
-          {createSession.isPending ? "Creating..." : "New Session"}
-        </Button>
+        <div className="flex items-center gap-4">
+          <Select
+            value={selectedAgentId || "all"}
+            onValueChange={handleAgentFilterChange}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Filter by agent" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All agents</SelectItem>
+              {agents?.map((agent) => (
+                <SelectItem key={agent.id} value={agent.id}>
+                  {agent.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={handleNewSession}
+            disabled={createSession.isPending || !agents?.length}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {createSession.isPending ? "Creating..." : "New Session"}
+          </Button>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>All Sessions</CardTitle>
+          <CardTitle>
+            {selectedAgentId
+              ? `Sessions for ${agentMap.get(selectedAgentId)?.name || "Agent"}`
+              : "All Sessions"}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {sessionsLoading ? (
+          {sessionsLoading || agentsLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />
@@ -141,33 +156,33 @@ export default function SessionsListPage({
             </p>
           ) : (
             <div className="space-y-2">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className="flex items-center gap-2"
-                >
-                  <div className="flex-1">
-                    <SessionCard
-                      session={session}
-                      agentId={agentId}
-                      model={session.model_id ? modelMap.get(session.model_id) : undefined}
-                    />
+              {sessions.map((session) => {
+                const agent = agentMap.get(session.agent_id);
+                return (
+                  <div key={session.id} className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <SessionCard
+                        session={session}
+                        agentName={!selectedAgentId ? agent?.name : undefined}
+                        model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                      />
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
+                      onClick={() =>
+                        handleDeleteSession(
+                          session.id,
+                          session.title || `Session ${session.id.slice(0, 8)}`
+                        )
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
-                    onClick={() =>
-                      handleDeleteSession(
-                        session.id,
-                        session.title || `Session ${session.id.slice(0, 8)}`
-                      )
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

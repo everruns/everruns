@@ -19,19 +19,20 @@ export const queryKeys = {
     detail: (agentId: string) => ["agent", agentId] as const,
   },
 
-  // Session queries
+  // Session queries (sessions are org-level, with optional agent filter)
   sessions: {
-    all: ["sessions"] as const,
-    list: (agentId: string) => ["sessions", agentId] as const,
-    detail: (agentId: string, sessionId: string) =>
-      ["session", agentId, sessionId] as const,
+    all: () => ["sessions"] as const,
+    list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
+      ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
+    byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
+    detail: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId] as const,
   },
 
-  // Event queries
+  // Event queries (events are session-level, no longer need agentId)
   events: {
     all: ["events"] as const,
-    list: (agentId: string, sessionId: string) =>
-      ["events", agentId, sessionId] as const,
+    list: (sessionId: string) => ["events", sessionId] as const,
   },
 
   // LLM Provider queries

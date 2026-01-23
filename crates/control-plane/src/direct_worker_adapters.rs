@@ -16,8 +16,9 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::ResolvedImage;
 use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, ContentPart, DriverRegistry, EventData, LlmProviderType, Message,
-    MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry, ToolResultContentPart,
+    Agent, AgentStatus, ContentPart, DEFAULT_ORG_PUBLIC_ID, DriverRegistry, EventData,
+    LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry,
+    ToolResultContentPart,
 };
 use everruns_worker::create_driver_registry;
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -146,6 +147,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         Ok(row.map(|r| Session {
             id: r.id,
+            organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
             agent_id: r.agent_id,
             title: r.title,
             preview: None,

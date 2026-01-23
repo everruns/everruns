@@ -129,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
     // Create a session in the store
     let session = Session {
         id: session_id.into(),
+        organization_id: "default".to_string(),
         agent_id: agent_id.into(),
         title: Some("Weather Query".to_string()),
         preview: None,

@@ -19,17 +19,16 @@ import { formatFileSize, getFileExtension } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
 
 interface FileViewerProps {
-  agentId: string;
   sessionId: string;
   file: FileInfo;
   onClose: () => void;
 }
 
-export function FileViewer({ agentId, sessionId, file, onClose }: FileViewerProps) {
+export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
 
-  const { data: fileData, isLoading, refetch } = useFile(agentId, sessionId, file.path);
+  const { data: fileData, isLoading, refetch } = useFile(sessionId, file.path);
   const updateFile = useUpdateFile();
 
   const handleEdit = () => {
@@ -42,7 +41,6 @@ export function FileViewer({ agentId, sessionId, file, onClose }: FileViewerProp
   const handleSave = async () => {
     try {
       await updateFile.mutateAsync({
-        agentId,
         sessionId,
         path: file.path,
         request: {

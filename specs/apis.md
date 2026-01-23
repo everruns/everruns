@@ -87,16 +87,41 @@ All agent create/update/import endpoints enforce input size limits as last-resor
 
 ### Sessions
 
-Sessions are instances of agentic loop execution tied to an agent.
+Sessions are top-level entities under organizations. Each session has an agent assigned to work in it.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions` | Create session |
-| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions` | List sessions (paginated) |
-| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}` | Get session |
-| PATCH | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}` | Update session |
-| DELETE | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}` | Delete session |
-| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel` | Cancel current turn |
+| POST | `/v1/orgs/{org}/sessions` | Create session |
+| GET | `/v1/orgs/{org}/sessions` | List sessions (paginated) |
+| GET | `/v1/orgs/{org}/sessions/{session_id}` | Get session |
+| PATCH | `/v1/orgs/{org}/sessions/{session_id}` | Update session |
+| DELETE | `/v1/orgs/{org}/sessions/{session_id}` | Delete session |
+| POST | `/v1/orgs/{org}/sessions/{session_id}/cancel` | Cancel current turn |
+
+#### Create Session
+
+**Request:**
+```json
+POST /v1/orgs/{org}/sessions
+{
+  "agent_id": "agent_01234567-...",
+  "title": "Optional title",
+  "tags": ["optional", "tags"],
+  "model_id": "optional-model-override"
+}
+```
+
+The `agent_id` field is required and specifies which agent will work in this session.
+
+#### List Sessions
+
+Supports optional filtering by agent:
+
+```
+GET /v1/orgs/{org}/sessions?agent_id=agent_01234567-...
+```
+
+Without the `agent_id` query parameter, returns all sessions in the organization.
 
 #### Cancel Turn
 
@@ -120,8 +145,8 @@ Messages store all conversation content (user, assistant, tool calls, tool resul
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages` | Create message (triggers workflow) |
-| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages` | List messages |
+| POST | `/v1/orgs/{org}/sessions/{session_id}/messages` | Create message (triggers workflow) |
+| GET | `/v1/orgs/{org}/sessions/{session_id}/messages` | List messages |
 
 ### Images
 
@@ -166,7 +191,7 @@ Org-scoped image storage for message attachments. Images are stored with optiona
 Images can be attached to messages using the `image_file` content part type:
 
 ```json
-POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages
+POST /v1/orgs/{org}/sessions/{session_id}/messages
 {
   "message": {
     "content": [
@@ -185,16 +210,16 @@ Virtual filesystem scoped to each session. See [session-filesystem.md](session-f
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs` | List root directory |
-| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Read file or list directory |
-| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Create file or directory |
-| PUT | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Update file content |
-| DELETE | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}` | Delete file |
-| DELETE | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
-| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/stat` | Get file metadata |
-| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/move` | Move/rename file |
-| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/copy` | Copy file |
-| POST | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/grep` | Search files by content |
+| GET | `/v1/orgs/{org}/sessions/{session_id}/fs` | List root directory |
+| GET | `/v1/orgs/{org}/sessions/{session_id}/fs/{path}` | Read file or list directory |
+| POST | `/v1/orgs/{org}/sessions/{session_id}/fs/{path}` | Create file or directory |
+| PUT | `/v1/orgs/{org}/sessions/{session_id}/fs/{path}` | Update file content |
+| DELETE | `/v1/orgs/{org}/sessions/{session_id}/fs/{path}` | Delete file |
+| DELETE | `/v1/orgs/{org}/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
+| POST | `/v1/orgs/{org}/sessions/{session_id}/fs/_/stat` | Get file metadata |
+| POST | `/v1/orgs/{org}/sessions/{session_id}/fs/_/move` | Move/rename file |
+| POST | `/v1/orgs/{org}/sessions/{session_id}/fs/_/copy` | Copy file |
+| POST | `/v1/orgs/{org}/sessions/{session_id}/fs/_/grep` | Search files by content |
 
 **Note:** Paths starting with `_` are reserved for system actions and cannot be used for file creation or updates.
 
@@ -204,8 +229,8 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse` | Stream events (SSE) |
-| GET | `/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events` | List events (JSON) |
+| GET | `/v1/orgs/{org}/sessions/{session_id}/sse` | Stream events (SSE) |
+| GET | `/v1/orgs/{org}/sessions/{session_id}/events` | List events (JSON) |
 
 ### LLM Provider Configuration
 
@@ -425,14 +450,14 @@ Endpoints that return lists support pagination via query parameters:
 
 | Endpoint | Default Limit | Notes |
 |----------|---------------|-------|
-| `GET /v1/orgs/{org}/agents/{agent_id}/sessions` | 20 | Ordered by `created_at DESC` |
+| `GET /v1/orgs/{org}/sessions` | 20 | Ordered by `created_at DESC`, optional `agent_id` filter |
 
 **Non-Paginated List Endpoints:**
 
 These endpoints return all items wrapped in `{"data": [...], "total": N}`:
 - `GET /v1/orgs/{org}/agents` - Returns all agents
-- `GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages` - Returns all messages
-- `GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events` - Returns all events
+- `GET /v1/orgs/{org}/sessions/{session_id}/messages` - Returns all messages
+- `GET /v1/orgs/{org}/sessions/{session_id}/events` - Returns all events
 - `GET /v1/orgs/{org}/llm-providers` - Returns all providers
 - `GET /v1/orgs/{org}/llm-models` - Returns all models
 - `GET /v1/durable/workers` - Returns all workers

@@ -463,6 +463,7 @@ impl InMemoryDatabase {
         let id = SessionId::new();
         let row = SessionRow {
             id,
+            org_id: input.org_id,
             agent_id: input.agent_id,
             title: input.title,
             tags: input.tags,
@@ -481,15 +482,12 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
-    /// Get session, validating org ownership via agent lookup
+    /// Get session, validating org ownership directly
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let sessions = self.sessions.read();
-        let agents = self.agents.read();
         if let Some(session) = sessions.get(&id) {
-            // Validate that the agent belongs to the org
-            if let Some(agent) = agents.get(&session.agent_id)
-                && agent.org_id == org_id
-            {
+            // Validate that the session belongs to the org
+            if session.org_id == org_id {
                 return Ok(Some(session.clone()));
             }
         }
@@ -501,14 +499,14 @@ impl InMemoryDatabase {
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: AgentId,
+        agent_id: Option<AgentId>,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        // First validate the agent belongs to the org
-        {
+        // If agent_id is provided, validate it belongs to the org
+        if let Some(aid) = agent_id {
             let agents = self.agents.read();
             if !agents
-                .get(&agent_id)
+                .get(&aid)
                 .map(|a| a.org_id == org_id)
                 .unwrap_or(false)
             {
@@ -519,7 +517,12 @@ impl InMemoryDatabase {
         let sessions = self.sessions.read();
         let mut result: Vec<_> = sessions
             .values()
-            .filter(|s| s.agent_id == agent_id)
+            .filter(|s| {
+                // Filter by org_id
+                s.org_id == org_id
+                    // Optionally filter by agent_id
+                    && agent_id.is_none_or(|aid| s.agent_id == aid)
+            })
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -534,7 +537,7 @@ impl InMemoryDatabase {
         Ok((paginated, total))
     }
 
-    /// Update session, validating org ownership via agent lookup
+    /// Update session, validating org ownership directly
     pub async fn update_session(
         &self,
         org_id: i64,
@@ -544,13 +547,8 @@ impl InMemoryDatabase {
         // First validate org ownership
         {
             let sessions = self.sessions.read();
-            let agents = self.agents.read();
             if let Some(session) = sessions.get(&id) {
-                if !agents
-                    .get(&session.agent_id)
-                    .map(|a| a.org_id == org_id)
-                    .unwrap_or(false)
-                {
+                if session.org_id != org_id {
                     return Ok(None);
                 }
             } else {
@@ -582,18 +580,13 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    /// Delete session, validating org ownership via agent lookup
+    /// Delete session, validating org ownership directly
     pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         // First validate org ownership
         {
             let sessions = self.sessions.read();
-            let agents = self.agents.read();
             if let Some(session) = sessions.get(&id) {
-                if !agents
-                    .get(&session.agent_id)
-                    .map(|a| a.org_id == org_id)
-                    .unwrap_or(false)
-                {
+                if session.org_id != org_id {
                     return Ok(false);
                 }
             } else {
@@ -2300,6 +2293,7 @@ mod tests {
 
         let session = db
             .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
                 agent_id: agent.id,
                 title: Some("Test Session".to_string()),
                 tags: vec![],
@@ -2310,7 +2304,7 @@ mod tests {
 
         let pagination = crate::api::common::Pagination::new(0, 20);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
             .await
             .unwrap();
         assert_eq!(sessions.len(), 1);
@@ -2339,6 +2333,7 @@ mod tests {
         // Create session - updated_at should equal created_at
         let session = db
             .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
                 agent_id: agent.id,
                 title: Some("Test Session".to_string()),
                 tags: vec![],
@@ -2393,6 +2388,7 @@ mod tests {
 
         let session = db
             .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
                 agent_id: agent.id,
                 title: None,
                 tags: vec![],
@@ -2444,6 +2440,7 @@ mod tests {
         // Create 15 sessions
         for i in 0..15 {
             db.create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
                 agent_id: agent.id,
                 title: Some(format!("Session {}", i)),
                 tags: vec![],
@@ -2456,7 +2453,7 @@ mod tests {
         // Test default pagination (all sessions fit within limit)
         let pagination = crate::api::common::Pagination::new(0, 20);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -2465,7 +2462,7 @@ mod tests {
         // Test with limit=5
         let pagination = crate::api::common::Pagination::new(0, 5);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -2474,7 +2471,7 @@ mod tests {
         // Test with offset=5, limit=5
         let pagination = crate::api::common::Pagination::new(5, 5);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -2483,7 +2480,7 @@ mod tests {
         // Test last partial page (offset=10, limit=10 should return 5)
         let pagination = crate::api::common::Pagination::new(10, 10);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -2492,7 +2489,7 @@ mod tests {
         // Test beyond range (offset=20)
         let pagination = crate::api::common::Pagination::new(20, 10);
         let (sessions, total) = db
-            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
             .await
             .unwrap();
         assert_eq!(total, 15);
@@ -2520,6 +2517,7 @@ mod tests {
         // Create sessions with sequential titles
         for i in 1..=5 {
             db.create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
                 agent_id: agent.id,
                 title: Some(format!("Session {}", i)),
                 tags: vec![],
@@ -2534,7 +2532,7 @@ mod tests {
         // Sessions should be ordered by created_at DESC (newest first)
         let pagination = crate::api::common::Pagination::new(0, 10);
         let (sessions, _) = db
-            .list_sessions(DEFAULT_ORG_ID, agent.id, pagination)
+            .list_sessions(DEFAULT_ORG_ID, Some(agent.id), pagination)
             .await
             .unwrap();
 

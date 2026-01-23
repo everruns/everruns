@@ -82,11 +82,11 @@ impl FromRef<AppState> for AuthState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/sse",
+            "/v1/orgs/:org/sessions/:session_id/sse",
             get(stream_sse),
         )
         .route(
-            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/events",
+            "/v1/orgs/:org/sessions/:session_id/events",
             get(list_events),
         )
         .with_state(state)
@@ -96,13 +96,12 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse - Stream events (SSE notifications)
+/// GET /v1/orgs/{org}/sessions/{session_id}/sse - Stream events (SSE notifications)
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse",
+    path = "/v1/orgs/{org}/sessions/{session_id}/sse",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         EventsQuery
     ),
@@ -117,7 +116,7 @@ pub fn routes(state: AppState) -> Router {
 pub async fn stream_sse(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
     Query(query): Query<EventsQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
 {
@@ -133,7 +132,7 @@ pub async fn stream_sse(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
@@ -266,13 +265,12 @@ pub async fn stream_sse(
 // List Events (JSON response for polling)
 // ============================================
 
-/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events - List events (JSON)
+/// GET /v1/orgs/{org}/sessions/{session_id}/events - List events (JSON)
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events",
+    path = "/v1/orgs/{org}/sessions/{session_id}/events",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         EventsQuery
     ),
@@ -287,7 +285,7 @@ pub async fn stream_sse(
 pub async fn list_events(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
     Query(query): Query<EventsQuery>,
 ) -> Result<Json<ListResponse<Event>>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -302,7 +300,7 @@ pub async fn list_events(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

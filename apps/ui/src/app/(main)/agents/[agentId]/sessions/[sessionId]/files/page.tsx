@@ -6,14 +6,13 @@ import { FileBrowser, FileViewer } from "@/components/files";
 import { useSessionContext } from "../session-context";
 
 export default function FilesPage() {
-  const { agentId, sessionId } = useSessionContext();
+  const { sessionId } = useSessionContext();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 
   return (
     <div className="flex-1 flex overflow-hidden">
       <div className="w-1/3 border-r overflow-y-auto">
         <FileBrowser
-          agentId={agentId}
           sessionId={sessionId}
           onFileSelect={setSelectedFile}
           selectedPath={selectedFile?.path}
@@ -22,7 +21,6 @@ export default function FilesPage() {
       <div className="flex-1 overflow-y-auto">
         {selectedFile && !selectedFile.is_directory ? (
           <FileViewer
-            agentId={agentId}
             sessionId={sessionId}
             file={selectedFile}
             onClose={() => setSelectedFile(null)}

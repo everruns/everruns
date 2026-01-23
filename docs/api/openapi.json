@@ -390,1269 +390,6 @@
         }
       }
     },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions": {
-      "get": {
-        "tags": [
-          "sessions"
-        ],
-        "summary": "GET /v1/orgs/{org}/agents/{agent_id}/sessions - List sessions in agent",
-        "operationId": "list_sessions",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "description": "Number of items to skip (for pagination).",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int32",
-              "default": 0,
-              "minimum": 0
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Maximum number of items to return (for pagination).",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int32",
-              "default": 20,
-              "maximum": 100,
-              "minimum": 1
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Paginated list of sessions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedResponse_Session"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid agent ID"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "sessions"
-        ],
-        "summary": "POST /v1/orgs/{org}/agents/{agent_id}/sessions - Create a new session",
-        "operationId": "create_session",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSessionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Session created successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Session"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid agent ID"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}": {
-      "get": {
-        "tags": [
-          "sessions"
-        ],
-        "summary": "GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id} - Get session",
-        "operationId": "get_session",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Session found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Session"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "404": {
-            "description": "Session not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "sessions"
-        ],
-        "summary": "DELETE /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id} - Delete session",
-        "operationId": "delete_session",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Session deleted successfully"
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "404": {
-            "description": "Session not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "sessions"
-        ],
-        "summary": "PATCH /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id} - Update session",
-        "operationId": "update_session",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSessionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Session updated successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Session"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "404": {
-            "description": "Session not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel": {
-      "post": {
-        "tags": [
-          "sessions"
-        ],
-        "summary": "POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel - Cancel current turn",
-        "description": "Cancels the currently running turn in the session. If no turn is running,\nthis is a no-op and returns success (idempotent). When a turn is active:\n1. Cancel the underlying workflow execution\n2. Emit a turn.cancelled event\n3. Insert an agent message indicating the turn was cancelled\n4. Set the session status back to idle",
-        "operationId": "cancel_turn",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agent_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., session_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Turn cancelled successfully (or no-op if idle)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CancelTurnResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "404": {
-            "description": "Session not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events": {
-      "get": {
-        "tags": [
-          "events"
-        ],
-        "summary": "GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/events - List events (JSON)",
-        "operationId": "list_events",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "since_id",
-            "in": "query",
-            "description": "Filter events with ID greater than this UUID v7 (monotonically increasing)",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Events list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_Event"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "404": {
-            "description": "Session not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs": {
-      "get": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "GET /fs - Get root directory listing",
-        "operationId": "get_root",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "recursive",
-            "in": "query",
-            "description": "List recursively",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Directory listing"
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/copy": {
-      "post": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "POST /fs/_/copy - Copy file",
-        "operationId": "copy_file",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CopyFileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Copied successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionFile"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID or cannot copy directories"
-          },
-          "404": {
-            "description": "Source not found"
-          },
-          "409": {
-            "description": "Destination exists"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/grep": {
-      "post": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "POST /fs/_/grep - Search files",
-        "operationId": "grep_files",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GrepRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Search results",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_GrepResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID or regex pattern"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/move": {
-      "post": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "POST /fs/_/move - Move/rename file",
-        "operationId": "move_file",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MoveFileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Moved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionFile"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID or path"
-          },
-          "404": {
-            "description": "Source not found"
-          },
-          "409": {
-            "description": "Destination exists"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/_/stat": {
-      "post": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "POST /fs/_/stat - Get file or directory stat",
-        "operationId": "stat_file",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Stat info",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileStat"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "404": {
-            "description": "Not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/fs/{path}": {
-      "get": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "GET /fs/*path - Get file content or directory listing",
-        "operationId": "get_path",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "description": "File or directory path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "recursive",
-            "in": "query",
-            "description": "List recursively",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "File content or directory listing"
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "404": {
-            "description": "Not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "PUT /fs/*path - Update file content",
-        "operationId": "update_path",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "description": "File path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateFileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Updated successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionFile"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID or cannot modify readonly file or directory"
-          },
-          "404": {
-            "description": "Not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "POST /fs/*path - Create file or directory",
-        "operationId": "create_path",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "description": "File or directory path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateFileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Created successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SessionFile"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID or request"
-          },
-          "409": {
-            "description": "Already exists"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "filesystem"
-        ],
-        "summary": "DELETE /fs/*path - Delete file or directory",
-        "operationId": "delete_path",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "path",
-            "in": "path",
-            "description": "File or directory path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "recursive",
-            "in": "query",
-            "description": "Delete recursively",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Deleted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeleteResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid session ID or directory not empty"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages": {
-      "get": {
-        "tags": [
-          "messages"
-        ],
-        "summary": "GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages - List messages (PRIMARY data)",
-        "operationId": "list_messages",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of messages",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_Message"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid ID format"
-          },
-          "404": {
-            "description": "Session not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "messages"
-        ],
-        "summary": "POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages - Create message (user message triggers workflow)",
-        "operationId": "create_message",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateMessageRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Message created successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Message"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid ID format"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse": {
-      "get": {
-        "tags": [
-          "events"
-        ],
-        "summary": "GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/sse - Stream events (SSE notifications)",
-        "operationId": "stream_sse",
-        "parameters": [
-          {
-            "name": "org",
-            "in": "path",
-            "description": "Organization public ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "session_id",
-            "in": "path",
-            "description": "Session ID (prefixed, e.g., sess_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "since_id",
-            "in": "query",
-            "description": "Filter events with ID greater than this UUID v7 (monotonically increasing)",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Event stream",
-            "content": {
-              "text/event-stream": {}
-            }
-          },
-          "400": {
-            "description": "Invalid session ID"
-          },
-          "404": {
-            "description": "Session not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
     "/v1/orgs/{org}/capabilities": {
       "get": {
         "tags": [
@@ -2517,6 +1254,1111 @@
         }
       }
     },
+    "/v1/orgs/{org}/sessions": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/orgs/{org}/sessions - List sessions in organization",
+        "operationId": "list_sessions",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Filter sessions by agent ID.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of items to skip (for pagination).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "default": 0,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of items to return (for pagination).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_Session"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/orgs/{org}/sessions - Create a new session",
+        "operationId": "create_session",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid agent ID"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/orgs/{org}/sessions/{session_id} - Get session",
+        "operationId": "get_session",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "DELETE /v1/orgs/{org}/sessions/{session_id} - Delete session",
+        "operationId": "delete_session",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session deleted successfully"
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "PATCH /v1/orgs/{org}/sessions/{session_id} - Update session",
+        "operationId": "update_session",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/cancel": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/orgs/{org}/sessions/{session_id}/cancel - Cancel current turn",
+        "description": "Cancels the currently running turn in the session. If no turn is running,\nthis is a no-op and returns success (idempotent). When a turn is active:\n1. Cancel the underlying workflow execution\n2. Emit a turn.cancelled event\n3. Insert an agent message indicating the turn was cancelled\n4. Set the session status back to idle",
+        "operationId": "cancel_turn",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Turn cancelled successfully (or no-op if idle)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelTurnResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "GET /v1/orgs/{org}/sessions/{session_id}/events - List events (JSON)",
+        "operationId": "list_events",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since_id",
+            "in": "query",
+            "description": "Filter events with ID greater than this UUID v7 (monotonically increasing)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Event"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/fs": {
+      "get": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "GET /fs - Get root directory listing",
+        "operationId": "get_root",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "List recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Directory listing"
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/fs/_/copy": {
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/_/copy - Copy file",
+        "operationId": "copy_file",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Copied successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or cannot copy directories"
+          },
+          "404": {
+            "description": "Source not found"
+          },
+          "409": {
+            "description": "Destination exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/fs/_/grep": {
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/_/grep - Search files",
+        "operationId": "grep_files",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_GrepResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or regex pattern"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/fs/_/move": {
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/_/move - Move/rename file",
+        "operationId": "move_file",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Moved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or path"
+          },
+          "404": {
+            "description": "Source not found"
+          },
+          "409": {
+            "description": "Destination exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/fs/_/stat": {
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/_/stat - Get file or directory stat",
+        "operationId": "stat_file",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stat info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileStat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/fs/{path}": {
+      "get": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "GET /fs/*path - Get file content or directory listing",
+        "operationId": "get_path",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "List recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File content or directory listing"
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "PUT /fs/*path - Update file content",
+        "operationId": "update_path",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or cannot modify readonly file or directory"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "POST /fs/*path - Create file or directory",
+        "operationId": "create_path",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or request"
+          },
+          "409": {
+            "description": "Already exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "DELETE /fs/*path - Delete file or directory",
+        "operationId": "delete_path",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "Delete recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or directory not empty"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/messages": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "GET /v1/orgs/{org}/sessions/{session_id}/messages - List messages (PRIMARY data)",
+        "operationId": "list_messages",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Message"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ID format"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "POST /v1/orgs/{org}/sessions/{session_id}/messages - Create message (user message triggers workflow)",
+        "operationId": "create_message",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Message created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ID format"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/sessions/{session_id}/sse": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "GET /v1/orgs/{org}/sessions/{session_id}/sse - Stream events (SSE notifications)",
+        "operationId": "stream_sse",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since_id",
+            "in": "query",
+            "description": "Filter events with ID greater than this UUID v7 (monotonically increasing)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/users": {
       "get": {
         "tags": [
@@ -3247,7 +3089,15 @@
       "CreateSessionRequest": {
         "type": "object",
         "description": "Request to create a session",
+        "required": [
+          "agent_id"
+        ],
         "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "ID of the agent to work in this session (format: agent_{32-hex}).",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
           "model_id": {
             "type": [
               "string",
@@ -5491,6 +5341,7 @@
               "description": "Session - instance of agentic loop execution.\nA session represents a single conversation with an agent.",
               "required": [
                 "id",
+                "organization_id",
                 "agent_id",
                 "status",
                 "created_at",
@@ -5499,7 +5350,7 @@
               "properties": {
                 "agent_id": {
                   "type": "string",
-                  "description": "ID of the agent this session belongs to (format: agent_{32-hex}).",
+                  "description": "ID of the agent working in this session (format: agent_{32-hex}).",
                   "example": "agent_01933b5a00007000800000000000001"
                 },
                 "created_at": {
@@ -5527,6 +5378,11 @@
                   ],
                   "description": "LLM model ID to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if set.",
                   "example": "model_01933b5a00007000800000000000001"
+                },
+                "organization_id": {
+                  "type": "string",
+                  "description": "Organization this session belongs to (format: org_{32-hex}).",
+                  "example": "org_00000000000000000000000000000001"
                 },
                 "output_preview": {
                   "type": [
@@ -5824,6 +5680,7 @@
         "description": "Session - instance of agentic loop execution.\nA session represents a single conversation with an agent.",
         "required": [
           "id",
+          "organization_id",
           "agent_id",
           "status",
           "created_at",
@@ -5832,7 +5689,7 @@
         "properties": {
           "agent_id": {
             "type": "string",
-            "description": "ID of the agent this session belongs to (format: agent_{32-hex}).",
+            "description": "ID of the agent working in this session (format: agent_{32-hex}).",
             "example": "agent_01933b5a00007000800000000000001"
           },
           "created_at": {
@@ -5860,6 +5717,11 @@
             ],
             "description": "LLM model ID to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if set.",
             "example": "model_01933b5a00007000800000000000001"
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "Organization this session belongs to (format: org_{32-hex}).",
+            "example": "org_00000000000000000000000000000001"
           },
           "output_preview": {
             "type": [

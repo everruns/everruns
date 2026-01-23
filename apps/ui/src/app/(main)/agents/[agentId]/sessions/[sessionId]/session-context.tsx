@@ -65,7 +65,7 @@ interface SessionContextValue {
   sendMessage: UseMutationResult<
     Message,
     Error,
-    { agentId: string; sessionId: string; content: string; controls?: Controls },
+    { sessionId: string; content: string; controls?: Controls },
     { optimisticId: string; content: string }
   >;
   // Turn cancellation
@@ -113,21 +113,19 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
   const [optimisticEvents, setOptimisticEvents] = useState<Event[]>([]);
 
   // Fetch session once to get initial data
-  const { data: session, isLoading: sessionLoading } = useSession(agentId, sessionId);
+  const { data: session, isLoading: sessionLoading } = useSession(sessionId);
 
   // Custom sendMessage mutation with optimistic UI
   const sendMessage = useMutation({
     mutationFn: ({
-      agentId,
       sessionId,
       content,
       controls,
     }: {
-      agentId: string;
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(org!, agentId, sessionId, content, controls),
+    }) => sendUserMessage(org!, sessionId, content, controls),
     onMutate: async ({ sessionId, content }) => {
       // Create optimistic event immediately
       const optimisticId = `optimistic-${Date.now()}`;
@@ -167,7 +165,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
   const cancelCurrentTurn = useMutation({
     mutationFn: async () => {
       if (!org) throw new Error("Organization not found");
-      await cancelTurn(org, agentId, sessionId);
+      await cancelTurn(org, sessionId);
     },
     onSuccess: () => {
       // Reset waiting state since turn is cancelled
@@ -182,7 +180,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
 
   // Fetch events using SSE - always enabled for real-time streaming
   // SSE handles backoff automatically (100ms → 10s when no new events)
-  const { data: events, isLoading: eventsLoading } = useEvents(agentId, sessionId);
+  const { data: events, isLoading: eventsLoading } = useEvents(sessionId);
 
   // Update local status from SSE events (session.activated, session.idled)
   useEffect(() => {

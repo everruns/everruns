@@ -83,6 +83,8 @@ export type SessionStatus = "started" | "active" | "idle";
 
 export interface Session {
   id: string;
+  /** Organization this session belongs to */
+  organization_id: string;
   agent_id: string;
   title: string | null;
   /** Preview text from the first user message (truncated) */
@@ -93,6 +95,7 @@ export interface Session {
   model_id: string | null;
   status: SessionStatus;
   created_at: string;
+  updated_at: string;
   started_at: string | null;
   finished_at: string | null;
   /** Cumulative token usage for all LLM calls in this session */
@@ -100,6 +103,8 @@ export interface Session {
 }
 
 export interface CreateSessionRequest {
+  /** Agent ID to work in this session (required) */
+  agent_id: string;
   title?: string;
   tags?: string[];
   model_id?: string;

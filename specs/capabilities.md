@@ -903,7 +903,7 @@ pub trait Capability: Send + Sync {
 
 #### Mount Application Flow
 
-1. Session is created via POST `/v1/agents/{agent_id}/sessions`
+1. Session is created via POST `/v1/orgs/{org}/sessions` (with `agent_id` in body)
 2. SessionService fetches agent's capabilities
 3. Mounts are collected from all enabled capabilities
 4. Files and directories are created in session filesystem

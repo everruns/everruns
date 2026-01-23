@@ -17,25 +17,25 @@ import type { CreateSessionRequest, UpdateSessionRequest, Controls, Event, Pagin
 import { useOrg } from "@/providers/org-provider";
 
 /**
- * Fetch paginated sessions for an agent.
+ * Fetch paginated sessions for an organization.
+ * Optionally filter by agentId.
  * Returns { data, total, offset, limit } for pagination controls.
  */
 export function useSessions(
-  agentId: string | undefined,
+  agentId?: string,
   params?: PaginationParams
 ) {
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
   return useQuery({
-    queryKey: [...queryKeys.sessions.list(agentId!), org, params?.offset ?? 0, params?.limit ?? 20],
-    queryFn: () => listSessions(org!, agentId!, params),
-    enabled: !!org && !!agentId,
+    queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
+    queryFn: () => listSessions(org!, { ...params, agentId }),
+    enabled: !!org,
   });
 }
 
 export function useSession(
-  agentId: string | undefined,
   sessionId: string | undefined,
   options?: { refetchInterval?: number | false }
 ) {
@@ -43,9 +43,9 @@ export function useSession(
   const org = currentOrg?.public_id;
 
   return useQuery({
-    queryKey: [...queryKeys.sessions.detail(agentId!, sessionId!), org],
-    queryFn: () => getSession(org!, agentId!, sessionId!),
-    enabled: !!org && !!agentId && !!sessionId,
+    queryKey: queryKeys.sessions.detail(org, sessionId!),
+    queryFn: () => getSession(org!, sessionId!),
+    enabled: !!org && !!sessionId,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -57,14 +57,16 @@ export function useCreateSession() {
 
   return useMutation({
     mutationFn: ({
-      agentId,
       request,
     }: {
-      agentId: string;
-      request?: CreateSessionRequest;
-    }) => createSession(org!, agentId, request),
-    onSuccess: (_, { agentId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
+      request: CreateSessionRequest;
+    }) => createSession(org!, request),
+    onSuccess: (_, { request }) => {
+      // Invalidate sessions list - both all sessions and agent-specific
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
+      if (request.agent_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.sessions.byAgent(request.agent_id) });
+      }
     },
   });
 }
@@ -76,18 +78,16 @@ export function useUpdateSession() {
 
   return useMutation({
     mutationFn: ({
-      agentId,
       sessionId,
       request,
     }: {
-      agentId: string;
       sessionId: string;
       request: UpdateSessionRequest;
-    }) => updateSession(org!, agentId, sessionId, request),
-    onSuccess: (_, { agentId, sessionId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
+    }) => updateSession(org!, sessionId, request),
+    onSuccess: (_, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.sessions.detail(agentId, sessionId),
+        queryKey: queryKeys.sessions.detail(org, sessionId),
       });
     },
   });
@@ -100,14 +100,12 @@ export function useDeleteSession() {
 
   return useMutation({
     mutationFn: ({
-      agentId,
       sessionId,
     }: {
-      agentId: string;
       sessionId: string;
-    }) => deleteSession(org!, agentId, sessionId),
-    onSuccess: (_, { agentId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.list(agentId) });
+    }) => deleteSession(org!, sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
     },
   });
 }
@@ -119,20 +117,18 @@ export function useSendMessage() {
 
   return useMutation({
     mutationFn: ({
-      agentId,
       sessionId,
       content,
       controls,
     }: {
-      agentId: string;
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(org!, agentId, sessionId, content, controls),
-    onSuccess: (_, { agentId, sessionId }) => {
+    }) => sendUserMessage(org!, sessionId, content, controls),
+    onSuccess: (_, { sessionId }) => {
       // Invalidate events query to refresh the message list
       queryClient.invalidateQueries({
-        queryKey: queryKeys.events.list(agentId, sessionId),
+        queryKey: queryKeys.events.list(sessionId),
       });
     },
   });
@@ -150,7 +146,6 @@ export function useSendMessage() {
  * The enabled option controls whether to connect to SSE (useful for inactive sessions).
  */
 export function useEvents(
-  agentId: string | undefined,
   sessionId: string | undefined,
   options?: { enabled?: boolean }
 ) {
@@ -182,11 +177,11 @@ export function useEvents(
     setError(null);
     lastEventIdRef.current = null;
     eventIdsRef.current.clear();
-  }, [org, agentId, sessionId]);
+  }, [org, sessionId]);
 
   // SSE connection
   useEffect(() => {
-    if (!org || !agentId || !sessionId || !isEnabled) {
+    if (!org || !sessionId || !isEnabled) {
       cleanup();
       return;
     }
@@ -195,7 +190,7 @@ export function useEvents(
       // Close existing connection
       cleanup();
 
-      const sseUrl = getSseUrl(org, agentId, sessionId, lastEventIdRef.current ?? undefined);
+      const sseUrl = getSseUrl(org, sessionId, lastEventIdRef.current ?? undefined);
       const eventSource = new EventSource(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
 
@@ -272,7 +267,7 @@ export function useEvents(
     connectSSE();
 
     return cleanup;
-  }, [org, agentId, sessionId, isEnabled, cleanup]);
+  }, [org, sessionId, isEnabled, cleanup]);
 
   return {
     data: events,
