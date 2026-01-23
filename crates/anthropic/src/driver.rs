@@ -273,6 +273,9 @@ impl LlmDriver for AnthropicLlmDriver {
             base_max_tokens
         };
 
+        // Check if we need interleaved thinking beta header BEFORE moving values
+        let needs_interleaved_thinking = thinking.is_some() && tools.is_some();
+
         let request = AnthropicRequest {
             model: config.model.clone(),
             messages: anthropic_messages,
@@ -284,12 +287,23 @@ impl LlmDriver for AnthropicLlmDriver {
             thinking,
         };
 
-        let response = self
+        // Build request with headers
+        let mut request_builder = self
             .client
             .post(&self.api_url)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+
+        // Add interleaved thinking beta header when thinking is enabled with tools
+        // Required for tool use with extended thinking per Anthropic docs
+        if needs_interleaved_thinking {
+            request_builder =
+                request_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
+            tracing::info!("AnthropicDriver: enabling interleaved thinking beta for tool use");
+        }
+
+        let response = request_builder
             .json(&request)
             .send()
             .await
