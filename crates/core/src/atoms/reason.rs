@@ -575,36 +575,39 @@ where
             "ReasonAtom: calling LLM"
         );
 
-        // 13. Emit reason.thinking.started event BEFORE starting LLM call
+        // 13. Emit reason.thinking.started event BEFORE starting LLM call (only if thinking enabled)
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
-        tracing::info!(
-            session_id = %session_id,
-            turn_id = %context.turn_id,
-            "ReasonAtom: emitting reason.thinking.started event"
-        );
-        if let Err(e) = self
-            .event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                streaming_event_context.clone(),
-                ReasonThinkingStartedData {
-                    turn_id: context.turn_id,
-                    model: Some(runtime_agent.model.clone()),
-                },
-            ))
-            .await
-        {
-            tracing::warn!(
-                session_id = %session_id,
-                error = %e,
-                "ReasonAtom: failed to emit reason.thinking.started event"
-            );
-        } else {
+        let thinking_enabled = reasoning_effort.is_some();
+        if thinking_enabled {
             tracing::info!(
                 session_id = %session_id,
-                "ReasonAtom: reason.thinking.started event emitted successfully"
+                turn_id = %context.turn_id,
+                "ReasonAtom: emitting reason.thinking.started event"
             );
+            if let Err(e) = self
+                .event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    streaming_event_context.clone(),
+                    ReasonThinkingStartedData {
+                        turn_id: context.turn_id,
+                        model: Some(runtime_agent.model.clone()),
+                    },
+                ))
+                .await
+            {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "ReasonAtom: failed to emit reason.thinking.started event"
+                );
+            } else {
+                tracing::info!(
+                    session_id = %session_id,
+                    "ReasonAtom: reason.thinking.started event emitted successfully"
+                );
+            }
         }
 
         // Track LLM call timing
