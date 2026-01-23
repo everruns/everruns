@@ -45,7 +45,7 @@ export function AgentCard({
             </Link>
           </CardTitle>
           <p className="text-sm text-muted-foreground font-mono">
-            {agent.id.slice(0, 8)}...
+            {agent.id}
           </p>
         </div>
         <Badge variant={agent.status === "active" ? "default" : "secondary"}>

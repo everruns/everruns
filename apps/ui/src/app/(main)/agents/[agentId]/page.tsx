@@ -149,7 +149,7 @@ export default function AgentDetailPage({
             </Badge>
           </h1>
           <p className="text-muted-foreground font-mono text-sm">
-            ID: {agent.id.slice(0, 8)}...
+            ID: {agent.id}
           </p>
         </div>
         <div className="flex gap-2">
