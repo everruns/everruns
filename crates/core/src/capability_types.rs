@@ -59,9 +59,6 @@ impl CapabilityId {
     pub const SESSION_STORAGE: &'static str = "session_storage";
     // Experimental capability ID constants
     pub const DOCKER_CONTAINER: &'static str = "docker_container";
-    // Context strategy capability ID constants
-    pub const NAIVE_TRIM: &'static str = "naive_trim";
-    pub const INFINITY_CONTEXT: &'static str = "infinity_context";
 
     /// Create the noop capability ID
     pub fn noop() -> Self {
@@ -141,16 +138,6 @@ impl CapabilityId {
     /// Create the docker_container capability ID
     pub fn docker_container() -> Self {
         Self::new(Self::DOCKER_CONTAINER)
-    }
-
-    /// Create the naive_trim capability ID
-    pub fn naive_trim() -> Self {
-        Self::new(Self::NAIVE_TRIM)
-    }
-
-    /// Create the infinity_context capability ID
-    pub fn infinity_context() -> Self {
-        Self::new(Self::INFINITY_CONTEXT)
     }
 }
 
