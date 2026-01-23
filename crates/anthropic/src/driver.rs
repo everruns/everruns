@@ -177,9 +177,13 @@ impl AnthropicLlmDriver {
                     let mut content = Vec::new();
 
                     // Add thinking block first if present (required by Anthropic when thinking is enabled)
-                    if let Some(thinking) = &msg.thinking {
+                    // Both thinking content and signature are required when sending thinking back
+                    if let (Some(thinking), Some(signature)) =
+                        (&msg.thinking, &msg.thinking_signature)
+                    {
                         content.push(AnthropicContentBlock::Thinking {
                             thinking: thinking.clone(),
+                            signature: signature.clone(),
                         });
                     }
 
@@ -407,6 +411,18 @@ impl LlmDriver for AnthropicLlmDriver {
                                             serde_json::from_str(args_str).unwrap_or(json!({}));
                                     }
                                     accumulated_tool_calls.lock().unwrap().push(tc);
+                                }
+                                // Check if this is a thinking block with signature
+                                if let Ok(data) =
+                                    serde_json::from_str::<AnthropicContentBlockStop>(&event.data)
+                                {
+                                    if let Some(AnthropicCompletedContentBlock::Thinking {
+                                        signature,
+                                        ..
+                                    }) = data.content_block
+                                    {
+                                        return Ok(LlmStreamEvent::ThinkingSignature(signature));
+                                    }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
@@ -667,7 +683,11 @@ enum AnthropicContentBlock {
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
     #[serde(rename = "thinking")]
-    Thinking { thinking: String },
+    Thinking {
+        thinking: String,
+        /// Cryptographic signature required when sending thinking back to the API
+        signature: String,
+    },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -736,6 +756,35 @@ struct AnthropicUsage {
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlockStart {
     content_block: AnthropicContentBlockDelta,
+}
+
+/// Completed content block from content_block_stop event
+/// Includes the cryptographic signature for thinking blocks
+#[derive(Debug, Deserialize)]
+struct AnthropicContentBlockStop {
+    #[serde(default)]
+    content_block: Option<AnthropicCompletedContentBlock>,
+}
+
+/// Completed content block variants (from content_block_stop)
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+#[allow(dead_code)] // Fields used for JSON deserialization
+enum AnthropicCompletedContentBlock {
+    #[serde(rename = "thinking")]
+    Thinking {
+        thinking: String,
+        /// Cryptographic signature for the thinking content (required to send it back)
+        signature: String,
+    },
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -890,6 +939,7 @@ mod tests {
             }]),
             tool_call_id: None,
             thinking: None,
+            thinking_signature: None,
         }];
 
         let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);
@@ -975,6 +1025,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 thinking: None,
+                thinking_signature: None,
             },
             LlmMessage {
                 role: LlmMessageRole::User,
@@ -982,6 +1033,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 thinking: None,
+                thinking_signature: None,
             },
         ];
 
@@ -1000,6 +1052,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: Some("call_123".to_string()),
             thinking: None,
+            thinking_signature: None,
         }];
 
         let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);

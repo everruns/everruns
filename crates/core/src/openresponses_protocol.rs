@@ -865,6 +865,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 thinking: None,
+                thinking_signature: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -872,6 +873,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_xyz789".to_string()),
                 thinking: None,
+                thinking_signature: None,
             },
         ];
 
@@ -913,6 +915,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 thinking: None,
+                thinking_signature: None,
             },
         ];
 

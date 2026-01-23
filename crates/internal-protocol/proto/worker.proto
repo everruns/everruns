@@ -239,6 +239,8 @@ message Message {
     Timestamp created_at = 6;
     // Extended thinking content from Claude models (required for subsequent API calls)
     optional string thinking = 7;
+    // Cryptographic signature for thinking content (required when sending thinking back)
+    optional string thinking_signature = 8;
 }
 
 message LoadMessagesRequest {

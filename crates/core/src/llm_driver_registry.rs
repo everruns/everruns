@@ -38,6 +38,9 @@ pub enum LlmStreamEvent {
     TextDelta(String),
     /// Thinking delta (incremental reasoning content from extended thinking models)
     ThinkingDelta(String),
+    /// Cryptographic signature for thinking content (Anthropic Claude)
+    /// Emitted when a thinking block completes, before the Done event
+    ThinkingSignature(String),
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
     /// Streaming completed
@@ -110,6 +113,7 @@ pub trait LlmDriver: Send + Sync {
         let mut stream = self.chat_completion_stream(messages, config).await?;
         let mut text = String::new();
         let mut thinking = String::new();
+        let mut thinking_signature: Option<String> = None;
         let mut tool_calls = Vec::new();
         let mut metadata = LlmCompletionMetadata::default();
 
@@ -117,6 +121,7 @@ pub trait LlmDriver: Send + Sync {
             match event? {
                 LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
                 LlmStreamEvent::ThinkingDelta(delta) => thinking.push_str(&delta),
+                LlmStreamEvent::ThinkingSignature(sig) => thinking_signature = Some(sig),
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
                 LlmStreamEvent::Done(meta) => metadata = meta,
                 LlmStreamEvent::Error(err) => return Err(crate::error::AgentLoopError::llm(err)),
@@ -130,6 +135,7 @@ pub trait LlmDriver: Send + Sync {
             } else {
                 Some(thinking)
             },
+            thinking_signature,
             tool_calls: if tool_calls.is_empty() {
                 None
             } else {
@@ -190,6 +196,9 @@ pub struct LlmMessage {
     /// Thinking content from extended thinking models (Anthropic Claude)
     /// Must be included in subsequent API calls when thinking is enabled
     pub thinking: Option<String>,
+    /// Cryptographic signature for thinking content (Anthropic Claude)
+    /// Required when sending thinking back in subsequent API calls
+    pub thinking_signature: Option<String>,
 }
 
 impl LlmMessage {
@@ -201,6 +210,7 @@ impl LlmMessage {
             tool_calls: None,
             tool_call_id: None,
             thinking: None,
+            thinking_signature: None,
         }
     }
 
@@ -212,6 +222,7 @@ impl LlmMessage {
             tool_calls: None,
             tool_call_id: None,
             thinking: None,
+            thinking_signature: None,
         }
     }
 
@@ -344,6 +355,8 @@ pub struct LlmResponse {
     pub text: String,
     /// Thinking content from extended thinking models (e.g., Claude with thinking enabled)
     pub thinking: Option<String>,
+    /// Cryptographic signature for thinking content (Anthropic Claude)
+    pub thinking_signature: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub metadata: LlmCompletionMetadata,
 }
@@ -468,6 +481,7 @@ impl From<&crate::message::Message> for LlmMessage {
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
             thinking: msg.thinking.clone(),
+            thinking_signature: msg.thinking_signature.clone(),
         }
     }
 }
@@ -594,6 +608,7 @@ impl LlmMessage {
             },
             tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
             thinking: msg.thinking.clone(),
+            thinking_signature: msg.thinking_signature.clone(),
         }
     }
 
@@ -997,6 +1012,7 @@ mod tests {
                 }),
             ],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1014,6 +1030,7 @@ mod tests {
                 text: "Just text".to_string(),
             })],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1044,6 +1061,7 @@ mod tests {
                 }),
             ],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1064,6 +1082,7 @@ mod tests {
                 text: "Hello".to_string(),
             })],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1095,6 +1114,7 @@ mod tests {
                 }),
             ],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),
@@ -1135,6 +1155,7 @@ mod tests {
                 filename: Some("missing.png".to_string()),
             })],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: chrono::Utc::now(),

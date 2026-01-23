@@ -766,6 +766,7 @@ fn event_to_message(event: Event) -> Option<Message> {
                 role: MessageRole::ToolResult,
                 content,
                 thinking: None,
+                thinking_signature: None,
                 controls: None,
                 metadata: None,
                 created_at: event.ts,

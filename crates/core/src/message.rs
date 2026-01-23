@@ -103,6 +103,11 @@ pub struct Message {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking: Option<String>,
 
+    /// Cryptographic signature for thinking content (Anthropic Claude)
+    /// Required when sending thinking back in subsequent API calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_signature: Option<String>,
+
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<Controls>,
@@ -482,6 +487,7 @@ impl Message {
             role: MessageRole::User,
             content: vec![ContentPart::text(content)],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -495,6 +501,7 @@ impl Message {
             role: MessageRole::Assistant,
             content: vec![ContentPart::text(content)],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -528,6 +535,7 @@ impl Message {
             role: MessageRole::Assistant,
             content: parts,
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -541,6 +549,7 @@ impl Message {
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -563,6 +572,7 @@ impl Message {
                 error,
             ))],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),

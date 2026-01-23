@@ -527,6 +527,7 @@ where
                 tool_calls: None,
                 tool_call_id: None,
                 thinking: None,
+                thinking_signature: None,
             });
         }
 
@@ -622,6 +623,7 @@ where
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let mut text = String::new();
         let mut thinking = String::new();
+        let mut thinking_signature: Option<String> = None;
         let mut tool_calls = Vec::new();
         let mut completion_metadata: Option<LlmCompletionMetadata> = None;
         let mut pending_delta = String::new();
@@ -711,6 +713,15 @@ where
                         pending_thinking_delta.clear();
                         last_thinking_delta_emit = Instant::now();
                     }
+                }
+                LlmStreamEvent::ThinkingSignature(signature) => {
+                    // Capture the cryptographic signature for thinking content (required to send it back)
+                    tracing::debug!(
+                        session_id = %session_id,
+                        signature_len = signature.len(),
+                        "ReasonAtom: received ThinkingSignature from LLM"
+                    );
+                    thinking_signature = Some(signature);
                 }
                 LlmStreamEvent::ToolCalls(calls) => {
                     tool_calls = calls;
@@ -892,9 +903,11 @@ where
             Message::assistant(&text)
         };
         assistant_message.metadata = Some(metadata);
-        // Store thinking content for extended thinking models (required for subsequent API calls)
+        // Store thinking content and signature for extended thinking models
+        // Both are required for subsequent API calls when thinking is enabled
         if !thinking.is_empty() {
             assistant_message.thinking = Some(thinking.clone());
+            assistant_message.thinking_signature = thinking_signature.clone();
         }
 
         // Emit message.agent event (this stores the message as an event with proper turn context)

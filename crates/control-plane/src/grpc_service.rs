@@ -346,6 +346,7 @@ impl WorkerService for WorkerServiceImpl {
                 metadata,
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
                 thinking: message.thinking.clone(),
+                thinking_signature: message.thinking_signature.clone(),
             });
         }
 
@@ -585,6 +586,7 @@ impl WorkerService for WorkerServiceImpl {
                 metadata,
                 created_at: Some(datetime_to_proto_timestamp(message.created_at)),
                 thinking: message.thinking.clone(),
+                thinking_signature: message.thinking_signature.clone(),
             });
         }
 
@@ -644,6 +646,7 @@ impl WorkerService for WorkerServiceImpl {
             role: role.clone(),
             content,
             thinking: None,
+            thinking_signature: None,
             controls,
             metadata,
             created_at: Utc::now(),
@@ -697,6 +700,7 @@ impl WorkerService for WorkerServiceImpl {
             metadata,
             created_at: Some(datetime_to_proto_timestamp(message.created_at)),
             thinking: message.thinking.clone(),
+            thinking_signature: message.thinking_signature.clone(),
         };
 
         Ok(Response::new(AddMessageResponse {

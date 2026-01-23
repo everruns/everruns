@@ -481,6 +481,7 @@ pub fn proto_message_to_schema(
         role,
         content,
         thinking: value.thinking,
+        thinking_signature: value.thinking_signature,
         controls,
         metadata,
         created_at,
@@ -513,6 +514,7 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
         metadata,
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
         thinking: value.thinking.clone(),
+        thinking_signature: value.thinking_signature.clone(),
     }
 }
 
@@ -1143,6 +1145,7 @@ mod tests {
                 "Here is my response based on my analysis.",
             )],
             thinking: Some(thinking_content.clone()),
+            thinking_signature: Some("test_signature_abc123".to_string()),
             controls: None,
             metadata: None,
             created_at: Utc::now(),
@@ -1153,6 +1156,10 @@ mod tests {
 
         // Verify thinking field is set in proto
         assert_eq!(proto_message.thinking, Some(thinking_content.clone()));
+        assert_eq!(
+            proto_message.thinking_signature,
+            Some("test_signature_abc123".to_string())
+        );
 
         // Convert back to schema
         let schema_message = proto_message_to_schema(proto_message).unwrap();
@@ -1174,6 +1181,7 @@ mod tests {
             role: MessageRole::Assistant,
             content: vec![ContentPart::text("A simple response without thinking.")],
             thinking: None,
+            thinking_signature: None,
             controls: None,
             metadata: None,
             created_at: Utc::now(),
