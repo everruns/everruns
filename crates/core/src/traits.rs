@@ -7,6 +7,7 @@
 
 use crate::agent::Agent;
 use crate::llm_models::LlmProviderType;
+use crate::message_retriever::MessageRetriever;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::typed_id::{AgentId, ModelId, SessionId};
@@ -311,6 +312,9 @@ pub struct ToolContext {
 
     /// Optional storage store for key/value and secret storage
     pub storage_store: Option<Arc<dyn SessionStorageStore>>,
+
+    /// Optional message retriever for querying conversation history
+    pub message_retriever: Option<Arc<dyn MessageRetriever>>,
 }
 
 impl ToolContext {
@@ -320,6 +324,7 @@ impl ToolContext {
             session_id,
             file_store: None,
             storage_store: None,
+            message_retriever: None,
         }
     }
 
@@ -329,6 +334,7 @@ impl ToolContext {
             session_id,
             file_store: Some(file_store),
             storage_store: None,
+            message_retriever: None,
         }
     }
 
@@ -341,6 +347,7 @@ impl ToolContext {
             session_id,
             file_store: None,
             storage_store: Some(storage_store),
+            message_retriever: None,
         }
     }
 
@@ -354,7 +361,14 @@ impl ToolContext {
             session_id,
             file_store: Some(file_store),
             storage_store: Some(storage_store),
+            message_retriever: None,
         }
+    }
+
+    /// Add a message retriever to this context
+    pub fn with_message_retriever(mut self, retriever: Arc<dyn MessageRetriever>) -> Self {
+        self.message_retriever = Some(retriever);
+        self
     }
 }
 
@@ -364,6 +378,7 @@ impl std::fmt::Debug for ToolContext {
             .field("session_id", &self.session_id)
             .field("file_store", &self.file_store.is_some())
             .field("storage_store", &self.storage_store.is_some())
+            .field("message_retriever", &self.message_retriever.is_some())
             .finish()
     }
 }
