@@ -87,6 +87,34 @@ check_port_open() {
   (echo > "/dev/tcp/$host/$port") 2>/dev/null
 }
 
+# Check if PostgreSQL is actually responding (not just port open)
+# Uses pg_isready if available, falls back to psql connection test
+check_postgres_ready() {
+  local host="${1:-localhost}"
+  local port="${2:-5432}"
+  local user="${3:-postgres}"
+
+  # First check if port is open
+  if ! check_port_open "$host" "$port"; then
+    return 1
+  fi
+
+  # Try pg_isready if available (preferred)
+  if command -v pg_isready &> /dev/null; then
+    pg_isready -h "$host" -p "$port" -U "$user" -q -t 2 2>/dev/null
+    return $?
+  fi
+
+  # Fall back to psql connection test
+  if command -v psql &> /dev/null; then
+    PGCONNECT_TIMEOUT=2 psql -h "$host" -p "$port" -U "$user" -c "SELECT 1" &>/dev/null
+    return $?
+  fi
+
+  # If no tools available, just rely on port check (less reliable)
+  return 0
+}
+
 # Backward-compatible wrappers
 check_ui_deps() {
   check_npm_deps "UI" "just ui-install"
