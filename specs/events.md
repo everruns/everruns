@@ -11,7 +11,7 @@ Every event MUST conform to this schema:
 ```json
 {
   "id": "01937abc-def0-7000-8000-000000000001",
-  "type": "message.user",
+  "type": "input.message",
   "ts": "2024-01-15T10:30:00.000Z",
   "session_id": "01937abc-def0-7000-8000-000000000002",
   "context": {
@@ -35,7 +35,7 @@ Every event MUST conform to this schema:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | UUID v7 | Yes | Unique, monotonically increasing event identifier |
-| `type` | string | Yes | Event type in dot notation (e.g., `message.user`, `reason.started`) |
+| `type` | string | Yes | Event type in dot notation (e.g., `input.message`, `reason.started`) |
 | `ts` | ISO 8601 | Yes | Event timestamp with millisecond precision |
 | `session_id` | UUID | Yes | Session this event belongs to |
 | `context` | object | Yes | Correlation context for tracing |
@@ -67,8 +67,8 @@ turn (root span)
 ├── reason (child of turn)
 │   └── llm.generation (child of reason)
 ├── act (child of turn)
-│   ├── tool.call (child of act)
-│   └── tool.call (child of act)
+│   ├── tool (child of act)
+│   └── tool (child of act)
 ├── reason (child of turn)
 │   └── llm.generation (child of reason)
 └── ...
@@ -82,7 +82,7 @@ turn (root span)
 | `reason.started/completed` | reason_span_id | turn_id | turn_id |
 | `llm.generation` | llm_span_id | reason_span_id | turn_id |
 | `act.started/completed` | act_span_id | turn_id | turn_id |
-| `tool.call_started/completed` | tool_span_id | act_span_id | turn_id |
+| `tool.started/completed` | tool_span_id | act_span_id | turn_id |
 
 **Key Properties:**
 
@@ -160,18 +160,18 @@ Examples:
 
 ## Event Categories
 
-### Message Events
+### Input Events
 
-Message events represent conversation data and are the source of truth for messages.
+Input events represent user messages submitted to the session.
 
-#### `message.user`
+#### `input.message`
 
-User message submitted to the session.
+User message submitted to the session. Emitted when the API stores a new user message.
 
 ```json
 {
   "id": "...",
-  "type": "message.user",
+  "type": "input.message",
   "ts": "...",
   "session_id": "...",
   "context": {},
@@ -190,14 +190,61 @@ User message submitted to the session.
 }
 ```
 
-#### `message.agent`
+### Output Events
 
-Agent response message.
+Output events represent agent responses. They follow a lifecycle pattern: `started` → `delta*` → `completed`.
+
+#### `output.message.started`
+
+Emitted when the LLM starts generating a response. UI can show a "thinking" indicator until `output.message.delta` or `output.message.completed` events arrive.
 
 ```json
 {
   "id": "...",
-  "type": "message.agent",
+  "type": "output.message.started",
+  "ts": "...",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "model": "gpt-4o"
+  }
+}
+```
+
+#### `output.message.delta`
+
+Streaming text update during LLM generation. Events are batched (~100ms) to reduce volume while providing real-time feedback. UI should accumulate deltas or use the `accumulated` field until `output.message.completed` arrives with the final text.
+
+```json
+{
+  "id": "...",
+  "type": "output.message.delta",
+  "ts": "...",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "delta": "Hello, ",
+    "accumulated": "Hello, "
+  }
+}
+```
+
+#### `output.message.completed`
+
+Agent response message. Emitted when LLM generation completes.
+
+```json
+{
+  "id": "...",
+  "type": "output.message.completed",
   "ts": "...",
   "session_id": "...",
   "context": {
@@ -207,7 +254,7 @@ Agent response message.
   "data": {
     "message": {
       "id": "01937abc-...",
-      "role": "agent",
+      "role": "assistant",
       "content": [
         { "type": "text", "text": "Hello! How can I help?" }
       ],
@@ -224,6 +271,28 @@ Agent response message.
     }
   }
 }
+```
+
+**Streaming Timeline:**
+
+```
+User sends message
+       │
+       ▼
+┌──────────────────────────┐
+│ output.message.started   │  ← UI shows thinking indicator
+└───────────┬──────────────┘
+            │
+       ┌────┴────┐
+       ▼         ▼
+output.message.delta  output.message.delta  ← UI shows streaming text (batched ~100ms)
+       │         │
+       └────┬────┘
+            │
+            ▼
+┌──────────────────────────┐
+│ output.message.completed │  ← UI shows final message, stops streaming
+└──────────────────────────┘
 ```
 
 ### Turn Lifecycle Events
@@ -274,7 +343,7 @@ Turn execution failed. This event is emitted when:
 - Max iterations exceeded
 - Other unrecoverable errors during turn execution
 
-When a turn fails, a `message.agent` event with a user-friendly error message is also emitted so users see feedback in the chat.
+When a turn fails, an `output.message.completed` event with a user-friendly error message is also emitted so users see feedback in the chat.
 
 ```json
 {
@@ -329,33 +398,14 @@ Turn execution was cancelled by user request. This event is emitted immediately 
 **Cancellation Flow:**
 1. User clicks cancel in UI
 2. API emits `turn.cancelled` event immediately
-3. API emits `message.user` with "User requested to cancel the work."
+3. API emits `input.message` with "User requested to cancel the work."
 4. Worker detects cancellation and stops execution
-5. Worker emits `message.agent` with "Work was cancelled by user."
+5. Worker emits `output.message.completed` with "Work was cancelled by user."
 6. Worker emits `session.idled` event
 
 ### Atom Lifecycle Events
 
 Atom events provide observability into the execution pipeline.
-
-#### `input.received`
-
-User input received and retrieved from message store.
-
-```json
-{
-  "type": "input.received",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "...",
-    "exec_id": "..."
-  },
-  "data": {
-    "message": { /* Message object */ }
-  }
-}
-```
 
 #### `reason.started` / `reason.completed`
 
@@ -438,13 +488,13 @@ ActAtom lifecycle - tool batch execution.
 }
 ```
 
-#### `tool.call_started` / `tool.call_completed`
+#### `tool.started` / `tool.completed`
 
 Individual tool execution within ActAtom.
 
 ```json
 {
-  "type": "tool.call_started",
+  "type": "tool.started",
   "session_id": "...",
   "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
@@ -459,7 +509,7 @@ Individual tool execution within ActAtom.
 
 ```json
 {
-  "type": "tool.call_completed",
+  "type": "tool.completed",
   "session_id": "...",
   "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
@@ -478,7 +528,7 @@ For failed tool calls:
 
 ```json
 {
-  "type": "tool.call_completed",
+  "type": "tool.completed",
   "session_id": "...",
   "context": { "turn_id": "...", "exec_id": "..." },
   "data": {
@@ -646,13 +696,13 @@ Session became idle (turn completed). Contains cumulative session usage for real
 
 **Usage Field:** Contains cumulative session token usage at this point.
 
-### Streaming Events
+### Extended Thinking Events
 
-Streaming events provide real-time feedback during LLM generation. These events enable the UI to show a "thinking" indicator and incrementally display text as it's generated.
+Extended thinking events provide visibility into the model's chain-of-thought reasoning when using models with extended thinking capabilities (e.g., Anthropic Claude with `reasoning_effort` configured).
 
 #### `reason.thinking.started`
 
-Emitted when the LLM starts generating a response with extended thinking enabled (`reasoning_effort` is set). This event is only emitted when using models that support extended thinking (e.g., Anthropic Claude). UI can show a "thinking" indicator until `text.delta` or `message.agent` events arrive.
+Emitted when the LLM starts generating a response with extended thinking enabled (`reasoning_effort` is set). This event is only emitted when using models that support extended thinking. UI can show a "thinking" indicator until `output.message.delta` or `output.message.completed` events arrive.
 
 **Note:** This event is NOT emitted when `reasoning_effort` is not configured, even if the model supports extended thinking.
 
@@ -671,29 +721,9 @@ Emitted when the LLM starts generating a response with extended thinking enabled
 }
 ```
 
-#### `text.delta`
-
-Streaming text update during LLM generation. Events are batched (~100ms) to reduce volume while providing real-time feedback. UI should accumulate deltas or use the `accumulated` field until `message.agent` arrives with the final text.
-
-```json
-{
-  "type": "text.delta",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "delta": "Hello, ",
-    "accumulated": "Hello, "
-  }
-}
-```
-
 #### `reason.thinking.delta`
 
-Streaming thinking/reasoning content from extended thinking models (e.g., Claude with thinking enabled). These events contain the model's chain-of-thought reasoning before producing the final response. Events are batched (~100ms) similar to `text.delta`.
+Streaming thinking/reasoning content from extended thinking models. These events contain the model's chain-of-thought reasoning before producing the final response. Events are batched (~100ms) similar to `output.message.delta`.
 
 ```json
 {
@@ -730,9 +760,9 @@ Emitted when the model finishes its chain-of-thought reasoning and transitions t
 }
 ```
 
-**Note:** Extended thinking events (`reason.thinking.*`) are only emitted when using models that support extended thinking mode (e.g., Anthropic Claude with `reasoning_effort` configured). The thinking content is separate from the main response text and typically shown in a collapsible section in the UI. Thinking content is also persisted in the `message.agent` event's `thinking` field for multi-turn context.
+**Note:** Extended thinking events (`reason.thinking.*`) are only emitted when using models that support extended thinking mode. The thinking content is separate from the main response text and typically shown in a collapsible section in the UI. Thinking content is also persisted in the `output.message.completed` event's `thinking` field for multi-turn context.
 
-**Streaming Timeline Example:**
+**Extended Thinking Timeline Example:**
 
 ```
 User sends message
@@ -742,7 +772,7 @@ User sends message
 │ reason.thinking.started  │  ← UI shows thinking indicator
 └────────┬─────────────────┘
          │
-         ▼ (if extended thinking model)
+         ▼
   ┌────────────────────────┐
   │ reason.thinking.delta  │  ← UI shows streaming reasoning
   └────────┬───────────────┘
@@ -754,14 +784,14 @@ User sends message
            │
       ┌────┴────┐
       ▼         ▼
-  text.delta  text.delta  ← UI shows streaming text (batched ~100ms)
+output.message.delta  output.message.delta  ← UI shows streaming text
       │         │
       └────┬────┘
            │
            ▼
-  ┌─────────────────┐
-  │ message.agent   │  ← UI shows final message, stops streaming
-  └─────────────────┘
+  ┌──────────────────────────┐
+  │ output.message.completed │  ← UI shows final message
+  └──────────────────────────┘
 ```
 
 **Real-time Usage Tracking Pattern:**
@@ -788,24 +818,24 @@ This approach provides real-time feedback as tokens are consumed during LLM call
 
 | Event Type | Category | Description |
 |------------|----------|-------------|
-| `message.user` | Message | User input message |
-| `message.agent` | Message | Agent response |
+| `input.message` | Input | User input message |
+| `output.message.started` | Output | LLM generation started (thinking indicator) |
+| `output.message.delta` | Output | Incremental text update during streaming |
+| `output.message.completed` | Output | Agent response |
 | `turn.started` | Turn | Turn execution started |
 | `turn.completed` | Turn | Turn completed |
 | `turn.failed` | Turn | Turn failed |
 | `turn.cancelled` | Turn | Turn cancelled by user |
-| `input.received` | Atom | User input received |
 | `reason.started` | Atom | ReasonAtom started |
 | `reason.completed` | Atom | ReasonAtom completed |
 | `act.started` | Atom | ActAtom started |
 | `act.completed` | Atom | ActAtom completed |
-| `tool.call_started` | Atom | Individual tool started |
-| `tool.call_completed` | Atom | Individual tool completed (includes result) |
+| `tool.started` | Atom | Individual tool started |
+| `tool.completed` | Atom | Individual tool completed (includes result) |
 | `llm.generation` | LLM | Full LLM API call with messages and response |
-| `reason.thinking.started` | Streaming | LLM generation started (thinking indicator) |
-| `reason.thinking.delta` | Streaming | Incremental reasoning content from extended thinking models |
-| `reason.thinking.completed` | Streaming | Extended thinking completed |
-| `text.delta` | Streaming | Incremental text update during streaming |
+| `reason.thinking.started` | Thinking | Extended thinking started (thinking indicator) |
+| `reason.thinking.delta` | Thinking | Incremental reasoning content from extended thinking models |
+| `reason.thinking.completed` | Thinking | Extended thinking completed |
 | `session.started` | Session | Session execution started |
 | `session.activated` | Session | Session became active (turn started) |
 | `session.idled` | Session | Session became idle (turn completed, includes usage) |
@@ -906,7 +936,7 @@ request.event_type == request.data.event_type()
 
 **Error on Mismatch:**
 ```
-"event type mismatch: declared 'message.user' but data indicates 'message.agent'"
+"event type mismatch: declared 'input.message' but data indicates 'output.message.completed'"
 ```
 
 **Rationale:** Prevents drift between the declared event type and the actual payload, which would cause incorrect filtering, routing, and processing.
@@ -917,19 +947,19 @@ Messages are reconstructed from events for the conversation view. The following 
 
 | Event Type | Role | Content Source |
 |------------|------|----------------|
-| `message.user` | `user` | `data.message.content` |
-| `message.agent` | `assistant` | `data.message.content` (may include tool calls) |
-| `tool.call_completed` | `tool` | `data.result` (tool execution results) |
+| `input.message` | `user` | `data.message.content` |
+| `output.message.completed` | `assistant` | `data.message.content` (may include tool calls) |
+| `tool.completed` | `tool` | `data.result` (tool execution results) |
 
-**Note:** Tool calls are embedded in `message.agent` events via `ContentPart::ToolCall`. Tool results come from `tool.call_completed` events, not a separate `message.tool_result` type.
+**Note:** Tool calls are embedded in `output.message.completed` events via `ContentPart::ToolCall`. Tool results come from `tool.completed` events, not a separate message type.
 
 ## SSE Streaming
 
 Events are streamed to clients via Server-Sent Events (SSE):
 
 ```
-event: message.user
-data: {"id":"...","type":"message.user","ts":"...","session_id":"...","context":{},"data":{...}}
+event: input.message
+data: {"id":"...","type":"input.message","ts":"...","session_id":"...","context":{},"data":{...}}
 
 event: reason.started
 data: {"id":"...","type":"reason.started","ts":"...","session_id":"...","context":{...},"data":{...}}
@@ -952,7 +982,7 @@ A partial index exists for efficient message queries:
 
 ```sql
 CREATE INDEX idx_events_messages ON events(session_id, sequence)
-WHERE event_type IN ('message.user', 'message.agent');
+WHERE event_type IN ('input.message', 'output.message.completed');
 ```
 
 ### Turn Events Filter
@@ -966,7 +996,7 @@ WHERE event_type IN ('turn.started', 'turn.completed', 'turn.failed');
 
 ```sql
 CREATE INDEX idx_events_tool_calls ON events(session_id, sequence)
-WHERE event_type IN ('tool.call_started', 'tool.call_completed');
+WHERE event_type IN ('tool.started', 'tool.completed');
 ```
 
 ## Event Listeners
@@ -1002,7 +1032,7 @@ let event_service = EventService::with_listeners(db, vec![otel_listener]);
 
 | Listener | Event Types | Purpose |
 |----------|-------------|---------|
-| `OtelEventListener` | `llm.generation`, `tool.call_*`, `turn.*` | Generate OpenTelemetry spans |
+| `OtelEventListener` | `llm.generation`, `tool.*`, `turn.*` | Generate OpenTelemetry spans |
 
 ### Execution Model
 
