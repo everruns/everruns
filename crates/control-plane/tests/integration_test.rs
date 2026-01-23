@@ -3992,13 +3992,6 @@ async fn test_cancel_turn_endpoint() {
 async fn test_anthropic_extended_thinking() {
     use std::time::Duration;
 
-    // Check if Anthropic API key is available
-    let api_key = std::env::var("ANTHROPIC_API_KEY").ok();
-    if api_key.is_none() || api_key.as_ref().map(|k| k.is_empty()).unwrap_or(true) {
-        println!("Skipping Anthropic extended thinking test: ANTHROPIC_API_KEY not set");
-        return;
-    }
-
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(180))
         .build()
@@ -4008,7 +4001,8 @@ async fn test_anthropic_extended_thinking() {
 
     // Step 1: Create Anthropic provider
     println!("\nStep 1: Creating Anthropic provider...");
-    let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY should be set");
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .expect("ANTHROPIC_API_KEY must be set for this test");
 
     let provider_response = client
         .post(format!(
