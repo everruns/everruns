@@ -186,6 +186,10 @@ export interface Message {
   content: ContentPart[];
   metadata?: Record<string, unknown>;
   tool_call_id: string | null;
+  /** Extended thinking content (Anthropic Claude with reasoning) */
+  thinking?: string;
+  /** Cryptographic signature for thinking (required for multi-turn) */
+  thinking_signature?: string;
   created_at: string;
 }
 

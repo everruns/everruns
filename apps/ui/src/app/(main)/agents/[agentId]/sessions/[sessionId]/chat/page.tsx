@@ -286,6 +286,14 @@ export default function ChatPage() {
                         <Bot className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
                         <div className="flex-1 flex items-start gap-2">
                           <div className="flex-1 space-y-2">
+                            {/* Display thinking if present (collapsed by default in history) */}
+                            {data.message?.thinking && (
+                              <StreamingThinking
+                                text={data.message.thinking}
+                                defaultCollapsed={true}
+                                isStreaming={false}
+                              />
+                            )}
                             {textContent && (
                               <p className="text-sm whitespace-pre-wrap text-foreground/90">{textContent}</p>
                             )}
