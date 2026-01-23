@@ -2,10 +2,46 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Bot, Terminal, Check, Loader2, Circle, ChevronRight, Play, Square, Settings, Plus, Search, Bell, User, Zap, Database, Cpu, Activity, Code, Layers, GitBranch } from "lucide-react";
+import { ArrowLeft, Terminal, Check, Loader2, ChevronRight, Play, Square, Settings, Plus, Search, Bell, User, Database, Cpu, Activity, Code, Layers, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const isDev = process.env.NODE_ENV === "development";
+
+// Everruns logo - 3 interlocking circles
+function EverrunsLogo({ size = 24, accentColor = "hsl(180 70% 45%)" }: { size?: number; accentColor?: string }) {
+  const scale = size / 32;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 512 512"
+      style={{ transform: `scale(${scale})`, transformOrigin: 'center' }}
+    >
+      <defs>
+        <linearGradient id="gTopTerminal" gradientUnits="userSpaceOnUse" x1="256" y1="94" x2="256" y2="284">
+          <stop offset="0.00" stopColor={accentColor} stopOpacity="0.3" />
+          <stop offset="0.70" stopColor={accentColor} stopOpacity="0.6" />
+          <stop offset="1.00" stopColor={accentColor} />
+        </linearGradient>
+        <linearGradient id="gLeftTerminal" gradientUnits="userSpaceOnUse" x1="70" y1="374" x2="256" y2="284">
+          <stop offset="0.00" stopColor={accentColor} stopOpacity="0.2" />
+          <stop offset="0.70" stopColor={accentColor} stopOpacity="0.5" />
+          <stop offset="1.00" stopColor={accentColor} />
+        </linearGradient>
+        <linearGradient id="gRightTerminal" gradientUnits="userSpaceOnUse" x1="442" y1="374" x2="256" y2="284">
+          <stop offset="0.00" stopColor={accentColor} stopOpacity="0.15" />
+          <stop offset="0.70" stopColor={accentColor} stopOpacity="0.4" />
+          <stop offset="1.00" stopColor={accentColor} />
+        </linearGradient>
+      </defs>
+      <g fill="none" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="256" cy="214" r="120" stroke="url(#gTopTerminal)" />
+        <circle cx="186" cy="309" r="120" stroke="url(#gLeftTerminal)" />
+        <circle cx="326" cy="309" r="120" stroke="url(#gRightTerminal)" />
+      </g>
+    </svg>
+  );
+}
 
 /**
  * Design Concept: "Terminal"
@@ -404,9 +440,9 @@ export default function DesignTerminalPage() {
               {/* Sidebar */}
               <div className="w-56 border-r border-[hsl(220_15%_20%)] bg-[hsl(220_18%_10%)]">
                 <div className="p-4 border-b border-[hsl(220_15%_20%)]">
-                  <div className="flex items-center gap-2 text-[hsl(180_70%_45%)]">
-                    <Zap className="w-5 h-5" />
-                    <span className="font-semibold">everruns</span>
+                  <div className="flex items-center gap-2">
+                    <EverrunsLogo size={28} accentColor="hsl(180 70% 45%)" />
+                    <span className="font-semibold text-[hsl(180_70%_55%)]">everruns</span>
                   </div>
                 </div>
                 <div className="py-2">
@@ -444,7 +480,7 @@ export default function DesignTerminalPage() {
                     <StatCard label="Total Agents" value="12" icon={Cpu} />
                     <StatCard label="Active" value="3" icon={Activity} />
                     <StatCard label="Sessions Today" value="47" icon={Database} />
-                    <StatCard label="Tokens Used" value="1.2M" icon={Zap} />
+                    <StatCard label="Tokens Used" value="1.2M" icon={Activity} />
                   </div>
 
                   {/* Session list */}

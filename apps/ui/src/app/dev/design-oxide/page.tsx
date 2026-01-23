@@ -2,10 +2,44 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Bot, Flame, Check, Loader2, ChevronRight, Play, Square, Settings, Plus, Search, Bell, User, Zap, Database, Cpu, Activity, Code, Layers, GitBranch, Box } from "lucide-react";
+import { ArrowLeft, Flame, Check, Loader2, ChevronRight, Play, Square, Settings, Plus, Search, Bell, User, Database, Cpu, Activity, Code, Layers, GitBranch, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const isDev = process.env.NODE_ENV === "development";
+
+// Everruns logo - 3 interlocking circles
+function EverrunsLogo({ size = 24, accentColor = "hsl(25 90% 55%)" }: { size?: number; accentColor?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 512 512"
+    >
+      <defs>
+        <linearGradient id="gTopOxide" gradientUnits="userSpaceOnUse" x1="256" y1="94" x2="256" y2="284">
+          <stop offset="0.00" stopColor={accentColor} stopOpacity="0.3" />
+          <stop offset="0.70" stopColor={accentColor} stopOpacity="0.6" />
+          <stop offset="1.00" stopColor={accentColor} />
+        </linearGradient>
+        <linearGradient id="gLeftOxide" gradientUnits="userSpaceOnUse" x1="70" y1="374" x2="256" y2="284">
+          <stop offset="0.00" stopColor={accentColor} stopOpacity="0.2" />
+          <stop offset="0.70" stopColor={accentColor} stopOpacity="0.5" />
+          <stop offset="1.00" stopColor={accentColor} />
+        </linearGradient>
+        <linearGradient id="gRightOxide" gradientUnits="userSpaceOnUse" x1="442" y1="374" x2="256" y2="284">
+          <stop offset="0.00" stopColor={accentColor} stopOpacity="0.15" />
+          <stop offset="0.70" stopColor={accentColor} stopOpacity="0.4" />
+          <stop offset="1.00" stopColor={accentColor} />
+        </linearGradient>
+      </defs>
+      <g fill="none" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="256" cy="214" r="120" stroke="url(#gTopOxide)" />
+        <circle cx="186" cy="309" r="120" stroke="url(#gLeftOxide)" />
+        <circle cx="326" cy="309" r="120" stroke="url(#gRightOxide)" />
+      </g>
+    </svg>
+  );
+}
 
 /**
  * Design Concept: "Oxide"
@@ -413,10 +447,8 @@ export default function DesignOxidePage() {
               <div className="w-56 border-r border-[hsl(30_8%_20%)] bg-[hsl(30_10%_10%)]">
                 <div className="p-4 border-b border-[hsl(30_8%_20%)]">
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-sm bg-gradient-to-br from-[hsl(25_90%_55%)] to-[hsl(35_90%_50%)] flex items-center justify-center">
-                      <Zap className="w-4 h-4 text-[hsl(30_8%_8%)]" />
-                    </div>
-                    <span className="font-semibold text-[hsl(30_10%_90%)]">everruns</span>
+                    <EverrunsLogo size={28} accentColor="hsl(25 90% 55%)" />
+                    <span className="font-semibold text-[hsl(25_90%_60%)]">everruns</span>
                   </div>
                 </div>
                 <div className="py-2">
@@ -454,7 +486,7 @@ export default function DesignOxidePage() {
                     <StatCard label="Total Agents" value="12" icon={Cpu} />
                     <StatCard label="Active" value="3" icon={Activity} trend="+2" />
                     <StatCard label="Sessions" value="847" icon={Database} trend="+47" />
-                    <StatCard label="Tokens" value="1.2M" icon={Zap} />
+                    <StatCard label="Tokens" value="1.2M" icon={Code} />
                   </div>
 
                   {/* Session list */}
