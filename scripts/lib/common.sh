@@ -56,22 +56,23 @@ ensure_docker_daemon() {
 }
 
 # Check if npm dependencies need to be installed/updated
-# Usage: check_npm_deps <display_name> <app_dir_name> <install_command>
-# Example: check_npm_deps "UI" "ui" "just ui-install"
+# Usage: check_npm_deps <app_name> <install_command>
+# Example: check_npm_deps "UI" "just ui-install"
 check_npm_deps() {
-  local display_name="$1"
-  local app_dir_name="$2"
-  local install_cmd="$3"
-  local app_dir="$PROJECT_ROOT/apps/$app_dir_name"
+  local app_name="$1"
+  local install_cmd="$2"
+  local app_name_lower
+  app_name_lower=$(echo "$app_name" | tr '[:upper:]' '[:lower:]')
+  local app_dir="$PROJECT_ROOT/apps/$app_name_lower"
 
   if [ ! -d "$app_dir/node_modules" ]; then
-    echo "   ⚠️  $display_name dependencies not installed. Run: $install_cmd"
+    echo "   ⚠️  $app_name dependencies not installed. Run: $install_cmd"
     return 1
   fi
 
   if [ -f "$app_dir/package-lock.json" ] && [ -f "$app_dir/node_modules/.package-lock.json" ]; then
     if [ "$app_dir/package-lock.json" -nt "$app_dir/node_modules/.package-lock.json" ]; then
-      echo "   ⚠️  $display_name dependencies outdated. Run: $install_cmd"
+      echo "   ⚠️  $app_name dependencies outdated. Run: $install_cmd"
       return 1
     fi
   fi
@@ -116,9 +117,9 @@ check_postgres_ready() {
 
 # Backward-compatible wrappers
 check_ui_deps() {
-  check_npm_deps "UI" "ui" "just ui-install"
+  check_npm_deps "UI" "just ui-install"
 }
 
 check_docs_deps() {
-  check_npm_deps "Docs" "docs" "just docs-install"
+  check_npm_deps "Docs" "just docs-install"
 }
