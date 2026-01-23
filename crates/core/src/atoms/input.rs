@@ -2,18 +2,18 @@
 //!
 //! This atom is the entry point for a turn. It:
 //! 1. Retrieves the user message from the message store
-//! 2. Emits input.received event
-//! 3. Returns the message for further processing
+//! 2. Returns the message for further processing
+//!
+//! Note: The input.message event is emitted by the API when the message is stored,
+//! not by this atom. This atom simply retrieves the already-stored message.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use super::{Atom, AtomContext};
 use crate::error::{AgentLoopError, Result};
-use crate::events::{EventContext, EventRequest, InputReceivedData};
 use crate::message::Message;
 use crate::message_retriever::MessageRetriever;
-use crate::traits::EventEmitter;
 
 // ============================================================================
 // Input and Output Types
@@ -37,43 +37,35 @@ pub struct InputAtomResult {
 // InputAtom
 // ============================================================================
 
-/// Atom that records user input and starts a turn
+/// Atom that retrieves user input for a turn
 ///
 /// This atom:
 /// 1. Retrieves the user message from the message retriever using input_message_id
-/// 2. Emits input.received event
-/// 3. Returns the message for downstream processing
+/// 2. Returns the message for downstream processing
 ///
-/// The message is expected to already be stored by the API layer.
+/// The message is expected to already be stored by the API layer (which emits input.message).
 /// This atom just retrieves it and prepares for the turn.
-pub struct InputAtom<M, E>
+pub struct InputAtom<M>
 where
     M: MessageRetriever,
-    E: EventEmitter,
 {
     message_retriever: M,
-    event_emitter: E,
 }
 
-impl<M, E> InputAtom<M, E>
+impl<M> InputAtom<M>
 where
     M: MessageRetriever,
-    E: EventEmitter,
 {
     /// Create a new InputAtom
-    pub fn new(message_retriever: M, event_emitter: E) -> Self {
-        Self {
-            message_retriever,
-            event_emitter,
-        }
+    pub fn new(message_retriever: M) -> Self {
+        Self { message_retriever }
     }
 }
 
 #[async_trait]
-impl<M, E> Atom for InputAtom<M, E>
+impl<M> Atom for InputAtom<M>
 where
     M: MessageRetriever + Send + Sync,
-    E: EventEmitter + Send + Sync,
 {
     type Input = InputAtomInput;
     type Output = InputAtomResult;
@@ -105,26 +97,6 @@ where
                 ))
             })?;
 
-        // Create event context from atom context
-        let event_context = EventContext::from_atom_context(&context);
-
-        // Emit input.received event
-        if let Err(e) = self
-            .event_emitter
-            .emit(EventRequest::new(
-                context.session_id,
-                event_context,
-                InputReceivedData::new(message.clone()),
-            ))
-            .await
-        {
-            tracing::warn!(
-                session_id = %context.session_id,
-                error = %e,
-                "InputAtom: failed to emit input.received event"
-            );
-        }
-
         tracing::info!(
             session_id = %context.session_id,
             turn_id = %context.turn_id,
@@ -145,13 +117,11 @@ mod tests {
     use super::*;
     use crate::memory::InMemoryMessageRetriever;
     use crate::message_retriever::InputMessage;
-    use crate::traits::NoopEventEmitter;
     use crate::typed_id::{MessageId, SessionId, TurnId};
 
     #[tokio::test]
     async fn test_input_atom_retrieves_message() {
         let retriever = InMemoryMessageRetriever::new();
-        let event_emitter = NoopEventEmitter;
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
 
@@ -162,7 +132,7 @@ mod tests {
             .unwrap();
 
         let context = AtomContext::new(session_id, turn_id, user_message.id);
-        let atom = InputAtom::new(retriever, event_emitter);
+        let atom = InputAtom::new(retriever);
 
         let result = atom.execute(InputAtomInput { context }).await.unwrap();
 
@@ -173,13 +143,12 @@ mod tests {
     #[tokio::test]
     async fn test_input_atom_not_found() {
         let retriever = InMemoryMessageRetriever::new();
-        let event_emitter = NoopEventEmitter;
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let missing_id = MessageId::new();
 
         let context = AtomContext::new(session_id, turn_id, missing_id);
-        let atom = InputAtom::new(retriever, event_emitter);
+        let atom = InputAtom::new(retriever);
 
         let result = atom.execute(InputAtomInput { context }).await;
 

@@ -18,9 +18,13 @@ use crate::typed_id::{AgentId, EventId, ExecId, MessageId, ModelId, SessionId, T
 // Event Type Constants
 // ============================================================================
 
-// Message events
-pub const MESSAGE_USER: &str = "message.user";
-pub const MESSAGE_AGENT: &str = "message.agent";
+// Input events
+pub const INPUT_MESSAGE: &str = "input.message";
+
+// Output events (lifecycle: started → delta* → completed)
+pub const OUTPUT_MESSAGE_STARTED: &str = "output.message.started";
+pub const OUTPUT_MESSAGE_DELTA: &str = "output.message.delta";
+pub const OUTPUT_MESSAGE_COMPLETED: &str = "output.message.completed";
 
 // Turn lifecycle events
 pub const TURN_STARTED: &str = "turn.started";
@@ -29,13 +33,12 @@ pub const TURN_FAILED: &str = "turn.failed";
 pub const TURN_CANCELLED: &str = "turn.cancelled";
 
 // Atom lifecycle events
-pub const INPUT_RECEIVED: &str = "input.received";
 pub const REASON_STARTED: &str = "reason.started";
 pub const REASON_COMPLETED: &str = "reason.completed";
 pub const ACT_STARTED: &str = "act.started";
 pub const ACT_COMPLETED: &str = "act.completed";
-pub const TOOL_CALL_STARTED: &str = "tool.call_started";
-pub const TOOL_CALL_COMPLETED: &str = "tool.call_completed";
+pub const TOOL_STARTED: &str = "tool.started";
+pub const TOOL_COMPLETED: &str = "tool.completed";
 
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
@@ -44,9 +47,6 @@ pub const LLM_GENERATION: &str = "llm.generation";
 pub const REASON_THINKING_STARTED: &str = "reason.thinking.started";
 pub const REASON_THINKING_DELTA: &str = "reason.thinking.delta";
 pub const REASON_THINKING_COMPLETED: &str = "reason.thinking.completed";
-
-// Streaming events (for real-time UI updates)
-pub const TEXT_DELTA: &str = "text.delta";
 
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
@@ -261,22 +261,31 @@ impl Event {
         self.session_id.uuid()
     }
 
-    /// Check if this is a message event
+    /// Check if this is an input or output message event
     pub fn is_message_event(&self) -> bool {
-        self.event_type.starts_with("message.")
+        self.event_type == INPUT_MESSAGE || self.event_type == OUTPUT_MESSAGE_COMPLETED
+    }
+
+    /// Check if this is an input event
+    pub fn is_input_event(&self) -> bool {
+        self.event_type.starts_with("input.")
+    }
+
+    /// Check if this is an output event
+    pub fn is_output_event(&self) -> bool {
+        self.event_type.starts_with("output.")
     }
 
     /// Check if this is an atom lifecycle event
     pub fn is_atom_event(&self) -> bool {
         matches!(
             self.event_type.as_str(),
-            INPUT_RECEIVED
-                | REASON_STARTED
+            REASON_STARTED
                 | REASON_COMPLETED
                 | ACT_STARTED
                 | ACT_COMPLETED
-                | TOOL_CALL_STARTED
-                | TOOL_CALL_COMPLETED
+                | TOOL_STARTED
+                | TOOL_COMPLETED
         )
     }
 
@@ -292,7 +301,7 @@ impl Event {
 }
 
 // ============================================================================
-// Message Event Data Types
+// Input/Output Event Data Types
 // ============================================================================
 
 use crate::message::{ContentPart, Message};
@@ -380,24 +389,62 @@ impl TokenUsage {
     }
 }
 
-/// Data for message.user event
+/// Data for input.message event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct MessageUserData {
+pub struct InputMessageData {
     /// The user message
     pub message: Message,
 }
 
-impl MessageUserData {
+impl InputMessageData {
     pub fn new(message: Message) -> Self {
         Self { message }
     }
 }
 
-/// Data for message.agent event
+// ============================================================================
+// Output Event Data Types
+// ============================================================================
+
+/// Data for output.message.started event
+///
+/// Emitted when the LLM starts generating a response. UI can show a
+/// "thinking" indicator until output.message.delta or output.message.completed events arrive.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct MessageAgentData {
+pub struct OutputMessageStartedData {
+    /// Turn ID this output belongs to
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// Optional model name being used
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+/// Data for output.message.delta event
+///
+/// Incremental text update during LLM generation. Events are batched (~100ms)
+/// to reduce volume while providing real-time feedback.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct OutputMessageDeltaData {
+    /// Turn ID this delta belongs to
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// The new text chunk
+    pub delta: String,
+
+    /// Accumulated text so far
+    pub accumulated: String,
+}
+
+/// Data for output.message.completed event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct OutputMessageCompletedData {
     /// The agent message
     pub message: Message,
 
@@ -410,7 +457,7 @@ pub struct MessageAgentData {
     pub usage: Option<TokenUsage>,
 }
 
-impl MessageAgentData {
+impl OutputMessageCompletedData {
     pub fn new(message: Message) -> Self {
         Self {
             message,
@@ -433,21 +480,6 @@ impl MessageAgentData {
 // ============================================================================
 // Atom Event Data Types
 // ============================================================================
-
-/// Data for input.received event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct InputReceivedData {
-    /// The user message that was received
-    pub message: Message,
-}
-
-impl InputReceivedData {
-    /// Create a new InputReceivedData from a message
-    pub fn new(message: Message) -> Self {
-        Self { message }
-    }
-}
 
 /// Data for reason.started event
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -599,18 +631,18 @@ pub struct ActCompletedData {
     pub duration_ms: Option<u64>,
 }
 
-/// Data for tool.call_started event
+/// Data for tool.started event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct ToolCallStartedData {
+pub struct ToolStartedData {
     /// The tool call being executed
     pub tool_call: ToolCall,
 }
 
-/// Data for tool.call_completed event
+/// Data for tool.completed event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct ToolCallCompletedData {
+pub struct ToolCompletedData {
     /// Tool call ID
     pub tool_call_id: String,
 
@@ -636,7 +668,7 @@ pub struct ToolCallCompletedData {
     pub duration_ms: Option<u64>,
 }
 
-impl ToolCallCompletedData {
+impl ToolCompletedData {
     pub fn success(
         tool_call_id: String,
         tool_name: String,
@@ -857,7 +889,7 @@ impl LlmGenerationData {
 }
 
 // ============================================================================
-// Streaming Event Data Types
+// Extended Thinking Event Data Types
 // ============================================================================
 
 /// Data for reason.thinking.started event
@@ -875,25 +907,6 @@ pub struct ReasonThinkingStartedData {
     /// Optional model name being used
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-}
-
-/// Data for text.delta event
-///
-/// Emitted during LLM streaming to provide incremental text updates.
-/// These events are batched (typically ~100ms) to reduce event volume.
-/// UI should accumulate deltas until message.agent arrives with final text.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct TextDeltaData {
-    /// Turn ID this delta belongs to (for correlation)
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
-    pub turn_id: TurnId,
-
-    /// The text delta (new text since last delta)
-    pub delta: String,
-
-    /// Accumulated text so far (convenience for UI)
-    pub accumulated: String,
 }
 
 /// Data for reason.thinking.delta event (extended thinking content from models like Claude)
@@ -1068,20 +1081,21 @@ pub struct SessionIdledData {
 /// or unknown event types.
 ///
 /// The data type depends on the event `type` field:
-/// - `message.user` → MessageUserData
-/// - `message.agent` → MessageAgentData
+/// - `input.message` → InputMessageData
+/// - `output.message.started` → OutputMessageStartedData
+/// - `output.message.delta` → OutputMessageDeltaData
+/// - `output.message.completed` → OutputMessageCompletedData
 /// - `turn.started` → TurnStartedData
 /// - `turn.completed` → TurnCompletedData
 /// - `turn.failed` → TurnFailedData
-/// - `input.received` → InputReceivedData
+/// - `turn.cancelled` → TurnCancelledData
 /// - `reason.started` → ReasonStartedData
 /// - `reason.completed` → ReasonCompletedData
 /// - `act.started` → ActStartedData
 /// - `act.completed` → ActCompletedData
-/// - `tool.call_started` → ToolCallStartedData
-/// - `tool.call_completed` → ToolCallCompletedData
+/// - `tool.started` → ToolStartedData
+/// - `tool.completed` → ToolCompletedData
 /// - `llm.generation` → LlmGenerationData
-/// - `text.delta` → TextDeltaData
 /// - `reason.thinking.started` → ReasonThinkingStartedData
 /// - `reason.thinking.delta` → ReasonThinkingDeltaData
 /// - `reason.thinking.completed` → ReasonThinkingCompletedData
@@ -1097,42 +1111,46 @@ pub struct SessionIdledData {
     example = json!({"message": {"id": "...", "role": "user", "content": []}})
 ))]
 pub enum EventData {
-    // Message events
-    MessageUser(MessageUserData),
-    MessageAgent(MessageAgentData),
+    // Input events
+    InputMessage(InputMessageData),
+
+    // Output events (lifecycle: started → delta* → completed)
+    // NOTE: OutputMessageDelta must come BEFORE OutputMessageStarted for untagged enum deserialization.
+    // OutputMessageDelta has more required fields (turn_id, delta, accumulated) while
+    // OutputMessageStarted only requires turn_id (model is optional). If OutputMessageStarted
+    // comes first, it will match OutputMessageDelta JSON and discard delta/accumulated fields.
+    OutputMessageDelta(OutputMessageDeltaData),
+    OutputMessageStarted(OutputMessageStartedData),
+    OutputMessageCompleted(OutputMessageCompletedData),
 
     // Turn lifecycle events
     TurnStarted(TurnStartedData),
     TurnCompleted(TurnCompletedData),
     TurnFailed(TurnFailedData),
-    // NOTE: TurnCancelled is placed after streaming events (see below)
+    // NOTE: TurnCancelled is placed after output events because it only
+    // requires turn_id. If placed before OutputMessageDelta/OutputMessageStarted, it would greedily
+    // match their JSON and discard their specific fields.
+    TurnCancelled(TurnCancelledData),
 
     // Atom lifecycle events
-    InputReceived(InputReceivedData),
     ReasonStarted(ReasonStartedData),
     ReasonCompleted(ReasonCompletedData),
     ActStarted(ActStartedData),
     ActCompleted(ActCompletedData),
-    ToolCallStarted(ToolCallStartedData),
-    ToolCallCompleted(ToolCallCompletedData),
+    ToolStarted(ToolStartedData),
+    ToolCompleted(ToolCompletedData),
 
     // LLM events
     LlmGeneration(LlmGenerationData),
 
-    // Streaming events
-    // NOTE: TextDelta and ReasonThinkingDelta must come BEFORE other thinking events for untagged enum deserialization.
-    // TextDelta/ReasonThinkingDelta have more required fields (turn_id, delta, accumulated) while
+    // Extended thinking events (for models with reasoning like Claude)
+    // NOTE: ReasonThinkingDelta must come BEFORE ReasonThinkingStarted/Completed for untagged enum deserialization.
+    // ReasonThinkingDelta has more required fields (turn_id, delta, accumulated) while
     // ReasonThinkingStarted/Completed have fewer required fields. If simpler types come first,
     // they will match their JSON and discard delta/accumulated fields.
-    TextDelta(TextDeltaData),
     ReasonThinkingDelta(ReasonThinkingDeltaData),
     ReasonThinkingStarted(ReasonThinkingStartedData),
     ReasonThinkingCompleted(ReasonThinkingCompletedData),
-
-    // NOTE: TurnCancelled is placed here (after streaming events) because it only
-    // requires turn_id. If placed before TextDelta/AgentThinking, it would greedily
-    // match their JSON and discard their specific fields.
-    TurnCancelled(TurnCancelledData),
 
     // Session events
     SessionStarted(SessionStartedData),
@@ -1151,21 +1169,21 @@ impl EventData {
     /// Get the event type constant for this data
     pub fn event_type(&self) -> &'static str {
         match self {
-            EventData::MessageUser(_) => MESSAGE_USER,
-            EventData::MessageAgent(_) => MESSAGE_AGENT,
+            EventData::InputMessage(_) => INPUT_MESSAGE,
+            EventData::OutputMessageStarted(_) => OUTPUT_MESSAGE_STARTED,
+            EventData::OutputMessageDelta(_) => OUTPUT_MESSAGE_DELTA,
+            EventData::OutputMessageCompleted(_) => OUTPUT_MESSAGE_COMPLETED,
             EventData::TurnStarted(_) => TURN_STARTED,
             EventData::TurnCompleted(_) => TURN_COMPLETED,
             EventData::TurnFailed(_) => TURN_FAILED,
             EventData::TurnCancelled(_) => TURN_CANCELLED,
-            EventData::InputReceived(_) => INPUT_RECEIVED,
             EventData::ReasonStarted(_) => REASON_STARTED,
             EventData::ReasonCompleted(_) => REASON_COMPLETED,
             EventData::ActStarted(_) => ACT_STARTED,
             EventData::ActCompleted(_) => ACT_COMPLETED,
-            EventData::ToolCallStarted(_) => TOOL_CALL_STARTED,
-            EventData::ToolCallCompleted(_) => TOOL_CALL_COMPLETED,
+            EventData::ToolStarted(_) => TOOL_STARTED,
+            EventData::ToolCompleted(_) => TOOL_COMPLETED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
-            EventData::TextDelta(_) => TEXT_DELTA,
             EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
             EventData::ReasonThinkingStarted(_) => REASON_THINKING_STARTED,
             EventData::ReasonThinkingCompleted(_) => REASON_THINKING_COMPLETED,
@@ -1277,24 +1295,24 @@ macro_rules! impl_from_event_data {
 
 // Generate From implementations for all typed event data
 impl_from_event_data! {
-    MessageUserData => MessageUser,
-    MessageAgentData => MessageAgent,
+    InputMessageData => InputMessage,
+    OutputMessageStartedData => OutputMessageStarted,
+    OutputMessageDeltaData => OutputMessageDelta,
+    OutputMessageCompletedData => OutputMessageCompleted,
     TurnStartedData => TurnStarted,
     TurnCompletedData => TurnCompleted,
     TurnFailedData => TurnFailed,
     TurnCancelledData => TurnCancelled,
-    InputReceivedData => InputReceived,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
     ActStartedData => ActStarted,
     ActCompletedData => ActCompleted,
-    ToolCallStartedData => ToolCallStarted,
-    ToolCallCompletedData => ToolCallCompleted,
+    ToolStartedData => ToolStarted,
+    ToolCompletedData => ToolCompleted,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,
     ReasonThinkingCompletedData => ReasonThinkingCompleted,
-    TextDeltaData => TextDelta,
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
@@ -1430,14 +1448,14 @@ mod tests {
     fn test_event_creation() {
         let session_id = SessionId::new();
         let context = EventContext::empty();
-        let data = InputReceivedData::new(Message::user("test"));
+        let data = InputMessageData::new(Message::user("test"));
 
         let event = Event::new(session_id, context, data);
 
-        assert_eq!(event.event_type, "input.received");
+        assert_eq!(event.event_type, "input.message");
         assert_eq!(event.session_uuid(), session_id.uuid());
-        assert!(event.is_atom_event());
-        assert!(!event.is_message_event());
+        assert!(event.is_input_event());
+        assert!(event.is_message_event());
     }
 
     #[test]
@@ -1461,12 +1479,12 @@ mod tests {
         let event = Event::new(
             session_id,
             context,
-            MessageUserData::new(Message::user("test")),
+            InputMessageData::new(Message::user("test")),
         );
 
         let json = serde_json::to_string(&event).unwrap();
 
-        assert!(json.contains("\"type\":\"message.user\""));
+        assert!(json.contains("\"type\":\"input.message\""));
         assert!(json.contains("\"session_id\""));
         assert!(json.contains("\"context\""));
         assert!(json.contains("\"data\""));
@@ -1514,9 +1532,11 @@ mod tests {
     }
 
     #[test]
-    fn test_message_event_types() {
-        assert_eq!(MESSAGE_USER, "message.user");
-        assert_eq!(MESSAGE_AGENT, "message.agent");
+    fn test_input_output_event_types() {
+        assert_eq!(INPUT_MESSAGE, "input.message");
+        assert_eq!(OUTPUT_MESSAGE_STARTED, "output.message.started");
+        assert_eq!(OUTPUT_MESSAGE_DELTA, "output.message.delta");
+        assert_eq!(OUTPUT_MESSAGE_COMPLETED, "output.message.completed");
     }
 
     #[test]
@@ -1540,8 +1560,9 @@ mod tests {
     }
 
     #[test]
-    fn test_input_received_event() {
-        assert_eq!(INPUT_RECEIVED, "input.received");
+    fn test_tool_event_types() {
+        assert_eq!(TOOL_STARTED, "tool.started");
+        assert_eq!(TOOL_COMPLETED, "tool.completed");
     }
 
     #[test]
@@ -1659,11 +1680,40 @@ mod tests {
     }
 
     #[test]
-    fn test_streaming_event_types() {
+    fn test_extended_thinking_event_types() {
         assert_eq!(REASON_THINKING_STARTED, "reason.thinking.started");
         assert_eq!(REASON_THINKING_DELTA, "reason.thinking.delta");
         assert_eq!(REASON_THINKING_COMPLETED, "reason.thinking.completed");
-        assert_eq!(TEXT_DELTA, "text.delta");
+    }
+
+    #[test]
+    fn test_output_message_started_data() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let data = OutputMessageStartedData {
+            turn_id,
+            model: Some("claude-4-opus".to_string()),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), OUTPUT_MESSAGE_STARTED);
+
+        // Test serialization
+        let json = serde_json::to_string(&event_data).unwrap();
+        assert!(json.contains("turn_id"));
+        assert!(json.contains("claude-4-opus"));
+    }
+
+    #[test]
+    fn test_output_message_started_data_without_model() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let data = OutputMessageStartedData {
+            turn_id,
+            model: None,
+        };
+
+        // Model should be skipped when None
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("model"));
     }
 
     #[test]
@@ -1681,19 +1731,6 @@ mod tests {
         let json = serde_json::to_string(&event_data).unwrap();
         assert!(json.contains("turn_id"));
         assert!(json.contains("claude-4-opus"));
-    }
-
-    #[test]
-    fn test_reason_thinking_started_data_without_model() {
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = ReasonThinkingStartedData {
-            turn_id,
-            model: None,
-        };
-
-        // Model should be skipped when None
-        let json = serde_json::to_string(&data).unwrap();
-        assert!(!json.contains("model"));
     }
 
     #[test]
@@ -1733,16 +1770,16 @@ mod tests {
     }
 
     #[test]
-    fn test_text_delta_data() {
+    fn test_output_message_delta_data() {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = TextDeltaData {
+        let data = OutputMessageDeltaData {
             turn_id,
             delta: "Hello".to_string(),
             accumulated: "Hello".to_string(),
         };
 
         let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), TEXT_DELTA);
+        assert_eq!(event_data.event_type(), OUTPUT_MESSAGE_DELTA);
 
         // Test serialization
         let json = serde_json::to_string(&event_data).unwrap();
@@ -1752,30 +1789,54 @@ mod tests {
     }
 
     #[test]
-    fn test_text_delta_deserialization_preserves_fields() {
-        // This test verifies that TextDelta deserializes correctly with all fields
+    fn test_output_message_delta_deserialization_preserves_fields() {
+        // This test verifies that OutputMessageDelta deserializes correctly with all fields
         // (regression test for the untagged enum ordering fix)
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = TextDeltaData {
+        let data = OutputMessageDeltaData {
             turn_id,
             delta: "Hello world".to_string(),
             accumulated: "Hello world".to_string(),
         };
 
         // Serialize to JSON
-        let json = serde_json::to_value(EventData::TextDelta(data.clone())).unwrap();
+        let json = serde_json::to_value(EventData::OutputMessageDelta(data.clone())).unwrap();
 
         // Deserialize back
         let deserialized: EventData = serde_json::from_value(json).unwrap();
 
-        // Verify it's TextDelta and fields are preserved
+        // Verify it's OutputMessageDelta and fields are preserved
         match deserialized {
-            EventData::TextDelta(td) => {
+            EventData::OutputMessageDelta(td) => {
                 assert_eq!(td.turn_id, turn_id);
                 assert_eq!(td.delta, "Hello world");
                 assert_eq!(td.accumulated, "Hello world");
             }
-            _ => panic!("Expected TextDelta, got different variant"),
+            _ => panic!("Expected OutputMessageDelta, got different variant"),
+        }
+    }
+
+    #[test]
+    fn test_output_message_started_deserialization() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let data = OutputMessageStartedData {
+            turn_id,
+            model: Some("claude-3".to_string()),
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_value(EventData::OutputMessageStarted(data.clone())).unwrap();
+
+        // Deserialize back
+        let deserialized: EventData = serde_json::from_value(json).unwrap();
+
+        // Verify it's OutputMessageStarted and fields are preserved
+        match deserialized {
+            EventData::OutputMessageStarted(at) => {
+                assert_eq!(at.turn_id, turn_id);
+                assert_eq!(at.model, Some("claude-3".to_string()));
+            }
+            _ => panic!("Expected OutputMessageStarted, got different variant"),
         }
     }
 

@@ -13,10 +13,11 @@ use everruns_core::{
     LlmProviderType, McpServer, McpServerStatus, McpServerTransportType, Session, SessionFile,
     SessionStatus, ToolCall,
     events::{
-        ActCompletedData, ActStartedData, InputReceivedData, LlmGenerationData,
-        LlmGenerationMetadata, LlmGenerationOutput, MessageAgentData, MessageUserData,
-        ModelMetadata, ReasonCompletedData, ReasonStartedData, SessionStartedData, TokenUsage,
-        ToolCallCompletedData, ToolCallStartedData, ToolCallSummary, TurnCompletedData,
+        ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
+        LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata,
+        OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData,
+        ReasonCompletedData, ReasonStartedData, SessionStartedData, TokenUsage,
+        ToolCompletedData, ToolStartedData, ToolCallSummary, TurnCompletedData,
         TurnFailedData, TurnStartedData,
     },
 };
@@ -80,11 +81,12 @@ use utoipa::OpenApi;
             Agent, AgentStatus,
             Session, SessionStatus, Event, EventContext, EventData,
             // Event data types
-            MessageUserData, MessageAgentData, ModelMetadata, TokenUsage,
+            InputMessageData, OutputMessageStartedData, OutputMessageDeltaData, OutputMessageCompletedData,
+            ModelMetadata, TokenUsage,
             TurnStartedData, TurnCompletedData, TurnFailedData,
-            InputReceivedData, ReasonStartedData, ReasonCompletedData,
+            ReasonStartedData, ReasonCompletedData,
             ActStartedData, ActCompletedData, ToolCallSummary,
-            ToolCallStartedData, ToolCallCompletedData,
+            ToolStartedData, ToolCompletedData,
             LlmGenerationData, LlmGenerationOutput, LlmGenerationMetadata,
             SessionStartedData,
             // Agent/Session types

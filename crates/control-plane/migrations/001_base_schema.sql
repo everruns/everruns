@@ -352,11 +352,11 @@ CREATE INDEX idx_events_session_sequence ON events(session_id, sequence);
 CREATE INDEX idx_events_event_type ON events(event_type);
 CREATE INDEX idx_events_tags ON events USING GIN(tags);
 
--- Partial index for message events (user and agent messages only)
+-- Partial index for message events (input and output messages only)
 CREATE INDEX idx_events_messages ON events(session_id, sequence)
-WHERE event_type IN ('message.user', 'message.agent');
+WHERE event_type IN ('input.message', 'output.message.completed');
 
-COMMENT ON INDEX idx_events_messages IS 'Partial index for message events (message.user, message.agent)';
+COMMENT ON INDEX idx_events_messages IS 'Partial index for message events (input.message, output.message.completed)';
 
 -- Partial index for turn lifecycle events
 CREATE INDEX idx_events_turns ON events(session_id, sequence)
@@ -366,7 +366,7 @@ COMMENT ON INDEX idx_events_turns IS 'Partial index for turn lifecycle events';
 
 -- Partial index for tool execution events (includes results)
 CREATE INDEX idx_events_tool_calls ON events(session_id, sequence)
-WHERE event_type IN ('tool.call_started', 'tool.call_completed');
+WHERE event_type IN ('tool.started', 'tool.completed');
 
 COMMENT ON INDEX idx_events_tool_calls IS 'Partial index for tool execution events with results';
 

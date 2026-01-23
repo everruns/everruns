@@ -119,7 +119,7 @@ export interface UpdateSessionRequest {
  * Message role (API layer)
  *
  * Simplified to only user and agent messages.
- * Tool results are conveyed via `tool.call_completed` events.
+ * Tool results are conveyed via `tool.completed` events.
  * System messages are internal and not exposed via API.
  */
 export type MessageRole = "user" | "agent";
@@ -249,7 +249,7 @@ export interface EventContext {
 /** Standard event schema matching core::Event */
 export interface Event {
   id: string;
-  /** Event type using dot notation (e.g., "message.user", "tool.call_completed") */
+  /** Event type using dot notation (e.g., "input.message", "tool.completed") */
   type: string;
   /** ISO timestamp */
   ts: string;
@@ -283,13 +283,28 @@ export interface TokenUsage {
   cache_creation_tokens?: number;
 }
 
-/** Data for message.user event */
-export interface MessageUserData {
+/** Data for input.message event */
+export interface InputMessageData {
   message: Message;
 }
 
-/** Data for message.agent event */
-export interface MessageAgentData {
+/** Data for output.message.started event (LLM generation started) */
+export interface OutputMessageStartedData {
+  turn_id: string;
+  model?: string;
+}
+
+/** Data for output.message.delta event (streaming text update) */
+export interface OutputMessageDeltaData {
+  turn_id: string;
+  /** The new text since last delta */
+  delta: string;
+  /** Accumulated text so far */
+  accumulated: string;
+}
+
+/** Data for output.message.completed event */
+export interface OutputMessageCompletedData {
   message: Message;
   metadata?: ModelMetadata;
   usage?: TokenUsage;
@@ -319,11 +334,6 @@ export interface TurnFailedData {
   turn_id: string;
   error: string;
   error_code?: string;
-}
-
-/** Data for input.received event */
-export interface InputReceivedData {
-  message: Message;
 }
 
 /** Data for reason.started event */
@@ -369,13 +379,13 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 
-/** Data for tool.call_started event */
-export interface ToolCallStartedData {
+/** Data for tool.started event */
+export interface ToolStartedData {
   tool_call: ToolCall;
 }
 
-/** Data for tool.call_completed event */
-export interface ToolCallCompletedData {
+/** Data for tool.completed event */
+export interface ToolCompletedData {
   tool_call_id: string;
   tool_name: string;
   success: boolean;
@@ -435,15 +445,6 @@ export interface ReasonThinkingStartedData {
   model?: string;
 }
 
-/** Data for text.delta event (streaming text update) */
-export interface TextDeltaData {
-  turn_id: string;
-  /** The new text since last delta */
-  delta: string;
-  /** Accumulated text so far */
-  accumulated: string;
-}
-
 /** Data for reason.thinking.delta event (streaming reasoning from extended thinking models) */
 export interface ReasonThinkingDeltaData {
   turn_id: string;
@@ -462,18 +463,19 @@ export interface ReasonThinkingCompletedData {
 
 /** Union type for all event data types */
 export type EventData =
-  | MessageUserData
-  | MessageAgentData
+  | InputMessageData
+  | OutputMessageStartedData
+  | OutputMessageDeltaData
+  | OutputMessageCompletedData
   | TurnStartedData
   | TurnCompletedData
   | TurnFailedData
-  | InputReceivedData
   | ReasonStartedData
   | ReasonCompletedData
   | ActStartedData
   | ActCompletedData
-  | ToolCallStartedData
-  | ToolCallCompletedData
+  | ToolStartedData
+  | ToolCompletedData
   | LlmGenerationData
   | SessionStartedData
   | SessionActivatedData
@@ -481,7 +483,6 @@ export type EventData =
   | ReasonThinkingStartedData
   | ReasonThinkingDeltaData
   | ReasonThinkingCompletedData
-  | TextDeltaData
   | Record<string, unknown>; // Raw/unknown event data
 
 export interface CreateEventRequest {

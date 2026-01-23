@@ -213,18 +213,20 @@ export function useEvents(
 
       // Listen for typed events (the backend sends event type as SSE event name)
       const eventTypes = [
-        "message.user",
-        "message.agent",
+        "input.message",
+        "output.message.started",
+        "output.message.delta",
+        "output.message.completed",
         "turn.started",
         "turn.completed",
         "turn.failed",
-        "input.received",
+        "turn.cancelled",
         "reason.started",
         "reason.completed",
         "act.started",
         "act.completed",
-        "tool.call_started",
-        "tool.call_completed",
+        "tool.started",
+        "tool.completed",
         "llm.generation",
         "session.started",
         "session.activated",
@@ -233,7 +235,6 @@ export function useEvents(
         "reason.thinking.started",
         "reason.thinking.delta",
         "reason.thinking.completed",
-        "text.delta",
       ];
 
       for (const eventType of eventTypes) {

@@ -20,7 +20,7 @@ use crate::atoms::{
 };
 use crate::capabilities::{Capability, CapabilityRegistry};
 use crate::error::Result;
-use crate::events::{Event, EventData, EventRequest, MESSAGE_AGENT};
+use crate::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
 use crate::llm_driver_registry::{DriverRegistry, ProviderType};
 use crate::llm_models::LlmProviderType;
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
@@ -80,9 +80,9 @@ impl BridgingEventEmitter {
 #[async_trait]
 impl EventEmitter for BridgingEventEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
-        // If this is a message.agent event, also store the message
-        if request.data.event_type() == MESSAGE_AGENT
-            && let EventData::MessageAgent(data) = &request.data
+        // If this is an output.message.completed event, also store the message
+        if request.data.event_type() == OUTPUT_MESSAGE_COMPLETED
+            && let EventData::OutputMessageCompleted(data) = &request.data
         {
             // Store the message in the retriever
             let _ = self
@@ -401,7 +401,7 @@ impl InMemoryAgenticLoopBuilder {
         // Create atoms
         let capability_registry = CapabilityRegistry::new();
 
-        let input_atom = InputAtom::new(message_retriever.clone(), event_emitter.clone());
+        let input_atom = InputAtom::new(message_retriever.clone());
         let reason_atom = ReasonAtom::new(
             agent_store.clone(),
             session_store.clone(),
@@ -474,7 +474,7 @@ pub struct InMemoryAgenticLoop {
     provider_store: InMemoryLlmProviderStore,
     event_emitter: BridgingEventEmitter,
     tool_registry: ToolRegistry,
-    input_atom: Arc<InputAtom<InMemoryMessageRetriever, BridgingEventEmitter>>,
+    input_atom: Arc<InputAtom<InMemoryMessageRetriever>>,
     reason_atom: Arc<
         ReasonAtom<
             InMemoryAgentStore,
@@ -846,9 +846,9 @@ mod tests {
         let events = runner.events().await;
         assert!(!events.is_empty());
 
-        // Should have input.received and reason.* events
-        let input_events = runner.events_by_type("input.received").await;
-        assert_eq!(input_events.len(), 1);
+        // Should have reason.* events (input.message is emitted by API layer, not InputAtom)
+        let reason_events = runner.events_by_type("reason.started").await;
+        assert_eq!(reason_events.len(), 1);
     }
 
     #[tokio::test]

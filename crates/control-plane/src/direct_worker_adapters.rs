@@ -749,9 +749,9 @@ fn string_to_provider_type(s: &str) -> LlmProviderType {
 /// Convert an event to a message
 fn event_to_message(event: Event) -> Option<Message> {
     match &event.data {
-        EventData::MessageUser(data) => Some(data.message.clone()),
-        EventData::MessageAgent(data) => Some(data.message.clone()),
-        EventData::ToolCallCompleted(data) => {
+        EventData::InputMessage(data) => Some(data.message.clone()),
+        EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
+        EventData::ToolCompleted(data) => {
             let result_json = data
                 .result
                 .as_ref()

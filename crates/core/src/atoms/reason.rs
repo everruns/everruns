@@ -28,9 +28,10 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmGenerationData, MessageAgentData, ReasonCompletedData,
-    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, TextDeltaData, TokenUsage, ToolDefinitionSummary,
+    EventContext, EventRequest, LlmGenerationData, OutputMessageCompletedData,
+    OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage,
+    ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -382,14 +383,14 @@ where
                     .emit(EventRequest::new(
                         context.session_id,
                         error_msg_context,
-                        MessageAgentData::new(error_message),
+                        OutputMessageCompletedData::new(error_message),
                     ))
                     .await
                 {
                     tracing::warn!(
                         session_id = %context.session_id,
                         error = %emit_err,
-                        "ReasonAtom: failed to emit message.agent event for error"
+                        "ReasonAtom: failed to emit output.message.completed event for error"
                     );
                 }
 
@@ -576,9 +577,39 @@ where
             "ReasonAtom: calling LLM"
         );
 
-        // 13. Emit reason.thinking.started event BEFORE starting LLM call (only if thinking enabled)
-        // This allows UI to show a thinking indicator immediately
+        // 13. Emit output.message.started event BEFORE starting LLM call
+        // This allows UI to show a "thinking" indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
+        tracing::info!(
+            session_id = %session_id,
+            turn_id = %context.turn_id,
+            "ReasonAtom: emitting output.message.started event"
+        );
+        if let Err(e) = self
+            .event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                streaming_event_context.clone(),
+                OutputMessageStartedData {
+                    turn_id: context.turn_id,
+                    model: Some(runtime_agent.model.clone()),
+                },
+            ))
+            .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "ReasonAtom: failed to emit output.message.started event"
+            );
+        } else {
+            tracing::info!(
+                session_id = %session_id,
+                "ReasonAtom: output.message.started event emitted successfully"
+            );
+        }
+
+        // Also emit reason.thinking.started if extended thinking is enabled
         let thinking_enabled = reasoning_effort.is_some();
         if thinking_enabled {
             tracing::info!(
@@ -657,7 +688,7 @@ where
                             .emit(EventRequest::new(
                                 session_id,
                                 streaming_event_context.clone(),
-                                TextDeltaData {
+                                OutputMessageDeltaData {
                                     turn_id: context.turn_id,
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
@@ -668,7 +699,7 @@ where
                             tracing::warn!(
                                 session_id = %session_id,
                                 error = %e,
-                                "ReasonAtom: failed to emit text.delta event"
+                                "ReasonAtom: failed to emit output.message.delta event"
                             );
                         }
                         pending_delta.clear();
@@ -734,7 +765,7 @@ where
                             .emit(EventRequest::new(
                                 session_id,
                                 streaming_event_context.clone(),
-                                TextDeltaData {
+                                OutputMessageDeltaData {
                                     turn_id: context.turn_id,
                                     delta: pending_delta.clone(),
                                     accumulated: text.clone(),
@@ -745,7 +776,7 @@ where
                         tracing::warn!(
                             session_id = %session_id,
                             error = %e,
-                            "ReasonAtom: failed to emit final text.delta event"
+                            "ReasonAtom: failed to emit final output.message.delta event"
                         );
                     }
 
@@ -917,15 +948,15 @@ where
             Uuid::now_v7().to_string(),
             Some(reason_span_id.to_string()),
         );
-        let mut message_agent_data = MessageAgentData::new(assistant_message);
+        let mut output_message_data = OutputMessageCompletedData::new(assistant_message);
         if let Some(ref u) = usage {
-            message_agent_data = message_agent_data.with_usage(u.clone());
+            output_message_data = output_message_data.with_usage(u.clone());
         }
         self.event_emitter
             .emit(EventRequest::new(
                 session_id,
                 message_event_context,
-                message_agent_data,
+                output_message_data,
             ))
             .await?;
 

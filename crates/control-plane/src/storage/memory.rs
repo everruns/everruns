@@ -695,10 +695,9 @@ impl InMemoryDatabase {
 
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
         let message_types = [
-            "message.user",
-            "message.assistant",
-            "message.tool_call",
-            "message.tool_result",
+            "input.message",
+            "output.message.completed",
+            "tool.completed",
         ];
         let events = self.events.read();
         let mut result: Vec<_> = events
@@ -725,9 +724,9 @@ impl InMemoryDatabase {
     ) -> Result<Vec<EventRow>> {
         // Default event types if not specified
         let default_types = vec![
-            "message.user".to_string(),
-            "message.agent".to_string(),
-            "tool.call_completed".to_string(),
+            "input.message".to_string(),
+            "output.message.completed".to_string(),
+            "tool.completed".to_string(),
         ];
 
         // Check for EventTypes filter, else use defaults
@@ -773,7 +772,7 @@ impl InMemoryDatabase {
                             }
                         }
                         MessageFilter::ToolName(name) => {
-                            if e.event_type != "tool.call_completed" {
+                            if e.event_type != "tool.completed" {
                                 return false;
                             }
                             let tool_match = e
@@ -839,7 +838,7 @@ impl InMemoryDatabase {
             // Find the first user message for this session
             let first_user_msg = events
                 .values()
-                .filter(|e| e.session_id == session_id && e.event_type == "message.user")
+                .filter(|e| e.session_id == session_id && e.event_type == "input.message")
                 .min_by_key(|e| e.sequence);
 
             if let Some(event) = first_user_msg {
@@ -874,7 +873,7 @@ impl InMemoryDatabase {
             // Find the last agent message for this session
             let last_agent_msg = events
                 .values()
-                .filter(|e| e.session_id == session_id && e.event_type == "message.agent")
+                .filter(|e| e.session_id == session_id && e.event_type == "output.message.completed")
                 .max_by_key(|e| e.sequence);
 
             if let Some(event) = last_agent_msg {
@@ -2404,7 +2403,7 @@ mod tests {
         for i in 0..3 {
             db.create_event(CreateEventRow {
                 session_id: session.id,
-                event_type: "message.user".to_string(),
+                event_type: "input.message".to_string(),
                 ts: Utc::now(),
                 context: serde_json::json!({}),
                 data: serde_json::json!({"content": format!("Message {}", i)}),

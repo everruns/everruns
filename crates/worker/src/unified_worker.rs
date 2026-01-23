@@ -553,8 +553,7 @@ async fn execute_input_activity<A: WorkerAdapters>(
 
     // Execute InputAtom
     let message_retriever = AdapterMessageRetriever::new(adapters.clone());
-    let event_emitter = AdapterEventEmitter::new(adapters.clone());
-    let atom = InputAtom::new(message_retriever, event_emitter);
+    let atom = InputAtom::new(message_retriever);
 
     let atom_input = everruns_core::InputAtomInput {
         context: context.clone(),

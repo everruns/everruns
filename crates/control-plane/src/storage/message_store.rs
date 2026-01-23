@@ -15,7 +15,7 @@ use everruns_core::{
     AgentLoopError, ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageId,
     MessageQuery, MessageRetriever, MessageRole, Result, SessionId,
     events::{
-        EventContext, EventRequest, MessageAgentData, MessageUserData, ToolCallCompletedData,
+        EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     },
 };
 use std::sync::Arc;
@@ -70,12 +70,12 @@ impl DbMessageRetriever {
             MessageRole::User => EventRequest::new(
                 session_id,
                 EventContext::empty(),
-                MessageUserData::new(message.clone()),
+                InputMessageData::new(message.clone()),
             ),
             MessageRole::Assistant => EventRequest::new(
                 session_id,
                 EventContext::empty(),
-                MessageAgentData::new(message.clone()),
+                OutputMessageCompletedData::new(message.clone()),
             ),
             // System and ToolResult messages are not stored as separate events
             MessageRole::System | MessageRole::ToolResult => {
@@ -178,7 +178,7 @@ impl MessageRetriever for DbMessageRetriever {
 ///
 /// Handles two formats:
 /// - Legacy format: full Event struct with id, type, data, etc.
-/// - New format: EventData directly (MessageUserData, MessageAgentData, etc.)
+/// - New format: EventData directly (InputMessageData, OutputMessageCompletedData, etc.)
 fn event_to_message(
     data: &serde_json::Value,
     event_type: &str,
@@ -186,9 +186,9 @@ fn event_to_message(
     // Helper to extract message from EventData
     let extract_message = |event_data: EventData| -> std::result::Result<Message, String> {
         match event_data {
-            EventData::MessageUser(d) => Ok(d.message),
-            EventData::MessageAgent(d) => Ok(d.message),
-            EventData::ToolCallCompleted(d) => Ok(tool_call_to_message(d)),
+            EventData::InputMessage(d) => Ok(d.message),
+            EventData::OutputMessageCompleted(d) => Ok(d.message),
+            EventData::ToolCompleted(d) => Ok(tool_completed_to_message(d)),
             _ => Err(format!("unexpected event type for message: {}", event_type)),
         }
     };
@@ -202,27 +202,27 @@ fn event_to_message(
     // Fallback: try to parse as EventData directly (new format)
     // Note: EventData has #[serde(untagged)] with Raw variant, so we use type hint
     match event_type {
-        "message.user" => {
-            let d: MessageUserData = serde_json::from_value(data.clone())
-                .map_err(|e| format!("invalid message.user data: {}", e))?;
+        "input.message" => {
+            let d: InputMessageData = serde_json::from_value(data.clone())
+                .map_err(|e| format!("invalid input.message data: {}", e))?;
             Ok(d.message)
         }
-        "message.agent" => {
-            let d: MessageAgentData = serde_json::from_value(data.clone())
-                .map_err(|e| format!("invalid message.agent data: {}", e))?;
+        "output.message.completed" => {
+            let d: OutputMessageCompletedData = serde_json::from_value(data.clone())
+                .map_err(|e| format!("invalid output.message.completed data: {}", e))?;
             Ok(d.message)
         }
-        "tool.call_completed" => {
-            let d: ToolCallCompletedData = serde_json::from_value(data.clone())
-                .map_err(|e| format!("invalid tool.call_completed data: {}", e))?;
-            Ok(tool_call_to_message(d))
+        "tool.completed" => {
+            let d: ToolCompletedData = serde_json::from_value(data.clone())
+                .map_err(|e| format!("invalid tool.completed data: {}", e))?;
+            Ok(tool_completed_to_message(d))
         }
         _ => Err(format!("unexpected event type for message: {}", event_type)),
     }
 }
 
-/// Convert ToolCallCompletedData to a ToolResult message
-fn tool_call_to_message(data: ToolCallCompletedData) -> Message {
+/// Convert ToolCompletedData to a ToolResult message
+fn tool_completed_to_message(data: ToolCompletedData) -> Message {
     // Extract result as JSON value
     let result: Option<serde_json::Value> = data.result.map(|parts| {
         // For simple text results, extract just the text
@@ -254,7 +254,7 @@ pub fn create_db_message_retriever(db: Arc<StorageBackend>) -> DbMessageRetrieve
 mod tests {
     use everruns_core::events::EventContext;
     use everruns_core::typed_id::SessionId;
-    use everruns_core::{ContentPart, Event, ToolCall, ToolCallCompletedData};
+    use everruns_core::{ContentPart, Event, ToolCall};
     use serde_json::json;
 
     use super::*;
@@ -374,17 +374,17 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_parse_message_user_event() {
+    fn test_parse_input_message_event() {
         let session_id = SessionId::new();
         let message = Message::user("Hello from user!");
         let event = Event::new(
             session_id,
             EventContext::empty(),
-            MessageUserData::new(message),
+            InputMessageData::new(message),
         );
 
         let stored = serde_json::to_value(&event).unwrap();
-        let result = event_to_message(&stored, "message.user");
+        let result = event_to_message(&stored, "input.message");
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
@@ -393,17 +393,17 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_message_agent_event() {
+    fn test_parse_output_message_completed_event() {
         let session_id = SessionId::new();
         let message = Message::assistant("Hello from agent!");
         let event = Event::new(
             session_id,
             EventContext::empty(),
-            MessageAgentData::new(message),
+            OutputMessageCompletedData::new(message),
         );
 
         let stored = serde_json::to_value(&event).unwrap();
-        let result = event_to_message(&stored, "message.agent");
+        let result = event_to_message(&stored, "output.message.completed");
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
@@ -412,9 +412,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_tool_call_completed_event() {
+    fn test_parse_tool_completed_event() {
         let session_id = SessionId::new();
-        let completed = ToolCallCompletedData::success(
+        let completed = ToolCompletedData::success(
             "call_123".to_string(),
             "get_weather".to_string(),
             vec![ContentPart::text("Sunny, 72°F")],
@@ -423,7 +423,7 @@ mod tests {
         let event = Event::new(session_id, EventContext::empty(), completed);
 
         let stored = serde_json::to_value(&event).unwrap();
-        let result = event_to_message(&stored, "tool.call_completed");
+        let result = event_to_message(&stored, "tool.completed");
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
@@ -432,9 +432,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_tool_call_completed_error() {
+    fn test_parse_tool_completed_error() {
         let session_id = SessionId::new();
-        let completed = ToolCallCompletedData::failure(
+        let completed = ToolCompletedData::failure(
             "call_456".to_string(),
             "read_file".to_string(),
             "error".to_string(),
@@ -444,7 +444,7 @@ mod tests {
         let event = Event::new(session_id, EventContext::empty(), completed);
 
         let stored = serde_json::to_value(&event).unwrap();
-        let result = event_to_message(&stored, "tool.call_completed");
+        let result = event_to_message(&stored, "tool.completed");
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
@@ -458,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_agent_message_with_tool_calls() {
+    fn test_parse_output_message_with_tool_calls() {
         let session_id = SessionId::new();
         let message = Message::assistant_with_tools(
             "Let me search for that",
@@ -471,11 +471,11 @@ mod tests {
         let event = Event::new(
             session_id,
             EventContext::empty(),
-            MessageAgentData::new(message),
+            OutputMessageCompletedData::new(message),
         );
 
         let stored = serde_json::to_value(&event).unwrap();
-        let result = event_to_message(&stored, "message.agent");
+        let result = event_to_message(&stored, "output.message.completed");
 
         assert!(result.is_ok());
         let parsed = result.unwrap();

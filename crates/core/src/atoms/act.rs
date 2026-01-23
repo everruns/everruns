@@ -31,8 +31,8 @@ use std::time::Instant;
 use super::{Atom, AtomContext};
 use crate::error::Result;
 use crate::events::{
-    ActCompletedData, ActStartedData, EventContext, EventRequest, ToolCallCompletedData,
-    ToolCallStartedData,
+    ActCompletedData, ActStartedData, EventContext, EventRequest, ToolCompletedData,
+    ToolStartedData,
 };
 use crate::message::ContentPart;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
@@ -337,7 +337,7 @@ where
             .emit(EventRequest::new(
                 context.session_id,
                 event_context.clone(),
-                ToolCallStartedData {
+                ToolStartedData {
                     tool_call: tool_call.clone(),
                 },
             ))
@@ -362,7 +362,7 @@ where
                 .emit(EventRequest::new(
                     context.session_id,
                     event_context,
-                    ToolCallCompletedData::failure(
+                    ToolCompletedData::failure(
                         tool_call.id.clone(),
                         tool_call.name.clone(),
                         "error".to_string(),
@@ -416,14 +416,14 @@ where
                         .as_ref()
                         .map(|r| vec![ContentPart::text(r.to_string())])
                         .unwrap_or_default();
-                    ToolCallCompletedData::success(
+                    ToolCompletedData::success(
                         tool_call.id.clone(),
                         tool_call.name.clone(),
                         result_content,
                         Some(tool_duration_ms),
                     )
                 } else {
-                    ToolCallCompletedData::failure(
+                    ToolCompletedData::failure(
                         tool_call.id.clone(),
                         tool_call.name.clone(),
                         status.to_string(),
@@ -474,7 +474,7 @@ where
                     .emit(EventRequest::new(
                         context.session_id,
                         event_context,
-                        ToolCallCompletedData::failure(
+                        ToolCompletedData::failure(
                             tool_call.id.clone(),
                             tool_call.name.clone(),
                             "error".to_string(),

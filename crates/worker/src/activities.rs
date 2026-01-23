@@ -115,7 +115,7 @@ pub async fn input_activity(
         tracing::warn!(error = %e, "Failed to emit turn.started event");
     }
 
-    let atom = InputAtom::new(message_retriever, event_emitter);
+    let atom = InputAtom::new(message_retriever);
 
     atom.execute(input)
         .await

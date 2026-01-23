@@ -3,7 +3,7 @@
 //! These tests verify that events are correctly serialized to JSON format
 //! for storage in the events table.
 
-use everruns_core::events::{EventContext, InputReceivedData, ToolCallCompletedData};
+use everruns_core::events::{EventContext, InputMessageData, ToolCompletedData};
 use everruns_core::message::Message;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{ContentPart, Event};
@@ -16,13 +16,13 @@ fn test_event_serialization() {
     let event = Event::new(
         session_id,
         event_context,
-        InputReceivedData::new(Message::user("test")),
+        InputMessageData::new(Message::user("test")),
     );
 
     let json = serde_json::to_value(&event).unwrap();
 
     assert!(json.is_object());
-    assert_eq!(json["type"], "input.received");
+    assert_eq!(json["type"], "input.message");
     // session_id now uses prefixed format (session_{hex})
     let expected_session_id = format!("session_{}", session_id.uuid().simple());
     assert_eq!(json["session_id"], expected_session_id);
@@ -36,10 +36,10 @@ fn test_event_type() {
     let event = Event::new(
         session_id,
         event_context,
-        InputReceivedData::new(Message::user("test")),
+        InputMessageData::new(Message::user("test")),
     );
 
-    assert_eq!(event.event_type, "input.received");
+    assert_eq!(event.event_type, "input.message");
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn test_event_session_id() {
     let event = Event::new(
         session_id,
         event_context,
-        InputReceivedData::new(Message::user("test")),
+        InputMessageData::new(Message::user("test")),
     );
 
     assert_eq!(event.session_uuid(), raw_uuid);
@@ -60,7 +60,7 @@ fn test_event_session_id() {
 fn test_tool_call_completed_event_serialization() {
     // This test verifies the exact JSON structure that the UI expects
     let session_id = SessionId::new();
-    let completed = ToolCallCompletedData::success(
+    let completed = ToolCompletedData::success(
         "call_abc123".to_string(),
         "get_weather".to_string(),
         vec![ContentPart::text("Sunny, 72°F")],
@@ -70,12 +70,12 @@ fn test_tool_call_completed_event_serialization() {
 
     let json = serde_json::to_value(&event).unwrap();
     println!(
-        "tool.call_completed event JSON:\n{}",
+        "tool.completed event JSON:\n{}",
         serde_json::to_string_pretty(&json).unwrap()
     );
 
     // Verify top-level structure
-    assert_eq!(json["type"], "tool.call_completed");
+    assert_eq!(json["type"], "tool.completed");
     // session_id now uses prefixed format (session_{hex})
     let expected_session_id = format!("session_{}", session_id.uuid().simple());
     assert_eq!(json["session_id"], expected_session_id);
@@ -97,7 +97,7 @@ fn test_tool_call_completed_event_serialization() {
 #[test]
 fn test_tool_call_completed_error_serialization() {
     let session_id = SessionId::new();
-    let completed = ToolCallCompletedData::failure(
+    let completed = ToolCompletedData::failure(
         "call_xyz789".to_string(),
         "read_file".to_string(),
         "error".to_string(),
@@ -108,7 +108,7 @@ fn test_tool_call_completed_error_serialization() {
 
     let json = serde_json::to_value(&event).unwrap();
     println!(
-        "tool.call_completed error event JSON:\n{}",
+        "tool.completed error event JSON:\n{}",
         serde_json::to_string_pretty(&json).unwrap()
     );
 

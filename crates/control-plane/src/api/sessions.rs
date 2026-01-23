@@ -10,7 +10,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::events::{EventContext, EventRequest, MessageUserData, TurnCancelledData};
+use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
 use everruns_core::typed_id::{AgentId, MessageId, ModelId, SessionId, TurnId};
 use everruns_core::{Message, Session};
 use everruns_worker::AgentRunner;
@@ -432,7 +432,7 @@ pub async fn cancel_turn(
     let user_message_event = EventRequest::new(
         session_id,
         EventContext::turn(turn_id, input_message_id),
-        MessageUserData::new(user_cancel_message),
+        InputMessageData::new(user_cancel_message),
     );
     if let Err(e) = state.event_service.emit(user_message_event).await {
         tracing::warn!(session_id = %session_id, error = %e, "Failed to emit user cancellation message");

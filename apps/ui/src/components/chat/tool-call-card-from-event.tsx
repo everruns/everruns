@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
-import type { ToolCallCompletedData } from "@/lib/api/types";
+import type { ToolCompletedData } from "@/lib/api/types";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import {
   formatArguments,
@@ -12,12 +12,12 @@ import {
 
 interface ToolCallCardFromEventProps {
   toolCall: ToolCallContent;
-  toolResult?: ToolCallCompletedData;
+  toolResult?: ToolCompletedData;
 }
 
 /**
  * Render a tool call card from event data
- * Uses event-based data format (ToolCallCompletedData) instead of Message format
+ * Uses event-based data format (ToolCompletedData) instead of Message format
  */
 export function ToolCallCardFromEvent({ toolCall, toolResult }: ToolCallCardFromEventProps) {
   const [isExpanded, setIsExpanded] = useState(false);
