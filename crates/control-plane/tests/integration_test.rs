@@ -4336,3 +4336,355 @@ async fn test_anthropic_extended_thinking() {
 
     println!("Anthropic extended thinking test passed!");
 }
+
+/// Test extended thinking with tool use (real Anthropic API).
+///
+/// This test specifically exercises the scenario where:
+/// 1. Extended thinking is enabled
+/// 2. The agent has tools configured
+/// 3. The model decides to use a tool during the thinking+response flow
+///
+/// This combination requires:
+/// - `interleaved-thinking-2025-05-14` beta header
+/// - Proper capture of thinking signature via `signature_delta` event
+/// - Thinking block included before tool_use in multi-turn messages
+///
+/// Requirements: API + Worker running, ANTHROPIC_API_KEY environment variable set.
+#[tokio::test]
+async fn test_anthropic_extended_thinking_with_tools() {
+    use std::time::Duration;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(180))
+        .build()
+        .expect("Failed to create client");
+
+    println!("Testing Anthropic extended thinking with tool use...");
+
+    // Step 1: Create Anthropic provider
+    println!("\nStep 1: Creating Anthropic provider...");
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .expect("ANTHROPIC_API_KEY must be set for this test");
+
+    let provider_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers",
+            API_BASE_URL, DEFAULT_ORG
+        ))
+        .json(&json!({
+            "name": "Anthropic Thinking+Tools Test",
+            "provider_type": "anthropic",
+            "api_key": api_key,
+            "is_default": false
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create Anthropic provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created Anthropic provider: {}", provider.id);
+
+    // Create model (claude-sonnet-4 supports extended thinking)
+    let model_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
+        .json(&json!({
+            "model_id": "claude-sonnet-4-20250514",
+            "display_name": "Claude Sonnet 4 (Thinking+Tools Test)"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!("Failed to create model: status={}, body={}", status, body);
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created model: {} ({})", model.display_name, model.id);
+
+    // Step 2: Create agent WITH current_time tool
+    println!("\nStep 2: Creating agent with current_time tool...");
+    let agent_response = client
+        .post(format!("{}/v1/orgs/{}/agents", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({
+            "name": "Dad Jokes Agent",
+            "system_prompt": "You are a dad joke expert. When asked for a joke, ALWAYS use the current_time tool first to get the current time, then incorporate it into your joke.",
+            "default_model_id": model.id,
+            "tools": [
+                {
+                    "type": "builtin",
+                    "builtin_type": "current_time"
+                }
+            ]
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {} with current_time tool", agent.id);
+
+    // Step 3: Create session
+    println!("\nStep 3: Creating session...");
+    let session_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .json(&json!({"title": "Dad Jokes with Thinking Test"}))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    // Step 4: Send message asking for a dad joke about the time
+    // This will trigger: thinking -> tool call -> tool result -> more thinking -> response
+    println!("\nStep 4: Sending message (expecting thinking + tool use)...");
+    let message_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "Tell me a dad joke about the current time."}]
+            },
+            "controls": {
+                "reasoning": {
+                    "effort": "low"
+                }
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send message");
+
+    assert_eq!(message_response.status(), 201);
+    println!("Message sent successfully");
+
+    // Step 5: Poll for completion and collect events
+    println!("\nStep 5: Waiting for response...");
+    let mut response_complete = false;
+    let mut thinking_found = false;
+    let mut tool_call_found = false;
+    let mut tool_completed_found = false;
+    let mut final_message_found = false;
+
+    for i in 1..=120 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let session_response = client
+            .get(format!(
+                "{}/v1/orgs/{}/agents/{}/sessions/{}",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = session_response
+            && resp.status() == 200
+        {
+            let session_data: Value = resp.json().await.unwrap_or_default();
+            let status = session_data["status"].as_str().unwrap_or("");
+
+            if i % 10 == 0 {
+                println!("  [{}s] Session status: {}", i, status);
+            }
+
+            if status == "idle" {
+                response_complete = true;
+                break;
+            } else if status == "failed" {
+                let error = session_data["error"].as_str().unwrap_or("unknown");
+                panic!("Session failed with error: {}", error);
+            }
+        }
+    }
+
+    // Fetch all events
+    let events_response = client
+        .get(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to get events");
+
+    if events_response.status() == 200 {
+        let events_data: Value = events_response.json().await.unwrap_or_default();
+        if let Some(events) = events_data["data"].as_array() {
+            println!("\n  Event summary ({} events):", events.len());
+            for event in events {
+                let event_type = event["type"].as_str().unwrap_or("");
+                match event_type {
+                    "reason.thinking.started" | "reason.thinking.completed" => {
+                        thinking_found = true;
+                        println!("    - {}", event_type);
+                    }
+                    "tool.call_started" => {
+                        tool_call_found = true;
+                        let tool_name = event["data"]["tool_name"].as_str().unwrap_or("?");
+                        println!("    - {} (tool: {})", event_type, tool_name);
+                    }
+                    "tool.call_completed" => {
+                        tool_completed_found = true;
+                        let success = event["data"]["success"].as_bool().unwrap_or(false);
+                        println!("    - {} (success: {})", event_type, success);
+                    }
+                    "message.agent" => {
+                        final_message_found = true;
+                        let has_thinking = event["data"]["message"]["thinking"].is_string();
+                        let has_signature =
+                            event["data"]["message"]["thinking_signature"].is_string();
+                        println!(
+                            "    - {} (has_thinking: {}, has_signature: {})",
+                            event_type, has_thinking, has_signature
+                        );
+                    }
+                    "turn.started" | "turn.completed" => {
+                        println!("    - {}", event_type);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Step 6: Multi-turn test - send a follow-up
+    // This verifies thinking+signature is properly sent back to Anthropic
+    println!("\nStep 6: Sending follow-up message (multi-turn with thinking+tools)...");
+    let followup_response = client
+        .post(format!(
+            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{"type": "text", "text": "Tell me another one, but make it about breakfast time."}]
+            },
+            "controls": {
+                "reasoning": {
+                    "effort": "low"
+                }
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send follow-up message");
+
+    assert_eq!(followup_response.status(), 201);
+    println!("Follow-up message sent");
+
+    // Wait for follow-up to complete
+    let mut followup_complete = false;
+    for i in 1..=120 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let session_response = client
+            .get(format!(
+                "{}/v1/orgs/{}/agents/{}/sessions/{}",
+                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = session_response
+            && resp.status() == 200
+        {
+            let session_data: Value = resp.json().await.unwrap_or_default();
+            let status = session_data["status"].as_str().unwrap_or("");
+
+            if i % 10 == 0 {
+                println!("  [{}s] Session status: {}", i, status);
+            }
+
+            if status == "idle" {
+                followup_complete = true;
+                break;
+            } else if status == "failed" {
+                let error = session_data["error"].as_str().unwrap_or("unknown");
+                panic!("Follow-up failed with error: {}", error);
+            }
+        }
+    }
+
+    println!("\nResults:");
+    println!("  First turn complete: {}", response_complete);
+    println!("  Thinking events found: {}", thinking_found);
+    println!("  Tool call found: {}", tool_call_found);
+    println!("  Tool completed: {}", tool_completed_found);
+    println!("  Final message found: {}", final_message_found);
+    println!("  Multi-turn complete: {}", followup_complete);
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/agents/{}",
+            API_BASE_URL, DEFAULT_ORG, agent.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}/models/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id, model.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!(
+            "{}/v1/orgs/{}/llm-providers/{}",
+            API_BASE_URL, DEFAULT_ORG, provider.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    // Assertions
+    assert!(response_complete, "First turn should complete");
+    assert!(
+        thinking_found,
+        "Should have thinking events when reasoning_effort is set"
+    );
+    assert!(
+        tool_call_found,
+        "Should have tool.call_started event (model should use current_time)"
+    );
+    assert!(
+        tool_completed_found,
+        "Should have tool.call_completed event"
+    );
+    assert!(final_message_found, "Should have final message.agent event");
+    assert!(
+        followup_complete,
+        "Multi-turn with thinking+tools should complete (signature properly captured)"
+    );
+
+    println!("Anthropic extended thinking with tools test passed!");
+}
