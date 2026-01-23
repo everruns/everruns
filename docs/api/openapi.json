@@ -2716,27 +2716,6 @@
           "archived"
         ]
       },
-      "AgentThinkingData": {
-        "type": "object",
-        "description": "Data for agent.thinking event\n\nEmitted when the LLM starts generating a response. UI can show a\n\"thinking\" indicator until text.delta or message.agent events arrive.",
-        "required": [
-          "turn_id"
-        ],
-        "properties": {
-          "model": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional model name being used"
-          },
-          "turn_id": {
-            "type": "string",
-            "description": "Turn ID this thinking indicator belongs to",
-            "example": "turn_01933b5a00007000800000000000001"
-          }
-        }
-      },
       "CancelStatus": {
         "type": "string",
         "description": "Status of the cancel operation",
@@ -3491,10 +3470,13 @@
             "$ref": "#/components/schemas/TextDeltaData"
           },
           {
-            "$ref": "#/components/schemas/ThinkingDeltaData"
+            "$ref": "#/components/schemas/ReasonThinkingDeltaData"
           },
           {
-            "$ref": "#/components/schemas/AgentThinkingData"
+            "$ref": "#/components/schemas/ReasonThinkingStartedData"
+          },
+          {
+            "$ref": "#/components/schemas/ReasonThinkingCompletedData"
           },
           {
             "$ref": "#/components/schemas/TurnCancelledData"
@@ -5328,6 +5310,20 @@
           "role": {
             "$ref": "#/components/schemas/MessageRole",
             "description": "Message role"
+          },
+          "thinking": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Thinking content from extended thinking models (Anthropic Claude)\nThis is the model's chain-of-thought reasoning before producing the response.\nMust be included in subsequent API calls when thinking is enabled."
+          },
+          "thinking_signature": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cryptographic signature for thinking content (Anthropic Claude)\nRequired when sending thinking back in subsequent API calls."
           }
         }
       },
@@ -5660,6 +5656,70 @@
                 "description": "Metadata about the model being used"
               }
             ]
+          }
+        }
+      },
+      "ReasonThinkingCompletedData": {
+        "type": "object",
+        "description": "Data for reason.thinking.completed event\n\nEmitted when extended thinking completes and the model transitions\nto producing the final response. Contains the complete thinking content.",
+        "required": [
+          "turn_id",
+          "thinking"
+        ],
+        "properties": {
+          "thinking": {
+            "type": "string",
+            "description": "Complete thinking content"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID this thinking belongs to",
+            "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "ReasonThinkingDeltaData": {
+        "type": "object",
+        "description": "Data for reason.thinking.delta event (extended thinking content from models like Claude)\n\nThis event streams incremental thinking/reasoning content from models that support\nextended thinking mode (e.g., Claude with thinking enabled). The thinking content\nrepresents the model's chain-of-thought reasoning before producing the final response.",
+        "required": [
+          "turn_id",
+          "delta",
+          "accumulated"
+        ],
+        "properties": {
+          "accumulated": {
+            "type": "string",
+            "description": "Accumulated thinking text so far (convenience for UI)"
+          },
+          "delta": {
+            "type": "string",
+            "description": "The thinking delta (new thinking text since last delta)"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID this delta belongs to (for correlation)",
+            "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "ReasonThinkingStartedData": {
+        "type": "object",
+        "description": "Data for reason.thinking.started event\n\nEmitted when extended thinking begins during reasoning phase.\nThis signals the model is using chain-of-thought reasoning.\nUI can show a \"thinking\" indicator.",
+        "required": [
+          "turn_id"
+        ],
+        "properties": {
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional model name being used"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID this thinking belongs to",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
@@ -6013,30 +6073,6 @@
           "delta": {
             "type": "string",
             "description": "The text delta (new text since last delta)"
-          },
-          "turn_id": {
-            "type": "string",
-            "description": "Turn ID this delta belongs to (for correlation)",
-            "example": "turn_01933b5a00007000800000000000001"
-          }
-        }
-      },
-      "ThinkingDeltaData": {
-        "type": "object",
-        "description": "Data for thinking.delta event (extended thinking content from models like Claude)\n\nThis event streams incremental thinking/reasoning content from models that support\nextended thinking mode (e.g., Claude with thinking enabled). The thinking content\nrepresents the model's chain-of-thought reasoning before producing the final response.",
-        "required": [
-          "turn_id",
-          "delta",
-          "accumulated"
-        ],
-        "properties": {
-          "accumulated": {
-            "type": "string",
-            "description": "Accumulated thinking text so far (convenience for UI)"
-          },
-          "delta": {
-            "type": "string",
-            "description": "The thinking delta (new thinking text since last delta)"
           },
           "turn_id": {
             "type": "string",

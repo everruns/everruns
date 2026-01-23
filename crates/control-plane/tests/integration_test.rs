@@ -4001,8 +4001,8 @@ async fn test_anthropic_extended_thinking() {
 
     // Step 1: Create Anthropic provider
     println!("\nStep 1: Creating Anthropic provider...");
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_KEY must be set for this test");
+    let api_key =
+        std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set for this test");
 
     let provider_response = client
         .post(format!(
@@ -4363,8 +4363,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
 
     // Step 1: Create Anthropic provider
     println!("\nStep 1: Creating Anthropic provider...");
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_KEY must be set for this test");
+    let api_key =
+        std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set for this test");
 
     let provider_response = client
         .post(format!(
@@ -4682,7 +4682,10 @@ async fn test_anthropic_extended_thinking_with_tools() {
         tool_completed_found,
         "Should have tool.call_completed event"
     );
-    assert!(final_message_found, "Should have at least one message.agent event");
+    assert!(
+        final_message_found,
+        "Should have at least one message.agent event"
+    );
 
     // Multi-turn test may not complete if first turn hit max iterations
     if !followup_complete {
