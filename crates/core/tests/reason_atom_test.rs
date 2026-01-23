@@ -582,7 +582,9 @@ async fn test_reason_atom_handles_llm_error() {
     assert!(!events.is_empty(), "Events should have been emitted");
 
     // Check for output.message.completed event (error message for user)
-    let has_output_message = events.iter().any(|e| e.event_type == "output.message.completed");
+    let has_output_message = events
+        .iter()
+        .any(|e| e.event_type == "output.message.completed");
     assert!(
         has_output_message,
         "Should emit output.message.completed event for error"

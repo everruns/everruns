@@ -3722,7 +3722,10 @@ async fn test_streaming_events_emitted() {
         .iter()
         .filter(|e| e["type"] == "output.message.started")
         .collect();
-    println!("Found {} output.message.started events", started_events.len());
+    println!(
+        "Found {} output.message.started events",
+        started_events.len()
+    );
     assert!(
         !started_events.is_empty(),
         "Expected at least one output.message.started event"

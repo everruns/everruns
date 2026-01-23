@@ -873,7 +873,9 @@ impl InMemoryDatabase {
             // Find the last agent message for this session
             let last_agent_msg = events
                 .values()
-                .filter(|e| e.session_id == session_id && e.event_type == "output.message.completed")
+                .filter(|e| {
+                    e.session_id == session_id && e.event_type == "output.message.completed"
+                })
                 .max_by_key(|e| e.sequence);
 
             if let Some(event) = last_agent_msg {

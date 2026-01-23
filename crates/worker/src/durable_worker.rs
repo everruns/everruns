@@ -5,7 +5,9 @@
 use anyhow::Result;
 use everruns_core::Message;
 use everruns_core::atoms::AtomContext;
-use everruns_core::events::{EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData};
+use everruns_core::events::{
+    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData,
+};
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
 use std::sync::Arc;

@@ -205,7 +205,8 @@ async fn listen_to_sse(url: &str) -> Result<String, Box<dyn std::error::Error + 
                                 println!("   [User Message] Received");
                             }
                             "tool.started" => {
-                                if let Some(name) = event.data.get("tool_name").and_then(|n| n.as_str())
+                                if let Some(name) =
+                                    event.data.get("tool_name").and_then(|n| n.as_str())
                                 {
                                     println!("   [Tool Started] {}", name);
                                     seen_tool_call = true;

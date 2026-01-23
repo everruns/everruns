@@ -228,14 +228,15 @@ fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::Messa
         EventData::InputMessage(d) => Some(d.message.clone()),
         EventData::OutputMessageCompleted(d) => Some(d.message.clone()),
         EventData::ToolCompleted(d) => {
-            let result: Option<serde_json::Value> = d.result.as_ref().map(|parts: &Vec<ContentPart>| {
-                if parts.len() == 1
-                    && let ContentPart::Text(t) = &parts[0]
-                {
-                    return serde_json::Value::String(t.text.clone());
-                }
-                serde_json::to_value(parts).unwrap_or_default()
-            });
+            let result: Option<serde_json::Value> =
+                d.result.as_ref().map(|parts: &Vec<ContentPart>| {
+                    if parts.len() == 1
+                        && let ContentPart::Text(t) = &parts[0]
+                    {
+                        return serde_json::Value::String(t.text.clone());
+                    }
+                    serde_json::to_value(parts).unwrap_or_default()
+                });
             Some(Message::tool_result(
                 &d.tool_call_id,
                 result,
@@ -601,8 +602,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<AddMessageResponse>, Status> {
         use chrono::Utc;
         use everruns_core::{
-            ContentPart, Controls, EventContext, EventRequest, Message,
-            MessageRole,
+            ContentPart, Controls, EventContext, EventRequest, Message, MessageRole,
             events::{InputMessageData, OutputMessageCompletedData},
         };
         use everruns_internal_protocol::{
