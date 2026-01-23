@@ -1,38 +1,36 @@
 //! Infinity Context Evaluation Framework
 //!
-//! Compares different context management strategies for long conversations:
+//! Compares different context management capabilities for long conversations:
 //! - Baseline: Send all messages (fails on long conversations)
 //! - Naive trim: Drop oldest messages (loses context)
 //! - Infinity: Trim + history query tool (proposed solution)
-//!
-//! The strategies are implemented as capabilities using the core infrastructure
-//! (Capability trait, MessageFilterProvider, etc.) but live here for research.
 
 pub mod capabilities;
+mod eval_capability;
 mod metrics;
 mod report;
 mod runner;
 mod scenarios;
-mod strategies;
 pub mod types;
 
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
+use eval_capability::all_capabilities;
 use std::path::PathBuf;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[derive(Parser)]
 #[command(name = "eval")]
-#[command(about = "Evaluate context management strategies for long conversations")]
+#[command(about = "Evaluate context management capabilities for long conversations")]
 struct Cli {
     /// Run a specific scenario by name
     #[arg(short, long)]
     scenario: Option<String>,
 
-    /// Run with a specific strategy only
+    /// Run with a specific capability only (baseline, naive_trim, infinity_context)
     #[arg(long)]
-    strategy: Option<String>,
+    capability: Option<String>,
 
     /// Directory containing scenario definitions
     #[arg(long, default_value = "scenarios")]
@@ -163,21 +161,26 @@ async fn main() -> Result<()> {
         scenarios.len()
     );
 
-    // Determine which strategies to run
-    let strategies = if let Some(ref name) = cli.strategy {
-        vec![strategies::get_strategy(name)?]
+    // Determine which capabilities to run
+    let capabilities = if let Some(ref name) = cli.capability {
+        let all = all_capabilities();
+        let cap = all
+            .into_iter()
+            .find(|c| c.name() == name)
+            .ok_or_else(|| anyhow::anyhow!("Unknown capability: {}", name))?;
+        vec![cap]
     } else {
-        strategies::all_strategies()
+        all_capabilities()
     };
 
-    println!("{}", "Strategies to evaluate:".bold());
-    for strategy in &strategies {
-        println!("  • {}", strategy.name().bright_cyan());
+    println!("{}", "Capabilities to evaluate:".bold());
+    for cap in &capabilities {
+        println!("  • {}", cap.name().bright_cyan());
     }
     println!();
 
     // Run evaluation
-    let results = runner::run_evaluation(&config, &scenarios, &strategies).await?;
+    let results = runner::run_evaluation(&config, &scenarios, &capabilities).await?;
 
     // Generate report
     let report = report::generate(&results, &config);

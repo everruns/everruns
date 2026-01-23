@@ -33,7 +33,7 @@ pub fn estimate_tokens(message: &Message) -> usize {
         .sum();
 
     // Rough approximation: 1 token ≈ 4 characters
-    (content_len + 3) / 4
+    content_len.div_ceil(4)
 }
 
 /// Estimate total tokens for a slice of messages
@@ -275,21 +275,6 @@ pub struct EvaluationResults {
     pub strategy_results: Vec<StrategyResults>,
 }
 
-/// Prepared context for an LLM call
-#[derive(Debug, Clone)]
-pub struct PreparedContext {
-    /// Messages to send to LLM
-    pub messages: Vec<Message>,
-    /// Messages excluded from context (available for history queries)
-    pub excluded_messages: Vec<Message>,
-    /// System prompt additions
-    pub system_additions: Vec<String>,
-    /// Additional tools to provide
-    pub additional_tools: Vec<ToolDefinition>,
-    /// Estimated total tokens
-    pub estimated_tokens: usize,
-}
-
 /// Tool definition for the LLM (eval-specific, simpler than core)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
@@ -304,35 +289,4 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub arguments: serde_json::Value,
-}
-
-/// Query parameters for history search
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HistoryQuery {
-    #[serde(default)]
-    pub query: Option<String>,
-    #[serde(default)]
-    pub message_range: Option<MessageRange>,
-    #[serde(default)]
-    pub time_range: Option<TimeRange>,
-    #[serde(default)]
-    pub message_types: Option<Vec<String>>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-}
-
-fn default_limit() -> usize {
-    20
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageRange {
-    pub from: usize,
-    pub to: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TimeRange {
-    pub from: DateTime<Utc>,
-    pub to: DateTime<Utc>,
 }

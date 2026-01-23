@@ -37,7 +37,7 @@ pub fn generate(results: &EvaluationResults, config: &EvalConfig) -> String {
         ));
     }
 
-    report.push_str("\n");
+    report.push('\n');
 
     // Detailed results per strategy
     report.push_str("## Detailed Results\n\n");
@@ -92,7 +92,7 @@ pub fn generate(results: &EvaluationResults, config: &EvalConfig) -> String {
             ));
         }
 
-        report.push_str("\n");
+        report.push('\n');
     }
 
     // Analysis section

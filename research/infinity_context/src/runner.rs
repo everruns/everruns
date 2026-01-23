@@ -1,12 +1,10 @@
-//! Evaluation runner - executes scenarios against strategies
+//! Evaluation runner - executes scenarios against capabilities
 //!
 //! Uses core's LLM driver infrastructure for provider-agnostic LLM calls.
 
+use crate::eval_capability::{EvalCapability, PreparedContext};
 use crate::metrics::{aggregate_strategy_results, check_success};
-use crate::strategies::ContextStrategy;
-use crate::types::{
-    EvalMetrics, EvaluationResults, MessageExt, PreparedContext, Scenario, ScenarioResult, ToolCall,
-};
+use crate::types::{EvalMetrics, EvaluationResults, MessageExt, Scenario, ScenarioResult, ToolCall};
 use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
@@ -45,11 +43,11 @@ fn get_provider_type(model: &str) -> ProviderType {
     }
 }
 
-/// Run evaluation across all scenarios and strategies
+/// Run evaluation across all scenarios and capabilities
 pub async fn run_evaluation(
     config: &EvalConfig,
     scenarios: &[Scenario],
-    strategies: &[Arc<dyn ContextStrategy>],
+    capabilities: &[Arc<dyn EvalCapability>],
 ) -> Result<EvaluationResults> {
     let budget_tokens = (config.context_window as f64 * config.budget_percent) as usize;
 
@@ -57,21 +55,21 @@ pub async fn run_evaluation(
     let driver_registry = create_driver_registry();
 
     println!(
-        "\n{} Running {} scenario(s) against {} strategy(ies)\n",
+        "\n{} Running {} scenario(s) against {} capability(ies)\n",
         "▶".bright_blue(),
         scenarios.len(),
-        strategies.len()
+        capabilities.len()
     );
 
     let mut strategy_results = Vec::new();
 
-    for strategy in strategies {
+    for capability in capabilities {
         println!(
-            "{} Strategy: {}",
+            "{} Capability: {}",
             "━".repeat(60).dimmed(),
-            strategy.name().bright_cyan().bold()
+            capability.name().bright_cyan().bold()
         );
-        println!("  {}\n", strategy.description().dimmed());
+        println!("  {}\n", capability.description().dimmed());
 
         let mut results = Vec::new();
 
@@ -79,7 +77,7 @@ pub async fn run_evaluation(
             let result = run_single_scenario(
                 config,
                 scenario,
-                strategy.as_ref(),
+                capability.as_ref(),
                 budget_tokens,
                 &driver_registry,
             )
@@ -103,16 +101,17 @@ pub async fn run_evaluation(
                 result.metrics.history_queries
             );
 
-            if !result.success && !result.metrics.context_exceeded {
-                if let Some(ref err) = result.error {
-                    println!("    {} {}", "Error:".red(), err);
-                }
+            if !result.success
+                && !result.metrics.context_exceeded
+                && let Some(err) = &result.error
+            {
+                println!("    {} {}", "Error:".red(), err);
             }
 
             results.push(result);
         }
 
-        let aggregated = aggregate_strategy_results(strategy.name(), results);
+        let aggregated = aggregate_strategy_results(capability.name(), results);
         println!(
             "\n  {} Accuracy: {:.1}% ({}/{})\n",
             "→".bright_blue(),
@@ -138,37 +137,37 @@ pub async fn run_evaluation(
     })
 }
 
-/// Run a single scenario with a strategy
+/// Run a single scenario with a capability
 async fn run_single_scenario(
     config: &EvalConfig,
     scenario: &Scenario,
-    strategy: &dyn ContextStrategy,
+    capability: &dyn EvalCapability,
     budget_tokens: usize,
     driver_registry: &DriverRegistry,
 ) -> ScenarioResult {
     let start = Instant::now();
 
-    // Prepare context using the strategy
-    let prepared = strategy.prepare_context(&scenario.messages, budget_tokens);
+    // Prepare context using the capability
+    let prepared = capability.prepare_context(&scenario.messages, budget_tokens);
 
     // Check if we're likely to exceed context (for baseline)
     let will_exceed = prepared.estimated_tokens > config.context_window;
 
     if config.dry_run {
-        return create_dry_run_result(scenario, strategy, &prepared, will_exceed);
+        return create_dry_run_result(scenario, capability, &prepared, will_exceed);
     }
 
     // Save context counts before moving prepared
     let messages_in_context = prepared.messages.len();
-    let messages_excluded = prepared.excluded_messages.len();
+    let messages_excluded = prepared.excluded.len();
 
     // Execute LLM call(s)
-    match execute_with_strategy(config, scenario, strategy, prepared, driver_registry).await {
+    match execute_with_capability(config, scenario, capability, prepared, driver_registry).await {
         Ok((response, metrics)) => {
             let success = check_success(&response, &scenario.expected);
             ScenarioResult {
                 scenario_name: scenario.name.clone(),
-                strategy_name: strategy.name().to_string(),
+                strategy_name: capability.name().to_string(),
                 success,
                 response,
                 metrics: EvalMetrics {
@@ -185,7 +184,7 @@ async fn run_single_scenario(
 
             ScenarioResult {
                 scenario_name: scenario.name.clone(),
-                strategy_name: strategy.name().to_string(),
+                strategy_name: capability.name().to_string(),
                 success: false,
                 response: String::new(),
                 metrics: EvalMetrics {
@@ -201,17 +200,17 @@ async fn run_single_scenario(
     }
 }
 
-/// Execute LLM call(s) with tool handling for infinity strategy
-async fn execute_with_strategy(
+/// Execute LLM call(s) with tool handling for capability
+async fn execute_with_capability(
     config: &EvalConfig,
     scenario: &Scenario,
-    strategy: &dyn ContextStrategy,
+    capability: &dyn EvalCapability,
     prepared: PreparedContext,
     driver_registry: &DriverRegistry,
 ) -> Result<(String, EvalMetrics)> {
     let mut metrics = EvalMetrics {
         messages_in_context: prepared.messages.len(),
-        messages_excluded: prepared.excluded_messages.len(),
+        messages_excluded: prepared.excluded.len(),
         ..Default::default()
     };
 
@@ -226,7 +225,7 @@ async fn execute_with_strategy(
 
     // Convert tool definitions to core format
     let tools: Vec<CoreToolDefinition> = prepared
-        .additional_tools
+        .tools
         .iter()
         .map(|t| {
             CoreToolDefinition::Builtin(BuiltinTool {
@@ -267,7 +266,7 @@ async fn execute_with_strategy(
 
         // Check for tool calls
         if let Some(tool_calls) = response.tool_calls {
-            if !strategy.supports_tools() || tool_calls.is_empty() {
+            if !capability.has_tools() || tool_calls.is_empty() {
                 final_response = response.text;
                 break;
             }
@@ -283,8 +282,7 @@ async fn execute_with_strategy(
                     arguments: tool_call.arguments.clone(),
                 };
 
-                let tool_result =
-                    strategy.handle_tool_call(&local_tool_call, &prepared.excluded_messages)?;
+                let tool_result = capability.execute_tool(&local_tool_call, &prepared.excluded)?;
 
                 // Add assistant message with tool call
                 llm_messages.push(LlmMessage {
@@ -329,7 +327,7 @@ fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<Ll
 
     // System message with any additions
     let mut system_content = "You are a helpful assistant. Answer questions based on the conversation history.".to_string();
-    for addition in &prepared.system_additions {
+    if let Some(ref addition) = prepared.system_addition {
         system_content.push_str("\n\n");
         system_content.push_str(addition);
     }
@@ -372,13 +370,13 @@ fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<Ll
 /// Create a result for dry run mode
 fn create_dry_run_result(
     scenario: &Scenario,
-    strategy: &dyn ContextStrategy,
+    capability: &dyn EvalCapability,
     prepared: &PreparedContext,
     will_exceed: bool,
 ) -> ScenarioResult {
     ScenarioResult {
         scenario_name: scenario.name.clone(),
-        strategy_name: strategy.name().to_string(),
+        strategy_name: capability.name().to_string(),
         success: !will_exceed, // Assume success if context fits
         response: "[DRY RUN]".to_string(),
         metrics: EvalMetrics {
@@ -390,7 +388,7 @@ fn create_dry_run_result(
             latency_ms: 0,
             context_exceeded: will_exceed,
             messages_in_context: prepared.messages.len(),
-            messages_excluded: prepared.excluded_messages.len(),
+            messages_excluded: prepared.excluded.len(),
         },
         error: if will_exceed {
             Some("Context would exceed limit".to_string())
