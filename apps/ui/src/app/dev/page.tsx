@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FlaskConical, MessageSquare, LayoutList, ArrowRight, Star, FileText, Palette, Gauge, Terminal, Flame } from "lucide-react";
+import { FlaskConical, MessageSquare, LayoutList, ArrowRight, Star, FileText, Palette, Gauge, Terminal, Flame, Layers } from "lucide-react";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -20,6 +20,12 @@ const devPages = [
     description: "Sharp corners, warm amber accent, industrial developer feel",
     href: "/dev/design-oxide",
     icon: Flame,
+  },
+  {
+    title: "Design: Slate",
+    description: "Subtle 4px corners, muted blue accent - balanced between current and Terminal",
+    href: "/dev/design-slate",
+    icon: Layers,
   },
   {
     title: "Chat UI Styles",
