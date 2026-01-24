@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, Terminal, Check, Loader2, ChevronRight, Play, Square, Settings, Plus, Search, Bell, User, Database, Cpu, Activity, Code, Layers, GitBranch } from "lucide-react";
+import { ArrowLeft, Terminal, Check, Loader2, ChevronRight, Play, Square, Settings, Plus, Search, Bell, User, Database, Cpu, Activity, Code, Layers, GitBranch, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -141,7 +141,10 @@ function SlateBadge({
 // Chat components
 function SlateUserMessage({ content }: { content: string }) {
   return (
-    <div className="flex justify-end">
+    <div className="flex justify-end items-start gap-2">
+      <button className="p-1 text-[hsl(0_0%_60%)] hover:text-[hsl(0_0%_40%)] transition-colors mt-1">
+        <Info className="w-3.5 h-3.5" />
+      </button>
       <div className="max-w-[85%] border-r-2 border-[#D4A43A] bg-[#D4A43A10] px-3 py-2">
         <p className="text-sm text-[hsl(0_0%_15%)]">{content}</p>
       </div>
@@ -151,14 +154,17 @@ function SlateUserMessage({ content }: { content: string }) {
 
 function SlateAgentMessage({ content }: { content: string }) {
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 items-start">
       <div
         className="w-5 h-5 bg-[hsl(0_0%_94%)] border border-[hsl(0_0%_85%)] flex items-center justify-center flex-shrink-0 mt-0.5"
         style={{ borderRadius: '0px' }}
       >
         <Terminal className="w-3 h-3 text-[hsl(0_0%_40%)]" />
       </div>
-      <p className="text-sm text-[hsl(0_0%_25%)]">{content}</p>
+      <p className="text-sm text-[hsl(0_0%_25%)] flex-1">{content}</p>
+      <button className="p-1 text-[hsl(0_0%_60%)] hover:text-[hsl(0_0%_40%)] transition-colors mt-0.5">
+        <Info className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }
