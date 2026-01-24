@@ -79,7 +79,7 @@ export default function AgentsPage() {
             {importAgent.isPending ? "Importing..." : "Import"}
           </Button>
           <Link href="/agents/new">
-            <Button>
+            <Button variant="accent">
               <Plus className="w-4 h-4 mr-2" />
               New Agent
             </Button>

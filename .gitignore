@@ -37,4 +37,4 @@ build/
 .claude/*.local.json
 
 # Tools
-.sqlx
+.sqlx.envrc

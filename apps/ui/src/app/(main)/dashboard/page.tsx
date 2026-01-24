@@ -53,7 +53,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <Link href="/agents/new" className="block">
-                <Button variant="outline" className="w-full justify-start">
+                <Button variant="accent" className="w-full justify-start">
                   <Plus className="h-4 w-4 mr-2" />
                   Create New Agent
                 </Button>

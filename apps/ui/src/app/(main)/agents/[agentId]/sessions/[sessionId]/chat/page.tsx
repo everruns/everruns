@@ -258,10 +258,11 @@ export default function ChatPage() {
                 {(textContent || images.length > 0) && (
                   <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                     {isUser ? (
-                      /* User message - subtle border, rounded */
-                      <div className="max-w-[85%] border border-border/60 rounded-xl px-3 py-2">
-                        <div className="flex items-start gap-2">
-                          <div className="flex-1 space-y-2">
+                      /* User message - right border with accent color */
+                      <div className="flex items-start gap-2">
+                        <MessageInfoIcon event={event} />
+                        <div className="max-w-[85%] border-r-2 border-accent bg-accent/10 px-3 py-2">
+                          <div className="space-y-2">
                             {textContent && (
                               <p className="text-sm whitespace-pre-wrap">{textContent}</p>
                             )}
@@ -277,7 +278,6 @@ export default function ChatPage() {
                               </div>
                             )}
                           </div>
-                          <MessageInfoIcon event={event} />
                         </div>
                       </div>
                     ) : (

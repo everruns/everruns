@@ -69,8 +69,8 @@ const markdownStyles = `
   .markdown-body p { margin: 0.5em 0; }
   .markdown-body ul, .markdown-body ol { margin: 0.5em 0; padding-left: 1.5em; }
   .markdown-body li { margin: 0.25em 0; }
-  .markdown-body code { background: var(--color-muted); padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; }
-  .markdown-body pre { background: var(--color-muted); padding: 1em; border-radius: 6px; overflow-x: auto; margin: 0.5em 0; }
+  .markdown-body code { background: var(--color-muted); padding: 0.2em 0.4em; font-size: 0.9em; }
+  .markdown-body pre { background: var(--color-muted); padding: 1em; overflow-x: auto; margin: 0.5em 0; }
   .markdown-body pre code { background: none; padding: 0; }
   .markdown-body blockquote { border-left: 3px solid var(--color-border); padding-left: 1em; margin: 0.5em 0; color: var(--color-muted-foreground); }
   .markdown-body hr { border: none; border-top: 1px solid var(--color-border); margin: 1em 0; }
@@ -177,7 +177,7 @@ function GitHubAlert({
   return (
     <div
       className={cn(
-        "my-4 rounded-md border-l-4 p-4",
+        "my-4 border-l-4 p-4",
         config.bgClass,
         config.borderClass
       )}
@@ -228,7 +228,7 @@ export function Markdown({ content, className, variant = "default" }: MarkdownPr
       <div
         className={cn(
           "markdown-body",
-          variant === "default" && "bg-muted p-4 rounded-md",
+          variant === "default" && "bg-muted p-4",
           variant === "compact" && "bg-transparent p-0",
           className
         )}
