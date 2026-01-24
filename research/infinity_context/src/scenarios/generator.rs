@@ -12,9 +12,12 @@ pub fn generate_synthetic(count: usize) -> Vec<Scenario> {
     scenarios.push(generate_needle_scenario(0));
     scenarios.push(generate_multi_hop_scenario(0));
     scenarios.push(generate_cumulative_scenario(0));
+    scenarios.push(generate_final_decision_scenario(0));
+    scenarios.push(generate_decision_timeline_scenario(0));
+    scenarios.push(generate_tool_disambiguation_scenario(0));
 
     // Add more needle scenarios (most common test case)
-    for i in 1..count.saturating_sub(2) {
+    for i in 1..count.saturating_sub(5) {
         scenarios.push(generate_needle_scenario(i));
     }
 
@@ -193,6 +196,165 @@ fn generate_cumulative_scenario(variant: usize) -> Scenario {
                 message_index: *idx,
                 key: format!("version_{}", idx),
                 value: code.to_string(),
+            })
+            .collect(),
+    }
+}
+
+/// Generate a scenario where a decision changes multiple times, task asks for final state
+fn generate_final_decision_scenario(_variant: usize) -> Scenario {
+    let mut messages = Vec::new();
+    let total_messages = 180;
+
+    // Database choice changes multiple times
+    let decisions = [
+        (5, "PostgreSQL", "Let's use PostgreSQL for the database"),
+        (35, "MySQL", "Actually, let's switch to MySQL instead - better for our use case"),
+        (70, "MongoDB", "On second thought, MongoDB would be better for the schema flexibility"),
+        (110, "PostgreSQL", "After more research, let's go back to PostgreSQL with JSONB columns"),
+        (150, "CockroachDB", "Final decision: we'll use CockroachDB for the distributed nature"),
+    ];
+
+    for i in 0..total_messages {
+        let decision = decisions.iter().find(|(pos, _, _)| *pos == i);
+
+        if let Some((_, _db, statement)) = decision {
+            messages.push(message_helpers::user(statement.to_string()));
+            messages.push(message_helpers::assistant(
+                "Understood, I'll update the configuration for the new database choice.".to_string(),
+            ));
+        } else if i % 2 == 0 {
+            messages.push(message_helpers::user(generate_filler_user_message(i)));
+        } else {
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+        }
+    }
+
+    let final_db = decisions.last().unwrap().1;
+
+    Scenario {
+        name: "final_decision_0".to_string(),
+        description: "Decision changes 5 times, must identify the final choice".to_string(),
+        scenario_type: ScenarioType::FinalDecision,
+        messages,
+        task: "What database did we finally decide to use for this project?".to_string(),
+        expected: ExpectedResult::Contains {
+            contains: vec![final_db.to_string()],
+        },
+        planted_info: decisions
+            .iter()
+            .map(|(idx, db, statement)| PlantedInfo {
+                message_index: *idx,
+                key: format!("decision_{}", idx),
+                value: format!("{}: {}", db, statement),
+            })
+            .collect(),
+    }
+}
+
+/// Generate a scenario where task asks to recreate the timeline of decision changes
+fn generate_decision_timeline_scenario(_variant: usize) -> Scenario {
+    let mut messages = Vec::new();
+    let total_messages = 160;
+
+    // API version changes over time
+    let versions = [
+        (8, "v1", "Let's start with API version v1"),
+        (40, "v2", "We need to bump to v2 for the breaking changes"),
+        (75, "v2.1", "Minor update to v2.1 for the bugfixes"),
+        (120, "v3", "Major release: moving to v3 with the new architecture"),
+    ];
+
+    for i in 0..total_messages {
+        let version = versions.iter().find(|(pos, _, _)| *pos == i);
+
+        if let Some((_, ver, statement)) = version {
+            messages.push(message_helpers::user(format!("{} - {}", statement, ver)));
+            messages.push(message_helpers::assistant(format!(
+                "I'll update the API version to {}.",
+                ver
+            )));
+        } else if i % 2 == 0 {
+            messages.push(message_helpers::user(generate_filler_user_message(i)));
+        } else {
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+        }
+    }
+
+    Scenario {
+        name: "decision_timeline_0".to_string(),
+        description: "Must recreate the timeline of API version changes".to_string(),
+        scenario_type: ScenarioType::DecisionTimeline,
+        messages,
+        task: "List all the API versions we went through in order, from first to last.".to_string(),
+        expected: ExpectedResult::Contains {
+            contains: vec![
+                "v1".to_string(),
+                "v2".to_string(),
+                "v2.1".to_string(),
+                "v3".to_string(),
+            ],
+        },
+        planted_info: versions
+            .iter()
+            .map(|(idx, ver, statement)| PlantedInfo {
+                message_index: *idx,
+                key: format!("version_{}", idx),
+                value: format!("{}: {}", ver, statement),
+            })
+            .collect(),
+    }
+}
+
+/// Generate a scenario with same tool called multiple times, results must not be mixed
+fn generate_tool_disambiguation_scenario(_variant: usize) -> Scenario {
+    let mut messages = Vec::new();
+    let total_messages = 140;
+
+    // File read tool called for different files at different times
+    let tool_calls = [
+        (10, "config.json", r#"{"port": 3000, "host": "localhost"}"#),
+        (45, "users.json", r#"[{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]"#),
+        (80, "config.json", r#"{"port": 8080, "host": "0.0.0.0", "ssl": true}"#),
+        (115, "settings.yaml", "debug: true\nlog_level: info"),
+    ];
+
+    for i in 0..total_messages {
+        let tool_call = tool_calls.iter().find(|(pos, _, _)| *pos == i);
+
+        if let Some((_, filename, content)) = tool_call {
+            messages.push(message_helpers::user(format!("Read the file {}", filename)));
+            messages.push(message_helpers::tool_result(
+                format!("read_file_{}", i),
+                format!("Contents of {}:\n{}", filename, content),
+            ));
+            messages.push(message_helpers::assistant(format!(
+                "I've read {}. Let me know if you need anything else.",
+                filename
+            )));
+        } else if i % 2 == 0 {
+            messages.push(message_helpers::user(generate_filler_user_message(i)));
+        } else {
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+        }
+    }
+
+    // Task asks about the SECOND read of config.json (at position 80)
+    Scenario {
+        name: "tool_disambiguation_0".to_string(),
+        description: "Same file read twice with different content, must identify correct version".to_string(),
+        scenario_type: ScenarioType::ToolResultDisambiguation,
+        messages,
+        task: "What is the current port number in config.json? (Use the most recent read)".to_string(),
+        expected: ExpectedResult::Contains {
+            contains: vec!["8080".to_string()],
+        },
+        planted_info: tool_calls
+            .iter()
+            .map(|(idx, filename, content)| PlantedInfo {
+                message_index: *idx,
+                key: format!("{}_{}", filename, idx),
+                value: content.to_string(),
             })
             .collect(),
     }

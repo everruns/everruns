@@ -170,6 +170,12 @@ pub enum ScenarioType {
     Cumulative,
     /// General long-context QA
     LongContextQa,
+    /// Decision changes multiple times, task asks for final state
+    FinalDecision,
+    /// Decision changes multiple times, task asks for timeline
+    DecisionTimeline,
+    /// Same tool called multiple times with different results, must not mix
+    ToolResultDisambiguation,
 }
 
 impl std::fmt::Display for ScenarioType {
@@ -179,6 +185,9 @@ impl std::fmt::Display for ScenarioType {
             ScenarioType::MultiHop => write!(f, "multi_hop"),
             ScenarioType::Cumulative => write!(f, "cumulative"),
             ScenarioType::LongContextQa => write!(f, "long_context_qa"),
+            ScenarioType::FinalDecision => write!(f, "final_decision"),
+            ScenarioType::DecisionTimeline => write!(f, "decision_timeline"),
+            ScenarioType::ToolResultDisambiguation => write!(f, "tool_result_disambiguation"),
         }
     }
 }
