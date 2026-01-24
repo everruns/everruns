@@ -2,7 +2,10 @@
 //!
 //! Generates DatasetRecord with events for eval datasets.
 
-use crate::dataset::{DatasetRecord, Event, Input, Meta, PlantedInfo};
+use crate::dataset::{
+    make_input_event, make_output_event, make_tool_event, DatasetRecord, Event, Input, Meta,
+    PlantedInfo, SessionId,
+};
 
 /// Generate synthetic test scenarios - one of each type
 pub fn generate_synthetic() -> Vec<DatasetRecord> {
@@ -18,6 +21,8 @@ pub fn generate_synthetic() -> Vec<DatasetRecord> {
 
 /// Generate a needle-in-haystack scenario
 fn generate_needle_scenario(variant: usize) -> DatasetRecord {
+    let session_id = SessionId::new();
+
     // Fake secrets for evaluation scenarios - NOT real credentials
     let secrets = [
         ("API_KEY", "fake-api-key-abc123xyz789"),
@@ -31,19 +36,27 @@ fn generate_needle_scenario(variant: usize) -> DatasetRecord {
     let needle_position = 15 + (variant * 7) % 30;
     let total_events = 150 + (variant * 20);
 
-    let mut events = Vec::new();
+    let mut events: Vec<Event> = Vec::new();
+    let mut seq = 0i32;
 
     for i in 0..total_events {
         if i == needle_position {
             // Plant the needle
-            events.push(Event::user(format!(
-                "By the way, I set the {} to {} in the .env file",
-                key_name, key_value
-            )));
+            events.push(make_input_event(
+                session_id,
+                format!(
+                    "By the way, I set the {} to {} in the .env file",
+                    key_name, key_value
+                ),
+                seq,
+            ));
+            seq += 1;
         } else if i % 2 == 0 {
-            events.push(Event::user(generate_filler_user_message(i)));
+            events.push(make_input_event(session_id, generate_filler_user_message(i), seq));
+            seq += 1;
         } else {
-            events.push(Event::assistant(generate_filler_assistant_message(i)));
+            events.push(make_output_event(session_id, generate_filler_assistant_message(i), seq));
+            seq += 1;
         }
     }
 
@@ -71,7 +84,9 @@ fn generate_needle_scenario(variant: usize) -> DatasetRecord {
 
 /// Generate a multi-hop scenario requiring synthesis from multiple points
 fn generate_multi_hop_scenario(variant: usize) -> DatasetRecord {
-    let mut events = Vec::new();
+    let session_id = SessionId::new();
+    let mut events: Vec<Event> = Vec::new();
+    let mut seq = 0i32;
     let total_events = 200;
 
     let service_name = "UserAuthService";
@@ -80,21 +95,9 @@ fn generate_multi_hop_scenario(variant: usize) -> DatasetRecord {
     let port = "8443";
 
     let plants = [
-        (
-            10,
-            format!("Let's call the authentication service {}", service_name),
-        ),
-        (
-            45,
-            format!(
-                "{} will use {} for authentication flow",
-                service_name, auth_method
-            ),
-        ),
-        (
-            80,
-            format!("We'll cache {} sessions in {}", service_name, storage),
-        ),
+        (10, format!("Let's call the authentication service {}", service_name)),
+        (45, format!("{} will use {} for authentication flow", service_name, auth_method)),
+        (80, format!("We'll cache {} sessions in {}", service_name, storage)),
         (120, format!("{} should run on port {}", service_name, port)),
     ];
 
@@ -102,18 +105,20 @@ fn generate_multi_hop_scenario(variant: usize) -> DatasetRecord {
         let plant = plants.iter().find(|(pos, _)| *pos == i);
 
         if let Some((_, content)) = plant {
-            events.push(Event::user(content.clone()));
+            events.push(make_input_event(session_id, content.clone(), seq));
+            seq += 1;
         } else if i % 2 == 0 {
-            events.push(Event::user(generate_filler_user_message(i)));
+            events.push(make_input_event(session_id, generate_filler_user_message(i), seq));
+            seq += 1;
         } else {
-            events.push(Event::assistant(generate_filler_assistant_message(i)));
+            events.push(make_output_event(session_id, generate_filler_assistant_message(i), seq));
+            seq += 1;
         }
     }
 
     DatasetRecord {
         id: format!("multi_hop_{}", variant),
-        description: "Synthesize service configuration from multiple points in conversation"
-            .to_string(),
+        description: "Synthesize service configuration from multiple points in conversation".to_string(),
         task: format!(
             "Summarize the complete configuration for {}: what authentication method, caching, and port?",
             service_name
@@ -142,20 +147,16 @@ fn generate_multi_hop_scenario(variant: usize) -> DatasetRecord {
 
 /// Generate a cumulative scenario tracking changes over time
 fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
-    let mut events = Vec::new();
+    let session_id = SessionId::new();
+    let mut events: Vec<Event> = Vec::new();
+    let mut seq = 0i32;
 
     let function_versions = [
         (0, "fn calculate(x: i32) -> i32 { x }"),
         (20, "fn calculate(x: i32) -> i32 { x * 2 }"),
         (40, "fn calculate(x: i32, y: i32) -> i32 { (x + y) * 2 }"),
-        (
-            60,
-            "fn calculate(x: i32, y: i32) -> i32 { ((x + y) * 2).max(0) }",
-        ),
-        (
-            80,
-            "fn calculate(x: i32, y: i32, factor: i32) -> i32 { ((x + y) * factor).max(0) }",
-        ),
+        (60, "fn calculate(x: i32, y: i32) -> i32 { ((x + y) * 2).max(0) }"),
+        (80, "fn calculate(x: i32, y: i32, factor: i32) -> i32 { ((x + y) * factor).max(0) }"),
     ];
 
     let total_events = 150;
@@ -164,23 +165,33 @@ fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
         let version = function_versions.iter().find(|(pos, _)| *pos == i);
 
         if let Some((_, code)) = version {
-            events.push(Event::user(format!(
-                "Update the function to: ```rust\n{}\n```",
-                code
-            )));
-            events.push(Event::assistant(
-                "Done, I've updated the calculate function.".to_string(),
+            events.push(make_input_event(
+                session_id,
+                format!("Update the function to: ```rust\n{}\n```", code),
+                seq,
             ));
+            seq += 1;
+            events.push(make_output_event(
+                session_id,
+                "Done, I've updated the calculate function.".to_string(),
+                seq,
+            ));
+            seq += 1;
         } else if i % 3 == 0 {
-            events.push(Event::user(generate_filler_user_message(i)));
+            events.push(make_input_event(session_id, generate_filler_user_message(i), seq));
+            seq += 1;
         } else if i % 3 == 1 {
-            events.push(Event::assistant(generate_filler_assistant_message(i)));
+            events.push(make_output_event(session_id, generate_filler_assistant_message(i), seq));
+            seq += 1;
         } else {
-            events.push(Event::tool_result(
+            events.push(make_tool_event(
+                session_id,
                 "read_file",
                 format!("call_{}", i),
                 generate_filler_file_content(i),
+                seq,
             ));
+            seq += 1;
         }
     }
 
@@ -213,6 +224,8 @@ fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
 
 /// Generate a scenario where a decision changes multiple times
 fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
+    let session_id = SessionId::new();
+
     let decision_topics = [
         (
             "database",
@@ -221,10 +234,7 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
                 ("PostgreSQL", "Let's use PostgreSQL for the database"),
                 ("MySQL", "Actually, let's switch to MySQL instead"),
                 ("MongoDB", "On second thought, MongoDB would be better"),
-                (
-                    "PostgreSQL",
-                    "After more research, let's go back to PostgreSQL",
-                ),
+                ("PostgreSQL", "After more research, let's go back to PostgreSQL"),
                 ("CockroachDB", "Final decision: we'll use CockroachDB"),
             ],
         ),
@@ -254,7 +264,8 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
 
     let (topic, task, choices) = &decision_topics[variant % decision_topics.len()];
     let total_events = 180 + (variant * 20) % 60;
-    let mut events = Vec::new();
+    let mut events: Vec<Event> = Vec::new();
+    let mut seq = 0i32;
 
     let positions: Vec<usize> = (0..choices.len())
         .map(|i| 5 + i * (total_events / choices.len()))
@@ -270,16 +281,20 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
         let decision = decisions.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, _name, statement)) = decision {
-            events.push(Event::user(statement.to_string()));
-            events.push(Event::assistant(
+            events.push(make_input_event(session_id, statement.to_string(), seq));
+            seq += 1;
+            events.push(make_output_event(
+                session_id,
                 "Understood, I'll update the configuration.".to_string(),
+                seq,
             ));
+            seq += 1;
         } else if i % 2 == 0 {
-            events.push(Event::user(generate_filler_user_message(i + variant)));
+            events.push(make_input_event(session_id, generate_filler_user_message(i + variant), seq));
+            seq += 1;
         } else {
-            events.push(Event::assistant(generate_filler_assistant_message(
-                i + variant,
-            )));
+            events.push(make_output_event(session_id, generate_filler_assistant_message(i + variant), seq));
+            seq += 1;
         }
     }
 
@@ -311,42 +326,30 @@ fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
 
 /// Generate a scenario asking for timeline of decision changes
 fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
+    let session_id = SessionId::new();
+
     let timeline_topics = [
         (
             "api_version",
             "List all the API versions we went through in order.",
-            vec![
-                ("v1", "Starting with v1"),
-                ("v2", "Bump to v2"),
-                ("v2.1", "Patch v2.1"),
-                ("v3", "Major v3"),
-            ],
+            vec![("v1", "Starting with v1"), ("v2", "Bump to v2"), ("v2.1", "Patch v2.1"), ("v3", "Major v3")],
         ),
         (
             "sprint",
             "List all the sprint names we completed in order.",
-            vec![
-                ("Alpha", "Sprint Alpha"),
-                ("Beta", "Sprint Beta"),
-                ("Gamma", "Sprint Gamma"),
-                ("Delta", "Sprint Delta"),
-                ("Epsilon", "Sprint Epsilon"),
-            ],
+            vec![("Alpha", "Sprint Alpha"), ("Beta", "Sprint Beta"), ("Gamma", "Sprint Gamma"), ("Delta", "Sprint Delta"), ("Epsilon", "Sprint Epsilon")],
         ),
         (
             "release",
             "List all the release codenames in order.",
-            vec![
-                ("Falcon", "Release Falcon"),
-                ("Griffin", "Release Griffin"),
-                ("Hydra", "Release Hydra"),
-            ],
+            vec![("Falcon", "Release Falcon"), ("Griffin", "Release Griffin"), ("Hydra", "Release Hydra")],
         ),
     ];
 
     let (topic, task, versions) = &timeline_topics[variant % timeline_topics.len()];
     let total_events = 160 + (variant * 15) % 40;
-    let mut events = Vec::new();
+    let mut events: Vec<Event> = Vec::new();
+    let mut seq = 0i32;
 
     let positions: Vec<usize> = (0..versions.len())
         .map(|i| 8 + i * (total_events / versions.len()))
@@ -362,14 +365,16 @@ fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
         let version = version_list.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, ver, statement)) = version {
-            events.push(Event::user(format!("{} - {}", statement, ver)));
-            events.push(Event::assistant(format!("Updated to {}.", ver)));
+            events.push(make_input_event(session_id, format!("{} - {}", statement, ver), seq));
+            seq += 1;
+            events.push(make_output_event(session_id, format!("Updated to {}.", ver), seq));
+            seq += 1;
         } else if i % 2 == 0 {
-            events.push(Event::user(generate_filler_user_message(i + variant)));
+            events.push(make_input_event(session_id, generate_filler_user_message(i + variant), seq));
+            seq += 1;
         } else {
-            events.push(Event::assistant(generate_filler_assistant_message(
-                i + variant,
-            )));
+            events.push(make_output_event(session_id, generate_filler_assistant_message(i + variant), seq));
+            seq += 1;
         }
     }
 
@@ -382,10 +387,7 @@ fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
         input: Input { events },
         expectations: vec![
             format!("Response lists all versions: {}", version_names.join(", ")),
-            format!(
-                "Response lists them in correct chronological order: {}",
-                version_names.join(" → ")
-            ),
+            format!("Response lists them in correct chronological order: {}", version_names.join(" → ")),
         ],
         meta: Meta {
             scenario_type: Some("decision_timeline".to_string()),
@@ -404,6 +406,8 @@ fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
 
 /// Generate a scenario with same tool called multiple times
 fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
+    let session_id = SessionId::new();
+
     let tool_scenarios = [
         (
             "config_port",
@@ -441,7 +445,8 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
 
     let (name, task, expected, tool_calls) = &tool_scenarios[variant % tool_scenarios.len()];
     let total_events = 140 + (variant * 20) % 40;
-    let mut events = Vec::new();
+    let mut events: Vec<Event> = Vec::new();
+    let mut seq = 0i32;
 
     let positions: Vec<usize> = (0..tool_calls.len())
         .map(|i| 10 + i * (total_events / tool_calls.len()))
@@ -457,19 +462,24 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
         let tool_call = calls.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, filename, content)) = tool_call {
-            events.push(Event::user(format!("Read the file {}", filename)));
-            events.push(Event::tool_result(
+            events.push(make_input_event(session_id, format!("Read the file {}", filename), seq));
+            seq += 1;
+            events.push(make_tool_event(
+                session_id,
                 "read_file",
                 format!("read_file_{}", i),
                 format!("Contents of {}:\n{}", filename, content),
+                seq,
             ));
-            events.push(Event::assistant(format!("I've read {}.", filename)));
+            seq += 1;
+            events.push(make_output_event(session_id, format!("I've read {}.", filename), seq));
+            seq += 1;
         } else if i % 2 == 0 {
-            events.push(Event::user(generate_filler_user_message(i + variant)));
+            events.push(make_input_event(session_id, generate_filler_user_message(i + variant), seq));
+            seq += 1;
         } else {
-            events.push(Event::assistant(generate_filler_assistant_message(
-                i + variant,
-            )));
+            events.push(make_output_event(session_id, generate_filler_assistant_message(i + variant), seq));
+            seq += 1;
         }
     }
 
@@ -479,10 +489,7 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
         task: format!("{} (Use the most recent read)", task),
         input: Input { events },
         expectations: vec![
-            format!(
-                "Response uses the value from the MOST RECENT read: {}",
-                expected
-            ),
+            format!("Response uses the value from the MOST RECENT read: {}", expected),
             "Response does not confuse earlier file reads with the latest one".to_string(),
         ],
         meta: Meta {
@@ -568,20 +575,13 @@ mod tests {
         assert_eq!(records.len(), 6);
 
         // Should have different types
-        let types: Vec<_> = records
-            .iter()
-            .filter_map(|r| r.meta.scenario_type.as_ref())
-            .collect();
+        let types: Vec<_> = records.iter().filter_map(|r| r.meta.scenario_type.as_ref()).collect();
         assert!(types.iter().any(|t| t.as_str() == "needle_in_haystack"));
         assert!(types.iter().any(|t| t.as_str() == "multi_hop"));
         assert!(types.iter().any(|t| t.as_str() == "cumulative"));
         assert!(types.iter().any(|t| t.as_str() == "final_decision"));
         assert!(types.iter().any(|t| t.as_str() == "decision_timeline"));
-        assert!(
-            types
-                .iter()
-                .any(|t| t.as_str() == "tool_result_disambiguation")
-        );
+        assert!(types.iter().any(|t| t.as_str() == "tool_result_disambiguation"));
     }
 
     #[test]
@@ -598,11 +598,7 @@ mod tests {
     fn test_all_records_have_expectations() {
         let records = generate_synthetic();
         for record in &records {
-            assert!(
-                !record.expectations.is_empty(),
-                "Record {} should have expectations",
-                record.id
-            );
+            assert!(!record.expectations.is_empty(), "Record {} should have expectations", record.id);
         }
     }
 }

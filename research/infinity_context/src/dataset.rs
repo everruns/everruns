@@ -13,6 +13,13 @@ use std::path::Path;
 
 use crate::scorer::Score;
 
+// Re-export core event types for convenience
+pub use everruns_core::events::{
+    Event, EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
+};
+pub use everruns_core::message::ContentPart;
+pub use everruns_core::typed_id::SessionId;
+
 // ============================================================================
 // Dataset Record (input)
 // ============================================================================
@@ -43,29 +50,8 @@ pub struct DatasetRecord {
 /// Input data containing events
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Input {
-    /// Events that make up the conversation history
+    /// Events that make up the conversation history (using core Event type)
     pub events: Vec<Event>,
-}
-
-/// An event in the conversation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum Event {
-    /// User sent a message
-    UserMessage { content: String },
-
-    /// Assistant sent a message
-    AssistantMessage { content: String },
-
-    /// Tool was called and returned a result
-    ToolResult {
-        tool_name: String,
-        tool_call_id: String,
-        result: String,
-    },
-
-    /// System message
-    SystemMessage { content: String },
 }
 
 /// Metadata for the scenario
@@ -318,39 +304,41 @@ pub fn read_results(path: &Path) -> Result<(RunMetadata, Vec<EvalResultRecord>)>
 }
 
 // ============================================================================
-// Conversion helpers
+// Event Helpers
 // ============================================================================
 
-impl Event {
-    pub fn user(content: impl Into<String>) -> Self {
-        Event::UserMessage {
-            content: content.into(),
-        }
-    }
+use everruns_core::message::Message;
 
-    pub fn assistant(content: impl Into<String>) -> Self {
-        Event::AssistantMessage {
-            content: content.into(),
-        }
-    }
+/// Create an input.message event for a user message
+pub fn make_input_event(session_id: SessionId, content: impl Into<String>, sequence: i32) -> Event {
+    let message = Message::user(content);
+    Event::new(session_id, EventContext::empty(), InputMessageData::new(message)).with_sequence(sequence)
+}
 
-    pub fn tool_result(
-        tool_name: impl Into<String>,
-        tool_call_id: impl Into<String>,
-        result: impl Into<String>,
-    ) -> Self {
-        Event::ToolResult {
-            tool_name: tool_name.into(),
-            tool_call_id: tool_call_id.into(),
-            result: result.into(),
-        }
-    }
+/// Create an output.message.completed event for an agent message
+pub fn make_output_event(session_id: SessionId, content: impl Into<String>, sequence: i32) -> Event {
+    let message = Message::assistant(content);
+    Event::new(session_id, EventContext::empty(), OutputMessageCompletedData::new(message)).with_sequence(sequence)
+}
 
-    pub fn system(content: impl Into<String>) -> Self {
-        Event::SystemMessage {
-            content: content.into(),
-        }
-    }
+/// Create a tool.completed event for a tool result
+pub fn make_tool_event(
+    session_id: SessionId,
+    tool_name: impl Into<String>,
+    tool_call_id: impl Into<String>,
+    result: impl Into<String>,
+    sequence: i32,
+) -> Event {
+    let data = ToolCompletedData {
+        tool_call_id: tool_call_id.into(),
+        tool_name: tool_name.into(),
+        success: true,
+        status: "success".to_string(),
+        result: Some(vec![ContentPart::text(result)]),
+        error: None,
+        duration_ms: None,
+    };
+    Event::new(session_id, EventContext::empty(), data).with_sequence(sequence)
 }
 
 #[cfg(test)]
@@ -360,12 +348,16 @@ mod tests {
 
     #[test]
     fn test_dataset_roundtrip() {
+        let session_id = SessionId::new();
         let records = vec![DatasetRecord {
             id: "test_scenario".to_string(),
             description: "Test description".to_string(),
             task: "What was said?".to_string(),
             input: Input {
-                events: vec![Event::user("Hello"), Event::assistant("Hi there")],
+                events: vec![
+                    make_input_event(session_id, "Hello", 0),
+                    make_output_event(session_id, "Hi there", 1),
+                ],
             },
             expectations: vec!["Response mentions Hello".to_string()],
             meta: Meta::default(),

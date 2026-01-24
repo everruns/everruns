@@ -11,8 +11,9 @@ use std::collections::HashMap;
 // Re-export core types
 pub use everruns_core::message::{Message, MessageRole};
 
-use crate::dataset::{DatasetRecord, Event};
+use crate::dataset::DatasetRecord;
 use crate::scorer::Scorer;
+use everruns_core::events::{Event, EventData};
 
 // ============================================================================
 // Token Estimation
@@ -206,25 +207,41 @@ pub struct PlantedInfo {
 // Conversions from Dataset format
 // ============================================================================
 
-impl From<Event> for Message {
-    fn from(event: Event) -> Self {
-        match event {
-            Event::UserMessage { content } => Message::user(content),
-            Event::AssistantMessage { content } => Message::assistant(content),
-            Event::ToolResult {
-                tool_call_id,
-                result,
-                ..
-            } => Message::tool_result(tool_call_id, Some(serde_json::json!(result)), None),
-            Event::SystemMessage { content } => Message::system(content),
+/// Extract a Message from a core Event
+fn message_from_event(event: &Event) -> Option<Message> {
+    match &event.data {
+        EventData::InputMessage(data) => Some(data.message.clone()),
+        EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
+        EventData::ToolCompleted(data) => {
+            // Convert tool result to a Message with ToolResult role
+            // Extract text content from Vec<ContentPart>
+            let result_str = data
+                .result
+                .as_ref()
+                .map(|parts| {
+                    parts
+                        .iter()
+                        .filter_map(|p| p.as_text())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .unwrap_or_default();
+            Some(Message::tool_result(&data.tool_call_id, Some(serde_json::json!(result_str)), None))
         }
+        // Skip other event types (deltas, lifecycle events, etc.)
+        _ => None,
     }
 }
 
 impl From<DatasetRecord> for Scenario {
     fn from(record: DatasetRecord) -> Self {
-        // Convert events to messages
-        let messages: Vec<Message> = record.input.events.into_iter().map(Message::from).collect();
+        // Convert events to messages (filter out non-message events)
+        let messages: Vec<Message> = record
+            .input
+            .events
+            .iter()
+            .filter_map(message_from_event)
+            .collect();
 
         // Convert expectations to LLM judge scorers
         let scorers: Vec<Scorer> = record

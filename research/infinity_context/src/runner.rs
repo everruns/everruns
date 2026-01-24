@@ -424,6 +424,8 @@ async fn execute_llm_calls(
                     content: LlmMessageContent::Text(response.text.clone()),
                     tool_calls: Some(vec![tool_call.clone()]),
                     tool_call_id: None,
+                    thinking: None,
+                    thinking_signature: None,
                 });
 
                 llm_messages.push(LlmMessage {
@@ -431,6 +433,8 @@ async fn execute_llm_calls(
                     content: LlmMessageContent::Text(tool_result),
                     tool_calls: None,
                     tool_call_id: Some(tool_call.id),
+                    thinking: None,
+                    thinking_signature: None,
                 });
             }
         } else {
@@ -495,6 +499,8 @@ fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<Ll
         content: LlmMessageContent::Text(system_content),
         tool_calls: None,
         tool_call_id: None,
+        thinking: None,
+        thinking_signature: None,
     });
 
     for msg in &prepared.messages {
@@ -510,6 +516,8 @@ fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<Ll
             content: LlmMessageContent::Text(msg.text_content()),
             tool_calls: None,
             tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
         });
     }
 
@@ -518,6 +526,8 @@ fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<Ll
         content: LlmMessageContent::Text(scenario.task.clone()),
         tool_calls: None,
         tool_call_id: None,
+        thinking: None,
+        thinking_signature: None,
     });
 
     messages
