@@ -76,24 +76,6 @@ pub enum MessageFilter {
     /// Use sparingly - this filter cannot be pushed to the database.
     /// For complex filtering that can't be expressed in SQL.
     Custom(Arc<dyn Fn(&Message) -> bool + Send + Sync>),
-
-    /// Batch transform (in-memory only)
-    ///
-    /// Transforms the entire message list after all other filters are applied.
-    /// Use for operations like context trimming that need access to the full list.
-    ///
-    /// Returns a tuple of (kept_messages, excluded_messages) to allow tracking
-    /// what was removed (useful for history query tools).
-    BatchTransform(Arc<dyn Fn(Vec<Message>) -> BatchTransformResult + Send + Sync>),
-}
-
-/// Result of a batch transform operation
-#[derive(Debug, Clone)]
-pub struct BatchTransformResult {
-    /// Messages to keep in the result
-    pub kept: Vec<Message>,
-    /// Messages that were excluded (for history tracking)
-    pub excluded: Vec<Message>,
 }
 
 impl fmt::Debug for MessageFilter {
@@ -110,7 +92,6 @@ impl fmt::Debug for MessageFilter {
             Self::ExcludeIds(ids) => f.debug_tuple("ExcludeIds").field(ids).finish(),
             Self::IncludeIds(ids) => f.debug_tuple("IncludeIds").field(ids).finish(),
             Self::Custom(_) => f.debug_tuple("Custom").field(&"<fn>").finish(),
-            Self::BatchTransform(_) => f.debug_tuple("BatchTransform").field(&"<fn>").finish(),
         }
     }
 }
@@ -285,51 +266,16 @@ impl MessageQuery {
 
     /// Check if this query has any DB-mappable filters
     pub fn has_db_filters(&self) -> bool {
-        self.filters.iter().any(|f| {
-            !matches!(
-                f,
-                MessageFilter::Custom(_) | MessageFilter::BatchTransform(_)
-            )
-        })
-    }
-
-    /// Check if this query has any in-memory-only filters (Custom or BatchTransform)
-    pub fn has_custom_filters(&self) -> bool {
-        self.filters.iter().any(|f| {
-            matches!(
-                f,
-                MessageFilter::Custom(_) | MessageFilter::BatchTransform(_)
-            )
-        })
-    }
-
-    /// Check if this query has any batch transform filters
-    pub fn has_batch_transforms(&self) -> bool {
         self.filters
             .iter()
-            .any(|f| matches!(f, MessageFilter::BatchTransform(_)))
+            .any(|f| !matches!(f, MessageFilter::Custom(_)))
     }
 
-    /// Apply batch transforms to a message list, returning kept and excluded messages
-    ///
-    /// This should be called after all other filters have been applied.
-    /// BatchTransforms are applied in order they appear in the filter list.
-    pub fn apply_batch_transforms(&self, messages: Vec<Message>) -> BatchTransformResult {
-        let mut current = messages;
-        let mut all_excluded = Vec::new();
-
-        for filter in &self.filters {
-            if let MessageFilter::BatchTransform(transform) = filter {
-                let result = transform(current);
-                current = result.kept;
-                all_excluded.extend(result.excluded);
-            }
-        }
-
-        BatchTransformResult {
-            kept: current,
-            excluded: all_excluded,
-        }
+    /// Check if this query has any in-memory-only filters (Custom predicates)
+    pub fn has_custom_filters(&self) -> bool {
+        self.filters
+            .iter()
+            .any(|f| matches!(f, MessageFilter::Custom(_)))
     }
 
     /// Check if this query has any injections

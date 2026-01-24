@@ -803,10 +803,6 @@ impl InMemoryDatabase {
                             // Custom filters are applied at the Message level,
                             // not the EventRow level. Skip here.
                         }
-                        MessageFilter::BatchTransform(_) => {
-                            // Batch transforms are applied after fetching messages.
-                            // Skip here.
-                        }
                     }
                 }
 

@@ -853,9 +853,6 @@ impl Database {
                 MessageFilter::Custom(_) => {
                     // Custom filters are applied in-memory, not in SQL
                 }
-                MessageFilter::BatchTransform(_) => {
-                    // Batch transforms are applied after fetching messages, not in SQL
-                }
             }
         }
 

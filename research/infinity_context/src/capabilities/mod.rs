@@ -16,6 +16,5 @@ pub use crate::types::ContextStrategyConfig;
 // Re-export useful traits from core
 pub use everruns_core::capabilities::{Capability, CapabilityStatus};
 pub use everruns_core::message_filter::{
-    BatchTransformResult, InjectedMessage, InjectionPosition, MessageFilter, MessageFilterProvider,
-    MessageQuery,
+    InjectedMessage, InjectionPosition, MessageFilter, MessageFilterProvider, MessageQuery,
 };

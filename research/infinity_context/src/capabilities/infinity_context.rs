@@ -2,12 +2,14 @@
 //!
 //! Enables unlimited conversation length by trimming context and providing
 //! a history search tool for the LLM to query excluded messages.
+//!
+//! Uses DB-level LIMIT for scalability. The query_history tool queries
+//! the MessageRetriever directly for excluded messages.
 
 use super::{
-    BatchTransformResult, Capability, CapabilityStatus, MessageFilter, MessageFilterProvider,
-    MessageQuery,
+    Capability, CapabilityStatus, MessageFilterProvider, MessageQuery,
 };
-use crate::capabilities::naive_trim::trim_messages_to_budget;
+use super::naive_trim::calculate_message_limit;
 use crate::types::ContextStrategyConfig;
 use async_trait::async_trait;
 use everruns_core::message::{ContentPart, Message, MessageRole};
@@ -77,14 +79,9 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         let config: ContextStrategyConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
 
-        let budget = config.context_budget_tokens;
-        let min_recent = config.min_recent_messages;
-
-        query.filters.push(MessageFilter::BatchTransform(Arc::new(
-            move |messages: Vec<Message>| -> BatchTransformResult {
-                trim_messages_to_budget(messages, budget, min_recent)
-            },
-        )));
+        // Calculate message limit based on token budget
+        let limit = calculate_message_limit(config.context_budget_tokens, config.min_recent_messages);
+        query.limit = Some(limit as i64);
     }
 
     fn priority(&self) -> i32 {

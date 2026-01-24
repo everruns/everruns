@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::error::Result;
 use crate::message::Message;
+use crate::message_filter::MessageQuery;
 use crate::message_retriever::{InputMessage, MessageRetriever};
 use crate::traits::{AgentStore, LlmProviderStore, SessionStore, ToolExecutor};
 use chrono::Utc;
@@ -127,6 +128,60 @@ impl MessageRetriever for InMemoryMessageRetriever {
             .get(&session_id)
             .cloned()
             .unwrap_or_default())
+    }
+
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+        use crate::message_filter::MessageFilter;
+
+        let mut messages = self.load(query.session_id).await?;
+
+        // Apply filters
+        for filter in &query.filters {
+            match filter {
+                MessageFilter::TimeRange { from, to } => {
+                    messages.retain(|m| {
+                        let after_from = from.is_none_or(|t| m.created_at >= t);
+                        let before_to = to.is_none_or(|t| m.created_at <= t);
+                        after_from && before_to
+                    });
+                }
+                MessageFilter::Search(q) => {
+                    let q_lower = q.to_lowercase();
+                    messages.retain(|m| {
+                        m.text()
+                            .is_some_and(|t| t.to_lowercase().contains(&q_lower))
+                    });
+                }
+                MessageFilter::Custom(predicate) => {
+                    messages.retain(|m| predicate(m));
+                }
+                // Other filters not commonly used in-memory
+                _ => {}
+            }
+        }
+
+        // Apply offset
+        if let Some(offset) = query.offset {
+            let offset = offset.max(0i64) as usize;
+            if offset < messages.len() {
+                messages = messages.into_iter().skip(offset).collect();
+            } else {
+                messages.clear();
+            }
+        }
+
+        // Apply limit
+        if let Some(limit) = query.limit {
+            let limit = limit.max(0i64) as usize;
+            messages.truncate(limit);
+        }
+
+        // Apply injections
+        if query.has_injections() {
+            query.apply_injections(&mut messages);
+        }
+
+        Ok(messages)
     }
 
     async fn count(&self, session_id: SessionId) -> Result<usize> {

@@ -2,7 +2,7 @@
 //!
 //! Uses core's LLM driver and Capability infrastructure directly.
 
-use crate::capabilities::{Capability, MessageFilter, MessageQuery};
+use crate::capabilities::{Capability, MessageQuery};
 use crate::metrics::{aggregate_strategy_results, check_success};
 use crate::types::{ContextStrategyConfig, EvalMetrics, EvaluationResults, Message, MessageExt, Scenario, ScenarioResult};
 use anyhow::Result;
@@ -187,24 +187,26 @@ fn prepare_context(
     let mut query = MessageQuery::default();
     provider.apply_filters(&mut query, &config);
 
-    // Execute batch transform filters to get kept/excluded
-    let mut current_messages = messages.to_vec();
-    let mut excluded = Vec::new();
-
-    for filter in &query.filters {
-        if let MessageFilter::BatchTransform(transform) = filter {
-            let result = transform(current_messages);
-            current_messages = result.kept;
-            excluded.extend(result.excluded);
+    // Apply limit from query (keep most recent N messages)
+    let (kept, excluded) = if let Some(limit) = query.limit {
+        let limit = limit.max(0) as usize;
+        if messages.len() > limit {
+            // Keep the most recent messages
+            let split_point = messages.len() - limit;
+            (messages[split_point..].to_vec(), messages[..split_point].to_vec())
+        } else {
+            (messages.to_vec(), vec![])
         }
-    }
+    } else {
+        (messages.to_vec(), vec![])
+    };
 
-    let estimated_tokens: usize = current_messages.iter().map(|m| m.estimated_tokens()).sum();
+    let estimated_tokens: usize = kept.iter().map(|m| m.estimated_tokens()).sum();
     let tools = capability.tools();
     let tool_definitions = tools_to_definitions(&tools);
 
     PreparedContext {
-        messages: current_messages,
+        messages: kept,
         excluded,
         system_addition: capability.system_prompt_addition().map(String::from),
         tools,
