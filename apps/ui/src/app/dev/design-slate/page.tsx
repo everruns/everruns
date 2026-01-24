@@ -142,11 +142,8 @@ function SlateBadge({
 function SlateUserMessage({ content }: { content: string }) {
   return (
     <div className="flex justify-end">
-      <div
-        className="max-w-[85%] bg-[#0A1636] text-white px-3 py-2"
-        style={{ borderRadius: '0px' }}
-      >
-        <p className="text-sm">{content}</p>
+      <div className="max-w-[85%] border-r-2 border-[#D4A43A] bg-[#D4A43A10] px-3 py-2">
+        <p className="text-sm text-[hsl(0_0%_15%)]">{content}</p>
       </div>
     </div>
   );
@@ -193,12 +190,11 @@ function NavItem({ icon: Icon, label, active = false }: { icon: React.ElementTyp
   return (
     <div
       className={cn(
-        "flex items-center gap-3 px-3 py-2 text-sm cursor-pointer transition-colors mx-2",
+        "flex items-center gap-3 px-3 py-2 text-sm cursor-pointer transition-colors",
         active
-          ? "bg-[#D4A43A18] text-[#9A7420]"
+          ? "bg-[#D4A43A18] text-[#9A7420] border-l-2 border-[#D4A43A]"
           : "text-[hsl(0_0%_45%)] hover:text-[hsl(0_0%_15%)] hover:bg-[hsl(0_0%_94%)]"
       )}
-      style={{ borderRadius: '0px' }}
     >
       <Icon className="w-4 h-4" />
       <span>{label}</span>
@@ -326,7 +322,7 @@ export default function DesignSlatePage() {
               </div>
               <div>
                 <div className="text-[hsl(0_0%_55%)] mb-2">Active nav item</div>
-                <div className="bg-[#D4A43A18] text-[#9A7420] px-3 py-2 text-sm" style={{ borderRadius: '0px' }}>
+                <div className="bg-[#D4A43A18] text-[#9A7420] border-l-2 border-[#D4A43A] px-3 py-2 text-sm">
                   Agents
                 </div>
               </div>
