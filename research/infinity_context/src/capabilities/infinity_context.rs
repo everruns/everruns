@@ -6,17 +6,15 @@
 //! Uses DB-level LIMIT for scalability. The query_history tool queries
 //! the MessageRetriever directly for excluded messages.
 
-use super::{
-    Capability, CapabilityStatus, MessageFilterProvider, MessageQuery,
-};
 use super::naive_trim::calculate_message_limit;
+use super::{Capability, CapabilityStatus, MessageFilterProvider, MessageQuery};
 use crate::types::ContextStrategyConfig;
 use async_trait::async_trait;
 use everruns_core::message::{ContentPart, Message, MessageRole};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Capability that enables unlimited conversation length via history querying.
@@ -80,7 +78,8 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
             serde_json::from_value(config.clone()).unwrap_or_default();
 
         // Calculate message limit based on token budget
-        let limit = calculate_message_limit(config.context_budget_tokens, config.min_recent_messages);
+        let limit =
+            calculate_message_limit(config.context_budget_tokens, config.min_recent_messages);
         query.limit = Some(limit as i64);
     }
 
@@ -156,7 +155,7 @@ impl Tool for QueryHistoryTool {
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         // Without context, we can't access messages
         ToolExecutionResult::tool_error(
-            "query_history requires ToolContext with MessageRetriever. Use execute_with_context()."
+            "query_history requires ToolContext with MessageRetriever. Use execute_with_context().",
         )
     }
 
@@ -181,7 +180,9 @@ impl Tool for QueryHistoryTool {
 
         let messages = match retriever.load(context.session_id).await {
             Ok(m) => m,
-            Err(e) => return ToolExecutionResult::tool_error(format!("Failed to load messages: {}", e)),
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!("Failed to load messages: {}", e));
+            }
         };
 
         if messages.is_empty() {
@@ -224,7 +225,11 @@ struct SearchResult<'a> {
     score: f64,
 }
 
-fn search_messages<'a>(messages: &'a [Message], query: &str, limit: usize) -> Vec<SearchResult<'a>> {
+fn search_messages<'a>(
+    messages: &'a [Message],
+    query: &str,
+    limit: usize,
+) -> Vec<SearchResult<'a>> {
     let query_lower = query.to_lowercase();
     let mut results: Vec<SearchResult<'a>> = Vec::new();
 
@@ -251,11 +256,19 @@ fn search_messages<'a>(messages: &'a [Message], query: &str, limit: usize) -> Ve
                 MessageRole::ToolResult => {}
             }
 
-            results.push(SearchResult { index: idx, message: msg, score });
+            results.push(SearchResult {
+                index: idx,
+                message: msg,
+                score,
+            });
         }
     }
 
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     results.truncate(limit);
     results
 }
@@ -290,7 +303,11 @@ fn format_message(msg: &Message, idx: usize, total: usize) -> Value {
     })
 }
 
-fn format_range_result(messages: &[&Message], start_idx: usize, total: usize) -> ToolExecutionResult {
+fn format_range_result(
+    messages: &[&Message],
+    start_idx: usize,
+    total: usize,
+) -> ToolExecutionResult {
     if messages.is_empty() {
         return ToolExecutionResult::success(json!({
             "message": "No messages in the specified range.",
@@ -367,7 +384,11 @@ mod tests {
 
         let results = search_messages(&messages, "API", 10);
         assert!(!results.is_empty());
-        assert!(results.iter().any(|r| extract_text_content(r.message).contains("API")));
+        assert!(
+            results
+                .iter()
+                .any(|r| extract_text_content(r.message).contains("API"))
+        );
     }
 
     #[test]

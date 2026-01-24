@@ -55,7 +55,8 @@ impl MessageFilterProvider for NaiveTrimFilterProvider {
             serde_json::from_value(config.clone()).unwrap_or_default();
 
         // Calculate message limit based on token budget and estimated tokens per message
-        let limit = calculate_message_limit(config.context_budget_tokens, config.min_recent_messages);
+        let limit =
+            calculate_message_limit(config.context_budget_tokens, config.min_recent_messages);
         query.limit = Some(limit as i64);
     }
 

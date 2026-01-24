@@ -11,6 +11,9 @@ use std::collections::HashMap;
 // Re-export core types
 pub use everruns_core::message::{Message, MessageRole};
 
+use crate::dataset::{DatasetRecord, Event};
+use crate::scorer::Scorer;
+
 // ============================================================================
 // Token Estimation
 // ============================================================================
@@ -131,11 +134,7 @@ pub mod message_helpers {
     }
 
     pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Message {
-        Message::tool_result(
-            tool_call_id,
-            Some(serde_json::json!(content.into())),
-            None,
-        )
+        Message::tool_result(tool_call_id, Some(serde_json::json!(content.into())), None)
     }
 }
 
@@ -201,6 +200,80 @@ pub struct PlantedInfo {
     pub key: String,
     /// The value/content to retrieve
     pub value: String,
+}
+
+// ============================================================================
+// Conversions from Dataset format
+// ============================================================================
+
+impl From<Event> for Message {
+    fn from(event: Event) -> Self {
+        match event {
+            Event::UserMessage { content } => Message::user(content),
+            Event::AssistantMessage { content } => Message::assistant(content),
+            Event::ToolResult {
+                tool_call_id,
+                result,
+                ..
+            } => Message::tool_result(tool_call_id, Some(serde_json::json!(result)), None),
+            Event::SystemMessage { content } => Message::system(content),
+        }
+    }
+}
+
+impl From<DatasetRecord> for Scenario {
+    fn from(record: DatasetRecord) -> Self {
+        // Convert events to messages
+        let messages: Vec<Message> = record.input.events.into_iter().map(Message::from).collect();
+
+        // Convert expectations to LLM judge scorers
+        let scorers: Vec<Scorer> = record
+            .expectations
+            .iter()
+            .enumerate()
+            .map(|(i, expectation)| {
+                Scorer::llm_judge(format!("expectation_{}", i), expectation.clone())
+            })
+            .collect();
+
+        // Determine scenario type
+        let scenario_type = record
+            .meta
+            .scenario_type
+            .as_deref()
+            .map(|s| match s {
+                "needle_in_haystack" => ScenarioType::NeedleInHaystack,
+                "multi_hop" => ScenarioType::MultiHop,
+                "cumulative" => ScenarioType::Cumulative,
+                "final_decision" => ScenarioType::FinalDecision,
+                "decision_timeline" => ScenarioType::DecisionTimeline,
+                "tool_result_disambiguation" => ScenarioType::ToolResultDisambiguation,
+                _ => ScenarioType::LongContextQa,
+            })
+            .unwrap_or(ScenarioType::LongContextQa);
+
+        // Convert planted info
+        let planted_info: Vec<PlantedInfo> = record
+            .meta
+            .planted_info
+            .into_iter()
+            .map(|p| PlantedInfo {
+                message_index: p.event_index,
+                key: p.key,
+                value: p.value,
+            })
+            .collect();
+
+        Scenario {
+            name: record.id,
+            description: record.description,
+            scenario_type,
+            messages,
+            task: record.task,
+            scorers,
+            planted_info,
+        }
+    }
 }
 
 /// Result of running a single scenario with a strategy

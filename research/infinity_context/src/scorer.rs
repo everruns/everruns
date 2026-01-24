@@ -60,10 +60,7 @@ pub enum Scorer {
     },
 
     /// Check if response matches regex pattern
-    Pattern {
-        name: String,
-        pattern: String,
-    },
+    Pattern { name: String, pattern: String },
 
     /// Exact match (case-insensitive by default)
     Exact {
@@ -308,7 +305,14 @@ fn parse_judge_response(name: &str, response: &str) -> Result<Score> {
     let rationale = response
         .lines()
         .find(|line| line.trim().to_uppercase().starts_with("RATIONALE:"))
-        .map(|line| line.split(':').skip(1).collect::<Vec<_>>().join(":").trim().to_string())
+        .map(|line| {
+            line.split(':')
+                .skip(1)
+                .collect::<Vec<_>>()
+                .join(":")
+                .trim()
+                .to_string()
+        })
         .unwrap_or_else(|| response.to_string());
 
     Ok(Score::new(name, score_value).with_rationale(rationale))
@@ -334,8 +338,9 @@ pub async fn evaluate_all(
             // LLM scorer
             match evaluate_with_llm(scorer, task, response, config).await {
                 Ok(s) => s,
-                Err(e) => Score::new(scorer.name(), 0.0)
-                    .with_rationale(format!("Judge error: {}", e)),
+                Err(e) => {
+                    Score::new(scorer.name(), 0.0).with_rationale(format!("Judge error: {}", e))
+                }
             }
         } else {
             // No judge config, skip LLM scorers

@@ -136,7 +136,8 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
         }
 
         if infinity.context_exceeded == 0 && baseline.context_exceeded > 0 {
-            analysis.push_str("- Infinity context handled all scenarios without context overflow\n");
+            analysis
+                .push_str("- Infinity context handled all scenarios without context overflow\n");
         }
     }
 
@@ -216,4 +217,3 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
 
     analysis
 }
-

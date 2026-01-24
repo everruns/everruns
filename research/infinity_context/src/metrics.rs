@@ -10,7 +10,10 @@ pub fn aggregate_strategy_results(
     let total = results.len();
     let passed = results.iter().filter(|r| r.passed()).count();
     let failed = total - passed;
-    let context_exceeded = results.iter().filter(|r| r.metrics.context_exceeded).count();
+    let context_exceeded = results
+        .iter()
+        .filter(|r| r.metrics.context_exceeded)
+        .count();
 
     let total_score: f64 = results.iter().map(|r| r.score).sum();
     let total_tokens: usize = results.iter().map(|r| r.metrics.total_tokens).sum();

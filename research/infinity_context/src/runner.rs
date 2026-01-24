@@ -4,8 +4,11 @@
 
 use crate::capabilities::{Capability, MessageQuery};
 use crate::metrics::aggregate_strategy_results;
-use crate::scorer::{aggregate_scores, evaluate_all, JudgeConfig, Score};
-use crate::types::{ContextStrategyConfig, EvalMetrics, EvaluationResults, Message, MessageExt, Scenario, ScenarioResult};
+use crate::scorer::{JudgeConfig, Score, aggregate_scores, evaluate_all};
+use crate::types::{
+    ContextStrategyConfig, EvalMetrics, EvaluationResults, Message, MessageExt, Scenario,
+    ScenarioResult,
+};
 use anyhow::Result;
 use chrono::Utc;
 use colored::Colorize;
@@ -138,8 +141,14 @@ pub async fn run_evaluation(
         timestamp: Utc::now(),
         model: config.model.clone(),
         config: HashMap::from([
-            ("context_window".to_string(), config.context_window.to_string()),
-            ("budget_percent".to_string(), config.budget_percent.to_string()),
+            (
+                "context_window".to_string(),
+                config.context_window.to_string(),
+            ),
+            (
+                "budget_percent".to_string(),
+                config.budget_percent.to_string(),
+            ),
         ]),
         strategy_results,
     })
@@ -197,7 +206,10 @@ fn prepare_context(
         if messages.len() > limit {
             // Keep the most recent messages
             let split_point = messages.len() - limit;
-            (messages[split_point..].to_vec(), messages[..split_point].to_vec())
+            (
+                messages[split_point..].to_vec(),
+                messages[..split_point].to_vec(),
+            )
         } else {
             (messages.to_vec(), vec![])
         }
@@ -330,10 +342,12 @@ async fn run_single_scenario(
 
 /// Create judge config from environment if API key is available
 fn create_judge_config() -> Option<JudgeConfig> {
-    std::env::var("ANTHROPIC_API_KEY").ok().map(|api_key| JudgeConfig {
-        model: "claude-3-5-haiku-20241022".to_string(),
-        api_key,
-    })
+    std::env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .map(|api_key| JudgeConfig {
+            model: "claude-3-5-haiku-20241022".to_string(),
+            api_key,
+        })
 }
 
 async fn execute_llm_calls(
@@ -362,8 +376,7 @@ async fn execute_llm_calls(
     let session_id = SessionId::new();
     let retriever = InMemoryMessageRetriever::new();
     retriever.seed(session_id, prepared.excluded).await;
-    let tool_context = ToolContext::new(session_id)
-        .with_message_retriever(Arc::new(retriever));
+    let tool_context = ToolContext::new(session_id).with_message_retriever(Arc::new(retriever));
 
     for _iteration in 0..max_iterations {
         let llm_config = LlmCallConfig {
@@ -375,7 +388,9 @@ async fn execute_llm_calls(
             metadata: HashMap::new(),
         };
 
-        let response = driver.chat_completion(llm_messages.clone(), &llm_config).await?;
+        let response = driver
+            .chat_completion(llm_messages.clone(), &llm_config)
+            .await?;
 
         metrics.llm_calls += 1;
         if let Some(prompt) = response.metadata.prompt_tokens {
@@ -396,7 +411,13 @@ async fn execute_llm_calls(
                 metrics.history_queries += 1;
 
                 // Find and execute the tool using execute_with_context
-                let tool_result = execute_tool(&prepared.tools, &tool_call.name, &tool_call.arguments, &tool_context).await;
+                let tool_result = execute_tool(
+                    &prepared.tools,
+                    &tool_call.name,
+                    &tool_call.arguments,
+                    &tool_context,
+                )
+                .await;
 
                 llm_messages.push(LlmMessage {
                     role: LlmMessageRole::Assistant,
@@ -436,7 +457,9 @@ async fn execute_tool(
             return match result {
                 ToolExecutionResult::Success(value) => value.to_string(),
                 ToolExecutionResult::ToolError(msg) => format!("Error: {}", msg),
-                ToolExecutionResult::InternalError(err) => format!("Internal error: {}", err.message),
+                ToolExecutionResult::InternalError(err) => {
+                    format!("Internal error: {}", err.message)
+                }
             };
         }
     }
@@ -459,7 +482,9 @@ fn get_api_key(provider_type: &ProviderType) -> Result<String> {
 fn build_llm_messages(prepared: &PreparedContext, scenario: &Scenario) -> Vec<LlmMessage> {
     let mut messages = Vec::new();
 
-    let mut system_content = "You are a helpful assistant. Answer questions based on the conversation history.".to_string();
+    let mut system_content =
+        "You are a helpful assistant. Answer questions based on the conversation history."
+            .to_string();
     if let Some(ref addition) = prepared.system_addition {
         system_content.push_str("\n\n");
         system_content.push_str(addition);
@@ -505,9 +530,15 @@ fn create_dry_run_result(
     will_exceed: bool,
 ) -> ScenarioResult {
     let (score, scores) = if will_exceed {
-        (0.0, vec![Score::new("context", 0.0).with_rationale("Context would exceed limit")])
+        (
+            0.0,
+            vec![Score::new("context", 0.0).with_rationale("Context would exceed limit")],
+        )
     } else {
-        (1.0, vec![Score::new("dry_run", 1.0).with_rationale("Dry run - assumed pass")])
+        (
+            1.0,
+            vec![Score::new("dry_run", 1.0).with_rationale("Dry run - assumed pass")],
+        )
     };
 
     ScenarioResult {

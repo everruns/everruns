@@ -2,7 +2,7 @@
 //!
 //! Format compatible with HuggingFace datasets. Each line is a JSON object:
 //! ```json
-//! {"name": "needle_basic_0", "type": "needle_in_haystack", "messages": [...], "task": "...", "scorers": [...]}
+//! {"id": "needle_basic_0", "task": "...", "input": {"events": [...]}, "expectations": [...]}
 //! ```
 
 use anyhow::{Context, Result};
@@ -11,8 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
-use crate::scorer::{Score, Scorer};
-use crate::types::{Message, PlantedInfo, Scenario, ScenarioType};
+use crate::scorer::Score;
 
 // ============================================================================
 // Dataset Record (input)
@@ -22,56 +21,86 @@ use crate::types::{Message, PlantedInfo, Scenario, ScenarioType};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetRecord {
     /// Unique identifier for this scenario
-    pub name: String,
-
-    /// Scenario type for categorization
-    #[serde(rename = "type")]
-    pub scenario_type: ScenarioType,
+    pub id: String,
 
     /// Human-readable description
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-
-    /// The conversation history
-    pub messages: Vec<Message>,
+    pub description: String,
 
     /// The task/question to answer
     pub task: String,
 
-    /// Scorers for evaluating responses (multiple allowed)
-    pub scorers: Vec<Scorer>,
+    /// Input data for the scenario
+    pub input: Input,
 
-    /// Metadata about planted information (for debugging)
+    /// Expectations for LLM judge to evaluate
+    pub expectations: Vec<String>,
+
+    /// Metadata for debugging and categorization
+    #[serde(default)]
+    pub meta: Meta,
+}
+
+/// Input data containing events
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Input {
+    /// Events that make up the conversation history
+    pub events: Vec<Event>,
+}
+
+/// An event in the conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Event {
+    /// User sent a message
+    UserMessage { content: String },
+
+    /// Assistant sent a message
+    AssistantMessage { content: String },
+
+    /// Tool was called and returned a result
+    ToolResult {
+        tool_name: String,
+        tool_call_id: String,
+        result: String,
+    },
+
+    /// System message
+    SystemMessage { content: String },
+}
+
+/// Metadata for the scenario
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Meta {
+    /// Scenario type for categorization
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scenario_type: Option<String>,
+
+    /// Position of planted information (for needle scenarios)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planted_at: Option<usize>,
+
+    /// Key information that was planted
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planted_key: Option<String>,
+
+    /// Value that was planted
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planted_value: Option<String>,
+
+    /// Additional planted info for multi-hop scenarios
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub planted_info: Vec<PlantedInfo>,
 }
 
-impl From<Scenario> for DatasetRecord {
-    fn from(s: Scenario) -> Self {
-        Self {
-            name: s.name,
-            scenario_type: s.scenario_type,
-            description: Some(s.description),
-            messages: s.messages,
-            task: s.task,
-            scorers: s.scorers,
-            planted_info: s.planted_info,
-        }
-    }
-}
-
-impl From<DatasetRecord> for Scenario {
-    fn from(r: DatasetRecord) -> Self {
-        Self {
-            name: r.name,
-            description: r.description.unwrap_or_default(),
-            scenario_type: r.scenario_type,
-            messages: r.messages,
-            task: r.task,
-            scorers: r.scorers,
-            planted_info: r.planted_info,
-        }
-    }
+/// Information planted in the conversation for retrieval tests
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlantedInfo {
+    /// Position in event list (0-indexed)
+    pub event_index: usize,
+    /// The key information to find
+    pub key: String,
+    /// The value/content to retrieve
+    pub value: String,
 }
 
 // ============================================================================
@@ -81,19 +110,16 @@ impl From<DatasetRecord> for Scenario {
 /// A single evaluation result record (JSONL format)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalResultRecord {
-    /// Scenario name
-    pub scenario: String,
-
-    /// Scenario type
-    pub scenario_type: ScenarioType,
+    /// Scenario id
+    pub id: String,
 
     /// Capability/strategy name
     pub capability: String,
 
-    /// Aggregate score (0.0-1.0, average of all scorer scores)
+    /// Aggregate score (0.0-1.0, average of all expectation scores)
     pub score: f64,
 
-    /// Individual scorer results
+    /// Individual expectation results
     pub scores: Vec<Score>,
 
     /// Model response
@@ -138,11 +164,11 @@ pub struct ResultMetrics {
     /// Whether context limit was exceeded
     pub context_exceeded: bool,
 
-    /// Messages included in context
-    pub messages_in_context: usize,
+    /// Events included in context
+    pub events_in_context: usize,
 
-    /// Messages excluded from context
-    pub messages_excluded: usize,
+    /// Events excluded from context
+    pub events_excluded: usize,
 }
 
 impl From<crate::types::EvalMetrics> for ResultMetrics {
@@ -155,8 +181,8 @@ impl From<crate::types::EvalMetrics> for ResultMetrics {
             history_queries: m.history_queries,
             latency_ms: m.latency_ms,
             context_exceeded: m.context_exceeded,
-            messages_in_context: m.messages_in_context,
-            messages_excluded: m.messages_excluded,
+            events_in_context: m.messages_in_context,
+            events_excluded: m.messages_excluded,
         }
     }
 }
@@ -235,7 +261,11 @@ pub fn read_dataset(path: &Path) -> Result<Vec<DatasetRecord>> {
 }
 
 /// Write evaluation results to JSONL file
-pub fn write_results(path: &Path, metadata: &RunMetadata, results: &[EvalResultRecord]) -> Result<()> {
+pub fn write_results(
+    path: &Path,
+    metadata: &RunMetadata,
+    results: &[EvalResultRecord],
+) -> Result<()> {
     let file = std::fs::File::create(path).context("Failed to create results file")?;
     let mut writer = std::io::BufWriter::new(file);
 
@@ -287,6 +317,42 @@ pub fn read_results(path: &Path) -> Result<(RunMetadata, Vec<EvalResultRecord>)>
     Ok((metadata, results))
 }
 
+// ============================================================================
+// Conversion helpers
+// ============================================================================
+
+impl Event {
+    pub fn user(content: impl Into<String>) -> Self {
+        Event::UserMessage {
+            content: content.into(),
+        }
+    }
+
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Event::AssistantMessage {
+            content: content.into(),
+        }
+    }
+
+    pub fn tool_result(
+        tool_name: impl Into<String>,
+        tool_call_id: impl Into<String>,
+        result: impl Into<String>,
+    ) -> Self {
+        Event::ToolResult {
+            tool_name: tool_name.into(),
+            tool_call_id: tool_call_id.into(),
+            result: result.into(),
+        }
+    }
+
+    pub fn system(content: impl Into<String>) -> Self {
+        Event::SystemMessage {
+            content: content.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,13 +361,14 @@ mod tests {
     #[test]
     fn test_dataset_roundtrip() {
         let records = vec![DatasetRecord {
-            name: "test_scenario".to_string(),
-            scenario_type: ScenarioType::NeedleInHaystack,
-            description: Some("Test description".to_string()),
-            messages: vec![Message::user("Hello"), Message::assistant("Hi there")],
+            id: "test_scenario".to_string(),
+            description: "Test description".to_string(),
             task: "What was said?".to_string(),
-            scorers: vec![Scorer::contains("has_hello", vec!["Hello".to_string()])],
-            planted_info: vec![],
+            input: Input {
+                events: vec![Event::user("Hello"), Event::assistant("Hi there")],
+            },
+            expectations: vec!["Response mentions Hello".to_string()],
+            meta: Meta::default(),
         }];
 
         let dir = tempdir().unwrap();
@@ -311,7 +378,7 @@ mod tests {
         let loaded = read_dataset(&path).unwrap();
 
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].name, "test_scenario");
-        assert_eq!(loaded[0].scorers.len(), 1);
+        assert_eq!(loaded[0].id, "test_scenario");
+        assert_eq!(loaded[0].input.events.len(), 2);
     }
 }

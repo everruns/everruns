@@ -1,12 +1,11 @@
 //! Synthetic scenario generation
 //!
-//! Uses everruns-core Message type for test scenarios.
+//! Generates DatasetRecord with events for eval datasets.
 
-use crate::scorer::Scorer;
-use crate::types::{message_helpers, PlantedInfo, Scenario, ScenarioType};
+use crate::dataset::{DatasetRecord, Event, Input, Meta, PlantedInfo};
 
 /// Generate synthetic test scenarios - one of each type
-pub fn generate_synthetic() -> Vec<Scenario> {
+pub fn generate_synthetic() -> Vec<DatasetRecord> {
     vec![
         generate_needle_scenario(0),
         generate_multi_hop_scenario(0),
@@ -18,7 +17,7 @@ pub fn generate_synthetic() -> Vec<Scenario> {
 }
 
 /// Generate a needle-in-haystack scenario
-fn generate_needle_scenario(variant: usize) -> Scenario {
+fn generate_needle_scenario(variant: usize) -> DatasetRecord {
     // Fake secrets for evaluation scenarios - NOT real credentials
     let secrets = [
         ("API_KEY", "fake-api-key-abc123xyz789"),
@@ -29,183 +28,191 @@ fn generate_needle_scenario(variant: usize) -> Scenario {
     ];
 
     let (key_name, key_value) = secrets[variant % secrets.len()];
-    let needle_position = 15 + (variant * 7) % 30; // Vary where the needle is placed
-    let total_messages = 150 + (variant * 20); // Vary conversation length
+    let needle_position = 15 + (variant * 7) % 30;
+    let total_events = 150 + (variant * 20);
 
-    let mut messages = Vec::new();
+    let mut events = Vec::new();
 
-    // Generate conversation with planted needle
-    for i in 0..total_messages {
+    for i in 0..total_events {
         if i == needle_position {
             // Plant the needle
-            messages.push(message_helpers::user(format!(
+            events.push(Event::user(format!(
                 "By the way, I set the {} to {} in the .env file",
                 key_name, key_value
             )));
         } else if i % 2 == 0 {
-            // User message (filler)
-            messages.push(message_helpers::user(generate_filler_user_message(i)));
+            events.push(Event::user(generate_filler_user_message(i)));
         } else {
-            // Assistant message (filler)
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+            events.push(Event::assistant(generate_filler_assistant_message(i)));
         }
     }
 
-    Scenario {
-        name: format!("needle_basic_{}", variant),
+    DatasetRecord {
+        id: format!("needle_basic_{}", variant),
         description: format!(
-            "Find {} value planted at message {} in {} message conversation",
-            key_name, needle_position, total_messages
+            "Find {} value planted at event {} in {} event conversation",
+            key_name, needle_position, total_events
         ),
-        scenario_type: ScenarioType::NeedleInHaystack,
-        messages,
         task: format!("What is the {} we configured earlier?", key_name),
-        scorers: vec![
-            Scorer::contains("has_value", vec![key_value.to_string()]),
-            Scorer::llm_judge_with_ideal(
-                "correct_answer",
-                "Response correctly identifies the configured value",
-                key_value.to_string(),
-            ),
+        input: Input { events },
+        expectations: vec![
+            format!("Response mentions the value: {}", key_value),
+            format!("Response correctly identifies it as the {}", key_name),
         ],
-        planted_info: vec![PlantedInfo {
-            message_index: needle_position,
-            key: key_name.to_string(),
-            value: key_value.to_string(),
-        }],
+        meta: Meta {
+            scenario_type: Some("needle_in_haystack".to_string()),
+            planted_at: Some(needle_position),
+            planted_key: Some(key_name.to_string()),
+            planted_value: Some(key_value.to_string()),
+            planted_info: vec![],
+        },
     }
 }
 
 /// Generate a multi-hop scenario requiring synthesis from multiple points
-fn generate_multi_hop_scenario(variant: usize) -> Scenario {
-    let mut messages = Vec::new();
-    let total_messages = 200;
+fn generate_multi_hop_scenario(variant: usize) -> DatasetRecord {
+    let mut events = Vec::new();
+    let total_events = 200;
 
-    // Plant information at different points
     let service_name = "UserAuthService";
     let auth_method = "OAuth 2.0";
     let storage = "Redis";
     let port = "8443";
 
     let plants = [
-        (10, format!("Let's call the authentication service {}", service_name)),
-        (45, format!("{} will use {} for authentication flow", service_name, auth_method)),
-        (80, format!("We'll cache {} sessions in {}", service_name, storage)),
+        (
+            10,
+            format!("Let's call the authentication service {}", service_name),
+        ),
+        (
+            45,
+            format!(
+                "{} will use {} for authentication flow",
+                service_name, auth_method
+            ),
+        ),
+        (
+            80,
+            format!("We'll cache {} sessions in {}", service_name, storage),
+        ),
         (120, format!("{} should run on port {}", service_name, port)),
     ];
 
-    for i in 0..total_messages {
-        // Check if this is a plant position
+    for i in 0..total_events {
         let plant = plants.iter().find(|(pos, _)| *pos == i);
 
         if let Some((_, content)) = plant {
-            messages.push(message_helpers::user(content.clone()));
+            events.push(Event::user(content.clone()));
         } else if i % 2 == 0 {
-            messages.push(message_helpers::user(generate_filler_user_message(i)));
+            events.push(Event::user(generate_filler_user_message(i)));
         } else {
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+            events.push(Event::assistant(generate_filler_assistant_message(i)));
         }
     }
 
-    Scenario {
-        name: format!("multi_hop_{}", variant),
-        description: "Synthesize service configuration from multiple points in conversation".to_string(),
-        scenario_type: ScenarioType::MultiHop,
-        messages,
+    DatasetRecord {
+        id: format!("multi_hop_{}", variant),
+        description: "Synthesize service configuration from multiple points in conversation"
+            .to_string(),
         task: format!(
             "Summarize the complete configuration for {}: what authentication method, caching, and port?",
             service_name
         ),
-        scorers: vec![
-            Scorer::contains("has_auth", vec![auth_method.to_string()]),
-            Scorer::contains("has_storage", vec![storage.to_string()]),
-            Scorer::contains("has_port", vec![port.to_string()]),
-            Scorer::llm_judge(
-                "complete_summary",
-                "Response mentions all three: authentication method, caching solution, and port number",
-            ),
+        input: Input { events },
+        expectations: vec![
+            format!("Response mentions authentication method: {}", auth_method),
+            format!("Response mentions caching solution: {}", storage),
+            format!("Response mentions port: {}", port),
+            "Response synthesizes all three pieces of information".to_string(),
         ],
-        planted_info: plants
-            .iter()
-            .map(|(idx, content)| PlantedInfo {
-                message_index: *idx,
-                key: format!("info_{}", idx),
-                value: content.clone(),
-            })
-            .collect(),
+        meta: Meta {
+            scenario_type: Some("multi_hop".to_string()),
+            planted_info: plants
+                .iter()
+                .map(|(idx, content)| PlantedInfo {
+                    event_index: *idx,
+                    key: format!("info_{}", idx),
+                    value: content.clone(),
+                })
+                .collect(),
+            ..Default::default()
+        },
     }
 }
 
 /// Generate a cumulative scenario tracking changes over time
-fn generate_cumulative_scenario(variant: usize) -> Scenario {
-    let mut messages = Vec::new();
+fn generate_cumulative_scenario(variant: usize) -> DatasetRecord {
+    let mut events = Vec::new();
 
-    // Build up a function incrementally
     let function_versions = [
         (0, "fn calculate(x: i32) -> i32 { x }"),
         (20, "fn calculate(x: i32) -> i32 { x * 2 }"),
         (40, "fn calculate(x: i32, y: i32) -> i32 { (x + y) * 2 }"),
-        (60, "fn calculate(x: i32, y: i32) -> i32 { ((x + y) * 2).max(0) }"),
-        (80, "fn calculate(x: i32, y: i32, factor: i32) -> i32 { ((x + y) * factor).max(0) }"),
+        (
+            60,
+            "fn calculate(x: i32, y: i32) -> i32 { ((x + y) * 2).max(0) }",
+        ),
+        (
+            80,
+            "fn calculate(x: i32, y: i32, factor: i32) -> i32 { ((x + y) * factor).max(0) }",
+        ),
     ];
 
-    let total_messages = 150;
+    let total_events = 150;
 
-    for i in 0..total_messages {
-        // Check if this is a version update
+    for i in 0..total_events {
         let version = function_versions.iter().find(|(pos, _)| *pos == i);
 
         if let Some((_, code)) = version {
-            messages.push(message_helpers::user(format!(
+            events.push(Event::user(format!(
                 "Update the function to: ```rust\n{}\n```",
                 code
             )));
-            messages.push(message_helpers::assistant(
+            events.push(Event::assistant(
                 "Done, I've updated the calculate function.".to_string(),
             ));
         } else if i % 3 == 0 {
-            messages.push(message_helpers::user(generate_filler_user_message(i)));
+            events.push(Event::user(generate_filler_user_message(i)));
         } else if i % 3 == 1 {
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+            events.push(Event::assistant(generate_filler_assistant_message(i)));
         } else {
-            // Add some tool results for variety - using a generic tool call id
-            messages.push(message_helpers::tool_result(
+            events.push(Event::tool_result(
+                "read_file",
                 format!("call_{}", i),
                 generate_filler_file_content(i),
             ));
         }
     }
 
-    let _final_version = function_versions.last().unwrap().1;
+    let final_version = function_versions.last().unwrap().1;
 
-    Scenario {
-        name: format!("cumulative_{}", variant),
+    DatasetRecord {
+        id: format!("cumulative_{}", variant),
         description: "Track cumulative changes to a function across conversation".to_string(),
-        scenario_type: ScenarioType::Cumulative,
-        messages,
         task: "What is the current/final version of the calculate function? Show the complete function signature and body.".to_string(),
-        scorers: vec![
-            Scorer::contains("has_factor_param", vec!["factor".to_string()]),
-            Scorer::contains("has_max_call", vec!["max(0)".to_string()]),
-            Scorer::llm_judge_with_ideal(
-                "shows_final_version",
-                "Response shows the FINAL version of the function with factor parameter and max(0) call",
-                "fn calculate(x: i32, y: i32, factor: i32) -> i32 { ((x + y) * factor).max(0) }",
-            ),
+        input: Input { events },
+        expectations: vec![
+            "Response shows the FINAL version with factor parameter".to_string(),
+            "Response includes .max(0) call".to_string(),
+            format!("Response shows: {}", final_version),
         ],
-        planted_info: function_versions
-            .iter()
-            .map(|(idx, code)| PlantedInfo {
-                message_index: *idx,
-                key: format!("version_{}", idx),
-                value: code.to_string(),
-            })
-            .collect(),
+        meta: Meta {
+            scenario_type: Some("cumulative".to_string()),
+            planted_info: function_versions
+                .iter()
+                .map(|(idx, code)| PlantedInfo {
+                    event_index: *idx,
+                    key: format!("version_{}", idx),
+                    value: code.to_string(),
+                })
+                .collect(),
+            ..Default::default()
+        },
     }
 }
 
-/// Generate a scenario where a decision changes multiple times, task asks for final state
-fn generate_final_decision_scenario(variant: usize) -> Scenario {
+/// Generate a scenario where a decision changes multiple times
+fn generate_final_decision_scenario(variant: usize) -> DatasetRecord {
     let decision_topics = [
         (
             "database",
@@ -214,7 +221,10 @@ fn generate_final_decision_scenario(variant: usize) -> Scenario {
                 ("PostgreSQL", "Let's use PostgreSQL for the database"),
                 ("MySQL", "Actually, let's switch to MySQL instead"),
                 ("MongoDB", "On second thought, MongoDB would be better"),
-                ("PostgreSQL", "After more research, let's go back to PostgreSQL"),
+                (
+                    "PostgreSQL",
+                    "After more research, let's go back to PostgreSQL",
+                ),
                 ("CockroachDB", "Final decision: we'll use CockroachDB"),
             ],
         ),
@@ -243,12 +253,11 @@ fn generate_final_decision_scenario(variant: usize) -> Scenario {
     ];
 
     let (topic, task, choices) = &decision_topics[variant % decision_topics.len()];
-    let total_messages = 180 + (variant * 20) % 60;
-    let mut messages = Vec::new();
+    let total_events = 180 + (variant * 20) % 60;
+    let mut events = Vec::new();
 
-    // Spread decisions across the conversation
     let positions: Vec<usize> = (0..choices.len())
-        .map(|i| 5 + i * (total_messages / choices.len()))
+        .map(|i| 5 + i * (total_events / choices.len()))
         .collect();
 
     let decisions: Vec<(usize, &str, &str)> = positions
@@ -257,75 +266,90 @@ fn generate_final_decision_scenario(variant: usize) -> Scenario {
         .map(|(pos, (name, stmt))| (*pos, *name, *stmt))
         .collect();
 
-    for i in 0..total_messages {
+    for i in 0..total_events {
         let decision = decisions.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, _name, statement)) = decision {
-            messages.push(message_helpers::user(statement.to_string()));
-            messages.push(message_helpers::assistant(
+            events.push(Event::user(statement.to_string()));
+            events.push(Event::assistant(
                 "Understood, I'll update the configuration.".to_string(),
             ));
         } else if i % 2 == 0 {
-            messages.push(message_helpers::user(generate_filler_user_message(i + variant)));
+            events.push(Event::user(generate_filler_user_message(i + variant)));
         } else {
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i + variant)));
+            events.push(Event::assistant(generate_filler_assistant_message(
+                i + variant,
+            )));
         }
     }
 
     let final_choice = decisions.last().unwrap().1;
 
-    Scenario {
-        name: format!("final_decision_{}_{}", topic, variant),
+    DatasetRecord {
+        id: format!("final_decision_{}_{}", topic, variant),
         description: format!("Decision about {} changes {} times", topic, choices.len()),
-        scenario_type: ScenarioType::FinalDecision,
-        messages,
         task: task.to_string(),
-        scorers: vec![
-            Scorer::contains("has_final_choice", vec![final_choice.to_string()]),
-            Scorer::llm_judge_with_ideal(
-                "identifies_final",
-                "Response correctly identifies the FINAL decision, not an earlier one",
-                final_choice,
-            ),
+        input: Input { events },
+        expectations: vec![
+            format!("Response identifies the FINAL choice: {}", final_choice),
+            "Response does not confuse earlier decisions with the final one".to_string(),
         ],
-        planted_info: decisions
-            .iter()
-            .map(|(idx, name, statement)| PlantedInfo {
-                message_index: *idx,
-                key: format!("decision_{}", idx),
-                value: format!("{}: {}", name, statement),
-            })
-            .collect(),
+        meta: Meta {
+            scenario_type: Some("final_decision".to_string()),
+            planted_info: decisions
+                .iter()
+                .map(|(idx, name, statement)| PlantedInfo {
+                    event_index: *idx,
+                    key: format!("decision_{}", idx),
+                    value: format!("{}: {}", name, statement),
+                })
+                .collect(),
+            ..Default::default()
+        },
     }
 }
 
-/// Generate a scenario where task asks to recreate the timeline of decision changes
-fn generate_decision_timeline_scenario(variant: usize) -> Scenario {
+/// Generate a scenario asking for timeline of decision changes
+fn generate_decision_timeline_scenario(variant: usize) -> DatasetRecord {
     let timeline_topics = [
         (
             "api_version",
             "List all the API versions we went through in order.",
-            vec![("v1", "Starting with v1"), ("v2", "Bump to v2"), ("v2.1", "Patch v2.1"), ("v3", "Major v3")],
+            vec![
+                ("v1", "Starting with v1"),
+                ("v2", "Bump to v2"),
+                ("v2.1", "Patch v2.1"),
+                ("v3", "Major v3"),
+            ],
         ),
         (
             "sprint",
             "List all the sprint names we completed in order.",
-            vec![("Alpha", "Sprint Alpha"), ("Beta", "Sprint Beta"), ("Gamma", "Sprint Gamma"), ("Delta", "Sprint Delta"), ("Epsilon", "Sprint Epsilon")],
+            vec![
+                ("Alpha", "Sprint Alpha"),
+                ("Beta", "Sprint Beta"),
+                ("Gamma", "Sprint Gamma"),
+                ("Delta", "Sprint Delta"),
+                ("Epsilon", "Sprint Epsilon"),
+            ],
         ),
         (
             "release",
             "List all the release codenames in order.",
-            vec![("Falcon", "Release Falcon"), ("Griffin", "Release Griffin"), ("Hydra", "Release Hydra")],
+            vec![
+                ("Falcon", "Release Falcon"),
+                ("Griffin", "Release Griffin"),
+                ("Hydra", "Release Hydra"),
+            ],
         ),
     ];
 
     let (topic, task, versions) = &timeline_topics[variant % timeline_topics.len()];
-    let total_messages = 160 + (variant * 15) % 40;
-    let mut messages = Vec::new();
+    let total_events = 160 + (variant * 15) % 40;
+    let mut events = Vec::new();
 
-    // Spread versions across the conversation
     let positions: Vec<usize> = (0..versions.len())
-        .map(|i| 8 + i * (total_messages / versions.len()))
+        .map(|i| 8 + i * (total_events / versions.len()))
         .collect();
 
     let version_list: Vec<(usize, &str, &str)> = positions
@@ -334,48 +358,52 @@ fn generate_decision_timeline_scenario(variant: usize) -> Scenario {
         .map(|(pos, (ver, stmt))| (*pos, *ver, *stmt))
         .collect();
 
-    for i in 0..total_messages {
+    for i in 0..total_events {
         let version = version_list.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, ver, statement)) = version {
-            messages.push(message_helpers::user(format!("{} - {}", statement, ver)));
-            messages.push(message_helpers::assistant(format!("Updated to {}.", ver)));
+            events.push(Event::user(format!("{} - {}", statement, ver)));
+            events.push(Event::assistant(format!("Updated to {}.", ver)));
         } else if i % 2 == 0 {
-            messages.push(message_helpers::user(generate_filler_user_message(i + variant)));
+            events.push(Event::user(generate_filler_user_message(i + variant)));
         } else {
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i + variant)));
+            events.push(Event::assistant(generate_filler_assistant_message(
+                i + variant,
+            )));
         }
     }
 
     let version_names: Vec<String> = versions.iter().map(|(v, _)| v.to_string()).collect();
 
-    Scenario {
-        name: format!("timeline_{}_{}", topic, variant),
+    DatasetRecord {
+        id: format!("timeline_{}_{}", topic, variant),
         description: format!("Recreate timeline of {} changes", topic),
-        scenario_type: ScenarioType::DecisionTimeline,
-        messages,
         task: task.to_string(),
-        scorers: vec![
-            Scorer::contains("has_all_versions", version_names.clone()),
-            Scorer::llm_judge_with_ideal(
-                "correct_order",
-                "Response lists ALL versions in the correct chronological order",
-                version_names.join(" → "),
+        input: Input { events },
+        expectations: vec![
+            format!("Response lists all versions: {}", version_names.join(", ")),
+            format!(
+                "Response lists them in correct chronological order: {}",
+                version_names.join(" → ")
             ),
         ],
-        planted_info: version_list
-            .iter()
-            .map(|(idx, ver, statement)| PlantedInfo {
-                message_index: *idx,
-                key: format!("version_{}", idx),
-                value: format!("{}: {}", ver, statement),
-            })
-            .collect(),
+        meta: Meta {
+            scenario_type: Some("decision_timeline".to_string()),
+            planted_info: version_list
+                .iter()
+                .map(|(idx, ver, statement)| PlantedInfo {
+                    event_index: *idx,
+                    key: format!("version_{}", idx),
+                    value: format!("{}: {}", ver, statement),
+                })
+                .collect(),
+            ..Default::default()
+        },
     }
 }
 
-/// Generate a scenario with same tool called multiple times, results must not be mixed
-fn generate_tool_disambiguation_scenario(variant: usize) -> Scenario {
+/// Generate a scenario with same tool called multiple times
+fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
     let tool_scenarios = [
         (
             "config_port",
@@ -412,12 +440,11 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> Scenario {
     ];
 
     let (name, task, expected, tool_calls) = &tool_scenarios[variant % tool_scenarios.len()];
-    let total_messages = 140 + (variant * 20) % 40;
-    let mut messages = Vec::new();
+    let total_events = 140 + (variant * 20) % 40;
+    let mut events = Vec::new();
 
-    // Spread tool calls across the conversation
     let positions: Vec<usize> = (0..tool_calls.len())
-        .map(|i| 10 + i * (total_messages / tool_calls.len()))
+        .map(|i| 10 + i * (total_events / tool_calls.len()))
         .collect();
 
     let calls: Vec<(usize, &str, &str)> = positions
@@ -426,49 +453,54 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> Scenario {
         .map(|(pos, (file, content))| (*pos, *file, *content))
         .collect();
 
-    for i in 0..total_messages {
+    for i in 0..total_events {
         let tool_call = calls.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, filename, content)) = tool_call {
-            messages.push(message_helpers::user(format!("Read the file {}", filename)));
-            messages.push(message_helpers::tool_result(
+            events.push(Event::user(format!("Read the file {}", filename)));
+            events.push(Event::tool_result(
+                "read_file",
                 format!("read_file_{}", i),
                 format!("Contents of {}:\n{}", filename, content),
             ));
-            messages.push(message_helpers::assistant(format!("I've read {}.", filename)));
+            events.push(Event::assistant(format!("I've read {}.", filename)));
         } else if i % 2 == 0 {
-            messages.push(message_helpers::user(generate_filler_user_message(i + variant)));
+            events.push(Event::user(generate_filler_user_message(i + variant)));
         } else {
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i + variant)));
+            events.push(Event::assistant(generate_filler_assistant_message(
+                i + variant,
+            )));
         }
     }
 
-    Scenario {
-        name: format!("tool_disambig_{}_{}", name, variant),
+    DatasetRecord {
+        id: format!("tool_disambig_{}_{}", name, variant),
         description: "Same file read multiple times, must use most recent".to_string(),
-        scenario_type: ScenarioType::ToolResultDisambiguation,
-        messages,
         task: format!("{} (Use the most recent read)", task),
-        scorers: vec![
-            Scorer::contains("has_current_value", vec![expected.to_string()]),
-            Scorer::llm_judge_with_ideal(
-                "uses_latest",
-                "Response uses the MOST RECENT file read, not an earlier outdated value",
-                *expected,
+        input: Input { events },
+        expectations: vec![
+            format!(
+                "Response uses the value from the MOST RECENT read: {}",
+                expected
             ),
+            "Response does not confuse earlier file reads with the latest one".to_string(),
         ],
-        planted_info: calls
-            .iter()
-            .map(|(idx, filename, content)| PlantedInfo {
-                message_index: *idx,
-                key: format!("{}_{}", filename, idx),
-                value: content.to_string(),
-            })
-            .collect(),
+        meta: Meta {
+            scenario_type: Some("tool_result_disambiguation".to_string()),
+            planted_info: calls
+                .iter()
+                .map(|(idx, filename, content)| PlantedInfo {
+                    event_index: *idx,
+                    key: format!("{}_{}", filename, idx),
+                    value: content.to_string(),
+                })
+                .collect(),
+            ..Default::default()
+        },
     }
 }
 
-/// Generate filler user messages about coding
+/// Generate filler user messages
 fn generate_filler_user_message(seed: usize) -> String {
     let templates = [
         "Can you help me refactor the logging module?",
@@ -527,35 +559,50 @@ fn generate_filler_file_content(seed: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::MessageExt;
 
     #[test]
     fn test_generate_synthetic_scenarios() {
-        let scenarios = generate_synthetic();
+        let records = generate_synthetic();
 
-        // Should have 6 scenarios (one of each type)
-        assert_eq!(scenarios.len(), 6);
+        // Should have 6 records (one of each type)
+        assert_eq!(records.len(), 6);
 
         // Should have different types
-        let types: Vec<_> = scenarios.iter().map(|s| &s.scenario_type).collect();
-        assert!(types.iter().any(|t| matches!(t, ScenarioType::NeedleInHaystack)));
-        assert!(types.iter().any(|t| matches!(t, ScenarioType::MultiHop)));
-        assert!(types.iter().any(|t| matches!(t, ScenarioType::Cumulative)));
-        assert!(types.iter().any(|t| matches!(t, ScenarioType::FinalDecision)));
-        assert!(types.iter().any(|t| matches!(t, ScenarioType::DecisionTimeline)));
-        assert!(types.iter().any(|t| matches!(t, ScenarioType::ToolResultDisambiguation)));
+        let types: Vec<_> = records
+            .iter()
+            .filter_map(|r| r.meta.scenario_type.as_ref())
+            .collect();
+        assert!(types.iter().any(|t| t.as_str() == "needle_in_haystack"));
+        assert!(types.iter().any(|t| t.as_str() == "multi_hop"));
+        assert!(types.iter().any(|t| t.as_str() == "cumulative"));
+        assert!(types.iter().any(|t| t.as_str() == "final_decision"));
+        assert!(types.iter().any(|t| t.as_str() == "decision_timeline"));
+        assert!(
+            types
+                .iter()
+                .any(|t| t.as_str() == "tool_result_disambiguation")
+        );
     }
 
     #[test]
     fn test_needle_scenario_has_planted_info() {
-        let scenario = generate_needle_scenario(0);
+        let record = generate_needle_scenario(0);
 
-        assert!(!scenario.planted_info.is_empty());
-        assert!(!scenario.messages.is_empty());
+        assert!(record.meta.planted_at.is_some());
+        assert!(record.meta.planted_value.is_some());
+        assert!(!record.input.events.is_empty());
+        assert!(!record.expectations.is_empty());
+    }
 
-        // Verify the planted message exists at the specified index
-        let plant = &scenario.planted_info[0];
-        let planted_message = &scenario.messages[plant.message_index];
-        assert!(planted_message.text_content().contains(&plant.value));
+    #[test]
+    fn test_all_records_have_expectations() {
+        let records = generate_synthetic();
+        for record in &records {
+            assert!(
+                !record.expectations.is_empty(),
+                "Record {} should have expectations",
+                record.id
+            );
+        }
     }
 }

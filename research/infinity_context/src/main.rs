@@ -24,9 +24,9 @@ use chrono::Utc;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::PathBuf;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-use dataset::{DatasetRecord, EvalResultRecord, RunMetadata};
+use dataset::{EvalResultRecord, RunMetadata};
 use types::Scenario;
 
 #[derive(Parser)]
@@ -166,15 +166,15 @@ fn print_header() {
 async fn cmd_generate(output: PathBuf) -> Result<()> {
     println!("{} Generating dataset...\n", "→".bright_blue());
 
-    let scenarios = scenarios::generate_synthetic();
-    let records: Vec<DatasetRecord> = scenarios.into_iter().map(DatasetRecord::from).collect();
+    let records = scenarios::generate_synthetic();
 
     println!("{}", "Generated scenarios:".bold());
     for record in &records {
+        let scenario_type = record.meta.scenario_type.as_deref().unwrap_or("unknown");
         println!(
             "  • {} ({})",
-            record.name.bright_cyan(),
-            record.scenario_type.to_string().dimmed()
+            record.id.bright_cyan(),
+            scenario_type.dimmed()
         );
     }
     println!();
@@ -303,16 +303,8 @@ async fn cmd_run(
     let mut result_records = Vec::new();
     for strategy_result in &results.strategy_results {
         for scenario_result in &strategy_result.scenario_results {
-            // Find scenario type
-            let scenario_type = scenarios
-                .iter()
-                .find(|s| s.name == scenario_result.scenario_name)
-                .map(|s| s.scenario_type.clone())
-                .unwrap_or(types::ScenarioType::NeedleInHaystack);
-
             result_records.push(EvalResultRecord {
-                scenario: scenario_result.scenario_name.clone(),
-                scenario_type,
+                id: scenario_result.scenario_name.clone(),
                 capability: scenario_result.strategy_name.clone(),
                 score: scenario_result.score,
                 scores: scenario_result.scores.clone(),
@@ -390,7 +382,8 @@ fn print_results_text(metadata: &RunMetadata, results: &[EvalResultRecord]) {
     println!("  Dataset: {}", metadata.dataset);
     println!(
         "  Context: {} tokens @ {}%",
-        metadata.context_window, metadata.budget_percent * 100.0
+        metadata.context_window,
+        metadata.budget_percent * 100.0
     );
     println!();
 
@@ -405,7 +398,8 @@ fn print_results_text(metadata: &RunMetadata, results: &[EvalResultRecord]) {
     }
 
     for (capability, cap_results) in &by_capability {
-        let avg_score: f64 = cap_results.iter().map(|r| r.score).sum::<f64>() / cap_results.len() as f64;
+        let avg_score: f64 =
+            cap_results.iter().map(|r| r.score).sum::<f64>() / cap_results.len() as f64;
         let passed_count = cap_results.iter().filter(|r| r.passed()).count();
         let total = cap_results.len();
 
@@ -427,11 +421,7 @@ fn print_results_text(metadata: &RunMetadata, results: &[EvalResultRecord]) {
             };
             println!(
                 "  {} {} (score: {:.2}, {}ms, {} queries)",
-                status,
-                r.scenario,
-                r.score,
-                r.metrics.latency_ms,
-                r.metrics.history_queries
+                status, r.id, r.score, r.metrics.latency_ms, r.metrics.history_queries
             );
             // Show individual scorer results
             for s in &r.scores {
@@ -477,12 +467,16 @@ fn print_results_markdown(metadata: &RunMetadata, results: &[EvalResultRecord]) 
     }
 
     for (capability, cap_results) in &by_capability {
-        let avg_score: f64 = cap_results.iter().map(|r| r.score).sum::<f64>() / cap_results.len().max(1) as f64;
+        let avg_score: f64 =
+            cap_results.iter().map(|r| r.score).sum::<f64>() / cap_results.len().max(1) as f64;
         let passed_count = cap_results.iter().filter(|r| r.passed()).count();
         let fail_count = cap_results.len() - passed_count;
         println!(
             "| {} | {:.1}% | {} | {} |",
-            capability, avg_score * 100.0, passed_count, fail_count
+            capability,
+            avg_score * 100.0,
+            passed_count,
+            fail_count
         );
     }
 
@@ -497,7 +491,7 @@ fn print_results_markdown(metadata: &RunMetadata, results: &[EvalResultRecord]) 
         };
         println!(
             "- {} **{}** / {} - score: {:.2}, {}ms, {} queries",
-            status, r.scenario, r.capability, r.score, r.metrics.latency_ms, r.metrics.history_queries
+            status, r.id, r.capability, r.score, r.metrics.latency_ms, r.metrics.history_queries
         );
         // Show individual scores
         for s in &r.scores {
