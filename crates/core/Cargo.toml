@@ -70,9 +70,10 @@ eventsource-stream = "0.2"
 llmsim = "0.2.0"
 
 [features]
-default = []
+default = ["llm-tests"]
 openapi = ["utoipa"]
 sqlx = ["dep:sqlx"]
+llm-tests = []  # LLM integration tests (requires API keys)
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

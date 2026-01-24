@@ -18,7 +18,7 @@ use crate::agent::{Agent, AgentStatus};
 use crate::atoms::{
     ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
 };
-use crate::capabilities::{Capability, CapabilityRegistry};
+use crate::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry};
 use crate::error::Result;
 use crate::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
 use crate::llm_driver_registry::{DriverRegistry, ProviderType};
@@ -316,6 +316,13 @@ impl InMemoryAgenticLoopBuilder {
         let message_retriever = InMemoryMessageRetriever::new();
         let event_emitter = BridgingEventEmitter::new(message_retriever.clone());
 
+        // Build capability configs for the agent from capabilities
+        let agent_capability_configs: Vec<AgentCapabilityConfig> = self
+            .capabilities
+            .iter()
+            .map(|cap| AgentCapabilityConfig::new(cap.id()))
+            .collect();
+
         // Create agent
         let agent_id = AgentId::new();
         let now = Utc::now();
@@ -326,7 +333,7 @@ impl InMemoryAgenticLoopBuilder {
             system_prompt: self.system_prompt,
             default_model_id: None,
             tags: vec![],
-            capabilities: vec![],
+            capabilities: agent_capability_configs,
             status: AgentStatus::Active,
             created_at: now,
             updated_at: now,
@@ -398,8 +405,11 @@ impl InMemoryAgenticLoopBuilder {
         }
         let tool_registry = tool_builder.build();
 
-        // Create atoms
-        let capability_registry = CapabilityRegistry::new();
+        // Create capability registry with added capabilities
+        let mut capability_registry = CapabilityRegistry::new();
+        for capability in self.capabilities {
+            capability_registry.register_boxed(capability);
+        }
 
         let input_atom = InputAtom::new(message_retriever.clone());
         let reason_atom = ReasonAtom::new(
@@ -504,7 +514,10 @@ impl InMemoryAgenticLoop {
         self.session_id
     }
 
-    /// Run a turn with the given user message
+    /// Run a turn with the given user input
+    ///
+    /// Accepts either a string or an `InputMessage` for full control over
+    /// message options like reasoning effort.
     ///
     /// This executes the full agentic loop using the TurnStateMachine:
     /// 1. Add user message
@@ -513,11 +526,31 @@ impl InMemoryAgenticLoop {
     ///
     /// The TurnStateMachine ensures consistent orchestration logic,
     /// proper error handling (checking success flag), and turn ID management.
-    pub async fn run_turn(&self, user_message: &str) -> Result<TurnResult> {
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Simple string input
+    /// let result = runner.run_turn("Hello").await?;
+    ///
+    /// // Full InputMessage with controls
+    /// let input = InputMessage {
+    ///     role: MessageRole::User,
+    ///     content: vec![ContentPart::text("What is 2+2?")],
+    ///     controls: Some(Controls {
+    ///         model_id: None,
+    ///         reasoning: Some(ReasoningConfig { effort: Some("medium".into()) }),
+    ///     }),
+    ///     metadata: None,
+    ///     tags: vec![],
+    /// };
+    /// let result = runner.run_turn(input).await?;
+    /// ```
+    pub async fn run_turn(&self, input: impl Into<InputMessage>) -> Result<TurnResult> {
         // Add user message
         let message = self
             .message_retriever
-            .add(self.session_id, InputMessage::user(user_message))
+            .add(self.session_id, input.into())
             .await?;
 
         // Create turn context and state machine
@@ -609,7 +642,7 @@ impl InMemoryAgenticLoop {
     pub async fn run_conversation(&self, messages: &[&str]) -> Result<Vec<TurnResult>> {
         let mut results = Vec::with_capacity(messages.len());
         for msg in messages {
-            results.push(self.run_turn(msg).await?);
+            results.push(self.run_turn(*msg).await?);
         }
         Ok(results)
     }
