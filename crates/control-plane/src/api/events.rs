@@ -33,6 +33,11 @@ use utoipa::{IntoParams, ToSchema};
 pub struct EventsQuery {
     /// Filter events with ID greater than this UUID v7 (monotonically increasing)
     pub since_id: Option<Uuid>,
+    /// Event types to exclude from the response (can be specified multiple times).
+    /// Common delta events to exclude: output.message.delta, reason.thinking.delta
+    #[serde(default)]
+    #[param(style = Form, explode = true)]
+    pub exclude: Vec<String>,
 }
 
 // ============================================
@@ -150,21 +155,23 @@ pub async fn stream_sse(
         })?;
 
     let session_id = session_id.uuid();
-    tracing::info!(session_id = %session_id, since_id = ?query.since_id, "Starting event stream");
+    tracing::info!(session_id = %session_id, since_id = ?query.since_id, exclude = ?query.exclude, "Starting event stream");
 
     let event_service = state.event_service.clone();
     let initial_since_id = query.since_id;
+    let exclude_types = query.exclude;
 
     // Use realtime config for session events (fast updates for interactive UX)
     let config = SseStreamConfig::realtime();
 
-    // State for stream: (last_id, backoff_ms, sent_connected)
+    // State for stream: (last_id, backoff_ms, sent_connected, exclude_types)
     #[derive(Clone)]
     struct StreamState {
         last_id: Option<Uuid>,
         backoff_ms: u64,
         sent_connected: bool,
         config: SseStreamConfig,
+        exclude_types: Vec<String>,
     }
 
     let initial_state = StreamState {
@@ -172,6 +179,7 @@ pub async fn stream_sse(
         backoff_ms: config.min_backoff_ms,
         sent_connected: false,
         config,
+        exclude_types,
     };
 
     // Create stream that replays events from database
@@ -196,7 +204,7 @@ pub async fn stream_sse(
 
             // Fetch events since last ID
             tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
-            match event_service.list(session_id, None, state.last_id).await {
+            match event_service.list(session_id, None, state.last_id, &state.exclude_types).await {
                 Ok(events) if !events.is_empty() => {
                     // Get the last event ID for next iteration (extract UUID for db query)
                     let new_last_id = Some(events.last().unwrap().id.uuid());
@@ -231,6 +239,7 @@ pub async fn stream_sse(
                         backoff_ms: state.config.min_backoff_ms,
                         sent_connected: true,
                         config: state.config,
+                        exclude_types: state.exclude_types,
                     };
                     Some((stream::iter(sse_events), new_state))
                 }
@@ -319,9 +328,10 @@ pub async fn list_events(
 
     // Fetch events using EventService (converts rows to core::Event)
     // Optional since_id filter for incremental fetching
+    // Optional exclude filter for filtering out event types (e.g., delta events)
     let events = state
         .event_service
-        .list(session_id.uuid(), None, query.since_id)
+        .list(session_id.uuid(), None, query.since_id, &query.exclude)
         .await
         .map_err(|e| {
             tracing::error!("Failed to list events: {}", e);

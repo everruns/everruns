@@ -14,6 +14,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSessionContext } from "../session-context";
+import { EventFilter } from "@/components/events/event-filter";
+import { DEFAULT_EXCLUDED_EVENTS } from "@/lib/api/events";
 
 const EVENTS_PER_PAGE = 50;
 
@@ -51,13 +53,20 @@ export default function EventsPage() {
   const { events, eventsLoading, sessionId } = useSessionContext();
   const [currentPage, setCurrentPage] = useState(1);
   const [hasNewEvents, setHasNewEvents] = useState(false);
+  const [hideDeltaEvents, setHideDeltaEvents] = useState(true);
   const lastKnownCountRef = useRef(0);
+
+  // Filter out delta events if hideDeltaEvents is enabled
+  const filteredEvents = useMemo(() => {
+    if (!events) return [];
+    if (!hideDeltaEvents) return events;
+    return events.filter((e) => !DEFAULT_EXCLUDED_EVENTS.includes(e.type));
+  }, [events, hideDeltaEvents]);
 
   // Sort events by sequence descending (newest first)
   const sortedEvents = useMemo(() => {
-    if (!events) return [];
-    return [...events].sort((a, b) => (b.sequence ?? 0) - (a.sequence ?? 0));
-  }, [events]);
+    return [...filteredEvents].sort((a, b) => (b.sequence ?? 0) - (a.sequence ?? 0));
+  }, [filteredEvents]);
 
   // Calculate pagination
   const totalEvents = sortedEvents.length;
@@ -68,9 +77,9 @@ export default function EventsPage() {
 
   // Track new events arriving while viewing the list
   useEffect(() => {
-    if (!events) return;
+    if (!filteredEvents) return;
 
-    const currentCount = events.length;
+    const currentCount = filteredEvents.length;
 
     // Initialize on first load
     if (lastKnownCountRef.current === 0) {
@@ -86,7 +95,7 @@ export default function EventsPage() {
       // If on a different page, show refresh button
       setHasNewEvents(true);
     }
-  }, [events, currentPage]);
+  }, [filteredEvents, currentPage]);
 
   // Reset to page 1 when session changes
   useEffect(() => {
@@ -95,10 +104,16 @@ export default function EventsPage() {
     lastKnownCountRef.current = 0;
   }, [sessionId]);
 
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+    lastKnownCountRef.current = filteredEvents.length;
+  }, [hideDeltaEvents, filteredEvents.length]);
+
   const handleRefresh = () => {
     setCurrentPage(1);
     setHasNewEvents(false);
-    lastKnownCountRef.current = events?.length ?? 0;
+    lastKnownCountRef.current = filteredEvents.length;
   };
 
   const handlePageChange = (page: number) => {
@@ -121,9 +136,13 @@ export default function EventsPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Header with refresh button and pagination info */}
+          {/* Header with filter, refresh button and pagination info */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
+              <EventFilter
+                hideDeltaEvents={hideDeltaEvents}
+                onHideDeltaEventsChange={setHideDeltaEvents}
+              />
               {hasNewEvents && (
                 <Button
                   variant="outline"

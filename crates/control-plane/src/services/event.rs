@@ -202,6 +202,7 @@ impl EventService {
         session_id: Uuid,
         since_sequence: Option<i32>,
         since_id: Option<Uuid>,
+        exclude_types: &[String],
     ) -> Result<Vec<Event>> {
         let rows = self
             .db
@@ -209,6 +210,7 @@ impl EventService {
                 SessionId::from_uuid(session_id),
                 since_sequence,
                 since_id.map(EventId::from_uuid),
+                exclude_types,
             )
             .await?;
         Ok(rows.into_iter().map(Self::row_to_event).collect())
