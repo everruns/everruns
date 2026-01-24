@@ -72,11 +72,11 @@ enum Commands {
         #[arg(long, default_value = "claude-sonnet-4-20250514")]
         model: String,
 
-        /// Context window size in tokens
-        #[arg(long, default_value = "200000")]
+        /// Context window size in tokens (default 50k to ensure scenarios exceed budget)
+        #[arg(long, default_value = "50000")]
         context_window: usize,
 
-        /// Context budget percentage (0.0-1.0)
+        /// Context budget percentage (0.0-1.0) - with 50k window, 0.7 = 35k token budget
         #[arg(long, default_value = "0.7")]
         budget_percent: f64,
 

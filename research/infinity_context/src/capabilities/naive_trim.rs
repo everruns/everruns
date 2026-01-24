@@ -68,10 +68,11 @@ impl MessageFilterProvider for NaiveTrimFilterProvider {
 
 /// Estimate message limit based on token budget
 ///
-/// Uses an average of ~100 tokens per message as heuristic.
-/// When token counts are stored per message, this can use actual values.
+/// Uses ~250 tokens per message as heuristic, accounting for longer
+/// messages in realistic conversations (questions, explanations,
+/// code snippets, tool outputs).
 pub fn calculate_message_limit(budget_tokens: usize, min_recent: usize) -> usize {
-    const AVG_TOKENS_PER_MESSAGE: usize = 100;
+    const AVG_TOKENS_PER_MESSAGE: usize = 250;
     let estimated_limit = budget_tokens / AVG_TOKENS_PER_MESSAGE;
     estimated_limit.max(min_recent)
 }
@@ -82,8 +83,11 @@ mod tests {
 
     #[test]
     fn test_calculate_message_limit() {
-        // 10000 tokens / 100 avg = 100 messages
-        assert_eq!(calculate_message_limit(10000, 5), 100);
+        // 10000 tokens / 250 avg = 40 messages
+        assert_eq!(calculate_message_limit(10000, 5), 40);
+
+        // 35000 tokens / 250 avg = 140 messages
+        assert_eq!(calculate_message_limit(35000, 10), 140);
 
         // Respects min_recent
         assert_eq!(calculate_message_limit(100, 50), 50);

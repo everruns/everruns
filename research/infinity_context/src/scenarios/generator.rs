@@ -1,6 +1,21 @@
 //! Synthetic scenario generation
 //!
 //! Generates DatasetRecord with events for eval datasets.
+//!
+//! # Design: Token Budget
+//!
+//! The default eval context window is 50k tokens with 70% budget (35k tokens).
+//! This ensures scenarios exceed the budget, triggering context trimming and
+//! making the history search tool useful. Key considerations:
+//!
+//! - Filler messages are ~100-200 tokens each (detailed questions/answers)
+//! - Tool outputs are ~300-500 tokens each (realistic code/config files)
+//! - With ~150-200 events per scenario, total tokens exceed 35k budget
+//! - The Infinity Context capability trims older messages and provides
+//!   the query_history tool to search excluded content
+//!
+//! If scenarios don't exceed the budget, all messages stay in context and
+//! query_history returns empty results (nothing was excluded).
 
 use crate::dataset::{
     make_input_event, make_output_event, make_tool_event, DatasetRecord, Event, Input, Meta,
@@ -507,58 +522,475 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> DatasetRecord {
     }
 }
 
-/// Generate filler user messages
+/// Generate filler user messages (longer to fill token budget faster)
 fn generate_filler_user_message(seed: usize) -> String {
     let templates = [
-        "Can you help me refactor the logging module?",
-        "What do you think about using async/await here?",
-        "Let's add some error handling to this function",
-        "Should we split this into separate files?",
-        "I'm getting a type error on line 42",
-        "Can you explain how this iterator works?",
-        "Let's add tests for the edge cases",
-        "What's the best way to handle this edge case?",
-        "Should we use a hashmap or a vec here?",
-        "Can you review this implementation?",
-        "I think we need to add caching here",
-        "How should we handle the timeout?",
-        "Let's document this module",
-        "Can you help debug this issue?",
-        "What about thread safety here?",
+        "Can you help me refactor the logging module? I've been looking at the current implementation and it seems like we have a lot of duplicated code across different components. The logger is being instantiated in multiple places with similar configurations, and I think we could benefit from a centralized logging factory or a dependency injection approach. Also, the log levels seem inconsistent - some modules use debug for what should be info, and vice versa.",
+        "What do you think about using async/await here? I'm concerned about the performance implications, especially since we're dealing with multiple concurrent database connections and API calls. The current synchronous implementation is causing blocking issues when we have more than 50 concurrent users. I've been reading about tokio and its runtime, but I'm not sure if the migration effort would be worth it for our use case.",
+        "Let's add some error handling to this function. Right now it just panics on any error, which is causing issues in production. We should probably use Result types and propagate errors up the call stack. I'm also thinking we might need custom error types to distinguish between recoverable and unrecoverable errors, and maybe add some retry logic for transient failures.",
+        "Should we split this into separate files? The current module is over 2000 lines and it's becoming difficult to navigate. I'm thinking we could have separate files for the data structures, the business logic, the database operations, and the API handlers. This would also make it easier for multiple team members to work on different parts without merge conflicts.",
+        "I'm getting a type error on line 42 that says 'expected struct Vec, found &[T]'. I've tried adding .to_vec() but then I get a lifetime error. The function signature takes a &[T] but internally I need to store it in a struct that owns the data. Should I change the function to take ownership, or is there a better way to handle this with Cow<[T]>?",
+        "Can you explain how this iterator works? I see it's using filter_map with a closure that returns Option, and then there's a flat_map that seems to be unpacking nested structures. The chain of transformations is confusing me, especially the part where we collect into a HashMap and then iterate again. Is there a more readable way to write this?",
+        "Let's add tests for the edge cases. Currently we only have happy path tests, but I've identified several scenarios that aren't covered: empty input, maximum length input, unicode characters, concurrent modifications, timeout scenarios, and partial failures. We should also add some property-based tests using proptest to catch edge cases we haven't thought of.",
+        "What's the best way to handle this edge case? When the user submits a form with special characters in the name field, the validation passes but the database insert fails because of encoding issues. We need to either sanitize the input, change the database column encoding, or return a more helpful error message. I'm leaning towards input sanitization but I'm worried about data loss.",
+        "Should we use a hashmap or a vec here? The current implementation uses a Vec and does linear search, which is O(n) for lookups. With a HashMap we'd get O(1) lookups, but we'd lose ordering and the memory overhead might be significant for our small datasets. The data size is typically 10-50 items, but occasionally goes up to 1000. What's the crossover point where HashMap becomes worth it?",
+        "Can you review this implementation? I've added the new feature but I'm not confident about the error handling strategy. Also, I'm not sure if the mutex lock scope is correct - it might be held too long and cause contention. The tests pass but I haven't done any load testing yet. Can you spot any potential race conditions or performance issues?",
     ];
     templates[seed % templates.len()].to_string()
 }
 
-/// Generate filler assistant messages
+/// Generate filler assistant messages (longer to fill token budget faster)
 fn generate_filler_assistant_message(seed: usize) -> String {
     let templates = [
-        "That's a good approach. Let me implement that.",
-        "I'll refactor this to be more maintainable.",
-        "Here's an updated version with better error handling.",
-        "Good idea, I'll split this into separate concerns.",
-        "The error is due to a type mismatch. Let me fix it.",
-        "This iterator uses lazy evaluation to process items.",
-        "I've added comprehensive test coverage.",
-        "For this edge case, we should return early.",
-        "A hashmap would be O(1) lookup, which is better here.",
-        "The implementation looks good, just one suggestion.",
-        "I'll add a simple LRU cache for this.",
-        "We can use tokio's timeout wrapper for this.",
-        "I've added documentation with examples.",
-        "Found the bug - it's a off-by-one error.",
-        "I'll add a mutex to protect the shared state.",
+        "That's a good approach for the logging refactor. I'll create a LoggerFactory that uses the builder pattern to configure loggers. Each module can request a logger with its name, and the factory will handle the configuration centrally. I'll also add a LogLevel enum that enforces consistency, and create a macro for the common logging patterns so we reduce boilerplate. The factory will support both sync and async logging backends.",
+        "I'll refactor this to be more maintainable by extracting the core logic into pure functions that are easy to test. The side effects like database writes and API calls will be pushed to the boundaries. I'm going to use the repository pattern for data access and introduce interfaces so we can easily mock dependencies in tests. This should make the code more modular and easier to understand.",
+        "Here's an updated version with better error handling. I've introduced a custom Error enum with variants for each failure mode: NetworkError, DatabaseError, ValidationError, and InternalError. Each variant carries context about what went wrong. I've also added the thiserror derive macro for better error messages, and implemented From traits so errors from external libraries are automatically converted.",
+        "Good idea to split this into separate files. I've created a directory structure with mod.rs for the public interface, types.rs for data structures, logic.rs for business rules, db.rs for database operations, and handlers.rs for API endpoints. Each file has its own tests at the bottom. I've also added a prelude.rs that re-exports commonly used items for convenience.",
+        "The error is due to a type mismatch between owned and borrowed data. Since you need to store the data in a struct, the cleanest solution is to change the function signature to take impl Into<Vec<T>> which accepts both Vec<T> and &[T] (via .into()). Alternatively, you could use Cow<'a, [T]> if you want to avoid allocation when the caller already has a slice and doesn't need ownership.",
+        "This iterator chain uses a functional approach to transform data. The filter_map removes None values while unwrapping Some values in one step. The flat_map then unpacks nested iterators - it's like map followed by flatten. The collect into HashMap groups items by key, and the second iteration processes each group. For readability, I'd suggest breaking it into named intermediate variables or extracting helper functions.",
+        "I've added comprehensive test coverage for all the edge cases you mentioned. For empty input, I'm testing that we return an empty result rather than erroring. The max length test uses a 10MB string to verify we don't blow up memory. Unicode tests cover emoji, RTL text, and combining characters. I've added a stress test that spawns 100 concurrent tasks to verify thread safety, and timeout tests that use tokio::time::pause() to control time.",
+        "For this edge case with special characters, I recommend a multi-layered approach. First, validate input at the API boundary using a whitelist of allowed characters. Second, escape any remaining special characters before database insertion using parameterized queries. Third, add a database constraint to catch anything that slips through. I'll also add a clear error message that tells the user which characters are not allowed.",
+        "For collections of 10-50 items, Vec with linear search is actually faster than HashMap due to cache locality - the overhead of hashing and handling collisions isn't worth it. The crossover point is typically around 20-30 items for string keys. However, at 1000 items, HashMap is definitely better. I suggest using a SmallVec or ArrayVec for the common case, with a fallback to HashMap when size exceeds a threshold of 100.",
+        "I've reviewed the implementation and found a few issues. First, the mutex lock on line 45 is held across an await point, which will cause the lock to be held for the duration of the async operation - use tokio::sync::Mutex instead. Second, there's a potential race condition between the read on line 52 and the write on line 58 - another thread could modify the data in between. I recommend using a read-write lock and making the read-modify-write atomic.",
     ];
     templates[seed % templates.len()].to_string()
 }
 
-/// Generate filler file content for tool results
+/// Generate filler file content for tool results (large to fill token budget)
 fn generate_filler_file_content(seed: usize) -> String {
     let templates = [
-        "use std::collections::HashMap;\n\npub struct Config {\n    values: HashMap<String, String>,\n}",
-        "mod tests {\n    use super::*;\n\n    #[test]\n    fn test_basic() {\n        assert!(true);\n    }\n}",
-        "pub fn process(input: &str) -> Result<String, Error> {\n    Ok(input.to_uppercase())\n}",
-        "/// Module documentation\n/// \n/// This module handles...",
-        "const MAX_RETRIES: u32 = 3;\nconst TIMEOUT_MS: u64 = 5000;",
+        r#"use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Configuration manager for application settings.
+///
+/// This struct provides thread-safe access to configuration values
+/// that can be loaded from multiple sources (files, environment, etc.)
+/// and updated at runtime without requiring a restart.
+#[derive(Debug, Clone)]
+pub struct Config {
+    values: Arc<RwLock<HashMap<String, ConfigValue>>>,
+    watchers: Arc<RwLock<Vec<Box<dyn ConfigWatcher>>>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ConfigValue {
+    String(String),
+    Integer(i64),
+    Float(f64),
+    Boolean(bool),
+    Array(Vec<ConfigValue>),
+    Object(HashMap<String, ConfigValue>),
+}
+
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("Key not found: {0}")]
+    KeyNotFound(String),
+    #[error("Type mismatch: expected {expected}, got {actual}")]
+    TypeMismatch { expected: String, actual: String },
+    #[error("Parse error: {0}")]
+    ParseError(String),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
+impl Config {
+    pub fn new() -> Self {
+        Self {
+            values: Arc::new(RwLock::new(HashMap::new())),
+            watchers: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    pub fn get<T: FromConfigValue>(&self, key: &str) -> Result<T, ConfigError> {
+        let values = self.values.read().unwrap();
+        let value = values.get(key).ok_or_else(|| ConfigError::KeyNotFound(key.to_string()))?;
+        T::from_config_value(value.clone())
+    }
+
+    pub fn set(&self, key: &str, value: ConfigValue) {
+        let mut values = self.values.write().unwrap();
+        values.insert(key.to_string(), value.clone());
+        drop(values);
+        self.notify_watchers(key, &value);
+    }
+
+    fn notify_watchers(&self, key: &str, value: &ConfigValue) {
+        let watchers = self.watchers.read().unwrap();
+        for watcher in watchers.iter() {
+            watcher.on_config_change(key, value);
+        }
+    }
+}
+
+pub trait FromConfigValue: Sized {
+    fn from_config_value(value: ConfigValue) -> Result<Self, ConfigError>;
+}
+
+pub trait ConfigWatcher: Send + Sync {
+    fn on_config_change(&self, key: &str, value: &ConfigValue);
+}"#,
+        r#"mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::time::{sleep, Duration};
+
+    /// Test fixture for setting up common test state.
+    /// Provides helper methods for creating test instances
+    /// and asserting on expected outcomes.
+    struct TestFixture {
+        db: MockDatabase,
+        cache: MockCache,
+        logger: MockLogger,
+    }
+
+    impl TestFixture {
+        fn new() -> Self {
+            Self {
+                db: MockDatabase::new(),
+                cache: MockCache::new(),
+                logger: MockLogger::new(),
+            }
+        }
+
+        fn with_data(mut self, data: Vec<TestRecord>) -> Self {
+            for record in data {
+                self.db.insert(record);
+            }
+            self
+        }
+    }
+
+    #[test]
+    fn test_basic_crud_operations() {
+        let fixture = TestFixture::new();
+        let service = Service::new(fixture.db, fixture.cache);
+
+        // Test create
+        let record = TestRecord { id: 1, name: "test".to_string() };
+        let result = service.create(record.clone());
+        assert!(result.is_ok());
+
+        // Test read
+        let fetched = service.get(1).unwrap();
+        assert_eq!(fetched.name, "test");
+
+        // Test update
+        let updated = TestRecord { id: 1, name: "updated".to_string() };
+        service.update(updated).unwrap();
+        let fetched = service.get(1).unwrap();
+        assert_eq!(fetched.name, "updated");
+
+        // Test delete
+        service.delete(1).unwrap();
+        assert!(service.get(1).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_access() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let mut handles = Vec::new();
+
+        for _ in 0..100 {
+            let counter = Arc::clone(&counter);
+            handles.push(tokio::spawn(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                sleep(Duration::from_millis(10)).await;
+            }));
+        }
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        assert_eq!(counter.load(Ordering::SeqCst), 100);
+    }
+
+    #[test]
+    fn test_error_handling() {
+        let fixture = TestFixture::new();
+        let service = Service::new(fixture.db, fixture.cache);
+
+        // Test not found error
+        let result = service.get(999);
+        assert!(matches!(result, Err(ServiceError::NotFound(_))));
+
+        // Test validation error
+        let invalid = TestRecord { id: -1, name: "".to_string() };
+        let result = service.create(invalid);
+        assert!(matches!(result, Err(ServiceError::ValidationError(_))));
+    }
+}"#,
+        r#"use async_trait::async_trait;
+use std::time::Duration;
+use tokio::time::timeout;
+
+/// Process input data through a pipeline of transformations.
+///
+/// This function applies a series of transformations to the input,
+/// with configurable timeout, retry logic, and error handling.
+///
+/// # Arguments
+/// * `input` - The raw input string to process
+/// * `config` - Processing configuration options
+///
+/// # Returns
+/// * `Ok(ProcessedOutput)` - Successfully processed result
+/// * `Err(ProcessError)` - Processing failed after all retries
+///
+/// # Example
+/// ```rust
+/// let config = ProcessConfig::default();
+/// let result = process("hello world", &config).await?;
+/// assert_eq!(result.transformed, "HELLO WORLD");
+/// ```
+pub async fn process(input: &str, config: &ProcessConfig) -> Result<ProcessedOutput, ProcessError> {
+    let mut last_error = None;
+
+    for attempt in 0..config.max_retries {
+        match timeout(config.timeout, process_inner(input)).await {
+            Ok(Ok(result)) => return Ok(result),
+            Ok(Err(e)) => {
+                log::warn!("Process attempt {} failed: {}", attempt + 1, e);
+                last_error = Some(e);
+            }
+            Err(_) => {
+                log::warn!("Process attempt {} timed out", attempt + 1);
+                last_error = Some(ProcessError::Timeout);
+            }
+        }
+
+        if attempt < config.max_retries - 1 {
+            let backoff = Duration::from_millis(100 * 2u64.pow(attempt as u32));
+            tokio::time::sleep(backoff).await;
+        }
+    }
+
+    Err(last_error.unwrap_or(ProcessError::Unknown))
+}
+
+async fn process_inner(input: &str) -> Result<ProcessedOutput, ProcessError> {
+    // Validate input
+    if input.is_empty() {
+        return Err(ProcessError::EmptyInput);
+    }
+    if input.len() > MAX_INPUT_LENGTH {
+        return Err(ProcessError::InputTooLong(input.len()));
+    }
+
+    // Transform the input
+    let normalized = input.trim().to_lowercase();
+    let words: Vec<&str> = normalized.split_whitespace().collect();
+    let transformed = words.join(" ").to_uppercase();
+
+    // Build output
+    Ok(ProcessedOutput {
+        original: input.to_string(),
+        transformed,
+        word_count: words.len(),
+        char_count: input.chars().count(),
+        processing_time_ms: 0, // Would be set by actual timing
+    })
+}
+
+const MAX_INPUT_LENGTH: usize = 1_000_000;
+
+#[derive(Debug, Clone)]
+pub struct ProcessConfig {
+    pub max_retries: u32,
+    pub timeout: Duration,
+    pub validate_utf8: bool,
+}
+
+impl Default for ProcessConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            timeout: Duration::from_secs(30),
+            validate_utf8: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessedOutput {
+    pub original: String,
+    pub transformed: String,
+    pub word_count: usize,
+    pub char_count: usize,
+    pub processing_time_ms: u64,
+}"#,
+        r#"//! Database connection pool and query execution module.
+//!
+//! This module provides a high-performance connection pool for PostgreSQL
+//! databases with support for prepared statements, transactions, and
+//! automatic retry on transient errors.
+//!
+//! # Features
+//! - Connection pooling with configurable size limits
+//! - Prepared statement caching for query performance
+//! - Automatic reconnection on connection drops
+//! - Transaction support with savepoints
+//! - Query timeout and cancellation
+//! - Metrics and monitoring hooks
+//!
+//! # Example
+//! ```rust
+//! let pool = ConnectionPool::new(config).await?;
+//! let conn = pool.acquire().await?;
+//! let rows = conn.query("SELECT * FROM users WHERE id = $1", &[&user_id]).await?;
+//! ```
+
+use deadpool_postgres::{Config, Pool, Runtime};
+use tokio_postgres::{NoTls, Row};
+use std::time::Duration;
+
+pub struct ConnectionPool {
+    pool: Pool,
+    metrics: PoolMetrics,
+}
+
+impl ConnectionPool {
+    pub async fn new(config: DatabaseConfig) -> Result<Self, PoolError> {
+        let mut cfg = Config::new();
+        cfg.host = Some(config.host);
+        cfg.port = Some(config.port);
+        cfg.dbname = Some(config.database);
+        cfg.user = Some(config.username);
+        cfg.password = Some(config.password);
+
+        let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls)?;
+
+        Ok(Self {
+            pool,
+            metrics: PoolMetrics::default(),
+        })
+    }
+
+    pub async fn query(&self, sql: &str, params: &[&(dyn ToSql + Sync)]) -> Result<Vec<Row>, QueryError> {
+        let client = self.pool.get().await?;
+        let rows = client.query(sql, params).await?;
+        self.metrics.queries_executed.fetch_add(1, Ordering::Relaxed);
+        Ok(rows)
+    }
+
+    pub async fn execute(&self, sql: &str, params: &[&(dyn ToSql + Sync)]) -> Result<u64, QueryError> {
+        let client = self.pool.get().await?;
+        let rows_affected = client.execute(sql, params).await?;
+        self.metrics.queries_executed.fetch_add(1, Ordering::Relaxed);
+        Ok(rows_affected)
+    }
+
+    pub async fn transaction<F, T>(&self, f: F) -> Result<T, TransactionError>
+    where
+        F: FnOnce(&Transaction) -> Result<T, TransactionError>,
+    {
+        let mut client = self.pool.get().await?;
+        let tx = client.transaction().await?;
+        let result = f(&tx)?;
+        tx.commit().await?;
+        Ok(result)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DatabaseConfig {
+    pub host: String,
+    pub port: u16,
+    pub database: String,
+    pub username: String,
+    pub password: String,
+    pub max_connections: u32,
+    pub connection_timeout: Duration,
+}"#,
+        r#"/// Application constants and configuration defaults.
+///
+/// This module contains all compile-time constants and default values
+/// used throughout the application. Values are organized by category
+/// and documented with their purpose and valid ranges.
+
+// =============================================================================
+// Network Configuration
+// =============================================================================
+
+/// Maximum number of retry attempts for network operations
+pub const MAX_RETRIES: u32 = 3;
+
+/// Default timeout for network requests in milliseconds
+pub const TIMEOUT_MS: u64 = 5000;
+
+/// Maximum number of concurrent connections per host
+pub const MAX_CONNECTIONS_PER_HOST: usize = 100;
+
+/// Keep-alive interval for long-lived connections
+pub const KEEP_ALIVE_INTERVAL_SECS: u64 = 30;
+
+/// TCP nodelay setting (disable Nagle's algorithm)
+pub const TCP_NODELAY: bool = true;
+
+// =============================================================================
+// Rate Limiting
+// =============================================================================
+
+/// Maximum requests per second per client
+pub const RATE_LIMIT_RPS: u32 = 100;
+
+/// Rate limit bucket size (burst capacity)
+pub const RATE_LIMIT_BURST: u32 = 200;
+
+/// Rate limit window duration in seconds
+pub const RATE_LIMIT_WINDOW_SECS: u64 = 1;
+
+// =============================================================================
+// Caching
+// =============================================================================
+
+/// Default cache TTL in seconds
+pub const CACHE_TTL_SECS: u64 = 300;
+
+/// Maximum cache size in bytes
+pub const MAX_CACHE_SIZE_BYTES: usize = 100 * 1024 * 1024; // 100 MB
+
+/// Cache eviction check interval
+pub const CACHE_EVICTION_INTERVAL_SECS: u64 = 60;
+
+// =============================================================================
+// Database
+// =============================================================================
+
+/// Maximum database connection pool size
+pub const DB_POOL_MAX_SIZE: u32 = 20;
+
+/// Minimum database connection pool size
+pub const DB_POOL_MIN_SIZE: u32 = 5;
+
+/// Database connection acquire timeout
+pub const DB_CONNECTION_TIMEOUT_MS: u64 = 3000;
+
+/// Maximum query execution time before timeout
+pub const DB_QUERY_TIMEOUT_MS: u64 = 30000;
+
+// =============================================================================
+// Security
+// =============================================================================
+
+/// JWT token expiration time in seconds
+pub const JWT_EXPIRATION_SECS: u64 = 3600;
+
+/// Session cookie max age in seconds
+pub const SESSION_MAX_AGE_SECS: u64 = 86400;
+
+/// Password minimum length
+pub const PASSWORD_MIN_LENGTH: usize = 12;
+
+/// Maximum failed login attempts before lockout
+pub const MAX_LOGIN_ATTEMPTS: u32 = 5;
+
+/// Account lockout duration in seconds
+pub const LOCKOUT_DURATION_SECS: u64 = 900;"#,
     ];
     templates[seed % templates.len()].to_string()
 }
