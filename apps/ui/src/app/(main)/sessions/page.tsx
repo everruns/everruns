@@ -126,9 +126,9 @@ export default function SessionsPage() {
             </SelectContent>
           </Select>
           <Button
+            variant="accent"
             onClick={handleOpenNewSessionDialog}
             disabled={!agents?.length}
-            className="bg-accent text-accent-foreground hover:bg-accent/90"
           >
             <Plus className="w-4 h-4 mr-2" />
             New Session

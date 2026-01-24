@@ -190,6 +190,21 @@ background-size: 24px 24px;
 - Left/right border accents for active navigation and messages
 - Muted gray for hover states (not accent colors)
 
+#### Primary Action Buttons
+
+Primary "create new" actions (New Session, New Agent, etc.) use consistent styling:
+
+```tsx
+<Button variant="accent">
+  <Plus className="h-4 w-4 mr-2" />
+  New [Entity]
+</Button>
+```
+
+- **Variant**: `accent` (gold background)
+- **Icon**: Plus icon, `h-4 w-4` size, `mr-2` margin
+- **Label**: "New [Entity]" format (e.g., "New Session", "New Agent")
+
 ### External Resources
 
 | Resource | URL |
