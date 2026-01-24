@@ -31,14 +31,12 @@ import { formatFileSize, getParentPath, joinPath } from "@/lib/api/session-files
 import type { FileInfo } from "@/lib/api/types";
 
 interface FileBrowserProps {
-  agentId: string;
   sessionId: string;
   onFileSelect?: (file: FileInfo) => void;
   selectedPath?: string;
 }
 
 export function FileBrowser({
-  agentId,
   sessionId,
   onFileSelect,
   selectedPath,
@@ -51,7 +49,7 @@ export function FileBrowser({
   const [newDirName, setNewDirName] = useState("");
   const [newFileContent, setNewFileContent] = useState("");
 
-  const { data: files, isLoading, refetch } = useFiles(agentId, sessionId, currentPath, false);
+  const { data: files, isLoading, refetch } = useFiles(sessionId, currentPath, false);
   const createFile = useCreateFile();
   const createDir = useCreateDirectory();
   const deleteFile = useDeleteFile();
@@ -91,7 +89,6 @@ export function FileBrowser({
 
     try {
       await createFile.mutateAsync({
-        agentId,
         sessionId,
         request: {
           path: joinPath(currentPath, newFileName),
@@ -113,7 +110,6 @@ export function FileBrowser({
 
     try {
       await createDir.mutateAsync({
-        agentId,
         sessionId,
         path: joinPath(currentPath, newDirName),
       });
@@ -132,7 +128,6 @@ export function FileBrowser({
 
     try {
       await deleteFile.mutateAsync({
-        agentId,
         sessionId,
         path: file.path,
         recursive: file.is_directory,

@@ -47,21 +47,10 @@ pub async fn run(
     quiet: bool,
     message: String,
     session_id: Uuid,
-    agent_id: Option<Uuid>,
+    _agent_id: Option<Uuid>,
     timeout_secs: u64,
     no_stream: bool,
 ) -> Result<()> {
-    // Resolve agent_id if not provided
-    let agent_id = match agent_id {
-        Some(id) => id,
-        None => {
-            // We need to look up the session to get agent_id
-            // Try a few agent IDs or list agents first
-            // For now, require --agent flag
-            anyhow::bail!("--agent is required (agent_id lookup not yet implemented)");
-        }
-    };
-
     // Create the message
     let request = CreateMessageRequest {
         message: InputMessage {
@@ -75,8 +64,8 @@ pub async fn run(
     let _: serde_json::Value = client
         .post(
             &format!(
-                "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/messages",
-                agent_id, session_id
+                "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}/messages",
+                session_id.as_hyphenated()
             ),
             &request,
         )
@@ -108,12 +97,13 @@ pub async fn run(
         // Build URL with since_id parameter
         let url = match &last_event_id {
             Some(id) => format!(
-                "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/events?since_id={}",
-                agent_id, session_id, id
+                "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}/events?since_id={}",
+                session_id.as_hyphenated(),
+                id
             ),
             None => format!(
-                "/v1/orgs/org_00000000000000000000000000000001/agents/{}/sessions/{}/events",
-                agent_id, session_id
+                "/v1/orgs/org_00000000000000000000000000000001/sessions/ses_{}/events",
+                session_id.as_hyphenated()
             ),
         };
 

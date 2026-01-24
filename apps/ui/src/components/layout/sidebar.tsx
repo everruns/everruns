@@ -21,6 +21,7 @@ import {
 import {
   LayoutDashboard,
   Boxes,
+  MessageSquare,
   Puzzle,
   Settings,
   LogOut,
@@ -41,6 +42,7 @@ const isDev = process.env.NODE_ENV === "development";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Agents", href: "/agents", icon: Boxes },
+  { name: "Sessions", href: "/sessions", icon: MessageSquare },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
   { name: "Settings", href: "/settings", icon: Settings },
 ];

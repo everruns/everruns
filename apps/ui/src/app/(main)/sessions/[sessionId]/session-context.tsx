@@ -18,19 +18,16 @@ import type {
   OutputMessageCompletedData,
   Message,
   TokenUsage,
-  SessionIdledData,
   LlmGenerationData,
-  OutputMessageStartedData,
-  OutputMessageDeltaData,
   ReasonThinkingStartedData,
-  ReasonThinkingDeltaData,
+  OutputMessageDeltaData,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
 
 interface SessionContextValue {
   // IDs
-  agentId: string;
+  agentId: string | undefined;
   sessionId: string;
   // Data
   agent: Agent | undefined;
@@ -59,13 +56,12 @@ interface SessionContextValue {
   // Streaming state (for real-time text updates)
   isThinking: boolean;
   streamingText: string | null;
-  streamingThinking: string | null; // Extended thinking content from reasoning models
   streamingTurnId: string | null;
   // Message sending
   sendMessage: UseMutationResult<
     Message,
     Error,
-    { agentId: string; sessionId: string; content: string; controls?: Controls },
+    { sessionId: string; content: string; controls?: Controls },
     { optimisticId: string; content: string }
   >;
   // Turn cancellation
@@ -86,16 +82,23 @@ export function useSessionContext() {
 }
 
 interface SessionProviderProps {
-  agentId: string;
   sessionId: string;
   children: ReactNode;
 }
 
-export function SessionProvider({ agentId, sessionId, children }: SessionProviderProps) {
+// Session provider that derives agentId from the session (for org-level routes)
+export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
-  const { data: agent } = useAgent(agentId);
+  // Fetch session first to get agent_id
+  const { data: session, isLoading: sessionLoading } = useSession(sessionId);
+
+  // Derive agentId from session
+  const agentId = session?.agent_id;
+
+  // Fetch agent using derived agentId
+  const { data: agent } = useAgent(agentId ?? "");
 
   // Track if user has sent a message and is waiting for response
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
@@ -106,28 +109,22 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
   // Streaming state - tracks real-time text generation
   const [isThinking, setIsThinking] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
-  const [streamingThinking, setStreamingThinking] = useState<string | null>(null);
   const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
 
   // Optimistic events - shown immediately before SSE confirms
   const [optimisticEvents, setOptimisticEvents] = useState<Event[]>([]);
 
-  // Fetch session once to get initial data
-  const { data: session, isLoading: sessionLoading } = useSession(agentId, sessionId);
-
   // Custom sendMessage mutation with optimistic UI
   const sendMessage = useMutation({
     mutationFn: ({
-      agentId,
       sessionId,
       content,
       controls,
     }: {
-      agentId: string;
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(org!, agentId, sessionId, content, controls),
+    }) => sendUserMessage(org!, sessionId, content, controls),
     onMutate: async ({ sessionId, content }) => {
       // Create optimistic event immediately
       const optimisticId = `optimistic-${Date.now()}`;
@@ -167,7 +164,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
   const cancelCurrentTurn = useMutation({
     mutationFn: async () => {
       if (!org) throw new Error("Organization not found");
-      await cancelTurn(org, agentId, sessionId);
+      await cancelTurn(org, sessionId);
     },
     onSuccess: () => {
       // Reset waiting state since turn is cancelled
@@ -182,7 +179,7 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
 
   // Fetch events using SSE - always enabled for real-time streaming
   // SSE handles backoff automatically (100ms → 10s when no new events)
-  const { data: events, isLoading: eventsLoading } = useEvents(agentId, sessionId);
+  const { data: events, isLoading: eventsLoading } = useEvents(sessionId);
 
   // Update local status from SSE events (session.activated, session.idled)
   useEffect(() => {
@@ -202,7 +199,6 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         // Also clear thinking/streaming state - session is done
         setIsThinking(false);
         setStreamingText(null);
-        setStreamingThinking(null);
         setStreamingTurnId(null);
         break;
       }
@@ -211,14 +207,13 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         setIsWaitingForResponse(false);
         setIsThinking(false);
         setStreamingText(null);
-        setStreamingThinking(null);
         setStreamingTurnId(null);
         break;
       }
     }
   }, [events]);
 
-  // Update streaming state from SSE events (output.message.*, reason.thinking.*)
+  // Update streaming state from SSE events (reason.thinking.started, output.message.delta, output.message.completed)
   // This provides real-time feedback while the LLM generates text
   useEffect(() => {
     if (!events || events.length === 0) return;
@@ -234,7 +229,6 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         if (!streamingTurnId || turnId === streamingTurnId) {
           setIsThinking(false);
           setStreamingText(null);
-          setStreamingThinking(null);
           setStreamingTurnId(null);
         }
         break;
@@ -249,18 +243,9 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
         break;
       }
 
-      // reason.thinking.delta provides incremental reasoning from extended thinking models
-      if (event.type === "reason.thinking.delta") {
-        const data = event.data as ReasonThinkingDeltaData;
-        setStreamingThinking(data.accumulated);
-        setStreamingTurnId(data.turn_id);
-        // Continue looking for output.message.delta (don't break) - thinking comes before text
-        continue;
-      }
-
-      // output.message.started indicates LLM is generating (before first text)
-      if (event.type === "output.message.started") {
-        const data = event.data as OutputMessageStartedData;
+      // reason.thinking.started indicates LLM is generating (before first text)
+      if (event.type === "reason.thinking.started") {
+        const data = event.data as ReasonThinkingStartedData;
         // Only set thinking if we don't already have streaming text for this turn
         if (!streamingText || streamingTurnId !== data.turn_id) {
           setIsThinking(true);
@@ -278,7 +263,6 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     setOptimisticEvents([]);
     setIsThinking(false);
     setStreamingText(null);
-    setStreamingThinking(null);
     setStreamingTurnId(null);
   }, [sessionId]);
 
@@ -364,30 +348,13 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     return map;
   }, [events]);
 
-  // Compute live usage with real-time updates during turns:
-  // 1. session.idled - sets the baseline (cumulative from backend)
-  // 2. llm.generation - adds to counters during turn execution
-  // 3. session.idled - resets to final cumulative value
+  // Compute live usage with real-time updates during turns
   const liveUsage = useMemo((): TokenUsage | undefined => {
     if (!events || events.length === 0) {
       return session?.usage;
     }
 
-    // Find the latest session.idled event (regardless of whether it has usage)
-    // This marks the boundary - we only count llm.generation events AFTER this
-    let latestIdledIndex = -1;
-    let latestIdledUsage: TokenUsage | undefined;
-
-    for (let i = events.length - 1; i >= 0; i--) {
-      if (events[i].type === "session.idled") {
-        latestIdledIndex = i;
-        latestIdledUsage = (events[i].data as SessionIdledData).usage;
-        break; // Always use the latest session.idled, even if usage is null
-      }
-    }
-
     // Sum ALL llm.generation events to get cumulative usage
-    // This is the source of truth for total tokens consumed
     let inputTokens = 0;
     let outputTokens = 0;
     let cacheReadTokens = 0;
@@ -417,8 +384,8 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
       };
     }
 
-    // Fall back to session.idled usage or initial session usage
-    return latestIdledUsage ?? session?.usage;
+    // Fall back to session usage
+    return session?.usage;
   }, [events, session?.usage]);
 
   // Check if the model supports reasoning effort
@@ -478,7 +445,6 @@ export function SessionProvider({ agentId, sessionId, children }: SessionProvide
     setIsWaitingForResponse,
     isThinking,
     streamingText,
-    streamingThinking,
     streamingTurnId,
     sendMessage,
     cancelCurrentTurn,

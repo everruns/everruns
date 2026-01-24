@@ -93,8 +93,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 2: Create a session
     println!("\nCreating session...");
     let session_response = client
-        .post(format!("{}/v1/agents/{}/sessions", API_BASE_URL, agent.id))
+        .post(format!("{}/v1/orgs/default/sessions", API_BASE_URL))
         .json(&json!({
+            "agent_id": agent.id,
             "title": "Dad Joke Time"
         }))
         .send()
@@ -113,8 +114,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nSending message: \"Tell me a joke about the current time!\"");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.id, session.id
+            "{}/v1/orgs/default/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -141,8 +142,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("-------------------------------------------");
 
     let sse_url = format!(
-        "{}/v1/agents/{}/sessions/{}/sse",
-        API_BASE_URL, agent.id, session.id
+        "{}/v1/orgs/default/sessions/{}/sse",
+        API_BASE_URL, session.id
     );
 
     // Use blocking client for SSE streaming (reqwest-eventsource alternative)

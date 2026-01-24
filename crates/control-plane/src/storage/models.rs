@@ -209,6 +209,7 @@ pub struct UpdateAgent {
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionRow {
     pub id: SessionId,
+    pub org_id: i64,
     pub agent_id: AgentId,
     pub title: Option<String>,
     pub tags: Vec<String>,
@@ -232,8 +233,9 @@ pub struct SessionRow {
     pub total_cache_creation_tokens: i64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct CreateSessionRow {
+    pub org_id: i64,
     pub agent_id: AgentId,
     pub title: Option<String>,
     pub tags: Vec<String>,

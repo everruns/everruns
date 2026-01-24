@@ -100,11 +100,9 @@ async fn test_full_agent_session_workflow() {
     // Step 5: Create a session
     println!("\nStep 5: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
+            "agent_id": agent.id,
             "title": "Test Session"
         }))
         .send()
@@ -123,8 +121,8 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 6: Adding user message...");
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -148,8 +146,8 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 7: Listing messages...");
     let messages_response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await
@@ -167,8 +165,8 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 8: Getting session...");
     let get_session_response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await
@@ -186,8 +184,8 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 9: Listing events...");
     let events_response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/events",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await
@@ -522,11 +520,9 @@ async fn test_session_inherits_agent_default_model() {
     // Step 4: Create a session WITHOUT specifying model_id
     println!("\nStep 4: Creating session without model_id...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
+            "agent_id": agent.id,
             "title": "Test Session"
         }))
         .send()
@@ -574,11 +570,9 @@ async fn test_session_inherits_agent_default_model() {
         .expect("Failed to parse second model");
 
     let session2_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
+            "agent_id": agent.id,
             "title": "Test Session 2",
             "model_id": model2.id.to_string()
         }))
@@ -665,11 +659,9 @@ async fn test_session_filesystem() {
     // Step 2: Create a session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
+            "agent_id": agent.id,
             "title": "Filesystem Test Session"
         }))
         .send()
@@ -683,8 +675,8 @@ async fn test_session_filesystem() {
     println!("Created session: {}", session.id);
 
     let fs_url = format!(
-        "{}/v1/orgs/{}/agents/{}/sessions/{}/fs",
-        API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        "{}/v1/orgs/{}/sessions/{}/fs",
+        API_BASE_URL, DEFAULT_ORG, session.id
     );
 
     // Step 3: List root directory (should be empty)
@@ -989,11 +981,8 @@ async fn test_message_triggers_agent_workflow() {
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
-        .json(&json!({"title": "Workflow Test Session"}))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id, "title": "Workflow Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1010,8 +999,8 @@ async fn test_message_triggers_agent_workflow() {
     let start = Instant::now();
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -1050,8 +1039,8 @@ async fn test_message_triggers_agent_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -1101,8 +1090,8 @@ async fn test_message_triggers_agent_workflow() {
         println!("\nDebug: Checking events for session...");
         if let Ok(resp) = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/events",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await
@@ -1138,8 +1127,8 @@ async fn test_message_triggers_agent_workflow() {
     println!("\nStep 5: Verifying events...");
     let events_response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/events",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await
@@ -1282,11 +1271,8 @@ async fn test_no_duplicate_tool_calls() {
     // Step 4: Create a session
     println!("\nStep 4: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
-        .json(&json!({}))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1301,8 +1287,8 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 5: Sending message to trigger tool use...");
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -1327,8 +1313,8 @@ async fn test_no_duplicate_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -1372,8 +1358,8 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 7: Checking for duplicate tool calls...");
     let messages_response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await
@@ -1493,11 +1479,8 @@ async fn test_sessions_pagination() {
     println!("Creating 15 sessions...");
     for i in 1..=15 {
         let response = client
-            .post(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions",
-                API_BASE_URL, DEFAULT_ORG, agent.id
-            ))
-            .json(&json!({ "title": format!("Session {}", i) }))
+            .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+            .json(&json!({ "agent_id": agent.id, "title": format!("Session {}", i) }))
             .send()
             .await
             .expect("Failed to create session");
@@ -1509,7 +1492,7 @@ async fn test_sessions_pagination() {
     println!("\nTest 1: Default pagination...");
     let response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
+            "{}/v1/orgs/{}/sessions?agent_id={}",
             API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
@@ -1533,7 +1516,7 @@ async fn test_sessions_pagination() {
     println!("\nTest 2: Custom limit=5...");
     let response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions?limit=5",
+            "{}/v1/orgs/{}/sessions?agent_id={}&limit=5",
             API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
@@ -1556,7 +1539,7 @@ async fn test_sessions_pagination() {
     println!("\nTest 3: Offset=5, limit=5...");
     let response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions?offset=5&limit=5",
+            "{}/v1/orgs/{}/sessions?agent_id={}&offset=5&limit=5",
             API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
@@ -1576,7 +1559,7 @@ async fn test_sessions_pagination() {
     println!("\nTest 4: Last partial page (offset=10, limit=10)...");
     let response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions?offset=10&limit=10",
+            "{}/v1/orgs/{}/sessions?agent_id={}&offset=10&limit=10",
             API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
@@ -1598,7 +1581,7 @@ async fn test_sessions_pagination() {
     println!("\nTest 5: Beyond range (offset=20)...");
     let response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions?offset=20",
+            "{}/v1/orgs/{}/sessions?agent_id={}&offset=20",
             API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
@@ -1620,7 +1603,7 @@ async fn test_sessions_pagination() {
     println!("\nTest 6: Max limit enforcement (limit=200 should cap to 100)...");
     let response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions?limit=200",
+            "{}/v1/orgs/{}/sessions?agent_id={}&limit=200",
             API_BASE_URL, DEFAULT_ORG, agent.id
         ))
         .send()
@@ -1745,11 +1728,8 @@ async fn test_second_message_triggers_workflow() {
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
-        .json(&json!({"title": "Second Message Test Session"}))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id, "title": "Second Message Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -1765,8 +1745,8 @@ async fn test_second_message_triggers_workflow() {
     println!("\nStep 3: Sending FIRST message...");
     let first_message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -1792,8 +1772,8 @@ async fn test_second_message_triggers_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -1832,8 +1812,8 @@ async fn test_second_message_triggers_workflow() {
     let second_message_start = Instant::now();
     let second_message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -1862,8 +1842,8 @@ async fn test_second_message_triggers_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -1900,8 +1880,8 @@ async fn test_second_message_triggers_workflow() {
         println!("\nDebug: Final message state:");
         if let Ok(resp) = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await
@@ -1930,8 +1910,8 @@ async fn test_second_message_triggers_workflow() {
     println!("\nStep 5: Verifying message counts...");
     let final_messages_response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await
@@ -2040,11 +2020,9 @@ async fn test_capability_mounts_applied_on_session_creation() {
     // Step 2: Create a session (this should trigger mount application)
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
+            "agent_id": agent.id,
             "title": "Mount Test Session"
         }))
         .send()
@@ -2059,8 +2037,8 @@ async fn test_capability_mounts_applied_on_session_creation() {
     println!("Created session: {}", session.id);
 
     let fs_url = format!(
-        "{}/v1/orgs/{}/agents/{}/sessions/{}/fs",
-        API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+        "{}/v1/orgs/{}/sessions/{}/fs",
+        API_BASE_URL, DEFAULT_ORG, session.id
     );
 
     // Step 3: Verify /samples directory exists
@@ -2165,11 +2143,9 @@ async fn test_capability_mounts_applied_on_session_creation() {
     // Step 8: Create a second session - verify mounts are independent
     println!("\nStep 8: Creating second session...");
     let session2_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
+            "agent_id": agent.id,
             "title": "Second Mount Test Session"
         }))
         .send()
@@ -2185,8 +2161,8 @@ async fn test_capability_mounts_applied_on_session_creation() {
 
     // Verify second session also has mounts
     let fs_url2 = format!(
-        "{}/v1/orgs/{}/agents/{}/sessions/{}/fs",
-        API_BASE_URL, DEFAULT_ORG, agent.id, session2.id
+        "{}/v1/orgs/{}/sessions/{}/fs",
+        API_BASE_URL, DEFAULT_ORG, session2.id
     );
     let stat2_response = client
         .post(format!("{}/_/stat", fs_url2))
@@ -2625,11 +2601,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Step 3: Create a session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
-        .json(&json!({"title": "Dad Jokes Session"}))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id, "title": "Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -2645,8 +2618,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     println!("\nStep 4: Sending message asking for time-based joke...");
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -2671,8 +2644,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -2742,8 +2715,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Get final messages
     let final_messages_response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await
@@ -2928,11 +2901,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
-        .json(&json!({"title": "OpenAI Dad Jokes Session"}))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id, "title": "OpenAI Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -2948,8 +2918,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
     println!("\nStep 4: Sending message...");
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -2973,8 +2943,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -3188,11 +3158,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
-        .json(&json!({"title": "Anthropic Dad Jokes Session"}))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id, "title": "Anthropic Dad Jokes Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3208,8 +3175,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     println!("\nStep 4: Sending message...");
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -3233,8 +3200,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -3426,11 +3393,8 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Step 3: Create session and send message
     println!("\nStep 3: Creating session and sending message...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
-        .json(&json!({}))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3442,8 +3406,8 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -3465,8 +3429,8 @@ async fn test_agent_execution_multiple_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -3617,11 +3581,8 @@ async fn test_streaming_events_emitted() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
-        .json(&json!({"title": "Streaming Test Session"}))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
+        .json(&json!({"agent_id": agent.id, "title": "Streaming Test Session"}))
         .send()
         .await
         .expect("Failed to create session");
@@ -3637,8 +3598,8 @@ async fn test_streaming_events_emitted() {
     println!("\nStep 4: Sending message...");
     let message_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/messages",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .json(&json!({
             "message": {
@@ -3661,8 +3622,8 @@ async fn test_streaming_events_emitted() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/orgs/{}/agents/{}/sessions/{}/messages",
-                API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+                "{}/v1/orgs/{}/sessions/{}/messages",
+                API_BASE_URL, DEFAULT_ORG, session.id
             ))
             .send()
             .await;
@@ -3701,8 +3662,8 @@ async fn test_streaming_events_emitted() {
     println!("\nStep 6: Verifying streaming events...");
     let events_response = client
         .get(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/events",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/events",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await
@@ -3921,11 +3882,9 @@ async fn test_cancel_turn_endpoint() {
     // Step 4: Create session
     println!("\nStep 4: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions",
-            API_BASE_URL, DEFAULT_ORG, agent.id
-        ))
+        .post(format!("{}/v1/orgs/{}/sessions", API_BASE_URL, DEFAULT_ORG))
         .json(&json!({
+            "agent_id": agent.id,
             "title": "Cancel Test Session"
         }))
         .send()
@@ -3943,8 +3902,8 @@ async fn test_cancel_turn_endpoint() {
     println!("\nStep 5: Testing cancel on idle session...");
     let cancel_response = client
         .post(format!(
-            "{}/v1/orgs/{}/agents/{}/sessions/{}/cancel",
-            API_BASE_URL, DEFAULT_ORG, agent.id, session.id
+            "{}/v1/orgs/{}/sessions/{}/cancel",
+            API_BASE_URL, DEFAULT_ORG, session.id
         ))
         .send()
         .await

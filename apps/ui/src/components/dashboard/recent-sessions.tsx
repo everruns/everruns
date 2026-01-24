@@ -1,21 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles } from "lucide-react";
-import { formatDate, formatDurationSeconds } from "@/lib/formatting";
+import { MessageSquare, Loader2, Zap, Sparkles, Bot } from "lucide-react";
+import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { shortenId } from "@/lib/utils";
-import { CopyButton } from "@/components/ui/copy-button";
-import type { Session, Agent, LlmModelWithProvider } from "@/lib/api/types";
+import type { Session, Agent, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 
 interface RecentSessionsProps {
   sessions: Session[];
@@ -23,34 +14,34 @@ interface RecentSessionsProps {
   models?: LlmModelWithProvider[];
 }
 
+function truncateText(text: string, maxLength: number = 80): string {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength).trim() + "...";
+}
+
+function formatTotalTokens(usage: TokenUsage): string {
+  const total = usage.input_tokens + usage.output_tokens;
+  return formatTokens(total);
+}
+
 export function RecentSessions({ sessions, agents, models = [] }: RecentSessionsProps) {
   const recentSessions = sessions.slice(0, 10);
   const agentMap = new Map(agents.map((a) => [a.id, a]));
   const modelMap = new Map(models.map((m) => [m.id, m]));
 
-  const getSessionDuration = (session: Session) => {
-    if (!session.started_at || !session.finished_at) return "-";
-    const start = new Date(session.started_at).getTime();
-    const end = new Date(session.finished_at).getTime();
-    const seconds = Math.round((end - start) / 1000);
-    return formatDurationSeconds(seconds);
-  };
-
-  // Session status: started → active → idle (cycles)
-  // - started: Session just created, no turn executed yet
-  // - active: A turn is currently running
-  // - idle: Turn completed, session waiting for next input
   const getStatusBadge = (session: Session) => {
     switch (session.status) {
       case "active":
-        return <Badge variant="default">Active</Badge>;
+        return <Badge variant="default" className="text-xs">Running</Badge>;
       case "idle":
-        return <Badge variant="secondary">Idle</Badge>;
+        return <Badge variant="secondary" className="text-xs">Idle</Badge>;
       case "started":
       default:
-        return <Badge variant="outline">New</Badge>;
+        return <Badge variant="outline" className="text-xs">New</Badge>;
     }
   };
+
+  const isRunning = (session: Session) => session.status === "active";
 
   return (
     <Card>
@@ -63,66 +54,76 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
             No sessions yet. Create an agent and start a session to begin.
           </p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Session</TableHead>
-                <TableHead>Agent</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Started</TableHead>
-                <TableHead>Duration</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recentSessions.map((session) => {
-                const agent = agentMap.get(session.agent_id);
-                const model = session.model_id ? modelMap.get(session.model_id) : undefined;
-                return (
-                  <TableRow key={session.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Link
-                          href={`/agents/${session.agent_id}/sessions/${session.id}`}
-                          className="font-mono text-sm hover:underline"
-                        >
-                          {session.title || shortenId(session.id)}
-                        </Link>
-                        <CopyButton value={session.id} />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/agents/${session.agent_id}`}
-                        className="hover:underline"
-                      >
-                        {agent?.name || "Unknown"}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      {model ? (
-                        <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+          <div className="space-y-2">
+            {recentSessions.map((session) => {
+              const agent = agentMap.get(session.agent_id);
+              const model = session.model_id ? modelMap.get(session.model_id) : undefined;
+              return (
+                <Link
+                  key={session.id}
+                  href={`/sessions/${session.id}`}
+                  className="flex items-start gap-3 p-3 rounded-md border hover:bg-muted transition-colors"
+                >
+                  {/* Icon */}
+                  <div className="flex-shrink-0 mt-0.5">
+                    {isRunning(session) ? (
+                      <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                    ) : (
+                      <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    {/* Title row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate">
+                        {session.title || `Session ${shortenId(session.id)}`}
+                      </span>
+                      {getStatusBadge(session)}
+                      {agent && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Bot className="w-3 h-3" />
+                          {agent.name}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Input preview */}
+                    {session.preview && (
+                      <p className="text-sm text-muted-foreground mt-1 truncate">
+                        {truncateText(session.preview)}
+                      </p>
+                    )}
+
+                    {/* Output preview */}
+                    {session.output_preview && (
+                      <p className="text-sm text-muted-foreground/70 mt-0.5 truncate italic">
+                        {truncateText(session.output_preview)}
+                      </p>
+                    )}
+
+                    {/* Meta row */}
+                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                      <span>{formatRelativeTime(session.created_at)}</span>
+                      {model && (
+                        <span className="flex items-center gap-1">
                           <Sparkles className="w-3 h-3" />
                           {model.display_name}
                         </span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(session)}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {session.started_at ? formatDate(session.started_at) : "-"}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {getSessionDuration(session)}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
+                        <span className="flex items-center gap-1">
+                          <Zap className="w-3 h-3" />
+                          {formatTotalTokens(session.usage)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         )}
       </CardContent>
     </Card>

@@ -481,12 +481,13 @@ impl Database {
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (agent_id, title, tags, model_id, status)
-            VALUES ($1, $2, $3, $4, 'started')
-            RETURNING id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+            INSERT INTO sessions (org_id, agent_id, title, tags, model_id, status)
+            VALUES ($1, $2, $3, $4, $5, 'started')
+            RETURNING id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
+        .bind(input.org_id)
         .bind(input.agent_id)
         .bind(&input.title)
         .bind(&input.tags)
@@ -497,96 +498,122 @@ impl Database {
         Ok(row)
     }
 
-    /// Get session, validating org ownership via agent join
+    /// Get session by org and session id
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
-                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
-            FROM sessions s
-            JOIN agents a ON s.agent_id = a.id
-            WHERE a.org_id = $1 AND s.id = $2
+            SELECT id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            FROM sessions
+            WHERE org_id = $1 AND id = $2
             "#,
         )
         .bind(org_id)
-        .bind(id.uuid())
+        .bind(id)
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
     }
 
-    /// List sessions for an agent with pagination, validating org ownership.
+    /// List sessions for an organization with optional agent filter.
     /// Returns (sessions, total_count).
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: AgentId,
+        agent_id: Option<AgentId>,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        // Get total count (validates agent belongs to org)
-        let total: (i64,) = sqlx::query_as(
-            r#"
-            SELECT COUNT(*) as count
-            FROM sessions s
-            JOIN agents a ON s.agent_id = a.id
-            WHERE a.org_id = $1 AND s.agent_id = $2
-            "#,
-        )
-        .bind(org_id)
-        .bind(agent_id.uuid())
-        .fetch_one(&self.pool)
-        .await?;
+        // Get total count
+        let total: (i64,) = if let Some(aid) = agent_id {
+            sqlx::query_as(
+                r#"
+                SELECT COUNT(*) as count
+                FROM sessions
+                WHERE org_id = $1 AND agent_id = $2
+                "#,
+            )
+            .bind(org_id)
+            .bind(aid)
+            .fetch_one(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as(
+                r#"
+                SELECT COUNT(*) as count
+                FROM sessions
+                WHERE org_id = $1
+                "#,
+            )
+            .bind(org_id)
+            .fetch_one(&self.pool)
+            .await?
+        };
 
         // Get paginated results
-        let rows = sqlx::query_as::<_, SessionRow>(
-            r#"
-            SELECT s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
-                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
-            FROM sessions s
-            JOIN agents a ON s.agent_id = a.id
-            WHERE a.org_id = $1 AND s.agent_id = $2
-            ORDER BY s.created_at DESC
-            LIMIT $3 OFFSET $4
-            "#,
-        )
-        .bind(org_id)
-        .bind(agent_id.uuid())
-        .bind(pagination.limit as i64)
-        .bind(pagination.offset as i64)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = if let Some(aid) = agent_id {
+            sqlx::query_as::<_, SessionRow>(
+                r#"
+                SELECT id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+                FROM sessions
+                WHERE org_id = $1 AND agent_id = $2
+                ORDER BY created_at DESC
+                LIMIT $3 OFFSET $4
+                "#,
+            )
+            .bind(org_id)
+            .bind(aid)
+            .bind(pagination.limit as i64)
+            .bind(pagination.offset as i64)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, SessionRow>(
+                r#"
+                SELECT id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+                FROM sessions
+                WHERE org_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2 OFFSET $3
+                "#,
+            )
+            .bind(org_id)
+            .bind(pagination.limit as i64)
+            .bind(pagination.offset as i64)
+            .fetch_all(&self.pool)
+            .await?
+        };
 
         Ok((rows, total.0 as u32))
     }
 
-    /// Update session, validating org ownership via agent join
+    /// Update session by org and session id
     pub async fn update_session(
         &self,
         org_id: i64,
         id: SessionId,
         input: UpdateSession,
     ) -> Result<Option<SessionRow>> {
-        // Update only if session belongs to an agent in the org
         // Note: updated_at is automatically set by the update_sessions_updated_at trigger
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            UPDATE sessions s
+            UPDATE sessions
             SET
-                title = COALESCE($3, s.title),
-                tags = COALESCE($4, s.tags),
-                model_id = COALESCE($5, s.model_id),
-                status = COALESCE($6, s.status),
-                started_at = COALESCE($7, s.started_at),
-                finished_at = COALESCE($8, s.finished_at)
-            FROM agents a
-            WHERE s.agent_id = a.id AND a.org_id = $1 AND s.id = $2
-            RETURNING s.id, s.agent_id, s.title, s.tags, s.model_id, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
-                      s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens
+                title = COALESCE($3, title),
+                tags = COALESCE($4, tags),
+                model_id = COALESCE($5, model_id),
+                status = COALESCE($6, status),
+                started_at = COALESCE($7, started_at),
+                finished_at = COALESCE($8, finished_at)
+            WHERE org_id = $1 AND id = $2
+            RETURNING id, org_id, agent_id, title, tags, model_id, status, created_at, updated_at, started_at, finished_at,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(org_id)
-        .bind(id.uuid())
+        .bind(id)
         .bind(&input.title)
         .bind(&input.tags)
         .bind(input.model_id.map(|m| m.uuid()))
@@ -599,17 +626,16 @@ impl Database {
         Ok(row)
     }
 
-    /// Delete session, validating org ownership via agent join
+    /// Delete session by org and session id
     pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         let result = sqlx::query(
             r#"
-            DELETE FROM sessions s
-            USING agents a
-            WHERE s.agent_id = a.id AND a.org_id = $1 AND s.id = $2
+            DELETE FROM sessions
+            WHERE org_id = $1 AND id = $2
             "#,
         )
         .bind(org_id)
-        .bind(id.uuid())
+        .bind(id)
         .execute(&self.pool)
         .await?;
 

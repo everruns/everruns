@@ -64,7 +64,7 @@ This document defines the session-level virtual filesystem for Everruns. Each se
 
 ### API Endpoints
 
-All endpoints under `/v1/agents/{agent_id}/sessions/{session_id}/fs`
+All endpoints under `/v1/orgs/{org}/sessions/{session_id}/fs`
 
 #### CRUD Operations
 
@@ -92,7 +92,7 @@ All endpoints under `/v1/agents/{agent_id}/sessions/{session_id}/fs`
 
 **Create File:**
 ```json
-POST /v1/agents/{id}/sessions/{id}/fs/src/main.rs
+POST /v1/orgs/{org}/sessions/{id}/fs/src/main.rs
 {
   "content": "fn main() {}",
   "encoding": "text"

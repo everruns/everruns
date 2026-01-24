@@ -203,6 +203,8 @@ message Session {
     Timestamp created_at = 5;
     Timestamp updated_at = 6;
     optional Uuid default_model_id = 7;
+    // Organization public ID (format: org_{32-hex})
+    string organization_id = 8;
 }
 
 message GetSessionRequest {

@@ -1,5 +1,5 @@
 // Session API functions
-// All routes are org-scoped: /v1/orgs/{org}/agents/{agentId}/sessions/...
+// All routes are org-scoped: /v1/orgs/{org}/sessions/...
 
 import { api } from "./client";
 import type {
@@ -18,24 +18,30 @@ export { listEvents } from "./events";
 // Session CRUD
 // ============================================
 
+/**
+ * Create a new session for an agent.
+ * Sessions are direct children of organizations, with agent_id specifying which agent works in the session.
+ */
 export async function createSession(
   org: string,
-  agentId: string,
-  request: CreateSessionRequest = {}
+  request: CreateSessionRequest
 ): Promise<Session> {
-  const response = await api.post<Session>(
-    `/v1/orgs/${org}/agents/${agentId}/sessions`,
-    request
-  );
+  const response = await api.post<Session>(`/v1/orgs/${org}/sessions`, request);
   return response.data;
 }
 
+/**
+ * List sessions for an organization.
+ * @param agentId - Optional filter by agent ID
+ */
 export async function listSessions(
   org: string,
-  agentId: string,
-  params?: PaginationParams
+  params?: PaginationParams & { agentId?: string }
 ): Promise<PaginatedResponse<Session>> {
   const searchParams = new URLSearchParams();
+  if (params?.agentId) {
+    searchParams.set("agent_id", params.agentId);
+  }
   if (params?.offset !== undefined) {
     searchParams.set("offset", String(params.offset));
   }
@@ -43,30 +49,28 @@ export async function listSessions(
     searchParams.set("limit", String(params.limit));
   }
   const query = searchParams.toString();
-  const url = `/v1/orgs/${org}/agents/${agentId}/sessions${query ? `?${query}` : ""}`;
+  const url = `/v1/orgs/${org}/sessions${query ? `?${query}` : ""}`;
   const response = await api.get<PaginatedResponse<Session>>(url);
   return response.data;
 }
 
 export async function getSession(
   org: string,
-  agentId: string,
   sessionId: string
 ): Promise<Session> {
   const response = await api.get<Session>(
-    `/v1/orgs/${org}/agents/${agentId}/sessions/${sessionId}`
+    `/v1/orgs/${org}/sessions/${sessionId}`
   );
   return response.data;
 }
 
 export async function updateSession(
   org: string,
-  agentId: string,
   sessionId: string,
   request: UpdateSessionRequest
 ): Promise<Session> {
   const response = await api.patch<Session>(
-    `/v1/orgs/${org}/agents/${agentId}/sessions/${sessionId}`,
+    `/v1/orgs/${org}/sessions/${sessionId}`,
     request
   );
   return response.data;
@@ -74,10 +78,9 @@ export async function updateSession(
 
 export async function deleteSession(
   org: string,
-  agentId: string,
   sessionId: string
 ): Promise<void> {
-  await api.delete(`/v1/orgs/${org}/agents/${agentId}/sessions/${sessionId}`);
+  await api.delete(`/v1/orgs/${org}/sessions/${sessionId}`);
 }
 
 /**
@@ -93,8 +96,7 @@ export async function deleteSession(
  */
 export async function cancelTurn(
   org: string,
-  agentId: string,
   sessionId: string
 ): Promise<void> {
-  await api.post(`/v1/orgs/${org}/agents/${agentId}/sessions/${sessionId}/cancel`);
+  await api.post(`/v1/orgs/${org}/sessions/${sessionId}/cancel`);
 }

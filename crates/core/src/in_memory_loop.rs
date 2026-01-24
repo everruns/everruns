@@ -345,6 +345,7 @@ impl InMemoryAgenticLoopBuilder {
         let session_id = SessionId::new();
         let session = Session {
             id: session_id,
+            organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
             agent_id,
             title: Some("In-Memory Session".to_string()),
             preview: None,

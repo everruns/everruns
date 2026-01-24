@@ -133,3 +133,130 @@ Types needing OpenAPI schema:
 ```rust
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 ```
+
+## UI Patterns
+
+### Entity Select Components
+
+Most entities have an ID (used as value) and a display name. When creating dropdowns for entity selection, create dedicated `{Entity}Select` components that handle the ID-to-name mapping internally.
+
+**Pattern:** `components/{entity}/{entity}-select.tsx`
+
+```tsx
+// components/agent/agent-select.tsx
+export function AgentSelect({ value, onValueChange, placeholder, includeAll, ... }) {
+  const { data: agents = [] } = useAgents();
+  const agentMap = useMemo(() => new Map(agents.map(a => [a.id, a])), [agents]);
+
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger>
+        <SelectValue placeholder={placeholder}>
+          {value && agentMap.get(value)?.name}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {includeAll && <SelectItem value="all">All</SelectItem>}
+        {agents.map((agent) => (
+          <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+```
+
+**Usage:**
+```tsx
+// ✅ Clean - component handles ID-to-name mapping
+<AgentSelect value={agentId} onValueChange={setAgentId} />
+<AgentSelect value={agentId} onValueChange={setAgentId} includeAll />
+
+// ❌ Avoid - manual mapping is error-prone
+<Select value={agentId} onValueChange={setAgentId}>
+  <SelectValue>{agentMap.get(agentId)?.name}</SelectValue>
+  ...
+</Select>
+```
+
+**Existing components:**
+- `AgentSelect` - `components/agent/agent-select.tsx`
+
+**Why:** Centralizes the ID-to-name logic, ensures consistency, and prevents the common bug where `SelectValue` shows the ID instead of the name.
+
+### Entity Filter Menu Components
+
+For filtering lists by entity, use menu-style dropdowns instead of form selects. Menus provide better UX for filters (immediate action, no form submission semantics).
+
+**Pattern:** `components/{entity}/{entity}-filter-menu.tsx`
+
+```tsx
+// components/agent/agent-filter-menu.tsx
+export function AgentFilterMenu({ value, onValueChange, className }) {
+  const { data: agents = [] } = useAgents();
+  const [open, setOpen] = useState(false);
+  const agentMap = useMemo(() => new Map(agents.map(a => [a.id, a])), [agents]);
+
+  const displayValue = value ? agentMap.get(value)?.name : "All agents";
+  const handleValueChange = (newValue: string) => {
+    onValueChange(newValue);
+    setOpen(false); // Close on selection
+  };
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline" }), className)}>
+        {displayValue}
+        <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
+      </DropdownMenuTrigger>
+      <DropdownMenuPositioner align="end">
+        <DropdownMenuContent>
+          <DropdownMenuRadioGroup value={value} onValueChange={handleValueChange}>
+            <DropdownMenuRadioItem value="">All agents</DropdownMenuRadioItem>
+            {agents.map((agent) => (
+              <DropdownMenuRadioItem key={agent.id} value={agent.id}>
+                {agent.name}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenuPositioner>
+    </DropdownMenu>
+  );
+}
+```
+
+**When to use:**
+- `{Entity}Select` - Form inputs (creating/editing records)
+- `{Entity}FilterMenu` - List filters (filtering tables/lists)
+
+**Existing components:**
+- `AgentFilterMenu` - `components/agent/agent-filter-menu.tsx`
+
+### List Page Structure
+
+For pages listing entities with filters:
+
+```
+┌─────────────────────────────────────────────┐
+│ Page Title                    [Action Btn]  │  ← Simple header
+├─────────────────────────────────────────────┤
+│ ┌─────────────────────────────────────────┐ │
+│ │ Context Title        [Filter Dropdown]  │ │  ← Card header
+│ │ X items                                 │ │
+│ ├─────────────────────────────────────────┤ │
+│ │ Item list...                            │ │  ← Card content
+│ │                                         │ │
+│ ├─────────────────────────────────────────┤ │
+│ │ Showing 1-20 of X     [Prev] [Next]     │ │  ← Pagination
+│ └─────────────────────────────────────────┘ │
+└─────────────────────────────────────────────┘
+```
+
+**Rules:**
+- Page header: Simple title + primary action button (no counts)
+- Card header: Contextual title (changes with filter) + item count + filter control
+- Card content: List items
+- Pagination: Shows range and total for current filter
+
+**Why:** Avoids confusion between "total" and "filtered" counts. The card header count always reflects the current view.

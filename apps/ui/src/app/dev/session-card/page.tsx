@@ -57,6 +57,7 @@ function ShowcaseItem({
 const sampleSessions = {
   running: {
     id: "019234ab-cdef-7890-1234-567890abcdef",
+    organization_id: "org_default",
     agent_id: "agent-123",
     title: "Working on implementing user authentication with OAuth 2.0 support for Google and GitHub providers",
     preview: "Can you help me implement OAuth 2.0 authentication with support for Google and GitHub?",
@@ -65,6 +66,7 @@ const sampleSessions = {
     model_id: "model-uuid-anthropic",
     status: "active" as const,
     created_at: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
+    updated_at: new Date(Date.now() - 240000).toISOString(),
     started_at: new Date(Date.now() - 240000).toISOString(), // 4 minutes ago
     finished_at: null,
     usage: {
@@ -76,6 +78,7 @@ const sampleSessions = {
   } satisfies Session,
   idle: {
     id: "019234cd-efgh-7890-1234-567890abcdef",
+    organization_id: "org_default",
     agent_id: "agent-123",
     title: "Completed code review for the API endpoints",
     preview: "Please review the changes in src/api/routes.ts and check for any issues",
@@ -84,6 +87,7 @@ const sampleSessions = {
     model_id: "model-uuid-openai",
     status: "idle" as const,
     created_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+    updated_at: new Date(Date.now() - 3500000).toISOString(),
     started_at: new Date(Date.now() - 3500000).toISOString(),
     finished_at: null,
     usage: {
@@ -95,6 +99,7 @@ const sampleSessions = {
   } satisfies Session,
   new: {
     id: "019234ef-ijkl-7890-1234-567890abcdef",
+    organization_id: "org_default",
     agent_id: "agent-123",
     title: null,
     preview: null,
@@ -103,12 +108,14 @@ const sampleSessions = {
     model_id: null,
     status: "started" as const,
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
     started_at: null,
     finished_at: null,
     // No usage for new session
   } satisfies Session,
   withPreviewOnly: {
     id: "019234ab-wxyz-7890-1234-567890abcdef",
+    organization_id: "org_default",
     agent_id: "agent-123",
     title: null,
     preview: "Help me debug this failing test in the authentication module",
@@ -117,6 +124,7 @@ const sampleSessions = {
     model_id: "model-uuid-anthropic",
     status: "idle" as const,
     created_at: new Date(Date.now() - 600000).toISOString(), // 10 minutes ago
+    updated_at: new Date(Date.now() - 500000).toISOString(),
     started_at: new Date(Date.now() - 500000).toISOString(),
     finished_at: null,
     usage: {
@@ -128,6 +136,7 @@ const sampleSessions = {
   } satisfies Session,
   longSummary: {
     id: "019234gh-mnop-7890-1234-567890abcdef",
+    organization_id: "org_default",
     agent_id: "agent-123",
     title: "Investigating the performance bottleneck in the database query layer",
     preview: "I noticed our API is slow when fetching related entities. Can you investigate the database query layer and identify the bottleneck?",
@@ -136,6 +145,7 @@ const sampleSessions = {
     model_id: "model-uuid-anthropic",
     status: "active" as const,
     created_at: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
+    updated_at: new Date(Date.now() - 1700000).toISOString(),
     started_at: new Date(Date.now() - 1700000).toISOString(),
     finished_at: null,
     usage: {
@@ -225,39 +235,34 @@ export default function DevSessionCardPage() {
               <ShowcaseItem label="Running Session">
                 <SessionCard
                   session={sampleSessions.running}
-                  agentId="agent-123"
-                  model={sampleModels.anthropic}
+                                    model={sampleModels.anthropic}
                 />
               </ShowcaseItem>
 
               <ShowcaseItem label="Idle Session">
                 <SessionCard
                   session={sampleSessions.idle}
-                  agentId="agent-123"
-                  model={sampleModels.openai}
+                                    model={sampleModels.openai}
                 />
               </ShowcaseItem>
 
               <ShowcaseItem label="New Session (No Title or Preview)">
                 <SessionCard
                   session={sampleSessions.new}
-                  agentId="agent-123"
-                />
+                                  />
               </ShowcaseItem>
 
               <ShowcaseItem label="Session with Preview Only (No Title)">
                 <SessionCard
                   session={sampleSessions.withPreviewOnly}
-                  agentId="agent-123"
-                  model={sampleModels.anthropic}
+                                    model={sampleModels.anthropic}
                 />
               </ShowcaseItem>
 
               <ShowcaseItem label="Session with Title and Preview">
                 <SessionCard
                   session={sampleSessions.longSummary}
-                  agentId="agent-123"
-                  model={sampleModels.anthropic}
+                                    model={sampleModels.anthropic}
                 />
               </ShowcaseItem>
             </ShowcaseSection>
@@ -271,18 +276,15 @@ export default function DevSessionCardPage() {
                 <div className="space-y-2">
                   <SessionCard
                     session={sampleSessions.running}
-                    agentId="agent-123"
-                    model={sampleModels.anthropic}
+                                        model={sampleModels.anthropic}
                   />
                   <SessionCard
                     session={sampleSessions.idle}
-                    agentId="agent-123"
-                    model={sampleModels.openai}
+                                        model={sampleModels.openai}
                   />
                   <SessionCard
                     session={sampleSessions.new}
-                    agentId="agent-123"
-                  />
+                                      />
                 </div>
               </ShowcaseItem>
             </ShowcaseSection>
@@ -297,8 +299,7 @@ export default function DevSessionCardPage() {
                   <div className="flex-1">
                     <SessionCard
                       session={sampleSessions.running}
-                      agentId="agent-123"
-                      model={sampleModels.anthropic}
+                                            model={sampleModels.anthropic}
                     />
                   </div>
                   <button

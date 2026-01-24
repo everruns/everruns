@@ -11,7 +11,7 @@ import { Key, Lock, Clock, AlertCircle } from "lucide-react";
 import { useOrg } from "@/providers/org-provider";
 
 export default function StoragePage() {
-  const { agentId, sessionId } = useSessionContext();
+  const { sessionId } = useSessionContext();
   const { currentOrg } = useOrg();
   const [keyValues, setKeyValues] = useState<KeyValueInfo[]>([]);
   const [secrets, setSecrets] = useState<SecretInfo[]>([]);
@@ -28,10 +28,10 @@ export default function StoragePage() {
       try {
         const [keysRes, secretsRes] = await Promise.all([
           api.get<ListResponse<KeyValueInfo>>(
-            `/v1/orgs/${currentOrg.public_id}/agents/${agentId}/sessions/${sessionId}/storage/keys`
+            `/v1/orgs/${currentOrg.public_id}/sessions/${sessionId}/storage/keys`
           ),
           api.get<ListResponse<SecretInfo>>(
-            `/v1/orgs/${currentOrg.public_id}/agents/${agentId}/sessions/${sessionId}/storage/secrets`
+            `/v1/orgs/${currentOrg.public_id}/sessions/${sessionId}/storage/secrets`
           ),
         ]);
 
@@ -46,7 +46,7 @@ export default function StoragePage() {
     }
 
     fetchStorage();
-  }, [agentId, sessionId, currentOrg]);
+  }, [sessionId, currentOrg]);
 
   if (loading) {
     return (

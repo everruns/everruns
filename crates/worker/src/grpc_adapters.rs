@@ -457,6 +457,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
 
     Ok(Session {
         id: id.into(),
+        organization_id: proto_session.organization_id,
         agent_id: agent_id.into(),
         title: non_empty_string(proto_session.title),
         preview: None,

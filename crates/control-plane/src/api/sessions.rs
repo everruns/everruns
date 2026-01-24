@@ -1,5 +1,5 @@
 // Session CRUD HTTP routes
-// Routes are org-scoped: /v1/orgs/:org/agents/:agent_id/sessions/...
+// Routes are org-scoped: /v1/orgs/:org/sessions/...
 
 use crate::auth::{AuthState, OrgContext, middleware::FromRef};
 use crate::services::{EventService, SessionService};
@@ -23,6 +23,9 @@ use utoipa::{IntoParams, ToSchema};
 /// Request to create a session
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
+    /// ID of the agent to work in this session (format: agent_{32-hex}).
+    #[schema(value_type = String, example = "agent_01933b5a00007000800000000000001")]
+    pub agent_id: AgentId,
     /// Human-readable title for the session.
     #[serde(default)]
     #[schema(example = "Debug login issue")]
@@ -75,6 +78,9 @@ pub struct UpdateSessionRequest {
 /// Query parameters for listing sessions with pagination.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListSessionsQuery {
+    /// Filter sessions by agent ID.
+    #[param(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub agent_id: Option<AgentId>,
     /// Number of items to skip (for pagination).
     #[param(minimum = 0, default = 0)]
     pub offset: Option<u32>,
@@ -116,35 +122,34 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create session routes (nested under agents, org-scoped)
+/// Create session routes (org-scoped)
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        // Session CRUD under agent (org-scoped)
+        // Session CRUD at org level
         .route(
-            "/v1/orgs/:org/agents/:agent_id/sessions",
+            "/v1/orgs/:org/sessions",
             post(create_session).get(list_sessions),
         )
         .route(
-            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id",
+            "/v1/orgs/:org/sessions/:session_id",
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
         )
         // Cancel turn endpoint
         .route(
-            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/cancel",
+            "/v1/orgs/:org/sessions/:session_id/cancel",
             post(cancel_turn),
         )
         .with_state(state)
 }
 
-/// POST /v1/orgs/{org}/agents/{agent_id}/sessions - Create a new session
+/// POST /v1/orgs/{org}/sessions - Create a new session
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions",
+    path = "/v1/orgs/{org}/sessions",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
     ),
     request_body = CreateSessionRequest,
     responses(
@@ -157,39 +162,27 @@ pub fn routes(state: AppState) -> Router {
 pub async fn create_session(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id)): Path<(String, String)>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-
     let session = state
         .session_service
-        .create(org.org_id, agent_id.uuid(), req)
+        .create(org.org_id, &org.public_id, req.agent_id.uuid(), req)
         .await
         .log_internal_error_json("create session")?;
 
     Ok((StatusCode::CREATED, Json(session)))
 }
 
-/// GET /v1/orgs/{org}/agents/{agent_id}/sessions - List sessions in agent
+/// GET /v1/orgs/{org}/sessions - List sessions in organization
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions",
+    path = "/v1/orgs/{org}/sessions",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
         ListSessionsQuery
     ),
     responses(
         (status = 200, description = "Paginated list of sessions", body = PaginatedResponse<Session>),
-        (status = 400, description = "Invalid agent ID"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -197,39 +190,33 @@ pub async fn create_session(
 pub async fn list_sessions(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id)): Path<(String, String)>,
     Query(query): Query<ListSessionsQuery>,
 ) -> Result<Json<PaginatedResponse<Session>>, (StatusCode, Json<ErrorResponse>)> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
 
     let (sessions, total) = state
         .session_service
-        .list(org.org_id, agent_id.uuid(), pagination)
+        .list(
+            org.org_id,
+            &org.public_id,
+            query.agent_id.map(|id| id.uuid()),
+            pagination,
+        )
         .await
         .log_internal_error_json("list sessions")?;
 
     Ok(Json(PaginatedResponse::new(sessions, total, offset, limit)))
 }
 
-/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id} - Get session
+/// GET /v1/orgs/{org}/sessions/{session_id} - Get session
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}",
+    path = "/v1/orgs/{org}/sessions/{session_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
-        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
         (status = 200, description = "Session found", body = Session),
@@ -242,7 +229,7 @@ pub async fn list_sessions(
 pub async fn get_session(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
 ) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
@@ -255,7 +242,7 @@ pub async fn get_session(
 
     let session = state
         .session_service
-        .get(org.org_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid())
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;
@@ -263,14 +250,13 @@ pub async fn get_session(
     Ok(Json(session))
 }
 
-/// PATCH /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id} - Update session
+/// PATCH /v1/orgs/{org}/sessions/{session_id} - Update session
 #[utoipa::path(
     patch,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}",
+    path = "/v1/orgs/{org}/sessions/{session_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
-        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     request_body = UpdateSessionRequest,
     responses(
@@ -284,7 +270,7 @@ pub async fn get_session(
 pub async fn update_session(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
     Json(req): Json<UpdateSessionRequest>,
 ) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -298,7 +284,7 @@ pub async fn update_session(
 
     let session = state
         .session_service
-        .update(org.org_id, session_id.uuid(), req)
+        .update(org.org_id, &org.public_id, session_id.uuid(), req)
         .await
         .log_internal_error_json("update session")?
         .ok_or_not_found_json("Session")?;
@@ -306,14 +292,13 @@ pub async fn update_session(
     Ok(Json(session))
 }
 
-/// DELETE /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id} - Delete session
+/// DELETE /v1/orgs/{org}/sessions/{session_id} - Delete session
 #[utoipa::path(
     delete,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}",
+    path = "/v1/orgs/{org}/sessions/{session_id}",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
-        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
         (status = 204, description = "Session deleted successfully"),
@@ -326,7 +311,7 @@ pub async fn update_session(
 pub async fn delete_session(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
@@ -355,7 +340,7 @@ pub async fn delete_session(
     }
 }
 
-/// POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel - Cancel current turn
+/// POST /v1/orgs/{org}/sessions/{session_id}/cancel - Cancel current turn
 ///
 /// Cancels the currently running turn in the session. If no turn is running,
 /// this is a no-op and returns success (idempotent). When a turn is active:
@@ -365,10 +350,9 @@ pub async fn delete_session(
 /// 4. Set the session status back to idle
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/cancel",
+    path = "/v1/orgs/{org}/sessions/{session_id}/cancel",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agent_...)"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
@@ -382,14 +366,14 @@ pub async fn delete_session(
 pub async fn cancel_turn(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
 ) -> Result<Json<CancelTurnResponse>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Verify session exists
     let session = state
         .session_service
-        .get(org.org_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid())
         .await
         .log_internal_error("get session for cancel")?
         .ok_or_not_found()?;
@@ -452,20 +436,34 @@ pub async fn cancel_turn(
 mod tests {
     use super::*;
 
+    const TEST_AGENT_ID: &str = "agent_550e8400e29b41d4a716446655440000";
+
     #[test]
     fn test_create_session_request_minimal() {
-        // Test with minimal fields (all optional)
-        let json = r#"{}"#;
-        let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
+        // Test with only required agent_id
+        let json = format!(r#"{{"agent_id": "{}"}}"#, TEST_AGENT_ID);
+        let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req.agent_id.to_string(), TEST_AGENT_ID);
         assert_eq!(req.title, None);
         assert!(req.tags.is_empty());
         assert_eq!(req.model_id, None);
     }
 
     #[test]
+    fn test_create_session_request_missing_agent_id() {
+        // agent_id is required, so this should fail
+        let json = r#"{}"#;
+        let result: Result<CreateSessionRequest, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_create_session_request_with_title() {
-        let json = r#"{"title": "Test Session"}"#;
-        let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
+        let json = format!(
+            r#"{{"agent_id": "{}", "title": "Test Session"}}"#,
+            TEST_AGENT_ID
+        );
+        let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.title, Some("Test Session".to_string()));
         assert!(req.tags.is_empty());
         assert_eq!(req.model_id, None);
@@ -474,7 +472,10 @@ mod tests {
     #[test]
     fn test_create_session_request_with_model_id() {
         let model_id: ModelId = "model_550e8400e29b41d4a716446655440000".parse().unwrap();
-        let json = format!(r#"{{"model_id": "{}"}}"#, model_id);
+        let json = format!(
+            r#"{{"agent_id": "{}", "model_id": "{}"}}"#,
+            TEST_AGENT_ID, model_id
+        );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.model_id, Some(model_id));
     }
@@ -483,8 +484,8 @@ mod tests {
     fn test_create_session_request_full() {
         let model_id: ModelId = "model_550e8400e29b41d4a716446655440001".parse().unwrap();
         let json = format!(
-            r#"{{"title": "Full Session", "tags": ["tag1", "tag2"], "model_id": "{}"}}"#,
-            model_id
+            r#"{{"agent_id": "{}", "title": "Full Session", "tags": ["tag1", "tag2"], "model_id": "{}"}}"#,
+            TEST_AGENT_ID, model_id
         );
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.title, Some("Full Session".to_string()));

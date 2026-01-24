@@ -39,12 +39,13 @@ Last-resort validation limits to guard against abuse. API returns generic `400 B
 
 ### Session
 
-An instance of agentic loop execution. Multiple sessions can exist concurrently for a single agent.
+An instance of agentic loop execution. Sessions are top-level entities under organizations, with an agent assigned to work in each session.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | SessionId | Typed ID with `session_` prefix (UUIDv7) |
-| `agent_id` | AgentId | Parent agent reference |
+| `organization_id` | OrgId | Parent organization |
+| `agent_id` | AgentId | Agent working in this session |
 | `title` | string? | Session title (user-provided or auto-generated) |
 | `tags` | string[] | Tags for organization/filtering |
 | `model_id` | ModelId? | Override model (null = use agent default) |
@@ -53,6 +54,8 @@ An instance of agentic loop execution. Multiple sessions can exist concurrently 
 | `updated_at` | timestamp | Last modification time (auto-updated on any change) |
 | `started_at` | timestamp? | Execution start time |
 | `finished_at` | timestamp? | Completion time |
+
+**Note:** Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned to work in the session. This allows for organization-wide session management and future flexibility to reassign agents.
 
 Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
 

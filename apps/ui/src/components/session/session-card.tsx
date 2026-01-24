@@ -25,8 +25,8 @@ function formatTotalTokens(usage: TokenUsage): string {
 export interface SessionCardProps {
   /** The session to display */
   session: Session;
-  /** The agent ID (for building links) */
-  agentId: string;
+  /** Optional agent name to display (for org-level session lists) */
+  agentName?: string;
   /** Optional LLM model for display */
   model?: LlmModelWithProvider;
   /** Optional custom summary text (overrides default title display) */
@@ -124,7 +124,7 @@ function SessionInfoIcon({ session }: { session: Session }) {
  */
 export function SessionCard({
   session,
-  agentId,
+  agentName,
   model,
   summary,
 }: SessionCardProps) {
@@ -134,10 +134,12 @@ export function SessionCard({
   const inputPreview = summary ?? session.preview;
   // Show output preview from session (last assistant message)
   const outputPreview = session.output_preview;
+  // Sessions are org-level entities
+  const sessionUrl = `/sessions/${session.id}`;
 
   return (
     <Link
-      href={`/agents/${agentId}/sessions/${session.id}`}
+      href={sessionUrl}
       className="flex items-start justify-between p-3 rounded-md border hover:bg-muted transition-colors group"
     >
       <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -155,6 +157,11 @@ export function SessionCard({
             <Badge variant={statusInfo.variant} className="flex-shrink-0 text-xs">
               {statusInfo.label}
             </Badge>
+            {agentName && (
+              <Badge variant="outline" className="flex-shrink-0 text-xs">
+                {agentName}
+              </Badge>
+            )}
           </div>
           {/* Input preview: first user message */}
           {inputPreview && (

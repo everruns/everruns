@@ -48,6 +48,7 @@ impl SessionService {
     pub async fn create(
         &self,
         org_id: i64,
+        org_public_id: &str,
         agent_id: Uuid,
         req: CreateSessionRequest,
     ) -> Result<Session> {
@@ -64,13 +65,14 @@ impl SessionService {
         };
 
         let input = CreateSessionRow {
+            org_id,
             agent_id,
             title: req.title,
             tags: req.tags,
             model_id,
         };
         let row = self.db.create_session(input).await?;
-        let session = Self::row_to_session(row);
+        let session = Self::row_to_session(row, org_public_id);
 
         // Apply capability mounts to the session filesystem
         self.apply_capability_mounts(agent_id.uuid(), session.id.uuid())
@@ -136,28 +138,30 @@ impl SessionService {
         Ok(())
     }
 
-    pub async fn get(&self, org_id: i64, id: Uuid) -> Result<Option<Session>> {
+    pub async fn get(&self, org_id: i64, org_public_id: &str, id: Uuid) -> Result<Option<Session>> {
         let row = self
             .db
             .get_session(org_id, SessionId::from_uuid(id))
             .await?;
-        Ok(row.map(Self::row_to_session))
+        Ok(row.map(|r| Self::row_to_session(r, org_public_id)))
     }
 
-    /// List sessions for an agent with pagination.
+    /// List sessions for an organization with optional agent filter.
     /// Returns (sessions, total_count).
     /// Sessions include preview text from first user message and last assistant response.
     pub async fn list(
         &self,
         org_id: i64,
-        agent_id: Uuid,
+        org_public_id: &str,
+        agent_id: Option<Uuid>,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
-        let (rows, total) = self
-            .db
-            .list_sessions(org_id, AgentId::from_uuid(agent_id), pagination)
-            .await?;
-        let mut sessions: Vec<Session> = rows.into_iter().map(Self::row_to_session).collect();
+        let agent_id = agent_id.map(AgentId::from_uuid);
+        let (rows, total) = self.db.list_sessions(org_id, agent_id, pagination).await?;
+        let mut sessions: Vec<Session> = rows
+            .into_iter()
+            .map(|r| Self::row_to_session(r, org_public_id))
+            .collect();
 
         // Fetch previews for all sessions in batch queries
         let session_ids: Vec<Uuid> = sessions.iter().map(|s| s.id.uuid()).collect();
@@ -180,6 +184,7 @@ impl SessionService {
     pub async fn update(
         &self,
         org_id: i64,
+        org_public_id: &str,
         id: Uuid,
         req: UpdateSessionRequest,
     ) -> Result<Option<Session>> {
@@ -192,13 +197,14 @@ impl SessionService {
             .db
             .update_session(org_id, SessionId::from_uuid(id), input)
             .await?;
-        Ok(row.map(Self::row_to_session))
+        Ok(row.map(|r| Self::row_to_session(r, org_public_id)))
     }
 
     /// Update session status (used by worker via gRPC)
     pub async fn update_status(
         &self,
         org_id: i64,
+        org_public_id: &str,
         id: Uuid,
         status: String,
     ) -> Result<Option<Session>> {
@@ -210,7 +216,7 @@ impl SessionService {
             .db
             .update_session(org_id, SessionId::from_uuid(id), input)
             .await?;
-        Ok(row.map(Self::row_to_session))
+        Ok(row.map(|r| Self::row_to_session(r, org_public_id)))
     }
 
     pub async fn delete(&self, org_id: i64, id: Uuid) -> Result<bool> {
@@ -219,7 +225,7 @@ impl SessionService {
             .await
     }
 
-    fn row_to_session(row: crate::storage::SessionRow) -> Session {
+    fn row_to_session(row: crate::storage::SessionRow, org_public_id: &str) -> Session {
         // Convert database usage columns to TokenUsage
         let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
             Some(TokenUsage::with_cache(
@@ -242,6 +248,7 @@ impl SessionService {
 
         Session {
             id: row.id,
+            organization_id: org_public_id.to_string(),
             agent_id: row.agent_id,
             title: row.title,
             preview: None,        // Populated separately in list()

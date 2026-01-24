@@ -10,10 +10,10 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
+use everruns_core::SessionId;
 use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use super::common::{ApiResultExt, ListResponse};
 
@@ -64,24 +64,23 @@ impl FromRef<AppState> for AuthState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/storage/keys",
+            "/v1/orgs/:org/sessions/:session_id/storage/keys",
             get(list_keys),
         )
         .route(
-            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/storage/secrets",
+            "/v1/orgs/:org/sessions/:session_id/storage/secrets",
             get(list_secrets),
         )
         .with_state(state)
 }
 
-/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/storage/keys - List all key-value pairs
+/// GET /v1/orgs/{org}/sessions/{session_id}/storage/keys - List all key-value pairs
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/storage/keys",
+    path = "/v1/orgs/{org}/sessions/{session_id}/storage/keys",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("session_id" = String, Path, description = "Session ID")
     ),
     responses(
         (status = 200, description = "List of key-value pairs", body = ListResponse<KeyValueInfo>),
@@ -93,12 +92,14 @@ pub fn routes(state: AppState) -> Router {
 pub async fn list_keys(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
 ) -> Result<Json<ListResponse<KeyValueInfo>>, StatusCode> {
+    let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+
     // Get all keys with their values
     let keys = state
         .db
-        .list_session_keys(session_id)
+        .list_session_keys(session_id.uuid())
         .await
         .log_internal_error("list session keys")?;
 
@@ -107,7 +108,7 @@ pub async fn list_keys(
     for key_info in keys {
         let value = state
             .db
-            .get_session_key_value(session_id, &key_info.key)
+            .get_session_key_value(session_id.uuid(), &key_info.key)
             .await
             .log_internal_error("get session key value")?
             .map(|row| row.value)
@@ -124,14 +125,13 @@ pub async fn list_keys(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/storage/secrets - List all secrets (names only)
+/// GET /v1/orgs/{org}/sessions/{session_id}/storage/secrets - List all secrets (names only)
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/storage/secrets",
+    path = "/v1/orgs/{org}/sessions/{session_id}/storage/secrets",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = Uuid, Path, description = "Agent ID"),
-        ("session_id" = Uuid, Path, description = "Session ID")
+        ("session_id" = String, Path, description = "Session ID")
     ),
     responses(
         (status = 200, description = "List of secrets (names only, no values)", body = ListResponse<SecretInfo>),
@@ -143,11 +143,13 @@ pub async fn list_keys(
 pub async fn list_secrets(
     _org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, Uuid, Uuid)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
 ) -> Result<Json<ListResponse<SecretInfo>>, StatusCode> {
+    let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+
     let secrets = state
         .db
-        .list_session_secrets(session_id)
+        .list_session_secrets(session_id.uuid())
         .await
         .log_internal_error("list session secrets")?;
 

@@ -12,7 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ArrowLeft, Sparkles, MessageSquare, Folder, Activity, Zap, Database } from "lucide-react";
+import { ArrowLeft, Sparkles, MessageSquare, Folder, Activity, Zap, Database, Bot } from "lucide-react";
 import { cn, shortenId } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
 import { SessionProvider, useSessionContext } from "./session-context";
@@ -30,15 +30,15 @@ function formatTokens(tokens: number): string {
 
 interface SessionLayoutProps {
   children: React.ReactNode;
-  params: Promise<{ agentId: string; sessionId: string }>;
+  params: Promise<{ sessionId: string }>;
 }
 
 export default function SessionLayout({ children, params }: SessionLayoutProps) {
-  const { agentId, sessionId } = use(params);
+  const { sessionId } = use(params);
 
   return (
-    <SessionProvider agentId={agentId} sessionId={sessionId}>
-      <SessionLayoutContent agentId={agentId} sessionId={sessionId}>
+    <SessionProvider sessionId={sessionId}>
+      <SessionLayoutContent sessionId={sessionId}>
         {children}
       </SessionLayoutContent>
     </SessionProvider>
@@ -47,13 +47,12 @@ export default function SessionLayout({ children, params }: SessionLayoutProps) 
 
 interface SessionLayoutContentProps {
   children: React.ReactNode;
-  agentId: string;
   sessionId: string;
 }
 
-function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutContentProps) {
+function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps) {
   const pathname = usePathname();
-  const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage } = useSessionContext();
+  const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage, agentId } = useSessionContext();
 
   // Determine active tab from pathname
   const getActiveTab = () => {
@@ -64,7 +63,7 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
   };
   const activeTab = getActiveTab();
 
-  const basePath = `/agents/${agentId}/sessions/${sessionId}`;
+  const basePath = `/sessions/${sessionId}`;
 
   if (sessionLoading) {
     return (
@@ -80,8 +79,8 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
     return (
       <div className="container mx-auto p-6">
         <div className="text-red-500">Session not found</div>
-        <Link href={`/agents/${agentId}`} className="text-blue-500 hover:underline">
-          Back to agent
+        <Link href="/sessions" className="text-blue-500 hover:underline">
+          Back to sessions
         </Link>
       </div>
     );
@@ -92,11 +91,11 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
       {/* Header */}
       <div className="border-b p-4">
         <Link
-          href={`/agents/${agentId}`}
+          href="/sessions"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-2"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to {agent?.name || "Agent"}
+          Back to Sessions
         </Link>
 
         <div className="flex items-center justify-between">
@@ -105,11 +104,23 @@ function SessionLayoutContent({ children, agentId, sessionId }: SessionLayoutCon
               {session.title || `Session ${shortenId(session.id)}`}
               <CopyButton value={session.id} />
             </h1>
-            <p className="text-sm text-muted-foreground">
-              {activeTab === "files"
-                ? "Session file system"
-                : `Started ${new Date(session.created_at).toLocaleString()}`}
-            </p>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {agent && (
+                <Link
+                  href={`/agents/${agentId}`}
+                  className="inline-flex items-center gap-1 hover:text-foreground"
+                >
+                  <Bot className="w-3 h-3" />
+                  {agent.name}
+                </Link>
+              )}
+              <span>•</span>
+              <span>
+                {activeTab === "files"
+                  ? "Session file system"
+                  : `Started ${new Date(session.created_at).toLocaleString()}`}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {liveUsage && (

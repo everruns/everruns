@@ -1,20 +1,57 @@
 "use client";
 
-import { useAgents, useCapabilities } from "@/hooks";
+import { useState } from "react";
+import { useAgents, useCapabilities, useSessions, useLlmModels, useCreateSession } from "@/hooks";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { AgentListWidget } from "@/components/dashboard/agent-list-widget";
+import { RecentSessions } from "@/components/dashboard/recent-sessions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { AgentSelect } from "@/components/agent/agent-select";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Plus, Boxes } from "lucide-react";
+import { Plus } from "lucide-react";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const { data: allCapabilities } = useCapabilities();
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(undefined, { limit: 5 });
+  const { data: llmModels } = useLlmModels();
+  const createSession = useCreateSession();
 
-  if (agentsLoading) {
+  const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
+  const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
+
+  const handleOpenNewSessionDialog = () => {
+    setNewSessionAgentId(agents[0]?.id || "");
+    setNewSessionDialogOpen(true);
+  };
+
+  const handleCreateSession = async () => {
+    if (!newSessionAgentId) return;
+    try {
+      const session = await createSession.mutateAsync({
+        request: { agent_id: newSessionAgentId },
+      });
+      setNewSessionDialogOpen(false);
+      router.push(`/sessions/${session.id}`);
+    } catch (error) {
+      console.error("Failed to create session:", error);
+    }
+  };
+
+  if (agentsLoading || sessionsLoading) {
     return (
       <>
         <Header title="Dashboard" />
@@ -33,8 +70,7 @@ export default function DashboardPage() {
     );
   }
 
-  // For now, pass empty sessions array since we don't have a global sessions endpoint yet
-  const sessions: [] = [];
+  const sessions = sessionsResponse?.data ?? [];
 
   return (
     <>
@@ -52,27 +88,65 @@ export default function DashboardPage() {
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Link href="/agents/new" className="block">
-                <Button variant="accent" className="w-full justify-start">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create New Agent
-                </Button>
-              </Link>
-              <Link href="/agents" className="block">
-                <Button variant="outline" className="w-full justify-start">
-                  <Boxes className="h-4 w-4 mr-2" />
-                  Browse All Agents
-                </Button>
-              </Link>
               {agents.length > 0 && (
-                <p className="text-sm text-muted-foreground">
-                  Select an agent to view its sessions and start conversations.
-                </p>
+                <Button
+                  variant="accent"
+                  className="w-full justify-start"
+                  onClick={handleOpenNewSessionDialog}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Session
+                </Button>
               )}
+              <Link href="/agents/new" className="block">
+                <Button variant="outline" className="w-full justify-start">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Agent
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </div>
+
+        <RecentSessions
+          sessions={sessions}
+          agents={agents}
+          models={llmModels}
+        />
       </div>
+
+      {/* New Session Dialog */}
+      <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Session</DialogTitle>
+            <DialogDescription>
+              Select an agent to start a new conversation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <AgentSelect
+              value={newSessionAgentId}
+              onValueChange={setNewSessionAgentId}
+              placeholder="Select an agent"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setNewSessionDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateSession}
+              disabled={!newSessionAgentId || createSession.isPending}
+            >
+              {createSession.isPending ? "Creating..." : "Create Session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

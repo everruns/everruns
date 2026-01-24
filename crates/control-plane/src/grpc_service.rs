@@ -119,6 +119,19 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Durable execution not enabled"))
     }
 
+    /// Get organization public_id from org_id
+    async fn get_org_public_id(&self, org_id: i64) -> Result<String, Status> {
+        self.db
+            .get_organization(org_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get organization: {}", e);
+                Status::internal("Failed to get organization")
+            })?
+            .map(|org| org.public_id)
+            .ok_or_else(|| Status::not_found("Organization not found"))
+    }
+
     /// Max gRPC message size (150MB for base64-encoded images + overhead)
     ///
     /// TODO: Sending large images over gRPC is inefficient. Future improvements:
@@ -259,11 +272,12 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetTurnContextResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
+        let org_public_id = self.get_org_public_id(req.org_id).await?;
 
         // Get session via SessionService
         let session = self
             .session_service
-            .get(req.org_id, session_id)
+            .get(req.org_id, &org_public_id, session_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -295,6 +309,7 @@ impl WorkerService for WorkerServiceImpl {
             created_at: Some(datetime_to_proto_timestamp(session.created_at)),
             updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
             default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+            organization_id: session.organization_id.clone(),
         };
 
         // Load messages from events using EventService
@@ -460,11 +475,12 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetSessionResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
+        let org_public_id = self.get_org_public_id(req.org_id).await?;
 
         // Get session via SessionService
         let session = self
             .session_service
-            .get(req.org_id, session_id)
+            .get(req.org_id, &org_public_id, session_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get session: {}", e);
@@ -481,6 +497,7 @@ impl WorkerService for WorkerServiceImpl {
             created_at: Some(datetime_to_proto_timestamp(s.created_at)),
             updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
             default_model_id: s.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+            organization_id: s.organization_id.clone(),
         });
 
         Ok(Response::new(GetSessionResponse {
@@ -496,6 +513,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
+        let org_public_id = self.get_org_public_id(req.org_id).await?;
 
         // Validate status value
         let valid_statuses = ["started", "active", "idle"];
@@ -508,7 +526,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let session = self
             .session_service
-            .update_status(req.org_id, session_id, req.status)
+            .update_status(req.org_id, &org_public_id, session_id, req.status)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update session status: {}", e);
@@ -524,6 +542,7 @@ impl WorkerService for WorkerServiceImpl {
             created_at: Some(datetime_to_proto_timestamp(session.created_at)),
             updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
             default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+            organization_id: session.organization_id.clone(),
         };
 
         Ok(Response::new(SetSessionStatusResponse {

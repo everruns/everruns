@@ -215,7 +215,7 @@ impl StorageBackend {
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: AgentId,
+        agent_id: Option<AgentId>,
         pagination: Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         dispatch!(self, list_sessions, org_id, agent_id, pagination)

@@ -1,5 +1,5 @@
 // Message HTTP routes and API contracts
-// Routes are org-scoped: /v1/orgs/:org/agents/:agent_id/sessions/:session_id/messages
+// Routes are org-scoped: /v1/orgs/:org/sessions/:session_id/messages
 //
 // BREAKING CHANGE: Simplified message roles to just `user` and `agent`.
 // - Tool results are conveyed via `tool.completed` events
@@ -24,7 +24,6 @@ use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::services::{MessageService, SessionService};
 
@@ -175,7 +174,7 @@ impl FromRef<AppState> for AuthState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/orgs/:org/agents/:agent_id/sessions/:session_id/messages",
+            "/v1/orgs/:org/sessions/:session_id/messages",
             post(create_message).get(list_messages),
         )
         .with_state(state)
@@ -185,19 +184,19 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// POST /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages - Create message (user message triggers workflow)
+/// POST /v1/orgs/{org}/sessions/{session_id}/messages - Create message (user message triggers workflow)
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages",
+    path = "/v1/orgs/{org}/sessions/{session_id}/messages",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     request_body = CreateMessageRequest,
     responses(
         (status = 201, description = "Message created successfully", body = Message),
         (status = 400, description = "Invalid ID format"),
+        (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = "messages"
@@ -205,7 +204,7 @@ pub fn routes(state: AppState) -> Router {
 pub async fn create_message(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, agent_id, session_id)): Path<(String, String, String)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
     Json(req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
@@ -217,12 +216,32 @@ pub async fn create_message(
         )
     })?;
 
-    // Parse agent_id for validation but use the raw UUID for the service
-    let agent_uuid = agent_id_to_uuid(&agent_id)?;
+    // Get session to retrieve agent_id
+    let session = state
+        .session_service
+        .get(org.org_id, &org.public_id, session_id.uuid())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get session: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
 
     let message = state
         .message_service
-        .create(org.org_id, agent_uuid, session_id.uuid(), req)
+        .create(org.org_id, session.agent_id.uuid(), session_id.uuid(), req)
         .await
         .map_err(|e| {
             tracing::error!("Failed to create message: {}", e);
@@ -237,27 +256,12 @@ pub async fn create_message(
     Ok((StatusCode::CREATED, Json(message)))
 }
 
-// Helper function to parse agent ID and return UUID
-fn agent_id_to_uuid(id: &str) -> Result<Uuid, (StatusCode, Json<ErrorResponse>)> {
-    use everruns_core::typed_id::AgentId;
-    let agent_id: AgentId = id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-    Ok(agent_id.uuid())
-}
-
-/// GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages - List messages (PRIMARY data)
+/// GET /v1/orgs/{org}/sessions/{session_id}/messages - List messages (PRIMARY data)
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/messages",
+    path = "/v1/orgs/{org}/sessions/{session_id}/messages",
     params(
         ("org" = String, Path, description = "Organization public ID"),
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)"),
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
     responses(
@@ -271,7 +275,7 @@ fn agent_id_to_uuid(id: &str) -> Result<Uuid, (StatusCode, Json<ErrorResponse>)>
 pub async fn list_messages(
     org: OrgContext,
     State(state): State<AppState>,
-    Path((_org_path, _agent_id, session_id)): Path<(String, String, String)>,
+    Path((_org_path, session_id)): Path<(String, String)>,
 ) -> Result<Json<ListResponse<Message>>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
@@ -285,7 +289,7 @@ pub async fn list_messages(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);

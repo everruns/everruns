@@ -120,10 +120,10 @@ CREATE INDEX idx_api_keys_org_id ON api_keys(org_id);
 ```
 /v1/orgs/{org_public_id}/agents
 /v1/orgs/{org_public_id}/agents/{agent_id}
-/v1/orgs/{org_public_id}/agents/{agent_id}/sessions
-/v1/orgs/{org_public_id}/agents/{agent_id}/sessions/{session_id}
-/v1/orgs/{org_public_id}/agents/{agent_id}/sessions/{session_id}/messages
-/v1/orgs/{org_public_id}/agents/{agent_id}/sessions/{session_id}/sse
+/v1/orgs/{org_public_id}/sessions
+/v1/orgs/{org_public_id}/sessions/{session_id}
+/v1/orgs/{org_public_id}/sessions/{session_id}/messages
+/v1/orgs/{org_public_id}/sessions/{session_id}/sse
 /v1/orgs/{org_public_id}/llm-providers
 /v1/orgs/{org_public_id}/llm-providers/{provider_id}
 /v1/orgs/{org_public_id}/llm-models

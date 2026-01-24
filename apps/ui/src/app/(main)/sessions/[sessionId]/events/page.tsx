@@ -1,11 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, Eye, Copy, Check, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Activity, Copy, Check, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Table,
@@ -50,12 +48,10 @@ function CopyButton({ data }: { data: unknown }) {
 }
 
 export default function EventsPage() {
-  const { events, eventsLoading, agentId, sessionId } = useSessionContext();
+  const { events, eventsLoading, sessionId } = useSessionContext();
   const [currentPage, setCurrentPage] = useState(1);
   const [hasNewEvents, setHasNewEvents] = useState(false);
   const lastKnownCountRef = useRef(0);
-
-  const basePath = `/agents/${agentId}/sessions/${sessionId}`;
 
   // Sort events by sequence descending (newest first)
   const sortedEvents = useMemo(() => {
@@ -171,15 +167,6 @@ export default function EventsPage() {
                     <TableCell className="font-mono text-xs">
                       <div className="relative">
                         <div className="absolute right-0 top-0 z-10 flex items-center gap-1 bg-background/80 backdrop-blur-sm rounded px-1">
-                          {event.type === "llm.generation" && (
-                            <Link
-                              href={`${basePath}/llm-history/${event.id}`}
-                              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-6 px-2 text-xs")}
-                            >
-                              <Eye className="w-3 h-3 mr-1" />
-                              View
-                            </Link>
-                          )}
                           <CopyButton data={event.data} />
                         </div>
                         <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">

@@ -59,7 +59,10 @@ pub struct Session {
     /// Unique identifier for the session (format: session_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "session_01933b5a00007000800000000000001"))]
     pub id: SessionId,
-    /// ID of the agent this session belongs to (format: agent_{32-hex}).
+    /// Organization this session belongs to (format: org_{32-hex}).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "org_00000000000000000000000000000001"))]
+    pub organization_id: String,
+    /// ID of the agent working in this session (format: agent_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a00007000800000000000001"))]
     pub agent_id: AgentId,
     /// Human-readable title for the session.
