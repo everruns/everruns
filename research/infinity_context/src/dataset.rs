@@ -2,7 +2,7 @@
 //!
 //! Format compatible with HuggingFace datasets. Each line is a JSON object:
 //! ```json
-//! {"name": "needle_basic_0", "type": "needle_in_haystack", "messages": [...], "task": "...", "expected": {...}}
+//! {"name": "needle_basic_0", "type": "needle_in_haystack", "messages": [...], "task": "...", "scorers": [...]}
 //! ```
 
 use anyhow::{Context, Result};
@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
-use crate::types::{ExpectedResult, Message, PlantedInfo, Scenario, ScenarioType};
+use crate::scorer::{Score, Scorer};
+use crate::types::{Message, PlantedInfo, Scenario, ScenarioType};
 
 // ============================================================================
 // Dataset Record (input)
@@ -37,8 +38,8 @@ pub struct DatasetRecord {
     /// The task/question to answer
     pub task: String,
 
-    /// Expected answer or evaluation criteria
-    pub expected: ExpectedResult,
+    /// Scorers for evaluating responses (multiple allowed)
+    pub scorers: Vec<Scorer>,
 
     /// Metadata about planted information (for debugging)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -53,7 +54,7 @@ impl From<Scenario> for DatasetRecord {
             description: Some(s.description),
             messages: s.messages,
             task: s.task,
-            expected: s.expected,
+            scorers: s.scorers,
             planted_info: s.planted_info,
         }
     }
@@ -67,7 +68,7 @@ impl From<DatasetRecord> for Scenario {
             scenario_type: r.scenario_type,
             messages: r.messages,
             task: r.task,
-            expected: r.expected,
+            scorers: r.scorers,
             planted_info: r.planted_info,
         }
     }
@@ -89,8 +90,11 @@ pub struct EvalResultRecord {
     /// Capability/strategy name
     pub capability: String,
 
-    /// Whether evaluation passed
-    pub success: bool,
+    /// Aggregate score (0.0-1.0, average of all scorer scores)
+    pub score: f64,
+
+    /// Individual scorer results
+    pub scores: Vec<Score>,
 
     /// Model response
     pub response: String,
@@ -101,6 +105,13 @@ pub struct EvalResultRecord {
 
     /// Evaluation metrics
     pub metrics: ResultMetrics,
+}
+
+impl EvalResultRecord {
+    /// Returns true if aggregate score >= 0.5
+    pub fn passed(&self) -> bool {
+        self.score >= 0.5
+    }
 }
 
 /// Metrics for a single evaluation result
@@ -289,9 +300,7 @@ mod tests {
             description: Some("Test description".to_string()),
             messages: vec![Message::user("Hello"), Message::assistant("Hi there")],
             task: "What was said?".to_string(),
-            expected: ExpectedResult::Contains {
-                contains: vec!["Hello".to_string()],
-            },
+            scorers: vec![Scorer::contains("has_hello", vec!["Hello".to_string()])],
             planted_info: vec![],
         }];
 
@@ -303,5 +312,6 @@ mod tests {
 
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].name, "test_scenario");
+        assert_eq!(loaded[0].scorers.len(), 1);
     }
 }

@@ -16,6 +16,7 @@ mod metrics;
 mod report;
 mod runner;
 mod scenarios;
+pub mod scorer;
 pub mod types;
 
 use anyhow::Result;
@@ -313,7 +314,8 @@ async fn cmd_run(
                 scenario: scenario_result.scenario_name.clone(),
                 scenario_type,
                 capability: scenario_result.strategy_name.clone(),
-                success: scenario_result.success,
+                score: scenario_result.score,
+                scores: scenario_result.scores.clone(),
                 response: scenario_result.response.clone(),
                 error: scenario_result.error.clone(),
                 metrics: scenario_result.metrics.clone().into(),
@@ -403,35 +405,44 @@ fn print_results_text(metadata: &RunMetadata, results: &[EvalResultRecord]) {
     }
 
     for (capability, cap_results) in &by_capability {
-        let success_count = cap_results.iter().filter(|r| r.success).count();
+        let avg_score: f64 = cap_results.iter().map(|r| r.score).sum::<f64>() / cap_results.len() as f64;
+        let passed_count = cap_results.iter().filter(|r| r.passed()).count();
         let total = cap_results.len();
-        let accuracy = if total > 0 {
-            success_count as f64 / total as f64 * 100.0
-        } else {
-            0.0
-        };
 
         println!(
-            "{}: {:.1}% ({}/{})",
+            "{}: {:.1}% avg ({}/{} passed)",
             capability.bright_cyan(),
-            accuracy,
-            success_count,
+            avg_score * 100.0,
+            passed_count,
             total
         );
 
         for r in cap_results {
-            let status = if r.success {
+            let status = if r.score >= 0.8 {
                 "✓".bright_green()
+            } else if r.score >= 0.5 {
+                "◐".bright_yellow()
             } else {
                 "✗".bright_red()
             };
             println!(
-                "  {} {} ({}ms, {} queries)",
+                "  {} {} (score: {:.2}, {}ms, {} queries)",
                 status,
                 r.scenario,
+                r.score,
                 r.metrics.latency_ms,
                 r.metrics.history_queries
             );
+            // Show individual scorer results
+            for s in &r.scores {
+                let score_status = if s.value >= 0.5 { "✓" } else { "✗" };
+                println!(
+                    "      {} {}: {:.2}",
+                    score_status.dimmed(),
+                    s.name.dimmed(),
+                    s.value
+                );
+            }
             if let Some(ref err) = r.error {
                 println!("    Error: {}", err.dimmed());
             }
@@ -453,8 +464,8 @@ fn print_results_markdown(metadata: &RunMetadata, results: &[EvalResultRecord]) 
 
     // Summary table
     println!("## Summary\n");
-    println!("| Capability | Accuracy | Passed | Failed |");
-    println!("|------------|----------|--------|--------|");
+    println!("| Capability | Avg Score | Passed | Failed |");
+    println!("|------------|-----------|--------|--------|");
 
     let mut by_capability: std::collections::HashMap<String, Vec<&EvalResultRecord>> =
         std::collections::HashMap::new();
@@ -466,25 +477,31 @@ fn print_results_markdown(metadata: &RunMetadata, results: &[EvalResultRecord]) 
     }
 
     for (capability, cap_results) in &by_capability {
-        let success_count = cap_results.iter().filter(|r| r.success).count();
-        let fail_count = cap_results.len() - success_count;
-        let accuracy = if !cap_results.is_empty() {
-            success_count as f64 / cap_results.len() as f64 * 100.0
-        } else {
-            0.0
-        };
+        let avg_score: f64 = cap_results.iter().map(|r| r.score).sum::<f64>() / cap_results.len().max(1) as f64;
+        let passed_count = cap_results.iter().filter(|r| r.passed()).count();
+        let fail_count = cap_results.len() - passed_count;
         println!(
             "| {} | {:.1}% | {} | {} |",
-            capability, accuracy, success_count, fail_count
+            capability, avg_score * 100.0, passed_count, fail_count
         );
     }
 
     println!("\n## Detailed Results\n");
     for r in results {
-        let status = if r.success { "✅" } else { "❌" };
+        let status = if r.score >= 0.8 {
+            "✅"
+        } else if r.score >= 0.5 {
+            "⚠️"
+        } else {
+            "❌"
+        };
         println!(
-            "- {} **{}** / {} - {}ms, {} queries",
-            status, r.scenario, r.capability, r.metrics.latency_ms, r.metrics.history_queries
+            "- {} **{}** / {} - score: {:.2}, {}ms, {} queries",
+            status, r.scenario, r.capability, r.score, r.metrics.latency_ms, r.metrics.history_queries
         );
+        // Show individual scores
+        for s in &r.scores {
+            println!("  - {}: {:.2}", s.name, s.value);
+        }
     }
 }

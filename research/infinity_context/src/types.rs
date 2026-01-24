@@ -152,8 +152,8 @@ pub struct Scenario {
     pub messages: Vec<Message>,
     /// The task/question to answer
     pub task: String,
-    /// Expected answer or criteria for success
-    pub expected: ExpectedResult,
+    /// Scorers for evaluating responses
+    pub scorers: Vec<crate::scorer::Scorer>,
     /// Metadata about planted information
     #[serde(default)]
     pub planted_info: Vec<PlantedInfo>,
@@ -203,29 +203,25 @@ pub struct PlantedInfo {
     pub value: String,
 }
 
-/// Expected result for evaluation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ExpectedResult {
-    /// Exact string match
-    Exact(String),
-    /// Must contain all of these strings
-    Contains { contains: Vec<String> },
-    /// Regex pattern match
-    Pattern { pattern: String },
-    /// Custom evaluation (LLM-as-judge)
-    LlmJudge { criteria: String },
-}
-
 /// Result of running a single scenario with a strategy
 #[derive(Debug, Clone, Serialize)]
 pub struct ScenarioResult {
     pub scenario_name: String,
     pub strategy_name: String,
-    pub success: bool,
+    /// Aggregate score (0.0-1.0)
+    pub score: f64,
+    /// Individual scorer results
+    pub scores: Vec<crate::scorer::Score>,
     pub response: String,
     pub metrics: EvalMetrics,
     pub error: Option<String>,
+}
+
+impl ScenarioResult {
+    /// Returns true if aggregate score >= 0.5
+    pub fn passed(&self) -> bool {
+        self.score >= 0.5
+    }
 }
 
 /// Metrics collected during evaluation
@@ -256,9 +252,13 @@ pub struct EvalMetrics {
 pub struct StrategyResults {
     pub strategy_name: String,
     pub total_scenarios: usize,
-    pub successful: usize,
+    /// Number of scenarios with score >= 0.5
+    pub passed: usize,
+    /// Number of scenarios with score < 0.5
     pub failed: usize,
     pub context_exceeded: usize,
+    /// Average score across all scenarios (0.0-1.0)
+    pub avg_score: f64,
     pub avg_tokens: f64,
     pub avg_latency_ms: f64,
     pub avg_history_queries: f64,
@@ -266,12 +266,9 @@ pub struct StrategyResults {
 }
 
 impl StrategyResults {
+    /// Average score as percentage (0-100)
     pub fn accuracy(&self) -> f64 {
-        if self.total_scenarios == 0 {
-            0.0
-        } else {
-            self.successful as f64 / self.total_scenarios as f64 * 100.0
-        }
+        self.avg_score * 100.0
     }
 }
 

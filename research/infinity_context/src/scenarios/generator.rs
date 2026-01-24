@@ -2,7 +2,8 @@
 //!
 //! Uses everruns-core Message type for test scenarios.
 
-use crate::types::{message_helpers, ExpectedResult, PlantedInfo, Scenario, ScenarioType};
+use crate::scorer::Scorer;
+use crate::types::{message_helpers, PlantedInfo, Scenario, ScenarioType};
 
 /// Generate synthetic test scenarios - one of each type
 pub fn generate_synthetic() -> Vec<Scenario> {
@@ -59,9 +60,14 @@ fn generate_needle_scenario(variant: usize) -> Scenario {
         scenario_type: ScenarioType::NeedleInHaystack,
         messages,
         task: format!("What is the {} we configured earlier?", key_name),
-        expected: ExpectedResult::Contains {
-            contains: vec![key_value.to_string()],
-        },
+        scorers: vec![
+            Scorer::contains("has_value", vec![key_value.to_string()]),
+            Scorer::llm_judge_with_ideal(
+                "correct_answer",
+                "Response correctly identifies the configured value",
+                key_value.to_string(),
+            ),
+        ],
         planted_info: vec![PlantedInfo {
             message_index: needle_position,
             key: key_name.to_string(),
@@ -110,13 +116,15 @@ fn generate_multi_hop_scenario(variant: usize) -> Scenario {
             "Summarize the complete configuration for {}: what authentication method, caching, and port?",
             service_name
         ),
-        expected: ExpectedResult::Contains {
-            contains: vec![
-                auth_method.to_string(),
-                storage.to_string(),
-                port.to_string(),
-            ],
-        },
+        scorers: vec![
+            Scorer::contains("has_auth", vec![auth_method.to_string()]),
+            Scorer::contains("has_storage", vec![storage.to_string()]),
+            Scorer::contains("has_port", vec![port.to_string()]),
+            Scorer::llm_judge(
+                "complete_summary",
+                "Response mentions all three: authentication method, caching solution, and port number",
+            ),
+        ],
         planted_info: plants
             .iter()
             .map(|(idx, content)| PlantedInfo {
@@ -176,12 +184,15 @@ fn generate_cumulative_scenario(variant: usize) -> Scenario {
         scenario_type: ScenarioType::Cumulative,
         messages,
         task: "What is the current/final version of the calculate function? Show the complete function signature and body.".to_string(),
-        expected: ExpectedResult::Contains {
-            contains: vec![
-                "factor".to_string(),
-                "max(0)".to_string(),
-            ],
-        },
+        scorers: vec![
+            Scorer::contains("has_factor_param", vec!["factor".to_string()]),
+            Scorer::contains("has_max_call", vec!["max(0)".to_string()]),
+            Scorer::llm_judge_with_ideal(
+                "shows_final_version",
+                "Response shows the FINAL version of the function with factor parameter and max(0) call",
+                "fn calculate(x: i32, y: i32, factor: i32) -> i32 { ((x + y) * factor).max(0) }",
+            ),
+        ],
         planted_info: function_versions
             .iter()
             .map(|(idx, code)| PlantedInfo {
@@ -269,9 +280,14 @@ fn generate_final_decision_scenario(variant: usize) -> Scenario {
         scenario_type: ScenarioType::FinalDecision,
         messages,
         task: task.to_string(),
-        expected: ExpectedResult::Contains {
-            contains: vec![final_choice.to_string()],
-        },
+        scorers: vec![
+            Scorer::contains("has_final_choice", vec![final_choice.to_string()]),
+            Scorer::llm_judge_with_ideal(
+                "identifies_final",
+                "Response correctly identifies the FINAL decision, not an earlier one",
+                final_choice,
+            ),
+        ],
         planted_info: decisions
             .iter()
             .map(|(idx, name, statement)| PlantedInfo {
@@ -331,15 +347,22 @@ fn generate_decision_timeline_scenario(variant: usize) -> Scenario {
         }
     }
 
+    let version_names: Vec<String> = versions.iter().map(|(v, _)| v.to_string()).collect();
+
     Scenario {
         name: format!("timeline_{}_{}", topic, variant),
         description: format!("Recreate timeline of {} changes", topic),
         scenario_type: ScenarioType::DecisionTimeline,
         messages,
         task: task.to_string(),
-        expected: ExpectedResult::Contains {
-            contains: versions.iter().map(|(v, _)| v.to_string()).collect(),
-        },
+        scorers: vec![
+            Scorer::contains("has_all_versions", version_names.clone()),
+            Scorer::llm_judge_with_ideal(
+                "correct_order",
+                "Response lists ALL versions in the correct chronological order",
+                version_names.join(" → "),
+            ),
+        ],
         planted_info: version_list
             .iter()
             .map(|(idx, ver, statement)| PlantedInfo {
@@ -426,9 +449,14 @@ fn generate_tool_disambiguation_scenario(variant: usize) -> Scenario {
         scenario_type: ScenarioType::ToolResultDisambiguation,
         messages,
         task: format!("{} (Use the most recent read)", task),
-        expected: ExpectedResult::Contains {
-            contains: vec![expected.to_string()],
-        },
+        scorers: vec![
+            Scorer::contains("has_current_value", vec![expected.to_string()]),
+            Scorer::llm_judge_with_ideal(
+                "uses_latest",
+                "Response uses the MOST RECENT file read, not an earlier outdated value",
+                *expected,
+            ),
+        ],
         planted_info: calls
             .iter()
             .map(|(idx, filename, content)| PlantedInfo {

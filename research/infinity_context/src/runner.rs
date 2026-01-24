@@ -3,7 +3,8 @@
 //! Uses core's LLM driver and Capability infrastructure directly.
 
 use crate::capabilities::{Capability, MessageQuery};
-use crate::metrics::{aggregate_strategy_results, check_success};
+use crate::metrics::aggregate_strategy_results;
+use crate::scorer::{aggregate_scores, evaluate_all, JudgeConfig, Score};
 use crate::types::{ContextStrategyConfig, EvalMetrics, EvaluationResults, Message, MessageExt, Scenario, ScenarioResult};
 use anyhow::Result;
 use chrono::Utc;
@@ -91,8 +92,10 @@ pub async fn run_evaluation(
             )
             .await;
 
-            let status = if result.success {
+            let status = if result.score >= 0.8 {
                 "✓".bright_green()
+            } else if result.score >= 0.5 {
+                "◐".bright_yellow()
             } else if result.metrics.context_exceeded {
                 "⊘".bright_yellow()
             } else {
@@ -100,15 +103,16 @@ pub async fn run_evaluation(
             };
 
             println!(
-                "  {} {} (tokens: {}, latency: {}ms, queries: {})",
+                "  {} {} (score: {:.2}, tokens: {}, latency: {}ms, queries: {})",
                 status,
                 scenario.name,
+                result.score,
                 result.metrics.total_tokens,
                 result.metrics.latency_ms,
                 result.metrics.history_queries
             );
 
-            if !result.success
+            if result.score < 0.5
                 && !result.metrics.context_exceeded
                 && let Some(err) = &result.error
             {
@@ -120,10 +124,10 @@ pub async fn run_evaluation(
 
         let aggregated = aggregate_strategy_results(capability.name(), results);
         println!(
-            "\n  {} Accuracy: {:.1}% ({}/{})\n",
+            "\n  {} Avg Score: {:.1}% ({}/{})\n",
             "→".bright_blue(),
             aggregated.accuracy(),
-            aggregated.successful,
+            aggregated.passed,
             aggregated.total_scenarios
         );
 
@@ -253,7 +257,8 @@ async fn run_single_scenario(
         return ScenarioResult {
             scenario_name: scenario.name.clone(),
             strategy_name: capability.name().to_string(),
-            success: false,
+            score: 0.0,
+            scores: vec![Score::new("context", 0.0).with_rationale("Context limit exceeded")],
             response: String::new(),
             metrics: EvalMetrics {
                 context_exceeded: true,
@@ -275,11 +280,22 @@ async fn run_single_scenario(
 
     match execute_llm_calls(config, scenario, prepared, driver_registry).await {
         Ok((response, metrics)) => {
-            let success = check_success(&response, &scenario.expected);
+            // Score the response using all scorers
+            let judge_config = create_judge_config();
+            let scores = evaluate_all(
+                &scenario.scorers,
+                &scenario.task,
+                &response,
+                judge_config.as_ref(),
+            )
+            .await;
+            let score = aggregate_scores(&scores);
+
             ScenarioResult {
                 scenario_name: scenario.name.clone(),
                 strategy_name: capability.name().to_string(),
-                success,
+                score,
+                scores,
                 response,
                 metrics: EvalMetrics {
                     latency_ms: start.elapsed().as_millis() as u64,
@@ -296,7 +312,8 @@ async fn run_single_scenario(
             ScenarioResult {
                 scenario_name: scenario.name.clone(),
                 strategy_name: capability.name().to_string(),
-                success: false,
+                score: 0.0,
+                scores: vec![Score::new("error", 0.0).with_rationale(e.to_string())],
                 response: String::new(),
                 metrics: EvalMetrics {
                     context_exceeded: is_context_error,
@@ -309,6 +326,14 @@ async fn run_single_scenario(
             }
         }
     }
+}
+
+/// Create judge config from environment if API key is available
+fn create_judge_config() -> Option<JudgeConfig> {
+    std::env::var("ANTHROPIC_API_KEY").ok().map(|api_key| JudgeConfig {
+        model: "claude-3-5-haiku-20241022".to_string(),
+        api_key,
+    })
 }
 
 async fn execute_llm_calls(
@@ -479,10 +504,17 @@ fn create_dry_run_result(
     prepared: &PreparedContext,
     will_exceed: bool,
 ) -> ScenarioResult {
+    let (score, scores) = if will_exceed {
+        (0.0, vec![Score::new("context", 0.0).with_rationale("Context would exceed limit")])
+    } else {
+        (1.0, vec![Score::new("dry_run", 1.0).with_rationale("Dry run - assumed pass")])
+    };
+
     ScenarioResult {
         scenario_name: scenario.name.clone(),
         strategy_name: capability.name().to_string(),
-        success: !will_exceed,
+        score,
+        scores,
         response: "[DRY RUN]".to_string(),
         metrics: EvalMetrics {
             total_tokens: prepared.estimated_tokens,

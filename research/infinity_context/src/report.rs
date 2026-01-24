@@ -22,14 +22,16 @@ pub fn generate(results: &EvaluationResults, config: &EvalConfig) -> String {
 
     // Summary table
     report.push_str("## Summary\n\n");
-    report.push_str("| Strategy | Accuracy | Avg Tokens | Avg Latency | Context Exceeded | History Queries |\n");
-    report.push_str("|----------|----------|------------|-------------|------------------|----------------|\n");
+    report.push_str("| Strategy | Avg Score | Passed | Avg Tokens | Avg Latency | Context Exceeded | History Queries |\n");
+    report.push_str("|----------|-----------|--------|------------|-------------|------------------|----------------|\n");
 
     for strategy in &results.strategy_results {
         report.push_str(&format!(
-            "| {} | {:.1}% | {:.0} | {:.0}ms | {} | {:.1} |\n",
+            "| {} | {:.1}% | {}/{} | {:.0} | {:.0}ms | {} | {:.1} |\n",
             strategy.strategy_name,
             strategy.accuracy(),
+            strategy.passed,
+            strategy.total_scenarios,
             strategy.avg_tokens,
             strategy.avg_latency_ms,
             strategy.context_exceeded,
@@ -46,27 +48,30 @@ pub fn generate(results: &EvaluationResults, config: &EvalConfig) -> String {
         report.push_str(&format!("### {}\n\n", strategy.strategy_name));
         report.push_str(&format!(
             "- **Total scenarios:** {}\n\
-            - **Successful:** {} ({:.1}%)\n\
+            - **Avg score:** {:.1}%\n\
+            - **Passed (≥50%):** {}\n\
             - **Failed:** {}\n\
             - **Context exceeded:** {}\n\n",
             strategy.total_scenarios,
-            strategy.successful,
             strategy.accuracy(),
+            strategy.passed,
             strategy.failed,
             strategy.context_exceeded
         ));
 
         // Per-scenario results table
-        report.push_str("| Scenario | Status | Tokens | Latency | Queries | Error |\n");
-        report.push_str("|----------|--------|--------|---------|---------|-------|\n");
+        report.push_str("| Scenario | Score | Tokens | Latency | Queries | Error |\n");
+        report.push_str("|----------|-------|--------|---------|---------|-------|\n");
 
         for result in &strategy.scenario_results {
-            let status = if result.success {
-                "Pass"
+            let status = if result.score >= 0.8 {
+                format!("✅ {:.0}%", result.score * 100.0)
+            } else if result.score >= 0.5 {
+                format!("⚠️ {:.0}%", result.score * 100.0)
             } else if result.metrics.context_exceeded {
-                "Context Exceeded"
+                "⊘ Context".to_string()
             } else {
-                "Fail"
+                format!("❌ {:.0}%", result.score * 100.0)
             };
 
             let error = result
@@ -114,12 +119,12 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
         .find(|s| s.strategy_name == "infinity_context");
 
     if let (Some(baseline), Some(infinity)) = (baseline, infinity) {
-        let accuracy_improvement = infinity.accuracy() - baseline.accuracy();
+        let score_improvement = infinity.avg_score - baseline.avg_score;
 
-        if accuracy_improvement > 0.0 {
+        if score_improvement > 0.0 {
             analysis.push_str(&format!(
-                "**Infinity context shows {:.1}% accuracy improvement** over baseline.\n\n",
-                accuracy_improvement
+                "**Infinity context shows {:.1}% score improvement** over baseline.\n\n",
+                score_improvement * 100.0
             ));
         }
 
@@ -136,12 +141,12 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
     }
 
     if let (Some(naive), Some(infinity)) = (naive, infinity) {
-        let accuracy_improvement = infinity.accuracy() - naive.accuracy();
+        let score_improvement = infinity.avg_score - naive.avg_score;
 
-        if accuracy_improvement > 0.0 {
+        if score_improvement > 0.0 {
             analysis.push_str(&format!(
-                "- Infinity context shows {:.1}% accuracy improvement over naive trimming\n",
-                accuracy_improvement
+                "- Infinity context shows {:.1}% score improvement over naive trimming\n",
+                score_improvement * 100.0
             ));
         }
 
@@ -175,11 +180,11 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
     // Generate key findings based on results
     let best_strategy = strategies
         .iter()
-        .max_by(|a, b| a.accuracy().partial_cmp(&b.accuracy()).unwrap());
+        .max_by(|a, b| a.avg_score.partial_cmp(&b.avg_score).unwrap());
 
     if let Some(best) = best_strategy {
         analysis.push_str(&format!(
-            "1. **Best performing strategy:** {} ({:.1}% accuracy)\n",
+            "1. **Best performing strategy:** {} ({:.1}% avg score)\n",
             best.strategy_name,
             best.accuracy()
         ));
@@ -187,24 +192,24 @@ fn generate_analysis(strategies: &[StrategyResults]) -> String {
 
     let most_efficient = strategies
         .iter()
-        .filter(|s| s.accuracy() > 50.0)
+        .filter(|s| s.avg_score > 0.5)
         .min_by(|a, b| a.avg_tokens.partial_cmp(&b.avg_tokens).unwrap());
 
     if let Some(efficient) = most_efficient {
         analysis.push_str(&format!(
-            "2. **Most token-efficient (>50% accuracy):** {} ({:.0} avg tokens)\n",
+            "2. **Most token-efficient (>50% score):** {} ({:.0} avg tokens)\n",
             efficient.strategy_name, efficient.avg_tokens
         ));
     }
 
     let fastest = strategies
         .iter()
-        .filter(|s| s.accuracy() > 50.0)
+        .filter(|s| s.avg_score > 0.5)
         .min_by(|a, b| a.avg_latency_ms.partial_cmp(&b.avg_latency_ms).unwrap());
 
     if let Some(fast) = fastest {
         analysis.push_str(&format!(
-            "3. **Fastest (>50% accuracy):** {} ({:.0}ms avg latency)\n",
+            "3. **Fastest (>50% score):** {} ({:.0}ms avg latency)\n",
             fast.strategy_name, fast.avg_latency_ms
         ));
     }
