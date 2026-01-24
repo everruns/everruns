@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -34,6 +34,7 @@ export function AgentFilterMenu({
   className,
 }: AgentFilterMenuProps) {
   const { data: agents = [] } = useAgents();
+  const [open, setOpen] = useState(false);
 
   const agentMap = useMemo(() => {
     return new Map<string, Agent>(agents.map((a) => [a.id, a]));
@@ -41,8 +42,13 @@ export function AgentFilterMenu({
 
   const displayValue = value ? agentMap.get(value)?.name : "All agents";
 
+  const handleValueChange = (newValue: string) => {
+    onValueChange(newValue);
+    setOpen(false);
+  };
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         className={cn(buttonVariants({ variant: "outline" }), className)}
       >
@@ -51,7 +57,7 @@ export function AgentFilterMenu({
       </DropdownMenuTrigger>
       <DropdownMenuPositioner align="end">
         <DropdownMenuContent className="w-[200px]">
-          <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
+          <DropdownMenuRadioGroup value={value} onValueChange={handleValueChange}>
             <DropdownMenuRadioItem value="">
               All agents
             </DropdownMenuRadioItem>
