@@ -16,7 +16,7 @@
 use crate::storage::{EventRow, StorageBackend, models::CreateEventRow};
 use anyhow::{Result, bail};
 use everruns_core::typed_id::{EventId, SessionId};
-use everruns_core::{Event, EventListener, EventRequest, UNKNOWN};
+use everruns_core::{Event, EventData, EventListener, EventRequest, UNKNOWN};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -271,9 +271,7 @@ impl EventService {
             REASON_THINKING_STARTED => {
                 EventData::ReasonThinkingStarted(serde_json::from_value(data)?)
             }
-            REASON_THINKING_DELTA => {
-                EventData::ReasonThinkingDelta(serde_json::from_value(data)?)
-            }
+            REASON_THINKING_DELTA => EventData::ReasonThinkingDelta(serde_json::from_value(data)?),
             REASON_THINKING_COMPLETED => {
                 EventData::ReasonThinkingCompleted(serde_json::from_value(data)?)
             }

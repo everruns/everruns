@@ -1127,10 +1127,6 @@ pub enum EventData {
     TurnStarted(TurnStartedData),
     TurnCompleted(TurnCompletedData),
     TurnFailed(TurnFailedData),
-    // NOTE: TurnCancelled is placed after output events because it only
-    // requires turn_id. If placed before OutputMessageDelta/OutputMessageStarted, it would greedily
-    // match their JSON and discard their specific fields.
-    TurnCancelled(TurnCancelledData),
 
     // Atom lifecycle events
     ReasonStarted(ReasonStartedData),
@@ -1151,6 +1147,11 @@ pub enum EventData {
     ReasonThinkingDelta(ReasonThinkingDeltaData),
     ReasonThinkingStarted(ReasonThinkingStartedData),
     ReasonThinkingCompleted(ReasonThinkingCompletedData),
+
+    // NOTE: TurnCancelled is placed at the end (before Raw/Session events) because it only
+    // requires turn_id. If placed earlier, it would greedily match JSON for other turn_id-based
+    // events (OutputMessageStarted, ReasonThinkingStarted, etc.) and discard their specific fields.
+    TurnCancelled(TurnCancelledData),
 
     // Session events
     SessionStarted(SessionStartedData),
@@ -1215,11 +1216,18 @@ impl EventData {
 pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> EventData {
     let result =
         match event_type {
-            MESSAGE_USER => {
-                serde_json::from_value::<MessageUserData>(data.clone()).map(EventData::MessageUser)
+            INPUT_MESSAGE => serde_json::from_value::<InputMessageData>(data.clone())
+                .map(EventData::InputMessage),
+            OUTPUT_MESSAGE_STARTED => {
+                serde_json::from_value::<OutputMessageStartedData>(data.clone())
+                    .map(EventData::OutputMessageStarted)
             }
-            MESSAGE_AGENT => serde_json::from_value::<MessageAgentData>(data.clone())
-                .map(EventData::MessageAgent),
+            OUTPUT_MESSAGE_DELTA => serde_json::from_value::<OutputMessageDeltaData>(data.clone())
+                .map(EventData::OutputMessageDelta),
+            OUTPUT_MESSAGE_COMPLETED => {
+                serde_json::from_value::<OutputMessageCompletedData>(data.clone())
+                    .map(EventData::OutputMessageCompleted)
+            }
             TURN_STARTED => {
                 serde_json::from_value::<TurnStartedData>(data.clone()).map(EventData::TurnStarted)
             }
@@ -1230,8 +1238,6 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
             }
             TURN_CANCELLED => serde_json::from_value::<TurnCancelledData>(data.clone())
                 .map(EventData::TurnCancelled),
-            INPUT_RECEIVED => serde_json::from_value::<InputReceivedData>(data.clone())
-                .map(EventData::InputReceived),
             REASON_STARTED => serde_json::from_value::<ReasonStartedData>(data.clone())
                 .map(EventData::ReasonStarted),
             REASON_COMPLETED => serde_json::from_value::<ReasonCompletedData>(data.clone())
@@ -1241,10 +1247,11 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
             }
             ACT_COMPLETED => serde_json::from_value::<ActCompletedData>(data.clone())
                 .map(EventData::ActCompleted),
-            TOOL_CALL_STARTED => serde_json::from_value::<ToolCallStartedData>(data.clone())
-                .map(EventData::ToolCallStarted),
-            TOOL_CALL_COMPLETED => serde_json::from_value::<ToolCallCompletedData>(data.clone())
-                .map(EventData::ToolCallCompleted),
+            TOOL_STARTED => {
+                serde_json::from_value::<ToolStartedData>(data.clone()).map(EventData::ToolStarted)
+            }
+            TOOL_COMPLETED => serde_json::from_value::<ToolCompletedData>(data.clone())
+                .map(EventData::ToolCompleted),
             LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
                 .map(EventData::LlmGeneration),
             REASON_THINKING_STARTED => {
@@ -1258,9 +1265,6 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
             REASON_THINKING_COMPLETED => {
                 serde_json::from_value::<ReasonThinkingCompletedData>(data.clone())
                     .map(EventData::ReasonThinkingCompleted)
-            }
-            TEXT_DELTA => {
-                serde_json::from_value::<TextDeltaData>(data.clone()).map(EventData::TextDelta)
             }
             SESSION_STARTED => serde_json::from_value::<SessionStartedData>(data.clone())
                 .map(EventData::SessionStarted),
@@ -1842,6 +1846,9 @@ mod tests {
 
     #[test]
     fn test_reason_thinking_started_deserialization() {
+        // NOTE: ReasonThinkingStartedData and OutputMessageStartedData have identical structures
+        // (turn_id + model), so serde's untagged enum can't distinguish them.
+        // This test uses deserialize_event_data() which uses the event_type to select the correct variant.
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = ReasonThinkingStartedData {
             turn_id,
@@ -1849,10 +1856,10 @@ mod tests {
         };
 
         // Serialize to JSON
-        let json = serde_json::to_value(EventData::ReasonThinkingStarted(data.clone())).unwrap();
+        let json = serde_json::to_value(&data).unwrap();
 
-        // Deserialize back
-        let deserialized: EventData = serde_json::from_value(json).unwrap();
+        // Deserialize using typed function (not raw serde)
+        let deserialized = deserialize_event_data(REASON_THINKING_STARTED, json);
 
         // Verify it's ReasonThinkingStarted and fields are preserved
         match deserialized {
@@ -1860,7 +1867,7 @@ mod tests {
                 assert_eq!(at.turn_id, turn_id);
                 assert_eq!(at.model, Some("claude-3".to_string()));
             }
-            _ => panic!("Expected ReasonThinkingStarted, got different variant"),
+            other => panic!("Expected ReasonThinkingStarted, got {}", other.event_type()),
         }
     }
 
