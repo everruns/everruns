@@ -60,6 +60,14 @@ let result = db.operation().await.map_err(|e| {
 
 ## Testing
 
+### Test Categories
+
+| Category | Location | Dependencies | Run Command |
+|----------|----------|--------------|-------------|
+| Unit Tests | Inline `#[cfg(test)]` modules | None | `cargo test --lib` |
+| Integration Tests | `tests/integration_test.rs` | PostgreSQL, workers | `cargo test --test integration_test` |
+| LLM Tests | `tests/agent_run_*.rs` | Real LLM API keys | `cargo test --test agent_run_basic` |
+
 ### Unit Tests
 
 Inline `#[cfg(test)]` modules for:
@@ -72,6 +80,23 @@ Inline `#[cfg(test)]` modules for:
 `tests/integration_test.rs` for:
 - API endpoints
 - Multi-service workflows
+- Requires infrastructure (PostgreSQL, workers)
+
+### LLM Tests
+
+`crates/core/tests/agent_run_*.rs` for testing against real LLM endpoints:
+- `agent_run_basic.rs` - Basic completion + tool calls (Anthropic + OpenAI)
+- `agent_run_with_thinking.rs` - Extended thinking tests (Anthropic only)
+
+**Requirements:**
+- `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` environment variables
+- Tests skip gracefully if API keys are not set
+- Feature flag: `llm-tests` (enabled by default)
+
+```bash
+# Run LLM tests
+ANTHROPIC_API_KEY=key OPENAI_API_KEY=key cargo test -p everruns-core --test agent_run_basic
+```
 
 ### When to Add
 

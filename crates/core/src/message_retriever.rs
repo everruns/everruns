@@ -60,6 +60,18 @@ impl InputMessage {
     }
 }
 
+impl From<&str> for InputMessage {
+    fn from(text: &str) -> Self {
+        InputMessage::user(text)
+    }
+}
+
+impl From<String> for InputMessage {
+    fn from(text: String) -> Self {
+        InputMessage::user(text)
+    }
+}
+
 // ============================================================================
 // MessageRetriever trait
 // ============================================================================

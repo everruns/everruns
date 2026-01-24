@@ -92,6 +92,8 @@ jobs:
 
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
