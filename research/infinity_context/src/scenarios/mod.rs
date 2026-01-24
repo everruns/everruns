@@ -1,7 +1,5 @@
-//! Scenario loading and generation
+//! Scenario generation for evaluation datasets
 
 mod generator;
-mod loader;
 
 pub use generator::generate_synthetic;
-pub use loader::load_from_directory;

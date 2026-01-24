@@ -4,8 +4,14 @@
 //! - Baseline: Send all messages (fails on long conversations)
 //! - Naive trim: Drop oldest messages (loses context)
 //! - Infinity: Trim + history query tool (proposed solution)
+//!
+//! Usage:
+//!   eval generate -o datasets/v1.jsonl     # Generate dataset
+//!   eval run -d datasets/v1.jsonl          # Run evaluation
+//!   eval results -i results/run.jsonl      # View results
 
 pub mod capabilities;
+mod dataset;
 mod metrics;
 mod report;
 mod runner;
@@ -13,54 +19,81 @@ mod scenarios;
 pub mod types;
 
 use anyhow::Result;
-use clap::Parser;
+use chrono::Utc;
+use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::PathBuf;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+use dataset::{DatasetRecord, EvalResultRecord, RunMetadata};
+use types::Scenario;
 
 #[derive(Parser)]
 #[command(name = "eval")]
 #[command(about = "Evaluate context management capabilities for long conversations")]
 struct Cli {
-    /// Run a specific scenario by name
-    #[arg(short, long)]
-    scenario: Option<String>,
-
-    /// Run with a specific capability only (baseline, naive_trim, infinity_context)
-    #[arg(long)]
-    capability: Option<String>,
-
-    /// Directory containing scenario definitions
-    #[arg(long, default_value = "scenarios")]
-    scenarios_dir: PathBuf,
-
-    /// Output directory for reports
-    #[arg(long, default_value = "results")]
-    output_dir: PathBuf,
-
-    /// Model to use for evaluation
-    #[arg(long, default_value = "claude-sonnet-4-20250514")]
-    model: String,
-
-    /// Context window size in tokens
-    #[arg(long, default_value = "200000")]
-    context_window: usize,
-
-    /// Context budget percentage (0.0-1.0)
-    #[arg(long, default_value = "0.7")]
-    budget_percent: f64,
-
-    /// Generate synthetic scenarios instead of loading from files
-    #[arg(long)]
-    synthetic: bool,
-
-    /// Dry run - show what would be executed without calling LLM
-    #[arg(long)]
-    dry_run: bool,
+    #[command(subcommand)]
+    command: Commands,
 
     /// Verbose output
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     verbose: bool,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Generate evaluation dataset
+    Generate {
+        /// Output file path (JSONL format)
+        #[arg(short, long, default_value = "datasets/infinity_context.jsonl")]
+        output: PathBuf,
+    },
+
+    /// Run evaluation against a dataset
+    Run {
+        /// Input dataset file (JSONL format)
+        #[arg(short, long)]
+        dataset: PathBuf,
+
+        /// Output results file (JSONL format)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Run a specific scenario by name
+        #[arg(short, long)]
+        scenario: Option<String>,
+
+        /// Run with a specific capability only
+        #[arg(long)]
+        capability: Option<String>,
+
+        /// Model to use for evaluation
+        #[arg(long, default_value = "claude-sonnet-4-20250514")]
+        model: String,
+
+        /// Context window size in tokens
+        #[arg(long, default_value = "200000")]
+        context_window: usize,
+
+        /// Context budget percentage (0.0-1.0)
+        #[arg(long, default_value = "0.7")]
+        budget_percent: f64,
+
+        /// Dry run - show what would be executed without calling LLM
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// View evaluation results
+    Results {
+        /// Input results file (JSONL format)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output format (text, json, markdown)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
 }
 
 #[tokio::main]
@@ -77,6 +110,37 @@ async fn main() -> Result<()> {
         .with(filter)
         .init();
 
+    print_header();
+
+    match cli.command {
+        Commands::Generate { output } => cmd_generate(output).await,
+        Commands::Run {
+            dataset,
+            output,
+            scenario,
+            capability,
+            model,
+            context_window,
+            budget_percent,
+            dry_run,
+        } => {
+            cmd_run(
+                dataset,
+                output,
+                scenario,
+                capability,
+                model,
+                context_window,
+                budget_percent,
+                dry_run,
+            )
+            .await
+        }
+        Commands::Results { input, format } => cmd_results(input, format).await,
+    }
+}
+
+fn print_header() {
     println!(
         "\n{}",
         "╔═══════════════════════════════════════════════════════════╗"
@@ -95,46 +159,71 @@ async fn main() -> Result<()> {
             .bright_cyan()
             .bold()
     );
+}
 
-    let config = runner::EvalConfig {
-        model: cli.model.clone(),
-        context_window: cli.context_window,
-        budget_percent: cli.budget_percent,
-        dry_run: cli.dry_run,
-    };
+/// Generate evaluation dataset
+async fn cmd_generate(output: PathBuf) -> Result<()> {
+    println!("{} Generating dataset...\n", "→".bright_blue());
 
-    println!("{}", "Configuration:".bold());
-    println!("  Model: {}", cli.model.bright_yellow());
-    println!(
-        "  Context window: {} tokens",
-        cli.context_window.to_string().bright_yellow()
-    );
-    println!(
-        "  Budget: {}%",
-        (cli.budget_percent * 100.0).to_string().bright_yellow()
-    );
-    if cli.dry_run {
-        println!("  {} Dry run mode", "⚠".bright_yellow());
+    let scenarios = scenarios::generate_synthetic();
+    let records: Vec<DatasetRecord> = scenarios.into_iter().map(DatasetRecord::from).collect();
+
+    println!("{}", "Generated scenarios:".bold());
+    for record in &records {
+        println!(
+            "  • {} ({})",
+            record.name.bright_cyan(),
+            record.scenario_type.to_string().dimmed()
+        );
     }
     println!();
 
-    let scenarios = if cli.synthetic {
-        println!("{} Generating synthetic scenarios...\n", "→".bright_blue());
-        scenarios::generate_synthetic()
-    } else {
-        println!(
-            "{} Loading scenarios from {:?}...\n",
-            "→".bright_blue(),
-            cli.scenarios_dir
-        );
-        scenarios::load_from_directory(&cli.scenarios_dir).await?
-    };
+    // Create output directory if needed
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
 
-    let scenarios: Vec<_> = if let Some(ref name) = cli.scenario {
-        scenarios.into_iter().filter(|s| s.name == *name).collect()
-    } else {
-        scenarios
-    };
+    dataset::write_dataset(&output, &records)?;
+
+    println!(
+        "{} Dataset saved to: {}",
+        "✓".bright_green(),
+        output.display().to_string().bright_yellow()
+    );
+    println!(
+        "  {} records, {} bytes",
+        records.len(),
+        std::fs::metadata(&output)?.len()
+    );
+
+    Ok(())
+}
+
+/// Run evaluation against dataset
+#[allow(clippy::too_many_arguments)]
+async fn cmd_run(
+    dataset_path: PathBuf,
+    output: Option<PathBuf>,
+    scenario_filter: Option<String>,
+    capability_filter: Option<String>,
+    model: String,
+    context_window: usize,
+    budget_percent: f64,
+    dry_run: bool,
+) -> Result<()> {
+    println!(
+        "{} Loading dataset from: {}\n",
+        "→".bright_blue(),
+        dataset_path.display().to_string().bright_yellow()
+    );
+
+    let records = dataset::read_dataset(&dataset_path)?;
+    let mut scenarios: Vec<Scenario> = records.into_iter().map(Scenario::from).collect();
+
+    // Apply scenario filter
+    if let Some(ref name) = scenario_filter {
+        scenarios.retain(|s| s.name == *name);
+    }
 
     if scenarios.is_empty() {
         println!("{}", "No scenarios found!".bright_red());
@@ -142,12 +231,38 @@ async fn main() -> Result<()> {
     }
 
     println!(
-        "{} Found {} scenario(s)\n",
+        "{} Found {} scenario(s)",
         "✓".bright_green(),
         scenarios.len()
     );
+    for s in &scenarios {
+        println!("  - {}", s.name.dimmed());
+    }
+    println!();
 
-    let capabilities = if let Some(ref name) = cli.capability {
+    let config = runner::EvalConfig {
+        model: model.clone(),
+        context_window,
+        budget_percent,
+        dry_run,
+    };
+
+    println!("{}", "Configuration:".bold());
+    println!("  Model: {}", model.bright_yellow());
+    println!(
+        "  Context window: {} tokens",
+        context_window.to_string().bright_yellow()
+    );
+    println!(
+        "  Budget: {}%",
+        (budget_percent * 100.0).to_string().bright_yellow()
+    );
+    if dry_run {
+        println!("  {} Dry run mode", "⚠".bright_yellow());
+    }
+    println!();
+
+    let capabilities = if let Some(ref name) = capability_filter {
         let all = runner::all_capabilities();
         let cap = all
             .into_iter()
@@ -166,21 +281,210 @@ async fn main() -> Result<()> {
 
     let results = runner::run_evaluation(&config, &scenarios, &capabilities).await?;
 
+    // Print report
     let report = report::generate(&results, &config);
     println!("{}", report);
 
-    let report_path = cli.output_dir.join(format!(
-        "eval_{}_{}.md",
-        chrono::Utc::now().format("%Y%m%d_%H%M%S"),
-        cli.model.replace('/', "_")
-    ));
-    std::fs::create_dir_all(&cli.output_dir)?;
-    std::fs::write(&report_path, &report)?;
+    // Save results as JSONL
+    let output_path = output.unwrap_or_else(|| {
+        PathBuf::from(format!(
+            "results/eval_{}_{}.jsonl",
+            Utc::now().format("%Y%m%d_%H%M%S"),
+            model.replace('/', "_")
+        ))
+    });
+
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Convert results to JSONL records
+    let mut result_records = Vec::new();
+    for strategy_result in &results.strategy_results {
+        for scenario_result in &strategy_result.scenario_results {
+            // Find scenario type
+            let scenario_type = scenarios
+                .iter()
+                .find(|s| s.name == scenario_result.scenario_name)
+                .map(|s| s.scenario_type.clone())
+                .unwrap_or(types::ScenarioType::NeedleInHaystack);
+
+            result_records.push(EvalResultRecord {
+                scenario: scenario_result.scenario_name.clone(),
+                scenario_type,
+                capability: scenario_result.strategy_name.clone(),
+                success: scenario_result.success,
+                response: scenario_result.response.clone(),
+                error: scenario_result.error.clone(),
+                metrics: scenario_result.metrics.clone().into(),
+            });
+        }
+    }
+
+    let metadata = RunMetadata {
+        timestamp: results.timestamp,
+        model,
+        context_window,
+        budget_percent,
+        dataset: dataset_path.display().to_string(),
+        scenario_count: scenarios.len(),
+        capability_count: capabilities.len(),
+        capabilities: capabilities.iter().map(|c| c.name().to_string()).collect(),
+    };
+
+    dataset::write_results(&output_path, &metadata, &result_records)?;
+
     println!(
-        "\n{} Report saved to: {:?}",
+        "\n{} Results saved to: {}",
         "✓".bright_green(),
-        report_path
+        output_path.display().to_string().bright_yellow()
+    );
+
+    // Also save markdown report
+    let md_path = output_path.with_extension("md");
+    std::fs::write(&md_path, &report)?;
+    println!(
+        "{} Report saved to: {}",
+        "✓".bright_green(),
+        md_path.display().to_string().bright_yellow()
     );
 
     Ok(())
+}
+
+/// View evaluation results
+async fn cmd_results(input: PathBuf, format: String) -> Result<()> {
+    println!(
+        "{} Loading results from: {}\n",
+        "→".bright_blue(),
+        input.display().to_string().bright_yellow()
+    );
+
+    let (metadata, results) = dataset::read_results(&input)?;
+
+    match format.as_str() {
+        "json" => {
+            let output = serde_json::json!({
+                "metadata": metadata,
+                "results": results
+            });
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        "markdown" | "md" => {
+            print_results_markdown(&metadata, &results);
+        }
+        _ => {
+            print_results_text(&metadata, &results);
+        }
+    }
+
+    Ok(())
+}
+
+fn print_results_text(metadata: &RunMetadata, results: &[EvalResultRecord]) {
+    println!("{}", "Run Metadata:".bold());
+    println!("  Timestamp: {}", metadata.timestamp);
+    println!("  Model: {}", metadata.model.bright_yellow());
+    println!("  Dataset: {}", metadata.dataset);
+    println!(
+        "  Context: {} tokens @ {}%",
+        metadata.context_window, metadata.budget_percent * 100.0
+    );
+    println!();
+
+    // Group by capability
+    let mut by_capability: std::collections::HashMap<String, Vec<&EvalResultRecord>> =
+        std::collections::HashMap::new();
+    for r in results {
+        by_capability
+            .entry(r.capability.clone())
+            .or_default()
+            .push(r);
+    }
+
+    for (capability, cap_results) in &by_capability {
+        let success_count = cap_results.iter().filter(|r| r.success).count();
+        let total = cap_results.len();
+        let accuracy = if total > 0 {
+            success_count as f64 / total as f64 * 100.0
+        } else {
+            0.0
+        };
+
+        println!(
+            "{}: {:.1}% ({}/{})",
+            capability.bright_cyan(),
+            accuracy,
+            success_count,
+            total
+        );
+
+        for r in cap_results {
+            let status = if r.success {
+                "✓".bright_green()
+            } else {
+                "✗".bright_red()
+            };
+            println!(
+                "  {} {} ({}ms, {} queries)",
+                status,
+                r.scenario,
+                r.metrics.latency_ms,
+                r.metrics.history_queries
+            );
+            if let Some(ref err) = r.error {
+                println!("    Error: {}", err.dimmed());
+            }
+        }
+        println!();
+    }
+}
+
+fn print_results_markdown(metadata: &RunMetadata, results: &[EvalResultRecord]) {
+    println!("# Evaluation Results\n");
+    println!("**Timestamp:** {}  ", metadata.timestamp);
+    println!("**Model:** {}  ", metadata.model);
+    println!("**Dataset:** {}  ", metadata.dataset);
+    println!(
+        "**Context:** {} tokens @ {:.0}%\n",
+        metadata.context_window,
+        metadata.budget_percent * 100.0
+    );
+
+    // Summary table
+    println!("## Summary\n");
+    println!("| Capability | Accuracy | Passed | Failed |");
+    println!("|------------|----------|--------|--------|");
+
+    let mut by_capability: std::collections::HashMap<String, Vec<&EvalResultRecord>> =
+        std::collections::HashMap::new();
+    for r in results {
+        by_capability
+            .entry(r.capability.clone())
+            .or_default()
+            .push(r);
+    }
+
+    for (capability, cap_results) in &by_capability {
+        let success_count = cap_results.iter().filter(|r| r.success).count();
+        let fail_count = cap_results.len() - success_count;
+        let accuracy = if !cap_results.is_empty() {
+            success_count as f64 / cap_results.len() as f64 * 100.0
+        } else {
+            0.0
+        };
+        println!(
+            "| {} | {:.1}% | {} | {} |",
+            capability, accuracy, success_count, fail_count
+        );
+    }
+
+    println!("\n## Detailed Results\n");
+    for r in results {
+        let status = if r.success { "✅" } else { "❌" };
+        println!(
+            "- {} **{}** / {} - {}ms, {} queries",
+            status, r.scenario, r.capability, r.metrics.latency_ms, r.metrics.history_queries
+        );
+    }
 }
