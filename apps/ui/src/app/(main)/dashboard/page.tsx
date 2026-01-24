@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Plus, MessageSquare } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { Agent, LlmModelWithProvider } from "@/lib/api/types";
 
 export default function DashboardPage() {
@@ -112,14 +112,14 @@ export default function DashboardPage() {
                   className="w-full justify-start"
                   onClick={handleOpenNewSessionDialog}
                 >
-                  <MessageSquare className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4 mr-2" />
                   New Session
                 </Button>
               )}
               <Link href="/agents/new" className="block">
                 <Button variant="outline" className="w-full justify-start">
                   <Plus className="h-4 w-4 mr-2" />
-                  Create New Agent
+                  New Agent
                 </Button>
               </Link>
             </CardContent>
