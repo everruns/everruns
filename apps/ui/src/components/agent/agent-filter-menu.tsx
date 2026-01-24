@@ -8,8 +8,6 @@ import {
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { buttonVariants } from "@/components/ui/button";
 import { useAgents } from "@/hooks";
@@ -53,8 +51,6 @@ export function AgentFilterMenu({
       </DropdownMenuTrigger>
       <DropdownMenuPositioner align="end">
         <DropdownMenuContent className="w-[200px]">
-          <DropdownMenuLabel>Filter by agent</DropdownMenuLabel>
-          <DropdownMenuSeparator />
           <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
             <DropdownMenuRadioItem value="">
               All agents
