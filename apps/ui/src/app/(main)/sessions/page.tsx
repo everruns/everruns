@@ -108,12 +108,28 @@ export default function SessionsPage() {
             {totalSessions} session{totalSessions !== 1 ? "s" : ""} total
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <Button
+          variant="accent"
+          onClick={handleOpenNewSessionDialog}
+          disabled={!agents?.length}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Session
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle>
+            {selectedAgentId
+              ? `Sessions for ${agentMap.get(selectedAgentId)?.name || "Agent"}`
+              : "All Sessions"}
+          </CardTitle>
           <Select
             value={selectedAgentId || "all"}
             onValueChange={handleAgentFilterChange}
           >
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Filter by agent" />
             </SelectTrigger>
             <SelectContent>
@@ -125,24 +141,6 @@ export default function SessionsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button
-            variant="accent"
-            onClick={handleOpenNewSessionDialog}
-            disabled={!agents?.length}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Session
-          </Button>
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {selectedAgentId
-              ? `Sessions for ${agentMap.get(selectedAgentId)?.name || "Agent"}`
-              : "All Sessions"}
-          </CardTitle>
         </CardHeader>
         <CardContent>
           {sessionsLoading || agentsLoading ? (
@@ -163,7 +161,7 @@ export default function SessionsPage() {
                   <SessionCard
                     key={session.id}
                     session={session}
-                    agentName={!selectedAgentId ? agent?.name : undefined}
+                    agentName={agent?.name}
                     model={session.model_id ? modelMap.get(session.model_id) : undefined}
                   />
                 );
