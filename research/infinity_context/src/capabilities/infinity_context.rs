@@ -182,7 +182,7 @@ impl Tool for QueryHistoryTool {
             return ToolExecutionResult::tool_error("No message retriever available");
         };
 
-        let messages = match retriever.load(context.session_id.clone()).await {
+        let messages = match retriever.load(context.session_id).await {
             Ok(m) => m,
             Err(e) => return ToolExecutionResult::tool_error(format!("Failed to load messages: {}", e)),
         };

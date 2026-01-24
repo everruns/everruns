@@ -6,19 +6,17 @@ use crate::capabilities::{Capability, MessageFilter, MessageQuery};
 use crate::metrics::{aggregate_strategy_results, check_success};
 use crate::types::{ContextStrategyConfig, EvalMetrics, EvaluationResults, Message, MessageExt, Scenario, ScenarioResult};
 use anyhow::Result;
-use async_trait::async_trait;
 use chrono::Utc;
 use colored::Colorize;
-use everruns_core::error::Result as CoreResult;
 use everruns_core::llm_driver_registry::{
     DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, ProviderConfig,
     ProviderType,
 };
-use everruns_core::message_retriever::MessageRetriever;
+use everruns_core::memory::InMemoryMessageRetriever;
 use everruns_core::tool_types::{BuiltinTool, ToolDefinition as CoreToolDefinition};
 use everruns_core::tools::Tool;
 use everruns_core::traits::ToolContext;
-use everruns_core::typed_id::{MessageId, SessionId};
+use everruns_core::typed_id::SessionId;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -30,32 +28,6 @@ pub struct EvalConfig {
     pub context_window: usize,
     pub budget_percent: f64,
     pub dry_run: bool,
-}
-
-// ============================================================================
-// In-Memory Message Retriever for Evals
-// ============================================================================
-
-/// Simple in-memory MessageRetriever that holds excluded messages for eval.
-struct ExcludedMessagesRetriever {
-    messages: Vec<Message>,
-}
-
-impl ExcludedMessagesRetriever {
-    fn new(messages: Vec<Message>) -> Self {
-        Self { messages }
-    }
-}
-
-#[async_trait]
-impl MessageRetriever for ExcludedMessagesRetriever {
-    async fn get(&self, _session_id: SessionId, _message_id: MessageId) -> CoreResult<Option<Message>> {
-        Ok(None) // Not needed for eval
-    }
-
-    async fn load(&self, _session_id: SessionId) -> CoreResult<Vec<Message>> {
-        Ok(self.messages.clone())
-    }
 }
 
 // ============================================================================
@@ -337,10 +309,12 @@ async fn execute_llm_calls(
     let max_iterations = 5;
     let mut final_response = String::new();
 
-    // Create tool context with excluded messages as the retriever
-    let retriever: Arc<dyn MessageRetriever> = Arc::new(ExcludedMessagesRetriever::new(prepared.excluded));
-    let tool_context = ToolContext::new(SessionId::new())
-        .with_message_retriever(retriever);
+    // Create tool context with excluded messages via InMemoryMessageRetriever
+    let session_id = SessionId::new();
+    let retriever = InMemoryMessageRetriever::new();
+    retriever.seed(session_id, prepared.excluded).await;
+    let tool_context = ToolContext::new(session_id)
+        .with_message_retriever(Arc::new(retriever));
 
     for _iteration in 0..max_iterations {
         let llm_config = LlmCallConfig {
