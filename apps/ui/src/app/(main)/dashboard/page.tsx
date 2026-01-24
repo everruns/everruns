@@ -122,12 +122,6 @@ export default function DashboardPage() {
                   Create New Agent
                 </Button>
               </Link>
-              <Link
-                href="/agents"
-                className="text-sm text-muted-foreground hover:text-foreground hover:underline"
-              >
-                View all agents →
-              </Link>
             </CardContent>
           </Card>
         </div>

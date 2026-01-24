@@ -108,13 +108,12 @@ export function AgentListWidget({
                 </Link>
               );
             })}
-            {agents.length > 5 && (
-              <Link href="/agents">
-                <Button variant="ghost" className="w-full">
-                  View all {agents.length} agents
-                </Button>
-              </Link>
-            )}
+            <Link
+              href="/agents"
+              className="block text-center text-sm text-muted-foreground hover:text-foreground hover:underline pt-2"
+            >
+              View all agents →
+            </Link>
           </div>
         )}
       </CardContent>
