@@ -136,40 +136,50 @@ Types needing OpenAPI schema:
 
 ## UI Patterns
 
-### Select with ID Values
+### Entity Select Components
 
-When using `Select` components where the value is an ID but display should be a name, always provide children to `SelectValue` to compute the display text:
+Most entities have an ID (used as value) and a display name. When creating dropdowns for entity selection, create dedicated `{Entity}Select` components that handle the ID-to-name mapping internally.
+
+**Pattern:** `components/{entity}/{entity}-select.tsx`
 
 ```tsx
-// ❌ Wrong - shows ID when selected
-<Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-  <SelectTrigger>
-    <SelectValue placeholder="Select agent" />
-  </SelectTrigger>
-  <SelectContent>
-    {agents.map((agent) => (
-      <SelectItem key={agent.id} value={agent.id}>
-        {agent.name}
-      </SelectItem>
-    ))}
-  </SelectContent>
-</Select>
+// components/agent/agent-select.tsx
+export function AgentSelect({ value, onValueChange, placeholder, includeAll, ... }) {
+  const { data: agents = [] } = useAgents();
+  const agentMap = useMemo(() => new Map(agents.map(a => [a.id, a])), [agents]);
 
-// ✅ Correct - shows name when selected
-<Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-  <SelectTrigger>
-    <SelectValue placeholder="Select agent">
-      {selectedAgentId && agentMap.get(selectedAgentId)?.name}
-    </SelectValue>
-  </SelectTrigger>
-  <SelectContent>
-    {agents.map((agent) => (
-      <SelectItem key={agent.id} value={agent.id}>
-        {agent.name}
-      </SelectItem>
-    ))}
-  </SelectContent>
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger>
+        <SelectValue placeholder={placeholder}>
+          {value && agentMap.get(value)?.name}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {includeAll && <SelectItem value="all">All</SelectItem>}
+        {agents.map((agent) => (
+          <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+```
+
+**Usage:**
+```tsx
+// ✅ Clean - component handles ID-to-name mapping
+<AgentSelect value={agentId} onValueChange={setAgentId} />
+<AgentSelect value={agentId} onValueChange={setAgentId} includeAll />
+
+// ❌ Avoid - manual mapping is error-prone
+<Select value={agentId} onValueChange={setAgentId}>
+  <SelectValue>{agentMap.get(agentId)?.name}</SelectValue>
+  ...
 </Select>
 ```
 
-**Why:** `SelectValue` displays the `value` prop by default, not the `SelectItem` children. Providing children overrides this behavior.
+**Existing components:**
+- `AgentSelect` - `components/agent/agent-select.tsx`
+
+**Why:** Centralizes the ID-to-name logic, ensures consistency, and prevents the common bug where `SelectValue` shows the ID instead of the name.

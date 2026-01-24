@@ -17,13 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { AgentSelect } from "@/components/agent/agent-select";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -143,23 +137,11 @@ export default function DashboardPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Select
+            <AgentSelect
               value={newSessionAgentId}
               onValueChange={setNewSessionAgentId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select an agent">
-                  {newSessionAgentId && agentMap.get(newSessionAgentId)?.name}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((agent) => (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Select an agent"
+            />
           </div>
           <DialogFooter>
             <Button

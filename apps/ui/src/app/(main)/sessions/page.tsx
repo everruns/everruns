@@ -7,13 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SessionCard } from "@/components/session/session-card";
+import { AgentSelect } from "@/components/agent/agent-select";
 import {
   Plus,
   ChevronLeft,
@@ -94,8 +88,8 @@ export default function SessionsPage() {
     setPage((p) => Math.min(totalPages - 1, p + 1));
   };
 
-  const handleAgentFilterChange = (value: string) => {
-    setSelectedAgentId(value === "all" ? "" : value);
+  const handleAgentFilterChange = (agentId: string) => {
+    setSelectedAgentId(agentId);
     setPage(0); // Reset pagination when filter changes
   };
 
@@ -125,24 +119,12 @@ export default function SessionsPage() {
               ? `Sessions for ${agentMap.get(selectedAgentId)?.name || "Agent"}`
               : "All Sessions"}
           </CardTitle>
-          <Select
-            value={selectedAgentId || "all"}
+          <AgentSelect
+            value={selectedAgentId}
             onValueChange={handleAgentFilterChange}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by agent">
-                {selectedAgentId ? agentMap.get(selectedAgentId)?.name : "All agents"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All agents</SelectItem>
-              {agents?.map((agent) => (
-                <SelectItem key={agent.id} value={agent.id}>
-                  {agent.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            includeAll
+            className="w-[180px]"
+          />
         </CardHeader>
         <CardContent>
           {sessionsLoading || agentsLoading ? (
@@ -216,23 +198,11 @@ export default function SessionsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Select
+            <AgentSelect
               value={newSessionAgentId}
               onValueChange={setNewSessionAgentId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select an agent">
-                  {newSessionAgentId && agentMap.get(newSessionAgentId)?.name}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {agents?.map((agent) => (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Select an agent"
+            />
           </div>
           <DialogFooter>
             <Button
