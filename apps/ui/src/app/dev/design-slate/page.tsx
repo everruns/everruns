@@ -1,63 +1,36 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, Terminal, Check, Loader2, ChevronRight, Play, Square, Settings, Plus, Search, Bell, User, Database, Cpu, Activity, Code, Layers, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const isDev = process.env.NODE_ENV === "development";
 
-// Everruns logo - 3 interlocking circles (dark rings with accent center)
-function EverrunsLogo({ size = 24, primaryColor = "hsl(0 0% 15%)", accentColor = "hsl(220 80% 50%)" }: { size?: number; primaryColor?: string; accentColor?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 512 512">
-      <defs>
-        <linearGradient id="gTopSlate" gradientUnits="userSpaceOnUse" x1="256" y1="94" x2="256" y2="284">
-          <stop offset="0.00" stopColor={primaryColor} />
-          <stop offset="0.70" stopColor={primaryColor} />
-          <stop offset="1.00" stopColor={accentColor} />
-        </linearGradient>
-        <linearGradient id="gLeftSlate" gradientUnits="userSpaceOnUse" x1="70" y1="374" x2="256" y2="284">
-          <stop offset="0.00" stopColor={primaryColor} />
-          <stop offset="0.70" stopColor={primaryColor} />
-          <stop offset="1.00" stopColor={accentColor} />
-        </linearGradient>
-        <linearGradient id="gRightSlate" gradientUnits="userSpaceOnUse" x1="442" y1="374" x2="256" y2="284">
-          <stop offset="0.00" stopColor={primaryColor} />
-          <stop offset="0.70" stopColor={primaryColor} />
-          <stop offset="1.00" stopColor={accentColor} />
-        </linearGradient>
-      </defs>
-      <g fill="none" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="256" cy="214" r="120" stroke="url(#gTopSlate)" />
-        <circle cx="186" cy="309" r="120" stroke="url(#gLeftSlate)" />
-        <circle cx="326" cy="309" r="120" stroke="url(#gRightSlate)" />
-      </g>
-    </svg>
-  );
-}
-
 /**
  * Design Concept: "Slate"
  *
  * Philosophy:
- * - Light mode with dotted background pattern
+ * - Light mode with dotted background (navy dots per brand)
  * - Subtle corners (4px)
- * - Primarily white/gray base
- * - Single accent color for interactive elements
+ * - Grayscale dominant UI
+ * - Gold accent (#D4A43A) for interactive elements
+ * - Original everruns logo (navy to gold)
  * - Clean, minimal, professional
  */
 
-// Accent color
-const accent = {
-  base: "hsl(220 80% 50%)",
-  hover: "hsl(220 80% 45%)",
-  muted: "hsl(220 80% 50% / 0.1)",
-  text: "hsl(220 80% 45%)",
+// Brand colors
+const brand = {
+  navy: "#0A1636",
+  gold: "#D4A43A",
+  goldHover: "#C49530",
+  goldMuted: "hsl(43 60% 53% / 0.12)",
+  goldBorder: "hsl(43 60% 53% / 0.3)",
 };
 
-// Dotted background style
+// Dotted background style (navy dots per brand spec)
 const dottedBg = {
-  backgroundImage: `radial-gradient(circle, hsl(0 0% 75%) 1px, transparent 1px)`,
+  backgroundImage: `radial-gradient(circle at center, hsl(220 62% 13% / 0.08) 1px, transparent 1px)`,
   backgroundSize: '24px 24px',
 };
 
@@ -74,10 +47,10 @@ function SlateButton({
   className?: string;
 }) {
   const variants = {
-    default: "bg-[hsl(0_0%_10%)] text-white hover:bg-[hsl(0_0%_20%)]",
-    accent: "text-white font-medium",
+    default: "bg-[#0A1636] text-white hover:bg-[#0D1D45]",
+    accent: "text-[#0A1636] font-medium",
     ghost: "text-[hsl(0_0%_40%)] hover:text-[hsl(0_0%_10%)] hover:bg-[hsl(0_0%_92%)]",
-    outline: "border border-[hsl(0_0%_80%)] text-[hsl(0_0%_30%)] hover:border-[hsl(220_80%_50%)] hover:text-[hsl(220_80%_45%)]",
+    outline: "border border-[hsl(0_0%_80%)] text-[hsl(0_0%_30%)] hover:border-[#D4A43A] hover:text-[#C49530]",
   };
 
   const sizes = {
@@ -87,7 +60,7 @@ function SlateButton({
   };
 
   const accentStyles = variant === "accent"
-    ? { backgroundColor: accent.base }
+    ? { backgroundColor: brand.gold }
     : {};
 
   return (
@@ -129,7 +102,7 @@ function SlateInput({ placeholder, className = "" }: { placeholder?: string; cla
       className={cn(
         "w-full border border-[hsl(0_0%_85%)] bg-white px-3 py-2 text-sm",
         "text-[hsl(0_0%_10%)] placeholder:text-[hsl(0_0%_55%)]",
-        "focus:outline-none focus:border-[hsl(220_80%_50%)] focus:ring-1 focus:ring-[hsl(220_80%_50%/_0.2)]",
+        "focus:outline-none focus:border-[#D4A43A] focus:ring-1 focus:ring-[#D4A43A40]",
         className
       )}
       style={{ borderRadius: '4px' }}
@@ -149,7 +122,7 @@ function SlateBadge({
     default: "bg-[hsl(0_0%_94%)] text-[hsl(0_0%_40%)] border-[hsl(0_0%_88%)]",
     success: "bg-[hsl(145_50%_94%)] text-[hsl(145_60%_30%)] border-[hsl(145_50%_80%)]",
     warning: "bg-[hsl(40_80%_94%)] text-[hsl(40_80%_30%)] border-[hsl(40_80%_80%)]",
-    accent: "bg-[hsl(220_80%_95%)] text-[hsl(220_80%_40%)] border-[hsl(220_80%_85%)]",
+    accent: "bg-[#D4A43A20] text-[#9A7420] border-[#D4A43A50]",
   };
 
   return (
@@ -170,7 +143,7 @@ function SlateUserMessage({ content }: { content: string }) {
   return (
     <div className="flex justify-end">
       <div
-        className="max-w-[85%] bg-[hsl(0_0%_15%)] text-white px-3 py-2"
+        className="max-w-[85%] bg-[#0A1636] text-white px-3 py-2"
         style={{ borderRadius: '6px' }}
       >
         <p className="text-sm">{content}</p>
@@ -198,7 +171,7 @@ function SlateToolCall({ name, status, result }: { name: string; status: "done" 
     <div className="ml-7 text-xs">
       <div className="flex items-center gap-2 text-[hsl(0_0%_50%)]">
         {status === "running" ? (
-          <Loader2 className="w-3 h-3 animate-spin text-[hsl(220_80%_50%)]" />
+          <Loader2 className="w-3 h-3 animate-spin text-[#D4A43A]" />
         ) : (
           <Check className="w-3 h-3 text-[hsl(145_60%_40%)]" />
         )}
@@ -222,7 +195,7 @@ function NavItem({ icon: Icon, label, active = false }: { icon: React.ElementTyp
       className={cn(
         "flex items-center gap-3 px-3 py-2 text-sm cursor-pointer transition-colors mx-2",
         active
-          ? "bg-[hsl(220_80%_50%/_0.1)] text-[hsl(220_80%_45%)]"
+          ? "bg-[#D4A43A18] text-[#9A7420]"
           : "text-[hsl(0_0%_45%)] hover:text-[hsl(0_0%_15%)] hover:bg-[hsl(0_0%_94%)]"
       )}
       style={{ borderRadius: '4px' }}
@@ -255,7 +228,7 @@ function SessionRow({ id, status, model, time }: { id: string; status: "running"
     <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(0_0%_92%)] hover:bg-[hsl(0_0%_97%)] cursor-pointer transition-colors">
       <div className="flex items-center gap-3">
         {status === "running" ? (
-          <div className="w-2 h-2 rounded-full bg-[hsl(220_80%_50%)] animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-[#D4A43A] animate-pulse" />
         ) : (
           <div className="w-2 h-2 rounded-full bg-[hsl(145_60%_45%)]" />
         )}
@@ -289,40 +262,40 @@ export default function DesignSlatePage() {
         <div className="mb-8">
           <Link
             href="/dev"
-            className="inline-flex items-center text-sm text-[hsl(0_0%_50%)] hover:text-[hsl(220_80%_50%)] mb-4 transition-colors"
+            className="inline-flex items-center text-sm text-[hsl(0_0%_50%)] hover:text-[#D4A43A] mb-4 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Developer Tools
           </Link>
           <div className="flex items-center gap-3 mb-2">
-            <EverrunsLogo size={28} primaryColor="hsl(0 0% 15%)" accentColor="hsl(220 80% 50%)" />
+            <Image src="/logo.svg" alt="Everruns" width={32} height={32} />
             <h1 className="text-2xl font-bold">Design Concept: Slate</h1>
           </div>
           <p className="text-[hsl(0_0%_45%)]">
-            Light mode with dotted background, 4px corners, blue accent highlights
+            Light mode with navy dots, 4px corners, gold accent from brand
           </p>
           <div className="flex gap-2 mt-3">
             <SlateBadge variant="accent">4px Corners</SlateBadge>
-            <SlateBadge>Light Theme</SlateBadge>
-            <SlateBadge>Dotted BG</SlateBadge>
+            <SlateBadge>Light + Dots</SlateBadge>
+            <SlateBadge>Gold Accent</SlateBadge>
           </div>
         </div>
 
         {/* Color Palette */}
         <section className="mb-10">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="w-1 h-4 bg-[hsl(0_0%_40%)]" style={{ borderRadius: '1px' }} />
-            Color Palette
+            <span className="w-1 h-4 bg-[#0A1636]" style={{ borderRadius: '1px' }} />
+            Brand Color Palette
           </h2>
           <div className="grid grid-cols-7 gap-3">
             {[
+              { name: "Navy", color: "#0A1636", label: "Primary" },
+              { name: "Gold", color: "#D4A43A", label: "Accent" },
               { name: "Background", color: "hsl(0 0% 98%)", label: "Off White", border: true },
-              { name: "Card", color: "hsl(0 0% 100%)", label: "White", border: true },
-              { name: "Border", color: "hsl(0 0% 88%)", label: "Light Gray", border: true },
-              { name: "Text", color: "hsl(0 0% 10%)", label: "Near Black" },
-              { name: "Muted", color: "hsl(0 0% 50%)", label: "Mid Gray" },
-              { name: "Accent", color: "hsl(220 80% 50%)", label: "Blue" },
-              { name: "Success", color: "hsl(145 60% 45%)", label: "Green" },
+              { name: "Card", color: "#FFFFFF", label: "White", border: true },
+              { name: "Charcoal", color: "#1A1A1A", label: "Text" },
+              { name: "Slate", color: "#404040", label: "Secondary" },
+              { name: "Silver", color: "#A0A0A0", label: "Muted" },
             ].map((c) => (
               <div key={c.name} className="text-center">
                 <div
@@ -339,35 +312,35 @@ export default function DesignSlatePage() {
         {/* Accent Usage */}
         <section className="mb-10">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="w-1 h-4 bg-[hsl(220_80%_50%)]" style={{ borderRadius: '1px' }} />
-            Accent Color Usage
+            <span className="w-1 h-4 bg-[#D4A43A]" style={{ borderRadius: '1px' }} />
+            Gold Accent Usage
           </h2>
           <SlateCard className="p-6">
             <p className="text-sm text-[hsl(0_0%_45%)] mb-4">
-              Accent (blue) is used sparingly for interactive and active states only:
+              Gold (#D4A43A) is used for interactive and active states. Navy (#0A1636) for primary actions.
             </p>
             <div className="grid grid-cols-4 gap-4 text-sm">
               <div>
-                <div className="text-[hsl(0_0%_55%)] mb-2">Primary buttons</div>
-                <SlateButton variant="accent">Action</SlateButton>
+                <div className="text-[hsl(0_0%_55%)] mb-2">Gold button</div>
+                <SlateButton variant="accent">Run Agent</SlateButton>
               </div>
               <div>
                 <div className="text-[hsl(0_0%_55%)] mb-2">Active nav item</div>
-                <div className="bg-[hsl(220_80%_50%/_0.1)] text-[hsl(220_80%_45%)] px-3 py-2 text-sm" style={{ borderRadius: '4px' }}>
+                <div className="bg-[#D4A43A18] text-[#9A7420] px-3 py-2 text-sm" style={{ borderRadius: '4px' }}>
                   Agents
                 </div>
               </div>
               <div>
                 <div className="text-[hsl(0_0%_55%)] mb-2">Running status</div>
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[hsl(220_80%_50%)] animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-[#D4A43A] animate-pulse" />
                   <span className="text-[hsl(0_0%_30%)]">running</span>
                 </div>
               </div>
               <div>
                 <div className="text-[hsl(0_0%_55%)] mb-2">Focus ring</div>
                 <input
-                  className="w-full border-2 border-[hsl(220_80%_50%)] bg-white px-3 py-2 text-sm text-[hsl(0_0%_10%)]"
+                  className="w-full border-2 border-[#D4A43A] bg-white px-3 py-2 text-sm text-[hsl(0_0%_10%)]"
                   style={{ borderRadius: '4px' }}
                   defaultValue="Focused"
                   readOnly
@@ -382,7 +355,7 @@ export default function DesignSlatePage() {
           {/* Buttons */}
           <section>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-[hsl(0_0%_40%)]" style={{ borderRadius: '1px' }} />
+              <span className="w-1 h-4 bg-[#0A1636]" style={{ borderRadius: '1px' }} />
               Buttons
             </h2>
             <SlateCard className="p-6 space-y-4">
@@ -403,7 +376,7 @@ export default function DesignSlatePage() {
           {/* Inputs */}
           <section>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-[hsl(0_0%_40%)]" style={{ borderRadius: '1px' }} />
+              <span className="w-1 h-4 bg-[#0A1636]" style={{ borderRadius: '1px' }} />
               Inputs
             </h2>
             <SlateCard className="p-6 space-y-4">
@@ -419,7 +392,7 @@ export default function DesignSlatePage() {
           {/* Badges */}
           <section>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-[hsl(0_0%_40%)]" style={{ borderRadius: '1px' }} />
+              <span className="w-1 h-4 bg-[#0A1636]" style={{ borderRadius: '1px' }} />
               Badges & Status
             </h2>
             <SlateCard className="p-6">
@@ -431,7 +404,7 @@ export default function DesignSlatePage() {
               </div>
               <div className="flex items-center gap-4 text-xs text-[hsl(0_0%_50%)]">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[hsl(220_80%_50%)] animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-[#D4A43A] animate-pulse" />
                   <span>Running</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -449,7 +422,7 @@ export default function DesignSlatePage() {
           {/* Stats */}
           <section>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="w-1 h-4 bg-[hsl(0_0%_40%)]" style={{ borderRadius: '1px' }} />
+              <span className="w-1 h-4 bg-[#0A1636]" style={{ borderRadius: '1px' }} />
               Stats Cards
             </h2>
             <div className="grid grid-cols-2 gap-3">
@@ -462,13 +435,13 @@ export default function DesignSlatePage() {
         {/* Chat Preview */}
         <section className="mt-10">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="w-1 h-4 bg-[hsl(0_0%_40%)]" style={{ borderRadius: '1px' }} />
+            <span className="w-1 h-4 bg-[#0A1636]" style={{ borderRadius: '1px' }} />
             Chat Interface
           </h2>
           <SlateCard>
             <div className="border-b border-[hsl(0_0%_92%)] px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-[hsl(220_80%_50%)] animate-pulse" />
+                <div className="w-2 h-2 rounded-full bg-[#D4A43A] animate-pulse" />
                 <span className="font-mono text-sm">ses_a7f3b2c</span>
                 <SlateBadge variant="accent">running</SlateBadge>
               </div>
@@ -494,7 +467,7 @@ export default function DesignSlatePage() {
         {/* Full Layout Preview */}
         <section className="mt-10">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="w-1 h-4 bg-[hsl(0_0%_40%)]" style={{ borderRadius: '1px' }} />
+            <span className="w-1 h-4 bg-[#0A1636]" style={{ borderRadius: '1px' }} />
             Full Layout Preview
           </h2>
           <SlateCard className="overflow-hidden">
@@ -503,8 +476,8 @@ export default function DesignSlatePage() {
               <div className="w-56 border-r border-[hsl(0_0%_92%)] bg-white">
                 <div className="p-4 border-b border-[hsl(0_0%_92%)]">
                   <div className="flex items-center gap-2">
-                    <EverrunsLogo size={28} primaryColor="hsl(0 0% 15%)" accentColor="hsl(220 80% 50%)" />
-                    <span className="font-semibold text-[hsl(0_0%_10%)]">everruns</span>
+                    <Image src="/logo.svg" alt="Everruns" width={28} height={28} />
+                    <span className="font-semibold text-[#0A1636]">everruns</span>
                   </div>
                 </div>
                 <div className="py-2">
@@ -563,27 +536,27 @@ export default function DesignSlatePage() {
         {/* Design Notes */}
         <section className="mt-10">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="w-1 h-4 bg-[hsl(0_0%_40%)]" style={{ borderRadius: '1px' }} />
+            <span className="w-1 h-4 bg-[#0A1636]" style={{ borderRadius: '1px' }} />
             Design Notes
           </h2>
           <SlateCard className="p-6">
             <div className="grid grid-cols-2 gap-6 text-sm">
               <div>
-                <h3 className="font-medium text-[hsl(0_0%_20%)] mb-2">Philosophy</h3>
+                <h3 className="font-medium text-[hsl(0_0%_20%)] mb-2">Brand Alignment</h3>
                 <ul className="space-y-1 text-[hsl(0_0%_45%)]">
-                  <li>- Light background with subtle dot pattern</li>
-                  <li>- White cards for content separation</li>
-                  <li>- Single accent color for actions</li>
-                  <li>- 4px radius: subtle refinement</li>
+                  <li>- Uses original everruns logo</li>
+                  <li>- Navy (#0A1636) for primary actions</li>
+                  <li>- Gold (#D4A43A) for accents & highlights</li>
+                  <li>- Navy dot pattern on backgrounds</li>
                 </ul>
               </div>
               <div>
-                <h3 className="font-medium text-[hsl(0_0%_20%)] mb-2">Key Differences from Current</h3>
+                <h3 className="font-medium text-[hsl(0_0%_20%)] mb-2">UI Refinements</h3>
                 <ul className="space-y-1 text-[hsl(0_0%_45%)]">
-                  <li>- Sharper corners (4px vs 8px)</li>
-                  <li>- Blue accent instead of gray primary</li>
-                  <li>- More contrast on buttons</li>
-                  <li>- Cleaner visual hierarchy</li>
+                  <li>- 4px border radius (subtle corners)</li>
+                  <li>- Grayscale dominant, accents sparingly</li>
+                  <li>- Gold for running/active states</li>
+                  <li>- Clean hierarchy, minimal chrome</li>
                 </ul>
               </div>
             </div>
