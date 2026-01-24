@@ -143,6 +143,7 @@ export default function SessionsPage() {
           <Button
             onClick={handleOpenNewSessionDialog}
             disabled={!agents?.length}
+            className="bg-accent text-accent-foreground hover:bg-accent/90"
           >
             <Plus className="w-4 h-4 mr-2" />
             New Session
@@ -251,7 +252,9 @@ export default function SessionsPage() {
               onValueChange={setNewSessionAgentId}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select an agent" />
+                <SelectValue placeholder="Select an agent">
+                  {newSessionAgentId && agentMap.get(newSessionAgentId)?.name}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {agents?.map((agent) => (
