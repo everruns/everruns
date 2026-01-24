@@ -83,7 +83,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Link
-                          href={`/agents/${session.agent_id}/sessions/${session.id}`}
+                          href={`/sessions/${session.id}`}
                           className="font-mono text-sm hover:underline"
                         >
                           {session.title || shortenId(session.id)}

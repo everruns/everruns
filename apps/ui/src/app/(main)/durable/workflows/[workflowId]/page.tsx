@@ -309,7 +309,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ workf
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Linked Session</p>
                     <Link
-                      href={`/agents/${workflow.agent_id}/sessions/${workflow.session_id}`}
+                      href={`/sessions/${workflow.session_id}`}
                       className="inline-flex items-center gap-1 text-primary hover:underline"
                     >
                       <ExternalLink className="h-4 w-4" />

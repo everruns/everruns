@@ -75,7 +75,7 @@ export default function AgentDetailPage({
       const session = await createSession.mutateAsync({
         request: { agent_id: agentId },
       });
-      router.push(`/agents/${agentId}/sessions/${session.id}`);
+      router.push(`/sessions/${session.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
     }
@@ -225,7 +225,6 @@ export default function AgentDetailPage({
                     <SessionCard
                       key={session.id}
                       session={session}
-                      agentId={agentId}
                       model={session.model_id ? modelMap.get(session.model_id) : undefined}
                     />
                   ))}

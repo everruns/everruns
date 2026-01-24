@@ -25,16 +25,12 @@ function formatTotalTokens(usage: TokenUsage): string {
 export interface SessionCardProps {
   /** The session to display */
   session: Session;
-  /** The agent ID (for building links). If not provided, uses session.agent_id */
-  agentId?: string;
   /** Optional agent name to display (for org-level session lists) */
   agentName?: string;
   /** Optional LLM model for display */
   model?: LlmModelWithProvider;
   /** Optional custom summary text (overrides default title display) */
   summary?: string;
-  /** Whether to use org-level URL (/sessions/{id}) instead of agent-scoped URL */
-  useOrgLevelUrl?: boolean;
   /** Whether to show the delete button (if provided with onDelete) */
   onDelete?: (sessionId: string, sessionTitle: string) => void;
 }
@@ -128,11 +124,9 @@ function SessionInfoIcon({ session }: { session: Session }) {
  */
 export function SessionCard({
   session,
-  agentId,
   agentName,
   model,
   summary,
-  useOrgLevelUrl = false,
 }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
@@ -140,12 +134,8 @@ export function SessionCard({
   const inputPreview = summary ?? session.preview;
   // Show output preview from session (last assistant message)
   const outputPreview = session.output_preview;
-  // Use provided agentId or fall back to session.agent_id for link building
-  const linkAgentId = agentId ?? session.agent_id;
-  // Build URL based on whether to use org-level or agent-scoped path
-  const sessionUrl = useOrgLevelUrl
-    ? `/sessions/${session.id}`
-    : `/agents/${linkAgentId}/sessions/${session.id}`;
+  // Sessions are org-level entities
+  const sessionUrl = `/sessions/${session.id}`;
 
   return (
     <Link
