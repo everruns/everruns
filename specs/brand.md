@@ -80,6 +80,62 @@ Three interlocking rings (Borromean rings pattern) representing **Durability × 
 4. **Mobile-first** — responsive, works on all devices
 5. **Fast** — minimal JavaScript, optimized images
 
+### UI Design System (Slate)
+
+The "Slate" design system defines the visual language for the Everruns UI application.
+
+#### Corners & Radius
+
+**Sharp corners (0px)** throughout for a clean, developer-focused aesthetic.
+
+```css
+--radius: 0px;
+--radius-sm: 0px;
+--radius-md: 0px;
+--radius-lg: 0px;
+```
+
+#### Active State Pattern
+
+Navigation and interactive elements use **left/right border accents** instead of background fills:
+
+```css
+/* Active navigation item - left border */
+.nav-active {
+  background: hsl(43 60% 53% / 0.1);
+  color: hsl(43 60% 30%);
+  border-left: 2px solid hsl(43 60% 53%);
+}
+
+/* User message - right border */
+.user-message {
+  background: hsl(43 60% 53% / 0.1);
+  border-right: 2px solid hsl(43 60% 53%);
+}
+```
+
+#### Color Tokens
+
+| Token | Light Mode | Dark Mode | Usage |
+|-------|------------|-----------|-------|
+| `--primary` | Navy (#0A1636) | Light gray | Primary buttons, actions |
+| `--accent` | Gold (#D4A43A) | Gold | Active states, highlights, focus rings |
+| `--background` | Off-white (98%) | Dark blue-gray (8%) | Page background |
+| `--muted` | Light gray (96%) | Dark gray (15%) | Hover states, disabled |
+| `--border` | Gray (88%) | Dark gray (18%) | Borders, dividers |
+
+#### Hover States
+
+Use `bg-muted` for hover states instead of accent colors to keep UI calm:
+
+```css
+/* Correct */
+hover:bg-muted hover:text-foreground
+
+/* Avoid */
+hover:bg-accent hover:text-accent-foreground
+```
+
 ### Branded Background
 
 Subtle dot grid pattern applied to all surfaces (app, docs). Provides texture without distraction.
@@ -126,10 +182,13 @@ background-size: 24px 24px;
 
 #### UI Application
 
-- Follows shadcn/ui conventions
+- Follows shadcn/ui conventions with Slate design system
 - Dark mode support
-- Gold for success/active states
-- Navy for primary actions
+- Sharp corners (0px radius) throughout
+- Gold for active states (nav items, focus rings, running indicators)
+- Navy for primary actions (buttons)
+- Left/right border accents for active navigation and messages
+- Muted gray for hover states (not accent colors)
 
 ### External Resources
 

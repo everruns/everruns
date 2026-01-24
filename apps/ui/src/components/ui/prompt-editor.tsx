@@ -63,7 +63,7 @@ export function PromptEditor({
           className="min-h-[300px] font-mono text-sm"
         />
       ) : (
-        <div className="min-h-[300px] rounded-md border bg-muted/50 p-4 text-sm">
+        <div className="min-h-[300px] border bg-muted/50 p-4 text-sm">
           {value ? (
             <Markdown content={value} variant="compact" />
           ) : (

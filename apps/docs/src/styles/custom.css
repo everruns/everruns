@@ -60,33 +60,43 @@
   width: auto;
 }
 
-/* Sidebar links - better contrast */
+/* Sidebar links - left border accent for active state (Slate design) */
 :root[data-theme="light"] .sidebar-content a {
   color: #404040;
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+  padding-left: 0.5rem;
 }
 
 :root[data-theme="light"] .sidebar-content a:hover {
   color: #0a0a0a;
+  background: #f5f5f5;
 }
 
 :root[data-theme="light"] .sidebar-content a[aria-current="page"] {
-  color: #0a0a0a;
+  color: #9a7420;
   font-weight: 600;
-  background: #f0f0f0;
+  background: hsl(43 60% 53% / 0.1);
+  border-left: 2px solid #d4a43a;
 }
 
 :root[data-theme="dark"] .sidebar-content a {
   color: #a0a0a0;
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+  padding-left: 0.5rem;
 }
 
 :root[data-theme="dark"] .sidebar-content a:hover {
   color: #ffffff;
+  background: #1a1a1a;
 }
 
 :root[data-theme="dark"] .sidebar-content a[aria-current="page"] {
-  color: #ffffff;
+  color: #d4a43a;
   font-weight: 600;
-  background: #1a1a1a;
+  background: hsl(43 60% 53% / 0.1);
+  border-left: 2px solid #d4a43a;
 }
 
 /* Content links - underlined */
