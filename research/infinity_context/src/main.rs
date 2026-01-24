@@ -54,10 +54,6 @@ struct Cli {
     #[arg(long)]
     synthetic: bool,
 
-    /// Number of synthetic scenarios to generate
-    #[arg(long, default_value = "5")]
-    synthetic_count: usize,
-
     /// Dry run - show what would be executed without calling LLM
     #[arg(long)]
     dry_run: bool,
@@ -123,12 +119,8 @@ async fn main() -> Result<()> {
     println!();
 
     let scenarios = if cli.synthetic {
-        println!(
-            "{} Generating {} synthetic scenarios...\n",
-            "→".bright_blue(),
-            cli.synthetic_count
-        );
-        scenarios::generate_synthetic(cli.synthetic_count)
+        println!("{} Generating synthetic scenarios...\n", "→".bright_blue());
+        scenarios::generate_synthetic()
     } else {
         println!(
             "{} Loading scenarios from {:?}...\n",

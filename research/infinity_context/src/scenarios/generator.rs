@@ -4,24 +4,16 @@
 
 use crate::types::{message_helpers, ExpectedResult, PlantedInfo, Scenario, ScenarioType};
 
-/// Generate synthetic test scenarios
-pub fn generate_synthetic(count: usize) -> Vec<Scenario> {
-    let mut scenarios = Vec::new();
-
-    // Always include one of each type
-    scenarios.push(generate_needle_scenario(0));
-    scenarios.push(generate_multi_hop_scenario(0));
-    scenarios.push(generate_cumulative_scenario(0));
-    scenarios.push(generate_final_decision_scenario(0));
-    scenarios.push(generate_decision_timeline_scenario(0));
-    scenarios.push(generate_tool_disambiguation_scenario(0));
-
-    // Add more needle scenarios (most common test case)
-    for i in 1..count.saturating_sub(5) {
-        scenarios.push(generate_needle_scenario(i));
-    }
-
-    scenarios
+/// Generate synthetic test scenarios - one of each type
+pub fn generate_synthetic() -> Vec<Scenario> {
+    vec![
+        generate_needle_scenario(0),
+        generate_multi_hop_scenario(0),
+        generate_cumulative_scenario(0),
+        generate_final_decision_scenario(0),
+        generate_decision_timeline_scenario(0),
+        generate_tool_disambiguation_scenario(0),
+    ]
 }
 
 /// Generate a needle-in-haystack scenario
@@ -202,100 +194,153 @@ fn generate_cumulative_scenario(variant: usize) -> Scenario {
 }
 
 /// Generate a scenario where a decision changes multiple times, task asks for final state
-fn generate_final_decision_scenario(_variant: usize) -> Scenario {
-    let mut messages = Vec::new();
-    let total_messages = 180;
-
-    // Database choice changes multiple times
-    let decisions = [
-        (5, "PostgreSQL", "Let's use PostgreSQL for the database"),
-        (35, "MySQL", "Actually, let's switch to MySQL instead - better for our use case"),
-        (70, "MongoDB", "On second thought, MongoDB would be better for the schema flexibility"),
-        (110, "PostgreSQL", "After more research, let's go back to PostgreSQL with JSONB columns"),
-        (150, "CockroachDB", "Final decision: we'll use CockroachDB for the distributed nature"),
+fn generate_final_decision_scenario(variant: usize) -> Scenario {
+    let decision_topics = [
+        (
+            "database",
+            "What database did we finally decide to use?",
+            vec![
+                ("PostgreSQL", "Let's use PostgreSQL for the database"),
+                ("MySQL", "Actually, let's switch to MySQL instead"),
+                ("MongoDB", "On second thought, MongoDB would be better"),
+                ("PostgreSQL", "After more research, let's go back to PostgreSQL"),
+                ("CockroachDB", "Final decision: we'll use CockroachDB"),
+            ],
+        ),
+        (
+            "framework",
+            "What web framework did we finally decide to use?",
+            vec![
+                ("Express", "Let's start with Express for the API"),
+                ("Fastify", "Actually, Fastify would be faster"),
+                ("Hono", "Let's try Hono for edge compatibility"),
+                ("Express", "Back to Express for the ecosystem"),
+                ("Axum", "Final decision: we'll use Axum in Rust"),
+            ],
+        ),
+        (
+            "cloud",
+            "What cloud provider did we finally decide to use?",
+            vec![
+                ("AWS", "Let's deploy on AWS"),
+                ("GCP", "Actually, GCP has better ML support"),
+                ("Azure", "The client prefers Azure"),
+                ("AWS", "AWS pricing is better for our scale"),
+                ("Fly.io", "Final decision: Fly.io for simplicity"),
+            ],
+        ),
     ];
+
+    let (topic, task, choices) = &decision_topics[variant % decision_topics.len()];
+    let total_messages = 180 + (variant * 20) % 60;
+    let mut messages = Vec::new();
+
+    // Spread decisions across the conversation
+    let positions: Vec<usize> = (0..choices.len())
+        .map(|i| 5 + i * (total_messages / choices.len()))
+        .collect();
+
+    let decisions: Vec<(usize, &str, &str)> = positions
+        .iter()
+        .zip(choices.iter())
+        .map(|(pos, (name, stmt))| (*pos, *name, *stmt))
+        .collect();
 
     for i in 0..total_messages {
         let decision = decisions.iter().find(|(pos, _, _)| *pos == i);
 
-        if let Some((_, _db, statement)) = decision {
+        if let Some((_, _name, statement)) = decision {
             messages.push(message_helpers::user(statement.to_string()));
             messages.push(message_helpers::assistant(
-                "Understood, I'll update the configuration for the new database choice.".to_string(),
+                "Understood, I'll update the configuration.".to_string(),
             ));
         } else if i % 2 == 0 {
-            messages.push(message_helpers::user(generate_filler_user_message(i)));
+            messages.push(message_helpers::user(generate_filler_user_message(i + variant)));
         } else {
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i + variant)));
         }
     }
 
-    let final_db = decisions.last().unwrap().1;
+    let final_choice = decisions.last().unwrap().1;
 
     Scenario {
-        name: "final_decision_0".to_string(),
-        description: "Decision changes 5 times, must identify the final choice".to_string(),
+        name: format!("final_decision_{}_{}", topic, variant),
+        description: format!("Decision about {} changes {} times", topic, choices.len()),
         scenario_type: ScenarioType::FinalDecision,
         messages,
-        task: "What database did we finally decide to use for this project?".to_string(),
+        task: task.to_string(),
         expected: ExpectedResult::Contains {
-            contains: vec![final_db.to_string()],
+            contains: vec![final_choice.to_string()],
         },
         planted_info: decisions
             .iter()
-            .map(|(idx, db, statement)| PlantedInfo {
+            .map(|(idx, name, statement)| PlantedInfo {
                 message_index: *idx,
                 key: format!("decision_{}", idx),
-                value: format!("{}: {}", db, statement),
+                value: format!("{}: {}", name, statement),
             })
             .collect(),
     }
 }
 
 /// Generate a scenario where task asks to recreate the timeline of decision changes
-fn generate_decision_timeline_scenario(_variant: usize) -> Scenario {
-    let mut messages = Vec::new();
-    let total_messages = 160;
-
-    // API version changes over time
-    let versions = [
-        (8, "v1", "Let's start with API version v1"),
-        (40, "v2", "We need to bump to v2 for the breaking changes"),
-        (75, "v2.1", "Minor update to v2.1 for the bugfixes"),
-        (120, "v3", "Major release: moving to v3 with the new architecture"),
+fn generate_decision_timeline_scenario(variant: usize) -> Scenario {
+    let timeline_topics = [
+        (
+            "api_version",
+            "List all the API versions we went through in order.",
+            vec![("v1", "Starting with v1"), ("v2", "Bump to v2"), ("v2.1", "Patch v2.1"), ("v3", "Major v3")],
+        ),
+        (
+            "sprint",
+            "List all the sprint names we completed in order.",
+            vec![("Alpha", "Sprint Alpha"), ("Beta", "Sprint Beta"), ("Gamma", "Sprint Gamma"), ("Delta", "Sprint Delta"), ("Epsilon", "Sprint Epsilon")],
+        ),
+        (
+            "release",
+            "List all the release codenames in order.",
+            vec![("Falcon", "Release Falcon"), ("Griffin", "Release Griffin"), ("Hydra", "Release Hydra")],
+        ),
     ];
 
+    let (topic, task, versions) = &timeline_topics[variant % timeline_topics.len()];
+    let total_messages = 160 + (variant * 15) % 40;
+    let mut messages = Vec::new();
+
+    // Spread versions across the conversation
+    let positions: Vec<usize> = (0..versions.len())
+        .map(|i| 8 + i * (total_messages / versions.len()))
+        .collect();
+
+    let version_list: Vec<(usize, &str, &str)> = positions
+        .iter()
+        .zip(versions.iter())
+        .map(|(pos, (ver, stmt))| (*pos, *ver, *stmt))
+        .collect();
+
     for i in 0..total_messages {
-        let version = versions.iter().find(|(pos, _, _)| *pos == i);
+        let version = version_list.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, ver, statement)) = version {
             messages.push(message_helpers::user(format!("{} - {}", statement, ver)));
-            messages.push(message_helpers::assistant(format!(
-                "I'll update the API version to {}.",
-                ver
-            )));
+            messages.push(message_helpers::assistant(format!("Updated to {}.", ver)));
         } else if i % 2 == 0 {
-            messages.push(message_helpers::user(generate_filler_user_message(i)));
+            messages.push(message_helpers::user(generate_filler_user_message(i + variant)));
         } else {
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i + variant)));
         }
     }
 
     Scenario {
-        name: "decision_timeline_0".to_string(),
-        description: "Must recreate the timeline of API version changes".to_string(),
+        name: format!("timeline_{}_{}", topic, variant),
+        description: format!("Recreate timeline of {} changes", topic),
         scenario_type: ScenarioType::DecisionTimeline,
         messages,
-        task: "List all the API versions we went through in order, from first to last.".to_string(),
+        task: task.to_string(),
         expected: ExpectedResult::Contains {
-            contains: vec![
-                "v1".to_string(),
-                "v2".to_string(),
-                "v2.1".to_string(),
-                "v3".to_string(),
-            ],
+            contains: versions.iter().map(|(v, _)| v.to_string()).collect(),
         },
-        planted_info: versions
+        planted_info: version_list
             .iter()
             .map(|(idx, ver, statement)| PlantedInfo {
                 message_index: *idx,
@@ -307,20 +352,59 @@ fn generate_decision_timeline_scenario(_variant: usize) -> Scenario {
 }
 
 /// Generate a scenario with same tool called multiple times, results must not be mixed
-fn generate_tool_disambiguation_scenario(_variant: usize) -> Scenario {
-    let mut messages = Vec::new();
-    let total_messages = 140;
-
-    // File read tool called for different files at different times
-    let tool_calls = [
-        (10, "config.json", r#"{"port": 3000, "host": "localhost"}"#),
-        (45, "users.json", r#"[{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]"#),
-        (80, "config.json", r#"{"port": 8080, "host": "0.0.0.0", "ssl": true}"#),
-        (115, "settings.yaml", "debug: true\nlog_level: info"),
+fn generate_tool_disambiguation_scenario(variant: usize) -> Scenario {
+    let tool_scenarios = [
+        (
+            "config_port",
+            "What is the current port in config.json?",
+            "8080",
+            vec![
+                ("config.json", r#"{"port": 3000, "host": "localhost"}"#),
+                ("users.json", r#"[{"id": 1, "name": "Alice"}]"#),
+                ("config.json", r#"{"port": 8080, "host": "0.0.0.0"}"#),
+            ],
+        ),
+        (
+            "env_debug",
+            "What is the current DEBUG value in .env?",
+            "false",
+            vec![
+                (".env", "DEBUG=true\nPORT=3000"),
+                ("package.json", r#"{"name": "app", "version": "1.0"}"#),
+                (".env", "DEBUG=false\nPORT=8080"),
+                ("README.md", "# App\nDocumentation here"),
+            ],
+        ),
+        (
+            "db_host",
+            "What is the current database host in database.yml?",
+            "prod-db.example.com",
+            vec![
+                ("database.yml", "host: localhost\nport: 5432"),
+                ("database.yml", "host: staging-db.example.com\nport: 5432"),
+                ("schema.sql", "CREATE TABLE users (id INT);"),
+                ("database.yml", "host: prod-db.example.com\nport: 5432"),
+            ],
+        ),
     ];
 
+    let (name, task, expected, tool_calls) = &tool_scenarios[variant % tool_scenarios.len()];
+    let total_messages = 140 + (variant * 20) % 40;
+    let mut messages = Vec::new();
+
+    // Spread tool calls across the conversation
+    let positions: Vec<usize> = (0..tool_calls.len())
+        .map(|i| 10 + i * (total_messages / tool_calls.len()))
+        .collect();
+
+    let calls: Vec<(usize, &str, &str)> = positions
+        .iter()
+        .zip(tool_calls.iter())
+        .map(|(pos, (file, content))| (*pos, *file, *content))
+        .collect();
+
     for i in 0..total_messages {
-        let tool_call = tool_calls.iter().find(|(pos, _, _)| *pos == i);
+        let tool_call = calls.iter().find(|(pos, _, _)| *pos == i);
 
         if let Some((_, filename, content)) = tool_call {
             messages.push(message_helpers::user(format!("Read the file {}", filename)));
@@ -328,28 +412,24 @@ fn generate_tool_disambiguation_scenario(_variant: usize) -> Scenario {
                 format!("read_file_{}", i),
                 format!("Contents of {}:\n{}", filename, content),
             ));
-            messages.push(message_helpers::assistant(format!(
-                "I've read {}. Let me know if you need anything else.",
-                filename
-            )));
+            messages.push(message_helpers::assistant(format!("I've read {}.", filename)));
         } else if i % 2 == 0 {
-            messages.push(message_helpers::user(generate_filler_user_message(i)));
+            messages.push(message_helpers::user(generate_filler_user_message(i + variant)));
         } else {
-            messages.push(message_helpers::assistant(generate_filler_assistant_message(i)));
+            messages.push(message_helpers::assistant(generate_filler_assistant_message(i + variant)));
         }
     }
 
-    // Task asks about the SECOND read of config.json (at position 80)
     Scenario {
-        name: "tool_disambiguation_0".to_string(),
-        description: "Same file read twice with different content, must identify correct version".to_string(),
+        name: format!("tool_disambig_{}_{}", name, variant),
+        description: "Same file read multiple times, must use most recent".to_string(),
         scenario_type: ScenarioType::ToolResultDisambiguation,
         messages,
-        task: "What is the current port number in config.json? (Use the most recent read)".to_string(),
+        task: format!("{} (Use the most recent read)", task),
         expected: ExpectedResult::Contains {
-            contains: vec!["8080".to_string()],
+            contains: vec![expected.to_string()],
         },
-        planted_info: tool_calls
+        planted_info: calls
             .iter()
             .map(|(idx, filename, content)| PlantedInfo {
                 message_index: *idx,
@@ -423,15 +503,19 @@ mod tests {
 
     #[test]
     fn test_generate_synthetic_scenarios() {
-        let scenarios = generate_synthetic(5);
+        let scenarios = generate_synthetic();
 
-        assert!(scenarios.len() >= 3);
+        // Should have 6 scenarios (one of each type)
+        assert_eq!(scenarios.len(), 6);
 
         // Should have different types
         let types: Vec<_> = scenarios.iter().map(|s| &s.scenario_type).collect();
         assert!(types.iter().any(|t| matches!(t, ScenarioType::NeedleInHaystack)));
         assert!(types.iter().any(|t| matches!(t, ScenarioType::MultiHop)));
         assert!(types.iter().any(|t| matches!(t, ScenarioType::Cumulative)));
+        assert!(types.iter().any(|t| matches!(t, ScenarioType::FinalDecision)));
+        assert!(types.iter().any(|t| matches!(t, ScenarioType::DecisionTimeline)));
+        assert!(types.iter().any(|t| matches!(t, ScenarioType::ToolResultDisambiguation)));
     }
 
     #[test]
