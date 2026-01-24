@@ -247,8 +247,16 @@ impl StorageBackend {
         session_id: SessionId,
         since_sequence: Option<i32>,
         since_id: Option<EventId>,
+        exclude_types: &[String],
     ) -> Result<Vec<EventRow>> {
-        dispatch!(self, list_events, session_id, since_sequence, since_id)
+        dispatch!(
+            self,
+            list_events,
+            session_id,
+            since_sequence,
+            since_id,
+            exclude_types
+        )
     }
 
     pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {

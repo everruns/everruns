@@ -658,12 +658,17 @@ impl InMemoryDatabase {
         session_id: SessionId,
         since_sequence: Option<i32>,
         since_id: Option<EventId>,
+        exclude_types: &[String],
     ) -> Result<Vec<EventRow>> {
         let events = self.events.read();
         let mut result: Vec<_> = events
             .values()
             .filter(|e| {
                 if e.session_id != session_id {
+                    return false;
+                }
+                // Filter out excluded event types
+                if !exclude_types.is_empty() && exclude_types.contains(&e.event_type) {
                     return false;
                 }
                 // Prefer since_id (UUID v7 monotonically increasing) over sequence
@@ -2412,7 +2417,7 @@ mod tests {
             .unwrap();
         }
 
-        let events = db.list_events(session.id, None, None).await.unwrap();
+        let events = db.list_events(session.id, None, None, &[]).await.unwrap();
         assert_eq!(events.len(), 3);
         assert_eq!(events[0].sequence, 1);
         assert_eq!(events[1].sequence, 2);

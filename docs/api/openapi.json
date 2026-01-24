@@ -1617,6 +1617,20 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "exclude",
+            "in": "query",
+            "description": "Event types to exclude from the response (can be specified multiple times).\nCommon delta events to exclude: output.message.delta, reason.thinking.delta",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
           }
         ],
         "responses": {
@@ -2338,6 +2352,20 @@
               ],
               "format": "uuid"
             }
+          },
+          {
+            "name": "exclude",
+            "in": "query",
+            "description": "Event types to exclude from the response (can be specified multiple times).\nCommon delta events to exclude: output.message.delta, reason.thinking.delta",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
           }
         ],
         "responses": {
