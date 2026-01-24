@@ -4,20 +4,25 @@ This document records technical options that were considered but dismissed for s
 
 ## AG-UI Protocol
 
-**Status**: Dismissed (may revisit)
+**Status**: Implemented (secondary API)
 
-**What it was**: AG-UI is a protocol for streaming agent UI events, designed for compatibility with CopilotKit and other agent UI frameworks. See https://docs.ag-ui.com for the specification.
+**What it is**: AG-UI is a protocol for streaming agent UI events, designed for compatibility with CopilotKit and other agent UI frameworks. See https://docs.ag-ui.com for the specification.
 
-**Why considered**: AG-UI provided a standardized event format for streaming agent execution events (RunStarted, TextMessageContent, ToolCallStart, etc.) to UI clients via SSE. This would enable compatibility with the CopilotKit ecosystem and other AG-UI-compatible clients.
+**Implementation**: AG-UI is available as a secondary SSE endpoint alongside the primary native event stream.
 
-**Why dismissed**: The current implementation priorities shifted away from CopilotKit compatibility. The system uses a custom PostgreSQL-backed durable execution engine for orchestration, which provides sufficient visibility into workflow execution state without a separate event streaming layer.
+**Endpoint**: `GET /v1/orgs/{org}/agents/{agent_id}/sessions/{session_id}/ag-ui/sse`
 
-**What we use instead**: PostgreSQL-backed durable execution state for tracking execution progress. Session status transitions (pending → running → pending) reflect workflow state changes. Real-time streaming can be revisited when there's a concrete need.
+**Supported Events**:
+- Lifecycle: `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`
+- Messages: `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`
+- Tools: `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END`, `TOOL_CALL_RESULT`
+- Thinking: `THINKING_TEXT_MESSAGE_START`, `THINKING_TEXT_MESSAGE_CONTENT`, `THINKING_TEXT_MESSAGE_END`
 
-**May revisit when**:
-- There is renewed interest in CopilotKit integration
-- Real-time SSE streaming becomes a requirement
-- The AG-UI protocol matures and provides clear benefits
+**Demo**: See `examples/copilotkit-demo/` for a working React application.
+
+**Specification**: See [specs/ag-ui-protocol.md](ag-ui-protocol.md) for the full specification.
+
+**Note**: The primary SSE endpoint (`/sse`) remains unchanged and provides full event access. The AG-UI endpoint provides a UI-focused subset of events in AG-UI format.
 
 ## Temporal Workflow Engine
 

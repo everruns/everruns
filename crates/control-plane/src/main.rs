@@ -195,6 +195,12 @@ async fn main() -> Result<()> {
         event_service: event_service.clone(),
         auth: auth_state.clone(),
     };
+    // AG-UI protocol state (secondary SSE API)
+    let ag_ui_state = api::ag_ui::AppState {
+        session_service: Arc::new(services::SessionService::new(db.clone())),
+        event_service: event_service.clone(),
+        auth: auth_state.clone(),
+    };
     // Create driver registry for model sync operations
     let driver_registry = Arc::new(create_driver_registry());
     let llm_providers_state = api::llm_providers::AppState::new(
@@ -270,6 +276,7 @@ async fn main() -> Result<()> {
         .merge(api::sessions::routes(sessions_state))
         .merge(api::messages::routes(messages_state))
         .merge(api::events::routes(events_state))
+        .merge(api::ag_ui::routes(ag_ui_state))
         .merge(api::llm_models::routes(llm_models_state))
         .merge(api::llm_providers::routes(llm_providers_state))
         .merge(api::mcp_servers::routes(mcp_servers_state))

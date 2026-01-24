@@ -66,6 +66,35 @@ curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents" \
   -d '{"name": "Test", "system_prompt": "You are helpful."}' | jq '.id'
 ```
 
+### 6. AG-UI SSE Endpoint
+
+```bash
+ORG="org_00000000000000000000000000000001"
+
+# Create agent and session
+AGENT_ID=$(curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"AG-UI Test","system_prompt":"Hello"}' | jq -r '.id')
+
+SESSION_ID=$(curl -s -X POST "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions" \
+  -H "Content-Type: application/json" -d '{}' | jq -r '.id')
+
+# Connect to AG-UI SSE (in background)
+curl -N "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/ag-ui/sse" &
+SSE_PID=$!
+
+# Send message
+curl -X POST "http://localhost:9000/v1/orgs/$ORG/agents/$AGENT_ID/sessions/$SESSION_ID/messages" \
+  -H "Content-Type: application/json" \
+  -d '{"content":[{"type":"text","text":"Hi"}]}'
+
+# Wait for events and check output
+sleep 3
+kill $SSE_PID 2>/dev/null
+
+# Expected events: RUN_STARTED, TEXT_MESSAGE_START, TEXT_MESSAGE_CONTENT, TEXT_MESSAGE_END, RUN_FINISHED
+```
+
 ## Full API Reference
 
 See http://localhost:9000/swagger-ui/ for complete API documentation.
