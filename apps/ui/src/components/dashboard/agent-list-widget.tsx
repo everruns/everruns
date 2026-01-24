@@ -33,7 +33,7 @@ export function AgentListWidget({
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Active Agents</CardTitle>
         <Link href="/agents/new">
-          <Button variant="outline" size="sm">
+          <Button variant="accent" size="sm">
             <Plus className="h-4 w-4 mr-1" />
             New Agent
           </Button>

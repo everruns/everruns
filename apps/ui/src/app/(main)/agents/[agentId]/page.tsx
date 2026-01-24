@@ -167,7 +167,7 @@ export default function AgentDetailPage({
               Edit
             </Button>
           </Link>
-          <Button onClick={handleNewSession} disabled={createSession.isPending}>
+          <Button variant="accent" onClick={handleNewSession} disabled={createSession.isPending}>
             <Plus className="w-4 h-4 mr-2" />
             {createSession.isPending ? "Creating..." : "New Session"}
           </Button>

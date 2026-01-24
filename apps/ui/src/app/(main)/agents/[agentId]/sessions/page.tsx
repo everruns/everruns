@@ -119,7 +119,7 @@ export default function SessionsListPage({
             {totalSessions} session{totalSessions !== 1 ? "s" : ""} total
           </p>
         </div>
-        <Button onClick={handleNewSession} disabled={createSession.isPending}>
+        <Button variant="accent" onClick={handleNewSession} disabled={createSession.isPending}>
           <Plus className="w-4 h-4 mr-2" />
           {createSession.isPending ? "Creating..." : "New Session"}
         </Button>

@@ -54,10 +54,10 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    "flex items-center gap-3 px-3 py-2 text-sm transition-colors border-l-2",
                     isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      ? "bg-accent/10 text-accent-foreground border-accent"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent"
                   )}
                 >
                   <item.icon className="h-4 w-4" />
