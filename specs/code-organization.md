@@ -133,3 +133,43 @@ Types needing OpenAPI schema:
 ```rust
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 ```
+
+## UI Patterns
+
+### Select with ID Values
+
+When using `Select` components where the value is an ID but display should be a name, always provide children to `SelectValue` to compute the display text:
+
+```tsx
+// ❌ Wrong - shows ID when selected
+<Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+  <SelectTrigger>
+    <SelectValue placeholder="Select agent" />
+  </SelectTrigger>
+  <SelectContent>
+    {agents.map((agent) => (
+      <SelectItem key={agent.id} value={agent.id}>
+        {agent.name}
+      </SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+
+// ✅ Correct - shows name when selected
+<Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+  <SelectTrigger>
+    <SelectValue placeholder="Select agent">
+      {selectedAgentId && agentMap.get(selectedAgentId)?.name}
+    </SelectValue>
+  </SelectTrigger>
+  <SelectContent>
+    {agents.map((agent) => (
+      <SelectItem key={agent.id} value={agent.id}>
+        {agent.name}
+      </SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+```
+
+**Why:** `SelectValue` displays the `value` prop by default, not the `SelectItem` children. Providing children overrides this behavior.

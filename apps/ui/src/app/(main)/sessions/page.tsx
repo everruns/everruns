@@ -130,7 +130,9 @@ export default function SessionsPage() {
             onValueChange={handleAgentFilterChange}
           >
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by agent" />
+              <SelectValue placeholder="Filter by agent">
+                {selectedAgentId ? agentMap.get(selectedAgentId)?.name : "All agents"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All agents</SelectItem>
