@@ -557,7 +557,7 @@ pub fn translate_event(event: &Event, state: &mut TranslationState) -> Vec<AgUiE
         | EventData::SessionStarted(_)
         | EventData::SessionActivated(_)
         | EventData::SessionIdled(_)
-        | EventData::Raw(_) => vec![],
+        | EventData::Unsupported { .. } => vec![],
     }
 }
 
@@ -645,7 +645,7 @@ pub async fn stream_ag_ui_sse(
     // Verify session exists
     let _session = state
         .session_service
-        .get(org.org_id, session_id.uuid())
+        .get(org.org_id, &org.public_id, session_id.uuid())
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
@@ -707,7 +707,10 @@ pub async fn stream_ag_ui_sse(
             }
 
             // Fetch events since last ID
-            match event_service.list(session_uuid, None, state.last_id).await {
+            match event_service
+                .list(session_uuid, None, state.last_id, &[])
+                .await
+            {
                 Ok(events) if !events.is_empty() => {
                     let new_last_id = Some(events.last().unwrap().id.uuid());
 
