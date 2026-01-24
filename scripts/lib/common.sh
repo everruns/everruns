@@ -57,7 +57,7 @@ ensure_docker_daemon() {
 
 # Check if npm dependencies need to be installed/updated
 # Usage: check_npm_deps <app_name> <install_command>
-# Example: check_npm_deps "UI" "just ui-install"
+# Example: check_npm_deps "UI" "cd apps/ui && npm install"
 check_npm_deps() {
   local app_name="$1"
   local install_cmd="$2"
@@ -117,9 +117,9 @@ check_postgres_ready() {
 
 # Backward-compatible wrappers
 check_ui_deps() {
-  check_npm_deps "UI" "just ui-install"
+  check_npm_deps "UI" "cd apps/ui && npm install"
 }
 
 check_docs_deps() {
-  check_npm_deps "Docs" "just docs-install"
+  check_npm_deps "Docs" "cd apps/docs && npm install"
 }
